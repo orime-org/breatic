@@ -107,6 +107,7 @@ export const conversations = pgTable(
     }),
     lastConsolidatedTurn: integer("last_consolidated_turn").default(0).notNull(),
     messages: jsonb("messages").$type<ConversationMessage[]>().default([]),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
@@ -141,6 +142,7 @@ export const tasks = pgTable(
     durationMs: integer("duration_ms"),
     resolvedSkills: jsonb("resolved_skills").$type<string[]>().default([]),
     source: varchar("source", { length: 20 }).default("canvas").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
@@ -442,6 +444,7 @@ export const skillInstalls = pgTable(
     installedAt: timestamp("installed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("skill_installs_user_skill_idx").on(

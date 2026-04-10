@@ -32,6 +32,7 @@ export interface ConversationEntity {
   lastConsolidatedTurn: number;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
 }
 
 /** Structured tool call info within a message. */
@@ -74,6 +75,7 @@ export interface TaskEntity {
   durationMs: number | null;
   resolvedSkills: string[];
   source: string;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

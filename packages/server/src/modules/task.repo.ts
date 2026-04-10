@@ -1,0 +1,148 @@
+/**
+ * Task repository — data access for the tasks table.
+ *
+ * Handles task lifecycle tracking with conditional timestamp updates.
+ */
+
+import { and, eq, desc, isNull, sql } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { tasks } from "../db/schema.js";
+import type { TaskEntity } from "@breatic/shared";
+
+/** Convert a Drizzle row to a TaskEntity. */
+function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
+  return {
+    id: row.id,
+    userId: row.userId,
+    projectId: row.projectId,
+    taskType: row.taskType,
+    model: row.model,
+    skillName: row.skillName,
+    status: row.status,
+    params: (row.params ?? {}) as Record<string, unknown>,
+    result: row.result as Record<string, unknown> | null,
+    errorMessage: row.errorMessage,
+    arqJobId: row.arqJobId,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    creditsUsed: row.creditsUsed,
+    durationMs: row.durationMs,
+    resolvedSkills: (row.resolvedSkills ?? []) as string[],
+    source: row.source,
+    deletedAt: row.deletedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/** Get a task by ID (excludes soft-deleted). */
+export async function getTaskById(id: string): Promise<TaskEntity | null> {
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/** List active (non-deleted) tasks for a user, ordered by most recent. */
+export async function listTasksByUser(
+  userId: string,
+  limit = 20,
+  offset = 0,
+): Promise<TaskEntity[]> {
+  const cappedLimit = Math.min(limit, 100);
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.userId, userId), isNull(tasks.deletedAt)))
+    .orderBy(desc(tasks.createdAt))
+    .limit(cappedLimit)
+    .offset(offset);
+  return rows.map(toEntity);
+}
+
+/** Soft-delete a task (reserved for future "clear history" UI). */
+export async function softDeleteTask(id: string): Promise<void> {
+  await db
+    .update(tasks)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(tasks.id, id));
+}
+
+/** Create a new task. */
+export async function createTask(data: {
+  userId: string;
+  projectId?: string;
+  taskType: string;
+  params: Record<string, unknown>;
+  model?: string;
+  skillName?: string;
+  source?: string;
+}): Promise<TaskEntity> {
+  const rows = await db
+    .insert(tasks)
+    .values({
+      userId: data.userId,
+      projectId: data.projectId,
+      taskType: data.taskType,
+      params: data.params,
+      model: data.model,
+      skillName: data.skillName,
+      source: data.source ?? "canvas",
+    })
+    .returning();
+  return toEntity(rows[0]!);
+}
+
+/**
+ * Update task status with conditional timestamp handling.
+ *
+ * - RUNNING → sets started_at
+ * - COMPLETED/FAILED/CANCELLED → sets completed_at
+ */
+export async function updateTaskStatus(
+  id: string,
+  status: string,
+  options?: {
+    result?: Record<string, unknown>;
+    error?: string;
+    creditsUsed?: number;
+    durationMs?: number;
+  },
+): Promise<void> {
+  const now = new Date();
+  const updates: Record<string, unknown> = {
+    status,
+    updatedAt: now,
+  };
+
+  if (status === "running") {
+    updates.startedAt = now;
+  }
+  if (["completed", "failed", "cancelled"].includes(status)) {
+    updates.completedAt = now;
+  }
+  if (options?.result !== undefined) updates.result = options.result;
+  if (options?.error !== undefined) updates.errorMessage = options.error;
+  if (options?.creditsUsed !== undefined) updates.creditsUsed = options.creditsUsed;
+  if (options?.durationMs !== undefined) updates.durationMs = options.durationMs;
+
+  await db.update(tasks).set(updates).where(eq(tasks.id, id));
+}
+
+/** Set the ARQ/BullMQ job ID on a task. */
+export async function setJobId(id: string, jobId: string): Promise<void> {
+  await db
+    .update(tasks)
+    .set({ arqJobId: jobId, updatedAt: new Date() })
+    .where(eq(tasks.id, id));
+}
+
+/** Backfill the resolved skills list after execution. */
+export async function setResolvedSkills(id: string, skills: string[]): Promise<void> {
+  await db.execute(
+    sql`UPDATE tasks SET resolved_skills = ${JSON.stringify(skills)}::jsonb, updated_at = NOW()
+        WHERE id = ${id}`,
+  );
+}

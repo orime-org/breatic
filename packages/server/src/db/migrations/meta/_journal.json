@@ -36,6 +36,13 @@
       "when": 1775803636573,
       "tag": "0004_huge_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775814761196,
+      "tag": "0005_large_tyrannus",
+      "breakpoints": true
     }
   ]
 }
