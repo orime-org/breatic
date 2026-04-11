@@ -1,0 +1,412 @@
+{
+  "server": {
+    "error": {
+      "not_found": "資源未找到",
+      "forbidden": "沒有存取權限",
+      "unauthorized": "憑證無效或已過期",
+      "conflict": "資源衝突",
+      "validation": "輸入資料無效",
+      "insufficient_credits": "積分不足：需要 {required}，可用 {available}",
+      "rate_limited": "請求過於頻繁，請稍後再試",
+      "internal": "伺服器內部錯誤",
+      "stripe_not_configured": "支付系統未設定",
+      "storage_not_configured": "儲存系統未設定"
+    },
+    "auth": {
+      "invalid_credentials": "電子郵件或密碼錯誤",
+      "email_taken": "該電子郵件已註冊",
+      "no_password": "此帳號使用社交登入",
+      "token_expired": "登入已過期，請重新登入",
+      "register_success": "帳號建立成功",
+      "logout_success": "已登出"
+    },
+    "payment": {
+      "checkout_created": "支付工作階段已建立",
+      "credits_granted": "已儲值 {amount} 積分",
+      "payment_completed": "支付完成",
+      "payment_failed": "支付失敗",
+      "tier_not_found": "未知的方案：{tier}。可選：{available}",
+      "price_not_configured": "方案 {tier} 的價格未設定"
+    },
+    "credits": {
+      "deducted": "已扣除 {amount} 積分",
+      "added": "已增加 {amount} 積分",
+      "balance": "目前餘額：{balance}"
+    },
+    "task": {
+      "created": "任務已建立",
+      "running": "任務執行中",
+      "completed": "任務完成",
+      "failed": "任務失敗：{error}",
+      "not_your_task": "您沒有權限存取此任務"
+    },
+    "email": {
+      "verify_subject": "驗證您的電子郵件 — Breatic",
+      "verify_body": "點擊以下連結驗證您的電子郵件地址：\n\n{link}\n\n連結 24 小時內有效。\n",
+      "reset_subject": "重設密碼 — Breatic",
+      "reset_body": "點擊以下連結重設密碼：\n\n{link}\n\n連結 1 小時內有效。\n\n如果您沒有要求重設密碼，請忽略此郵件。\n",
+      "welcome_subject": "歡迎加入 Breatic",
+      "welcome_body": "歡迎來到 Breatic，{name}！開始用 AI 創作精彩內容吧。"
+    },
+    "models": {
+      "image": {
+        "nano-banana-pro": "最高畫質，支援 4K",
+        "nano-banana-2": "快速多能，支援聯網搜尋",
+        "nano-banana": "經典款，畫質與速度均衡",
+        "seedream-5.0-lite": "照片級寫實，擅長東方美學",
+        "midjourney-v7": "藝術風格化，高創造力",
+        "midjourney-niji-v7": "動漫插畫專家",
+        "z-image-turbo": "極速出圖，經濟實惠",
+        "qwen-image": "多風格中國畫"
+      },
+      "video": {
+        "kling-o3-pro": "最高畫質，複雜運鏡",
+        "wan-2.6": "動漫風，支援參考圖",
+        "seedance-2.0": "舞蹈和人體運動專家",
+        "veo-3.1": "電影級畫質"
+      },
+      "audio": {
+        "minimax-music-02": "最全能，支援人聲",
+        "elevenlabs-sfx-v2": "音效，支援循環"
+      },
+      "tts": {
+        "elevenlabs-v3": "最自然，52 種音色",
+        "gemini-tts": "多角色對話"
+      }
+    }
+  },
+  "save": "儲存",
+  "cancel": "取消",
+  "delete": "刪除",
+  "confirm": "確認",
+  "close": "關閉",
+  "loading": "載入中...",
+  "search": "搜尋",
+  "retry": "重試",
+  "back": "返回",
+  "next": "下一步",
+  "done": "完成",
+  "agent": {
+    "placeholder": "描述您想創作的內容...",
+    "thinking": "思考中...",
+    "tool_running": "正在使用 {tool}...",
+    "plan_ready": "方案已就緒 — 確認後開始生成",
+    "confirm_plan": "確認並生成",
+    "new_chat": "新對話"
+  },
+  "canvas": {
+    "new_project": "新建專案",
+    "generating": "生成中...",
+    "completed": "已完成",
+    "failed": "生成失敗",
+    "generating_by": "{user} 正在生成",
+    "parameter_mode": "參數模式",
+    "intelligent_mode": "智慧模式"
+  },
+  "editor": {
+    "label": "編輯器",
+    "accept": "接受",
+    "reject": "拒絕",
+    "polish": "潤飾",
+    "expand": "擴寫",
+    "summarize": "摘要",
+    "translate": "翻譯",
+    "rewrite": "改寫",
+    "continue_writing": "續寫",
+    "generate": "生成",
+    "character": "角色",
+    "storyboard": "分鏡",
+    "script": "劇本"
+  },
+  "payment": {
+    "buy_credits": "購買積分",
+    "credits_balance": "積分：{balance}",
+    "per_credit": "{price}/積分",
+    "save_percent": "省 {percent}%"
+  },
+  "auth": {
+    "login": "登入",
+    "register": "註冊",
+    "logout": "登出",
+    "email": "電子郵件",
+    "password": "密碼",
+    "forgot_password": "忘記密碼？",
+    "or_continue_with": "或透過以下方式繼續",
+    "google": "Google"
+  },
+  "breatic_slogan": "AI讓創意可見",
+  "about_us": "關於我們",
+  "support_and_service": "支援與服務",
+  "terms_of_use": "使用條款",
+  "privacy_policy": "隱私政策",
+  "enter_workspace": "進入工作臺",
+  "enter_editor": "進入編輯器",
+  "all_rights_reserved": "版權所有。",
+  "common_error_noCredits": "沒有足夠的积分，請購買积分。",
+  "common_error_noLogin": "請登錄。",
+  "workspace": {
+    "label": "工作臺",
+    "copy_success": "專案複製成功",
+    "delete_success": "專案刪除成功",
+    "project_name_required": "專案名稱是必需的",
+    "rename_success": "專案重新命名成功",
+    "create_failed": "建立專案失敗",
+    "copy_project": "複製專案",
+    "rename_project": "重新命名專案",
+    "delete_project": "刪除專案",
+    "btn_confirm": "確認",
+    "btn_cancel": "取消",
+    "rename_project_title": "重新命名專案",
+    "rename_project_placeholder": "請輸入新的專案名稱",
+    "delete_project_content_title": "刪除專案",
+    "delete_project_content_description": "此操作無法撤銷。",
+    "recent_projects": "最近的專案",
+    "create_new_project": "建立新專案",
+    "no_more_data": "沒有更多專案",
+    "create_project_title": "建立新專案",
+    "create_project_placeholder": "請輸入新專案的名稱",
+    "use_case": "用例",
+    "use_case_description": "用例描述",
+    "home_tooltip": "返回首頁",
+    "create_user_case_title": "建立用例",
+    "create_user_case_description": "這將基於此用例建立一個新專案。",
+    "create_user_case_placeholder": "輸入新專案名稱",
+    "not_logged_in": {
+      "title": "未登入",
+      "description": "登入以體驗所有產品功能",
+      "login_button": "立即登入"
+    }
+  },
+  "project": {
+    "toolbar": {
+      "copy": "複製",
+      "delete": "刪除",
+      "cannotDeleteWhileExecuting": "執行中無法刪除",
+      "uploadFile": "上傳文件",
+      "uploading": "上傳中...",
+      "pleaseInputTexts": "請輸入文本",
+      "pleaseInputUrl": "請輸入URL",
+      "inputUrl": "輸入URL",
+      "unsupportedFileFormat": "不支援的檔案格式: .{extension}",
+      "fileParseFailed": "檔案解析失敗，請檢查檔案格式",
+      "clickToSelectImageFile": "點擊選擇圖片檔案",
+      "clickToSelectAudioFile": "點擊選擇音頻檔案",
+      "clickToSelectVideoFile": "點擊選擇視頻檔案",
+      "orDropFileHere": "或拖拽檔案到此處",
+      "credits": "積分",
+      "startRecording": "開始錄音",
+      "exitRecording": "退出錄音",
+      "clickToStartRecord": "點擊開始錄音",
+      "clickStopButtonToFinish": "點擊停止按鈕完成錄音",
+      "recordingNotReady": "錄音功能未準備好，請稍後再試",
+      "cannotAccessMicrophone": "無法訪問麥克風，請檢查權限設置",
+      "uploadFailedUrlIncorrect": "上傳失敗。URL不正確。",
+      "uploadFailed": "上傳失敗。",
+      "audioFormatsSupported": "URL支持的音頻格式",
+      "audioFormatsMustBe": "必須是MP3、OGG、WAV、WEBM",
+      "loadingAudio": "載入音頻中...",
+      "textNode": "文本",
+      "imageNode": "圖片",
+      "textNodePlaceholder": "雙擊輸入文本\n或通過智能體生成文本",
+      "imageNodePlaceholder": "雙擊上傳圖片檔案\n或通過智能體生成圖片",
+      "videoNodePlaceholder": "雙擊上傳視頻檔案\n或通過智能體生成視頻",
+      "audioNodePlaceholder": "雙擊上傳音頻檔案\n或通過智能體生成音頻",
+      "wrapUngroup": "包裹解組",
+      "group": "打組",
+      "ungroup": "解組",
+      "layout": "佈局",
+      "layoutGrid": "宮格佈局",
+      "layoutHorizontal": "水平佈局",
+      "backgroundColor": "背景顏色",
+      "expand": "展開",
+      "collapse": "摺疊"
+    },
+    "resultsCard": {
+      "clickToSelectResults": "點擊選擇結果",
+      "resultsSelected": "個結果已選擇",
+      "resultSelected": "個結果已選擇",
+      "selectResultsToTransfer": "選擇結果以傳輸到下一個節點"
+    },
+    "panel": {
+      "resultsSelected": "個結果已選擇",
+      "runHistory": "運行歷史",
+      "assets": "資源",
+      "generatedResults": "生成結果",
+      "exportedResults": "導出結果",
+      "all": "全部",
+      "texts": "文本",
+      "images": "圖片",
+      "audios": "音頻",
+      "videos": "視頻",
+      "generatedAt": "生成於",
+      "uploadedAt": "上傳於",
+      "exportedAt": "導出於",
+      "today": "今天",
+      "yesterday": "昨天",
+      "upload": "上傳",
+      "videoEditor": "視頻編輯器",
+      "generated": "生成",
+      "selected": "已選擇",
+      "loading": "載入中...",
+      "noMore": "暫無更多...",
+      "pullToRefresh": "下拉刷新",
+      "releaseToRefresh": "鬆開刷新"
+    },
+    "canvas": {
+      "noRunsYet": "暫無運行記錄",
+      "noRunsDescBefore": "每次運行此節點時，結果會顯示在這裡 — 輸入、輸出和",
+      "noRunsCreditUsage": "積分消耗",
+      "noRunsDescAfter": "。"
+    },
+    "form": {
+      "selectAModel": "選擇模型",
+      "aspectRatio": "寬高比",
+      "duration": "時長",
+      "resolution": "解析度",
+      "selectLanguage": "選擇語言",
+      "selectAVoice": "選擇語音",
+      "fillModel": "填充模型",
+      "musicDescription": "音樂描述",
+      "musicDescriptionPlaceholder": "曲調、風格、旋律及相關音樂元素。（需要10-2000個字符）",
+      "splittingRules": "分割規則*",
+      "splittingRulesPlaceholder": "描述如何分割輸入文本（可選）",
+      "processingRules": "處理規則*",
+      "processingRulesPlaceholder": "請描述潤色的規則和風格（可選）。"
+    },
+    "videoEditor": {
+      "noExportResultsYet": "暫無導出結果",
+      "startToEdit": "開始編輯",
+      "videos": "視頻",
+      "audios": "音頻",
+      "images": "圖片",
+      "texts": "文本",
+      "deleteWarning": "此編輯器節點正在使用中，無法刪除。請先關閉編輯頁面。",
+      "close": "關閉"
+    },
+    "emptyState": {
+      "noResultsYet": "您還沒有生成任何結果。",
+      "clickThe": "點擊",
+      "buttonToBringIdeasToLife": "按鈕，讓您的想法變為現實！"
+    },
+    "header": {
+      "autosavedAt": "自動保存於",
+      "monitor": "監控",
+      "darkMode": "深色模式",
+      "lightMode": "淺色模式",
+      "importWorkflow": "導入工作流",
+      "exportWorkflow": "導出工作流",
+      "exportWithResources": "導出包含資源",
+      "exportWithoutResources": "導出不包含資源",
+      "discord": "Discord",
+      "backToWorkspace": "返回工作區",
+      "workflowExportedWithResourcesSuccessfully": "工作流已成功導出（包含資源）",
+      "failedToExportWorkflowWithResources": "導出工作流失敗（包含資源）",
+      "exportWithoutResourcesNotImplemented": "導出不包含資源功能尚未實現",
+      "exportSuccessful": "導出成功",
+      "exportFailed": "導出失敗！",
+      "importSuccessful": "導入成功",
+      "importFailed": "導入失敗！",
+      "importing": "導入中...",
+      "exporting": "導出中...",
+      "english": "English",
+      "simplifiedChinese": "簡體中文",
+      "traditionalChinese": "繁體中文",
+      "japanese": "日本語"
+    },
+    "modal": {
+      "confirm": "確認",
+      "cancel": "取消"
+    }
+  },
+  "nodeLibraryPanel": {
+    "data_nodes": "Agent Nodes",
+    "editor_nodes": "Editor Nodes"
+  },
+  "userCenter": {
+    "modal": {
+      "logout": {
+        "title": "登出",
+        "description": "您確定要登出嗎？",
+        "confirm": "確認",
+        "cancel": "取消"
+      },
+      "account": {
+        "tabs": {
+          "account": {
+            "label": "帳戶",
+            "logout": "登出",
+            "accountInformation": "帳戶資訊",
+            "membershipLevel": "會員等級",
+            "credits": "積分",
+            "freeCredits": "免費積分",
+            "membershipCredits": "會員積分",
+            "purchaseCredits": "購買積分"
+          },
+          "creditsObtained": {
+            "label": "積分獲得",
+            "tHeader": {
+              "date": "日期",
+              "creditType": "積分類型",
+              "creditsObtained": "獲得積分"
+            }
+          },
+          "creditsUsed": {
+            "label": "積分使用",
+            "tHeader": {
+              "date": "日期",
+              "taskId": "任務ID",
+              "taskName": "任務名稱",
+              "creditType": "積分類型",
+              "creditsUsed": "使用積分"
+            }
+          },
+          "billing": {
+            "label": "帳單",
+            "tHeader": {
+              "date": "日期",
+              "serviceName": "服務名稱",
+              "paymentAmount": "支付金額",
+              "orderNumber": "訂單號",
+              "orderState": "訂單狀態"
+            }
+          }
+        }
+      },
+      "purchase": {
+        "cancelPayment": "支付已取消！",
+        "title": "購買積分",
+        "description": "溫馨提示：購買的積分不可轉讓且不可退款。",
+        "buy": "立即購買",
+        "info": "免費積分每月初重置。會員積分每月自動累積。積分用於 Breatic 的 AI 生成圖片以及後續其他資源的 AI 生成功能。"
+      },
+      "upgrade": {
+        "cancelSubscription": "訂閱已取消！",
+        "title": "升級會員",
+        "monthly": "月度",
+        "annual": "年度",
+        "month": "月",
+        "year": "年",
+        "bestValue": "超值優惠",
+        "description": "溫馨提示：會員特權不可轉讓且不可退款。",
+        "freeTrial": "免費試用",
+        "upgradeNow": "立即升級",
+        "features": "功能特性",
+        "info": "免費積分每月初重置。會員積分每月自動累積。積分用於 Breatic 的 AI 生成圖片以及後續其他資源的 AI 生成功能。"
+      },
+      "credits": {
+        "title": "升級",
+        "credits": "積分",
+        "freeCredits": "免費積分",
+        "membershipCredits": "會員積分",
+        "purchaseCredits": "購買積分",
+        "buyBtn": "購買積分"
+      },
+      "userDropdown": {
+        "account": "帳戶",
+        "termsOfUse": "使用條款",
+        "privacyPolicy": "隱私政策",
+        "logout": "登出"
+      }
+    }
+  }
+}
