@@ -303,7 +303,93 @@ defends against edge cases:
   re-apply (state is already the target value, lock is already
   released — both operations are harmless repeats).
 
-## 9. Best practices for backend code writing Yjs
+## 9. Persistence and multi-instance sync
+
+Yjs documents are **not in-memory only**. Hocuspocus wires two
+extensions that handle durability and horizontal scaling:
+
+### 9.1 PostgreSQL persistence (`@hocuspocus/extension-database`)
+
+Each Yjs document is persisted as an encoded binary blob in the
+`yjs_documents` table:
+
+```
+yjs_documents(
+  name       TEXT PRIMARY KEY,   -- e.g. "project-abc/canvas"
+  data       BYTEA NOT NULL,      -- Y.js binary state
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+- **Load**: on first client connection, Hocuspocus calls the
+  `fetch(documentName)` hook, reads the blob, and hydrates a Y.Doc.
+- **Save**: on mutation, the `store(documentName, state)` hook
+  upserts the full Y.Doc state. Writes are debounced via
+  `config/collab.yaml` so high-frequency cursor moves or typing
+  don't thrash the DB.
+- **No incremental updates**: a document is always stored as its
+  full merged state. On restart, loading a document replays that
+  single blob into memory — no operation log to apply.
+
+The Drizzle schema for `yjs_documents` lives in
+`packages/server/src/db/schema.ts` even though Collab owns the
+table at runtime.
+
+### 9.2 Redis cross-instance sync (`@hocuspocus/extension-redis`)
+
+When multiple Collab instances run (future horizontal scaling),
+each client's mutations must reach collaborators that happen to be
+connected to a different instance. The Redis extension broadcasts
+Y.js updates over pub/sub:
+
+- **Prefix**: `${env}:hocuspocus:*`
+- **Pattern**: instance A publishes a small diff when its local
+  Y.Doc is mutated; instance B receives it and applies it to its
+  own copy; instance B's connected clients see the update through
+  their normal WebSocket.
+- **Current deployment**: Breatic runs a single Collab instance,
+  so this pipe is mostly idle — kept on for trivial cost and to
+  avoid code changes when scaling.
+
+> **Redis usage map** — the Hocuspocus Redis keys are intentionally
+> separate from the other Redis keys Breatic uses, so none of them
+> collide:
+>
+> | Purpose | Key prefix | Consumer |
+> |---------|------------|----------|
+> | Yjs cross-instance sync | `${env}:hocuspocus:*` | Hocuspocus Redis extension |
+> | Canvas node locks | `${env}:canvas:lock:*` | API + Collab |
+> | NodeEvent stream | `${env}:stream:canvas-nodes` | Collab |
+> | Stream last-id | `${env}:collab:canvas-nodes:last-id` | Collab |
+> | BullMQ task queue | `${env}:bull:*` | API + Worker |
+> | Session store | `${env}:session:*` | API |
+> | Upload tickets | `${env}:upload:ticket:*` | API |
+
+### 9.3 How a single Y.Doc write reaches everyone
+
+When the Collab task-listener applies a NodeEvent to a canvas
+document, the write fans out through four mechanisms:
+
+```
+Collab transact() ──► Y.Doc in memory
+                          │
+                          ├──► Hocuspocus Database extension
+                          │    └─► PostgreSQL yjs_documents table
+                          │
+                          ├──► Hocuspocus Redis extension
+                          │    └─► Redis pub/sub
+                          │         └─► Other Collab instances (if any)
+                          │
+                          └──► Hocuspocus WebSocket
+                               └─► All currently connected clients
+```
+
+Three independent destinations from one `transact()` call. The
+client-visible update arrives over WebSocket, the durability is
+handled asynchronously by the PG extension, and cross-instance
+fanout is handled asynchronously by the Redis extension.
+
+## 10. Best practices for backend code writing Yjs
 
 When Collab (or any future backend consumer) wants to mutate canvas
 node data:
@@ -342,7 +428,7 @@ try {
 - Mutate `nodes[i].data.name` or `nodes[i].data.nodeRuntimeData`
 - Perform many individual writes — batch inside one `transact` call
 
-## 10. Node editor documents (future)
+## 11. Node editor documents (future)
 
 Each canvas node may have an accompanying editor document for its
 detailed UI (rich text, image editor subcanvas, etc.). These are
@@ -355,7 +441,7 @@ frontend-owned. Cross-document consistency (e.g. updating a canvas
 node when its editor content changes) will be handled in a later
 iteration via the same event bus pattern.
 
-## 11. Awareness (future)
+## 12. Awareness (future)
 
 Hocuspocus's built-in Yjs awareness is currently unused. Planned
 scope:
