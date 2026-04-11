@@ -1,0 +1,41 @@
+# BullMQ Worker configuration.
+#
+# Tunable parameters for task execution.
+# Restart the worker service after editing.
+
+# ── Concurrency ───────────────────────────────────
+# Max number of jobs processed simultaneously.
+concurrency: 5
+
+# ── BullMQ Job Retry ──────────────────────────────
+# Max attempts per job. BullMQ schedules retries with exponential
+# backoff when the handler throws. The Worker's re-entry guard
+# (provider_result_url check) prevents the provider from being
+# invoked twice — retries only apply to the pre-provider stage.
+job_attempts: 3
+
+# Base backoff delay (ms) for BullMQ retries: delay = base * 2^attempt.
+job_backoff_delay_ms: 2000
+
+# BullMQ lock duration (ms). Worker must renew within this window
+# or the job is reclaimed as "stalled". 10 minutes covers our
+# slowest single-step operation (large video upload, 3D generation).
+lock_duration_ms: 600000
+
+# ── HTTP Retry (AIGC provider API calls) ──────────
+# Max retries on 429 Too Many Requests.
+http_max_retries: 3
+
+# Base delay (ms) for exponential backoff: delay = base * 2^attempt.
+http_retry_base_delay: 2000
+
+# ── Polling (async AIGC tasks) ────────────────────
+# Default interval (ms) between poll requests.
+poll_interval: 3000
+
+# Max wait time (ms) before giving up on an async task.
+poll_max_wait: 300000            # 5 minutes
+
+# ── Billing ───────────────────────────────────────
+# Timeout (ms) for WaveSpeed billing API queries.
+billing_timeout: 30000

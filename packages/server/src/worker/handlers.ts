@@ -55,149 +55,264 @@ export interface TaskJobData {
 /**
  * Process a task job from the BullMQ queue.
  *
+ * Billing policy (AIGC, non-text-generation):
+ *   1. The user is charged **only** when the file is successfully
+ *      persisted to permanent storage (OSS / S3 / local).
+ *   2. Provider invocation may be retried (network blips, 429, etc.).
+ *   3. Once the provider has returned a result, retries are forbidden
+ *      — if BullMQ redelivers this job after `providerResultUrl` was
+ *      recorded, we mark the task failed immediately and return.
+ *   4. Each successful completion charges exactly once, enforced by a
+ *      CAS on `tasks.billed_at` inside `markCompletedAndBill`.
+ *
+ * Execution stages:
+ *   [re-entry guard] → [provider call] → [record providerResultUrl]
+ *   → [persist to storage] → [markCompletedAndBill (CAS)] → [deduct]
+ *
+ * Errors before the provider result is recorded cause BullMQ to retry
+ * the job. Errors after (persist failure, markCompleted failure) cause
+ * the task to be marked failed with **no charge** — the user can re-run
+ * from scratch if they want the result.
+ *
  * @param job - BullMQ job with TaskJobData payload
- * @returns Result dict
+ * @returns Result dict on success, or a failure status marker
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName } = job.data;
 
   const redis = getRedis();
+  const nodeId = params.node_id as string | undefined;
 
-  // Mark running. The `handling` state + `handlingBy` are already set
-  // by the API when the task was created (see POST /canvas/tasks), so
-  // the Worker does NOT publish a handling event on pickup — doing so
-  // would just re-broadcast the same state Collab already wrote.
+  // ─── Re-entry guard ───────────────────────────────────────────────
+  // Two cases where BullMQ might redeliver a job we've already touched:
+  //
+  //   (a) billed_at is already set → the task completed successfully
+  //       on a previous run. Idempotent no-op: preserve status and
+  //       return the stored result. DO NOT mark failed — that would
+  //       overwrite a legitimate `completed` status.
+  //
+  //   (b) provider_result_url is set but billed_at is not → the
+  //       provider was invoked on a previous run but the task never
+  //       reached the billing step (Worker crashed during persist,
+  //       markCompletedAndBill failed, etc). Per policy, no further
+  //       retries — mark failed and release the node without charging.
+  const existing = await taskService.getByIdInternal(taskId);
+  if (existing?.billedAt) {
+    logger.info(
+      { taskId, billedCredits: existing.billedCredits },
+      "Task already completed + billed; returning stored result",
+    );
+    return (existing.result ?? { alreadyCompleted: true }) as Record<string, unknown>;
+  }
+  if (existing?.providerResultUrl) {
+    logger.warn(
+      { taskId, providerResultUrl: existing.providerResultUrl },
+      "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
+    );
+    await taskService.markFailed(taskId, "Task retry not allowed after provider call");
+    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, "Retry not allowed after provider returned a result");
+    return { failed: true, reason: "no_retry_after_provider" };
+  }
+
   await taskService.markRunning(taskId, job.id ?? "");
 
+  // ─── Stage 1: Call the provider ───────────────────────────────────
+  // Errors here rethrow → BullMQ retries (this stage is retry-safe).
+  let providerResult: Record<string, unknown>;
+  let creditsUsed = 0;
+  let resolvedSkills: string[] = [];
+  const startTime = performance.now();
+
   try {
-    let result: Record<string, unknown>;
-    let creditsUsed = 0;
-    let resolvedSkills: string[] = [];
-
-    // Time the AIGC model call
-    const startTime = performance.now();
-
-    // Path 1: Mini-tool
     if (source === "mini_tool" && toolName) {
-      [result, creditsUsed] = await runMiniTool(toolName, taskType, params);
-    }
-    // Path 2: Understand
-    else if (taskType === "understand") {
-      [result, creditsUsed] = await runUnderstand(model, params);
-    }
-    // Path 3: AIGC Direct
-    else if (taskType in AIGC_TASK_TYPES && !skillName) {
-      [result, creditsUsed] = await runAigcDirect(taskType, model, params);
-    }
-    // Path 4+5: Skill agent
-    else {
+      [providerResult, creditsUsed] = await runMiniTool(toolName, taskType, params);
+    } else if (taskType === "understand") {
+      [providerResult, creditsUsed] = await runUnderstand(model, params);
+    } else if (taskType in AIGC_TASK_TYPES && !skillName) {
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params);
+    } else {
       const [text, skills] = await runSkillAgent(taskType, skillName, params);
       resolvedSkills = skills;
       try {
-        result = JSON.parse(text) as Record<string, unknown>;
+        providerResult = JSON.parse(text) as Record<string, unknown>;
       } catch {
-        result = { content: text };
+        providerResult = { content: text };
       }
     }
+  } catch (err) {
+    // Provider call failed. Safe to retry via BullMQ — no charge yet,
+    // no provider_result_url recorded. The next retry enters this
+    // function fresh.
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ taskId, error: errorMsg }, "provider_call_failed");
+    await taskService.markFailed(taskId, errorMsg);
+    await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
+    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
+  }
 
-    const durationMs = Math.round(performance.now() - startTime);
+  // ─── Point of no return: record that the provider has returned ───
+  // From here on, any failure must NOT re-run the provider. We write
+  // provider_result_url (or a sentinel if the transport returned a
+  // raw buffer with no upstream URL) so the re-entry guard at the top
+  // of runTask can detect a duplicate delivery and fail-fast.
+  const providerUrlSentinel =
+    (providerResult.url as string | undefined) ??
+    (providerResult.url_original as string | undefined) ??
+    `buffer://${taskId}`; // sync transports return raw bytes with no URL
+  await taskService.recordProviderResult(taskId, providerUrlSentinel);
 
-    // Persist AIGC results (buffer uploads + CDN URL downloads) to storage
-    result = await persistResultUrls(result, { taskType, userId, projectId });
+  // ─── Stage 2: Persist to permanent storage ────────────────────────
+  // Any error here marks the task failed with NO CHARGE and NO RETRY.
+  let result: Record<string, unknown>;
+  try {
+    result = await persistResultUrls(providerResult, { taskType, userId, projectId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
+    await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
+    await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
+    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    // Return normally (don't throw) — we don't want BullMQ to retry
+    // something we've explicitly decided not to charge for.
+    return { failed: true, reason: "persist_failed" };
+  }
 
-    // Extract video cover image (first frame)
-    if (taskType === "video" && typeof result.url === "string") {
+  // Per policy: the task's "content" must be a URL pointing at permanent
+  // storage for the user to be charged. If persist ran but didn't produce
+  // a usable URL (e.g. text content from Skill agent), treat it as text
+  // and skip the AIGC charging rule.
+  const persistedUrl = result.url as string | undefined;
+
+  // Extract video cover (best-effort, failure is non-fatal)
+  if (taskType === "video" && typeof persistedUrl === "string") {
+    try {
       const { extractVideoCover } = await import("./video-cover.js");
-      const coverUrl = await extractVideoCover(result.url, { userId, projectId });
+      const coverUrl = await extractVideoCover(persistedUrl, { userId, projectId });
       if (coverUrl) {
         result.cover_url = coverUrl;
       }
+    } catch (err) {
+      logger.warn({ taskId, err }, "video_cover_extraction_failed_non_fatal");
     }
+  }
 
-    // Set resolved skills
-    await taskService.setResolvedSkills(taskId, resolvedSkills);
+  const durationMs = Math.round(performance.now() - startTime);
 
-    // Deduct credits
-    if (creditsUsed > 0) {
-      await creditService.deduct(userId, creditsUsed, `Task: ${taskType}`, taskId);
+  // ─── Stage 3: Mark completed + charge (atomic via CAS) ────────────
+  // markCompletedAndBill uses a WHERE billed_at IS NULL clause so only
+  // the first Worker to reach this step wins the charge. Any subsequent
+  // retry (shouldn't happen given the re-entry guard above, but defense
+  // in depth) reads `wasFirst = false` and skips the deduct step.
+  await taskService.setResolvedSkills(taskId, resolvedSkills);
+  const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
+
+  if (wasFirst && creditsUsed > 0) {
+    try {
+      await creditService.deduct(
+        userId,
+        creditsUsed,
+        `Task: ${taskType}`,
+        taskId,
+        { model: (result.model as string | undefined) ?? model },
+      );
+    } catch (err) {
+      // Deduct failed AFTER the CAS marked billed_at. The file is
+      // already persisted and the task is completed. Log loudly for
+      // manual reconciliation — do NOT roll back billed_at because
+      // that would allow a double-charge on the next retry. Also do
+      // NOT fail the task — the user is entitled to their result.
+      logger.error(
+        { taskId, userId, creditsUsed, err },
+        "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
+      );
     }
+  } else if (!wasFirst) {
+    logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
+  }
 
-    // Mark completed
-    await taskService.markCompleted(taskId, result, creditsUsed, durationMs);
-
-    // Record in node history (non-fatal — failure here shouldn't fail the task)
-    const nodeId = params.node_id as string | undefined;
-    if (nodeId && projectId && typeof result.url === "string") {
-      try {
-        await nodeHistoryService.recordGenerationSuccess({
-          projectId,
-          nodeId,
-          userId,
-          content: result.url as string,
-          thumbnailUrl: (result.cover_url as string | undefined) ?? (taskType === "image" ? result.url as string : undefined),
-          taskId,
-          metadata: {
-            model: (result.model as string | undefined) ?? model,
-            cost: result.cost as number | undefined,
-            durationMs,
-            params,
-          },
-        });
-      } catch (err) {
-        logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
-      }
-    }
-
-    // Publish completion — Collab will update the canvas node, clear
-    // handlingBy, and release the Redis node lock.
-    const nodeIdForEvent = params.node_id as string | undefined;
-    if (nodeIdForEvent && projectId) {
-      await publishNodeEvent(redis, {
-        type: "completed",
+  // ─── Stage 4: Record history + publish completed event ────────────
+  if (nodeId && projectId && typeof persistedUrl === "string") {
+    try {
+      await nodeHistoryService.recordGenerationSuccess({
         projectId,
-        nodeId: nodeIdForEvent,
-        content: (result.url as string | undefined) ?? (result.content as string | undefined) ?? "",
-        cover_url: result.cover_url as string | undefined,
+        nodeId,
+        userId,
+        content: persistedUrl,
+        thumbnailUrl: (result.cover_url as string | undefined) ?? (taskType === "image" ? persistedUrl : undefined),
+        taskId,
+        metadata: {
+          model: (result.model as string | undefined) ?? model,
+          cost: result.cost as number | undefined,
+          durationMs,
+          params,
+        },
       });
+    } catch (err) {
+      logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
     }
+  }
 
-    logger.info({ taskId, taskType, skillName, resolvedSkills, creditsUsed, durationMs }, "task_completed");
-    return result;
+  if (nodeId && projectId) {
+    await publishNodeEvent(redis, {
+      type: "completed",
+      projectId,
+      nodeId,
+      content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
+      cover_url: result.cover_url as string | undefined,
+    });
+  }
 
+  logger.info(
+    { taskId, taskType, skillName, resolvedSkills, creditsUsed, durationMs, billed: wasFirst },
+    "task_completed",
+  );
+  return result;
+}
+
+// ─── Failure-path helpers ────────────────────────────────────────────
+
+/** Record a failed-generation entry in node_history (non-fatal). */
+async function recordFailureHistory(
+  taskId: string,
+  projectId: string | undefined,
+  nodeId: string | undefined,
+  userId: string,
+  model: string | undefined,
+  params: Record<string, unknown>,
+  errorMessage: string,
+): Promise<void> {
+  if (!nodeId || !projectId) return;
+  try {
+    await nodeHistoryService.recordGenerationFailure({
+      projectId,
+      nodeId,
+      userId,
+      errorMessage,
+      taskId,
+      metadata: { model, params },
+    });
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    await taskService.markFailed(taskId, errorMsg);
+    logger.warn({ err, taskId, nodeId }, "Failed to record node history (failure)");
+  }
+}
 
-    // Record failure in node history (non-fatal)
-    const nodeId = params.node_id as string | undefined;
-    if (nodeId && projectId) {
-      try {
-        await nodeHistoryService.recordGenerationFailure({
-          projectId,
-          nodeId,
-          userId,
-          errorMessage: errorMsg,
-          taskId,
-          metadata: { model, params },
-        });
-      } catch (historyErr) {
-        logger.warn({ err: historyErr, taskId, nodeId }, "Failed to record node history (failure)");
-      }
-    }
-
-    // Publish failure — Collab will clear handlingBy, set state=idle
-    // (without touching content), and release the Redis node lock.
-    const failedNodeId = params.node_id as string | undefined;
-    if (failedNodeId && projectId) {
-      await publishNodeEvent(redis, {
-        type: "failed",
-        projectId,
-        nodeId: failedNodeId,
-      });
-    }
-
-    logger.error({ taskId, error: errorMsg }, "task_failed");
-    throw err;
+/** Publish a `failed` NodeEvent to the canvas-nodes stream. */
+async function publishFailedEvent(
+  redis: ReturnType<typeof getRedis>,
+  projectId: string | undefined,
+  nodeId: string | undefined,
+  _taskId: string,
+  _userId: string,
+  _model: string | undefined,
+  _params: Record<string, unknown>,
+  _errorMessage: string,
+): Promise<void> {
+  if (!nodeId || !projectId) return;
+  try {
+    await publishNodeEvent(redis, { type: "failed", projectId, nodeId });
+  } catch (err) {
+    logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
   }
 }
 

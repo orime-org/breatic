@@ -142,6 +142,22 @@ export const tasks = pgTable(
     durationMs: integer("duration_ms"),
     resolvedSkills: jsonb("resolved_skills").$type<string[]>().default([]),
     source: varchar("source", { length: 20 }).default("canvas").notNull(),
+    /**
+     * URL returned by the AIGC provider, before persistence to permanent
+     * storage. Set as the "point of no return" — once this column is not
+     * null, the Worker must NOT re-invoke the provider (business policy:
+     * only one successful provider call per task).
+     */
+    providerResultUrl: text("provider_result_url"),
+    /**
+     * Idempotency guard for credit deduction. Set via CAS when the task
+     * is marked completed AND the file is persisted to storage. If set,
+     * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,
+     * stalled-job redelivery, or duplicate Worker instances.
+     */
+    billedAt: timestamp("billed_at", { withTimezone: true }),
+    /** How many credits were charged (for audit / reconciliation). */
+    billedCredits: doublePrecision("billed_credits"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

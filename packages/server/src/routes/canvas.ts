@@ -19,7 +19,7 @@ import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import * as taskService from "../modules/task.service.js";
 import * as nodeHistoryService from "../modules/node-history.service.js";
-import { createQueue } from "../infra/queue.js";
+import { createQueue, defaultJobOpts } from "../infra/queue.js";
 import { getRedis } from "../infra/redis.js";
 import { acquireNodeLock } from "../infra/canvas-lock.js";
 import { publishNodeEvent } from "../infra/event-stream.js";
@@ -80,16 +80,20 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  const job = await tasksQueue.add("execute-task", {
-    taskId: task.id,
-    userId: user.id,
-    projectId,
-    taskType: body.task_type,
-    model: body.model,
-    skillName: body.skill_name,
-    params: body.params,
-    source: body.source,
-  });
+  const job = await tasksQueue.add(
+    "execute-task",
+    {
+      taskId: task.id,
+      userId: user.id,
+      projectId,
+      taskType: body.task_type,
+      model: body.model,
+      skillName: body.skill_name,
+      params: body.params,
+      source: body.source,
+    },
+    defaultJobOpts(),
+  );
 
   await taskService.setJobId(task.id, job.id ?? "");
 
@@ -134,14 +138,18 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
     body.model,
   );
 
-  const job = await tasksQueue.add("execute-task", {
-    taskId: task.id,
-    userId: user.id,
-    projectId: body.project_id,
-    taskType: "understand",
-    model: body.model,
-    params,
-  });
+  const job = await tasksQueue.add(
+    "execute-task",
+    {
+      taskId: task.id,
+      userId: user.id,
+      projectId: body.project_id,
+      taskType: "understand",
+      model: body.model,
+      params,
+    },
+    defaultJobOpts(),
+  );
 
   await taskService.setJobId(task.id, job.id ?? "");
 
