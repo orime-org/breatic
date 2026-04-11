@@ -13,3 +13,14 @@ export type {
   MemoryContext,
   SkillMeta,
 } from "./entities.js";
+
+export type {
+  CanvasNodeState,
+  HandlingActor,
+  CanvasNodeRuntimeData,
+  CanvasNodeData,
+  NodeHandlingEvent,
+  NodeCompletedEvent,
+  NodeFailedEvent,
+  NodeEvent,
+} from "./canvas-node.js";
