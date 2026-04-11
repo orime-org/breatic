@@ -68,6 +68,14 @@ export const env = createEnv({
     // ── Agent Tools ───────────────────────────────────
     BRAVE_SEARCH_API_KEY: z.string().default(""),
 
+    /**
+     * Sandbox root for the agent file tools (`read_file`, `write_file`,
+     * `edit_file`, `list_dir`). Defaults to `<monorepo>/uploads/workspace`.
+     * Every tool call is constrained to paths whose realpath is equal
+     * to or under this directory.
+     */
+    FILE_TOOL_SANDBOX_DIR: z.string().default(""),
+
     // ── Google OAuth ────────────────────────────────
     GOOGLE_CLIENT_ID: z.string().default(""),
     GOOGLE_CLIENT_SECRET: z.string().default(""),
