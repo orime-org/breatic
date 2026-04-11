@@ -117,6 +117,24 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
     }
   };
 
+  const copyProject = async (item: WorkspaceProject) => {
+    try {
+      const res = await projectsApi.duplicate(item.id);
+      const created = res.data;
+      if (!created) {
+        message.error(t('workspace.copy_failed'));
+        return;
+      }
+      // Prepend the new card so the user sees the copy immediately.
+      setProjectList((prev) => [created, ...prev]);
+      offsetRef.current += 1;
+      message.success(t('workspace.copy_success'));
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      message.error(errMsg);
+    }
+  };
+
   const renameProject = async (item: WorkspaceProject, finalValue: string) => {
     const trimmed = finalValue.trim();
     if (!trimmed) {
@@ -141,6 +159,9 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
 
   const handleMenuClick = (item: WorkspaceProject) => (key: string) => {
     switch (key) {
+      case 'copy-project':
+        copyProject(item);
+        break;
       case 'rename-project':
         setRenameModalOpen({ open: true, item });
         break;
@@ -152,6 +173,15 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
 
   const getMenuItems = (_item: WorkspaceProject): MenuItemType[] => {
     return [
+      {
+        key: 'copy-project',
+        label: (
+          <div className='flex items-center gap-1 p-1 text-xs font-bold text-text-default-base'>
+            <Icon name='workspace-content-copy' width={24} height={24} color='var(--color-text-default-base)' />
+            {t('workspace.copy_project')}
+          </div>
+        ),
+      },
       {
         key: 'rename-project',
         label: (

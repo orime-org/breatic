@@ -147,6 +147,7 @@
   "workspace": {
     "label": "Workspace",
     "copy_success": "Project copy success",
+    "copy_failed": "Failed to copy project",
     "delete_success": "Project delete success",
     "project_name_required": "Project name is required",
     "rename_success": "Project rename success",

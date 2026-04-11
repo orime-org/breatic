@@ -151,6 +151,7 @@
     "project_name_required": "プロジェクト名は必須です",
     "rename_success": "プロジェクトの名前変更に成功しました",
     "create_failed": "プロジェクトの作成に失敗しました",
+    "copy_failed": "プロジェクトのコピーに失敗しました",
     "copy_project": "プロジェクトをコピー",
     "rename_project": "プロジェクトの名前を変更",
     "delete_project": "プロジェクトを削除",
