@@ -19,6 +19,8 @@ import type { AuthVariables } from "../middleware/auth.js";
 import * as uploadService from "../modules/upload.service.js";
 import * as attachmentService from "../modules/conversation-attachment.service.js";
 import * as nodeHistoryService from "../modules/node-history.service.js";
+import * as projectService from "../modules/project.service.js";
+import * as conversationService from "../modules/conversation.service.js";
 import { getStorageAdapter } from "../infra/storage/index.js";
 import { getRedis } from "../infra/redis.js";
 import { acquireNodeLock, releaseNodeLock } from "../infra/canvas-lock.js";
@@ -62,6 +64,17 @@ assets.post(
     }
     if ((body.context === "canvas" || body.context === "editor") && !body.node_id) {
       throw new ValidationError("node_id is required for canvas/editor uploads");
+    }
+
+    // Cross-tenant guard: the ticket records project_id / conversation_id
+    // straight from the request body and later drives writes into the
+    // target project's canvas node history and the target conversation's
+    // attachment pool. Without an ownership check here a logged-in user
+    // who knows a victim project/conversation UUID can inject content
+    // into it.
+    await projectService.assertAccess(body.project_id, user.id);
+    if (body.context === "agent" && body.conversation_id) {
+      await conversationService.assertAccess(body.conversation_id, user.id);
     }
 
     // Full URL for local fallback (e.g. http://localhost:3000)

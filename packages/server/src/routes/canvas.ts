@@ -19,6 +19,7 @@ import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import * as taskService from "../modules/task.service.js";
 import * as nodeHistoryService from "../modules/node-history.service.js";
+import * as projectService from "../modules/project.service.js";
 import { createQueue, defaultJobOpts } from "../infra/queue.js";
 import { getRedis } from "../infra/redis.js";
 import { acquireNodeLock } from "../infra/canvas-lock.js";
@@ -50,6 +51,14 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
 
   if (nodeId && !projectId) {
     throw new ValidationError("node_id requires project_id");
+  }
+
+  // Cross-tenant guard: never trust body.project_id. Without this,
+  // any logged-in user who knows a victim project UUID can enqueue
+  // a task that writes into that project's canvas node and is billed
+  // to the attacker's own account.
+  if (projectId) {
+    await projectService.assertAccess(projectId, user.id);
   }
 
   const redis = getRedis();
@@ -124,6 +133,11 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
+  // Cross-tenant guard — see /canvas/tasks rationale.
+  if (body.project_id) {
+    await projectService.assertAccess(body.project_id, user.id);
+  }
+
   const params: Record<string, unknown> = {
     source_type: body.source_type,
     source_url: body.source_url,
@@ -190,8 +204,15 @@ canvas.get(
   "/nodes/:nodeId/history",
   zValidator("query", nodeHistoryQuerySchema),
   async (c) => {
+    const user = c.get("user");
     const nodeId = c.req.param("nodeId");
     const { project_id, limit, offset, status } = c.req.valid("query");
+
+    // Cross-tenant guard — node history includes every old version
+    // of every AIGC / upload for the node, including failed-run
+    // error messages. Without this check any logged-in user could
+    // enumerate a victim project's history by guessing UUIDs.
+    await projectService.assertAccess(project_id, user.id);
 
     const result = await nodeHistoryService.listByNode(project_id, nodeId, {
       limit,

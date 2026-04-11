@@ -6,6 +6,7 @@
  */
 
 import * as conversationRepo from "./conversation.repo.js";
+import * as projectService from "./project.service.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "../errors.js";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
@@ -30,11 +31,34 @@ async function validateOwnership(
 }
 
 /**
+ * Assert that the given user may access the given conversation.
+ *
+ * Shared entry point for REST route handlers that need to reject
+ * cross-tenant reads (e.g. conversation attachment listings) before
+ * doing any work. Discards the returned entity so call sites read
+ * as an assertion rather than a fetch.
+ *
+ * @param conversationId - Conversation UUID from untrusted client input
+ * @param userId - Authenticated user UUID from the session
+ * @throws NotFoundError if conversation does not exist
+ * @throws ForbiddenError if the user does not own the conversation
+ */
+export async function assertAccess(
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  await validateOwnership(conversationId, userId);
+}
+
+/**
  * Get an existing conversation by ID or create a new one.
  *
  * If `conversationId` is provided, validates ownership and returns it.
  * Otherwise creates a new conversation with a title derived from the
- * first message content (truncated to 100 chars).
+ * first message content (truncated to 100 chars). If `projectId` is
+ * provided, the caller's access to that project is verified before
+ * linking — otherwise a user could silently attach a conversation to
+ * someone else's project.
  *
  * @param userId - Owner user UUID
  * @param conversationId - Optional existing conversation UUID
@@ -50,6 +74,12 @@ export async function getOrCreate(
 ): Promise<ConversationEntity> {
   if (conversationId) {
     return validateOwnership(conversationId, userId);
+  }
+
+  // Enforce project ownership BEFORE creating the conversation so a
+  // failed check does not leave an orphan conversation row behind.
+  if (projectId) {
+    await projectService.assertAccess(projectId, userId);
   }
 
   const title = firstMessage.slice(0, 100);
