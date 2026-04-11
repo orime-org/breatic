@@ -75,6 +75,12 @@ export interface TaskEntity {
   durationMs: number | null;
   resolvedSkills: string[];
   source: string;
+  /** URL returned by the AIGC provider (pre-persistence). Set as the "no-retry" point of no return. */
+  providerResultUrl: string | null;
+  /** Idempotency guard for credit deduction — set when charge has been applied. */
+  billedAt: Date | null;
+  /** Actual credits charged (audit trail). */
+  billedCredits: number | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

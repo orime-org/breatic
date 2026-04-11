@@ -29,6 +29,9 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     durationMs: row.durationMs,
     resolvedSkills: (row.resolvedSkills ?? []) as string[],
     source: row.source,
+    providerResultUrl: row.providerResultUrl,
+    billedAt: row.billedAt,
+    billedCredits: row.billedCredits,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -145,4 +148,59 @@ export async function setResolvedSkills(id: string, skills: string[]): Promise<v
     sql`UPDATE tasks SET resolved_skills = ${JSON.stringify(skills)}::jsonb, updated_at = NOW()
         WHERE id = ${id}`,
   );
+}
+
+/**
+ * Record the provider result URL — marks the task as "past the point of
+ * no provider retry". Subsequent Worker pickups of this task (e.g. after
+ * a Worker crash) must check this field and fail-fast if it's set,
+ * because the provider has already been invoked once.
+ *
+ * @param id - Task UUID
+ * @param providerResultUrl - URL returned by the provider (pre-persistence)
+ */
+export async function recordProviderResult(
+  id: string,
+  providerResultUrl: string,
+): Promise<void> {
+  await db
+    .update(tasks)
+    .set({ providerResultUrl, updatedAt: new Date() })
+    .where(eq(tasks.id, id));
+}
+
+/**
+ * CAS update: mark the task as completed AND set the billing guard in
+ * a single atomic step. Returns `true` if this call was the one that
+ * transitioned the task to completed (first winner), `false` if the
+ * task was already completed by another Worker.
+ *
+ * The `billed_at` column is set here as the idempotency guard. A
+ * subsequent `chargeOnce()` call uses this column to determine whether
+ * to actually deduct credits (first call wins, retries are no-ops).
+ *
+ * @returns `true` if this call performed the transition, `false` if already completed
+ */
+export async function markCompletedAndBill(
+  id: string,
+  result: Record<string, unknown>,
+  creditsUsed: number,
+  durationMs: number,
+): Promise<boolean> {
+  const now = new Date();
+  const rows = await db
+    .update(tasks)
+    .set({
+      status: "completed",
+      result,
+      creditsUsed,
+      durationMs,
+      completedAt: now,
+      billedAt: now,
+      billedCredits: creditsUsed,
+      updatedAt: now,
+    })
+    .where(and(eq(tasks.id, id), isNull(tasks.billedAt)))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
 }
