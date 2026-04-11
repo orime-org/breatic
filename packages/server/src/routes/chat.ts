@@ -26,6 +26,8 @@ import { serializeSSE } from "../agent/types.js";
 import { runWithContext } from "../infra/request-context.js";
 import { compressForContext } from "../agent/message-compressor.js";
 import { getAgentConfig } from "../config/loader.js";
+import { getSkillRegistry } from "../agent/skills-loader.js";
+import { ForbiddenError, NotFoundError } from "../errors.js";
 
 const chat = new Hono<{ Variables: AuthVariables }>();
 
@@ -90,6 +92,20 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
 chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+
+  // Gate the skill to end-user invocation. Skills that grant dangerous
+  // tools (read_file/write_file/edit_file/run_script) MUST be marked
+  // `user_invocable: false` in their metadata so this check rejects
+  // them — otherwise any authenticated user could drive the agent into
+  // arbitrary file read/write on the server. See security notes in
+  // skills/skill_creator/metadata.json.
+  const registry = getSkillRegistry();
+  if (!registry.get(body.skill_name)) {
+    throw new NotFoundError(`Skill '${body.skill_name}' not found`);
+  }
+  if (!registry.canUserInvoke(body.skill_name)) {
+    throw new ForbiddenError(`Skill '${body.skill_name}' is not user-invocable`);
+  }
 
   const conversation = await conversationService.getOrCreate(
     user.id,
