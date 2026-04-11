@@ -16,8 +16,13 @@ vi.mock("../../modules/conversation.repo.js", () => ({
   setProjectId: vi.fn(),
 }));
 
+vi.mock("../../modules/project.service.js", () => ({
+  assertAccess: vi.fn().mockResolvedValue(undefined),
+}));
+
 import * as conversationService from "../../modules/conversation.service.js";
 import * as conversationRepo from "../../modules/conversation.repo.js";
+import * as projectService from "../../modules/project.service.js";
 import { NotFoundError, ForbiddenError } from "../../errors.js";
 
 const mockConversation = {
@@ -81,8 +86,24 @@ describe("conversation.service", () => {
         "proj-1",
       );
 
+      expect(projectService.assertAccess).toHaveBeenCalledWith("proj-1", "user-1");
       expect(conversationRepo.setProjectId).toHaveBeenCalledWith("conv-1", "proj-1");
       expect(result.projectId).toBe("proj-1");
+    });
+
+    it("should refuse to link a new conversation to a project the user does not own", async () => {
+      vi.mocked(projectService.assertAccess).mockRejectedValueOnce(
+        new ForbiddenError("not yours"),
+      );
+
+      await expect(
+        conversationService.getOrCreate("user-1", undefined, "hi", "victim-proj"),
+      ).rejects.toThrow(ForbiddenError);
+
+      // Critical: we must NOT create an orphan conversation row when
+      // the project ownership check fails.
+      expect(conversationRepo.createConversation).not.toHaveBeenCalled();
+      expect(conversationRepo.setProjectId).not.toHaveBeenCalled();
     });
 
     it("should validate ownership when conversationId is provided", async () => {

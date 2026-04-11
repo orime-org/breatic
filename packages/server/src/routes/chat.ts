@@ -21,6 +21,7 @@ import * as conversationService from "../modules/conversation.service.js";
 import * as conversationRepo from "../modules/conversation.repo.js";
 import * as memoryService from "../modules/memory.service.js";
 import * as attachmentService from "../modules/conversation-attachment.service.js";
+import * as projectService from "../modules/project.service.js";
 import { MainAgent } from "../agent/main-agent.js";
 import { serializeSSE } from "../agent/types.js";
 import { runWithContext } from "../infra/request-context.js";
@@ -45,6 +46,14 @@ chat.use("*", requireAuth);
 chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+
+  // Cross-tenant guard: client-supplied project_id must belong to the
+  // authenticated user. `getOrCreate` also re-validates on conversation
+  // creation, but we check here first so that every downstream call
+  // (memory, history, SSE) runs against a confirmed-owned project.
+  if (body.project_id) {
+    await projectService.assertAccess(body.project_id, user.id);
+  }
 
   const conversation = await conversationService.getOrCreate(
     user.id,
@@ -105,6 +114,11 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   }
   if (!registry.canUserInvoke(body.skill_name)) {
     throw new ForbiddenError(`Skill '${body.skill_name}' is not user-invocable`);
+  }
+
+  // Cross-tenant guard (same rationale as /chat/message)
+  if (body.project_id) {
+    await projectService.assertAccess(body.project_id, user.id);
   }
 
   const conversation = await conversationService.getOrCreate(
@@ -194,10 +208,15 @@ chat.delete("/conversations/:id", async (c) => {
  * `GET /chat/conversations/:id/attachments` — list active attachments.
  *
  * Returns all non-deleted attachments for a conversation. Used by the
- * frontend to render the @ reference candidate pool.
+ * frontend to render the @ reference candidate pool. Enforces
+ * conversation ownership — without this check any logged-in user
+ * could enumerate another user's attachment URLs by guessing the
+ * conversation UUID.
  */
 chat.get("/conversations/:id/attachments", async (c) => {
+  const user = c.get("user");
   const conversationId = c.req.param("id");
+  await conversationService.assertAccess(conversationId, user.id);
   const list = await attachmentService.listByConversation(conversationId);
   return c.json({ data: list });
 });
