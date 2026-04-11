@@ -20,8 +20,11 @@ import * as uploadService from "../modules/upload.service.js";
 import * as attachmentService from "../modules/conversation-attachment.service.js";
 import * as nodeHistoryService from "../modules/node-history.service.js";
 import { getStorageAdapter } from "../infra/storage/index.js";
+import { getRedis } from "../infra/redis.js";
+import { acquireNodeLock, releaseNodeLock } from "../infra/canvas-lock.js";
+import { publishNodeEvent } from "../infra/event-stream.js";
 import { env } from "../config/env.js";
-import { NotFoundError, ValidationError } from "../errors.js";
+import { ConflictError, NotFoundError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
@@ -65,17 +68,57 @@ assets.post(
     const url = new URL(c.req.url);
     const apiBaseUrl = `${url.protocol}//${url.host}`;
 
-    const result = await uploadService.prepare({
-      userId: user.id,
-      filename: body.filename,
-      contentType: body.content_type,
-      size: body.size,
-      context: body.context,
-      projectId: body.project_id,
-      conversationId: body.conversation_id,
-      nodeId: body.node_id,
-      apiBaseUrl,
-    });
+    const redis = getRedis();
+    const actor = { userId: user.id, username: user.email };
+
+    // Canvas uploads take the node lock at prepare-time and hold it
+    // across the PUT upload phase. This means a large video upload
+    // (multi-minute) keeps the node in `handling` state for its
+    // entire duration — other collaborators see "X is handling" and
+    // cannot start a concurrent operation. The lock is released by
+    // Collab when it processes the completed/failed event.
+    if (body.context === "canvas" && body.node_id) {
+      const acquired = await acquireNodeLock(redis, body.project_id, body.node_id, actor);
+      if (!acquired) {
+        throw new ConflictError(
+          "Another user is currently handling this node. Try again after they finish.",
+        );
+      }
+    }
+
+    let result;
+    try {
+      result = await uploadService.prepare({
+        userId: user.id,
+        filename: body.filename,
+        contentType: body.content_type,
+        size: body.size,
+        context: body.context,
+        projectId: body.project_id,
+        conversationId: body.conversation_id,
+        nodeId: body.node_id,
+        apiBaseUrl,
+      });
+    } catch (err) {
+      // If ticket creation fails, immediately release the lock we
+      // just took so the node isn't stuck in handling state.
+      if (body.context === "canvas" && body.node_id) {
+        await releaseNodeLock(redis, body.project_id, body.node_id);
+      }
+      throw err;
+    }
+
+    // Broadcast handling state to every collaborator — done AFTER
+    // the ticket is created so the event's nodeId is guaranteed to
+    // correspond to a real in-progress upload.
+    if (body.context === "canvas" && body.node_id) {
+      await publishNodeEvent(redis, {
+        type: "handling",
+        projectId: body.project_id,
+        nodeId: body.node_id,
+        actor,
+      });
+    }
 
     return c.json({ data: result }, 201);
   },
@@ -149,6 +192,16 @@ assets.post(
     const adapter = await getStorageAdapter();
     const head = await adapter.head(ticket.key);
     if (!head.exists) {
+      // Upload never landed. For canvas uploads, publish `failed` so
+      // the node's handling state clears and the lock is released.
+      if (ticket.context === "canvas" && ticket.nodeId) {
+        const redis = getRedis();
+        await publishNodeEvent(redis, {
+          type: "failed",
+          projectId: ticket.projectId,
+          nodeId: ticket.nodeId,
+        });
+      }
       throw new NotFoundError("File not found in storage; upload may have failed");
     }
     const url = adapter.publicUrl(ticket.key);
@@ -215,7 +268,18 @@ assets.post(
         },
       });
       await uploadService.consumeTicket(body.upload_id);
-      // TODO (task #115): publish to Redis → Collab updates canvas Yjs node
+
+      // Publish completion — Collab updates canvas node content +
+      // cover_url, clears handlingBy, and releases the node lock.
+      const redis = getRedis();
+      await publishNodeEvent(redis, {
+        type: "completed",
+        projectId: ticket.projectId,
+        nodeId: ticket.nodeId,
+        content: url,
+        cover_url: coverUrl,
+      });
+
       return c.json({ data: baseResult });
     }
 

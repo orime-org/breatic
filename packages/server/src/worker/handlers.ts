@@ -20,7 +20,7 @@ import { downloadAndStore, getStorageAdapter, storageKey } from "../infra/storag
 import * as taskService from "../modules/task.service.js";
 import * as creditService from "../modules/credit.service.js";
 import * as nodeHistoryService from "../modules/node-history.service.js";
-import { publishToStream, taskResultsStreamKey } from "../infra/event-stream.js";
+import { publishNodeEvent } from "../infra/event-stream.js";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 
@@ -63,11 +63,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   const redis = getRedis();
 
-  // Mark running
+  // Mark running. The `handling` state + `handlingBy` are already set
+  // by the API when the task was created (see POST /canvas/tasks), so
+  // the Worker does NOT publish a handling event on pickup — doing so
+  // would just re-broadcast the same state Collab already wrote.
   await taskService.markRunning(taskId, job.id ?? "");
-  await publishToStream(redis, taskResultsStreamKey(), {
-    projectId, nodeId: params.node_id, taskId, userId, status: "running",
-  });
 
   try {
     let result: Record<string, unknown>;
@@ -148,11 +148,18 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       }
     }
 
-    // Publish completion to task-results stream
-    await publishToStream(redis, taskResultsStreamKey(), {
-      projectId, nodeId: params.node_id, taskId, userId, status: "completed",
-      result: { ...result },
-    });
+    // Publish completion — Collab will update the canvas node, clear
+    // handlingBy, and release the Redis node lock.
+    const nodeIdForEvent = params.node_id as string | undefined;
+    if (nodeIdForEvent && projectId) {
+      await publishNodeEvent(redis, {
+        type: "completed",
+        projectId,
+        nodeId: nodeIdForEvent,
+        content: (result.url as string | undefined) ?? (result.content as string | undefined) ?? "",
+        cover_url: result.cover_url as string | undefined,
+      });
+    }
 
     logger.info({ taskId, taskType, skillName, resolvedSkills, creditsUsed, durationMs }, "task_completed");
     return result;
@@ -178,10 +185,16 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       }
     }
 
-    await publishToStream(redis, taskResultsStreamKey(), {
-      projectId, nodeId: params.node_id, taskId, userId, status: "failed",
-      error: errorMsg,
-    });
+    // Publish failure — Collab will clear handlingBy, set state=idle
+    // (without touching content), and release the Redis node lock.
+    const failedNodeId = params.node_id as string | undefined;
+    if (failedNodeId && projectId) {
+      await publishNodeEvent(redis, {
+        type: "failed",
+        projectId,
+        nodeId: failedNodeId,
+      });
+    }
 
     logger.error({ taskId, error: errorMsg }, "task_failed");
     throw err;

@@ -26,6 +26,14 @@ export type {
   ProjectEntity,
   MemoryContext,
   SkillMeta,
+  CanvasNodeState,
+  HandlingActor,
+  CanvasNodeRuntimeData,
+  CanvasNodeData,
+  NodeHandlingEvent,
+  NodeCompletedEvent,
+  NodeFailedEvent,
+  NodeEvent,
 } from "./types/index.js";
 
 export type {
