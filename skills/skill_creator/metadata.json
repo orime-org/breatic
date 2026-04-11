@@ -1,0 +1,24 @@
+{
+  "name": "skill_creator",
+  "description": "Create or update Breatic Skills. Use when designing, structuring, or packaging skills with scripts, references, and assets.",
+  "tools": [
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "run_script"
+  ],
+  "output_type": "inline",
+  "category": "default",
+  "keywords": [
+    "skill",
+    "creator",
+    "development",
+    "packaging"
+  ],
+  "scope": [
+    "agent"
+  ],
+  "user_invocable": false,
+  "disable_model_invocation": true
+}
