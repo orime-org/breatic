@@ -151,6 +151,7 @@
     "project_name_required": "项目名称是必需的",
     "rename_success": "项目重命名成功",
     "create_failed": "创建项目失败",
+    "copy_failed": "复制项目失败",
     "copy_project": "复制项目",
     "rename_project": "重命名项目",
     "delete_project": "删除项目",
