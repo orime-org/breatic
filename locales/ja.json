@@ -1,0 +1,412 @@
+{
+  "server": {
+    "error": {
+      "not_found": "リソースが見つかりません",
+      "forbidden": "アクセス権限がありません",
+      "unauthorized": "認証情報が無効または期限切れです",
+      "conflict": "リソースの競合",
+      "validation": "入力データが無効です",
+      "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
+      "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
+      "internal": "内部サーバーエラー",
+      "stripe_not_configured": "決済システムが設定されていません",
+      "storage_not_configured": "ストレージシステムが設定されていません"
+    },
+    "auth": {
+      "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
+      "email_taken": "このメールアドレスは既に登録されています",
+      "no_password": "このアカウントはソーシャルログインを使用しています",
+      "token_expired": "セッションが期限切れです。再度ログインしてください",
+      "register_success": "アカウントが作成されました",
+      "logout_success": "ログアウトしました"
+    },
+    "payment": {
+      "checkout_created": "決済セッションが作成されました",
+      "credits_granted": "{amount} クレジットがチャージされました",
+      "payment_completed": "決済完了",
+      "payment_failed": "決済失敗",
+      "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
+      "price_not_configured": "プラン {tier} の価格が設定されていません"
+    },
+    "credits": {
+      "deducted": "{amount} クレジット消費",
+      "added": "{amount} クレジット追加",
+      "balance": "現在の残高：{balance}"
+    },
+    "task": {
+      "created": "タスクが作成されました",
+      "running": "タスク実行中",
+      "completed": "タスク完了",
+      "failed": "タスク失敗：{error}",
+      "not_your_task": "このタスクへのアクセス権限がありません"
+    },
+    "email": {
+      "verify_subject": "メールアドレスの確認 — Breatic",
+      "verify_body": "以下のリンクをクリックしてメールアドレスを確認してください：\n\n{link}\n\nこのリンクは24時間有効です。\n",
+      "reset_subject": "パスワードのリセット — Breatic",
+      "reset_body": "以下のリンクをクリックしてパスワードをリセットしてください：\n\n{link}\n\nこのリンクは1時間有効です。\n\nリセットを依頼していない場合は、このメールを無視してください。\n",
+      "welcome_subject": "Breatic へようこそ",
+      "welcome_body": "Breatic へようこそ、{name}さん！AIで素晴らしいコンテンツを作りましょう。"
+    },
+    "models": {
+      "image": {
+        "nano-banana-pro": "最高画質、4K対応",
+        "nano-banana-2": "高速万能、ウェブ検索対応",
+        "nano-banana": "定番、画質と速度のバランス",
+        "seedream-5.0-lite": "フォトリアル、東洋美学に強い",
+        "midjourney-v7": "アート、高い表現力",
+        "midjourney-niji-v7": "アニメ・イラスト専門",
+        "z-image-turbo": "超高速、低コスト",
+        "qwen-image": "多彩な中国画"
+      },
+      "video": {
+        "kling-o3-pro": "最高画質、複雑なカメラワーク",
+        "wan-2.6": "アニメ風、参照画像対応",
+        "seedance-2.0": "ダンス・人体モーション専門",
+        "veo-3.1": "映画品質"
+      },
+      "audio": {
+        "minimax-music-02": "万能、ボーカル対応",
+        "elevenlabs-sfx-v2": "効果音、ループ対応"
+      },
+      "tts": {
+        "elevenlabs-v3": "最も自然、52種の声色",
+        "gemini-tts": "複数話者の対話"
+      }
+    }
+  },
+  "save": "保存",
+  "cancel": "キャンセル",
+  "delete": "削除",
+  "confirm": "確認",
+  "close": "閉じる",
+  "loading": "読み込み中...",
+  "search": "検索",
+  "retry": "再試行",
+  "back": "戻る",
+  "next": "次へ",
+  "done": "完了",
+  "agent": {
+    "placeholder": "作りたいものを説明してください...",
+    "thinking": "考え中...",
+    "tool_running": "{tool} を使用中...",
+    "plan_ready": "プラン完成 — 確認して生成",
+    "confirm_plan": "確認して生成",
+    "new_chat": "新しいチャット"
+  },
+  "canvas": {
+    "new_project": "新規プロジェクト",
+    "generating": "生成中...",
+    "completed": "完了",
+    "failed": "生成失敗",
+    "generating_by": "{user} が生成中",
+    "parameter_mode": "パラメータモード",
+    "intelligent_mode": "インテリジェントモード"
+  },
+  "editor": {
+    "label": "エディター",
+    "accept": "採用",
+    "reject": "却下",
+    "polish": "推敲",
+    "expand": "拡張",
+    "summarize": "要約",
+    "translate": "翻訳",
+    "rewrite": "書き直し",
+    "continue_writing": "続きを書く",
+    "generate": "生成",
+    "character": "キャラクター",
+    "storyboard": "絵コンテ",
+    "script": "脚本"
+  },
+  "payment": {
+    "buy_credits": "クレジット購入",
+    "credits_balance": "クレジット：{balance}",
+    "per_credit": "{price}/クレジット",
+    "save_percent": "{percent}% お得"
+  },
+  "auth": {
+    "login": "ログイン",
+    "register": "新規登録",
+    "logout": "ログアウト",
+    "email": "メールアドレス",
+    "password": "パスワード",
+    "forgot_password": "パスワードを忘れた？",
+    "or_continue_with": "または以下で続ける",
+    "google": "Google"
+  },
+  "breatic_slogan": "AIで創造性を可視化",
+  "about_us": "私たちについて",
+  "support_and_service": "サポートとサービス",
+  "terms_of_use": "利用規約",
+  "privacy_policy": "プライバシーポリシー",
+  "enter_workspace": "ワークスペースに入る",
+  "enter_editor": "エディターに入る",
+  "all_rights_reserved": "全著作権所有。",
+  "common_error_noCredits": "クレジットが不足しています。クレジットを購入してください。",
+  "common_error_noLogin": "ログインしてください。",
+  "workspace": {
+    "label": "ワークスペース",
+    "copy_success": "プロジェクトのコピーに成功しました",
+    "delete_success": "プロジェクトの削除に成功しました",
+    "project_name_required": "プロジェクト名は必須です",
+    "rename_success": "プロジェクトの名前変更に成功しました",
+    "create_failed": "プロジェクトの作成に失敗しました",
+    "copy_project": "プロジェクトをコピー",
+    "rename_project": "プロジェクトの名前を変更",
+    "delete_project": "プロジェクトを削除",
+    "btn_confirm": "確認",
+    "btn_cancel": "キャンセル",
+    "rename_project_title": "プロジェクトの名前を変更",
+    "rename_project_placeholder": "新しいプロジェクト名を入力してください",
+    "delete_project_content_title": "プロジェクトを削除",
+    "delete_project_content_description": "この操作は元に戻せません。",
+    "recent_projects": "最近のプロジェクト",
+    "create_new_project": "新しいプロジェクトを作成",
+    "no_more_data": "これ以上のプロジェクトはありません",
+    "create_project_title": "新しいプロジェクトを作成",
+    "create_project_placeholder": "新しいプロジェクトの名前を入力してください",
+    "use_case": "ユースケース",
+    "use_case_description": "ユースケースの説明",
+    "home_tooltip": "ホームに戻る",
+    "create_user_case_title": "ユースケースを作成",
+    "create_user_case_description": "このユースケースに基づいて新しいプロジェクトが作成されます。",
+    "create_user_case_placeholder": "新しいプロジェクト名を入力",
+    "not_logged_in": {
+      "title": "ログインしていません",
+      "description": "ログインしてすべての製品機能を体験してください",
+      "login_button": "今すぐログイン"
+    }
+  },
+  "project": {
+    "toolbar": {
+      "copy": "コピー",
+      "delete": "削除",
+      "cannotDeleteWhileExecuting": "実行中は削除できません",
+      "uploadFile": "ファイルをアップロード",
+      "uploading": "アップロード中...",
+      "pleaseInputTexts": "テキストを入力してください",
+      "pleaseInputUrl": "URLを入力してください",
+      "inputUrl": "URLを入力",
+      "unsupportedFileFormat": "サポートされていないファイル形式: .{extension}",
+      "fileParseFailed": "ファイルの解析に失敗しました。ファイル形式を確認してください",
+      "clickToSelectImageFile": "画像ファイルを選択するにはクリック",
+      "clickToSelectAudioFile": "音声ファイルを選択するにはクリック",
+      "clickToSelectVideoFile": "動画ファイルを選択するにはクリック",
+      "orDropFileHere": "またはファイルをここにドロップ",
+      "credits": "クレジット",
+      "startRecording": "録音を開始",
+      "exitRecording": "録音を終了",
+      "clickToStartRecord": "クリックして録音を開始",
+      "clickStopButtonToFinish": "停止ボタンをクリックして録音を終了",
+      "recordingNotReady": "録音機能の準備ができていません。後でもう一度お試しください",
+      "cannotAccessMicrophone": "マイクにアクセスできません。権限設定を確認してください",
+      "uploadFailedUrlIncorrect": "アップロードに失敗しました。URLが正しくありません。",
+      "uploadFailed": "アップロードに失敗しました。",
+      "audioFormatsSupported": "URLでサポートされている音声形式",
+      "audioFormatsMustBe": "はMP3、OGG、WAV、WEBMである必要があります",
+      "loadingAudio": "音声を読み込み中...",
+      "textNode": "テキスト",
+      "imageNode": "画像",
+      "textNodePlaceholder": "ダブルクリックでテキストを入力\nまたはエージェントでテキストを生成",
+      "imageNodePlaceholder": "ダブルクリックで画像をアップロード\nまたはエージェントで画像を生成",
+      "videoNodePlaceholder": "ダブルクリックで動画をアップロード\nまたはエージェントで動画を生成",
+      "audioNodePlaceholder": "ダブルクリックで音声をアップロード\nまたはエージェントで音声を生成",
+      "wrapUngroup": "グループ化/解除",
+      "group": "グループ化",
+      "ungroup": "グループ解除",
+      "layout": "レイアウト",
+      "layoutGrid": "グリッドレイアウト",
+      "layoutHorizontal": "横並びレイアウト",
+      "backgroundColor": "背景色",
+      "expand": "展開",
+      "collapse": "折りたたみ"
+    },
+    "resultsCard": {
+      "clickToSelectResults": "結果を選択するにはクリック",
+      "resultsSelected": "件の結果が選択されました",
+      "resultSelected": "件の結果が選択されました",
+      "selectResultsToTransfer": "次のノードに転送する結果を選択"
+    },
+    "panel": {
+      "resultsSelected": "件の結果が選択されました",
+      "runHistory": "実行履歴",
+      "assets": "アセット",
+      "generatedResults": "生成された結果",
+      "exportedResults": "エクスポート結果",
+      "all": "すべて",
+      "texts": "テキスト",
+      "images": "画像",
+      "audios": "音声",
+      "videos": "動画",
+      "generatedAt": "生成時刻",
+      "uploadedAt": "アップロード時刻",
+      "exportedAt": "エクスポート時刻",
+      "today": "今日",
+      "yesterday": "昨日",
+      "upload": "アップロード",
+      "videoEditor": "動画エディター",
+      "generated": "生成",
+      "selected": "選択済み",
+      "loading": "読み込み中...",
+      "noMore": "これ以上ありません...",
+      "pullToRefresh": "引っ張って更新",
+      "releaseToRefresh": "離して更新"
+    },
+    "canvas": {
+      "noRunsYet": "まだ実行されていません",
+      "noRunsDescBefore": "このノードを実行するたびに、入力、出力、および",
+      "noRunsCreditUsage": "クレジット使用量",
+      "noRunsDescAfter": "がここに表示されます。"
+    },
+    "form": {
+      "selectAModel": "モデルを選択",
+      "aspectRatio": "アスペクト比",
+      "duration": "時間",
+      "resolution": "解像度",
+      "selectLanguage": "言語を選択",
+      "selectAVoice": "音声を選択",
+      "fillModel": "フィルモデル",
+      "musicDescription": "音楽の説明",
+      "musicDescriptionPlaceholder": "曲調、ジャンル、メロディー、および関連する音楽要素。（10-2000文字が必要）",
+      "splittingRules": "分割ルール*",
+      "splittingRulesPlaceholder": "入力テキストの分割方法を説明（オプション）",
+      "processingRules": "処理ルール*",
+      "processingRulesPlaceholder": "仕上げのルールとスタイルを説明してください（オプション）。"
+    },
+    "videoEditor": {
+      "noExportResultsYet": "エクスポート結果はまだありません",
+      "startToEdit": "編集を開始",
+      "videos": "動画",
+      "audios": "音声",
+      "images": "画像",
+      "texts": "テキスト",
+      "deleteWarning": "このエディターノードは現在使用中で削除できません。まず編集ページを閉じてください。",
+      "close": "閉じる"
+    },
+    "emptyState": {
+      "noResultsYet": "まだ結果が生成されていません。",
+      "clickThe": "クリック",
+      "buttonToBringIdeasToLife": "ボタンをクリックして、アイデアを実現しましょう！"
+    },
+    "header": {
+      "autosavedAt": "自動保存時刻",
+      "monitor": "モニター",
+      "darkMode": "ダークモード",
+      "lightMode": "ライトモード",
+      "importWorkflow": "ワークフローをインポート",
+      "exportWorkflow": "ワークフローをエクスポート",
+      "exportWithResources": "リソースを含めてエクスポート",
+      "exportWithoutResources": "リソースを含めずにエクスポート",
+      "discord": "Discord",
+      "backToWorkspace": "ワークスペースに戻る",
+      "workflowExportedWithResourcesSuccessfully": "ワークフローがリソースを含めて正常にエクスポートされました",
+      "failedToExportWorkflowWithResources": "ワークフローのエクスポートに失敗しました（リソースを含む）",
+      "exportWithoutResourcesNotImplemented": "リソースを含めないエクスポート機能はまだ実装されていません",
+      "exportSuccessful": "エクスポート成功",
+      "exportFailed": "エクスポート失敗！",
+      "importSuccessful": "インポート成功",
+      "importFailed": "インポート失敗！",
+      "importing": "インポート中...",
+      "exporting": "エクスポート中...",
+      "english": "English",
+      "simplifiedChinese": "簡体字中国語",
+      "traditionalChinese": "繁体字中国語",
+      "japanese": "日本語"
+    },
+    "modal": {
+      "confirm": "確認",
+      "cancel": "キャンセル"
+    }
+  },
+  "nodeLibraryPanel": {
+    "data_nodes": "Agent Nodes",
+    "editor_nodes": "Editor Nodes"
+  },
+  "userCenter": {
+    "modal": {
+      "logout": {
+        "title": "ログアウト",
+        "description": "ログアウトしてもよろしいですか？",
+        "confirm": "確認",
+        "cancel": "キャンセル"
+      },
+      "account": {
+        "tabs": {
+          "account": {
+            "label": "アカウント",
+            "logout": "ログアウト",
+            "accountInformation": "アカウント情報",
+            "membershipLevel": "メンバーシップレベル",
+            "credits": "クレジット",
+            "freeCredits": "無料クレジット",
+            "membershipCredits": "メンバーシップクレジット",
+            "purchaseCredits": "購入クレジット"
+          },
+          "creditsObtained": {
+            "label": "獲得クレジット",
+            "tHeader": {
+              "date": "日付",
+              "creditType": "クレジットタイプ",
+              "creditsObtained": "獲得クレジット"
+            }
+          },
+          "creditsUsed": {
+            "label": "使用クレジット",
+            "tHeader": {
+              "date": "日付",
+              "taskId": "タスクID",
+              "taskName": "タスク名",
+              "creditType": "クレジットタイプ",
+              "creditsUsed": "使用クレジット"
+            }
+          },
+          "billing": {
+            "label": "請求",
+            "tHeader": {
+              "date": "日付",
+              "serviceName": "サービス名",
+              "paymentAmount": "支払い金額",
+              "orderNumber": "注文番号",
+              "orderState": "注文状態"
+            }
+          }
+        }
+      },
+      "purchase": {
+        "cancelPayment": "支払いがキャンセルされました！",
+        "title": "クレジット購入",
+        "description": "ご注意：購入したクレジットは譲渡不可で返金不可です。",
+        "buy": "今すぐ購入",
+        "info": "無料クレジットは毎月初めにリセットされます。メンバーシップクレジットは毎月自動的に累積されます。クレジットは Breatic の AI 生成画像およびその他のリソースの後続の AI 生成機能に使用されます。"
+      },
+      "upgrade": {
+        "cancelSubscription": "サブスクリプションがキャンセルされました！",
+        "title": "メンバーシップアップグレード",
+        "monthly": "月額",
+        "annual": "年額",
+        "month": "月",
+        "year": "年",
+        "bestValue": "ベストバリュー",
+        "description": "ご注意：メンバーシップ特権は譲渡不可で返金不可です。",
+        "freeTrial": "無料トライアル",
+        "upgradeNow": "今すぐアップグレード",
+        "features": "機能",
+        "info": "無料クレジットは毎月初めにリセットされます。メンバーシップクレジットは毎月自動的に累積されます。クレジットは Breatic の AI 生成画像およびその他のリソースの後続の AI 生成機能に使用されます。"
+      },
+      "credits": {
+        "title": "アップグレード",
+        "credits": "クレジット",
+        "freeCredits": "無料クレジット",
+        "membershipCredits": "メンバーシップクレジット",
+        "purchaseCredits": "購入クレジット",
+        "buyBtn": "クレジット購入"
+      },
+      "userDropdown": {
+        "account": "アカウント",
+        "termsOfUse": "利用規約",
+        "privacyPolicy": "プライバシーポリシー",
+        "logout": "ログアウト"
+      }
+    }
+  }
+}
