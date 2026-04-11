@@ -1,0 +1,162 @@
+/* ProseMirror (StarterKit) + menus aligned with Tiptap Menus example */
+
+.breatic-editor-body .ProseMirror {
+  outline: none;
+  min-height: 300px;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: theme('colors.text-default-base');
+  word-break: break-word;
+}
+
+.breatic-editor-body .ProseMirror :first-child {
+  margin-top: 0;
+}
+
+.breatic-editor-body .ProseMirror p {
+  margin: 0.25em 0;
+}
+
+.breatic-editor-body .ProseMirror ul,
+.breatic-editor-body .ProseMirror ol {
+  padding: 0 1rem;
+  margin: 1.25rem 1rem 1.25rem 0.4rem;
+}
+
+.breatic-editor-body .ProseMirror ul li p,
+.breatic-editor-body .ProseMirror ol li p {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.breatic-editor-body .ProseMirror h1,
+.breatic-editor-body .ProseMirror h2,
+.breatic-editor-body .ProseMirror h3,
+.breatic-editor-body .ProseMirror h4,
+.breatic-editor-body .ProseMirror h5,
+.breatic-editor-body .ProseMirror h6 {
+  line-height: 1.1;
+  margin-top: 2.5rem;
+  text-wrap: pretty;
+}
+
+.breatic-editor-body .ProseMirror h1,
+.breatic-editor-body .ProseMirror h2 {
+  margin-top: 3.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.breatic-editor-body .ProseMirror h1 {
+  font-size: 1.4rem;
+}
+
+.breatic-editor-body .ProseMirror h2 {
+  font-size: 1.2rem;
+}
+
+.breatic-editor-body .ProseMirror h3 {
+  font-size: 1.1rem;
+}
+
+.breatic-editor-body .ProseMirror h4,
+.breatic-editor-body .ProseMirror h5,
+.breatic-editor-body .ProseMirror h6 {
+  font-size: 1rem;
+}
+
+.breatic-editor-body .ProseMirror code {
+  background-color: theme('colors.background-neutral-tertiary');
+  border-radius: 0.4rem;
+  color: theme('colors.text-default-base');
+  font-size: 0.85rem;
+  padding: 0.25em 0.3em;
+}
+
+.breatic-editor-body .ProseMirror pre {
+  background: theme('colors.background-neutral-secondary');
+  border-radius: 0.5rem;
+  color: theme('colors.text-default-base');
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.breatic-editor-body .ProseMirror pre code {
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror blockquote {
+  border-left: 3px solid theme('colors.border-default-secondary');
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+}
+
+.breatic-editor-body .ProseMirror hr {
+  border: none;
+  border-top: 1px solid theme('colors.border-default-base');
+  margin: 2rem 0;
+}
+
+.breatic-editor-body .ProseMirror strong {
+  font-weight: 600;
+}
+
+.breatic-editor-body .ProseMirror em {
+  font-style: italic;
+}
+
+.breatic-editor-body .ProseMirror s {
+  text-decoration: line-through;
+}
+
+.breatic-editor-body .ProseMirror ::selection {
+  background: rgba(53, 200, 56, 0.18);
+}
+
+/* Bubble menu — aligned with ImageNodeToolbar */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 8px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 1px 8px 1px rgba(12, 12, 13, 0.05);
+  padding: 4px 6px;
+  z-index: 9998;
+}
+
+/* Placeholder */
+.breatic-editor-body .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: theme('colors.text-default-tertiary');
+  pointer-events: none;
+  height: 0;
+}
+
+/* Highlighted text */
+.breatic-editor-body .ProseMirror mark {
+  background-color: rgba(255, 212, 0, 0.35);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Links */
+.breatic-editor-body .ProseMirror a {
+  color: theme('colors.brand-base');
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Block drag source highlight — ProseMirror NodeSelection, same mechanism as BlockNote */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode {
+  background-color: rgba(53, 200, 56, 0.2);
+  border-radius: 4px;
+  outline: none;
+}

@@ -1,0 +1,55 @@
+@import './styles/global.css';
+@import './styles/scroll.css';
+@import './theme/light.css';
+@import './theme/dark.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 富文本编辑区 / 预览区：恢复浏览器默认样式，不被 Tailwind preflight 覆盖 */
+@layer base {
+  .text-node-editor,
+  .text-node-preview {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .text-node-editor h1,
+  .text-node-editor h2,
+  .text-node-editor h3,
+  .text-node-editor h4,
+  .text-node-editor h5,
+  .text-node-editor h6,
+  .text-node-editor p,
+  .text-node-editor div,
+  .text-node-editor ul,
+  .text-node-editor ol,
+  .text-node-editor li,
+  .text-node-editor b,
+  .text-node-editor strong,
+  .text-node-preview h1,
+  .text-node-preview h2,
+  .text-node-preview h3,
+  .text-node-preview h4,
+  .text-node-preview h5,
+  .text-node-preview h6,
+  .text-node-preview p,
+  .text-node-preview div,
+  .text-node-preview ul,
+  .text-node-preview ol,
+  .text-node-preview li,
+  .text-node-preview b,
+  .text-node-preview strong {
+    all: revert;
+  }
+
+  /*
+   * 右侧面板 TipTap（.breatic-editor-body）此前未做 revert，Tailwind preflight 会去掉 ul/ol 的 list-style，
+   * 导致无序/有序列表前方无圆点、无数字。
+   */
+  .breatic-editor-body .ProseMirror ul,
+  .breatic-editor-body .ProseMirror ol,
+  .breatic-editor-body .ProseMirror li {
+    all: revert;
+  }
+}

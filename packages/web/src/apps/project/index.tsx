@@ -1,0 +1,301 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import '@xyflow/react/dist/style.css';
+import { Group, Panel, Separator } from 'react-resizable-panels';
+import { Icon } from '@/components/base/icon';
+import Tooltip from '@/components/base/tooltip';
+import { useProjectStore } from '@/hooks/useProjectStore';
+import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useYjsStore } from '@/hooks/useYjsProjectStore';
+import ImageEditor from './components/imageEditor';
+import TextEditorPanel from './components/textEditor';
+import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
+import ProjectCanvas from './components/canvas';
+import store from '@/store';
+import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
+import type { ImageFlowNodeData } from './components/imageEditor/types';
+
+/** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
+const builtInNodeTemplateData = [
+  { template_type: '1001', template_name: 'Text' },
+  { template_type: '1002', template_name: 'Image' },
+  { template_type: '1003', template_name: 'Video' },
+  { template_type: '1004', template_name: 'Audio' },
+  { template_type: '6001', template_name: 'Video editor' },
+] as const;
+
+const ProjectContent: React.FC = () => {
+  const { projectId: projectIdParam } = useParams<{ projectId: string }>();
+  const routeProjectId = projectIdParam ?? undefined;
+  const {
+    nodes,
+    initializeHistory,
+    setNodeTemplateData,
+    workflowId,
+    setWorkflowId,
+    rightPanel,
+    openRightPanel,
+    closeRightPanel,
+    updateNode,
+  } = useProjectStore();
+  const { updateNode: updateImageEditorNode } = useImageEditorStore();
+  const [workflowName, setWorkflowName] = useState<string>('');
+  const [chatPanelVisible, setChatPanelVisible] = useState(true);
+  const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
+  const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
+  const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
+
+  const yjs = useYjsStore({
+    id: workflowId ?? '',
+    enabled: !!workflowId,
+  });
+
+  useEffect(() => {
+    if (routeProjectId && routeProjectId !== workflowId) {
+      setWorkflowId(routeProjectId);
+    }
+  }, [routeProjectId, workflowId, setWorkflowId]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+    setNodeTemplateData([...builtInNodeTemplateData]);
+    initializeHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId]);
+
+  const exitCanvasPickMode = useCallback(() => {
+    const currentNodes = store.getState().canvas.nodes;
+    const hasPickMode = currentNodes.some(
+      (n) => (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.fromCanvas === true,
+    );
+    if (!hasPickMode) return;
+    for (const n of currentNodes) {
+      const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
+      if (ps?.fromCanvas || ps?.resultBoxes?.length) {
+        updateNode(n.id, { data: { pickState: null } }, { history: 'skip' });
+      }
+    }
+  }, [updateNode]);
+
+  const exitImageEditorPickMode = useCallback(() => {
+    const currentNodes = store.getState().imageEditor.nodes;
+    const hasPickMode = currentNodes.some(
+      (n) => (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true,
+    );
+    if (!hasPickMode) return;
+    for (const n of currentNodes) {
+      const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
+      if (ps?.fromCanvas || ps?.resultBoxes?.length) {
+        updateImageEditorNode(n.id, { data: { pickState: null } }, { history: 'skip' });
+      }
+    }
+  }, [updateImageEditorNode]);
+
+  const handleToggleChatPanel = () => {
+    setChatPanelVisible((prev) => !prev);
+  };
+
+  const handleToggleEditorPanel = () => {
+    if (rightPanel.open) {
+      exitImageEditorPickMode();
+      closeRightPanel();
+      setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
+      return;
+    }
+    exitCanvasPickMode();
+    openRightPanel('editor', rightPanel.nodeId, undefined, true);
+    setSelectedWorkspaceRegion('rightEditor');
+  };
+
+  const handleToggleCanvasToolbar = () => {
+    setCanvasPanelVisible((prev) => {
+      const next = !prev;
+      if (!next) {
+        exitCanvasPickMode();
+        setSelectedWorkspaceRegion((current) => (current === 'canvas' ? null : current));
+      }
+      return next;
+    });
+  };
+
+  const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
+  const isImageNode = String(panelNode?.type ?? '') === '1002';
+  const isTextNode = String(panelNode?.type ?? '') === '1001';
+  const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
+  const showChatSeparator = chatPanelVisible && (canvasPanelVisible || isRightEditorOpen);
+  const showRightSeparator = isRightEditorOpen && canvasPanelVisible;
+  let rightEditorBorderClass = 'border-transparent';
+  if (isResizingRightEditor) {
+    rightEditorBorderClass = 'border-border-utilities-selected';
+  } else if (selectedWorkspaceRegion === 'rightEditor') {
+    rightEditorBorderClass = 'border-[#949494]';
+  }
+
+  // Keep selectedWorkspaceRegion in sync with the right editor panel state.
+  // When the right editor opens (programmatically or via button), treat it as
+  // the active region so AgentComposerTabs targets the correct panel.
+  useEffect(() => {
+    if (isRightEditorOpen) {
+      exitCanvasPickMode();
+      setSelectedWorkspaceRegion('rightEditor');
+    } else {
+      exitImageEditorPickMode();
+      setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
+    }
+    // exitCanvasPickMode / exitImageEditorPickMode read from store.getState() so they
+    // are stable and do not need to be listed as reactive dependencies here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRightEditorOpen]);
+
+  useEffect(() => {
+    if (!isResizingRightEditor) return;
+    const handleMouseUp = () => setIsResizingRightEditor(false);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, [isResizingRightEditor]);
+
+  return (
+    <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
+      <div className='flex flex-col w-screen h-screen overflow-hidden'>
+        <Group orientation='horizontal' className='flex-1 min-h-0 flex'>
+          {chatPanelVisible && (
+            <>
+              <Panel
+                id='chat'
+                defaultSize={450}
+                maxSize={450}
+                minSize={450}
+                className='bg-background-default-secondary flex flex-col min-w-0 shrink-0'
+              >
+                <div className='h-full min-h-0 flex flex-col border-r border-border-default-base'>
+                  <AiChatRecordPanel
+                    projectName={workflowName}
+                    onProjectNameCommit={setWorkflowName}
+                    selectedWorkspaceRegion={selectedWorkspaceRegion}
+                    rightPanelIsImageNode={isImageNode}
+                  />
+                </div>
+              </Panel>
+              {showChatSeparator ? <Separator id='resize-chat-canvas' className='cursor-col-resize shrink-0' /> : null}
+            </>
+          )}
+          {canvasPanelVisible && (
+            <Panel
+              id='canvas'
+              minSize={0}
+              className={`border ${selectedWorkspaceRegion === 'canvas' ? 'border-[#949494]' : 'border-transparent'}`}
+              onMouseDownCapture={() => {
+                exitImageEditorPickMode();
+                setSelectedWorkspaceRegion('canvas');
+              }}
+            >
+              <div className='relative h-full w-full'>
+                <div className='absolute left-3 top-3 z-10'>
+                  <Tooltip
+                    title={chatPanelVisible ? 'Collapse chat panel' : 'Expand chat panel'}
+                    placement='right'
+                    triggerClassName='absolute left-0 top-0 z-10'
+                  >
+                    <button
+                      type='button'
+                      onClick={handleToggleChatPanel}
+                      className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
+                    >
+                      <Icon
+                        name={chatPanelVisible ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
+                        width={16}
+                        height={16}
+                        color='var(--color-icon-base)'
+                      />
+                    </button>
+                  </Tooltip>
+                </div>
+                <div className='absolute right-3 top-3 z-10'>
+                  <Tooltip
+                    title={rightPanel.open ? 'Collapse editor' : 'Expand editor'}
+                    placement='left'
+                    triggerClassName='absolute right-0 top-0 z-10'
+                  >
+                    <button
+                      type='button'
+                      onClick={handleToggleEditorPanel}
+                      className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
+                    >
+                      <Icon
+                        name={rightPanel.open ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
+                        width={16}
+                        height={16}
+                        color='var(--color-icon-base)'
+                      />
+                    </button>
+                  </Tooltip>
+                </div>
+                <ProjectCanvas yjs={yjs} hotkeysDisabled={selectedWorkspaceRegion === 'rightEditor'} />
+              </div>
+            </Panel>
+          )}
+          {isRightEditorOpen && (
+            <>
+              {showRightSeparator ? (
+                <Separator
+                  id='resize-canvas-right'
+                  className='cursor-col-resize shrink-0'
+                  onMouseDownCapture={() => {
+                    exitCanvasPickMode();
+                    setSelectedWorkspaceRegion('rightEditor');
+                    setIsResizingRightEditor(true);
+                  }}
+                />
+              ) : null}
+              <Panel
+                id='resizable-left'
+                defaultSize={700}
+                minSize={700}
+                className={`bg-background-default-secondary flex flex-col shrink-0 border box-border ${rightEditorBorderClass}`}
+                onMouseDownCapture={() => {
+                  exitCanvasPickMode();
+                  setSelectedWorkspaceRegion('rightEditor');
+                }}
+              >
+                <div className='relative h-full min-h-0 w-full overflow-visible'>
+                  <Tooltip
+                    title={canvasPanelVisible ? 'Collapse canvas' : 'Expand canvas'}
+                    placement='right'
+                    triggerClassName='absolute left-3 top-3 z-10'
+                  >
+                    <button
+                      type='button'
+                      onClick={handleToggleCanvasToolbar}
+                      className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
+                    >
+                      <Icon
+                        name={canvasPanelVisible ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
+                        width={16}
+                        height={16}
+                        color='var(--color-icon-base)'
+                      />
+                    </button>
+                  </Tooltip>
+                  {isImageNode && panelNode ? (
+                    <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
+                  ) : isTextNode && rightPanel.nodeId ? (
+                    <TextEditorPanel nodeId={rightPanel.nodeId} />
+                  ) : null}
+                  <div
+                    id='chat-left-panel-portal'
+                    className='absolute right-0 top-0 bottom-0 w-0 pointer-events-none'
+                    aria-hidden
+                  />
+                </div>
+              </Panel>
+            </>
+          )}
+        </Group>
+      </div>
+    </ProjectWorkspaceRegionContext.Provider>
+  );
+};
+
+const Project: React.FC = () => <ProjectContent />;
+
+export default Project;
