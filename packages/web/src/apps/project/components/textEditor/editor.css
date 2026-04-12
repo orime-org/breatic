@@ -1,5 +1,63 @@
 /* ProseMirror (StarterKit) + menus aligned with Tiptap Menus example */
 
+/* BlockNote floating panels use `calc(var(--bn-ui-base-z-index) + 90)` — see FilePanelController */
+.breatic-editor-wrapper {
+  --bn-ui-base-z-index: 9990;
+}
+
+/* BlockNote-style slash menu opened from + (no "/" in doc): block wrapper for positioning only */
+.breatic-editor-body .ProseMirror .breatic-slash-suggestion-decorator {
+  pointer-events: none;
+}
+
+/* BlockNote Block.css — file / image empty block ([data-file-block]) */
+.breatic-editor-body .ProseMirror [data-file-block] .bn-file-block-content-wrapper {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  width: 100%;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button {
+  align-items: center;
+  background-color: rgb(242, 241, 238);
+  border-radius: 4px;
+  color: rgb(125, 121, 122);
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button:hover,
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode [data-file-block] .bn-add-file-button {
+  background-color: rgb(225, 225, 225);
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button-text {
+  font-size: 0.9rem;
+}
+
+/* BlockNote mantine blocknoteStyles — .bn-mantine .bn-panel */
+.bn-panel.bn-mantine-panel {
+  width: 500px;
+  max-width: 100vw;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 8px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 8px 24px rgba(12, 12, 13, 0.12);
+}
+
 .breatic-editor-body .ProseMirror {
   outline: none;
   min-height: 300px;
@@ -131,13 +189,291 @@
   z-index: 9998;
 }
 
-/* Placeholder */
-.breatic-editor-body .ProseMirror p.is-editor-empty:first-child::before {
+/* Placeholder — show on every empty block */
+.breatic-editor-body .ProseMirror .is-empty::before {
   content: attr(data-placeholder);
   float: left;
   color: theme('colors.text-default-tertiary');
   pointer-events: none;
   height: 0;
+  opacity: 0.5;
+}
+
+/* Image — BlockNote-style (packages/react ResizableFileBlockWrapper + Block.css) */
+.breatic-editor-body .ProseMirror .breatic-image-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .breatic-image-resize-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+  max-width: 100%;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .bn-visual-media {
+  border-radius: 4px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .bn-resize-handle {
+  width: 8px;
+  height: 30px;
+  background-color: #000;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  pointer-events: auto;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block:hover .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-image-block.ProseMirror-selectednode .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-image-block[data-resize-state='true'] .bn-resize-handle {
+  opacity: 1;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block.ProseMirror-selectednode .breatic-image-resize-wrapper {
+  border-radius: 4px;
+  outline: 4px solid rgb(100, 160, 255);
+  outline-offset: 2px;
+}
+
+/* showPreview: false — BlockNote React FileNameWithIcon + packages/core Block.css [data-file-block] */
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-block-content-wrapper {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.breatic-editor-body
+  .ProseMirror
+  [data-file-block].breatic-image-link-mode
+  .bn-file-block-content-wrapper:has(.bn-file-name-with-icon) {
+  width: 100%;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name-with-icon:hover,
+.breatic-editor-body
+  .ProseMirror
+  .ProseMirror-selectednode[data-file-block].breatic-image-link-mode
+  .bn-file-name-with-icon {
+  background-color: rgb(225, 225, 225);
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: theme('colors.text-default-tertiary');
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-icon svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name-with-icon {
+  border-radius: 4px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name {
+  margin: 0;
+  font-size: 0.9rem;
+  color: theme('colors.text-default-secondary');
+  word-break: break-word;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-link-mode.ProseMirror-selectednode {
+  background-color: transparent;
+  outline: none;
+}
+
+.breatic-editor-body .ProseMirror img:not(.bn-visual-media) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  display: block;
+}
+
+/* Table — BlockNote core editor.css (.tableWrapper padding for handles / extend widgets) */
+.breatic-editor-body .ProseMirror .tableWrapper {
+  --bn-table-widget-size: 22px;
+  --bn-table-handle-size: calc(18px / 2);
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--bn-table-handle-size) var(--bn-table-widget-size) var(--bn-table-widget-size)
+    var(--bn-table-handle-size);
+  position: relative;
+  width: 100%;
+}
+
+/* BlockNote mantine blocknoteStyles — row/column drag handles (solid, menu-style chip) */
+.breatic-editor-wrapper .bn-table-handle {
+  align-items: center;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 6px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 1px 8px 1px rgba(12, 12, 13, 0.05);
+  color: theme('colors.text-default-tertiary');
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  line-height: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+/* Row grip (left strip): 18×26 px; column grip (top strip): 26×18 px */
+.breatic-editor-wrapper .bn-table-handle-row {
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 26px;
+  min-height: 26px;
+  width: 18px;
+  min-width: 18px;
+}
+
+/* Column grip: wider hit box; icon rotates so dots read along the column axis. */
+.breatic-editor-wrapper .bn-table-handle-col {
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 18px;
+  min-height: 18px;
+  width: 26px;
+  min-width: 26px;
+}
+
+/* Icon: block + no negative margin on column so rotated “horizontal” dot rows stay visually centered. */
+.breatic-editor-wrapper .bn-table-handle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.breatic-editor-wrapper .bn-table-handle-row svg {
+  margin-inline: -4px;
+}
+
+.breatic-editor-wrapper .bn-table-handle-col svg {
+  margin-inline: 0;
+  transform: rotate(0.25turn);
+  transform-origin: center;
+}
+
+.breatic-editor-wrapper .bn-table-handle-not-draggable {
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-table-handle:hover {
+  background-color: theme('colors.background-default-base-hover');
+}
+
+/* Extend + row/column — no border (hit targets use table-adjacent strips in TS) */
+.breatic-editor-wrapper .bn-extend-button {
+  align-items: center;
+  background-color: theme('colors.background-neutral-secondary');
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  color: theme('colors.text-default-tertiary');
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  overflow: visible;
+  padding: 0;
+}
+
+.breatic-editor-wrapper .bn-extend-button:hover {
+  background-color: theme('colors.background-default-base-hover');
+}
+
+.breatic-editor-wrapper .bn-extend-button-add-remove-columns {
+  height: 100%;
+  width: 18px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-extend-button-add-remove-rows {
+  height: 18px;
+  width: 100%;
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-table-handle-menu {
+  overflow: visible;
+}
+
+/*
+ * Table: do not force width: 100% — TipTap TableView sets inline width / minWidth from colwidth + cellMinWidth.
+ * Forcing 100% made every column shrink to fit; with auto width + wrapper overflow-x, extra columns scroll horizontally.
+ */
+.breatic-editor-body .ProseMirror .tableWrapper > table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: auto;
+  max-width: none;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.breatic-editor-body .ProseMirror th,
+.breatic-editor-body .ProseMirror td {
+  border: 1px solid theme('colors.border-default-base');
+  padding: 6px 10px;
+  vertical-align: top;
+  position: relative;
+}
+
+/* First row uses <th> from TipTap header row — no extra fill; same default as <td>. */
+.breatic-editor-body .ProseMirror th {
+  background: transparent;
+  font-weight: 600;
+  text-align: left;
+}
+
+.breatic-editor-body .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(53, 200, 56, 0.12);
+  pointer-events: none;
+}
+
+/* Column resize handle (injected by prosemirror-tables columnResizing plugin) */
+.breatic-editor-body .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--color-brand-base, #3563E9);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Resize cursor on table cells */
+.breatic-editor-body .ProseMirror.resize-cursor,
+.breatic-editor-body .ProseMirror.resize-cursor * {
+  cursor: col-resize !important;
 }
 
 /* Highlighted text */
@@ -159,4 +495,9 @@
   background-color: rgba(53, 200, 56, 0.2);
   border-radius: 4px;
   outline: none;
+}
+
+/* Image uses BlockNote-style blue outline on inner wrapper, not the global green node fill */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-image-block {
+  background-color: transparent;
 }

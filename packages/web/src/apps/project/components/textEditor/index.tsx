@@ -7,6 +7,13 @@ import TextAlign from '@tiptap/extension-text-align';
 import Link from '@tiptap/extension-link';
 import Highlight from '@tiptap/extension-highlight';
 import Placeholder from '@tiptap/extension-placeholder';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { BreaticImage } from './extensions/breaticImage';
+import { BreaticTableCell, BreaticTableHeader } from './extensions/tableCellBackground';
+import { SlashCommandExtension } from './components/SlashCommand';
+import BlockNoteImageFilePanel from './components/BlockNoteImageFilePanel';
+import { PendingImage } from './extensions/pendingImage';
 import { useProjectStore } from '@/hooks/useProjectStore';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import EditorMenus from './components/EditorMenus';
@@ -38,7 +45,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ dropcursor: false }),
       Underline,
       TextStyle,
       Color,
@@ -46,7 +53,30 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false }),
       Highlight.configure({ multicolor: false }),
-      Placeholder.configure({ placeholder: "Write something, or '/' for commands…" }),
+      Placeholder.configure({
+        placeholder: 'Enter text or type \'/\' for commands…',
+        showOnlyCurrent: false,
+      }),
+      PendingImage,
+      BreaticImage.configure({
+        inline: false,
+        allowBase64: true,
+        resize: {
+          enabled: true,
+          directions: ['left', 'right'] as const,
+          minWidth: 64,
+          minHeight: 48,
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
+      Table.configure({
+        resizable: true,
+        cellMinWidth: 120,
+      }),
+      TableRow,
+      BreaticTableCell,
+      BreaticTableHeader,
+      SlashCommandExtension,
     ],
     content: contentFromNode || '',
     autofocus: false,
@@ -100,13 +130,14 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
 
   return (
     <div className='breatic-editor-wrapper relative h-full w-full overflow-y-auto bg-background-default-secondary text-text-default-base'>
-      <div className='breatic-editor-body px-24 pb-[200px] pt-[72px]'>
+      <div className='breatic-editor-body relative px-24 pb-[200px] pt-[72px]'>
         {/* EditorContent must mount first so ProseMirror `editor.view` exists for menus / block handle */}
         <EditorContent editor={editor} />
         {editor && <EditorMenus editor={editor} />}
         {/* Block drag-and-drop: grip on the line handle (BlockLineControl) moves top-level blocks */}
         {editor && <BlockLineControl editor={editor} />}
       </div>
+      <BlockNoteImageFilePanel />
     </div>
   );
 };

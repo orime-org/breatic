@@ -10,7 +10,6 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
-import { useEditorState } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 import { MdDragIndicator } from 'react-icons/md';
@@ -18,6 +17,7 @@ import { RiAddLine } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import Tooltip from '@/components/base/tooltip';
 import BlockTypeMenu from '@/apps/project/components/textEditor/components/BlockTypeMenu';
+import { openBreaticSlashMenu } from '@/apps/project/components/textEditor/slashMenuPlugin';
 
 interface BlockLineControlProps {
   editor: Editor;
@@ -38,7 +38,9 @@ const getBlockStartPosFromResolved = ($pos: {
       name === 'heading' ||
       name === 'blockquote' ||
       name === 'codeBlock' ||
-      name === 'horizontalRule'
+      name === 'horizontalRule' ||
+      name === 'image' ||
+      name === 'pendingImage'
     ) {
       return $pos.before(d);
     }
@@ -94,6 +96,12 @@ const getEditorView = (editor: Editor) => {
   } catch {
     return null;
   }
+};
+
+const getEditorPortalHost = (editor: Editor): HTMLElement | null => {
+  const v = getEditorView(editor);
+  if (!v) return null;
+  return (v.dom as HTMLElement).closest('.breatic-editor-body');
 };
 
 const preventEditorNativeDragStart = (e: DragEvent): void => {
@@ -241,12 +249,17 @@ const attachEditorWrapperScrollAndResize = (args: ScrollAttachArgs): (() => void
   };
 };
 
+type DropIndicatorState = {
+  top: number;
+  left: number;
+  width: number;
+  mode: 'fixed' | 'absolute';
+};
+
 type DragDropAttachArgs = {
   editor: Editor;
   dragPayloadRef: RefObject<{ from: number; to: number } | null>;
-  setDropIndicator: React.Dispatch<
-    React.SetStateAction<{ top: number; left: number; width: number } | null>
-  >;
+  setDropIndicator: React.Dispatch<React.SetStateAction<DropIndicatorState | null>>;
   setDragging: (v: boolean) => void;
 };
 
@@ -299,19 +312,28 @@ const attachDocumentBlockDragDrop = (args: DragDropAttachArgs): (() => void) | u
       return;
     }
 
-    const nodeDom = pmView.nodeDOM(tgt.start) as HTMLElement | null;
-    if (!nodeDom || !edRect.width) {
+    // nodeDOM can return a Text node — only HTMLElement has getBoundingClientRect
+    const rawNode = pmView.nodeDOM(tgt.start);
+    const nodeDomEl = rawNode instanceof HTMLElement ? rawNode : null;
+    if (!nodeDomEl) {
       setDropIndicator(null);
       return;
     }
 
-    const r = nodeDom.getBoundingClientRect();
+    const host = dom.closest('.breatic-editor-body') as HTMLElement | null;
+    const r = nodeDomEl.getBoundingClientRect();
     const placeAfter = e.clientY >= r.top + r.height / 2;
-    const pad = 12;
+    const lineTop = placeAfter ? r.bottom : r.top;
+    if (!host) {
+      setDropIndicator({ top: lineTop, left: r.left, width: r.width, mode: 'fixed' });
+      return;
+    }
+    const hr = host.getBoundingClientRect();
     setDropIndicator({
-      top: placeAfter ? r.bottom : r.top,
-      left: edRect.left + pad,
-      width: Math.max(0, edRect.width - pad * 2),
+      top: lineTop - hr.top,
+      left: r.left - hr.left,
+      width: r.width,
+      mode: 'absolute',
     });
   };
 
@@ -344,10 +366,11 @@ const attachDocumentBlockDragDrop = (args: DragDropAttachArgs): (() => void) | u
       return;
     }
 
-    const nodeDom = pmView.nodeDOM(tgt.start) as HTMLElement | null;
+    const rawDropNode = pmView.nodeDOM(tgt.start);
+    const nodeDomEl = rawDropNode instanceof HTMLElement ? rawDropNode : null;
     let placeAfter = false;
-    if (nodeDom) {
-      const r = nodeDom.getBoundingClientRect();
+    if (nodeDomEl) {
+      const r = nodeDomEl.getBoundingClientRect();
       placeAfter = e.clientY >= r.top + r.height / 2;
     }
 
@@ -420,25 +443,36 @@ const applyBlockDragStart = (
 /**
  * BlockNote-style side handle:
  * - Shows **only on hover** (not on caret/focus, matching BlockNote behaviour).
- * - [+] button inserts a new paragraph below.
+ * - [+] button inserts a new paragraph below and opens block options menu.
  * - [⠿] drag handle: drag to reorder, click to open block options menu.
- * - Menu is **frozen** (stops tracking mouse) while context menu is open.
+ * - Position is **frozen** while context menu is open.
  */
-const BlockLineControl = ({ editor }: BlockLineControlProps) => {
-  const tx = useEditorState({
-    editor,
-    selector: ({ transactionNumber }) => transactionNumber,
-  });
+const POS_EPS = 0.75;
 
+type HandleBarPos = { top: number; left: number; position: 'fixed' | 'absolute' };
+
+const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [dropIndicator, setDropIndicator] = useState<{
-    top: number;
-    left: number;
-    width: number;
-  } | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicatorState | null>(null);
   const [isScrollAnimSuppressed, setIsScrollAnimSuppressed] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<HandleBarPos | null>(null);
+
+  /** Avoid setState when coordinates unchanged — prevents update ⟷ transaction loops with useLayoutEffect. */
+  const setPosStable = useCallback((next: HandleBarPos | null) => {
+    setPos((prev) => {
+      if (next === null) return prev === null ? prev : null;
+      if (prev === null) return next;
+      if (
+        prev.position === next.position &&
+        Math.abs(prev.top - next.top) < POS_EPS &&
+        Math.abs(prev.left - next.left) < POS_EPS
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const dragPayloadRef = useRef<{ from: number; to: number } | null>(null);
@@ -466,31 +500,31 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     clearMenuHoverCloseTimer();
     menuHoverCloseTimerRef.current = window.setTimeout(() => {
       menuHoverCloseTimerRef.current = null;
-      setPos(null);
+      setPosStable(null);
       displayedBlockStartRef.current = null;
     }, 120);
-  }, [clearMenuHoverCloseTimer]);
+  }, [clearMenuHoverCloseTimer, setPosStable]);
 
   useEffect(() => () => clearMenuHoverCloseTimer(), [clearMenuHoverCloseTimer]);
 
   const updatePosition = useCallback(() => {
-    if (menuOpenRef.current) return;
-
     const view = getEditorView(editor);
     if (!view) {
-      setPos(null);
+      setPosStable(null);
       displayedBlockStartRef.current = null;
       return;
     }
 
     const blockStart = hoverBlockStartRef.current;
     if (blockStart == null) {
-      setPos(null);
+      setPosStable(null);
       displayedBlockStartRef.current = null;
       return;
     }
 
     const editorDom = view.dom as HTMLElement;
+    const hostEl = editorDom.closest('.breatic-editor-body') as HTMLElement | null;
+
     let dom = view.nodeDOM(blockStart) as HTMLElement | null;
 
     if (!dom || !editorDom.contains(dom)) {
@@ -504,7 +538,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     }
 
     if (!dom || dom === editorDom) {
-      setPos(null);
+      setPosStable(null);
       displayedBlockStartRef.current = null;
       return;
     }
@@ -521,18 +555,39 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
 
     const handleWidth = 52;
     const handleGap = 8;
-    const left = contentLeft - handleWidth - handleGap;
-
     const btnH = 24;
-    const top = rect.top + lineHeight / 2 - btnH / 2;
+
+    if (!hostEl) {
+      const left = contentLeft - handleWidth - handleGap;
+      const top = rect.top + lineHeight / 2 - btnH / 2;
+      displayedBlockStartRef.current = blockStart;
+      setPosStable({ top, left, position: 'fixed' as const });
+      return;
+    }
+
+    const hostRect = hostEl.getBoundingClientRect();
+    const left = contentLeft - hostRect.left - handleWidth - handleGap;
+    const top = rect.top - hostRect.top + lineHeight / 2 - btnH / 2;
 
     displayedBlockStartRef.current = blockStart;
-    setPos({ top, left });
-  }, [editor]);
+    setPosStable({ top, left: Math.max(8, left), position: 'absolute' as const });
+  }, [editor, setPosStable]);
 
   useLayoutEffect(() => {
     updatePosition();
-  }, [updatePosition, tx]);
+  }, [updatePosition]);
+
+  useEffect(() => {
+    const run = () => {
+      requestAnimationFrame(() => updatePosition());
+    };
+    editor.on('update', run);
+    editor.on('selectionUpdate', run);
+    return () => {
+      editor.off('update', run);
+      editor.off('selectionUpdate', run);
+    };
+  }, [editor, updatePosition]);
 
   useEffect(() => {
     return attachEditorWrapperScrollAndResize({
@@ -600,7 +655,9 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     if (bs == null) return;
     const end = getBlockEndPos(editor, bs);
     if (end == null) return;
+    // BlockNote-style: new paragraph + open slash menu without inserting '/' (placeholder stays visible).
     editor.chain().focus().insertContentAt(end, { type: 'paragraph' }).run();
+    openBreaticSlashMenu(editor);
   }, [editor]);
 
   const handleAddBlockMouseDown = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
@@ -646,6 +703,15 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
 
   if (!pos) return null;
 
+  let linePortalTarget: Element;
+  if (pos.position === 'absolute') {
+    const h = getEditorPortalHost(editor);
+    if (!h) return null;
+    linePortalTarget = h;
+  } else {
+    linePortalTarget = document.body;
+  }
+
   const btnClass =
     'flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent cursor-pointer ' +
     'text-text-default-tertiary hover:bg-background-default-secondary hover:text-text-default-base ' +
@@ -654,20 +720,28 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   return (
     <>
       {dropIndicator != null &&
-        createPortal(
-          <div
-            className='pointer-events-none fixed z-[9995] h-0.5 rounded-full'
-            style={{
-              top: dropIndicator.top - 1,
-              left: dropIndicator.left,
-              width: dropIndicator.width,
-              backgroundColor: 'var(--color-brand-base, #3563E9)',
-              boxShadow: '0 0 0 1px var(--color-brand-base, #3563E9)',
-            }}
-            aria-hidden
-          />,
-          document.body,
-        )}
+        (() => {
+          const dropHost =
+            dropIndicator.mode === 'absolute' ? getEditorPortalHost(editor) : document.body;
+          if (dropIndicator.mode === 'absolute' && !dropHost) return null;
+          return createPortal(
+            <div
+              className={cn(
+                'pointer-events-none z-[9995] h-0.5 rounded-full',
+                dropIndicator.mode === 'fixed' ? 'fixed' : 'absolute',
+              )}
+              style={{
+                top: dropIndicator.top - 1,
+                left: dropIndicator.left,
+                width: dropIndicator.width,
+                backgroundColor: 'var(--color-brand-base, #3563E9)',
+                boxShadow: '0 0 0 1px var(--color-brand-base, #3563E9)',
+              }}
+              aria-hidden
+            />,
+            dropHost!,
+          );
+        })()}
 
       {createPortal(
         <div
@@ -679,7 +753,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
               'transition-[top,left] duration-150 ease-out motion-reduce:transition-none',
           )}
           style={{
-            position: 'fixed',
+            position: pos.position,
             pointerEvents: 'auto',
             left: Math.max(8, pos.left),
             top: pos.top,
@@ -688,20 +762,20 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
           onPointerEnter={onHandlePointerEnter}
           onPointerLeave={onHandlePointerLeave}
         >
-          <Tooltip title='Add block below' placement='top' offset={4}>
+          <Tooltip title='Insert block' placement='top' offset={4}>
             <button
               type='button'
               className={btnClass}
               onMouseDown={handleAddBlockMouseDown}
               onClick={insertBelow}
-              aria-label='Add block below'
+              aria-label='Insert block'
             >
               <RiAddLine size={15} />
             </button>
           </Tooltip>
 
           <div className='relative'>
-            <Tooltip title='Drag to move · Click for options' placement='top' offset={4}>
+            <Tooltip title='Drag to move · Click for options' placement='top' offset={4} disabled={dragging}>
               <span
                 draggable
                 role='button'
@@ -732,7 +806,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
             )}
           </div>
         </div>,
-        document.body,
+        linePortalTarget,
       )}
     </>
   );
