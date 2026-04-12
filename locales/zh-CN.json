@@ -1,0 +1,413 @@
+{
+  "server": {
+    "error": {
+      "not_found": "资源未找到",
+      "forbidden": "没有访问权限",
+      "unauthorized": "凭证无效或已过期",
+      "conflict": "资源冲突",
+      "validation": "输入数据无效",
+      "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
+      "rate_limited": "请求过于频繁，请稍后再试",
+      "internal": "服务器内部错误",
+      "stripe_not_configured": "支付系统未配置",
+      "storage_not_configured": "存储系统未配置"
+    },
+    "auth": {
+      "invalid_credentials": "邮箱或密码错误",
+      "email_taken": "该邮箱已注册",
+      "no_password": "此账号使用社交登录",
+      "token_expired": "登录已过期，请重新登录",
+      "register_success": "账号创建成功",
+      "logout_success": "已退出登录"
+    },
+    "payment": {
+      "checkout_created": "支付会话已创建",
+      "credits_granted": "已充值 {amount} 积分",
+      "payment_completed": "支付完成",
+      "payment_failed": "支付失败",
+      "tier_not_found": "未知的套餐：{tier}。可选：{available}",
+      "price_not_configured": "套餐 {tier} 的价格未配置"
+    },
+    "credits": {
+      "deducted": "已扣除 {amount} 积分",
+      "added": "已增加 {amount} 积分",
+      "balance": "当前余额：{balance}"
+    },
+    "task": {
+      "created": "任务已创建",
+      "running": "任务执行中",
+      "completed": "任务完成",
+      "failed": "任务失败：{error}",
+      "not_your_task": "您没有权限访问此任务"
+    },
+    "email": {
+      "verify_subject": "验证您的邮箱 — Breatic",
+      "verify_body": "点击以下链接验证您的邮箱地址：\n\n{link}\n\n链接 24 小时内有效。\n",
+      "reset_subject": "重置密码 — Breatic",
+      "reset_body": "点击以下链接重置密码：\n\n{link}\n\n链接 1 小时内有效。\n\n如果您没有请求重置密码，请忽略此邮件。\n",
+      "welcome_subject": "欢迎加入 Breatic",
+      "welcome_body": "欢迎来到 Breatic，{name}！开始用 AI 创作精彩内容吧。"
+    },
+    "models": {
+      "image": {
+        "nano-banana-pro": "最高画质，支持 4K",
+        "nano-banana-2": "快速多能，支持联网搜索",
+        "nano-banana": "经典款，画质与速度均衡",
+        "seedream-5.0-lite": "照片级写实，擅长东方美学",
+        "midjourney-v7": "艺术风格化，高创造力",
+        "midjourney-niji-v7": "动漫插画专家",
+        "z-image-turbo": "极速出图，经济实惠",
+        "qwen-image": "多风格中国画"
+      },
+      "video": {
+        "kling-o3-pro": "最高画质，复杂运镜",
+        "wan-2.6": "动漫风，支持参考图",
+        "seedance-2.0": "舞蹈和人体运动专家",
+        "veo-3.1": "电影级画质"
+      },
+      "audio": {
+        "minimax-music-02": "最全能，支持人声",
+        "elevenlabs-sfx-v2": "音效，支持循环"
+      },
+      "tts": {
+        "elevenlabs-v3": "最自然，52 种音色",
+        "gemini-tts": "多角色对话"
+      }
+    }
+  },
+  "save": "保存",
+  "cancel": "取消",
+  "delete": "删除",
+  "confirm": "确认",
+  "close": "关闭",
+  "loading": "加载中...",
+  "search": "搜索",
+  "retry": "重试",
+  "back": "返回",
+  "next": "下一步",
+  "done": "完成",
+  "agent": {
+    "placeholder": "描述你想创作的内容...",
+    "thinking": "思考中...",
+    "tool_running": "正在使用 {tool}...",
+    "plan_ready": "方案已就绪 — 确认后开始生成",
+    "confirm_plan": "确认并生成",
+    "new_chat": "新对话"
+  },
+  "canvas": {
+    "new_project": "新建项目",
+    "generating": "生成中...",
+    "completed": "已完成",
+    "failed": "生成失败",
+    "generating_by": "{user} 正在生成",
+    "parameter_mode": "参数模式",
+    "intelligent_mode": "智能模式"
+  },
+  "editor": {
+    "label": "编辑器",
+    "accept": "接受",
+    "reject": "拒绝",
+    "polish": "润色",
+    "expand": "扩写",
+    "summarize": "摘要",
+    "translate": "翻译",
+    "rewrite": "改写",
+    "continue_writing": "续写",
+    "generate": "生成",
+    "character": "角色",
+    "storyboard": "分镜",
+    "script": "剧本"
+  },
+  "payment": {
+    "buy_credits": "购买积分",
+    "credits_balance": "积分：{balance}",
+    "per_credit": "{price}/积分",
+    "save_percent": "省 {percent}%"
+  },
+  "auth": {
+    "login": "登录",
+    "register": "注册",
+    "logout": "退出",
+    "email": "邮箱",
+    "password": "密码",
+    "forgot_password": "忘记密码？",
+    "or_continue_with": "或通过以下方式继续",
+    "google": "Google"
+  },
+  "breatic_slogan": "AI让创意可见",
+  "about_us": "关于我们",
+  "support_and_service": "支持与服务",
+  "terms_of_use": "使用条款",
+  "privacy_policy": "隐私政策",
+  "enter_workspace": "进入工作台",
+  "enter_editor": "进入编辑器",
+  "all_rights_reserved": "版权所有.",
+  "common_error_noCredits": "没有足够的积分，请购买积分。",
+  "common_error_noLogin": "请登录。",
+  "workspace": {
+    "label": "工作台",
+    "copy_success": "项目复制成功",
+    "delete_success": "项目删除成功",
+    "project_name_required": "项目名称是必需的",
+    "rename_success": "项目重命名成功",
+    "create_failed": "创建项目失败",
+    "copy_failed": "复制项目失败",
+    "copy_project": "复制项目",
+    "rename_project": "重命名项目",
+    "delete_project": "删除项目",
+    "btn_confirm": "确认",
+    "btn_cancel": "取消",
+    "rename_project_title": "重命名项目",
+    "rename_project_placeholder": "请输入新的项目名称",
+    "delete_project_content_title": "删除项目",
+    "delete_project_content_description": "此操作无法撤销。",
+    "recent_projects": "最近的项目",
+    "create_new_project": "创建新项目",
+    "no_more_data": "没有更多项目",
+    "create_project_title": "创建新项目",
+    "create_project_placeholder": "请输入新项目的名称",
+    "use_case": "用例",
+    "use_case_description": "用例描述",
+    "home_tooltip": "返回首页",
+    "create_user_case_title": "创建用例",
+    "create_user_case_description": "这将基于此用例创建一个新项目。",
+    "create_user_case_placeholder": "输入新项目名称",
+    "not_logged_in": {
+      "title": "未登录",
+      "description": "登录以体验所有产品功能",
+      "login_button": "立即登录"
+    }
+  },
+  "project": {
+    "toolbar": {
+      "copy": "复制",
+      "delete": "删除",
+      "cannotDeleteWhileExecuting": "执行中无法删除",
+      "uploadFile": "上传文件",
+      "uploading": "上传中...",
+      "pleaseInputTexts": "请输入文本",
+      "pleaseInputUrl": "请输入URL",
+      "inputUrl": "输入URL",
+      "unsupportedFileFormat": "不支持的文件格式: .{extension}",
+      "fileParseFailed": "文件解析失败，请检查文件格式",
+      "clickToSelectImageFile": "点击选择图片文件",
+      "clickToSelectAudioFile": "点击选择音频文件",
+      "clickToSelectVideoFile": "点击选择视频文件",
+      "orDropFileHere": "或拖拽文件到此处",
+      "credits": "积分",
+      "startRecording": "开始录音",
+      "exitRecording": "退出录音",
+      "clickToStartRecord": "点击开始录音",
+      "clickStopButtonToFinish": "点击停止按钮完成录音",
+      "recordingNotReady": "录音功能未准备好，请稍后再试",
+      "cannotAccessMicrophone": "无法访问麦克风，请检查权限设置",
+      "uploadFailedUrlIncorrect": "上传失败。URL不正确。",
+      "uploadFailed": "上传失败。",
+      "audioFormatsSupported": "URL支持的音频格式",
+      "audioFormatsMustBe": "必须是MP3、OGG、WAV、WEBM",
+      "loadingAudio": "加载音频中...",
+      "textNode": "文本",
+      "imageNode": "图片",
+      "textNodePlaceholder": "双击输入文本\n或通过智能体生成文本",
+      "imageNodePlaceholder": "双击上传图片文件\n或通过智能体生成图片",
+      "videoNodePlaceholder": "双击上传视频文件\n或通过智能体生成视频",
+      "audioNodePlaceholder": "双击上传音频文件\n或通过智能体生成音频",
+      "wrapUngroup": "包裹解组",
+      "group": "打组",
+      "ungroup": "解组",
+      "layout": "布局",
+      "layoutGrid": "宫格布局",
+      "layoutHorizontal": "水平布局",
+      "backgroundColor": "背景颜色",
+      "expand": "展开",
+      "collapse": "折叠"
+    },
+    "resultsCard": {
+      "clickToSelectResults": "点击选择结果",
+      "resultsSelected": "个结果已选择",
+      "resultSelected": "个结果已选择",
+      "selectResultsToTransfer": "选择结果以传输到下一个节点"
+    },
+    "panel": {
+      "resultsSelected": "个结果已选择",
+      "runHistory": "运行历史",
+      "assets": "资源",
+      "generatedResults": "生成结果",
+      "exportedResults": "导出结果",
+      "all": "全部",
+      "texts": "文本",
+      "images": "图片",
+      "audios": "音频",
+      "videos": "视频",
+      "generatedAt": "生成于",
+      "uploadedAt": "上传于",
+      "exportedAt": "导出于",
+      "today": "今天",
+      "yesterday": "昨天",
+      "upload": "上传",
+      "videoEditor": "视频编辑器",
+      "generated": "生成",
+      "selected": "已选择",
+      "loading": "加载中...",
+      "noMore": "暂无更多...",
+      "pullToRefresh": "下拉刷新",
+      "releaseToRefresh": "松开刷新"
+    },
+    "canvas": {
+      "noRunsYet": "暂无运行记录",
+      "noRunsDescBefore": "每次运行此节点后，结果将显示在这里——输入、输出以及",
+      "noRunsCreditUsage": "点数使用情况",
+      "noRunsDescAfter": "。"
+    },
+    "form": {
+      "selectAModel": "选择模型",
+      "aspectRatio": "宽高比",
+      "duration": "时长",
+      "resolution": "分辨率",
+      "selectLanguage": "选择语言",
+      "selectAVoice": "选择语音",
+      "fillModel": "填充模型",
+      "musicDescription": "音乐描述",
+      "musicDescriptionPlaceholder": "曲调、风格、旋律及相关音乐元素。（需要10-2000个字符）",
+      "splittingRules": "分割规则*",
+      "splittingRulesPlaceholder": "描述如何分割输入文本（可选）",
+      "processingRules": "处理规则*",
+      "processingRulesPlaceholder": "请描述润色的规则和风格（可选）。"
+    },
+    "videoEditor": {
+      "noExportResultsYet": "暂无导出结果",
+      "startToEdit": "开始编辑",
+      "videos": "视频",
+      "audios": "音频",
+      "images": "图片",
+      "texts": "文本",
+      "deleteWarning": "此编辑器节点正在使用中，无法删除。请先关闭编辑页面。",
+      "close": "关闭"
+    },
+    "emptyState": {
+      "noResultsYet": "您还没有生成任何结果。",
+      "clickThe": "点击",
+      "buttonToBringIdeasToLife": "按钮，让您的想法变为现实！"
+    },
+    "header": {
+      "autosavedAt": "自动保存于",
+      "monitor": "监控",
+      "darkMode": "深色模式",
+      "lightMode": "浅色模式",
+      "importWorkflow": "导入工作流",
+      "exportWorkflow": "导出工作流",
+      "exportWithResources": "导出包含资源",
+      "exportWithoutResources": "导出不包含资源",
+      "discord": "Discord",
+      "backToWorkspace": "返回工作区",
+      "workflowExportedWithResourcesSuccessfully": "工作流已成功导出（包含资源）",
+      "failedToExportWorkflowWithResources": "导出工作流失败（包含资源）",
+      "exportWithoutResourcesNotImplemented": "导出不包含资源功能尚未实现",
+      "exportSuccessful": "导出成功",
+      "exportFailed": "导出失败！",
+      "importSuccessful": "导入成功",
+      "importFailed": "导入失败！",
+      "importing": "导入中...",
+      "exporting": "导出中...",
+      "english": "English",
+      "simplifiedChinese": "简体中文",
+      "traditionalChinese": "繁體中文",
+      "japanese": "日本語"
+    },
+    "modal": {
+      "confirm": "确认",
+      "cancel": "取消"
+    }
+  },
+  "nodeLibraryPanel": {
+    "data_nodes": "Agent Nodes",
+    "editor_nodes": "Editor Nodes"
+  },
+  "userCenter": {
+    "modal": {
+      "logout": {
+        "title": "退出登录",
+        "description": "您确定要退出登录吗？",
+        "confirm": "确认",
+        "cancel": "取消"
+      },
+      "account": {
+        "tabs": {
+          "account": {
+            "label": "账户",
+            "logout": "退出登录",
+            "accountInformation": "账户信息",
+            "membershipLevel": "会员等级",
+            "credits": "积分",
+            "freeCredits": "免费积分",
+            "membershipCredits": "会员积分",
+            "purchaseCredits": "购买积分"
+          },
+          "creditsObtained": {
+            "label": "积分获得",
+            "tHeader": {
+              "date": "日期",
+              "creditType": "积分类型",
+              "creditsObtained": "获得积分"
+            }
+          },
+          "creditsUsed": {
+            "label": "积分使用",
+            "tHeader": {
+              "date": "日期",
+              "taskId": "任务ID",
+              "taskName": "任务名称",
+              "creditType": "积分类型",
+              "creditsUsed": "使用积分"
+            }
+          },
+          "billing": {
+            "label": "账单",
+            "tHeader": {
+              "date": "日期",
+              "serviceName": "服务名称",
+              "paymentAmount": "支付金额",
+              "orderNumber": "订单号",
+              "orderState": "订单状态"
+            }
+          }
+        }
+      },
+      "purchase": {
+        "cancelPayment": "支付已取消！",
+        "title": "购买积分",
+        "description": "温馨提示：购买的积分不可转让且不可退款。",
+        "buy": "立即购买",
+        "info": "免费积分每月初重置。会员积分每月自动累积。积分用于 Breatic 的 AI 生成图片以及后续其他资源的 AI 生成功能。"
+      },
+      "upgrade": {
+        "cancelSubscription": "订阅已取消！",
+        "title": "升级会员",
+        "monthly": "月度",
+        "annual": "年度",
+        "month": "月",
+        "year": "年",
+        "bestValue": "超值优惠",
+        "description": "温馨提示：会员特权不可转让且不可退款。",
+        "freeTrial": "免费试用",
+        "upgradeNow": "立即升级",
+        "features": "功能特性",
+        "info": "免费积分每月初重置。会员积分每月自动累积。积分用于 Breatic 的 AI 生成图片以及后续其他资源的 AI 生成功能。"
+      },
+      "credits": {
+        "title": "升级",
+        "credits": "积分",
+        "freeCredits": "免费积分",
+        "membershipCredits": "会员积分",
+        "purchaseCredits": "购买积分",
+        "buyBtn": "购买积分"
+      },
+      "userDropdown": {
+        "account": "账户",
+        "termsOfUse": "使用条款",
+        "privacyPolicy": "隐私政策",
+        "logout": "退出登录"
+      }
+    }
+  }
+}
