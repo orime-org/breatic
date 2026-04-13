@@ -28,8 +28,6 @@ export type {
   SkillMeta,
   CanvasNodeState,
   HandlingActor,
-  CanvasNodeRuntimeData,
-  CanvasNodeData,
   CanvasNodeFields,
   AttachRef,
   NodeHandlingEvent,

@@ -17,8 +17,6 @@ export type {
 export type {
   CanvasNodeState,
   HandlingActor,
-  CanvasNodeRuntimeData,
-  CanvasNodeData,
   CanvasNodeFields,
   AttachRef,
   NodeHandlingEvent,
