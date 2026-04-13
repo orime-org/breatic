@@ -58,7 +58,7 @@ vi.mock("google-auth-library", () => ({
 
 // Mock the auth service — we're only testing the verification layer,
 // not the user-linking logic.
-vi.mock("../../modules/auth.service.js", () => ({
+vi.mock("@breatic/core", async (importOriginal) => { const actual = await importOriginal() as Record<string, unknown>; return { ...actual, // FIXME: specific mock }; }); // was: auth.service.js", () => ({
   register: vi.fn(),
   loginEmail: vi.fn(),
   loginOrCreateGoogle: vi.fn().mockResolvedValue({

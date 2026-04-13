@@ -14,9 +14,9 @@ import { registerSchema, loginSchema } from "./schemas.js";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as authService from "../modules/auth.service.js";
-import { env } from "../config/env.js";
-import { logger } from "../logger.js";
+import { authService } from "@breatic/core";
+import { env } from "@breatic/core";
+import { logger } from "@breatic/core";
 
 const auth = new Hono<{ Variables: AuthVariables }>();
 

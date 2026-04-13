@@ -16,18 +16,18 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as uploadService from "../modules/upload.service.js";
-import * as attachmentService from "../modules/conversation-attachment.service.js";
-import * as nodeHistoryService from "../modules/node-history.service.js";
-import * as projectService from "../modules/project.service.js";
-import * as conversationService from "../modules/conversation.service.js";
-import { getStorageAdapter } from "../infra/storage/index.js";
-import { getRedis } from "../infra/redis.js";
-import { acquireNodeLock, releaseNodeLock } from "../infra/canvas-lock.js";
-import { publishNodeEvent } from "../infra/event-stream.js";
-import { env } from "../config/env.js";
-import { ConflictError, NotFoundError, ValidationError } from "../errors.js";
-import { logger } from "../logger.js";
+import { uploadService } from "@breatic/core";
+import { attachmentService } from "@breatic/core";
+import { nodeHistoryService } from "@breatic/core";
+import { projectService } from "@breatic/core";
+import { conversationService } from "@breatic/core";
+import { getStorageAdapter } from "@breatic/core";
+import { getRedis } from "@breatic/core";
+import { acquireNodeLock, releaseNodeLock } from "@breatic/core";
+import { publishNodeEvent } from "@breatic/core";
+import { env } from "@breatic/core";
+import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
+import { logger } from "@breatic/core";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
@@ -224,7 +224,7 @@ assets.post(
     let coverUrl: string | undefined;
     let thumbnailUrl: string | undefined;
     if (ticket.kind === "video") {
-      const { extractVideoCover } = await import("../worker/video-cover.js");
+      const { extractVideoCover } = await import("@breatic/core");
       coverUrl = await extractVideoCover(url, {
         userId: ticket.userId,
         projectId: ticket.projectId,

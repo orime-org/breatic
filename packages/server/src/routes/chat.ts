@@ -17,18 +17,18 @@ import {
 } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as conversationService from "../modules/conversation.service.js";
-import * as conversationRepo from "../modules/conversation.repo.js";
-import * as memoryService from "../modules/memory.service.js";
-import * as attachmentService from "../modules/conversation-attachment.service.js";
-import * as projectService from "../modules/project.service.js";
+import { conversationService } from "@breatic/core";
+import { conversationRepo } from "@breatic/core";
+import { memoryService } from "@breatic/core";
+import { attachmentService } from "@breatic/core";
+import { projectService } from "@breatic/core";
 import { MainAgent } from "../agent/main-agent.js";
 import { serializeSSE } from "../agent/types.js";
-import { runWithContext } from "../infra/request-context.js";
+import { runWithContext } from "@breatic/core";
 import { compressForContext } from "../agent/message-compressor.js";
-import { getAgentConfig } from "../config/loader.js";
-import { getSkillRegistry } from "../agent/skills-loader.js";
-import { ForbiddenError, NotFoundError } from "../errors.js";
+import { getAgentConfig } from "@breatic/core";
+import { getSkillRegistry } from "@breatic/core";
+import { ForbiddenError, NotFoundError } from "@breatic/core";
 
 const chat = new Hono<{ Variables: AuthVariables }>();
 

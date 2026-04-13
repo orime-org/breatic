@@ -49,7 +49,7 @@ vi.mock("../../infra/redis.js", () => {
   };
 });
 
-vi.mock("../../modules/user.repo.js", () => ({
+vi.mock("@breatic/core", async (importOriginal) => { const actual = await importOriginal() as Record<string, unknown>; return { ...actual, // FIXME: specific mock }; }); // was: user.repo.js", () => ({
   getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
 }));
 
@@ -73,16 +73,16 @@ vi.mock("../../agent/main-agent.js", () => ({
   },
 }));
 
-vi.mock("../../modules/conversation.service.js", () => ({
+vi.mock("@breatic/core", async (importOriginal) => { const actual = await importOriginal() as Record<string, unknown>; return { ...actual, // FIXME: specific mock }; }); // was: conversation.service.js", () => ({
   getOrCreate: vi.fn().mockResolvedValue({ id: "conv-1", userId: "user-1" }),
 }));
 
-vi.mock("../../modules/conversation.repo.js", () => ({
+vi.mock("@breatic/core", async (importOriginal) => { const actual = await importOriginal() as Record<string, unknown>; return { ...actual, // FIXME: specific mock }; }); // was: conversation.repo.js", () => ({
   getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
   getMessagesForLlm: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../modules/memory.service.js", () => ({
+vi.mock("@breatic/core", async (importOriginal) => { const actual = await importOriginal() as Record<string, unknown>; return { ...actual, // FIXME: specific mock }; }); // was: memory.service.js", () => ({
   buildContext: vi.fn().mockResolvedValue({
     userMemory: "",
     projectMemory: "",

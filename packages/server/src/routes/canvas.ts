@@ -17,14 +17,14 @@ import {
 } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as taskService from "../modules/task.service.js";
-import * as nodeHistoryService from "../modules/node-history.service.js";
-import * as projectService from "../modules/project.service.js";
-import { createQueue, defaultJobOpts } from "../infra/queue.js";
-import { getRedis } from "../infra/redis.js";
-import { acquireNodeLock } from "../infra/canvas-lock.js";
-import { publishNodeEvent } from "../infra/event-stream.js";
-import { ConflictError, ValidationError } from "../errors.js";
+import { taskService } from "@breatic/core";
+import { nodeHistoryService } from "@breatic/core";
+import { projectService } from "@breatic/core";
+import { createQueue, defaultJobOpts } from "@breatic/core";
+import { getRedis } from "@breatic/core";
+import { acquireNodeLock } from "@breatic/core";
+import { publishNodeEvent } from "@breatic/core";
+import { ConflictError, ValidationError } from "@breatic/core";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
