@@ -55,6 +55,8 @@ export * as attachmentService from "./modules/conversation-attachment.service.js
 export { getModel, resolveProvider } from "./agent/llm.js";
 export { buildToolSet, DEFAULT_TOOLS } from "./agent/tools/index.js";
 export { getSkillRegistry, SkillRegistry } from "./agent/skills-loader.js";
+export { listAvailableModels } from "./config/model-catalog.js";
+export type { SkillModelInfo } from "./config/model-catalog.js";
 export { loadAgents, getAgent, listAgents } from "./agent/agent-loader.js";
 export type { AgentDefinition } from "./agent/agent-loader.js";
 
