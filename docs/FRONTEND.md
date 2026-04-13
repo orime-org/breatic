@@ -73,8 +73,8 @@ packages/web/src/
 │   └── workspaceApi.ts          # LEGACY — /api/workflow/base/* (pending migration)
 ├── utils/
 │   ├── yjsManager.ts            # Base Yjs doc + awareness + subdocs
-│   ├── yjsProjectManager.ts     # Project Yjs + UndoManager + snapshots
-│   ├── yjsStoreSync.ts          # Generic Redux <-> Yjs bidirectional sync
+│   ├── yjsProjectManager.ts     # Project Yjs: nodesMap/edgesMap Y.Map + UndoManager
+│   ├── canvasYjsRef.ts          # Module-level ref to active Yjs manager
 │   ├── request.ts               # Axios interceptors + auth token
 │   ├── sse.ts                   # SSE stream helper
 │   ├── token.ts                 # Auth token persistence (localStorage)
@@ -122,7 +122,7 @@ packages/web/src/
 ## Yjs Integration (Real-time Collaboration)
 
 > **Canonical structure spec**: [docs/YJS.md](./YJS.md) — authoritative
-> reference for canvas Y.Map shape, `CanvasNodeData` field ownership,
+> reference for the canvas Map-of-Maps structure, field ownership,
 > the idle/handling state machine, and the backend event flow. Read
 > that first if you're wiring a new Yjs interaction.
 
@@ -130,53 +130,56 @@ packages/web/src/
 
 ```
 yjsManager.ts          → Base: Y.Doc + IndexedDB + WebSocket + Awareness
-yjsProjectManager.ts   → Project: shared maps + UndoManager + snapshots
-yjsStoreSync.ts         → Sync: createYjsStoreSync() — Redux <-> Yjs two-way
+yjsProjectManager.ts   → Project: nodesMap/edgesMap Y.Map + UndoManager
+useCanvasYjs.ts         → Observe: Yjs → Redux (one-directional)
+canvasYjsRef.ts         → Module-level manager ref for useProjectStore
 ```
 
-### createYjsStoreSync (replaces old yjs-redux binder)
+### Data Flow (Yjs-first)
 
-```typescript
-createYjsStoreSync<T>({
-  doc: Y.Doc,
-  mapName: string,
-  getState: () => T,
-  dispatch: (action) => void,
-  toYjs: (state: T) => Record<string, unknown>,
-  fromYjs: (map: Y.Map) => T,
-  shouldDebounce?: boolean,
-  debounceMs?: number,
-})
+Write operations in `useProjectStore` go directly to Yjs. The
+`useCanvasYjs` hook observes changes and syncs back to Redux for
+ReactFlow rendering:
+
+```
+User action → Yjs nodesMap.get(id).set(field, value)
+                        ↓
+              observeDeep → readAllNodes() → dispatch setNodes
+                        ↓
+              ReactFlow renders from Redux (read cache)
 ```
 
-Features:
-- Bidirectional sync between Redux slices and Yjs Y.Map
-- Debouncing support for high-frequency updates
-- User origin tracking (prevents self-echo)
-- Atomic sync guards to prevent circular updates
+Redux is a **read-through cache** — it holds nodes/edges for
+ReactFlow to consume, but the source of truth is the Yjs document.
+UI-only state (rightPanel, commentMode, etc.) stays in Redux and is
+NOT synced to Yjs.
 
-### Shared Yjs Data
+### Canvas Yjs Structure
 
-| Key | Redux Slice | Content |
-|-----|-------------|---------|
-| canvas | `canvas` | nodes (plain JS array, whole-array replace), edges, newResultsFlag |
-| imageEditor | `imageEditor` | nodes, edges (via Yjs subdoc) |
+```
+canvas: Y.Map
+  ├── nodesMap: Y.Map<nodeId, Y.Map>   ← each node is an independent Y.Map
+  └── edges:    Y.Map<edgeId, Y.Map>
+```
 
-The canvas `nodes` field is intentionally stored as a **plain JS array**
-wrapped in `Y.Map.set("nodes", array)`, not a `Y.Array`. Backend updates
-(from Collab's task-listener) follow the same convention: read, clone,
-mutate index, `set` the full new array. Concurrency on node state is
-guarded by a **Redis lock**, not Yjs merge semantics — see
+Each node Y.Map contains: `id`, `type`, `position` (Y.Map {x,y}),
+`name`, `state`, `handlingBy`, `content`, `coverUrl`, `prompt`
+(Y.XmlFragment for TipTap), `attachments` (Y.Array), `params`
+(Y.Map). Editing one node's field is a single Yjs op — no
+whole-array replacement, no collateral impact on other nodes.
+
+Concurrency on node generation state is guarded by a **Redis lock**,
+not Yjs merge semantics — see
 [YJS.md section 7](./YJS.md#7-concurrency--the-canvas-node-lock).
 
-### Sync Flow
+### Undo/Redo
 
-```
-Redux dispatch → reducer → yjsStoreSync detects change → Yjs doc updated
-    → IndexedDB persists locally
-    → WebSocket broadcasts to peers
-    → Peers receive → Yjs doc → yjsStoreSync → Redux → UI re-renders
-```
+Two independent scopes:
+
+| Scope | Tracks | Lifetime |
+|-------|--------|----------|
+| Canvas undo | nodesMap + edges (topology: create/delete/move/connect) | Entire canvas session |
+| Prompt undo | One node's Y.XmlFragment (TipTap internal) | Focus → blur, then destroyed |
 
 ## Image Editor
 
