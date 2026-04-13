@@ -40,35 +40,62 @@ explicit parent-child link.
 
 ## 3. Canvas document shape
 
-The canvas document has a single root `Y.Map` keyed `"canvas"`:
+The canvas document has a single root `Y.Map` keyed `"canvas"`.
+Data (node fields) and ordering (z-index) are separated so that
+editing a node's prompt never rewrites the render order, and
+reordering never touches any node's data.
 
 ```
 Y.Doc
   └── canvas: Y.Map
-        ├── nodes:          plain JS array of CanvasNode objects
-        ├── edges:          plain JS object (map id → Edge)
-        └── newResultsFlag: plain JS array — transient UI hint
+        ├── nodesMap:  Y.Map<nodeId, Y.Map>   ← data layer, O(1) by ID
+        ├── nodeOrder: Y.Array<string>         ← z-order (nodeId list)
+        └── edges:     Y.Map<edgeId, Y.Map>
 ```
 
-> **Important**: `nodes` is stored as a **plain JS array**, not a
-> `Y.Array`. Every update replaces the whole array via
-> `canvasMap.set("nodes", newArray)`. This matches the frontend's
-> `createCanvasSliceSync` in `yjsSliceSyncs.ts`.
+### 3.1 Node Y.Map fields
 
-### 3.1 CanvasNode shape
+Each value in `nodesMap` is a `Y.Map` with the following keys:
 
-Each entry in `nodes[]` is a ReactFlow-compatible node:
+| Key | Yjs type | Description | Written by |
+|-----|----------|-------------|------------|
+| `id` | string | Stable node ID (immutable after creation) | Frontend |
+| `type` | string | Modality: `"1001"` text, `"1002"` image, `"1003"` video, `"1004"` audio, `"group"` | Frontend |
+| `position` | `Y.Map { x, y }` | Canvas coordinates | Frontend (drag) |
+| `name` | string | Display label | Frontend |
+| `state` | `"idle"` \| `"handling"` | Pipeline state | Collab (event-stream) |
+| `handlingBy` | `Y.Map { userId, username }` \| undefined | Who triggered the current handling | Collab |
+| `content` | string | Primary result: URL or text body | Collab (completed event) |
+| `coverUrl` | string \| undefined | Video first-frame cover | Collab |
+| `prompt` | `Y.XmlFragment` | Rich text prompt with inline `@` mentions (TipTap / y-prosemirror) | Frontend |
+| `attachments` | `Y.Array<Y.Map>` | Upload pool for this node | Frontend |
+| `params` | `Y.Map<string, unknown>` | Generation parameters | Frontend |
 
-```ts
-interface CanvasNode {
-  id: string;                           // "1002-1775309939251-LP9fU"
-  type: string;                         // "1001" | "1002" | "1003" | "1004" | "group"
-  position: { x: number; y: number };
-  data: CanvasNodeData;                 // see section 3.2
-}
-```
+**prompt** is a `Y.XmlFragment` bound to a single TipTap editor
+instance when the user focuses on this node's prompt input. At most
+one node can be in prompt-editing mode per user. When the prompt is
+not focused, no ProseMirror instance exists — the canvas card
+renders a static HTML preview via `generateHTML()` from
+`@tiptap/html` (zero ProseMirror overhead). This supports 1000+
+nodes without performance issues.
 
-The `type` field uses numeric strings corresponding to modalities:
+`@` mentions inside the prompt are TipTap `Mention` nodes carrying
+the full attachment details as attributes (`url`, `name`,
+`mimeType`). They are self-contained — deleting an attachment from
+the `attachments` list does NOT remove the corresponding `@` from
+the prompt. Users manually delete `@` blocks (whole-block delete,
+like a WeChat sticker). When the prompt is submitted for generation,
+the frontend extracts all `@` mention nodes and assembles the
+attachment list for the API request.
+
+**attachments** holds the per-node upload pool. Each entry is a
+`Y.Map` with keys: `id`, `url`, `name`, `mimeType`, `size`,
+`uploadedAt`. Attachments are NOT shared across nodes. Deletion is
+a real `Y.Array` remove (not soft-delete) — recoverable via undo
+within the current session, but gone after the undo stack is
+destroyed. The OSS/S3 object at the URL is never deleted.
+
+### 3.2 Node type codes
 
 | `type` | Meaning |
 |--------|---------|
@@ -78,43 +105,49 @@ The `type` field uses numeric strings corresponding to modalities:
 | `"1004"` | Audio node |
 | `"group"` | Group node (container for other nodes) |
 
-### 3.2 CanvasNodeData — the authoritative shape
+### 3.3 nodeOrder — z-index array
 
-Defined in `@breatic/shared/types/canvas-node.ts`:
+`nodeOrder` is a `Y.Array<string>` holding node IDs in render
+order. The last ID in the array renders on top (highest z-index).
+
+- **Create node**: `nodesMap.set(id, nodeMap)` + `nodeOrder.push([id])`
+- **Delete node**: `nodesMap.delete(id)` + remove from `nodeOrder`
+- **Bring to front**: remove from current position, push to end
+
+`nodeOrder` is separate from `nodesMap` so that reordering never
+touches any node's data fields (prompt, content, etc.), and editing
+a node's data never affects z-order.
+
+For ReactFlow rendering, the frontend maps `nodeOrder` to a
+`Node[]` array:
 
 ```ts
-interface CanvasNodeData {
-  /** Display label / modality name ("image" | "video" | ...). */
-  name: string;
-
-  /** Primary result: URL (image/video/audio/3d) or text content. */
-  content: string;
-
-  /** Video first-frame cover — only set for video nodes. */
-  cover_url?: string;
-
-  /** Current state of the content pipeline. */
-  state: "idle" | "handling";
-
-  /** Who is currently handling this node; present iff state === "handling". */
-  handlingBy?: { userId: string; username: string };
-
-  /** User-editable input for the content pipeline. */
-  nodeRuntimeData: {
-    runType?: "parameter" | "sensitive";
-    attach?: unknown;
-    prompt?: string;                    // JSON-in-HTML from rich text editor
-    parameter?: Record<string, unknown>;
-  };
-}
+const nodes = nodeOrder.toArray().map(id => {
+  const m = nodesMap.get(id);
+  return { id, type: m.get("type"), position: ..., data: ... };
+});
 ```
 
-The frontend's `CanvasWorkflowNodeData` extends this with UI-only
-fields that the backend never touches:
+### 3.4 edges
+
+`edges` is a `Y.Map<edgeId, Y.Map>`, where each edge map holds:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `id` | string | Stable edge ID |
+| `source` | string | Source node ID |
+| `target` | string | Target node ID |
+| `sourceHandle` | string \| undefined | Source handle ID |
+| `targetHandle` | string \| undefined | Target handle ID |
+
+### 3.5 Frontend UI-only extensions
+
+The frontend's `CanvasWorkflowNodeData` extends the shared fields
+with UI-only state that the backend never touches:
 
 ```ts
 // packages/web/src/apps/project/components/canvas/types.ts
-interface CanvasWorkflowNodeData extends CanvasNodeData {
+interface CanvasWorkflowNodeData {
   pickState?: PickState | null;         // image-pick-mode overlay state
   handles?: { target?: HandleConfig[]; source?: HandleConfig[] };
   pendingFileId?: string;               // in-flight upload id
@@ -145,19 +178,48 @@ Only two states: **`idle`** and **`handling`**.
 
 ## 5. Ownership — who writes what
 
-The fundamental rule: **the frontend does not write node state**.
+The fundamental rule: **the frontend does not write `state` / `handlingBy` / `content` / `coverUrl`**.
 
 | Field | Written by | When |
 |-------|------------|------|
 | `content` | Collab (via Worker/upload events) | After generation/upload completes |
-| `cover_url` | Collab (via Worker/upload events) | After video generation/upload completes |
-| `state` | Collab (via API/Worker events) | handling (on lock acquire) / idle (on completion) |
+| `coverUrl` | Collab (via Worker/upload events) | After video generation/upload completes |
+| `state` | Collab (via API/Worker events) | handling → idle on completion |
 | `handlingBy` | Collab (via API events) | handling (set) / completion (cleared) |
 | `name` | Frontend | User renames the node |
-| `nodeRuntimeData` | Frontend | User edits params or prompt |
+| `prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) |
+| `attachments` | Frontend | User uploads / deletes attach items |
+| `params` | Frontend | User changes generation parameters |
 | `position` | Frontend | User drags the node |
-| `id`, `type` | Frontend | Node creation |
+| `id`, `type` | Frontend | Node creation (immutable after) |
+| `nodeOrder` | Frontend | User reorders z-index (bring to front/back) |
+| `edges` | Frontend | User creates / deletes connections |
 | Node creation / deletion | Frontend | User adds or deletes a node |
+
+## 5.1 Undo / redo
+
+Two independent `Y.UndoManager` instances, each tracking only its
+own user's operations (`trackedOrigins: [LOCAL_ORIGIN]`):
+
+| Undo scope | Tracks | Active when | Lifetime |
+|------------|--------|-------------|----------|
+| **Canvas undo** | `nodesMap` (create/delete), `nodeOrder`, `edges`, node `position`/`name` | Focus is on the canvas background | Entire canvas session |
+| **Prompt undo** | One node's `prompt` Y.XmlFragment | Focus is in a node's prompt editor | Created on focus, **destroyed on blur** |
+
+Key behaviors:
+
+- **Canvas undo does NOT undo prompt edits.** Typing in a prompt
+  and then pressing Ctrl+Z on the canvas will NOT undo the typing.
+- **Prompt undo does NOT undo canvas topology changes.** Pressing
+  Ctrl+Z inside a prompt will NOT undo a node deletion.
+- **Prompt undo stack is session-scoped.** Blurring the prompt
+  destroys the TipTap editor and its UndoManager. Next time the
+  user focuses the same prompt, the undo stack starts empty.
+- **attachments and params are NOT undo-tracked by either manager.**
+  Attachment deletion inside the attachments list is recoverable
+  only if a custom undo layer is added in the future. Currently,
+  deleting an attach is permanent within the Yjs document (but the
+  OSS object at the URL is never deleted).
 
 Key consequences:
 
