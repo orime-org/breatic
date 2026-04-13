@@ -442,20 +442,16 @@ const connection = await hocuspocus.openDirectConnection(docName, {
 try {
   await connection.transact((doc) => {
     const canvasMap = doc.getMap("canvas");
-    const nodes = canvasMap.get("nodes") as CanvasNode[] | undefined;
-    if (!Array.isArray(nodes)) return; // sanity check
+    const nodesMap = canvasMap.get("nodesMap") as Y.Map<unknown>;
+    if (!(nodesMap instanceof Y.Map)) return;
 
-    const idx = nodes.findIndex((n) => n.id === targetNodeId);
-    if (idx === -1) return; // sanity check
+    const nodeMap = nodesMap.get(targetNodeId) as Y.Map<unknown>;
+    if (!(nodeMap instanceof Y.Map)) return;
 
-    // Always build a new array — whole-array replace is the
-    // frontend convention.
-    const updated = [...nodes];
-    updated[idx] = {
-      ...nodes[idx],
-      data: { ...nodes[idx].data, /* the fields you own */ },
-    };
-    canvasMap.set("nodes", updated);
+    // Direct field set — only touches this node, no array copy.
+    nodeMap.set("content", newUrl);
+    nodeMap.set("state", "idle");
+    nodeMap.delete("handlingBy");
   });
 } finally {
   await connection.disconnect();
@@ -464,23 +460,36 @@ try {
 
 **Do not**:
 
-- Call `canvasMap.delete("nodes")` or reorder the array
-- Touch `nodes[i].position`, `nodes[i].id`, or `nodes[i].type`
-- Mutate `nodes[i].data.name` or `nodes[i].data.nodeRuntimeData`
-- Perform many individual writes — batch inside one `transact` call
+- Touch `position`, `id`, or `type` — those are frontend-owned
+- Mutate `name`, `prompt`, `attachments`, or `params` — frontend-owned
+- Perform many individual writes outside a single `transact` call
 
-## 11. Node editor documents (future)
+## 11. Node editor documents (Launch Editor sub-canvas)
 
 Each canvas node may have an accompanying editor document for its
-detailed UI (rich text, image editor subcanvas, etc.). These are
-**independent Yjs documents**, not subdocs, following the name
-pattern `project-{id}/node/{nodeId}`.
+Launch Editor UI. These are **independent Yjs documents**, not
+subdocs, following the name pattern `project-{id}/node/{nodeId}`.
 
-For the canvas sync work in task #115, editor documents are **not
-yet integrated** with the event stream. Their contents are purely
-frontend-owned. Cross-document consistency (e.g. updating a canvas
-node when its editor content changes) will be handled in a later
-iteration via the same event bus pattern.
+| Node type | Editor content |
+|-----------|---------------|
+| Text | TipTap rich text (`Y.XmlFragment "body"`) |
+| Image | ReactFlow sub-canvas (`Y.Map "flow" { nodes, edges }`) |
+| Audio | ReactFlow sub-canvas |
+| Video | ReactFlow sub-canvas |
+
+Editor documents are **lazily loaded**: the frontend connects to
+the Hocuspocus document only when the user clicks Launch Editor,
+with a loading indicator while the document hydrates. On close, the
+frontend disconnects and drops the local Y.Doc. The sub-canvas
+content persists in PostgreSQL via Hocuspocus for the next session.
+
+Sub-canvas nodes do **not** have their own Launch Editor (no
+recursion). They use separate type codes from the main canvas
+(e.g. image layers, audio tracks). Sub-canvas type design is TBD.
+
+An "Apply to node" action on the sub-canvas writes the result back
+to the parent node's `content` field on the main canvas. If the
+parent node is in `handling` state, Apply is blocked with a warning.
 
 ## 12. Awareness (future)
 
@@ -499,11 +508,13 @@ schema will be added to this document.
 
 ## References
 
-- `packages/shared/src/types/canvas-node.ts` — authoritative type source
-- `packages/collab/src/task-listener.ts` — consumer + canvas map writer
+- `packages/shared/src/types/canvas-node.ts` — authoritative type source (CanvasNodeFields, AttachRef, NodeEvent)
+- `packages/collab/src/task-listener.ts` — consumer: reads nodesMap Y.Map, sets fields directly
 - `packages/collab/src/event-stream.ts` — generic Stream consumer loop
 - `packages/server/src/infra/event-stream.ts` — publisher helpers
 - `packages/server/src/infra/canvas-lock.ts` — Redis SETNX node locks
-- `packages/web/src/utils/yjsProjectManager.ts` — frontend Yjs setup
-- `packages/web/src/utils/yjsSliceSyncs.ts` — Redux ↔ Yjs bridge
+- `packages/web/src/utils/yjsProjectManager.ts` — frontend Yjs setup (nodesMap/edgesMap init)
+- `packages/web/src/hooks/useCanvasYjs.ts` — Yjs observe → Redux dispatch bridge
+- `packages/web/src/hooks/useProjectStore.ts` — node/edge write operations → Yjs
+- `packages/web/src/utils/canvasYjsRef.ts` — module-level Yjs manager reference
 - `packages/web/src/apps/project/components/canvas/types.ts` — frontend UI types

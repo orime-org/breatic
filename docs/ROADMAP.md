@@ -22,8 +22,9 @@
 
 ### Collab
 
-- [x] Yjs 文档结构规范：canvas Y.Map schema、状态机、事件流、锁语义写入 [docs/YJS.md](./YJS.md)；CanvasNodeData 共享类型在 @breatic/shared
-- [x] Canvas 节点同步：Redis Streams + 节点锁，API/Worker/Collab 三方事件驱动写入 canvas.nodes
+- [x] Yjs 文档结构规范：canvas Map-of-Maps schema、状态机、事件流、锁语义写入 [docs/YJS.md](./YJS.md)；CanvasNodeFields + AttachRef 共享类型在 @breatic/shared
+- [x] Canvas 节点同步：Redis Streams + 节点锁，API/Worker/Collab 三方事件驱动写入 canvas.nodesMap
+- [x] Canvas Yjs-first 同步架构：前端写操作直接写 Yjs nodesMap/edgesMap，observe 回调同步 Redux（只读缓存），删除旧的 Redux↔Yjs 双向桥
 - [ ] Awareness 集成：光标位置、在线用户列表、正在编辑的节点高亮
 
 ### Frontend
