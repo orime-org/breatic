@@ -1,7 +1,38 @@
-import type { RefObject } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type MutableRefObject,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from '@floating-ui/react';
 import type { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { RiDeleteBin6Line } from 'react-icons/ri';
+import {
+  RiDeleteBin6Line,
+  RiAlignLeft,
+  RiAlignCenter,
+  RiAlignRight,
+  RiIndentIncrease,
+  RiIndentDecrease,
+  RiArrowRightSLine,
+  RiText,
+  RiH1,
+  RiH2,
+  RiH3,
+  RiListUnordered,
+  RiListOrdered,
+  RiCodeBoxLine,
+  RiDoubleQuotesL,
+  RiPaletteLine,
+  RiCheckLine,
+} from 'react-icons/ri';
+import { cn } from '@/utils/classnames';
+import { TextColorPalettePanel } from '@/apps/project/components/textEditor/components/TextColorSelect';
+import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from './TextEditorIcons';
 
 const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: number; end: number } | null => {
   const safe = Math.min(Math.max(innerBlockStart + 1, 1), doc.content.size);
@@ -10,68 +41,207 @@ const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: n
   return { start: $pos.before(1), end: $pos.after(1) };
 };
 
-const itemClass = 'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-text-default-base transition-colors hover:bg-background-default-secondary';
+/**
+ * Resolve the active block-type key directly from the ProseMirror document,
+ * without requiring the editor selection to be at `bs`. Walks from depth 1
+ * (outermost) inward so list containers (bulletList / orderedList / taskList)
+ * take precedence over the inner paragraph they contain.
+ */
+const resolveAnchorActiveKey = (doc: PMNode, bs: number | null): string | null => {
+  if (bs == null) return null;
+  const safePos = Math.min(bs + 1, doc.content.size);
+  if (safePos < 1) return null;
+  const $pos = doc.resolve(safePos);
+  for (let d = 1; d <= $pos.depth; d++) {
+    const node = $pos.node(d);
+    const name = node.type.name;
+    if (name === 'bulletList') return 'bulletList';
+    if (name === 'orderedList') return 'orderedList';
+    if (name === 'taskList') return 'taskList';
+    if (name === 'blockquote') return 'blockquote';
+    if (name === 'codeBlock') return 'codeBlock';
+    if (name === 'heading') return `h${node.attrs.level as number}`;
+    if (name === 'paragraph') return 'paragraph';
+    if (name === 'highlight') return 'highlight';
+  }
+  return null;
+};
 
-const labelClass = 'px-2.5 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-default-tertiary select-none';
+const itemClass =
+  'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-text-default-base transition-colors hover:bg-background-default-secondary';
+
+const labelClass =
+  'px-2.5 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-default-tertiary select-none';
+
+const blockTypeMenuSurfaceClass =
+  'min-w-[208px] overflow-visible rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]';
+
+const blockTypeAlignSubmenuSurfaceClass =
+  'min-w-[192px] rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]';
+
+/** Above `BLOCK_LINE_CONTROL_Z` (≈9990+55) so the menu stacks over the gutter row. */
+const BLOCK_TYPE_MENU_Z = 10060;
+const BLOCK_TYPE_SUBMENU_Z = 10061;
+
+type BlockTypeFloatRef = MutableRefObject<HTMLDivElement | null>;
+
+function BlockTypeMenuMainFloat({
+  open,
+  anchorEl,
+  children,
+  className,
+  zIndex,
+  floatingRef,
+}: {
+  open: boolean;
+  anchorEl: HTMLElement | null;
+  children: ReactNode;
+  className: string;
+  zIndex: number;
+  floatingRef: BlockTypeFloatRef;
+}) {
+  const { refs, floatingStyles } = useFloating({
+    open,
+    placement: 'bottom-start',
+    strategy: 'fixed',
+    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  useLayoutEffect(() => {
+    if (open && anchorEl) refs.setReference(anchorEl);
+  }, [open, anchorEl, refs]);
+
+  useLayoutEffect(() => {
+    if (!open) floatingRef.current = null;
+  }, [open, floatingRef]);
+
+  if (!open) return null;
+
+  return (
+    <FloatingPortal>
+      <div
+        ref={(node) => {
+          refs.setFloating(node);
+          floatingRef.current = node;
+        }}
+        style={{ ...floatingStyles, zIndex }}
+        className={className}
+        role='menu'
+      >
+        {children}
+      </div>
+    </FloatingPortal>
+  );
+}
+
+function BlockTypeMenuSubFloat({
+  open,
+  anchorEl,
+  children,
+  className,
+  zIndex,
+  floatingRef,
+}: {
+  open: boolean;
+  anchorEl: HTMLElement | null;
+  children: ReactNode;
+  className: string;
+  zIndex: number;
+  floatingRef: BlockTypeFloatRef;
+}) {
+  const { refs, floatingStyles } = useFloating({
+    open,
+    placement: 'right-start',
+    strategy: 'fixed',
+    middleware: [offset(4), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  useLayoutEffect(() => {
+    if (open && anchorEl) refs.setReference(anchorEl);
+  }, [open, anchorEl, refs]);
+
+  useLayoutEffect(() => {
+    if (!open) floatingRef.current = null;
+  }, [open, floatingRef]);
+
+  if (!open) return null;
+
+  return (
+    <FloatingPortal>
+      <div
+        ref={(node) => {
+          refs.setFloating(node);
+          floatingRef.current = node;
+        }}
+        style={{ ...floatingStyles, zIndex }}
+        className={className}
+        role='menu'
+      >
+        {children}
+      </div>
+    </FloatingPortal>
+  );
+}
 
 export interface BlockTypeMenuProps {
   editor: Editor;
-  /** Block start doc position — menu commands target this block. */
   anchorBlockStartRef: RefObject<number | null>;
   onClose: () => void;
+  /** Drag-handle element this menu is anchored to (floating-ui reference). */
+  anchorElRef: RefObject<HTMLElement | null>;
+  /** Portaled main panel root — include in outside-click checks in the parent. */
+  mainFloatingRef: BlockTypeFloatRef;
+  /** Portaled submenu root (only one submenu open at a time). */
+  subFloatingRef: BlockTypeFloatRef;
 }
 
-const TURN_INTO_ITEMS = [
+type Chain = ReturnType<Editor['chain']>;
+
+type BlockMenuIcon = ComponentType<{ size?: number; className?: string }>;
+
+const BASIC_BLOCKS: readonly {
+  label: string;
+  Icon: BlockMenuIcon;
+  nodeKey: string;
+  apply: (ch: Chain) => void;
+}[] = [
+  { label: 'Paragraph', Icon: RiText, nodeKey: 'paragraph', apply: (ch) => ch.setParagraph().run() },
+  { label: 'Heading 1', Icon: RiH1, nodeKey: 'h1', apply: (ch) => ch.setHeading({ level: 1 }).run() },
+  { label: 'Heading 2', Icon: RiH2, nodeKey: 'h2', apply: (ch) => ch.setHeading({ level: 2 }).run() },
+  { label: 'Heading 3', Icon: RiH3, nodeKey: 'h3', apply: (ch) => ch.setHeading({ level: 3 }).run() },
+  { label: 'Bullet list', Icon: RiListUnordered, nodeKey: 'bulletList', apply: (ch) => ch.toggleBulletList().run() },
+  { label: 'Numbered list', Icon: RiListOrdered, nodeKey: 'orderedList', apply: (ch) => ch.toggleOrderedList().run() },
+  { label: 'Task list', Icon: BlockTaskListIcon, nodeKey: 'taskList', apply: (ch) => ch.toggleTaskList().run() },
+  { label: 'Code block', Icon: RiCodeBoxLine, nodeKey: 'codeBlock', apply: (ch) => ch.toggleCodeBlock().run() },
+  { label: 'Quote', Icon: RiDoubleQuotesL, nodeKey: 'blockquote', apply: (ch) => ch.toggleBlockquote().run() },
   {
-    label: 'Text',
-    badge: 'T',
-    command: (e: Editor) => e.chain().focus().setParagraph().run(),
-  },
-  {
-    label: 'Heading 1',
-    badge: 'H1',
-    command: (e: Editor) => e.chain().focus().setHeading({ level: 1 }).run(),
-  },
-  {
-    label: 'Heading 2',
-    badge: 'H2',
-    command: (e: Editor) => e.chain().focus().setHeading({ level: 2 }).run(),
-  },
-  {
-    label: 'Heading 3',
-    badge: 'H3',
-    command: (e: Editor) => e.chain().focus().setHeading({ level: 3 }).run(),
-  },
-  {
-    label: 'Bullet list',
-    badge: '•',
-    command: (e: Editor) => e.chain().focus().toggleBulletList().run(),
-  },
-  {
-    label: 'Numbered list',
-    badge: '1.',
-    command: (e: Editor) => e.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    label: 'Quote',
-    badge: '"',
-    command: (e: Editor) => e.chain().focus().toggleBlockquote().run(),
-  },
-  {
-    label: 'Code block',
-    badge: '</>',
-    command: (e: Editor) => e.chain().focus().toggleCodeBlock().run(),
-  },
-  {
-    label: 'Divider',
-    badge: '—',
-    command: (e: Editor) => e.chain().focus().setHorizontalRule().run(),
+    label: 'Highlight block',
+    Icon: BlockHighlightIcon,
+    nodeKey: 'highlight',
+    apply: (ch) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ch as any).toggleHighlight().run(),
   },
 ] as const;
 
-/** Block options menu — opened by clicking the ⠿ drag handle. */
-const BlockTypeMenu = ({ editor, anchorBlockStartRef, onClose }: BlockTypeMenuProps) => {
-  const focusAnchorBlock = () => {
+type HandleSubmenu = 'none' | 'alignIndent' | 'color';
+
+const BlockTypeMenu = ({
+  editor,
+  anchorBlockStartRef,
+  onClose,
+  anchorElRef,
+  mainFloatingRef,
+  subFloatingRef,
+}: BlockTypeMenuProps) => {
+  const [handleSubmenu, setHandleSubmenu] = useState<HandleSubmenu>('none');
+  const alignIndentBtnRef = useRef<HTMLButtonElement>(null);
+  const colorBtnRef = useRef<HTMLButtonElement>(null);
+  const activeNodeKey = resolveAnchorActiveKey(editor.state.doc, anchorBlockStartRef.current);
+
+  const focusAnchorBlock = useCallback(() => {
     const bs = anchorBlockStartRef.current;
     if (bs != null)
       editor
@@ -79,13 +249,16 @@ const BlockTypeMenu = ({ editor, anchorBlockStartRef, onClose }: BlockTypeMenuPr
         .focus()
         .setTextSelection(bs + 1)
         .run();
-  };
+  }, [anchorBlockStartRef, editor]);
 
-  const run = (fn: () => void) => {
-    focusAnchorBlock();
-    fn();
-    onClose();
-  };
+  const runTransform = useCallback(
+    (fn: (ch: Chain) => void) => {
+      focusAnchorBlock();
+      fn(editor.chain().focus());
+      onClose();
+    },
+    [editor, focusAnchorBlock, onClose],
+  );
 
   const deleteBlock = () => {
     const bs = anchorBlockStartRef.current;
@@ -103,12 +276,192 @@ const BlockTypeMenu = ({ editor, anchorBlockStartRef, onClose }: BlockTypeMenuPr
     onClose();
   };
 
+  const setAlign = (align: 'left' | 'center' | 'right') => {
+    runTransform((ch) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ch as any).setTextAlign(align).run(),
+    );
+  };
+
+  const sinkOrLift = (dir: 'sink' | 'lift') => {
+    focusAnchorBlock();
+    const can = editor.can();
+    if (dir === 'sink') {
+      if (can.sinkListItem('taskItem')) editor.chain().focus().sinkListItem('taskItem').run();
+      else if (can.sinkListItem('listItem')) editor.chain().focus().sinkListItem('listItem').run();
+    } else if (can.liftListItem('taskItem')) {
+      editor.chain().focus().liftListItem('taskItem').run();
+    } else if (can.liftListItem('listItem')) {
+      editor.chain().focus().liftListItem('listItem').run();
+    }
+    onClose();
+  };
+
+  const toggleAlignIndentSubmenu = () => {
+    focusAnchorBlock();
+    setHandleSubmenu((s) => (s === 'alignIndent' ? 'none' : 'alignIndent'));
+  };
+
+  const toggleColorSubmenu = () => {
+    focusAnchorBlock();
+    setHandleSubmenu((s) => (s === 'color' ? 'none' : 'color'));
+  };
+
+  const blockRows = (
+    <>
+      <p className={labelClass}>Turn into</p>
+      {BASIC_BLOCKS.map(({ label, Icon, nodeKey, apply }) => {
+        const isActive = activeNodeKey === nodeKey;
+        return (
+          <button
+            key={label}
+            type='button'
+            role='menuitem'
+            className={cn(itemClass, isActive && 'bg-background-default-secondary font-medium')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => runTransform(apply)}
+          >
+            <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+              <Icon size={16} />
+            </span>
+            {label}
+            {isActive && <RiCheckLine size={14} className='ml-auto shrink-0 text-text-default-base' />}
+          </button>
+        );
+      })}
+    </>
+  );
+
   return (
-    <div
-      className='absolute left-0 top-full z-[9997] mt-1 min-w-[192px] rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]'
-      role='menu'
+    <BlockTypeMenuMainFloat
+      open
+      anchorEl={anchorElRef.current}
+      className={blockTypeMenuSurfaceClass}
+      zIndex={BLOCK_TYPE_MENU_Z}
+      floatingRef={mainFloatingRef}
     >
-      {/* Delete */}
+      {blockRows}
+
+      <div className='my-1.5 border-t border-border-default-base' />
+
+      <button
+        ref={alignIndentBtnRef}
+        type='button'
+        role='menuitem'
+        aria-expanded={handleSubmenu === 'alignIndent'}
+        aria-haspopup='menu'
+        className={cn(itemClass, handleSubmenu === 'alignIndent' && 'bg-background-default-secondary')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={toggleAlignIndentSubmenu}
+      >
+        <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+          <BlockIndentAlignIcon size={16} />
+        </span>
+        {'Indent & align'}
+        <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
+      </button>
+      <BlockTypeMenuSubFloat
+        open={handleSubmenu === 'alignIndent'}
+        anchorEl={alignIndentBtnRef.current}
+        className={blockTypeAlignSubmenuSurfaceClass}
+        zIndex={BLOCK_TYPE_SUBMENU_Z}
+        floatingRef={subFloatingRef}
+      >
+        <p className={labelClass}>Align</p>
+        <button
+          type='button'
+          role='menuitem'
+          className={itemClass}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setAlign('left')}
+        >
+          <RiAlignLeft size={15} className='shrink-0 text-text-default-tertiary' />
+          Align left
+        </button>
+        <button
+          type='button'
+          role='menuitem'
+          className={itemClass}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setAlign('center')}
+        >
+          <RiAlignCenter size={15} className='shrink-0 text-text-default-tertiary' />
+          Align center
+        </button>
+        <button
+          type='button'
+          role='menuitem'
+          className={itemClass}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setAlign('right')}
+        >
+          <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
+          Align right
+        </button>
+        <p className={labelClass}>Indent</p>
+        <button
+          type='button'
+          role='menuitem'
+          className={itemClass}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => sinkOrLift('sink')}
+        >
+          <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
+          Increase indent
+        </button>
+        <button
+          type='button'
+          role='menuitem'
+          className={itemClass}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => sinkOrLift('lift')}
+        >
+          <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
+          Decrease indent
+        </button>
+      </BlockTypeMenuSubFloat>
+
+      <button
+        ref={colorBtnRef}
+        type='button'
+        role='menuitem'
+        aria-expanded={handleSubmenu === 'color'}
+        aria-haspopup='menu'
+        className={cn(itemClass, handleSubmenu === 'color' && 'bg-background-default-secondary')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={toggleColorSubmenu}
+      >
+        <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+          <RiPaletteLine size={16} />
+        </span>
+        Color
+        <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
+      </button>
+      <BlockTypeMenuSubFloat
+        open={handleSubmenu === 'color'}
+        anchorEl={colorBtnRef.current}
+        className='outline-none'
+        zIndex={BLOCK_TYPE_SUBMENU_Z}
+        floatingRef={subFloatingRef}
+      >
+        <TextColorPalettePanel
+          editor={editor}
+          blockScope={(() => {
+            const bs = anchorBlockStartRef.current;
+            if (bs == null) return undefined;
+            const range = getTopLevelBlockRange(editor.state.doc, bs);
+            if (!range) return undefined;
+            return { from: range.start + 1, to: range.end - 1 };
+          })()}
+          onAfterPick={() => {
+            setHandleSubmenu('none');
+            onClose();
+          }}
+        />
+      </BlockTypeMenuSubFloat>
+
+      <div className='my-1.5 border-t border-border-default-base' />
+
       <button
         type='button'
         role='menuitem'
@@ -119,26 +472,7 @@ const BlockTypeMenu = ({ editor, anchorBlockStartRef, onClose }: BlockTypeMenuPr
         <RiDeleteBin6Line size={15} className='shrink-0 opacity-70' />
         Delete block
       </button>
-
-      {/* Separator */}
-      <div className='my-1.5 border-t border-border-default-base' />
-
-      {/* Turn into */}
-      <p className={labelClass}>Turn into</p>
-      {TURN_INTO_ITEMS.map(({ label, badge, command }) => (
-        <button
-          key={label}
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run(() => command(editor))}
-        >
-          <span className='w-6 text-center text-xs font-semibold text-text-default-tertiary'>{badge}</span>
-          {label}
-        </button>
-      ))}
-    </div>
+    </BlockTypeMenuMainFloat>
   );
 };
 
