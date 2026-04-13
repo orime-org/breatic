@@ -219,6 +219,47 @@ export function getModelCatalog(): ModelCatalog {
   return _cache;
 }
 
+/**
+ * List available models for a single modality, formatted for skill
+ * prompt injection.
+ *
+ * Returns a lighter shape than `ModelEntry` — just the fields that
+ * skill prompts need: name, mode, guide, description, params, and
+ * voices (for TTS models).
+ *
+ * @param modality - e.g. "image", "video", "audio", "tts", "three_d", "understand"
+ */
+export interface SkillModelInfo {
+  name: string;
+  mode: string | string[];
+  guide?: string;
+  description?: string;
+  languages?: string[];
+  params?: Record<string, { type?: string; values?: unknown[]; default?: unknown; description?: string }>;
+  voices?: Array<{ id: string; gender?: string; description?: string }>;
+}
+
+export function listAvailableModels(modality: string): SkillModelInfo[] {
+  const catalog = getModelCatalog();
+  const entries = catalog[modality as Modality] ?? [];
+  return entries.map((m) => ({
+    name: m.name,
+    mode: m.mode,
+    guide: m.guide || undefined,
+    description: m.description || undefined,
+    params: Object.keys(m.params).length > 0
+      ? Object.fromEntries(
+          Object.entries(m.params).map(([k, v]) => [k, {
+            type: v.type,
+            values: v.values as unknown[] | undefined,
+            default: v.default,
+            description: v.description,
+          }]),
+        )
+      : undefined,
+  }));
+}
+
 /** Reset cached catalog (for testing). */
 export function resetModelCatalog(): void {
   _cache = null;

@@ -1,0 +1,111 @@
+services:
+  # ── Infrastructure ─────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: breatic
+      POSTGRES_PASSWORD: breatic
+      POSTGRES_DB: breatic
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U breatic"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Frontend + Reverse Proxy ───────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - collab
+    restart: unless-stopped
+
+  # ── Application ────────────────────────────────
+  api:
+    build: .
+    command: ["node", "packages/server/dist/index.js"]
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      - SERVICE_NAME=api
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  collab:
+    build: .
+    command: ["node", "packages/collab/dist/index.js"]
+    ports:
+      - "1234:1234"
+    env_file: .env
+    environment:
+      - SERVICE_NAME=collab
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["node", "packages/worker/dist/index.js"]
+    env_file: .env
+    environment:
+      - SERVICE_NAME=worker
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── One-off: Database migration ────────────────
+  # NOTE: Migrations run automatically on API + Worker startup.
+  # This service is only needed for manual/standalone migration runs.
+  # Usage: docker compose run --rm migrate
+  migrate:
+    build: .
+    command: ["node", "-e", "import('./packages/core/dist/index.js').then(m => m.runMigrations())"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - tools
+
+volumes:
+  pgdata:
+  redisdata:

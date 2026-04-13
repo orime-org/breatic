@@ -566,17 +566,21 @@ function filterModelsByModes(
   });
 }
 
+// ── Model list access ────────────────────────────────────────────────
+
+import { listAvailableModels } from "../config/model-catalog.js";
+
+function getModelsForModality(modality: string): ModelInfo[] {
+  return listAvailableModels(modality) as ModelInfo[];
+}
+
 // ── Dynamic skill builders ──────────────────────────────────────────
 
 const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(["t2i", "i2i"]);
 const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
 
 function buildImageModelsSection(): string {
-  // Lazy import to avoid circular dependency at module load
-  const { listAvailableImageModels } = require("../providers/image/index.js") as {
-    listAvailableImageModels: () => ModelInfo[];
-  };
-  const models = filterModelsByModes(listAvailableImageModels(), IMAGE_PLAN_MODES);
+  const models = filterModelsByModes(getModelsForModality("image"), IMAGE_PLAN_MODES);
   return formatModelsSection(
     models,
     getModeLabels("image"),
@@ -585,21 +589,15 @@ function buildImageModelsSection(): string {
 }
 
 function buildAudioModelsSection(): string {
-  const { listAvailableAudioModels } = require("../providers/audio/index.js") as {
-    listAvailableAudioModels: () => ModelInfo[];
-  };
   return formatModelsSection(
-    listAvailableAudioModels(),
+    getModelsForModality("audio"),
     getModeLabels("audio"),
     "_No audio models available. Check your API key configuration._",
   );
 }
 
 function buildVideoModelsSection(): string {
-  const { listAvailableVideoModels } = require("../providers/video/index.js") as {
-    listAvailableVideoModels: () => ModelInfo[];
-  };
-  const models = filterModelsByModes(listAvailableVideoModels(), VIDEO_PLAN_MODES);
+  const models = filterModelsByModes(getModelsForModality("video"), VIDEO_PLAN_MODES);
   return formatModelsSection(
     models,
     getModeLabels("video"),
@@ -608,17 +606,13 @@ function buildVideoModelsSection(): string {
 }
 
 function buildTtsModelsSection(): string {
-  const { listAvailableTtsModels } = require("../providers/tts/index.js") as {
-    listAvailableTtsModels: () => ModelInfo[];
-  };
-  const models = listAvailableTtsModels();
+  const models = getModelsForModality("tts");
   let base = formatModelsSection(
     models,
     getModeLabels("tts"),
     "_No TTS models available. Check your API key configuration._",
   );
 
-  // Append voice catalog for models that have preset voices
   const voicesSections: string[] = [];
   for (const m of models) {
     const voices = m.voices ?? [];
@@ -641,22 +635,16 @@ function buildTtsModelsSection(): string {
 }
 
 function buildThreeDModelsSection(): string {
-  const { listAvailableThreeDModels } = require("../providers/three-d/index.js") as {
-    listAvailableThreeDModels: () => ModelInfo[];
-  };
   return formatModelsSection(
-    listAvailableThreeDModels(),
+    getModelsForModality("three_d"),
     getModeLabels("three_d"),
     "_No 3D models available. Check your API key configuration._",
   );
 }
 
 function buildUnderstandModelsSection(): string {
-  const { listAvailableUnderstandModels } = require("../providers/understand/index.js") as {
-    listAvailableUnderstandModels: () => ModelInfo[];
-  };
   return formatModelsSection(
-    listAvailableUnderstandModels(),
+    getModelsForModality("understand"),
     getModeLabels("understand"),
     "_No understand models available. Check your API key configuration._",
   );

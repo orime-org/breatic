@@ -21,7 +21,7 @@ import {
 } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as projectService from "../modules/project.service.js";
+import { projectService } from "@breatic/core";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
 
