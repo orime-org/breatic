@@ -85,6 +85,88 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@26.1.0(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.19.0)(yaml@2.8.3)
 
+  packages/core:
+    dependencies:
+      '@ai-sdk/anthropic':
+        specifier: ^3.0.64
+        version: 3.0.64(zod@4.3.6)
+      '@ai-sdk/google':
+        specifier: ^3.0.54
+        version: 3.0.54(zod@4.3.6)
+      '@ai-sdk/openai':
+        specifier: ^3.0.49
+        version: 3.0.49(zod@4.3.6)
+      '@aws-sdk/client-s3':
+        specifier: ^3.1026.0
+        version: 3.1026.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1026.0
+        version: 3.1026.0
+      '@breatic/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@t3-oss/env-core':
+        specifier: ^0.11.0
+        version: 0.11.0(typescript@5.8.2)(zod@4.3.6)
+      ai:
+        specifier: ^6.0.141
+        version: 6.0.141(zod@4.3.6)
+      ali-oss:
+        specifier: ^6.23.0
+        version: 6.23.0
+      bullmq:
+        specifier: ^5.30.0
+        version: 5.30.0
+      dotenv:
+        specifier: ^16.4.0
+        version: 16.4.0
+      drizzle-orm:
+        specifier: ^0.38.0
+        version: 0.38.0(@opentelemetry/api@1.9.0)(@types/react@19.2.14)(postgres@3.4.0)(react@19.2.4)
+      ioredis:
+        specifier: ^5.4.0
+        version: 5.10.1
+      ipaddr.js:
+        specifier: ^2.3.0
+        version: 2.3.0
+      pino:
+        specifier: ^9.6.0
+        version: 9.6.0
+      pino-pretty:
+        specifier: ^13.0.0
+        version: 13.0.0
+      pino-roll:
+        specifier: ^4.0.0
+        version: 4.0.0
+      postgres:
+        specifier: ^3.4.0
+        version: 3.4.0
+      yaml:
+        specifier: ^2.7.0
+        version: 2.8.3
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@types/ali-oss':
+        specifier: ^6.23.3
+        version: 6.23.3
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.0.0
+      drizzle-kit:
+        specifier: ^0.30.0
+        version: 0.30.0
+      tsup:
+        specifier: ^8.3.0
+        version: 8.3.0(jiti@2.6.1)(postcss@8.5.8)(tsx@4.19.0)(typescript@5.8.2)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.19.0
+      vitest:
+        specifier: ^3.0.0
+        version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@26.1.0(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.19.0)(yaml@2.8.3)
+
   packages/server:
     dependencies:
       '@ai-sdk/anthropic':
@@ -519,6 +601,43 @@ importers:
       vite-plugin-svg-icons:
         specifier: ^2.0.1
         version: 2.0.1(vite@5.4.21(@types/node@25.5.2)(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0))
+
+  packages/worker:
+    dependencies:
+      '@breatic/core':
+        specifier: workspace:*
+        version: link:../core
+      '@breatic/shared':
+        specifier: workspace:*
+        version: link:../shared
+      ai:
+        specifier: ^6.0.141
+        version: 6.0.141(zod@4.3.6)
+      bullmq:
+        specifier: ^5.30.0
+        version: 5.30.0
+      pino:
+        specifier: ^9.6.0
+        version: 9.6.0
+      pino-pretty:
+        specifier: ^13.0.0
+        version: 13.0.0
+      yaml:
+        specifier: ^2.7.0
+        version: 2.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.0.0
+      tsup:
+        specifier: ^8.3.0
+        version: 8.3.0(jiti@2.6.1)(postcss@8.5.8)(tsx@4.19.0)(typescript@5.8.2)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.19.0
+      vitest:
+        specifier: ^3.0.0
+        version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@26.1.0(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.19.0)(yaml@2.8.3)
 
 packages:
 
