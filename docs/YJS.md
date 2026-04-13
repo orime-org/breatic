@@ -41,17 +41,20 @@ explicit parent-child link.
 ## 3. Canvas document shape
 
 The canvas document has a single root `Y.Map` keyed `"canvas"`.
-Data (node fields) and ordering (z-index) are separated so that
-editing a node's prompt never rewrites the render order, and
-reordering never touches any node's data.
+Each node is an independent `Y.Map` keyed by its ID, so editing
+one node never touches any other node's data.
 
 ```
 Y.Doc
   └── canvas: Y.Map
-        ├── nodesMap:  Y.Map<nodeId, Y.Map>   ← data layer, O(1) by ID
-        ├── nodeOrder: Y.Array<string>         ← z-order (nodeId list)
+        ├── nodesMap:  Y.Map<nodeId, Y.Map>   ← node data, O(1) by ID
         └── edges:     Y.Map<edgeId, Y.Map>
 ```
+
+Z-index (node stacking order) is **not persisted** in Yjs. ReactFlow
+manages z-index per user as ephemeral UI state — clicking a node
+brings it to front locally, which does not need to sync across
+collaborators.
 
 ### 3.1 Node Y.Map fields
 
@@ -105,30 +108,7 @@ destroyed. The OSS/S3 object at the URL is never deleted.
 | `"1004"` | Audio node |
 | `"group"` | Group node (container for other nodes) |
 
-### 3.3 nodeOrder — z-index array
-
-`nodeOrder` is a `Y.Array<string>` holding node IDs in render
-order. The last ID in the array renders on top (highest z-index).
-
-- **Create node**: `nodesMap.set(id, nodeMap)` + `nodeOrder.push([id])`
-- **Delete node**: `nodesMap.delete(id)` + remove from `nodeOrder`
-- **Bring to front**: remove from current position, push to end
-
-`nodeOrder` is separate from `nodesMap` so that reordering never
-touches any node's data fields (prompt, content, etc.), and editing
-a node's data never affects z-order.
-
-For ReactFlow rendering, the frontend maps `nodeOrder` to a
-`Node[]` array:
-
-```ts
-const nodes = nodeOrder.toArray().map(id => {
-  const m = nodesMap.get(id);
-  return { id, type: m.get("type"), position: ..., data: ... };
-});
-```
-
-### 3.4 edges
+### 3.3 edges
 
 `edges` is a `Y.Map<edgeId, Y.Map>`, where each edge map holds:
 
@@ -140,7 +120,7 @@ const nodes = nodeOrder.toArray().map(id => {
 | `sourceHandle` | string \| undefined | Source handle ID |
 | `targetHandle` | string \| undefined | Target handle ID |
 
-### 3.5 Frontend UI-only extensions
+### 3.4 Frontend UI-only extensions
 
 The frontend's `CanvasWorkflowNodeData` extends the shared fields
 with UI-only state that the backend never touches:
@@ -192,7 +172,6 @@ The fundamental rule: **the frontend does not write `state` / `handlingBy` / `co
 | `params` | Frontend | User changes generation parameters |
 | `position` | Frontend | User drags the node |
 | `id`, `type` | Frontend | Node creation (immutable after) |
-| `nodeOrder` | Frontend | User reorders z-index (bring to front/back) |
 | `edges` | Frontend | User creates / deletes connections |
 | Node creation / deletion | Frontend | User adds or deletes a node |
 
@@ -203,7 +182,7 @@ own user's operations (`trackedOrigins: [LOCAL_ORIGIN]`):
 
 | Undo scope | Tracks | Active when | Lifetime |
 |------------|--------|-------------|----------|
-| **Canvas undo** | `nodesMap` (create/delete), `nodeOrder`, `edges`, node `position`/`name` | Focus is on the canvas background | Entire canvas session |
+| **Canvas undo** | `nodesMap` (create/delete), `edges`, node `position`/`name` | Focus is on the canvas background | Entire canvas session |
 | **Prompt undo** | One node's `prompt` Y.XmlFragment | Focus is in a node's prompt editor | Created on focus, **destroyed on blur** |
 
 Key behaviors:

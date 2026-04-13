@@ -5,22 +5,16 @@
  * updates the corresponding canvas Yjs document via a Hocuspocus
  * direct connection.
  *
- * **Dual-format support**: during the migration from the legacy
- * plain-JS-array structure (`canvas.nodes: Node[]`) to the new
- * Map-of-Maps structure (`canvas.nodesMap: Y.Map<nodeId, Y.Map>`),
- * this listener detects which format is present in the document and
- * writes back accordingly. Once all canvases have been migrated by
- * the frontend, the legacy path can be removed.
+ * The canvas document uses the Map-of-Maps structure:
+ *
+ *   canvas.nodesMap: Y.Map<nodeId, Y.Map>
+ *
+ * Each node is an independent Y.Map. The listener looks up the
+ * target node by ID (O(1)) and sets individual fields — no array
+ * copy, no collateral impact on other nodes.
  *
  * Durable resume — the last handled stream id is persisted to
  * Redis so a Collab restart never drops in-flight events.
- *
- * Event handling:
- *   handling   -> set state=handling, handlingBy on the matching node
- *   completed  -> set state=idle, update content (+ coverUrl for videos),
- *                 clear handlingBy, release the Redis node lock
- *   failed     -> set state=idle, clear handlingBy, release the Redis
- *                 node lock. content is NOT touched.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
@@ -45,118 +39,13 @@ function nodeLockKey(envPrefix: string, projectId: string, nodeId: string): stri
   return `${envPrefix}:canvas:lock:${projectId}:${nodeId}`;
 }
 
-// ── Legacy format helpers ─────────────────────────────────────────
-
-/** Node shape in the legacy plain-JS-array format. */
-interface LegacyCanvasNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  data: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-/**
- * Apply event using the **legacy** plain-JS-array format.
- *
- * `canvas.nodes` is a plain JS array. We find the node by ID, clone
- * the array with the updated entry, and `set("nodes", newArray)`.
- */
-function applyEventLegacy(
-  canvasMap: Y.Map<unknown>,
-  nodes: LegacyCanvasNode[],
-  event: NodeEvent,
-): boolean {
-  const idx = nodes.findIndex((n) => n?.id === event.nodeId);
-  if (idx === -1) {
-    logger.warn(
-      { nodeId: event.nodeId, type: event.type },
-      "[legacy] Node not found in canvas.nodes, skipping",
-    );
-    return false;
-  }
-
-  const existing = nodes[idx]!;
-  const nextData: Record<string, unknown> = { ...existing.data };
-
-  if (event.type === "handling") {
-    nextData.state = "handling";
-    nextData.handlingBy = event.actor;
-  } else if (event.type === "completed") {
-    nextData.state = "idle";
-    nextData.content = event.content;
-    if (event.cover_url !== undefined) {
-      nextData.cover_url = event.cover_url;
-    }
-    delete nextData.handlingBy;
-  } else {
-    nextData.state = "idle";
-    delete nextData.handlingBy;
-  }
-
-  const newNodes = [...nodes];
-  newNodes[idx] = { ...existing, data: nextData };
-  canvasMap.set("nodes", newNodes);
-  return true;
-}
-
-// ── New format helpers ────────────────────────────────────────────
-
-/**
- * Apply event using the **new** Map-of-Maps format.
- *
- * `canvas.nodesMap` is a `Y.Map<nodeId, Y.Map>`. We look up the
- * node by ID (O(1)) and set individual fields — no array copy, no
- * collateral damage to other nodes.
- */
-function applyEventNew(
-  nodesMap: Y.Map<unknown>,
-  event: NodeEvent,
-): boolean {
-  const nodeMap = nodesMap.get(event.nodeId) as Y.Map<unknown> | undefined;
-  if (!nodeMap || !(nodeMap instanceof Y.Map)) {
-    logger.warn(
-      { nodeId: event.nodeId, type: event.type },
-      "[new] Node not found in nodesMap, skipping",
-    );
-    return false;
-  }
-
-  if (event.type === "handling") {
-    nodeMap.set("state", "handling");
-    // handlingBy is a Y.Map in the new structure. If it doesn't
-    // exist yet, create one; otherwise update in place.
-    let handlingBy = nodeMap.get("handlingBy") as Y.Map<unknown> | undefined;
-    if (!handlingBy || !(handlingBy instanceof Y.Map)) {
-      handlingBy = new Y.Map<unknown>();
-      nodeMap.set("handlingBy", handlingBy);
-    }
-    handlingBy.set("userId", event.actor.userId);
-    handlingBy.set("username", event.actor.username);
-  } else if (event.type === "completed") {
-    nodeMap.set("state", "idle");
-    nodeMap.set("content", event.content);
-    if (event.cover_url !== undefined) {
-      nodeMap.set("coverUrl", event.cover_url);
-    }
-    nodeMap.delete("handlingBy");
-  } else {
-    // failed — content untouched
-    nodeMap.set("state", "idle");
-    nodeMap.delete("handlingBy");
-  }
-
-  return true;
-}
-
-// ── Main handler ──────────────────────────────────────────────────
-
 /**
  * Apply a single NodeEvent to the canvas Yjs document.
  *
- * Detects document format (new `nodesMap` vs legacy `nodes` array)
- * and dispatches to the appropriate writer. Idempotent — safe to
- * retry on stream redelivery.
+ * Looks up the node in `canvas.nodesMap` by ID and sets the
+ * relevant fields directly on the node's Y.Map.
+ *
+ * Idempotent — safe to retry on stream redelivery.
  */
 async function handleNodeEvent(
   hocuspocus: Hocuspocus,
@@ -177,27 +66,48 @@ async function handleNodeEvent(
   try {
     await connection.transact((doc) => {
       const canvasMap = doc.getMap("canvas");
-
-      // ── Detect format ──────────────────────────────────────────
-      // New format: `nodesMap` is a Y.Map<nodeId, Y.Map>.
-      // Legacy format: `nodes` is a plain JS array.
       const nodesMap = canvasMap.get("nodesMap");
-      if (nodesMap instanceof Y.Map) {
-        updated = applyEventNew(nodesMap as Y.Map<unknown>, event);
+
+      if (!(nodesMap instanceof Y.Map)) {
+        logger.warn(
+          { docName, nodeId: event.nodeId, type: event.type },
+          "canvas.nodesMap is not a Y.Map, skipping",
+        );
         return;
       }
 
-      // Fall back to legacy format.
-      const rawNodes = canvasMap.get("nodes");
-      if (Array.isArray(rawNodes)) {
-        updated = applyEventLegacy(canvasMap, rawNodes as LegacyCanvasNode[], event);
+      const nodeMap = nodesMap.get(event.nodeId);
+      if (!(nodeMap instanceof Y.Map)) {
+        logger.warn(
+          { docName, nodeId: event.nodeId, type: event.type },
+          "Node not found in nodesMap, skipping",
+        );
         return;
       }
 
-      logger.warn(
-        { docName, nodeId: event.nodeId, type: event.type },
-        "canvas has neither nodesMap (new) nor nodes[] (legacy), skipping",
-      );
+      if (event.type === "handling") {
+        nodeMap.set("state", "handling");
+        let handlingBy = nodeMap.get("handlingBy");
+        if (!(handlingBy instanceof Y.Map)) {
+          handlingBy = new Y.Map();
+          nodeMap.set("handlingBy", handlingBy);
+        }
+        (handlingBy as Y.Map<unknown>).set("userId", event.actor.userId);
+        (handlingBy as Y.Map<unknown>).set("username", event.actor.username);
+      } else if (event.type === "completed") {
+        nodeMap.set("state", "idle");
+        nodeMap.set("content", event.content);
+        if (event.cover_url !== undefined) {
+          nodeMap.set("coverUrl", event.cover_url);
+        }
+        nodeMap.delete("handlingBy");
+      } else {
+        // failed — content untouched
+        nodeMap.set("state", "idle");
+        nodeMap.delete("handlingBy");
+      }
+
+      updated = true;
     });
   } finally {
     await connection.disconnect();
@@ -215,11 +125,8 @@ async function handleNodeEvent(
   );
 }
 
-// ── Public API ────────────────────────────────────────────────────
-
 /**
- * Start listening for canvas node events on the Redis stream and
- * applying them to the canvas Yjs document.
+ * Start listening for canvas node events on the Redis stream.
  *
  * @param hocuspocus - Running Hocuspocus server instance
  * @param redisUrl - Redis connection URL
