@@ -23,11 +23,21 @@ import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
 // ── Converters ─────────────────────────────────────────────────
 
+/** Serialize a Y.Map to a plain object. */
+function yMapToPlain(ymap: Y.Map<unknown>): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  ymap.forEach((v, k) => { obj[k] = v; });
+  return obj;
+}
+
 function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
   const pos = nodeMap.get('position') as Y.Map<unknown> | undefined;
   const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
   const handlingBy = dataMap instanceof Y.Map
     ? dataMap.get('handlingBy') as Y.Map<unknown> | undefined
+    : undefined;
+  const paramsMap = dataMap instanceof Y.Map
+    ? dataMap.get('params') as Y.Map<unknown> | undefined
     : undefined;
 
   return {
@@ -47,8 +57,9 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
             ? { userId: handlingBy.get('userId') as string, username: handlingBy.get('username') as string }
             : undefined,
           runType: dataMap.get('runType') as string | undefined,
+          params: paramsMap instanceof Y.Map ? yMapToPlain(paramsMap) : {},
         }
-      : { name: '', content: '', state: 'idle' },
+      : { name: '', content: '', state: 'idle', params: {} },
   };
 }
 

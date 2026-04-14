@@ -17,17 +17,6 @@ export interface HandleConfig {
 
 export type CanvasNodeState = 'idle' | 'handling';
 
-/**
- * @deprecated Use flat fields on {@link CanvasWorkflowNodeData} instead.
- * Kept only for components not yet migrated.
- */
-export interface CanvasNodeRuntimeData {
-  runType?: 'parameter' | 'sensitive';
-  attach?: unknown;
-  prompt?: string;
-  parameter?: Record<string, unknown>;
-}
-
 /** Picked canvas image injected into the composer (`content` = URL or data URL). */
 export interface PickInject {
   content: string;
@@ -111,11 +100,10 @@ export interface CanvasWorkflowNodeData {
   runType?: 'parameter' | 'sensitive';
   /** Present only while pick mode is active for this node; absent otherwise. */
   pickState?: PickState | null;
+  attach?: unknown;
+  prompt?: string;
+  params?: Record<string, unknown>;
   handles?: { target?: HandleConfig[]; source?: HandleConfig[] };
-  /**
-   * @deprecated Flat fields replace this. Kept for unmigrated components.
-   */
-  nodeRuntimeData?: CanvasNodeRuntimeData;
 }
 
 /**

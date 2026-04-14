@@ -16,7 +16,6 @@ import { useCanvasUI } from '@/hooks/useCanvasUI';
 import {
   useProjectWorkspaceRegion,
   type PickResultBox,
-  type CanvasNodeRuntimeData,
   type CanvasWorkflowNodeData,
 } from '@/apps/project/components/canvas/types';
 export type NodeChatComposerProps = {
@@ -48,12 +47,9 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
 
   const persistAttach = useCallback(
     (attach: AgentComposerUploadItem[]) => {
-      const currentNode = nodes.find((n) => n.id === targetNodeId);
-      const currentData = currentNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-      const prevRuntime = (currentData?.nodeRuntimeData ?? {}) as CanvasNodeRuntimeData;
-      updateNode(targetNodeId, { data: { nodeRuntimeData: { ...prevRuntime, attach } } });
+      updateNode(targetNodeId, { data: { attach } });
     },
-    [nodes, targetNodeId, updateNode],
+    [targetNodeId, updateNode],
   );
 
   const mapFileToUploadItem = useCallback(async (file: File): Promise<AgentComposerUploadItem> => {
@@ -144,36 +140,35 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
   const targetNode = nodes.find((n) => n.id === targetNodeId);
   const targetNodeData = targetNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
   const pickCanvasData = targetNodeData?.pickState;
-  const nodeRuntimeData = (targetNodeData?.nodeRuntimeData ?? {}) as CanvasNodeRuntimeData;
-  const nodeRuntimeParameter = (nodeRuntimeData.parameter ?? {}) as Record<string, unknown>;
+  const nodeAttach = targetNodeData?.attach;
+  const nodePrompt = typeof targetNodeData?.prompt === 'string' ? targetNodeData.prompt : '';
+  const nodeParams = (targetNodeData?.params ?? {}) as Record<string, unknown>;
   const storedPickConsume = pickCanvasData?.consumeFrom ?? 'nodeComposer';
   const agentCanvasPickPendingList = useMemo(() => pickCanvasData?.pendingList ?? [], [pickCanvasData?.pendingList]);
 
-  const mergeNodeRuntimeData = useCallback(
-    (patch: { prompt?: string; parameter?: Record<string, unknown>; attach?: unknown }) => {
-      const currentNode = nodes.find((n) => n.id === targetNodeId);
-      const currentData = currentNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-      const prevRuntime = (currentData?.nodeRuntimeData ?? {}) as CanvasNodeRuntimeData;
-      const prevParameter = (prevRuntime.parameter ?? {}) as Record<string, unknown>;
-      const nextRuntime: CanvasNodeRuntimeData = {
-        ...prevRuntime,
-        ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
-        ...(patch.attach !== undefined ? { attach: patch.attach } : {}),
-        ...(patch.parameter ? { parameter: { ...prevParameter, ...patch.parameter } } : {}),
-      };
-      updateNode(targetNodeId, { data: { nodeRuntimeData: nextRuntime } });
+  const mergeNodeData = useCallback(
+    (patch: { prompt?: string; params?: Record<string, unknown>; attach?: unknown }) => {
+      const dataPatch: Record<string, unknown> = {};
+      if (patch.prompt !== undefined) dataPatch.prompt = patch.prompt;
+      if (patch.attach !== undefined) dataPatch.attach = patch.attach;
+      if (patch.params) {
+        const currentNode = nodes.find((n) => n.id === targetNodeId);
+        const currentData = currentNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
+        const prevParams = (currentData?.params ?? {}) as Record<string, unknown>;
+        dataPatch.params = { ...prevParams, ...patch.params };
+      }
+      updateNode(targetNodeId, { data: dataPatch });
     },
     [nodes, targetNodeId, updateNode],
   );
 
   useEffect(() => {
-    const rawAttach = nodeRuntimeData.attach;
-    if (!Array.isArray(rawAttach)) {
+    if (!Array.isArray(nodeAttach)) {
       setUploadItems([]);
       return;
     }
-    setUploadItems(rawAttach as AgentComposerUploadItem[]);
-  }, [targetNodeId, nodeRuntimeData.attach]);
+    setUploadItems(nodeAttach as AgentComposerUploadItem[]);
+  }, [targetNodeId, nodeAttach]);
 
   const handleSendClick = useCallback(() => {
     const input = inputRef.current;
@@ -181,31 +176,30 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
     const content = input.getHtml();
     onSend(content);
     input.clear();
-    mergeNodeRuntimeData({ prompt: '' });
-  }, [mergeNodeRuntimeData, onSend]);
+    mergeNodeData({ prompt: '' });
+  }, [mergeNodeData, onSend]);
 
   useEffect(() => {
-    setModelId(typeof nodeRuntimeParameter.model === 'string' ? nodeRuntimeParameter.model : 'gemini');
-    setQuality(typeof nodeRuntimeParameter.resolution === 'string' ? nodeRuntimeParameter.resolution : '2k');
-    setAspectRatio(typeof nodeRuntimeParameter.aspectRatio === 'string' ? nodeRuntimeParameter.aspectRatio : '3:2');
-  }, [targetNodeId, nodeRuntimeParameter.model, nodeRuntimeParameter.resolution, nodeRuntimeParameter.aspectRatio]);
+    setModelId(typeof nodeParams.model === 'string' ? nodeParams.model : 'gemini');
+    setQuality(typeof nodeParams.resolution === 'string' ? nodeParams.resolution : '2k');
+    setAspectRatio(typeof nodeParams.aspectRatio === 'string' ? nodeParams.aspectRatio : '3:2');
+  }, [targetNodeId, nodeParams.model, nodeParams.resolution, nodeParams.aspectRatio]);
 
   useEffect(() => {
-    const nextDraft = typeof nodeRuntimeData.prompt === 'string' ? nodeRuntimeData.prompt : '';
-    const signature = `${targetNodeId}\0${nextDraft}`;
+    const signature = `${targetNodeId}\0${nodePrompt}`;
     if (lastHydratedDraftRef.current === signature) return;
-    if (lastLocalDraftRef.current === nextDraft) {
+    if (lastLocalDraftRef.current === nodePrompt) {
       lastHydratedDraftRef.current = signature;
       return;
     }
     const currentHtml = inputRef.current?.getHtml() ?? '';
-    if (currentHtml === nextDraft) {
+    if (currentHtml === nodePrompt) {
       lastHydratedDraftRef.current = signature;
       return;
     }
     lastHydratedDraftRef.current = signature;
-    inputRef.current?.setHtml(nextDraft);
-  }, [targetNodeId, nodeRuntimeData.prompt]);
+    inputRef.current?.setHtml(nodePrompt);
+  }, [targetNodeId, nodePrompt]);
 
   useEffect(() => {
     return () => {
@@ -222,35 +216,35 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
         window.clearTimeout(draftPersistTimerRef.current);
       }
       draftPersistTimerRef.current = window.setTimeout(() => {
-        mergeNodeRuntimeData({ prompt: draftHtml });
+        mergeNodeData({ prompt: draftHtml });
       }, 180);
     },
-    [mergeNodeRuntimeData],
+    [mergeNodeData],
   );
 
   const handleModelChange = useCallback(
     (id: string, _label: string) => {
       void _label;
       setModelId(id);
-      mergeNodeRuntimeData({ parameter: { model: id } });
+      mergeNodeData({ params: { model: id } });
     },
-    [mergeNodeRuntimeData],
+    [mergeNodeData],
   );
 
   const handleQualityChange = useCallback(
     (value: string) => {
       setQuality(value);
-      mergeNodeRuntimeData({ parameter: { resolution: value } });
+      mergeNodeData({ params: { resolution: value } });
     },
-    [mergeNodeRuntimeData],
+    [mergeNodeData],
   );
 
   const handleAspectChange = useCallback(
     (value: string) => {
       setAspectRatio(value);
-      mergeNodeRuntimeData({ parameter: { aspectRatio: value } });
+      mergeNodeData({ params: { aspectRatio: value } });
     },
-    [mergeNodeRuntimeData],
+    [mergeNodeData],
   );
 
   useEffect(() => {

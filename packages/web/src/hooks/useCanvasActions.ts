@@ -80,16 +80,6 @@ export function useCanvasActions() {
           if (data.coverUrl !== undefined) dataMap.set('coverUrl', data.coverUrl);
           if (data.state !== undefined) dataMap.set('state', data.state);
           if (data.runType !== undefined) dataMap.set('runType', data.runType);
-
-          // Legacy compat — map nodeRuntimeData.parameter → params
-          const nrd = data.nodeRuntimeData as Record<string, unknown> | undefined;
-          if (nrd?.parameter !== undefined) {
-            const params = dataMap.get('params') as Y.Map<unknown>;
-            if (params instanceof Y.Map) {
-              const paramObj = nrd.parameter as Record<string, unknown>;
-              Object.entries(paramObj).forEach(([k, v]) => params.set(k, v));
-            }
-          }
         }
       }, origin);
     },

@@ -278,7 +278,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
 
     const canvasNode = projectNodes.find((n) => n.id === projectCanvasTargetNodeId);
     const canvasData = canvasNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-    const rawAttach = canvasData?.nodeRuntimeData?.attach;
+    const rawAttach = canvasData?.attach;
     const canvasAttach = (Array.isArray(rawAttach) ? rawAttach : []) as AgentComposerUploadItem[];
     const canvasImageAttach = canvasAttach.filter((u) => u.type === 'image');
     const upstreamImages = projectCanvasUpstream.filter((u) => u.type === 'image');

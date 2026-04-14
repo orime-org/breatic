@@ -21,7 +21,6 @@ const createTextNode = (
       name: 'text',
       content: textContent,
       state: 'idle',
-      nodeRuntimeData: {},
       handles: {
         target: [{ handleType: 'Text', number: 1 }],
       },
@@ -44,7 +43,6 @@ const createImageNodeForUpload = (
       name: 'image',
       content: '',
       state: 'idle',
-      nodeRuntimeData: {},
       handles: {
         target: [{ handleType: 'Image', number: 1 }],
       },
@@ -67,7 +65,6 @@ const createVideoNodeForUpload = (
       name: 'video',
       content: '',
       state: 'idle',
-      nodeRuntimeData: {},
       handles: {
         target: [{ handleType: 'Video', number: 1 }],
       },
@@ -90,7 +87,6 @@ const createAudioNodeForUpload = (
       name: 'audio',
       content: '',
       state: 'idle',
-      nodeRuntimeData: {},
       handles: {
         target: [{ handleType: 'Audio', number: 1 }],
       },
