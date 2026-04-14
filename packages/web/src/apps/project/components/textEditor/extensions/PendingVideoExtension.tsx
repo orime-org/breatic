@@ -1,14 +1,14 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { RiFile2Line } from 'react-icons/ri';
-import { openMediaFilePanel } from '../components/MediaFilePanel';
+import { RiFilmLine } from 'react-icons/ri';
+import { openMediaFilePanel } from '../media/MediaFilePanel';
 
-const PendingFileView = ({ editor, getPos, node }: NodeViewProps) => {
+const PendingVideoView = ({ editor, getPos, node }: NodeViewProps) => {
   const openPanel = () => {
     const p = getPos();
     if (typeof p === 'number') {
-      openMediaFilePanel(editor, p, 'file');
+      openMediaFilePanel(editor, p, 'video');
     }
   };
 
@@ -19,7 +19,7 @@ const PendingFileView = ({ editor, getPos, node }: NodeViewProps) => {
     <NodeViewWrapper
       as='div'
       className='bn-block-content'
-      data-content-type='file'
+      data-content-type='video'
       data-file-block=''
       data-text-align={textAlign}
       style={{
@@ -43,17 +43,17 @@ const PendingFileView = ({ editor, getPos, node }: NodeViewProps) => {
           }}
         >
           <div className='bn-add-file-button-icon'>
-            <RiFile2Line size={24} />
+            <RiFilmLine size={24} />
           </div>
-          <div className='bn-add-file-button-text'>Add file</div>
+          <div className='bn-add-file-button-text'>Add video</div>
         </div>
       </div>
     </NodeViewWrapper>
   );
 };
 
-export const PendingFile = Node.create({
-  name: 'pendingFile',
+export const PendingVideo = Node.create({
+  name: 'pendingVideo',
   group: 'block',
   atom: true,
   draggable: true,
@@ -82,7 +82,7 @@ export const PendingFile = Node.create({
   parseHTML() {
     return [
       {
-        tag: 'div[data-bn-pending-file]',
+        tag: 'div[data-bn-pending-video]',
         getAttrs: (dom) => ({
           textAlign: (dom as HTMLElement).getAttribute('data-text-align') || 'left',
           accentBackground: (dom as HTMLElement).getAttribute('data-accent-bg'),
@@ -92,10 +92,11 @@ export const PendingFile = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-bn-pending-file': '' })];
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-bn-pending-video': '' })];
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(PendingFileView);
+    return ReactNodeViewRenderer(PendingVideoView);
   },
 });
+

@@ -7,7 +7,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { NodeSelection, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
-import { isFormatBubbleSuppressed } from '../extensions/formatBubbleSuppress';
+import { isFormatBubbleSuppressed } from '../extensions/FormatBubbleSuppressExtension';
 import Divider from '@/components/base/divider';
 import Tooltip from '@/components/base/tooltip';
 import {

@@ -11,33 +11,30 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
-import { BreaticImage } from './extensions/breaticImage';
-import { BreaticTableCell, BreaticTableHeader } from './extensions/tableCellBackground';
-import { SlashCommandExtension } from './components/SlashCommand';
-import { breaticSlashMenuKey, closeBreaticSlashMenu } from './plugins/slashMenuPlugin';
-import ImageFilePanel from './components/ImageFilePanel';
-import { PendingImage } from './extensions/pendingImage';
-import { PendingVideo } from './extensions/pendingVideo';
-import { PendingAudio } from './extensions/pendingAudio';
-import { PendingFile } from './extensions/pendingFile';
-import { HeadingFold } from './extensions/headingFold';
-import { FormatBubbleSuppress } from './extensions/formatBubbleSuppress';
-import { BlockIndent } from './extensions/blockIndent';
-import { BreaticVideo } from './extensions/breaticVideo';
-import { BreaticAudio } from './extensions/breaticAudio';
+import { BreaticImage } from './extensions/BreaticImageExtension';
+import { BreaticTableCell, BreaticTableHeader } from './table/TableCellBackground';
+import { SlashCommandExtension } from './slash/SlashCommand';
+import { breaticSlashMenuKey, closeBreaticSlashMenu } from './slash/SlashMenuPlugin';
+import ImageFilePanel from './media/ImageFilePanel';
+import { PendingImage } from './extensions/PendingImageExtension';
+import { PendingVideo } from './extensions/PendingVideoExtension';
+import { PendingAudio } from './extensions/PendingAudioExtension';
+import { PendingFile } from './extensions/PendingFileExtension';
+import { HeadingFold } from './extensions/HeadingFoldExtension';
+import { FormatBubbleSuppress } from './extensions/FormatBubbleSuppressExtension';
+import { BlockIndent } from './extensions/BlockIndentExtension';
+import { BreaticVideo } from './extensions/BreaticVideoExtension';
+import { BreaticAudio } from './extensions/BreaticAudioExtension';
 import { BreaticCodeBlock } from './extensions/breaticCodeBlockView';
-import MediaFilePanel from './components/MediaFilePanel';
+import MediaFilePanel from './media/MediaFilePanel';
 import { useProjectStore } from '@/hooks/useProjectStore';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import EditorMenus from './components/EditorMenus';
-import BlockLineControl from './components/BlockLineControl';
-import TableOfContents from './components/TableOfContents';
+import type { TextEditorProps } from './types';
+import EditorMenus from './ui/EditorMenus';
+import BlockLineControl from './ui/BlockLineControl';
+import TableOfContents from './toc/TableOfContents';
 import 'highlight.js/styles/github-dark.css';
-import './editor.css';
-
-interface TextEditorProps {
-  nodeId: string;
-}
+import '@/styles/editor.css';
 
 const TextEditor = ({ nodeId }: TextEditorProps) => {
   const { nodes, updateNode } = useProjectStore();

@@ -18,19 +18,19 @@ import { MdDragIndicator } from 'react-icons/md';
 import { RiAddLine, RiArrowRightSFill } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import Tooltip from '@/components/base/tooltip';
-import BlockTypeMenu from '@/apps/project/components/textEditor/components/BlockTypeMenu';
+import BlockTypeMenu from '@/apps/project/components/textEditor/formatting/BlockTypeMenu';
 import {
   breaticSlashMenuKey,
   closeBreaticSlashMenu,
   openBreaticSlashMenu,
-} from '@/apps/project/components/textEditor/plugins/slashMenuPlugin';
+} from '@/apps/project/components/textEditor/slash/SlashMenuPlugin';
 import {
   headingFoldArrowVisible,
   headingFoldKey,
   toggleHeadingFold,
-} from '@/apps/project/components/textEditor/extensions/headingFold';
-import { isMediaLikeBlockType } from '@/apps/project/components/textEditor/utils/mediaBlockTypes';
-import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/apps/project/components/textEditor/extensions/formatBubbleSuppress';
+} from '@/apps/project/components/textEditor/extensions/HeadingFoldExtension';
+import { isMediaLikeBlockType } from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
+import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/apps/project/components/textEditor/extensions/FormatBubbleSuppressExtension';
 
 interface BlockLineControlProps {
   editor: Editor;

@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { RiVolumeUpFill } from 'react-icons/ri';
-import { openMediaFilePanel } from '../components/MediaFilePanel';
+import { openMediaFilePanel } from '../media/MediaFilePanel';
 
 const PendingAudioView = ({ editor, getPos, node }: NodeViewProps) => {
   const openPanel = () => {
@@ -99,3 +99,4 @@ export const PendingAudio = Node.create({
     return ReactNodeViewRenderer(PendingAudioView);
   },
 });
+

@@ -2,20 +2,8 @@ import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import { RiArrowRightSFill } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '../extensions/formatBubbleSuppress';
-
-export interface TocHeading {
-  level: number;
-  text: string;
-  pos: number;
-  id: string;
-}
-
-export interface TocNode {
-  heading: TocHeading;
-  children: TocNode[];
-  collapsed: boolean;
-}
+import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '../extensions/FormatBubbleSuppressExtension';
+import type { TocNode } from '../types';
 
 const scrollToHeading = (editor: Editor, pos: number) => {
   try {

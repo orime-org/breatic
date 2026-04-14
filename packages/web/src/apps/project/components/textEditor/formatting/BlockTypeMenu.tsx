@@ -13,7 +13,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import {
   isMediaLikeBlockType,
   mediaBlockSupportsTextAlign,
-} from '@/apps/project/components/textEditor/utils/mediaBlockTypes';
+} from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
 import {
   RiDeleteBin6Line,
   RiAlignLeft,
@@ -34,9 +34,12 @@ import {
   RiCheckLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import { TextColorPalettePanel } from '@/apps/project/components/textEditor/components/TextColorSelect';
-import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from './TextEditorIcons';
-import { decreaseBlockIndent, increaseBlockIndent } from '@/apps/project/components/textEditor/extensions/blockIndent';
+import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
+import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../ui/TextEditorIcons';
+import {
+  decreaseBlockIndent,
+  increaseBlockIndent,
+} from '@/apps/project/components/textEditor/extensions/BlockIndentExtension';
 
 const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: number; end: number } | null => {
   const safe = Math.min(Math.max(innerBlockStart + 1, 1), doc.content.size);

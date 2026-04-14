@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { RiMenuFoldLine, RiMenuUnfoldLine } from 'react-icons/ri';
 import Tooltip from '@/components/base/tooltip';
-import { TocNodeItem, type TocHeading, type TocNode } from '@/apps/project/components/textEditor/components/TocNodeItem';
+import { TocNodeItem } from '@/apps/project/components/textEditor/toc/TocNodeItem';
+import type { TocHeading, TocNode } from '@/apps/project/components/textEditor/types';
 
 const extractHeadings = (editor: Editor): TocHeading[] => {
   const headings: TocHeading[] = [];

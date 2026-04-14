@@ -6,7 +6,7 @@ import {
   createBreaticSlashMenuPlugin,
   getBreaticSlashCommandRange,
   type BreaticSlashRendererProps,
-} from '../plugins/slashMenuPlugin';
+} from './SlashMenuPlugin';
 import {
   forwardRef,
   useCallback,
@@ -41,12 +41,12 @@ import {
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
-import { openImageFilePanel } from './ImageFilePanel';
-import { openMediaFilePanel } from './MediaFilePanel';
-import { BlockHighlightIcon } from './TextEditorIcons';
+import { openImageFilePanel } from '../media/ImageFilePanel';
+import { openMediaFilePanel } from '../media/MediaFilePanel';
+import { BlockHighlightIcon } from '../ui/TextEditorIcons';
 import { SlashTableSizePicker } from './SlashTableSizePicker';
 
-export { openBreaticSlashMenu } from '../plugins/slashMenuPlugin';
+export { openBreaticSlashMenu } from './SlashMenuPlugin';
 
 const TABLE_SLASH_TITLE = 'Table';
 

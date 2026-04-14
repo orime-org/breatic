@@ -7,10 +7,10 @@ import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import Divider from '@/components/base/divider';
 import Tooltip from '@/components/base/tooltip';
-import BlockTypeSelect from './BlockTypeSelect';
-import TextColorSelect from './TextColorSelect';
-import TableHandles from './TableHandles';
-import ImageBubbleMenu, { formatBubbleShouldShow } from './ImageBubbleMenu';
+import BlockTypeSelect from '../formatting/BlockTypeSelect';
+import TextColorSelect from '../formatting/TextColorSelect';
+import TableHandles from '../table/TableHandles';
+import ImageBubbleMenu, { formatBubbleShouldShow } from '../media/ImageBubbleMenu';
 import AIMenu, { type AIMenuPosition } from './AIMenu';
 import {
   RiBold,

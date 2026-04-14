@@ -12,7 +12,7 @@ import {
   RiArrowDropDownLine,
   RiCodeBoxLine,
 } from 'react-icons/ri';
-import { BlockHighlightIcon, BlockTaskListIcon } from './TextEditorIcons';
+import { BlockHighlightIcon, BlockTaskListIcon } from '../ui/TextEditorIcons';
 
 type BlockTypeKey =
   | 'paragraph'

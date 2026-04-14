@@ -38,9 +38,12 @@ import {
   RiPaletteLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import { TextColorPalettePanel } from '@/apps/project/components/textEditor/components/TextColorSelect';
-import { BlockIndentAlignIcon } from '@/apps/project/components/textEditor/components/TextEditorIcons';
-import { decreaseBlockIndent, increaseBlockIndent } from '@/apps/project/components/textEditor/extensions/blockIndent';
+import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
+import { BlockIndentAlignIcon } from '@/apps/project/components/textEditor/ui/TextEditorIcons';
+import {
+  decreaseBlockIndent,
+  increaseBlockIndent,
+} from '@/apps/project/components/textEditor/extensions/BlockIndentExtension';
 
 function addTableRowAtEnd(editor: Editor): boolean {
   try {

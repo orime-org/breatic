@@ -92,13 +92,13 @@ export const HeadingFold = Extension.create({
             let working: Set<number>;
             if (tr.docChanged && prev.collapsed.size > 0) {
               working = new Set();
-              for (const pos of prev.collapsed) {
+              prev.collapsed.forEach((pos) => {
                 const mapped = tr.mapping.map(pos, 1);
                 // Drop the position if it no longer points at a heading
                 if (tr.doc.nodeAt(mapped)?.type.name === 'heading') {
                   working.add(mapped);
                 }
-              }
+              });
             } else {
               working = new Set(prev.collapsed);
             }
@@ -124,19 +124,19 @@ export const HeadingFold = Extension.create({
             const { doc } = state;
             const decos: Decoration[] = [];
 
-            for (const headingStart of pluginState.collapsed) {
+            pluginState.collapsed.forEach((headingStart) => {
               const node = doc.nodeAt(headingStart);
-              if (!node || node.type.name !== 'heading') continue;
+              if (!node || node.type.name !== 'heading') return;
 
               const range = getCollapsedRange(doc, headingStart, node.attrs.level as number);
-              if (!range) continue;
+              if (!range) return;
 
               // Apply display:none to every top-level block in the collapsed range
               doc.forEach((n, o) => {
                 if (o < range.from || o >= range.to) return;
                 decos.push(Decoration.node(o, o + n.nodeSize, { style: 'display:none' }));
               });
-            }
+            });
 
             // DecorationSet.create requires decorations sorted by position
             decos.sort((a, b) => a.from - b.from);
