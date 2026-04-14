@@ -2,10 +2,9 @@
  * Project-level Yjs hook — creates the manager, wires undo/redo,
  * and tracks awareness state.
  *
- * In the old architecture this hook also created a YjsStoreSync
- * bridge. That bridge is gone — Yjs→Redux sync is now handled by
- * `CanvasDataProvider` via `useCanvasYjsInternal`, and writes go
- * directly to Yjs via `useCanvasActions`.
+ * The manager waits for server sync before initializing nodesMap,
+ * edgesMap, and UndoManager. Undo/redo listeners are connected
+ * after sync completes via manager.onSynced.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -62,22 +61,34 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
     const mgr = createYjsProjectManager({
       workflowId: id,
       wsUrl,
-      onSynced: () => setTimeout(() => setYjsLoading(false), 0),
     });
 
     managerRef.current = mgr;
     setCanvasYjsManager(mgr);
     setManager(mgr);
 
-    const updateUndoRedoState = () => {
-      setCanUndo(mgr.canUndo());
-      setCanRedo(mgr.canRedo());
-    };
+    let undoCleanup: (() => void) | null = null;
 
-    const um = mgr.undoManager;
-    const onStackChange = () => updateUndoRedoState();
-    um.on('stack-item-added', onStackChange);
-    um.on('stack-item-popped', onStackChange);
+    // Wire undo/redo listeners AFTER sync (UndoManager created after sync)
+    const unsubSynced = mgr.onSynced(() => {
+      setYjsLoading(false);
+
+      const um = mgr.undoManager;
+      const updateUndoRedoState = () => {
+        setCanUndo(mgr.canUndo());
+        setCanRedo(mgr.canRedo());
+      };
+
+      const onStackChange = () => updateUndoRedoState();
+      um.on('stack-item-added', onStackChange);
+      um.on('stack-item-popped', onStackChange);
+      updateUndoRedoState();
+
+      undoCleanup = () => {
+        um.off('stack-item-added', onStackChange);
+        um.off('stack-item-popped', onStackChange);
+      };
+    });
 
     // Awareness — track other users' edge selections.
     const updateAwareness = () => {
@@ -93,11 +104,10 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
     };
     mgr.awareness.on('change', updateAwareness);
     updateAwareness();
-    updateUndoRedoState();
 
     return () => {
-      um.off('stack-item-added', onStackChange);
-      um.off('stack-item-popped', onStackChange);
+      unsubSynced();
+      if (undoCleanup) undoCleanup();
       mgr.awareness.off('change', updateAwareness);
       mgr.destroy();
       managerRef.current = null;
