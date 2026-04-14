@@ -49,6 +49,8 @@ export interface CanvasDataContextValue {
   edges: Edge[];
   toasts: CanvasToast[];
   dismissToast: (id: string) => void;
+  /** Apply local-only node changes (select, dimensions) without Yjs. */
+  applyLocalNodeChanges: (changes: import('@xyflow/react').NodeChange[]) => void;
 }
 
 const CanvasDataContext = createContext<CanvasDataContextValue | null>(null);
@@ -101,11 +103,11 @@ export function CanvasDataProvider({ manager, children }: CanvasDataProviderProp
   }, []);
 
   // ── Yjs → nodes/edges ──
-  const { nodes, edges } = useCanvasYjsInternal(manager, pushToast);
+  const { nodes, edges, applyLocalNodeChanges } = useCanvasYjsInternal(manager, pushToast);
 
   const value = useMemo<CanvasDataContextValue>(
-    () => ({ nodes, edges, toasts, dismissToast }),
-    [nodes, edges, toasts, dismissToast],
+    () => ({ nodes, edges, toasts, dismissToast, applyLocalNodeChanges }),
+    [nodes, edges, toasts, dismissToast, applyLocalNodeChanges],
   );
 
   return (

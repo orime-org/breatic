@@ -252,7 +252,7 @@ type ProjectCanvasContentProps = {
 };
 
 const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkeysDisabled = false }) => {
-  const { nodes, edges } = useCanvasData();
+  const { nodes, edges, applyLocalNodeChanges } = useCanvasData();
   const {
     onNodesChange,
     onEdgesChange,
@@ -600,14 +600,22 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      if (agentCanvasPickEditingNodeId) {
-        const filtered = changes.filter((c) => c.type !== 'select');
-        if (filtered.length) onNodesChange(filtered);
-        return;
+      // Split: select/dimensions → local state only, position/remove → Yjs
+      const localChanges: NodeChange[] = [];
+      const yjsChanges: NodeChange[] = [];
+      for (const c of changes) {
+        if (c.type === 'select' || c.type === 'dimensions') {
+          if (!(agentCanvasPickEditingNodeId && c.type === 'select')) {
+            localChanges.push(c);
+          }
+        } else {
+          yjsChanges.push(c);
+        }
       }
-      onNodesChange(changes);
+      if (localChanges.length) applyLocalNodeChanges(localChanges);
+      if (yjsChanges.length) onNodesChange(yjsChanges);
     },
-    [agentCanvasPickEditingNodeId, onNodesChange],
+    [agentCanvasPickEditingNodeId, onNodesChange, applyLocalNodeChanges],
   );
 
   const onNodeClick = (e: React.MouseEvent, node: Node) => {

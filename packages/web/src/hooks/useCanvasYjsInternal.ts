@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as Y from 'yjs';
-import type { Node, Edge } from '@xyflow/react';
+import { applyNodeChanges, type Node, type Edge, type NodeChange } from '@xyflow/react';
 import type { YjsProjectManager } from '@/utils/yjsProjectManager';
 import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
@@ -106,7 +106,11 @@ type PushToast = (toast: Omit<CanvasToast, 'id' | 'timestamp'>) => void;
 export function useCanvasYjsInternal(
   manager: YjsProjectManager | null,
   pushToast: PushToast,
-): { nodes: Node[]; edges: Edge[] } {
+): {
+  nodes: Node[];
+  edges: Edge[];
+  applyLocalNodeChanges: (changes: NodeChange[]) => void;
+} {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const nodesRef = useRef<Node[]>([]);
@@ -195,5 +199,18 @@ export function useCanvasYjsInternal(
     };
   }, [manager]);
 
-  return { nodes, edges };
+  /**
+   * Apply local-only node changes (select, dimensions) that don't go
+   * through Yjs. Uses ReactFlow's applyNodeChanges to update the
+   * nodes array directly in React state.
+   */
+  const applyLocalNodeChanges = useCallback((changes: NodeChange[]) => {
+    setNodes((prev) => {
+      const next = applyNodeChanges(changes, prev);
+      nodesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  return { nodes, edges, applyLocalNodeChanges };
 }
