@@ -167,20 +167,11 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   return {
     doc,
     canvasMap,
-    get nodesMap() {
-      if (!nodesMap) throw new Error('nodesMap accessed before sync — check manager.synced or use manager.onSynced');
-      return nodesMap;
-    },
-    get edgesMap() {
-      if (!edgesMap) throw new Error('edgesMap accessed before sync — check manager.synced or use manager.onSynced');
-      return edgesMap;
-    },
+    get nodesMap() { return nodesMap!; },
+    get edgesMap() { return edgesMap!; },
     imageEditorMap,
     awareness: baseManager.awareness,
-    get undoManager() {
-      if (!undoManager) throw new Error('undoManager accessed before sync');
-      return undoManager;
-    },
+    get undoManager() { return undoManager!; },
     get synced() { return synced; },
     onSynced,
     getSubdoc: baseManager.getSubdoc,

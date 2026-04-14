@@ -7,7 +7,7 @@
 | Framework | React 19 + TypeScript 5.6 |
 | Build | Vite 5.2 |
 | Canvas | @xyflow/react v12 (ReactFlow) |
-| Collaboration | Yjs + y-websocket + y-indexeddb |
+| Collaboration | Yjs + @hocuspocus/provider (no offline — requires network for AIGC) |
 | State | Redux Toolkit + Zustand |
 | Image Editor | Fabric.js (@erase2d/fabric) + react-image-crop + Excalidraw |
 | Audio | WaveSurfer.js |
@@ -187,8 +187,8 @@ packages/web/src/
 ### Architecture
 
 ```
-yjsManager.ts             → Base: Y.Doc + IndexedDB + @hocuspocus/provider
-yjsProjectManager.ts      → Project: lazy nodesMap/edgesMap + UndoManager
+yjsManager.ts             → Base: Y.Doc + @hocuspocus/provider (server sync only)
+yjsProjectManager.ts      → Project: sync-first init of nodesMap/edgesMap/UndoManager
 canvasYjsRef.ts            → Module-level manager ref for useCanvasActions
 CanvasDataContext.tsx       → Provider: nodes/edges (useState) + toasts
 useCanvasYjsInternal.ts    → Yjs observe → yjsNodes (NOT Redux)
@@ -222,6 +222,12 @@ useCanvasUI.ts             → Redux UI-only state (rightPanel, commentMode, etc
   doc.on('update') → 检测 nodesMap 实例是否变化（CRDT 僵尸修复）
     → 变化则重新订阅 observeDeep → 全量读取一次
 ```
+
+**Sync-first 架构**：产品需要网络才能使用 AIGC，不支持离线编辑。
+因此去掉了 IndexedDB 缓存，只有 Hocuspocus 服务器一个数据源。
+打开项目时显示 loading，等 WebSocket 同步完成后才初始化
+nodesMap/edgesMap/UndoManager 并渲染画布。这消除了所有
+缓存/同步竞争条件和 CRDT 僵尸引用问题。
 
 **两层状态分离**：`yjsNodes`（Yjs 数据）和 `localOverlay`（ReactFlow
 select/dimensions）分开存储，`useMemo` 合并。两条路径互不干扰，
