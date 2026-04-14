@@ -1,17 +1,21 @@
 /**
  * Internal Yjs → React state bridge for CanvasDataContext.
  *
- * Unlike the original {@link useCanvasYjs} which dispatches to Redux,
- * this hook returns `{ nodes, edges }` directly via useState. It also
- * detects `handling → idle` transitions and pushes toast notifications.
+ * Architecture: Yjs data and local UI state are stored separately
+ * and merged via useMemo. This eliminates race conditions between
+ * Yjs observe updates and ReactFlow local changes (select, dimensions).
  *
- * This hook is NOT meant to be called directly — use it through
- * {@link CanvasDataProvider} which wraps it with toast state.
+ * ```
+ * yjsNodes  ← Yjs observeDeep (data from collaboration)
+ * localOverlay ← ReactFlow select/dimensions (local UI state)
+ *          ↓ useMemo merge
+ *     nodes → ReactFlow rendering
+ * ```
  *
  * @internal
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as Y from 'yjs';
 import { applyNodeChanges, type Node, type Edge, type NodeChange } from '@xyflow/react';
 import type { YjsProjectManager } from '@/utils/yjsProjectManager';
@@ -99,6 +103,13 @@ function getAffectedNodeIds(events: Y.YEvent<Y.AbstractType<unknown>>[]): Set<st
   return ids;
 }
 
+// ── Local overlay for ReactFlow-only state ─────────────────────
+
+interface NodeLocalState {
+  selected?: boolean;
+  measured?: { width: number; height: number };
+}
+
 // ── Hook ───────────────────────────────────────────────────────
 
 type PushToast = (toast: Omit<CanvasToast, 'id' | 'timestamp'>) => void;
@@ -111,12 +122,18 @@ export function useCanvasYjsInternal(
   edges: Edge[];
   applyLocalNodeChanges: (changes: NodeChange[]) => void;
 } {
-  const [nodes, setNodes] = useState<Node[]>([]);
+  // Yjs-derived data (only updated by observe callbacks)
+  const [yjsNodes, setYjsNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const nodesRef = useRef<Node[]>([]);
+  const yjsNodesRef = useRef<Node[]>([]);
+
+  // Local UI overlay (only updated by ReactFlow select/dimensions)
+  const [localOverlay, setLocalOverlay] = useState<Map<string, NodeLocalState>>(new Map());
 
   const pushToastRef = useRef(pushToast);
   pushToastRef.current = pushToast;
+
+  // ── Yjs observe ──────────────────────────────────────────────
 
   useEffect(() => {
     if (!manager) return;
@@ -125,8 +142,8 @@ export function useCanvasYjsInternal(
 
     // Initial sync
     const initialNodes = readAllNodes(nodesMap);
-    nodesRef.current = initialNodes;
-    setNodes(initialNodes);
+    yjsNodesRef.current = initialNodes;
+    setYjsNodes(initialNodes);
     setEdges(readAllEdges(edgesMap));
 
     // Incremental observe for nodes
@@ -135,20 +152,29 @@ export function useCanvasYjsInternal(
 
       if (affected === 'all') {
         const next = readAllNodes(nodesMap);
-        nodesRef.current = next;
-        setNodes(next);
+        yjsNodesRef.current = next;
+        setYjsNodes(next);
         return;
       }
 
       const currentKeys = new Set<string>();
       nodesMap.forEach((_v, k) => currentKeys.add(k));
 
-      const prev = nodesRef.current;
+      const prev = yjsNodesRef.current;
       const next: Node[] = [];
       const rebuilt = new Set<string>();
 
       for (const node of prev) {
-        if (!currentKeys.has(node.id)) continue;
+        if (!currentKeys.has(node.id)) {
+          // Node deleted — also clean local overlay
+          setLocalOverlay((m) => {
+            if (!m.has(node.id)) return m;
+            const next = new Map(m);
+            next.delete(node.id);
+            return next;
+          });
+          continue;
+        }
         if (affected.has(node.id)) {
           const ymap = nodesMap.get(node.id) as Y.Map<unknown>;
           if (ymap instanceof Y.Map) {
@@ -182,8 +208,8 @@ export function useCanvasYjsInternal(
         }
       }
 
-      nodesRef.current = next;
-      setNodes(next);
+      yjsNodesRef.current = next;
+      setYjsNodes(next);
     };
 
     const onEdgesDeepChange = () => {
@@ -199,16 +225,47 @@ export function useCanvasYjsInternal(
     };
   }, [manager]);
 
-  /**
-   * Apply local-only node changes (select, dimensions) that don't go
-   * through Yjs. Uses ReactFlow's applyNodeChanges to update the
-   * nodes array directly in React state.
-   */
+  // ── Merge: yjsNodes + localOverlay → final nodes ─────────────
+
+  const nodes = useMemo(() => {
+    if (localOverlay.size === 0) return yjsNodes;
+    return yjsNodes.map((node) => {
+      const overlay = localOverlay.get(node.id);
+      if (!overlay) return node;
+      return {
+        ...node,
+        ...(overlay.selected != null ? { selected: overlay.selected } : {}),
+        ...(overlay.measured ? { measured: overlay.measured } : {}),
+      };
+    });
+  }, [yjsNodes, localOverlay]);
+
+  // ── Local changes (select, dimensions) ───────────────────────
+
   const applyLocalNodeChanges = useCallback((changes: NodeChange[]) => {
-    setNodes((prev) => {
-      const next = applyNodeChanges(changes, prev);
-      nodesRef.current = next;
-      return next;
+    setLocalOverlay((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const change of changes) {
+        if (change.type === 'select') {
+          const existing = next.get(change.id);
+          if (existing?.selected !== change.selected) {
+            next.set(change.id, { ...existing, selected: change.selected });
+            changed = true;
+          }
+        } else if (change.type === 'dimensions' && change.dimensions) {
+          const existing = next.get(change.id);
+          const prevMeasured = existing?.measured;
+          if (prevMeasured?.width !== change.dimensions.width || prevMeasured?.height !== change.dimensions.height) {
+            next.set(change.id, {
+              ...existing,
+              measured: { width: change.dimensions.width, height: change.dimensions.height },
+            });
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
     });
   }, []);
 
