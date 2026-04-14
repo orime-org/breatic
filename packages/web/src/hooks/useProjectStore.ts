@@ -106,12 +106,16 @@ export const useProjectStore = () => {
         pos.set('x', node.position?.x ?? 0);
         pos.set('y', node.position?.y ?? 0);
         nodeMap.set('position', pos);
-        nodeMap.set('name', node.data?.name ?? '');
-        nodeMap.set('state', 'idle');
-        nodeMap.set('content', node.data?.content ?? '');
-        nodeMap.set('prompt', new Y.XmlFragment());
-        nodeMap.set('attachments', new Y.Array());
-        nodeMap.set('params', new Y.Map());
+
+        const dataMap = new Y.Map();
+        dataMap.set('name', node.data?.name ?? '');
+        dataMap.set('state', 'idle');
+        dataMap.set('content', node.data?.content ?? '');
+        dataMap.set('prompt', new Y.XmlFragment());
+        dataMap.set('attachments', new Y.Array());
+        dataMap.set('params', new Y.Map());
+        nodeMap.set('data', dataMap);
+
         mgr.nodesMap.set(node.id, nodeMap);
       }, origin);
     },
@@ -140,19 +144,22 @@ export const useProjectStore = () => {
 
         const data = updates.data as Record<string, unknown> | undefined;
         if (data) {
-          if (data.name !== undefined) nodeMap.set('name', data.name);
-          if (data.content !== undefined) nodeMap.set('content', data.content);
-          if (data.coverUrl !== undefined) nodeMap.set('coverUrl', data.coverUrl);
-          if (data.state !== undefined) nodeMap.set('state', data.state);
-          // nodeRuntimeData backward compat — map old fields to new keys
+          const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
+          if (!(dataMap instanceof Y.Map)) return;
+
+          if (data.name !== undefined) dataMap.set('name', data.name);
+          if (data.content !== undefined) dataMap.set('content', data.content);
+          if (data.coverUrl !== undefined) dataMap.set('coverUrl', data.coverUrl);
+          if (data.state !== undefined) dataMap.set('state', data.state);
+          if (data.runType !== undefined) dataMap.set('runType', data.runType);
+
+          // Legacy backward compat — map nodeRuntimeData.parameter → params
           const nrd = data.nodeRuntimeData as Record<string, unknown> | undefined;
-          if (nrd) {
-            if (nrd.parameter !== undefined) {
-              const params = nodeMap.get('params') as Y.Map<unknown>;
-              if (params instanceof Y.Map) {
-                const paramObj = nrd.parameter as Record<string, unknown>;
-                Object.entries(paramObj).forEach(([k, v]) => params.set(k, v));
-              }
+          if (nrd?.parameter !== undefined) {
+            const params = dataMap.get('params') as Y.Map<unknown>;
+            if (params instanceof Y.Map) {
+              const paramObj = nrd.parameter as Record<string, unknown>;
+              Object.entries(paramObj).forEach(([k, v]) => params.set(k, v));
             }
           }
         }
@@ -233,12 +240,16 @@ export const useProjectStore = () => {
           pos.set('x', node.position?.x ?? 0);
           pos.set('y', node.position?.y ?? 0);
           nodeMap.set('position', pos);
-          nodeMap.set('name', node.data?.name ?? '');
-          nodeMap.set('state', node.data?.state ?? 'idle');
-          nodeMap.set('content', node.data?.content ?? '');
-          nodeMap.set('prompt', new Y.XmlFragment());
-          nodeMap.set('attachments', new Y.Array());
-          nodeMap.set('params', new Y.Map());
+
+          const dataMap = new Y.Map();
+          dataMap.set('name', node.data?.name ?? '');
+          dataMap.set('state', node.data?.state ?? 'idle');
+          dataMap.set('content', node.data?.content ?? '');
+          dataMap.set('prompt', new Y.XmlFragment());
+          dataMap.set('attachments', new Y.Array());
+          dataMap.set('params', new Y.Map());
+          nodeMap.set('data', dataMap);
+
           mgr.nodesMap.set(node.id, nodeMap);
         }
       }, origin);
