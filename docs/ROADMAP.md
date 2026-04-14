@@ -22,8 +22,10 @@
 
 ### Collab
 
-- [x] Yjs 文档结构规范：canvas Y.Map schema、状态机、事件流、锁语义写入 [docs/YJS.md](./YJS.md)；CanvasNodeData 共享类型在 @breatic/shared
-- [x] Canvas 节点同步：Redis Streams + 节点锁，API/Worker/Collab 三方事件驱动写入 canvas.nodes
+- [x] Yjs 文档结构规范：canvas Map-of-Maps schema、状态机、事件流、锁语义写入 [docs/YJS.md](./YJS.md)；CanvasNodeFields + AttachRef 共享类型在 @breatic/shared
+- [x] Canvas 节点同步：Redis Streams + 节点锁，API/Worker/Collab 三方事件驱动写入 canvas.nodesMap
+- [x] Canvas Yjs-first 同步架构：前端写操作直接写 Yjs nodesMap/edgesMap，observe 回调同步 Redux（只读缓存），删除旧的 Redux↔Yjs 双向桥
+- [x] Canvas 嵌套 data Y.Map：节点结构镜像 ReactFlow `{ id, type, position, data }`，增量 observe 只重建变更节点
 - [ ] Awareness 集成：光标位置、在线用户列表、正在编辑的节点高亮
 
 ### Frontend
@@ -72,7 +74,7 @@
 ### 安全
 
 - [ ] Skill 安全分级：内置 Skill 可用 run_script，第三方禁止；未来按需开放 isolated-vm / Docker 沙箱 / Webhook
-- [ ] OSS 上传改为 presigned URL：前端不直接持有 OSS credentials
+- [x] 上传改为 presigned URL：`GET /assets/presign` → 直传 S3/OSS/本地，前端不持有 credentials
 
 ---
 

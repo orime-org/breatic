@@ -12,7 +12,8 @@ import {
 } from '@floating-ui/react';
 import { nanoid } from 'nanoid';
 import { Icon } from '@/components/base/icon';
-import { useProjectStore } from '@/hooks/useProjectStore';
+import { useCanvasData } from '@/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/hooks/useCanvasActions';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';
 import type { Node } from '@xyflow/react';
 
@@ -76,7 +77,8 @@ const DataNodeHandle: React.FC<DataNodeHandleProps> = ({
   nodeHovered,
   isInsideLockedGroup = false,
 }) => {
-  const { onConnect, addNode, nodes } = useProjectStore();
+  const { nodes } = useCanvasData();
+  const { onConnect, addNode } = useCanvasActions();
   const { screenToFlowPosition } = useReactFlow();
   const connection = useConnection();
   const containerRef = useRef<HTMLDivElement>(null);

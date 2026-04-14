@@ -372,7 +372,7 @@ Backend does **not** create or position canvas nodes — that is entirely fronte
 | Node state (`idle` ↔ `handling`) | Backend (Collab, from API/Worker events) |
 | Node content / cover_url | Backend (Collab, from Worker/upload events) |
 | Concurrent lock (`handlingBy` + Redis SETNX) | Backend (API acquires, Collab releases) |
-| Input params (`nodeRuntimeData`) | Frontend |
+| Input: prompt (Y.XmlFragment), attachments (Y.Array), params (Y.Map) | Frontend |
 
 The state machine is just `idle ↔ handling`. Failures revert to `idle` with unchanged content — failure details live in the `node_history` table, not on the Yjs node. See [YJS.md](./YJS.md) for the complete ownership table and NodeEvent flow.
 

@@ -4,7 +4,9 @@ import '@xyflow/react/dist/style.css';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
-import { useProjectStore } from '@/hooks/useProjectStore';
+import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/hooks/useCanvasActions';
+import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import ImageEditor from './components/imageEditor';
@@ -24,31 +26,11 @@ const builtInNodeTemplateData = [
   { template_type: '6001', template_name: 'Video editor' },
 ] as const;
 
-const ProjectContent: React.FC = () => {
+/** Outer shell — owns Yjs manager + wraps children in CanvasDataProvider. */
+const ProjectPage: React.FC = () => {
   const { projectId: projectIdParam } = useParams<{ projectId: string }>();
   const routeProjectId = projectIdParam ?? undefined;
-  const {
-    nodes,
-    initializeHistory,
-    setNodeTemplateData,
-    workflowId,
-    setWorkflowId,
-    rightPanel,
-    openRightPanel,
-    closeRightPanel,
-    updateNode,
-  } = useProjectStore();
-  const { updateNode: updateImageEditorNode } = useImageEditorStore();
-  const [workflowName, setWorkflowName] = useState<string>('');
-  const [chatPanelVisible, setChatPanelVisible] = useState(true);
-  const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
-  const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
-  const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
-
-  const yjs = useYjsStore({
-    id: workflowId ?? '',
-    enabled: !!workflowId,
-  });
+  const { workflowId, setWorkflowId, setNodeTemplateData } = useCanvasUI();
 
   useEffect(() => {
     if (routeProjectId && routeProjectId !== workflowId) {
@@ -59,23 +41,44 @@ const ProjectContent: React.FC = () => {
   useEffect(() => {
     if (!workflowId) return;
     setNodeTemplateData([...builtInNodeTemplateData]);
-    initializeHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
+  const yjs = useYjsStore({
+    id: workflowId ?? '',
+    enabled: !!workflowId,
+  });
+
+  return (
+    <CanvasDataProvider manager={yjs.manager ?? null}>
+      <ProjectContent yjs={yjs} />
+    </CanvasDataProvider>
+  );
+};
+
+/** Inner content — reads canvas data from CanvasDataProvider context. */
+const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs }) => {
+  const { nodes } = useCanvasData();
+  const { updateNode } = useCanvasActions();
+  const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
+  const { updateNode: updateImageEditorNode } = useImageEditorStore();
+  const [workflowName, setWorkflowName] = useState<string>('');
+  const [chatPanelVisible, setChatPanelVisible] = useState(true);
+  const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
+  const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
+  const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
+
   const exitCanvasPickMode = useCallback(() => {
-    const currentNodes = store.getState().canvas.nodes;
-    const hasPickMode = currentNodes.some(
-      (n) => (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.fromCanvas === true,
-    );
-    if (!hasPickMode) return;
-    for (const n of currentNodes) {
+    // pickState is UI-only (not in Yjs). Once pickState is migrated to
+    // local state (P3), this helper will read from that state instead.
+    // For now it's a no-op since Yjs-based nodes don't carry pickState.
+    for (const n of nodes) {
       const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
       if (ps?.fromCanvas || ps?.resultBoxes?.length) {
         updateNode(n.id, { data: { pickState: null } }, { history: 'skip' });
       }
     }
-  }, [updateNode]);
+  }, [nodes, updateNode]);
 
   const exitImageEditorPickMode = useCallback(() => {
     const currentNodes = store.getState().imageEditor.nodes;
@@ -296,6 +299,6 @@ const ProjectContent: React.FC = () => {
   );
 };
 
-const Project: React.FC = () => <ProjectContent />;
+const Project: React.FC = () => <ProjectPage />;
 
 export default Project;

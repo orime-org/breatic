@@ -1,14 +1,16 @@
 /**
- * Assets route — unified file upload for Agent / Canvas / Editor.
+ * Assets route — presigned URL upload + history reporting.
  *
- * Two-phase upload:
- *   1. POST /assets/upload/prepare  → validate, reserve key, return upload URL
- *   2. (client PUT to upload URL)
- *   3. POST /assets/upload/complete → verify, extract video cover, route by context
+ * New flow (replaces old prepare → PUT → complete 3-step):
  *
- * For `STORAGE_PROVIDER=local`, step 2 PUTs back to this server at
- * `PUT /assets/upload/:upload_id`. For `s3`/`aliyun_oss`, the upload URL
- * is a presigned URL pointing directly at cloud storage.
+ *   1. GET /assets/presign  → presigned PUT URL + final file URL
+ *   2. (client PUTs file directly to cloud storage or local endpoint)
+ *   3. Client writes Yjs directly (canvas) or calls API (agent attach)
+ *   4. POST /assets/history  → optional upload record for node_history
+ *
+ * For `STORAGE_PROVIDER=local`, step 2 PUTs to this server at
+ * `PUT /assets/local-upload/:key`. For s3/aliyun_oss, the PUT goes
+ * directly to cloud storage via the presigned URL.
  */
 
 import { Hono } from "hono";
@@ -16,138 +18,106 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import * as uploadService from "../modules/upload.service.js";
-import * as attachmentService from "../modules/conversation-attachment.service.js";
-import * as nodeHistoryService from "../modules/node-history.service.js";
-import * as projectService from "../modules/project.service.js";
-import * as conversationService from "../modules/conversation.service.js";
-import { getStorageAdapter } from "../infra/storage/index.js";
-import { getRedis } from "../infra/redis.js";
-import { acquireNodeLock, releaseNodeLock } from "../infra/canvas-lock.js";
-import { publishNodeEvent } from "../infra/event-stream.js";
-import { env } from "../config/env.js";
-import { ConflictError, NotFoundError, ValidationError } from "../errors.js";
-import { logger } from "../logger.js";
+import {
+  projectService,
+  getStorageAdapter,
+  storageKey,
+  env,
+  nodeHistoryService,
+  logger,
+  ValidationError,
+} from "@breatic/core";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
-// ── Prepare ──────────────────────────────────────────────────────────
+// ── File kind detection ─────────────────────────────────────────────
 
-const prepareSchema = z.object({
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/svg+xml"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"]);
+const AUDIO_TYPES = new Set(["audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/aac", "audio/mp3"]);
+
+function detectKind(contentType: string): "image" | "video" | "audio" | "document" | "file" {
+  if (IMAGE_TYPES.has(contentType)) return "image";
+  if (VIDEO_TYPES.has(contentType)) return "video";
+  if (AUDIO_TYPES.has(contentType)) return "audio";
+  if (contentType.startsWith("text/") || contentType === "application/pdf") return "document";
+  return "file";
+}
+
+// ── Presign ─────────────────────────────────────────────────────────
+
+const presignSchema = z.object({
   filename: z.string().min(1).max(255),
   content_type: z.string().min(1).max(100),
-  size: z.number().int().positive(),
-  context: z.enum(["agent", "canvas", "editor"]),
   project_id: z.string().uuid(),
-  conversation_id: z.string().uuid().optional(),
-  node_id: z.string().min(1).optional(),
 });
 
 /**
- * `POST /assets/upload/prepare` — start an upload, get an upload URL.
+ * `GET /assets/presign` — get a presigned PUT URL for direct upload.
  *
- * The client subsequently PUTs the file to `upload_url`. For cloud
- * providers this goes directly to S3/OSS; for local it comes back
- * to `PUT /assets/upload/:upload_id` on this server.
+ * Returns `{ uploadUrl, fileUrl, key, kind }`:
+ *   - `uploadUrl`: where the client PUTs the file (presigned S3/OSS
+ *     URL, or this server's local upload endpoint)
+ *   - `fileUrl`: the permanent public URL after upload completes
+ *   - `key`: storage key (for local upload path)
+ *   - `kind`: detected file kind (image/video/audio/document/file)
+ *
+ * The client uploads directly to `uploadUrl`, then writes the result
+ * to Yjs (for canvas nodes) or calls a separate API (for agent
+ * attachments). No Redis ticket, no lock, no event stream.
  */
-assets.post(
-  "/upload/prepare",
+assets.get(
+  "/presign",
   requireAuth,
-  zValidator("json", prepareSchema),
+  zValidator("query", presignSchema),
   async (c) => {
     const user = c.get("user");
-    const body = c.req.valid("json");
+    const { filename, content_type, project_id } = c.req.valid("query");
 
-    // Context-specific required fields
-    if (body.context === "agent" && !body.conversation_id) {
-      throw new ValidationError("conversation_id is required for agent uploads");
-    }
-    if ((body.context === "canvas" || body.context === "editor") && !body.node_id) {
-      throw new ValidationError("node_id is required for canvas/editor uploads");
-    }
+    // Ownership check
+    await projectService.assertAccess(project_id, user.id);
 
-    // Cross-tenant guard: the ticket records project_id / conversation_id
-    // straight from the request body and later drives writes into the
-    // target project's canvas node history and the target conversation's
-    // attachment pool. Without an ownership check here a logged-in user
-    // who knows a victim project/conversation UUID can inject content
-    // into it.
-    await projectService.assertAccess(body.project_id, user.id);
-    if (body.context === "agent" && body.conversation_id) {
-      await conversationService.assertAccess(body.conversation_id, user.id);
-    }
+    const kind = detectKind(content_type);
+    const key = storageKey({
+      userId: user.id,
+      projectId: project_id,
+      taskType: kind,
+      ext: filename.split(".").pop() ?? "bin",
+    });
 
-    // Full URL for local fallback (e.g. http://localhost:3000)
-    const url = new URL(c.req.url);
-    const apiBaseUrl = `${url.protocol}//${url.host}`;
+    const adapter = await getStorageAdapter();
+    let uploadUrl: string;
 
-    const redis = getRedis();
-    const actor = { userId: user.id, username: user.email };
-
-    // Canvas uploads take the node lock at prepare-time and hold it
-    // across the PUT upload phase. This means a large video upload
-    // (multi-minute) keeps the node in `handling` state for its
-    // entire duration — other collaborators see "X is handling" and
-    // cannot start a concurrent operation. The lock is released by
-    // Collab when it processes the completed/failed event.
-    if (body.context === "canvas" && body.node_id) {
-      const acquired = await acquireNodeLock(redis, body.project_id, body.node_id, actor);
-      if (!acquired) {
-        throw new ConflictError(
-          "Another user is currently handling this node. Try again after they finish.",
-        );
-      }
+    if (adapter.getUploadUrl) {
+      // S3 / OSS — presigned PUT directly to cloud
+      uploadUrl = await adapter.getUploadUrl(key, content_type, 3600);
+    } else {
+      // Local storage — PUT to this server
+      const url = new URL(c.req.url);
+      const apiBaseUrl = `${url.protocol}//${url.host}`;
+      uploadUrl = `${apiBaseUrl}/api/v1/assets/local-upload/${encodeURIComponent(key)}`;
     }
 
-    let result;
-    try {
-      result = await uploadService.prepare({
-        userId: user.id,
-        filename: body.filename,
-        contentType: body.content_type,
-        size: body.size,
-        context: body.context,
-        projectId: body.project_id,
-        conversationId: body.conversation_id,
-        nodeId: body.node_id,
-        apiBaseUrl,
-      });
-    } catch (err) {
-      // If ticket creation fails, immediately release the lock we
-      // just took so the node isn't stuck in handling state.
-      if (body.context === "canvas" && body.node_id) {
-        await releaseNodeLock(redis, body.project_id, body.node_id);
-      }
-      throw err;
-    }
+    const fileUrl = adapter.publicUrl(key);
 
-    // Broadcast handling state to every collaborator — done AFTER
-    // the ticket is created so the event's nodeId is guaranteed to
-    // correspond to a real in-progress upload.
-    if (body.context === "canvas" && body.node_id) {
-      await publishNodeEvent(redis, {
-        type: "handling",
-        projectId: body.project_id,
-        nodeId: body.node_id,
-        actor,
-      });
-    }
+    logger.info({ key, kind, filename, userId: user.id }, "presign_issued");
 
-    return c.json({ data: result }, 201);
+    return c.json({
+      data: { uploadUrl, fileUrl, key, kind },
+    });
   },
 );
 
 // ── Local direct upload (fallback for STORAGE_PROVIDER=local) ───────
 
 /**
- * `PUT /assets/upload/:upload_id` — local storage direct upload target.
+ * `PUT /assets/local-upload/:key` — local storage upload target.
  *
- * Body is raw binary. The upload_id ticket in Redis tells us where
- * to write the file and enforces user ownership.
+ * Only available when STORAGE_PROVIDER=local. The key is validated
+ * to ensure it starts with the authenticated user's ID prefix.
  */
-assets.put("/upload/:upload_id", requireAuth, async (c) => {
+assets.put("/local-upload/*", requireAuth, async (c) => {
   const user = c.get("user");
-  const uploadId = c.req.param("upload_id");
 
   if (env.STORAGE_PROVIDER !== "local") {
     throw new ValidationError(
@@ -155,150 +125,68 @@ assets.put("/upload/:upload_id", requireAuth, async (c) => {
     );
   }
 
-  const ticket = await uploadService.loadTicket(uploadId, user.id);
+  // Extract the key from the URL path (everything after /local-upload/)
+  const key = decodeURIComponent(c.req.path.replace(/^\/api\/v1\/assets\/local-upload\//, ""));
+
+  // Security: ensure the key starts with the user's ID
+  if (!key.startsWith(user.id)) {
+    throw new ValidationError("Upload key does not match authenticated user");
+  }
 
   const arrayBuf = await c.req.arrayBuffer();
   const buffer = Buffer.from(arrayBuf);
-
-  if (buffer.length !== ticket.declaredSize) {
-    logger.warn(
-      { expected: ticket.declaredSize, actual: buffer.length, uploadId },
-      "Upload size mismatch (client declared vs actual)",
-    );
-  }
+  const contentType = c.req.header("Content-Type") ?? "application/octet-stream";
 
   const adapter = await getStorageAdapter();
-  await adapter.upload(ticket.key, buffer, ticket.mimeType);
+  await adapter.upload(key, buffer, contentType);
 
-  logger.info({ uploadId, key: ticket.key, size: buffer.length }, "local_upload_received");
-  return c.json({ data: { key: ticket.key, size: buffer.length } });
+  logger.info({ key, size: buffer.length, userId: user.id }, "local_upload_received");
+  return c.json({ data: { key, size: buffer.length } });
 });
 
-// ── Complete ─────────────────────────────────────────────────────────
+// ── History reporting ───────────────────────────────────────────────
 
-const completeSchema = z.object({
-  upload_id: z.string().uuid(),
-  name: z.string().max(255).optional(),
+const historySchema = z.object({
+  type: z.literal("upload"),
+  project_id: z.string().uuid(),
+  node_id: z.string().min(1),
+  content: z.string().url(),
+  thumbnail_url: z.string().url().optional(),
+  metadata: z.object({
+    filename: z.string().max(255),
+    size: z.number().int().positive(),
+    mimeType: z.string().max(100),
+  }),
 });
 
 /**
- * `POST /assets/upload/complete` — finalize the upload.
+ * `POST /assets/history` — report a file upload to node_history.
  *
- * Verifies the file landed in storage, extracts a video cover if
- * applicable, and routes the result based on context:
- *
- *  - agent  → persist to `conversation_attachments`, return full pool
- *  - canvas → persist to `node_history` (silent), return file metadata
- *  - editor → return file metadata only
+ * Called by the frontend AFTER writing to Yjs. This is async and
+ * best-effort — if it fails, the upload still succeeded (the file
+ * is in storage and the Yjs node content is updated). The history
+ * record enables version timeline and restore.
  */
 assets.post(
-  "/upload/complete",
+  "/history",
   requireAuth,
-  zValidator("json", completeSchema),
+  zValidator("json", historySchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    const ticket = await uploadService.loadTicket(body.upload_id, user.id);
+    await projectService.assertAccess(body.project_id, user.id);
 
-    // 1. Verify file is in storage and get actual size
-    const adapter = await getStorageAdapter();
-    const head = await adapter.head(ticket.key);
-    if (!head.exists) {
-      // Upload never landed. For canvas uploads, publish `failed` so
-      // the node's handling state clears and the lock is released.
-      if (ticket.context === "canvas" && ticket.nodeId) {
-        const redis = getRedis();
-        await publishNodeEvent(redis, {
-          type: "failed",
-          projectId: ticket.projectId,
-          nodeId: ticket.nodeId,
-        });
-      }
-      throw new NotFoundError("File not found in storage; upload may have failed");
-    }
-    const url = adapter.publicUrl(ticket.key);
-    const actualSize = head.size || ticket.declaredSize;
+    await nodeHistoryService.recordUpload({
+      projectId: body.project_id,
+      nodeId: body.node_id,
+      userId: user.id,
+      content: body.content,
+      thumbnailUrl: body.thumbnail_url,
+      metadata: body.metadata,
+    });
 
-    // 2. Video cover extraction
-    let coverUrl: string | undefined;
-    let thumbnailUrl: string | undefined;
-    if (ticket.kind === "video") {
-      const { extractVideoCover } = await import("../worker/video-cover.js");
-      coverUrl = await extractVideoCover(url, {
-        userId: ticket.userId,
-        projectId: ticket.projectId,
-      });
-      thumbnailUrl = coverUrl;
-    } else if (ticket.kind === "image") {
-      thumbnailUrl = url;
-    }
-
-    // 3. Context branching
-    const displayName = body.name ?? ticket.filename;
-    const baseResult = {
-      url,
-      thumbnail_url: thumbnailUrl,
-      cover_url: coverUrl,
-      size: actualSize,
-      mime_type: ticket.mimeType,
-      kind: ticket.kind,
-    };
-
-    if (ticket.context === "agent") {
-      if (!ticket.conversationId) {
-        throw new ValidationError("Agent upload ticket missing conversation_id");
-      }
-      await attachmentService.create({
-        conversationId: ticket.conversationId,
-        userId: ticket.userId,
-        url,
-        thumbnailUrl: thumbnailUrl ?? null,
-        name: displayName,
-        mimeType: ticket.mimeType,
-        size: actualSize,
-        kind: ticket.kind,
-      });
-      const attachments = await attachmentService.listByConversation(ticket.conversationId);
-      await uploadService.consumeTicket(body.upload_id);
-      return c.json({ data: { ...baseResult, attachments } });
-    }
-
-    if (ticket.context === "canvas") {
-      if (!ticket.nodeId) {
-        throw new ValidationError("Canvas upload ticket missing node_id");
-      }
-      await nodeHistoryService.recordUpload({
-        projectId: ticket.projectId,
-        nodeId: ticket.nodeId,
-        userId: ticket.userId,
-        content: url,
-        thumbnailUrl,
-        metadata: {
-          filename: displayName,
-          size: actualSize,
-          mimeType: ticket.mimeType,
-        },
-      });
-      await uploadService.consumeTicket(body.upload_id);
-
-      // Publish completion — Collab updates canvas node content +
-      // cover_url, clears handlingBy, and releases the node lock.
-      const redis = getRedis();
-      await publishNodeEvent(redis, {
-        type: "completed",
-        projectId: ticket.projectId,
-        nodeId: ticket.nodeId,
-        content: url,
-        cover_url: coverUrl,
-      });
-
-      return c.json({ data: baseResult });
-    }
-
-    // editor
-    await uploadService.consumeTicket(body.upload_id);
-    return c.json({ data: baseResult });
+    return c.json({ data: { ok: true } });
   },
 );
 

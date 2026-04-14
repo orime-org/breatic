@@ -2,7 +2,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
-import { useProjectStore } from '@/hooks/useProjectStore';
+import { useCanvasUI } from '@/hooks/useCanvasUI';
 
 export interface TextNodeToolbarProps {
   nodeId: string;
@@ -19,7 +19,7 @@ const TextNodeToolbar: React.FC<TextNodeToolbarProps> = ({
   onInfoClick,
 }) => {
   const { t } = useTranslation();
-  const { openRightPanel } = useProjectStore();
+  const { openRightPanel } = useCanvasUI();
 
   const handleEditorClick = (e: React.MouseEvent) => {
     e.stopPropagation();

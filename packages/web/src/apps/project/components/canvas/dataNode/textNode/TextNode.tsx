@@ -7,7 +7,9 @@ import React, { useState, useEffect, memo, useRef, useCallback } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, NodeResizer, useStore } from '@xyflow/react';
 import { message } from '@/components/base/message';
 import { useTranslation } from 'react-i18next';
-import { useProjectStore } from '@/hooks/useProjectStore';
+import { useCanvasData } from '@/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/hooks/useCanvasActions';
+import { useCanvasUI } from '@/hooks/useCanvasUI';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -50,16 +52,15 @@ interface CustomRequestOptions {
 
 const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
   const { t } = useTranslation();
+  const { nodes } = useCanvasData();
+  const { updateNode, onNodesChange } = useCanvasActions();
   const {
-    updateNode,
-    nodes,
     openRightPanel,
     requestAddResourceToInput,
-    onNodesChange,
     openCanvasOverlayPanel,
     closeCanvasOverlayPanel,
     canvasOverlayPanel,
-  } = useProjectStore();
+  } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodesRef = useRef(nodes);
   useEffect(() => {
@@ -119,10 +120,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
         name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
         content: newValue,
         state: 'idle',
-        nodeRuntimeData: {
-          ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-          runType: 'parameter',
-        },
+        runType: 'parameter',
       },
     });
   };
@@ -172,10 +170,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
           name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
           content: parsedText,
           state: 'idle',
-          nodeRuntimeData: {
-            ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-            runType: 'parameter',
-          },
+          runType: 'parameter',
         },
       });
       setIsUploading(false);
