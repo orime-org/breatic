@@ -149,90 +149,86 @@ export function useCanvasYjsInternal(
   useEffect(() => {
     if (!manager) return;
 
-    const { nodesMap, edgesMap } = manager;
+    const { canvasMap } = manager;
 
-    // Initial sync
-    const initialNodes = readAllNodes(nodesMap);
+    // Helper: get nodesMap/edgesMap fresh from canvasMap each time.
+    // Before WebSocket sync, these may not exist. After sync, canvasMap
+    // is populated with the server state. Always reading fresh avoids
+    // holding a stale reference to a pre-sync Y.Map.
+    const getNodesMap = (): Y.Map<unknown> | null => {
+      const m = canvasMap.get('nodesMap');
+      return m instanceof Y.Map ? m as Y.Map<unknown> : null;
+    };
+    const getEdgesMap = (): Y.Map<unknown> | null => {
+      const m = canvasMap.get('edges');
+      return m instanceof Y.Map ? m as Y.Map<unknown> : null;
+    };
+
+    // Initial sync (nodesMap may be empty before WebSocket sync completes)
+    const nodesMap = getNodesMap();
+    const edgesMap = getEdgesMap();
+    const initialNodes = nodesMap ? readAllNodes(nodesMap) : [];
     yjsNodesRef.current = initialNodes;
     setYjsNodes(initialNodes);
-    setEdges(readAllEdges(edgesMap));
+    setEdges(edgesMap ? readAllEdges(edgesMap) : []);
 
     // Incremental observe for nodes
-    const onNodesDeepChange = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
-      const affected = getAffectedNodeIds(events);
+    // Observe canvasMap (not nodesMap/edgesMap directly) so we catch
+    // WebSocket sync events that populate nodesMap for the first time.
+    // Reading getNodesMap()/getEdgesMap() fresh each time avoids stale refs.
+    const onCanvasDeepChange = () => {
+      const currentNodesMap = getNodesMap();
+      const currentEdgesMap = getEdgesMap();
 
-      if (affected === 'all') {
-        const next = readAllNodes(nodesMap);
-        yjsNodesRef.current = next;
-        setYjsNodes(next);
-        return;
-      }
+      // Rebuild nodes
+      const nextNodes = currentNodesMap ? readAllNodes(currentNodesMap) : [];
 
-      const currentKeys = new Set<string>();
-      nodesMap.forEach((_v, k) => currentKeys.add(k));
-
+      // Detect handling → idle transitions for toast
       const prev = yjsNodesRef.current;
-      const next: Node[] = [];
-      const rebuilt = new Set<string>();
-
-      for (const node of prev) {
-        if (!currentKeys.has(node.id)) {
-          // Node deleted — also clean local overlay
-          setLocalOverlay((m) => {
-            if (!m.has(node.id)) return m;
-            const next = new Map(m);
-            next.delete(node.id);
-            return next;
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      for (const node of nextNodes) {
+        const old = prevById.get(node.id);
+        if (old?.data?.state === 'handling' && node.data?.state === 'idle') {
+          const hasNewContent = node.data?.content !== old.data?.content;
+          pushToastRef.current({
+            nodeId: node.id,
+            nodeName: (node.data?.name as string) || node.id,
+            type: hasNewContent ? 'completed' : 'failed',
           });
-          continue;
-        }
-        if (affected.has(node.id)) {
-          const ymap = nodesMap.get(node.id) as Y.Map<unknown>;
-          if (ymap instanceof Y.Map) {
-            const newNode = yMapToNode(ymap, node.id);
-
-            // Detect handling → idle transition for toast
-            if (node.data?.state === 'handling' && newNode.data?.state === 'idle') {
-              const hasNewContent = newNode.data?.content !== node.data?.content;
-              pushToastRef.current({
-                nodeId: node.id,
-                nodeName: (newNode.data?.name as string) || node.id,
-                type: hasNewContent ? 'completed' : 'failed',
-              });
-            }
-
-            next.push(newNode);
-            rebuilt.add(node.id);
-          }
-        } else {
-          next.push(node);
         }
       }
 
-      // Add newly created nodes
-      for (const id of affected) {
-        if (!rebuilt.has(id) && currentKeys.has(id)) {
-          const ymap = nodesMap.get(id) as Y.Map<unknown>;
-          if (ymap instanceof Y.Map) {
-            next.push(yMapToNode(ymap, id));
-          }
+      // Clean overlay for deleted nodes
+      const nextIds = new Set(nextNodes.map((n) => n.id));
+      for (const old of prev) {
+        if (!nextIds.has(old.id)) {
+          setLocalOverlay((m) => {
+            if (!m.has(old.id)) return m;
+            const copy = new Map(m);
+            copy.delete(old.id);
+            return copy;
+          });
         }
       }
 
-      yjsNodesRef.current = next;
-      setYjsNodes(next);
+      yjsNodesRef.current = nextNodes;
+      setYjsNodes(nextNodes);
+      setEdges(currentEdgesMap ? readAllEdges(currentEdgesMap) : []);
     };
 
-    const onEdgesDeepChange = () => {
-      setEdges(readAllEdges(edgesMap));
-    };
+    // Use doc.on('update') instead of canvasMap.observeDeep because
+    // HocuspocusProvider applies remote updates at the Y.Doc level
+    // via Y.applyUpdate(), which doesn't always fire nested map observers
+    // when the update creates new sub-structures.
+    const onDocUpdate = () => onCanvasDeepChange();
+    manager.doc.on('update', onDocUpdate);
 
-    nodesMap.observeDeep(onNodesDeepChange);
-    edgesMap.observeDeep(onEdgesDeepChange);
+    // Also subscribe to canvasMap for local writes (belt & suspenders)
+    canvasMap.observeDeep(onCanvasDeepChange);
 
     return () => {
-      nodesMap.unobserveDeep(onNodesDeepChange);
-      edgesMap.unobserveDeep(onEdgesDeepChange);
+      manager.doc.off('update', onDocUpdate);
+      canvasMap.unobserveDeep(onCanvasDeepChange);
     };
   }, [manager]);
 
