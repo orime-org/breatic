@@ -7,15 +7,27 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { authService, env } from "@breatic/core";
+import { authService, env, rawPg } from "@breatic/core";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
   user: { id: string; email: string };
 }
 
-/** Default dev user for NoAccount mode. */
-const DEV_USER = { id: "dev-user-00000000", email: "dev@localhost" };
+/** Default dev user for NoAccount mode (valid UUID for DB compatibility). */
+const DEV_USER = { id: "00000000-0000-0000-0000-000000000000", email: "dev@localhost" };
+
+/** Ensure the dev user row exists in the DB (NoAccount mode only, runs once). */
+let devUserEnsured = false;
+async function ensureDevUser(): Promise<void> {
+  if (devUserEnsured || env.LOGIN_MODE !== "NoAccount") return;
+  await rawPg`
+    INSERT INTO users (id, email, username, email_verified, credits)
+    VALUES (${DEV_USER.id}, ${DEV_USER.email}, 'Dev User', true, 99999)
+    ON CONFLICT (id) DO NOTHING
+  `;
+  devUserEnsured = true;
+}
 
 /**
  * Require authentication — returns 401 if token is missing or invalid.
@@ -28,6 +40,7 @@ export const requireAuth: MiddlewareHandler<{
 }> = async (c, next) => {
   // NoAccount mode: skip auth, inject dev user.
   if (env.LOGIN_MODE === "NoAccount") {
+    await ensureDevUser();
     c.set("user", DEV_USER);
     await next();
     return;
