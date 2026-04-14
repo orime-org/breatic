@@ -12,7 +12,7 @@ import { useCallback } from 'react';
 import { useSelector, useDispatch, shallowEqual } from 'react-redux';
 import type { RootState } from '@/store';
 import {
-  setNodeTemplateData,
+  setNodeTemplateData as setNodeTemplateDataAction,
   setWorkflowId as setWorkflowIdAction,
   openRightPanelAction,
   closeRightPanelAction,
@@ -65,7 +65,7 @@ export function useCanvasUI() {
   const canvasCommentComposer = useSelector(selectCanvasCommentComposer, shallowEqual);
 
   const setNodeTemplateData = useCallback(
-    (data: CanvasNodeTemplateRow[]) => dispatch(setNodeTemplateData(data)),
+    (data: CanvasNodeTemplateRow[]) => dispatch(setNodeTemplateDataAction(data)),
     [dispatch],
   );
 
