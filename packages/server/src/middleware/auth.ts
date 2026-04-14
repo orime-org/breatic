@@ -7,19 +7,32 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { authService } from "@breatic/core";
+import { authService, env } from "@breatic/core";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
   user: { id: string; email: string };
 }
 
+/** Default dev user for NoAccount mode. */
+const DEV_USER = { id: "dev-user-00000000", email: "dev@localhost" };
+
 /**
  * Require authentication — returns 401 if token is missing or invalid.
+ *
+ * In `NoAccount` mode (LOGIN_MODE=NoAccount), authentication is skipped
+ * and a default dev user is injected. This is for local development only.
  */
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;
 }> = async (c, next) => {
+  // NoAccount mode: skip auth, inject dev user.
+  if (env.LOGIN_MODE === "NoAccount") {
+    c.set("user", DEV_USER);
+    await next();
+    return;
+  }
+
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return c.json({ error: { code: 401, message: "Missing authorization token" } }, 401);
