@@ -52,7 +52,7 @@ export interface YjsProjectManager {
 export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsProjectManager => {
   const { workflowId, wsUrl } = config;
 
-  const baseManager = createYjsManager({ docId: workflowId, wsUrl });
+  const baseManager = createYjsManager({ docId: `project-${workflowId}/canvas`, wsUrl });
   const doc = baseManager.doc;
 
   const canvasMap = doc.getMap('canvas');

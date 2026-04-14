@@ -85,26 +85,35 @@ async function handleNodeEvent(
         return;
       }
 
+      const dataMap = nodeMap.get("data");
+      if (!(dataMap instanceof Y.Map)) {
+        logger.warn(
+          { docName, nodeId: event.nodeId, type: event.type },
+          "Node missing nested data Y.Map, skipping",
+        );
+        return;
+      }
+
       if (event.type === "handling") {
-        nodeMap.set("state", "handling");
-        let handlingBy = nodeMap.get("handlingBy");
+        dataMap.set("state", "handling");
+        let handlingBy = dataMap.get("handlingBy");
         if (!(handlingBy instanceof Y.Map)) {
           handlingBy = new Y.Map();
-          nodeMap.set("handlingBy", handlingBy);
+          dataMap.set("handlingBy", handlingBy);
         }
         (handlingBy as Y.Map<unknown>).set("userId", event.actor.userId);
         (handlingBy as Y.Map<unknown>).set("username", event.actor.username);
       } else if (event.type === "completed") {
-        nodeMap.set("state", "idle");
-        nodeMap.set("content", event.content);
+        dataMap.set("state", "idle");
+        dataMap.set("content", event.content);
         if (event.cover_url !== undefined) {
-          nodeMap.set("coverUrl", event.cover_url);
+          dataMap.set("coverUrl", event.cover_url);
         }
-        nodeMap.delete("handlingBy");
+        dataMap.delete("handlingBy");
       } else {
         // failed — content untouched
-        nodeMap.set("state", "idle");
-        nodeMap.delete("handlingBy");
+        dataMap.set("state", "idle");
+        dataMap.delete("handlingBy");
       }
 
       updated = true;

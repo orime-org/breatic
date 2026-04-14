@@ -36,14 +36,28 @@ export interface AttachRef {
 }
 
 /**
- * Documents the keys on each node's Y.Map in the canvas document
- * (`canvas.nodesMap`).
+ * Documents the keys on each node's Y.Map in the canvas document.
  *
- * This is a documentation type — you never instantiate it. The
- * actual runtime values are accessed via `nodeMap.get("content")`,
- * `nodeMap.get("prompt")`, etc. Yjs shared types (Y.XmlFragment,
- * Y.Array, Y.Map) are noted in comments since they have no TS
- * representation here.
+ * Structure mirrors ReactFlow's `{ id, type, position, data }`:
+ *
+ * ```
+ * nodeMap: Y.Map
+ *   ├── id:       string
+ *   ├── type:     string
+ *   ├── position: Y.Map { x, y }
+ *   └── data:     Y.Map              ← nested, matches ReactFlow
+ *         ├── name:         string
+ *         ├── content:      string
+ *         ├── coverUrl:     string | undefined
+ *         ├── state:        "idle" | "handling"
+ *         ├── handlingBy:   Y.Map { userId, username } | undefined
+ *         ├── runType:      "parameter" | "sensitive"
+ *         ├── params:       Y.Map<string, unknown>
+ *         ├── attachments:  Y.Array<Y.Map>
+ *         └── prompt:       Y.XmlFragment
+ * ```
+ *
+ * This is a documentation type — you never instantiate it.
  */
 export interface CanvasNodeFields {
   /** Stable node ID (immutable after creation). */
@@ -52,22 +66,27 @@ export interface CanvasNodeFields {
   type: string;
   /** Canvas coordinates — Y.Map { x, y } at runtime. */
   position: { x: number; y: number };
-  /** Display label. */
-  name: string;
-  /** Pipeline state. */
-  state: CanvasNodeState;
-  /** Who triggered the current handling; undefined when idle. */
-  handlingBy?: HandlingActor;
-  /** Primary result: URL or text body. */
-  content: string;
-  /** Video first-frame cover URL. */
-  coverUrl?: string;
-  /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
-  prompt: unknown;
-  /** Per-node upload pool — Y.Array<Y.Map> at runtime. */
-  attachments: AttachRef[];
-  /** Generation parameters — Y.Map<string, unknown> at runtime. */
-  params: Record<string, unknown>;
+  /** Nested data — Y.Map at runtime, matches ReactFlow node.data. */
+  data: {
+    /** Display label. */
+    name: string;
+    /** Pipeline state. */
+    state: CanvasNodeState;
+    /** Who triggered the current handling; undefined when idle. */
+    handlingBy?: HandlingActor;
+    /** Primary result: URL or text body. */
+    content: string;
+    /** Video first-frame cover URL. */
+    coverUrl?: string;
+    /** Generation run type. */
+    runType?: "parameter" | "sensitive";
+    /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
+    prompt: unknown;
+    /** Per-node upload pool — Y.Array<Y.Map> at runtime. */
+    attachments: AttachRef[];
+    /** Generation parameters — Y.Map<string, unknown> at runtime. */
+    params: Record<string, unknown>;
+  };
 }
 
 // ── Event bus payloads ─────────────────────────────────────────────
