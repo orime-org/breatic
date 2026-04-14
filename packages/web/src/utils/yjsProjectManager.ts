@@ -58,19 +58,16 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   const canvasMap = doc.getMap('canvas');
   const imageEditorMap = doc.getMap('imageEditor');
 
-  // Initialize nodesMap and edges as Y.Map if they don't exist yet.
-  // On an empty doc these calls create them; on an existing doc they
-  // return the persisted Y.Map instances.
-  let nodesMap = canvasMap.get('nodesMap');
-  if (!(nodesMap instanceof Y.Map)) {
-    nodesMap = new Y.Map();
-    canvasMap.set('nodesMap', nodesMap);
-  }
-
-  let edgesMap = canvasMap.get('edges');
-  if (!(edgesMap instanceof Y.Map)) {
-    edgesMap = new Y.Map();
-    canvasMap.set('edges', edgesMap);
+  // nodesMap/edgesMap helper — gets or creates the Y.Map inside canvasMap.
+  // NOT called eagerly during init to avoid creating Y.Maps that conflict
+  // with the server state arriving via WebSocket sync.
+  function getOrCreateSubMap(key: string): Y.Map<unknown> {
+    let m = canvasMap.get(key);
+    if (!(m instanceof Y.Map)) {
+      m = new Y.Map();
+      canvasMap.set(key, m);
+    }
+    return m as Y.Map<unknown>;
   }
 
   const snapshotOrigin = Symbol('snapshot-origin');
@@ -84,8 +81,10 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   // Only `userOrigin` is tracked — `null` is excluded to prevent
   // TipTap's y-prosemirror writes from polluting the canvas undo stack.
   const UNDO_STACK_MAX = 50;
+  // UndoManager scoped to canvasMap — tracks all nested changes
+  // (nodesMap + edgesMap) regardless of when they're created.
   const undoManager = new Y.UndoManager(
-    [nodesMap as Y.Map<unknown>, edgesMap as Y.Map<unknown>],
+    [canvasMap],
     {
       trackedOrigins: new Set([userOrigin]),
       captureTimeout: 500,
@@ -161,8 +160,10 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   return {
     doc,
     canvasMap,
-    nodesMap: nodesMap as Y.Map<unknown>,
-    edgesMap: edgesMap as Y.Map<unknown>,
+    // Getter-based: always returns the fresh Y.Map from canvasMap,
+    // avoiding stale references before WebSocket sync completes.
+    get nodesMap() { return getOrCreateSubMap('nodesMap'); },
+    get edgesMap() { return getOrCreateSubMap('edges'); },
     imageEditorMap,
     awareness: baseManager.awareness,
     undoManager,
