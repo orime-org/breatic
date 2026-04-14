@@ -2,20 +2,24 @@ import { Extension } from '@tiptap/core';
 import type { Range } from '@tiptap/core';
 import { ReactRenderer } from '@tiptap/react';
 import {
+  closeBreaticSlashMenu,
   createBreaticSlashMenuPlugin,
   getBreaticSlashCommandRange,
   type BreaticSlashRendererProps,
-} from '../slashMenuPlugin';
+} from '../plugins/slashMenuPlugin';
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react';
 import {
   RiText,
   RiH1,
@@ -28,36 +32,49 @@ import {
   RiCodeBoxLine,
   RiSeparator,
   RiImage2Fill,
+  RiFilmLine,
+  RiFile2Line,
+  RiVolumeUpFill,
   RiTable2,
+  RiArrowRightSLine,
 } from 'react-icons/ri';
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
-import { openBlockNoteStyleImagePanel } from './BlockNoteImageFilePanel';
+import { openImageFilePanel } from './ImageFilePanel';
+import { openMediaFilePanel } from './MediaFilePanel';
+import { BlockHighlightIcon } from './TextEditorIcons';
+import { SlashTableSizePicker } from './SlashTableSizePicker';
 
-export { openBreaticSlashMenu } from '../slashMenuPlugin';
+export { openBreaticSlashMenu } from '../plugins/slashMenuPlugin';
 
-/** Resolve `pendingImage` position after slash insert (mirrors BlockNote insert + file panel). */
-const getPendingImagePosAfterInsert = (editor: Editor): number | null => {
+const TABLE_SLASH_TITLE = 'Table';
+
+const insertSlashTable = (editor: Editor, range: Range, rows: number, cols: number) => {
+  const from = range.from;
+  const to = range.to;
+  closeBreaticSlashMenu(editor.view);
+  editor.chain().focus().deleteRange({ from, to }).insertTable({ rows, cols, withHeaderRow: true }).run();
+};
+
+const getPendingPosAfterInsert = (editor: Editor, typeName: string): number | null => {
   const sel = editor.state.selection;
-  if (sel instanceof NodeSelection && sel.node.type.name === 'pendingImage') {
+  if (sel instanceof NodeSelection && sel.node.type.name === typeName) {
     return sel.from;
   }
   const { $from } = sel;
   for (let d = $from.depth; d > 0; d -= 1) {
     const n = $from.node(d);
-    if (n.type.name === 'pendingImage') {
+    if (n.type.name === typeName) {
       return $from.before(d);
     }
   }
   const nb = $from.nodeBefore;
-  if (nb?.type.name === 'pendingImage') {
+  if (nb?.type.name === typeName) {
     return $from.pos - nb.nodeSize;
   }
   return null;
 };
-
-/* ─── Slash command items ─────────────────────────────────────────── */
 
 interface SlashItem {
   title: string;
@@ -69,9 +86,8 @@ interface SlashItem {
 }
 
 const SLASH_ITEMS: SlashItem[] = [
-  /* ── Text blocks ─── */
   {
-    title: 'Text',
+    title: 'Paragraph',
     subtext: 'Plain paragraph',
     group: 'Basic blocks',
     icon: <RiText size={15} />,
@@ -135,6 +151,16 @@ const SLASH_ITEMS: SlashItem[] = [
     command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
   },
   {
+    title: 'Highlight block',
+    subtext: 'Emphasized background on text',
+    group: 'Basic blocks',
+    icon: <BlockHighlightIcon size={15} />,
+    aliases: ['highlight', 'marker', 'callout', 'bg'],
+    command: ({ editor, range }) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (editor.chain().focus().deleteRange(range) as any).toggleHighlight().run(),
+  },
+  {
     title: 'Code Block',
     subtext: 'Monospace code snippet',
     group: 'Basic blocks',
@@ -150,7 +176,6 @@ const SLASH_ITEMS: SlashItem[] = [
     aliases: ['hr', 'rule', 'line', 'separator'],
     command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
   },
-  /* ── Media & embeds ─── */
   {
     title: 'Image',
     subtext: 'Resizable image with caption',
@@ -159,24 +184,64 @@ const SLASH_ITEMS: SlashItem[] = [
     aliases: ['image', 'imageupload', 'upload', 'img', 'picture', 'media', 'url'],
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingImage' }).run();
-      const pos = getPendingImagePosAfterInsert(editor);
+      const pos = getPendingPosAfterInsert(editor, 'pendingImage');
       if (pos == null) return;
       editor.chain().focus().setNodeSelection(pos).run();
-      openBlockNoteStyleImagePanel(editor, pos);
+      openImageFilePanel(editor, pos);
     },
   },
   {
-    title: 'Table',
-    subtext: '3 × 3 table',
+    title: 'Video',
+    subtext: 'Upload video file',
+    group: 'Media',
+    icon: <RiFilmLine size={16} />,
+    aliases: ['video', 'movie', 'clip', 'mp4', 'media'],
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingVideo' }).run();
+      const pos = getPendingPosAfterInsert(editor, 'pendingVideo');
+      if (pos == null) return;
+      editor.chain().focus().setNodeSelection(pos).run();
+      openMediaFilePanel(editor, pos, 'video');
+    },
+  },
+  {
+    title: 'Audio',
+    subtext: 'Upload audio file',
+    group: 'Media',
+    icon: <RiVolumeUpFill size={16} />,
+    aliases: ['audio', 'sound', 'voice', 'music', 'mp3'],
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingAudio' }).run();
+      const pos = getPendingPosAfterInsert(editor, 'pendingAudio');
+      if (pos == null) return;
+      editor.chain().focus().setNodeSelection(pos).run();
+      openMediaFilePanel(editor, pos, 'audio');
+    },
+  },
+  {
+    title: 'File',
+    subtext: 'Upload any file',
+    group: 'Media',
+    icon: <RiFile2Line size={16} />,
+    aliases: ['file', 'document', 'attachment', 'pdf', 'doc'],
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingFile' }).run();
+      const pos = getPendingPosAfterInsert(editor, 'pendingFile');
+      if (pos == null) return;
+      editor.chain().focus().setNodeSelection(pos).run();
+      openMediaFilePanel(editor, pos, 'file');
+    },
+  },
+  {
+    title: TABLE_SLASH_TITLE,
+    subtext: '悬停或拖动网格选择大小',
     group: 'Media',
     icon: <RiTable2 size={15} />,
     aliases: ['grid', 'rows', 'cols', 'columns'],
-    command: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    /** Mouse: SlashTableSizePicker; keyboard Enter: current hover size in the menu. */
+    command: ({ editor, range }) => insertSlashTable(editor, range, 3, 3),
   },
 ];
-
-/* ─── Filter ──────────────────────────────────────────────────────── */
 
 const filterItems = (query: string): SlashItem[] => {
   if (!query) return SLASH_ITEMS;
@@ -185,8 +250,6 @@ const filterItems = (query: string): SlashItem[] => {
     ({ title, aliases }) => title.toLowerCase().includes(q) || aliases?.some((a) => a.includes(q)),
   );
 };
-
-/* ─── Menu component ──────────────────────────────────────────────── */
 
 interface SlashMenuListHandle {
   onKeyDown: (props: { event: KeyboardEvent }) => boolean;
@@ -201,39 +264,80 @@ function getSlashMenuPortalRoot(editor: Editor): HTMLElement {
     const wrap = dom?.closest('.breatic-editor-wrapper');
     if (wrap instanceof HTMLElement) return wrap;
   } catch {
-    /* `editor.view` can throw before EditorContent mounts */
+    /* Editor view not ready */
   }
   return document.body;
 }
 
-function slashMenuCoords(
-  caretRect: DOMRect | null | undefined,
-  portalRoot: HTMLElement,
-): { top: number; left: number; position: 'fixed' | 'absolute' } {
-  if (portalRoot === document.body) {
-    return {
-      top: (caretRect?.bottom ?? 0) + 6,
-      left: caretRect?.left ?? 0,
-      position: 'fixed',
-    };
-  }
-  if (!caretRect) {
-    return { top: 0, left: 0, position: 'absolute' };
-  }
-  const rr = portalRoot.getBoundingClientRect();
-  return {
-    top: caretRect.bottom - rr.top + portalRoot.scrollTop + 6,
-    left: caretRect.left - rr.left + portalRoot.scrollLeft,
-    position: 'absolute',
-  };
-}
+const SLASH_MENU_Z = 80;
+const SLASH_TABLE_PICKER_Z = 81;
 
 const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<SlashItem>>((props, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [tableHover, setTableHover] = useState({ rows: 3, cols: 3 });
   const [, bumpLayout] = useReducer((n: number) => n + 1, 0);
   const editor = props.editor as Editor;
 
+  const tableFlatIndex = useMemo(
+    () => props.items.findIndex((it) => it.title === TABLE_SLASH_TITLE),
+    [props.items],
+  );
+
+  const showTablePicker = tableFlatIndex >= 0 && selectedIndex === tableFlatIndex;
+
   const portalRoot = useMemo(() => getSlashMenuPortalRoot(editor), [editor]);
+
+  const tableTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const {
+    refs: menuRefs,
+    floatingStyles: menuFloatingStyles,
+    update: updateMenuPosition,
+  } = useFloating({
+    placement: 'bottom-start',
+    strategy: 'fixed',
+    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const {
+    refs: tablePickerRefs,
+    floatingStyles: tablePickerFloatingStyles,
+    update: updateTablePickerPosition,
+  } = useFloating({
+    placement: 'right-start',
+    strategy: 'fixed',
+    middleware: [offset({ mainAxis: 10, crossAxis: 0 }), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const clientRectForMenu = props.clientRect;
+
+  useLayoutEffect(() => {
+    menuRefs.setReference({
+      getBoundingClientRect: () => clientRectForMenu?.() ?? new DOMRect(0, 0, 0, 0),
+    });
+    void updateMenuPosition();
+  }, [clientRectForMenu, bumpLayout, menuRefs, updateMenuPosition]);
+
+  useLayoutEffect(() => {
+    if (!showTablePicker || !tableTriggerRef.current) return;
+    tablePickerRefs.setReference(tableTriggerRef.current);
+    void updateTablePickerPosition();
+  }, [showTablePicker, bumpLayout, tablePickerRefs, updateTablePickerPosition, selectedIndex]);
+
+  const commitTableSize = useCallback(
+    (rows: number, cols: number) => {
+      const ed = props.editor as Editor;
+      const range = getBreaticSlashCommandRange(ed) ?? props.range;
+      insertSlashTable(ed, range, rows, cols);
+    },
+    [props.editor, props.range],
+  );
+
+  const onTableHoverChange = useCallback((r: number, c: number) => {
+    setTableHover({ rows: r, cols: c });
+  }, []);
 
   useLayoutEffect(() => {
     const bump = () => bumpLayout();
@@ -257,6 +361,12 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
     setSelectedIndex(0);
   }, [props.items]);
 
+  useEffect(() => {
+    if (tableFlatIndex >= 0 && selectedIndex === tableFlatIndex) {
+      setTableHover({ rows: 3, cols: 3 });
+    }
+  }, [selectedIndex, tableFlatIndex]);
+
   useImperativeHandle(ref, () => ({
     onKeyDown({ event }) {
       if (event.key === 'ArrowUp') {
@@ -272,87 +382,140 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
         if (item) {
           const ed = props.editor as Editor;
           const range = getBreaticSlashCommandRange(ed) ?? props.range;
-          item.command({ editor: ed, range });
+          if (item.title === TABLE_SLASH_TITLE) {
+            insertSlashTable(ed, range, tableHover.rows, tableHover.cols);
+          } else {
+            closeBreaticSlashMenu(ed.view);
+            item.command({ editor: ed, range });
+          }
         }
         return true;
       }
       return false;
     },
-  }));
-
-  const rect = props.clientRect?.();
-  const { top, left, position } = slashMenuCoords(rect, portalRoot);
+  }), [props.items, props.editor, props.range, selectedIndex, tableHover]);
 
   if (!props.items.length) {
     return createPortal(
-      <div
-        style={{ position, top, left, zIndex: 9999 }}
-        className='min-w-[200px] rounded-[10px] border border-border-default-base bg-background-default-base px-3 py-2 text-[12px] text-text-default-tertiary shadow-[0_8px_24px_var(--color-shadow-overlay)]'
-      >
-        No results
-      </div>,
+      <>
+        <div
+          ref={menuRefs.setFloating}
+          style={{ ...menuFloatingStyles, zIndex: SLASH_MENU_Z }}
+          data-breatic-slash-menu
+          className='min-w-[200px] rounded-[10px] border border-border-default-base bg-background-default-base px-3 py-2 text-[12px] text-text-default-tertiary shadow-[0_8px_24px_var(--color-shadow-overlay)]'
+        >
+          No results
+        </div>
+      </>,
       portalRoot,
     );
   }
 
-  // Group items preserving order
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
     items: props.items.filter((item) => item.group === g),
   })).filter(({ items }) => items.length > 0);
 
-  // flat index maps to selectedIndex
   let flatIdx = 0;
 
   return createPortal(
-    <div
-      style={{ position, top, left, zIndex: 9999 }}
-      className='min-w-[240px] rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]'
-    >
-      {grouped.map(({ group, items }, gi) => (
-        <div key={group}>
-          {gi > 0 && <div className='my-1 border-t border-border-default-base' />}
-          <p className='px-3 pb-0.5 pt-2 text-[11px] font-medium uppercase tracking-wide text-text-default-tertiary select-none'>
-            {group}
-          </p>
-          {items.map((item) => {
-            const idx = flatIdx++;
-            return (
-              <button
-                key={item.title}
-                type='button'
-                className={cn(
-                  'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base',
-                  idx === selectedIndex ? 'bg-background-default-secondary' : 'hover:bg-background-default-secondary',
-                )}
-                onMouseEnter={() => setSelectedIndex(idx)}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const ed = props.editor as Editor;
-                  const range = getBreaticSlashCommandRange(ed) ?? props.range;
-                  item.command({ editor: ed, range });
-                }}
-              >
-                <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border-default-base bg-background-default-secondary text-text-default-tertiary'>
-                  {item.icon}
-                </span>
-                <span className='flex flex-col leading-tight'>
-                  <span>{item.title}</span>
-                  {item.subtext && <span className='text-[11px] text-text-default-tertiary'>{item.subtext}</span>}
-                </span>
-              </button>
-            );
-          })}
+    <>
+      <div
+        ref={menuRefs.setFloating}
+        style={{ ...menuFloatingStyles, zIndex: SLASH_MENU_Z }}
+        data-breatic-slash-menu
+        className='min-w-[240px] overflow-visible rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]'
+      >
+        {grouped.map(({ group, items }, gi) => (
+          <div key={group}>
+            {gi > 0 && <div className='my-1 border-t border-border-default-base' />}
+            <p className='px-3 pb-0.5 pt-2 text-[11px] font-medium uppercase tracking-wide text-text-default-tertiary select-none'>
+              {group}
+            </p>
+            {items.map((item) => {
+              const idx = flatIdx++;
+              const isTable = item.title === TABLE_SLASH_TITLE;
+
+              const rowButton = (
+                <>
+                  <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border-default-base bg-background-default-secondary text-text-default-tertiary'>
+                    {item.icon}
+                  </span>
+                  <span className='flex min-w-0 flex-col leading-tight'>
+                    <span>{item.title}</span>
+                    {item.subtext && <span className='text-[11px] text-text-default-tertiary'>{item.subtext}</span>}
+                  </span>
+                </>
+              );
+
+              if (isTable) {
+                return (
+                  <div key={item.title}>
+                    <button
+                      ref={tableTriggerRef}
+                      type='button'
+                      className={cn(
+                        'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base',
+                        idx === selectedIndex ? 'bg-background-default-secondary' : 'hover:bg-background-default-secondary',
+                      )}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                      }}
+                    >
+                      <span className='flex min-w-0 flex-1 items-center gap-2.5'>{rowButton}</span>
+                      <RiArrowRightSLine
+                        size={14}
+                        className={cn(
+                          'shrink-0 text-text-default-tertiary',
+                          showTablePicker && 'text-text-default-secondary',
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={item.title}
+                  type='button'
+                  className={cn(
+                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base',
+                    idx === selectedIndex ? 'bg-background-default-secondary' : 'hover:bg-background-default-secondary',
+                  )}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    const ed = props.editor as Editor;
+                    const range = getBreaticSlashCommandRange(ed) ?? props.range;
+                    closeBreaticSlashMenu(ed.view);
+                    item.command({ editor: ed, range });
+                  }}
+                >
+                  {rowButton}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {showTablePicker && (
+        <div ref={tablePickerRefs.setFloating} style={{ ...tablePickerFloatingStyles, zIndex: SLASH_TABLE_PICKER_Z }}>
+          <SlashTableSizePicker
+            open={showTablePicker}
+            onCommit={commitTableSize}
+            onHoverChange={onTableHoverChange}
+          />
         </div>
-      ))}
-    </div>,
+      )}
+    </>,
     portalRoot,
   );
 });
 
 SlashMenuList.displayName = 'SlashMenuList';
-
-/* ─── Tiptap Extension ────────────────────────────────────────────── */
 
 export const SlashCommandExtension = Extension.create({
   name: 'slashCommand',

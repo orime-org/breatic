@@ -8,7 +8,7 @@ import { useProjectStore } from '@/hooks/useProjectStore';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import ImageEditor from './components/imageEditor';
-import TextEditorPanel from './components/textEditor';
+import TextEditor from './components/textEditor';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
 import store from '@/store';
@@ -279,7 +279,7 @@ const ProjectContent: React.FC = () => {
                   {isImageNode && panelNode ? (
                     <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : isTextNode && rightPanel.nodeId ? (
-                    <TextEditorPanel nodeId={rightPanel.nodeId} />
+                    <TextEditor key={rightPanel.nodeId} nodeId={rightPanel.nodeId} />
                   ) : null}
                   <div
                     id='chat-left-panel-portal'

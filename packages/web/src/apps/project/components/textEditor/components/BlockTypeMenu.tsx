@@ -4,13 +4,16 @@ import {
   useRef,
   useState,
   type ComponentType,
-  type MutableRefObject,
   type ReactNode,
   type RefObject,
 } from 'react';
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from '@floating-ui/react';
 import type { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import {
+  isMediaLikeBlockType,
+  mediaBlockSupportsTextAlign,
+} from '@/apps/project/components/textEditor/utils/mediaBlockTypes';
 import {
   RiDeleteBin6Line,
   RiAlignLeft,
@@ -33,6 +36,7 @@ import {
 import { cn } from '@/utils/classnames';
 import { TextColorPalettePanel } from '@/apps/project/components/textEditor/components/TextColorSelect';
 import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from './TextEditorIcons';
+import { decreaseBlockIndent, increaseBlockIndent } from '@/apps/project/components/textEditor/extensions/blockIndent';
 
 const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: number; end: number } | null => {
   const safe = Math.min(Math.max(innerBlockStart + 1, 1), doc.content.size);
@@ -79,11 +83,11 @@ const blockTypeMenuSurfaceClass =
 const blockTypeAlignSubmenuSurfaceClass =
   'min-w-[192px] rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]';
 
-/** Above `BLOCK_LINE_CONTROL_Z` (≈9990+55) so the menu stacks over the gutter row. */
-const BLOCK_TYPE_MENU_Z = 10060;
-const BLOCK_TYPE_SUBMENU_Z = 10061;
+/** Above block-line controls, below top text bubbles. */
+const BLOCK_TYPE_MENU_Z = 70;
+const BLOCK_TYPE_SUBMENU_Z = 71;
 
-type BlockTypeFloatRef = MutableRefObject<HTMLDivElement | null>;
+type BlockTypeFloatRef = RefObject<HTMLDivElement | null>;
 
 function BlockTypeMenuMainFloat({
   open,
@@ -225,7 +229,6 @@ const BASIC_BLOCKS: readonly {
       (ch as any).toggleHighlight().run(),
   },
 ] as const;
-
 type HandleSubmenu = 'none' | 'alignIndent' | 'color';
 
 const BlockTypeMenu = ({
@@ -243,12 +246,13 @@ const BlockTypeMenu = ({
 
   const focusAnchorBlock = useCallback(() => {
     const bs = anchorBlockStartRef.current;
-    if (bs != null)
-      editor
-        .chain()
-        .focus()
-        .setTextSelection(bs + 1)
-        .run();
+    if (bs == null) return;
+    const n = editor.state.doc.nodeAt(bs);
+    if (n && isMediaLikeBlockType(n.type.name)) {
+      editor.chain().focus().setNodeSelection(bs).run();
+      return;
+    }
+    editor.chain().focus().setTextSelection(bs + 1).run();
   }, [anchorBlockStartRef, editor]);
 
   const runTransform = useCallback(
@@ -266,17 +270,34 @@ const BlockTypeMenu = ({
       onClose();
       return;
     }
-    const range = getTopLevelBlockRange(editor.state.doc, bs);
-    if (!range) {
+    const { state, view } = editor;
+    const node = state.doc.nodeAt(bs);
+    if (!node) {
       onClose();
       return;
     }
-    editor.view.dispatch(editor.state.tr.delete(range.start, range.end));
+    const end = bs + node.nodeSize;
+    if (end <= bs) {
+      onClose();
+      return;
+    }
+    view.dispatch(state.tr.delete(bs, end));
     editor.commands.focus();
     onClose();
   };
 
   const setAlign = (align: 'left' | 'center' | 'right') => {
+    const bs = anchorBlockStartRef.current;
+    if (bs == null) {
+      onClose();
+      return;
+    }
+    const node = editor.state.doc.nodeAt(bs);
+    if (node && mediaBlockSupportsTextAlign(node.type.name)) {
+      editor.chain().focus().setNodeSelection(bs).updateAttributes(node.type.name, { textAlign: align }).run();
+      onClose();
+      return;
+    }
     runTransform((ch) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (ch as any).setTextAlign(align).run(),
@@ -285,15 +306,8 @@ const BlockTypeMenu = ({
 
   const sinkOrLift = (dir: 'sink' | 'lift') => {
     focusAnchorBlock();
-    const can = editor.can();
-    if (dir === 'sink') {
-      if (can.sinkListItem('taskItem')) editor.chain().focus().sinkListItem('taskItem').run();
-      else if (can.sinkListItem('listItem')) editor.chain().focus().sinkListItem('listItem').run();
-    } else if (can.liftListItem('taskItem')) {
-      editor.chain().focus().liftListItem('taskItem').run();
-    } else if (can.liftListItem('listItem')) {
-      editor.chain().focus().liftListItem('listItem').run();
-    }
+    if (dir === 'sink') increaseBlockIndent(editor);
+    else decreaseBlockIndent(editor);
     onClose();
   };
 
@@ -307,7 +321,12 @@ const BlockTypeMenu = ({
     setHandleSubmenu((s) => (s === 'color' ? 'none' : 'color'));
   };
 
-  const blockRows = (
+  const anchorBs = anchorBlockStartRef.current;
+  const anchorNode = anchorBs != null ? editor.state.doc.nodeAt(anchorBs) : null;
+  const mediaMenu = Boolean(anchorNode && isMediaLikeBlockType(anchorNode.type.name));
+  const codeBlockMenu = activeNodeKey === 'codeBlock';
+
+  const blockRows = !mediaMenu ? (
     <>
       <p className={labelClass}>Turn into</p>
       {BASIC_BLOCKS.map(({ label, Icon, nodeKey, apply }) => {
@@ -330,7 +349,7 @@ const BlockTypeMenu = ({
         );
       })}
     </>
-  );
+  ) : null;
 
   return (
     <BlockTypeMenuMainFloat
@@ -340,127 +359,101 @@ const BlockTypeMenu = ({
       zIndex={BLOCK_TYPE_MENU_Z}
       floatingRef={mainFloatingRef}
     >
-      {blockRows}
+      {!codeBlockMenu && (
+        <>
+          {blockRows}
+          {!mediaMenu && <div className='my-1.5 border-t border-border-default-base' />}
 
-      <div className='my-1.5 border-t border-border-default-base' />
+          <button
+            ref={alignIndentBtnRef}
+            type='button'
+            role='menuitem'
+            aria-expanded={handleSubmenu === 'alignIndent'}
+            aria-haspopup='menu'
+            className={cn(itemClass, handleSubmenu === 'alignIndent' && 'bg-background-default-secondary')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleAlignIndentSubmenu}
+          >
+            <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+              <BlockIndentAlignIcon size={16} />
+            </span>
+            {'Indent & align'}
+            <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
+          </button>
+          <BlockTypeMenuSubFloat
+            open={handleSubmenu === 'alignIndent'}
+            anchorEl={alignIndentBtnRef.current}
+            className={blockTypeAlignSubmenuSurfaceClass}
+            zIndex={BLOCK_TYPE_SUBMENU_Z}
+            floatingRef={subFloatingRef}
+          >
+            <p className={labelClass}>Align</p>
+            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('left')}>
+              <RiAlignLeft size={15} className='shrink-0 text-text-default-tertiary' />
+              Align left
+            </button>
+            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('center')}>
+              <RiAlignCenter size={15} className='shrink-0 text-text-default-tertiary' />
+              Align center
+            </button>
+            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('right')}>
+              <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
+              Align right
+            </button>
+            <p className={labelClass}>Indent</p>
+            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('sink')}>
+              <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
+              Increase indent
+            </button>
+            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('lift')}>
+              <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
+              Decrease indent
+            </button>
+          </BlockTypeMenuSubFloat>
 
-      <button
-        ref={alignIndentBtnRef}
-        type='button'
-        role='menuitem'
-        aria-expanded={handleSubmenu === 'alignIndent'}
-        aria-haspopup='menu'
-        className={cn(itemClass, handleSubmenu === 'alignIndent' && 'bg-background-default-secondary')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={toggleAlignIndentSubmenu}
-      >
-        <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
-          <BlockIndentAlignIcon size={16} />
-        </span>
-        {'Indent & align'}
-        <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
-      </button>
-      <BlockTypeMenuSubFloat
-        open={handleSubmenu === 'alignIndent'}
-        anchorEl={alignIndentBtnRef.current}
-        className={blockTypeAlignSubmenuSurfaceClass}
-        zIndex={BLOCK_TYPE_SUBMENU_Z}
-        floatingRef={subFloatingRef}
-      >
-        <p className={labelClass}>Align</p>
-        <button
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setAlign('left')}
-        >
-          <RiAlignLeft size={15} className='shrink-0 text-text-default-tertiary' />
-          Align left
-        </button>
-        <button
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setAlign('center')}
-        >
-          <RiAlignCenter size={15} className='shrink-0 text-text-default-tertiary' />
-          Align center
-        </button>
-        <button
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setAlign('right')}
-        >
-          <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
-          Align right
-        </button>
-        <p className={labelClass}>Indent</p>
-        <button
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => sinkOrLift('sink')}
-        >
-          <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
-          Increase indent
-        </button>
-        <button
-          type='button'
-          role='menuitem'
-          className={itemClass}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => sinkOrLift('lift')}
-        >
-          <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
-          Decrease indent
-        </button>
-      </BlockTypeMenuSubFloat>
-
-      <button
-        ref={colorBtnRef}
-        type='button'
-        role='menuitem'
-        aria-expanded={handleSubmenu === 'color'}
-        aria-haspopup='menu'
-        className={cn(itemClass, handleSubmenu === 'color' && 'bg-background-default-secondary')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={toggleColorSubmenu}
-      >
-        <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
-          <RiPaletteLine size={16} />
-        </span>
-        Color
-        <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
-      </button>
-      <BlockTypeMenuSubFloat
-        open={handleSubmenu === 'color'}
-        anchorEl={colorBtnRef.current}
-        className='outline-none'
-        zIndex={BLOCK_TYPE_SUBMENU_Z}
-        floatingRef={subFloatingRef}
-      >
-        <TextColorPalettePanel
-          editor={editor}
-          blockScope={(() => {
-            const bs = anchorBlockStartRef.current;
-            if (bs == null) return undefined;
-            const range = getTopLevelBlockRange(editor.state.doc, bs);
-            if (!range) return undefined;
-            return { from: range.start + 1, to: range.end - 1 };
-          })()}
-          onAfterPick={() => {
-            setHandleSubmenu('none');
-            onClose();
-          }}
-        />
-      </BlockTypeMenuSubFloat>
-
-      <div className='my-1.5 border-t border-border-default-base' />
+          <button
+            ref={colorBtnRef}
+            type='button'
+            role='menuitem'
+            aria-expanded={handleSubmenu === 'color'}
+            aria-haspopup='menu'
+            className={cn(itemClass, handleSubmenu === 'color' && 'bg-background-default-secondary')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleColorSubmenu}
+          >
+            <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+              <RiPaletteLine size={16} />
+            </span>
+            Color
+            <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
+          </button>
+          <BlockTypeMenuSubFloat
+            open={handleSubmenu === 'color'}
+            anchorEl={colorBtnRef.current}
+            className='outline-none'
+            zIndex={BLOCK_TYPE_SUBMENU_Z}
+            floatingRef={subFloatingRef}
+          >
+            <TextColorPalettePanel
+              editor={editor}
+              atomBlockPos={mediaMenu && anchorBs != null ? anchorBs : undefined}
+              blockScope={(() => {
+                if (mediaMenu) return undefined;
+                const bs = anchorBlockStartRef.current;
+                if (bs == null) return undefined;
+                const range = getTopLevelBlockRange(editor.state.doc, bs);
+                if (!range) return undefined;
+                return { from: range.start + 1, to: range.end - 1 };
+              })()}
+              onAfterPick={() => {
+                setHandleSubmenu('none');
+                onClose();
+              }}
+            />
+          </BlockTypeMenuSubFloat>
+          <div className='my-1.5 border-t border-border-default-base' />
+        </>
+      )}
 
       <button
         type='button'

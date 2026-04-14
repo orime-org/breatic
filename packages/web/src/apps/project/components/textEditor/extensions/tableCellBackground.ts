@@ -14,7 +14,6 @@ const backgroundColorAttr = {
   },
 };
 
-/** BlockNote-style per-cell background (row/column color menus use the same attr). */
 export const BreaticTableCell = TableCell.extend({
   addAttributes() {
     return {

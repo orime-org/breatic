@@ -58,7 +58,7 @@ const ImageInsertDialog = () => {
 
   return createPortal(
     <div
-      className='fixed inset-0 z-[10000] flex items-center justify-center bg-black/40'
+      className='fixed inset-0 z-[95] flex items-center justify-center bg-black/40'
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) cancel();
       }}

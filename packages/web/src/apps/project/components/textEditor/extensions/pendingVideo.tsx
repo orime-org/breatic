@@ -1,14 +1,15 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { RiImage2Fill } from 'react-icons/ri';
-import { openImageFilePanel } from '../components/ImageFilePanel';
+import { RiFilmLine } from 'react-icons/ri';
+import { openMediaFilePanel } from '../components/MediaFilePanel';
 
-/** Empty image placeholder; opens the image file panel when activated. */
-const PendingImageView = ({ editor, getPos, node }: NodeViewProps) => {
+const PendingVideoView = ({ editor, getPos, node }: NodeViewProps) => {
   const openPanel = () => {
     const p = getPos();
-    if (typeof p === 'number') openImageFilePanel(editor, p);
+    if (typeof p === 'number') {
+      openMediaFilePanel(editor, p, 'video');
+    }
   };
 
   const textAlign = ((node.attrs.textAlign as string) || 'left') as 'left' | 'center' | 'right';
@@ -18,7 +19,7 @@ const PendingImageView = ({ editor, getPos, node }: NodeViewProps) => {
     <NodeViewWrapper
       as='div'
       className='bn-block-content'
-      data-content-type='image'
+      data-content-type='video'
       data-file-block=''
       data-text-align={textAlign}
       style={{
@@ -42,17 +43,17 @@ const PendingImageView = ({ editor, getPos, node }: NodeViewProps) => {
           }}
         >
           <div className='bn-add-file-button-icon'>
-            <RiImage2Fill size={24} />
+            <RiFilmLine size={24} />
           </div>
-          <div className='bn-add-file-button-text'>Add image</div>
+          <div className='bn-add-file-button-text'>Add video</div>
         </div>
       </div>
     </NodeViewWrapper>
   );
 };
 
-export const PendingImage = Node.create({
-  name: 'pendingImage',
+export const PendingVideo = Node.create({
+  name: 'pendingVideo',
   group: 'block',
   atom: true,
   draggable: true,
@@ -81,7 +82,7 @@ export const PendingImage = Node.create({
   parseHTML() {
     return [
       {
-        tag: 'div[data-bn-pending-image]',
+        tag: 'div[data-bn-pending-video]',
         getAttrs: (dom) => ({
           textAlign: (dom as HTMLElement).getAttribute('data-text-align') || 'left',
           accentBackground: (dom as HTMLElement).getAttribute('data-accent-bg'),
@@ -91,10 +92,10 @@ export const PendingImage = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-bn-pending-image': '' })];
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-bn-pending-video': '' })];
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(PendingImageView);
+    return ReactNodeViewRenderer(PendingVideoView);
   },
 });

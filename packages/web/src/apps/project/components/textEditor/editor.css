@@ -1,16 +1,11 @@
-/* ProseMirror (StarterKit) + menus aligned with Tiptap Menus example */
+/* ProseMirror surface and editor chrome */
 
-/* BlockNote floating panels use `calc(var(--bn-ui-base-z-index) + 90)` — see FilePanelController */
-.breatic-editor-wrapper {
-  --bn-ui-base-z-index: 9990;
-}
-
-/* BlockNote-style slash menu opened from + (no "/" in doc): block wrapper for positioning only */
+/* Slash menu decorator: positioning wrapper only */
 .breatic-editor-body .ProseMirror .breatic-slash-suggestion-decorator {
   pointer-events: none;
 }
 
-/* BlockNote Block.css — file / image empty block ([data-file-block]) */
+/* Empty file/image block ([data-file-block]) */
 .breatic-editor-body .ProseMirror [data-file-block] .bn-file-block-content-wrapper {
   cursor: pointer;
   display: flex;
@@ -46,7 +41,7 @@
   font-size: 0.9rem;
 }
 
-/* BlockNote mantine blocknoteStyles — .bn-mantine .bn-panel */
+/* Floating panel shell */
 .bn-panel.bn-mantine-panel {
   width: 500px;
   max-width: 100vw;
@@ -61,65 +56,72 @@
 .breatic-editor-body .ProseMirror {
   outline: none;
   min-height: 300px;
-  font-size: 1rem;
-  line-height: 1.75;
+  /* 与 BlockNote .bn-default-styles 一致，标题的 rem/em 层级才对齐其设计 */
+  font-size: 16px;
+  line-height: 1.5;
   color: theme('colors.text-default-base');
   word-break: break-word;
 }
 
-.breatic-editor-body .ProseMirror :first-child {
-  margin-top: 0;
-}
-
-.breatic-editor-body .ProseMirror p {
-  margin: 0.25em 0;
+/* 与 BlockNote .bn-default-styles 一致：块内标签不占纵向 margin/padding */
+.breatic-editor-body .ProseMirror p,
+.breatic-editor-body .ProseMirror h1,
+.breatic-editor-body .ProseMirror h2,
+.breatic-editor-body .ProseMirror h3,
+.breatic-editor-body .ProseMirror h4,
+.breatic-editor-body .ProseMirror h5,
+.breatic-editor-body .ProseMirror h6,
+.breatic-editor-body .ProseMirror li {
+  margin: 0;
+  padding: 0;
 }
 
 .breatic-editor-body .ProseMirror ul,
 .breatic-editor-body .ProseMirror ol {
-  padding: 0 1rem;
-  margin: 1.25rem 1rem 1.25rem 0.4rem;
+  margin: 0;
+  padding: 0 0 0 1.25rem;
 }
 
 .breatic-editor-body .ProseMirror ul li p,
 .breatic-editor-body .ProseMirror ol li p {
-  margin-top: 0.25em;
-  margin-bottom: 0.25em;
+  margin: 0;
+  padding: 0;
 }
 
+/* 标题：字号阶梯对齐 BlockNote Block.css（[data-content-type=heading] 的 --level） */
 .breatic-editor-body .ProseMirror h1,
 .breatic-editor-body .ProseMirror h2,
 .breatic-editor-body .ProseMirror h3,
 .breatic-editor-body .ProseMirror h4,
 .breatic-editor-body .ProseMirror h5,
 .breatic-editor-body .ProseMirror h6 {
-  line-height: 1.1;
-  margin-top: 2.5rem;
+  line-height: 1.25;
+  font-weight: 700;
   text-wrap: pretty;
 }
 
-.breatic-editor-body .ProseMirror h1,
-.breatic-editor-body .ProseMirror h2 {
-  margin-top: 3.5rem;
-  margin-bottom: 1.5rem;
-}
-
 .breatic-editor-body .ProseMirror h1 {
-  font-size: 1.4rem;
+  font-size: 3rem;
 }
 
 .breatic-editor-body .ProseMirror h2 {
-  font-size: 1.2rem;
+  font-size: 2rem;
 }
 
 .breatic-editor-body .ProseMirror h3 {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
 }
 
-.breatic-editor-body .ProseMirror h4,
-.breatic-editor-body .ProseMirror h5,
-.breatic-editor-body .ProseMirror h6 {
+.breatic-editor-body .ProseMirror h4 {
   font-size: 1rem;
+}
+
+.breatic-editor-body .ProseMirror h5 {
+  font-size: 0.9rem;
+}
+
+.breatic-editor-body .ProseMirror h6 {
+  font-size: 0.8rem;
 }
 
 .breatic-editor-body .ProseMirror code {
@@ -144,6 +146,81 @@
   color: inherit;
   font-size: 0.8rem;
   padding: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node {
+  position: relative;
+  margin: 1.5rem 0;
+  border-radius: 8px;
+  background-color: rgb(22 22 22);
+  color: rgb(255 255 255);
+  overflow: hidden;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node pre {
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  width: 100%;
+  tab-size: 2;
+  padding: 34px 16px 24px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: inherit;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node pre code {
+  display: block;
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-wrap {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 2;
+  margin: 0;
+  outline: none !important;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 112px;
+  user-select: none;
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  font-size: 0.8em;
+  color: rgb(255 255 255);
+  opacity: 0;
+  transition: opacity 0.3s;
+  transition-delay: 1s;
+  outline: none;
+  padding: 0;
+  line-height: 1;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger span {
+  pointer-events: none;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node:hover .breatic-code-block-language-trigger,
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger:focus {
+  opacity: 0.5;
+  transition-delay: 0.1s;
+}
+
+.breatic-code-block-language-menu {
+  width: 200px;
+  height: 400px;
+  overflow-y: auto;
 }
 
 .breatic-editor-body .ProseMirror blockquote {
@@ -174,7 +251,7 @@
   background: rgba(53, 200, 56, 0.18);
 }
 
-/* Bubble menu — aligned with ImageNodeToolbar */
+/* Bubble menu toolbar */
 .bubble-menu {
   display: flex;
   align-items: center;
@@ -186,11 +263,11 @@
     0px 1px 4px 0px rgba(12, 12, 13, 0.05),
     0px 1px 8px 1px rgba(12, 12, 13, 0.05);
   padding: 4px 6px;
-  z-index: 9998;
+  z-index: 90;
 }
 
-/* Placeholder — show on every empty block */
-.breatic-editor-body .ProseMirror .is-empty::before {
+/* Placeholder — only for empty paragraph blocks */
+.breatic-editor-body .ProseMirror p.is-empty::before {
   content: attr(data-placeholder);
   float: left;
   color: theme('colors.text-default-tertiary');
@@ -199,22 +276,99 @@
   opacity: 0.5;
 }
 
-/* Image — BlockNote-style (packages/react ResizableFileBlockWrapper + Block.css) */
+/* Resizable image block */
 .breatic-editor-body .ProseMirror .breatic-image-block {
   max-width: 100%;
   margin: 0.5rem 0;
 }
 
+.breatic-editor-body .ProseMirror .breatic-video-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .breatic-video-resize-wrapper {
+  position: relative;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-visual-media {
+  border-radius: 4px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle {
+  width: 8px;
+  height: 30px;
+  background-color: #000;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle--left {
+  left: 4px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle--right {
+  right: 4px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block:hover .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-video-block[data-resize-state='true'] .bn-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode .breatic-video-resize-wrapper {
+  border-radius: 4px;
+  outline: 4px solid rgb(100, 160, 255);
+  outline-offset: 2px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode {
+  background-color: transparent;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block,
+.breatic-editor-body .ProseMirror .breatic-audio-block * {
+  user-select: none;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block .bn-audio {
+  width: 100%;
+  max-width: 100%;
+  display: block;
+}
+
 .breatic-editor-body .ProseMirror .breatic-image-block .breatic-image-resize-wrapper {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   position: relative;
+  width: fit-content;
+  flex: 0 0 auto;
   max-width: 100%;
 }
 
 .breatic-editor-body .ProseMirror .breatic-image-block .bn-visual-media {
   border-radius: 4px;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
   display: block;
   margin: 0;
@@ -244,7 +398,7 @@
   outline-offset: 2px;
 }
 
-/* showPreview: false — BlockNote React FileNameWithIcon + packages/core Block.css [data-file-block] */
+/* Link mode when showPreview is false ([data-file-block]) */
 .breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-block-content-wrapper {
   cursor: pointer;
   display: flex;
@@ -308,7 +462,7 @@
   display: block;
 }
 
-/* Table — BlockNote core editor.css (.tableWrapper padding for handles / extend widgets) */
+/* Table wrapper padding for resize handles */
 .breatic-editor-body .ProseMirror .tableWrapper {
   --bn-table-widget-size: 22px;
   --bn-table-handle-size: calc(18px / 2);
@@ -321,7 +475,7 @@
   width: 100%;
 }
 
-/* BlockNote mantine blocknoteStyles — row/column drag handles (solid, menu-style chip) */
+/* Table row/column drag handles */
 .breatic-editor-wrapper .bn-table-handle {
   align-items: center;
   background-color: theme('colors.background-default-base');
@@ -423,8 +577,8 @@
 }
 
 /*
- * Table: do not force width: 100% — TipTap TableView sets inline width / minWidth from colwidth + cellMinWidth.
- * Forcing 100% made every column shrink to fit; with auto width + wrapper overflow-x, extra columns scroll horizontally.
+ * Table width: do not force 100% — inline width/minWidth from column metadata keeps layout stable;
+ * with auto width and wrapper overflow-x, extra columns scroll horizontally.
  */
 .breatic-editor-body .ProseMirror .tableWrapper > table {
   border-collapse: collapse;
@@ -443,7 +597,7 @@
   position: relative;
 }
 
-/* First row uses <th> from TipTap header row — no extra fill; same default as <td>. */
+/* Header cells: no extra fill vs body cells */
 .breatic-editor-body .ProseMirror th {
   background: transparent;
   font-weight: 600;
@@ -458,7 +612,7 @@
   pointer-events: none;
 }
 
-/* Column resize handle (injected by prosemirror-tables columnResizing plugin) */
+/* Column resize handle */
 .breatic-editor-body .ProseMirror .column-resize-handle {
   position: absolute;
   right: -2px;
@@ -490,14 +644,81 @@
   cursor: pointer;
 }
 
-/* Block drag source highlight — ProseMirror NodeSelection, same mechanism as BlockNote */
+/* Task list — checkbox items, no bullets, strikethrough when checked */
+.breatic-editor-body .ProseMirror ul.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin: 0;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > label {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding-top: 0.3em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > label input[type='checkbox'] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--color-brand-base, #3563e9);
+}
+
+/* tiptap inserts an empty <span> next to the input — hide it */
+.breatic-editor-body .ProseMirror ul.task-list li > label > span {
+  display: none;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > div p {
+  margin: 0;
+  padding: 0;
+}
+
+/* Checked item: strikethrough + dimmed */
+.breatic-editor-body .ProseMirror ul.task-list li[data-checked='true'] > div {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Selected block highlight (NodeSelection) */
 .breatic-editor-body .ProseMirror .ProseMirror-selectednode {
   background-color: rgba(53, 200, 56, 0.2);
   border-radius: 4px;
   outline: none;
 }
 
-/* Image uses BlockNote-style blue outline on inner wrapper, not the global green node fill */
+/* Image selection: outline on inner wrapper instead of node fill */
 .breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-image-block {
   background-color: transparent;
+}
+
+/* Media selection: keep native controls/outline, no node fill */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-video-block,
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-audio-block {
+  background-color: transparent;
+}
+
+/* Some NodeView structures apply selection class on an outer wrapper. */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode[data-breatic-video],
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode[data-breatic-audio],
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode:has([data-breatic-video]),
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode:has([data-breatic-audio]) {
+  background-color: transparent !important;
 }

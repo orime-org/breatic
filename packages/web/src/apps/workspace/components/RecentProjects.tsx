@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useImperativeHandle, forwardRef, us
 import { useTranslation } from 'react-i18next';
 import { message } from '@/components/base/message';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import type { ApiResponse } from '@breatic/shared';
 import type { WorkspaceProject } from '../types';
 import { projectsApi } from '@/apis';
 import { Icon } from '@/components/base/icon';
@@ -16,6 +17,14 @@ export interface RecentProjectsRef {
 
 const PAGE_SIZE = 40;
 
+/** Axios still types `request()` as `AxiosResponse<Body>` while the interceptor returns `Body`; normalize to `Body.data`. */
+function unwrapPayload<T>(body: unknown): T | undefined {
+  if (body && typeof body === 'object' && 'data' in body) {
+    return (body as ApiResponse<T>).data;
+  }
+  return undefined;
+}
+
 /** Format an ISO timestamp as a short localized string for the card footer. */
 function formatUpdateTime(value: string | Date): string {
   try {
@@ -25,7 +34,12 @@ function formatUpdateTime(value: string | Date): string {
   }
 }
 
-const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
+type RecentProjectsProps = {
+  /** Prepended rows for local/testing; not from the API. */
+  staticProjects?: WorkspaceProject[];
+};
+
+const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ staticProjects = [] }, ref) => {
   const { t } = useTranslation();
   const [projectList, setProjectList] = useState<WorkspaceProject[]>([]);
   const [delModalOpen, setDelModalOpen] = useState<{ open: boolean; item: WorkspaceProject | null }>({ open: false, item: null });
@@ -47,10 +61,10 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
     try {
       const offset = isInit ? 0 : offsetRef.current;
       const res = await projectsApi.list({ limit: PAGE_SIZE, offset });
-      const records = res.data ?? [];
+      const records = unwrapPayload<WorkspaceProject[]>(res.data) ?? [];
 
       if (isInit) {
-        setProjectList(records);
+        setProjectList([...staticProjects, ...records]);
         offsetRef.current = records.length;
       } else {
         setProjectList((prev) => [...prev, ...records]);
@@ -68,7 +82,7 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
       setLoading(false);
       loadingRef.current = false;
     }
-  }, []);
+  }, [staticProjects]);
 
   const getSkeletonCount = () => {
     // On the initial load we have no idea how many rows are coming,
@@ -120,7 +134,7 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
   const copyProject = async (item: WorkspaceProject) => {
     try {
       const res = await projectsApi.duplicate(item.id);
-      const created = res.data;
+      const created = unwrapPayload<WorkspaceProject>(res.data);
       if (!created) {
         message.error(t('workspace.copy_failed'));
         return;
@@ -144,7 +158,7 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
 
     try {
       const res = await projectsApi.update(item.id, { name: trimmed });
-      const updated = res.data;
+      const updated = unwrapPayload<WorkspaceProject>(res.data);
       if (updated) {
         setProjectList((prev) => prev.map((p) => (p.id === item.id ? updated : p)));
       }
@@ -218,7 +232,7 @@ const RecentProjects = forwardRef<RecentProjectsRef>((_props, ref) => {
 
     try {
       const res = await projectsApi.create({ name: trimmed });
-      const created = res.data;
+      const created = unwrapPayload<WorkspaceProject>(res.data);
       if (!created) {
         message.error(t('workspace.create_failed'));
         return;

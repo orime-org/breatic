@@ -19,12 +19,18 @@ import { RiAddLine, RiArrowRightSFill } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import Tooltip from '@/components/base/tooltip';
 import BlockTypeMenu from '@/apps/project/components/textEditor/components/BlockTypeMenu';
-import { breaticSlashMenuKey, closeBreaticSlashMenu } from '@/apps/project/components/textEditor/slashMenuPlugin';
+import {
+  breaticSlashMenuKey,
+  closeBreaticSlashMenu,
+  openBreaticSlashMenu,
+} from '@/apps/project/components/textEditor/plugins/slashMenuPlugin';
 import {
   headingFoldArrowVisible,
   headingFoldKey,
   toggleHeadingFold,
 } from '@/apps/project/components/textEditor/extensions/headingFold';
+import { isMediaLikeBlockType } from '@/apps/project/components/textEditor/utils/mediaBlockTypes';
+import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/apps/project/components/textEditor/extensions/formatBubbleSuppress';
 
 interface BlockLineControlProps {
   editor: Editor;
@@ -119,6 +125,18 @@ const getBlockEndPos = (editor: Editor, blockStart: number): number | null => {
   return null;
 };
 
+/** Fallback when `getBlockEndPos` misses (e.g. stale `blockStart` vs resolve). */
+const getBlockEndPosRobust = (editor: Editor, blockStart: number): number | null => {
+  const fromInner = getBlockEndPos(editor, blockStart);
+  if (fromInner != null) return fromInner;
+  const doc = editor.state.doc;
+  if (blockStart < 0 || blockStart > doc.content.size) return null;
+  const $gap = doc.resolve(Math.min(blockStart, doc.content.size));
+  const after = $gap.nodeAfter;
+  if (after) return blockStart + after.nodeSize;
+  return null;
+};
+
 /** Inner block node whose start position in the document is `blockStart`. */
 const getInnerBlockNodeAtStart = (doc: PMNode, blockStart: number): PMNode | null => {
   const $pos = doc.resolve(blockStart + 1);
@@ -140,16 +158,6 @@ const isEmptyInsertLineBlock = (doc: PMNode, blockStart: number): boolean => {
   }
   return false;
 };
-
-/** Append slash palette meta (insert-from-+ mode) to the current chain transaction. */
-const chainOpenInsertSlashMenu = (chain: ReturnType<Editor['chain']>) =>
-  chain.scrollIntoView().command(({ tr }) => {
-    tr.setMeta(breaticSlashMenuKey, {
-      triggerCharacter: '/',
-      deleteTriggerCharacter: false,
-    });
-    return true;
-  });
 
 /** Top-level doc child range that contains the given inner-block position. */
 const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: number; end: number } | null => {
@@ -178,6 +186,7 @@ const moveDocRange = (editor: Editor, from: number, to: number, insertPosOrigina
   } catch {
     /* not all top-level nodes accept NodeSelection at insert boundary */
   }
+  tr.setMeta(BREATIC_SUPPRESS_FORMAT_BUBBLE_META, true);
   view.dispatch(tr);
   return true;
 };
@@ -199,21 +208,27 @@ const getEditorInnerContentRect = (editorDom: HTMLElement): DOMRect => editorDom
 
 /** DOM for the block at `blockStart` — used for handle position and right-edge refinement. */
 const resolveBlockDomForHandle = (view: EditorView, editorDom: HTMLElement, blockStart: number): HTMLElement | null => {
-  let dom = view.nodeDOM(blockStart) as HTMLElement | null;
-  if (!dom || !editorDom.contains(dom)) {
+  const tryDomAtPos = (pos: number): HTMLElement | null => {
     try {
-      const domAt = view.domAtPos(blockStart + 1);
+      const domAt = view.domAtPos(pos);
       let el = domAt.node as HTMLElement;
       if (el.nodeType === Node.TEXT_NODE) el = el.parentElement as HTMLElement;
       while (el && el.parentElement !== editorDom) {
         el = el.parentElement as HTMLElement;
       }
-      dom = el && el !== editorDom ? el : null;
+      return el && el !== editorDom ? el : null;
     } catch {
-      dom = null;
+      return null;
     }
+  };
+
+  for (const probe of [blockStart, blockStart + 1]) {
+    const raw = view.nodeDOM(probe);
+    const asEl = raw instanceof HTMLElement ? raw : raw?.parentElement ?? null;
+    if (asEl && editorDom.contains(asEl)) return asEl;
   }
-  return dom && dom !== editorDom ? dom : null;
+
+  return tryDomAtPos(blockStart + 1) ?? tryDomAtPos(blockStart);
 };
 
 const getTableFirstRowRect = (tableBlockDom: HTMLElement): DOMRect | null => {
@@ -303,17 +318,21 @@ const getBlockStartFromMousePos = (editor: Editor, clientX: number, clientY: num
   bs = normalizeBlockStartForTable(editor, bs);
 
   const refDom = resolveBlockDomForHandle(v, editorDom, bs);
-  if (!refDom) return null;
-  const r = refDom.getBoundingClientRect();
-
-  // Ignore whitespace above/below a block: don't snap side controls to nearest node.
-  if (clientY < r.top - 2 || clientY > r.bottom + 2) return null;
+  const blockRect = refDom ? refDom.getBoundingClientRect() : null;
+  if (blockRect) {
+    // Ignore whitespace above/below a block: don't snap side controls to nearest node.
+    if (clientY < blockRect.top - 2 || clientY > blockRect.bottom + 2) return null;
+  }
 
   const hitNode = getInnerBlockNodeAtStart(editor.state.doc, bs);
   if (hitNode?.type.name === 'table') return bs;
 
-  if (r.width >= 4) {
-    const refineX = Math.min(Math.max(r.left + 1, r.right - 10), r.right - 1);
+  if (hitNode && isMediaLikeBlockType(hitNode.type.name)) {
+    return bs;
+  }
+
+  if (blockRect && blockRect.width >= 4) {
+    const refineX = Math.min(Math.max(blockRect.left + 1, blockRect.right - 10), blockRect.right - 1);
     const refined = getBlockStartFromElementsAt(v, editor, refineX, clientY);
     if (refined != null) return normalizeBlockStartForTable(editor, refined);
   }
@@ -333,8 +352,8 @@ const getBlockLinePortalHost = (editor: Editor): HTMLElement | null => {
   return (dom.closest('.breatic-editor-wrapper') as HTMLElement | null) ?? dom.closest('.breatic-editor-body');
 };
 
-/** Just above `handleMenuLayerZ` in TableHandles (base + 50). */
-const BLOCK_LINE_CONTROL_Z = 'calc(var(--bn-ui-base-z-index, 9990) + 55)' as const;
+/** Keep drag/insert/fold gutter controls below the text bubble toolbar. */
+const BLOCK_LINE_CONTROL_Z = 60;
 
 const preventEditorNativeDragStart = (e: DragEvent): void => {
   e.preventDefault();
@@ -756,6 +775,8 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   const dragPayloadRef = useRef<{ from: number; to: number } | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const displayedBlockStartRef = useRef<number | null>(null);
+  /** Frozen when the drag-handle menu opens — same role as BlockNote `SideMenuExtension.state.block` (stable delete/turn-into target). */
+  const frozenHandleMenuBlockStartRef = useRef<number | null>(null);
   const hoverBlockStartRef = useRef<number | null>(null);
   const lastHoveredBlockStartRef = useRef<number | null>(null);
   /** Last known pointer position — shared with pointer-tracking closure for re-detection on doc changes. */
@@ -772,6 +793,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   useEffect(() => {
     if (!slashFromInsertOpen) return;
     blockTypeMenuOpenSyncRef.current = false;
+    frozenHandleMenuBlockStartRef.current = null;
     setMenuOpen((m) => (m === 'handle' ? 'none' : m));
   }, [slashFromInsertOpen]);
 
@@ -983,25 +1005,32 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       }
       blockTypeMenuOpenSyncRef.current = false;
       setMenuOpen('none');
-      const bs = displayedBlockStartRef.current ?? hoverBlockStartRef.current ?? lastHoveredBlockStartRef.current;
+      const bs =
+        pos?.blockStart ??
+        displayedBlockStartRef.current ??
+        hoverBlockStartRef.current ??
+        lastHoveredBlockStartRef.current;
       if (bs == null) return;
       const { doc } = editor.state;
 
       if (isEmptyInsertLineBlock(doc, bs)) {
-        chainOpenInsertSlashMenu(
-          editor
-            .chain()
-            .focus()
-            .setTextSelection(bs + 1),
-        ).run();
+        editor.chain().focus().setTextSelection(bs + 1).scrollIntoView().run();
+        openBreaticSlashMenu(editor, { deleteTriggerCharacter: false });
         return;
       }
 
-      const end = getBlockEndPos(editor, bs);
+      const end = getBlockEndPosRobust(editor, bs);
       if (end == null) return;
-      chainOpenInsertSlashMenu(editor.chain().focus().insertContentAt(end, { type: 'paragraph' })).run();
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(end, { type: 'paragraph' })
+        .setTextSelection(end + 1)
+        .scrollIntoView()
+        .run();
+      openBreaticSlashMenu(editor, { deleteTriggerCharacter: false });
     },
-    [editor],
+    [editor, pos?.blockStart],
   );
 
   const handleDragHandleClick = useCallback(
@@ -1010,11 +1039,17 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       setMenuOpen((m) => {
         if (m === 'handle') {
           blockTypeMenuOpenSyncRef.current = false;
+          frozenHandleMenuBlockStartRef.current = null;
           return 'none';
         }
         const view = editor.view;
         if (breaticSlashMenuKey.getState(editor.state)) closeBreaticSlashMenu(view);
-        const anchor = hoverBlockStartRef.current ?? displayedBlockStartRef.current ?? lastHoveredBlockStartRef.current;
+        const anchor =
+          pos?.blockStart ??
+          hoverBlockStartRef.current ??
+          displayedBlockStartRef.current ??
+          lastHoveredBlockStartRef.current;
+        frozenHandleMenuBlockStartRef.current = anchor ?? null;
         if (anchor != null) {
           hoverBlockStartRef.current = anchor;
           lastHoveredBlockStartRef.current = anchor;
@@ -1023,7 +1058,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
         return 'handle';
       });
     },
-    [editor],
+    [editor, pos?.blockStart],
   );
 
   const handleDragHandleMouseDown = useCallback(() => {
@@ -1057,6 +1092,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
 
   const handleBlockTypeMenuClose = useCallback(() => {
     blockTypeMenuOpenSyncRef.current = false;
+    frozenHandleMenuBlockStartRef.current = null;
     setMenuOpen('none');
   }, []);
 
@@ -1100,7 +1136,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
           return createPortal(
             <div
               className={cn(
-                'pointer-events-none z-[9995] h-0.5 rounded-full',
+                'pointer-events-none z-[59] h-0.5 rounded-full',
                 dropIndicator.mode === 'fixed' ? 'fixed' : 'absolute',
               )}
               style={{
@@ -1186,7 +1222,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
             {menuOpen === 'handle' && !slashFromInsertOpen && (
               <BlockTypeMenu
                 editor={editor}
-                anchorBlockStartRef={displayedBlockStartRef}
+                anchorBlockStartRef={frozenHandleMenuBlockStartRef}
                 onClose={handleBlockTypeMenuClose}
                 anchorElRef={dragHandleRef}
                 mainFloatingRef={blockTypeMenuMainFloatRef}

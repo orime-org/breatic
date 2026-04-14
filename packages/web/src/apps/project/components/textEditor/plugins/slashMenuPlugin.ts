@@ -1,13 +1,11 @@
 /**
- * (@blocknote/core/extensions/SuggestionMenu/SuggestionMenu.ts):
- * - Typing "/" inserts the character and opens with an inline decoration on "/".
- * - Programmatic open (Insert block +) passes deleteTriggerCharacter: false: no "/" in the doc,
- *   block-level decoration on the current text block, placeholder stays visible.
+ * Slash menu trigger: typed "/" stays in the document with an inline decoration on that character.
+ * Programmatic open passes deleteTriggerCharacter: false (no "/" in the doc, block decoration, placeholder visible).
  */
 import { findParentNode } from '@tiptap/core';
 import type { Editor, Range } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -34,9 +32,7 @@ const findTextBlock = findParentNode((node) =>
 
 function slashCommandRange(state: EditorState, pm: NonNullable<BreaticSlashMenuState>): Range {
   const { from } = state.selection;
-  const start = pm.deleteTriggerCharacter
-    ? pm.queryStart - pm.triggerCharacter.length
-    : pm.queryStart;
+  const start = pm.deleteTriggerCharacter ? pm.queryStart - pm.triggerCharacter.length : pm.queryStart;
   return { from: start, to: from };
 }
 
@@ -70,15 +66,22 @@ export function openBreaticSlashMenu(
 ) {
   const view = editor.view;
   if (!view) return;
-  editor.chain().focus().run();
-  view.dispatch(
-    view.state.tr
-      .scrollIntoView()
-      .setMeta(pluginKey, {
+  const deleteTriggerCharacter = options?.deleteTriggerCharacter ?? false;
+  // Single transaction like BlockNote `openSuggestionMenu` (focus + optional "/" + meta + scroll).
+  editor
+    .chain()
+    .focus()
+    .command(({ tr }) => {
+      if (deleteTriggerCharacter) {
+        tr.insertText('/');
+      }
+      tr.setMeta(pluginKey, {
         triggerCharacter: '/',
-        deleteTriggerCharacter: options?.deleteTriggerCharacter ?? false,
-      } satisfies SlashMetaOpen),
-  );
+        deleteTriggerCharacter,
+      } satisfies SlashMetaOpen).scrollIntoView();
+      return true;
+    })
+    .run();
 }
 
 export function closeBreaticSlashMenu(view: EditorView, pluginKey = breaticSlashMenuKey) {
@@ -208,10 +211,34 @@ export function createBreaticSlashMenuPlugin<I>({
           queryStart = transaction.mapping.map(queryStart);
         }
 
+        if (prev.deleteTriggerCharacter) {
+          const t = prev.triggerCharacter;
+          const len = t.length;
+          if (len === 0 || queryStart < len || queryStart > newState.doc.content.size) {
+            return null;
+          }
+          const slashFrom = queryStart - len;
+          try {
+            if (newState.doc.textBetween(slashFrom, queryStart) !== t) {
+              return null;
+            }
+          } catch {
+            return null;
+          }
+        }
+
         const sel = newState.selection;
+        // "+" palette opened on a media/atom block: keep plugin state until the user moves
+        // to a text caret (sameParent / textBetween checks do not apply to NodeSelection).
+        if (prev.deleteTriggerCharacter === false && sel instanceof NodeSelection) {
+          return prev;
+        }
+
+        // Do not use `sel.from !== sel.to`: NodeSelection is always a range and would
+        // instantly clear the menu. Only treat non-empty text ranges as "left the caret".
+        const hasNonEmptyTextRange = sel instanceof TextSelection && !sel.empty;
         if (
-          sel.from !== sel.to ||
-          transaction.getMeta('focus') ||
+          hasNonEmptyTextRange ||
           transaction.getMeta('blur') ||
           transaction.getMeta('pointer') ||
           sel.from < queryStart ||
@@ -265,6 +292,17 @@ export function createBreaticSlashMenuPlugin<I>({
           if (block) {
             return DecorationSet.create(state.doc, [
               Decoration.node(block.pos, block.pos + block.node.nodeSize, {
+                nodeName: 'span',
+                class: 'breatic-slash-suggestion-decorator',
+                'data-decoration-id': pm.decorationId,
+              }),
+            ]);
+          }
+          const sel = state.selection;
+          if (sel instanceof NodeSelection && sel.node.isBlock) {
+            const { from, node } = sel;
+            return DecorationSet.create(state.doc, [
+              Decoration.node(from, from + node.nodeSize, {
                 nodeName: 'span',
                 class: 'breatic-slash-suggestion-decorator',
                 'data-decoration-id': pm.decorationId,

@@ -5,17 +5,17 @@ import { useEditorState } from '@tiptap/react';
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
 
-export const BN_IMAGE_FILE_PANEL_EVENT = 'breatic:open-bn-image-file-panel';
+export const IMAGE_FILE_PANEL_EVENT = 'breatic:open-image-file-panel';
 
-export type BnImageFilePanelDetail = {
+export type ImageFilePanelOpenDetail = {
   editor: Editor;
   /** Document position directly before the `pendingImage` node (NodeSelection.from). */
   pos: number;
 };
 
-export function openBlockNoteStyleImagePanel(editor: Editor, pos: number): void {
+export function openImageFilePanel(editor: Editor, pos: number): void {
   window.dispatchEvent(
-    new CustomEvent<BnImageFilePanelDetail>(BN_IMAGE_FILE_PANEL_EVENT, {
+    new CustomEvent<ImageFilePanelOpenDetail>(IMAGE_FILE_PANEL_EVENT, {
       detail: { editor, pos },
     }),
   );
@@ -31,6 +31,7 @@ const DICT = {
 } as const;
 
 const PANEL_OFFSET_Y = 10;
+const DEFAULT_MEDIA_WIDTH = 250;
 
 function filenameFromURL(url: string): string {
   try {
@@ -46,7 +47,31 @@ function getPendingAt(editor: Editor, pos: number) {
   return editor.state.doc.nodeAt(pos);
 }
 
-function replacePendingWithImage(editor: Editor, pos: number, src: string, alt?: string): boolean {
+function scaleImageDimensions(width: number, height: number): { width: number; height: number } | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  const nextWidth = DEFAULT_MEDIA_WIDTH;
+  const nextHeight = Math.max(1, Math.round((height / width) * nextWidth));
+  return { width: nextWidth, height: nextHeight };
+}
+
+function getImageDimensions(src: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(scaleImageDimensions(img.naturalWidth, img.naturalHeight));
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function replacePendingWithImage(
+  editor: Editor,
+  pos: number,
+  src: string,
+  alt?: string,
+  dimensions?: { width: number; height: number } | null,
+): boolean {
   const node = getPendingAt(editor, pos);
   if (!node || node.type.name !== 'pendingImage') return false;
   const end = pos + node.nodeSize;
@@ -56,7 +81,12 @@ function replacePendingWithImage(editor: Editor, pos: number, src: string, alt?:
     .deleteRange({ from: pos, to: end })
     .insertContentAt(pos, {
       type: 'image',
-      attrs: { src, alt: alt ?? null, title: null },
+      attrs: {
+        src,
+        alt: alt ?? null,
+        title: null,
+        ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+      },
     })
     .setNodeSelection(pos)
     .run();
@@ -78,7 +108,7 @@ function computePanelStyle(referenceEl: HTMLElement, host: HTMLElement): { top: 
 }
 
 /** Anchored under `pendingImage` inside `.breatic-editor-body` so it scrolls with editor content (no viewport-fixed portal). */
-const BnImageFilePanelFloating = ({ editor, pos, onClose }: InnerProps) => {
+const ImageFilePanelFloating = ({ editor, pos, onClose }: InnerProps) => {
   const [openTab, setOpenTab] = useState<'upload' | 'embed'>('upload');
   const [embedUrl, setEmbedUrl] = useState('');
   const [uploadFailed, setUploadFailed] = useState(false);
@@ -168,20 +198,25 @@ const BnImageFilePanelFloating = ({ editor, pos, onClose }: InnerProps) => {
     return () => window.clearTimeout(t);
   }, [uploadFailed]);
 
-  const finishWithSrc = (src: string) => {
+  const finishWithSrc = (src: string, dimensions?: { width: number; height: number } | null) => {
     const alt = filenameFromURL(src);
-    if (replacePendingWithImage(editor, pos, src, alt)) onClose();
+    if (replacePendingWithImage(editor, pos, src, alt, dimensions)) onClose();
   };
 
   const onFile = (file: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
     setLoading(true);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setLoading(false);
+    reader.onload = async (ev) => {
       const r = ev.target?.result;
-      if (typeof r === 'string') finishWithSrc(r);
-      else setUploadFailed(true);
+      if (typeof r === 'string') {
+        const dimensions = await getImageDimensions(r);
+        setLoading(false);
+        finishWithSrc(r, dimensions);
+        return;
+      }
+      setLoading(false);
+      setUploadFailed(true);
     };
     reader.onerror = () => {
       setLoading(false);
@@ -205,7 +240,7 @@ const BnImageFilePanelFloating = ({ editor, pos, onClose }: InnerProps) => {
         position: 'absolute',
         top: panelPos.top,
         left: panelPos.left,
-        zIndex: 10020,
+        zIndex: 85,
       }}
       role='dialog'
       aria-label={DICT.uploadPlaceholder}
@@ -287,25 +322,25 @@ const BnImageFilePanelFloating = ({ editor, pos, onClose }: InnerProps) => {
   );
 };
 
-const BlockNoteImageFilePanel = () => {
-  const [ctx, setCtx] = useState<BnImageFilePanelDetail | null>(null);
+const ImageFilePanel = () => {
+  const [ctx, setCtx] = useState<ImageFilePanelOpenDetail | null>(null);
 
   const close = useCallback(() => setCtx(null), []);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const ce = e as CustomEvent<BnImageFilePanelDetail>;
+      const ce = e as CustomEvent<ImageFilePanelOpenDetail>;
       const d = ce.detail;
       if (!d?.editor || typeof d.pos !== 'number') return;
       setCtx(d);
     };
-    window.addEventListener(BN_IMAGE_FILE_PANEL_EVENT, onOpen as EventListener);
-    return () => window.removeEventListener(BN_IMAGE_FILE_PANEL_EVENT, onOpen as EventListener);
+    window.addEventListener(IMAGE_FILE_PANEL_EVENT, onOpen as EventListener);
+    return () => window.removeEventListener(IMAGE_FILE_PANEL_EVENT, onOpen as EventListener);
   }, []);
 
   if (!ctx) return null;
 
-  return <BnImageFilePanelFloating key={ctx.pos} editor={ctx.editor} pos={ctx.pos} onClose={close} />;
+  return <ImageFilePanelFloating key={ctx.pos} editor={ctx.editor} pos={ctx.pos} onClose={close} />;
 };
 
-export default BlockNoteImageFilePanel;
+export default ImageFilePanel;

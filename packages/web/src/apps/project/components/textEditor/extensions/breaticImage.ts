@@ -2,8 +2,8 @@ import type { ResizableNodeViewDirection } from '@tiptap/core';
 import { mergeAttributes, ResizableNodeView } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 
-/** BlockNote Block.css — vertical bars at left/right of visual media */
-function createBlockNoteStyleHandle(direction: ResizableNodeViewDirection): HTMLElement {
+/** Creates left/right vertical resize handle elements for the image node view. */
+function createImageResizeHandle(direction: ResizableNodeViewDirection): HTMLElement {
   const h = document.createElement('div');
   h.dataset.resizeHandle = direction;
   h.className = `bn-resize-handle bn-resize-handle--${direction}`;
@@ -26,10 +26,9 @@ function applyImageAlign(el: HTMLElement, align: string) {
     align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
 }
 
-/** BlockNote `createFileNameWithIcon` / React `RiFile2Line` path. */
 const BN_FILE_LINE_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 8L9.00319 2H19.9978C20.5513 2 21 2.45531 21 2.9918V21.0082C21 21.556 20.5551 22 20.0066 22H3.9934C3.44476 22 3 21.5501 3 20.9932V8ZM10 4V9H5V20H19V4H10Z"></path></svg>';
 
-/** Label in `bn-file-name` — mirrors BlockNote `block.props.name` (title → alt → URL basename). */
+/** Resolves the displayed file name from title, alt, or URL basename. */
 function imageNoPreviewLabel(attrs: {
   title?: string | null;
   alt?: string | null;
@@ -52,7 +51,8 @@ function imageNoPreviewLabel(attrs: {
   return src.length <= 80 ? src : 'Image';
 }
 
-function buildBlockNoteFileNameRow(label: string): {
+/** Builds the file-name row DOM for link-mode (no preview) image blocks. */
+function buildFileNameRow(label: string): {
   outer: HTMLDivElement;
   nameEl: HTMLParagraphElement;
 } {
@@ -79,10 +79,6 @@ function buildBlockNoteFileNameRow(label: string): {
   return { outer: contentWrap, nameEl };
 }
 
-/**
- * TipTap resizable image with BlockNote-style handles, optional link fallback
- * (`showPreview: false`), and block alignment (`textAlign`).
- */
 export const BreaticImage = Image.extend({
   name: 'image',
 
@@ -111,6 +107,14 @@ export const BreaticImage = Image.extend({
           'data-text-align': (attributes.textAlign as string) || 'left',
         }),
       },
+      accentBackground: {
+        default: null,
+        parseHTML: (element) => (element as HTMLElement).getAttribute('data-accent-bg'),
+        renderHTML: (attributes) => {
+          const v = attributes.accentBackground as string | null | undefined;
+          return v ? { 'data-accent-bg': v } : {};
+        },
+      },
     };
   },
 
@@ -125,6 +129,7 @@ export const BreaticImage = Image.extend({
           const nameEl = dom.querySelector('p.bn-file-name');
           const textAlign = dom.getAttribute('data-text-align') || 'left';
           const showPreview = dom.getAttribute('data-bn-show-preview') !== 'false';
+          const accentBackground = dom.getAttribute('data-accent-bg');
           if (img) {
             const w = img.getAttribute('width');
             const h = img.getAttribute('height');
@@ -136,6 +141,7 @@ export const BreaticImage = Image.extend({
               height: h ? parseInt(h, 10) : null,
               textAlign,
               showPreview,
+              accentBackground,
             };
           }
           if (nameEl && dom.querySelector('.bn-file-name-with-icon')) {
@@ -147,6 +153,7 @@ export const BreaticImage = Image.extend({
               title: null,
               showPreview: false,
               textAlign,
+              accentBackground,
             };
           }
           if (a) {
@@ -156,6 +163,7 @@ export const BreaticImage = Image.extend({
               title: null,
               showPreview: false,
               textAlign,
+              accentBackground,
             };
           }
           return false;
@@ -171,14 +179,18 @@ export const BreaticImage = Image.extend({
     const textAlignStyle =
       align === 'center' ? 'text-align:center' : align === 'right' ? 'text-align:right' : 'text-align:left';
 
+    const accent = node.attrs.accentBackground as string | null | undefined;
     const wrapperAttrs: Record<string, unknown> = {
       'data-breatic-image': '',
       'data-text-align': align,
-      style: textAlignStyle,
+      style: textAlignStyle + (accent ? `;background-color:${accent}` : ''),
       class: 'breatic-image-export',
     };
     if (!showPreview) {
       wrapperAttrs['data-bn-show-preview'] = 'false';
+    }
+    if (accent) {
+      wrapperAttrs['data-accent-bg'] = accent;
     }
 
     const baseImg = mergeAttributes(this.options.HTMLAttributes, {
@@ -247,13 +259,15 @@ export const BreaticImage = Image.extend({
         outer.setAttribute('data-file-block', '');
         outer.style.display = 'flex';
         applyImageAlign(outer, (node.attrs.textAlign as string) || 'left');
+        const ab = node.attrs.accentBackground as string | null | undefined;
+        outer.style.backgroundColor = ab || '';
 
         const label = imageNoPreviewLabel({
           title: node.attrs.title as string | null,
           alt: node.attrs.alt as string | null,
           src: node.attrs.src as string | null,
         });
-        const { outer: fileBlock, nameEl } = buildBlockNoteFileNameRow(label);
+        const { outer: fileBlock, nameEl } = buildFileNameRow(label);
         if (node.attrs.src) {
           outer.setAttribute('data-image-src', String(node.attrs.src));
         }
@@ -265,6 +279,8 @@ export const BreaticImage = Image.extend({
             if (u.type.name !== 'image') return false;
             if (u.attrs.showPreview !== false) return false;
             applyImageAlign(outer, (u.attrs.textAlign as string) || 'left');
+            const nextAb = u.attrs.accentBackground as string | null | undefined;
+            outer.style.backgroundColor = nextAb || '';
             const nextSrc = u.attrs.src as string | null | undefined;
             if (nextSrc) outer.setAttribute('data-image-src', String(nextSrc));
             else outer.removeAttribute('data-image-src');
@@ -335,6 +351,7 @@ export const BreaticImage = Image.extend({
           else el.removeAttribute('alt');
           if (resizeTarget.el) {
             applyImageAlign(resizeTarget.el, (updatedNode.attrs.textAlign as string) || 'left');
+            resizeTarget.el.style.backgroundColor = (updatedNode.attrs.accentBackground as string) || '';
           }
           return true;
         },
@@ -349,7 +366,7 @@ export const BreaticImage = Image.extend({
             container: 'breatic-image-block',
             wrapper: 'breatic-image-resize-wrapper bn-visual-media-wrapper',
           },
-          createCustomHandle: createBlockNoteStyleHandle,
+          createCustomHandle: createImageResizeHandle,
         },
       });
 
@@ -357,6 +374,7 @@ export const BreaticImage = Image.extend({
       applyImageAlign(resizeTarget.el, (node.attrs.textAlign as string) || 'left');
 
       const dom = nodeView.dom as HTMLElement;
+      dom.style.backgroundColor = (node.attrs.accentBackground as string) || '';
 
       dom.style.visibility = 'hidden';
       dom.style.pointerEvents = 'none';

@@ -44,12 +44,20 @@
   }
 
   /*
-   * 右侧面板 TipTap（.breatic-editor-body）此前未做 revert，Tailwind preflight 会去掉 ul/ol 的 list-style，
-   * 导致无序/有序列表前方无圆点、无数字。
+   * 右侧面板 TipTap（.breatic-editor-body）：
+   * - ul/ol/li：preflight 去掉 list-style，需 revert 才能显示项目符号/序号。
+   * - h1–h6：preflight 使用 font-size/font-weight: inherit，标题会与正文同字号同字重；
+   *   revert 回 UA 后再由 editor.css 覆盖字号与间距。
    */
   .breatic-editor-body .ProseMirror ul,
   .breatic-editor-body .ProseMirror ol,
-  .breatic-editor-body .ProseMirror li {
+  .breatic-editor-body .ProseMirror li,
+  .breatic-editor-body .ProseMirror h1,
+  .breatic-editor-body .ProseMirror h2,
+  .breatic-editor-body .ProseMirror h3,
+  .breatic-editor-body .ProseMirror h4,
+  .breatic-editor-body .ProseMirror h5,
+  .breatic-editor-body .ProseMirror h6 {
     all: revert;
   }
 }

@@ -8,9 +8,9 @@ import {
 } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
+import { selectedRect } from '@tiptap/pm/tables';
 import Tooltip from '@/components/base/tooltip';
 import { cn } from '@/utils/classnames';
-/** BlockNote `defaultColors` — text + background per theme. */
 const textColors = {
   light: {
     gray: '#9b9a97',
@@ -176,8 +176,355 @@ const paletteSwatchStyle = (
   };
 };
 
-const TextColorSelect = ({ editor }: TextColorSelectProps) => {
+/** Apply palette to every cell in a table row or column (current table from selection). */
+export type TextColorPaletteTableScope = {
+  axis: 'row' | 'column';
+  index: number;
+};
+
+/** Block-level color scope: applies color to all text in a specific `{from, to}` range. */
+export type TextColorPaletteBlockScope = {
+  from: number;
+  to: number;
+};
+
+export type TextColorPalettePanelProps = {
+  editor: Editor;
+  /** Extra classes on the outer panel (e.g. shadow) */
+  className?: string;
+  /** Called after a color is applied (e.g. close parent submenu) */
+  onAfterPick?: () => void;
+  /**
+   * When set: **Text** applies text color to all text in that row/column; **Background** applies
+   * the table cell `backgroundColor` attribute (not text highlight).
+   */
+  tableScope?: TextColorPaletteTableScope;
+  /**
+   * When set: applies text / background color to all text within the given document range
+   * (i.e. the entire paragraph / block). Used by BlockTypeMenu ("Click for options").
+   */
+  blockScope?: TextColorPaletteBlockScope;
+  /**
+   * Media / atom blocks: position before the node. Background swatches set the node's
+   * `accentBackground` attribute (text section is omitted).
+   */
+  atomBlockPos?: number;
+};
+
+function tryTableSelectedRect(editor: Editor) {
+  try {
+    return selectedRect(editor.state);
+  } catch {
+    return null;
+  }
+}
+
+function tableCellInnerRanges(editor: Editor, scope: TextColorPaletteTableScope): { from: number; to: number }[] {
+  const rect = tryTableSelectedRect(editor);
+  if (!rect) return [];
+  const { map, tableStart } = rect;
+  const ranges: { from: number; to: number }[] = [];
+  if (scope.axis === 'row') {
+    const row = scope.index;
+    if (row < 0 || row >= map.height) return [];
+    for (let col = 0; col < map.width; col++) {
+      const abs = tableStart + map.map[row * map.width + col];
+      const cell = editor.state.doc.nodeAt(abs);
+      if (!cell || (cell.type.name !== 'tableCell' && cell.type.name !== 'tableHeader')) continue;
+      const from = abs + 1;
+      const to = abs + cell.nodeSize - 1;
+      if (from < to) ranges.push({ from, to });
+    }
+  } else {
+    const col = scope.index;
+    if (col < 0 || col >= map.width) return [];
+    for (let row = 0; row < map.height; row++) {
+      const abs = tableStart + map.map[row * map.width + col];
+      const cell = editor.state.doc.nodeAt(abs);
+      if (!cell || (cell.type.name !== 'tableCell' && cell.type.name !== 'tableHeader')) continue;
+      const from = abs + 1;
+      const to = abs + cell.nodeSize - 1;
+      if (from < to) ranges.push({ from, to });
+    }
+  }
+  return ranges;
+}
+
+function applyTextColorToTableScope(
+  editor: Editor,
+  scope: TextColorPaletteTableScope,
+  key: 'default' | NamedKey,
+  isDark: boolean,
+  onAfterPick?: () => void,
+): void {
+  const ranges = tableCellInnerRanges(editor, scope);
+  for (const { from, to } of ranges) {
+    if (key === 'default') {
+      editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+    } else {
+      const hex = textHex(key, isDark);
+      if (hex) editor.chain().focus().setTextSelection({ from, to }).setColor(hex).run();
+    }
+  }
+  onAfterPick?.();
+}
+
+/** Sets `backgroundColor` on every `tableCell` / `tableHeader` in the scoped row or column. */
+function applyCellBackgroundToTableScope(
+  editor: Editor,
+  scope: TextColorPaletteTableScope,
+  key: 'default' | NamedKey,
+  isDark: boolean,
+  onAfterPick?: () => void,
+): void {
+  const r = tryTableSelectedRect(editor);
+  if (!r) {
+    onAfterPick?.();
+    return;
+  }
+  const color: string | null = key === 'default' ? null : (bgHex(key, isDark) ?? null);
+  const { state, view } = editor;
+  const { map, tableStart } = r;
+  let tr = state.tr;
+
+  const paintCell = (abs: number) => {
+    const cell = tr.doc.nodeAt(abs);
+    if (!cell || (cell.type.name !== 'tableCell' && cell.type.name !== 'tableHeader')) return;
+    tr = tr.setNodeMarkup(abs, undefined, { ...cell.attrs, backgroundColor: color });
+  };
+
+  if (scope.axis === 'row') {
+    if (scope.index < 0 || scope.index >= map.height) {
+      onAfterPick?.();
+      return;
+    }
+    for (let col = 0; col < map.width; col++) {
+      paintCell(tableStart + map.map[scope.index * map.width + col]);
+    }
+  } else {
+    if (scope.index < 0 || scope.index >= map.width) {
+      onAfterPick?.();
+      return;
+    }
+    for (let row = 0; row < map.height; row++) {
+      paintCell(tableStart + map.map[row * map.width + scope.index]);
+    }
+  }
+
+  if (tr.docChanged) view.dispatch(tr);
+  onAfterPick?.();
+}
+
+function firstScopedCellBackgroundColor(editor: Editor, scope: TextColorPaletteTableScope): string | undefined {
+  const r = tryTableSelectedRect(editor);
+  if (!r) return undefined;
+  const { map, tableStart } = r;
+  let abs: number | null = null;
+  if (scope.axis === 'row') {
+    if (scope.index < 0 || scope.index >= map.height) return undefined;
+    abs = tableStart + map.map[scope.index * map.width + 0];
+  } else {
+    if (scope.index < 0 || scope.index >= map.width) return undefined;
+    abs = tableStart + map.map[0 * map.width + scope.index];
+  }
+  const cell = editor.state.doc.nodeAt(abs);
+  if (!cell) return undefined;
+  const raw = (cell.attrs as { backgroundColor?: string | null }).backgroundColor;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+/** Same Text / Background palette as the bubble menu — reusable as a nested submenu. */
+export const TextColorPalettePanel = ({
+  editor,
+  className,
+  onAfterPick,
+  tableScope,
+  blockScope,
+  atomBlockPos,
+}: TextColorPalettePanelProps) => {
   const isDark = useDocumentTheme() === 'dark';
+
+  useEditorState({
+    editor,
+    selector: ({ transactionNumber, editor: ed }) => {
+      if (typeof atomBlockPos !== 'number') return transactionNumber;
+      const raw = ed.state.doc.nodeAt(atomBlockPos)?.attrs as { accentBackground?: string | null } | undefined;
+      return [transactionNumber, raw?.accentBackground ?? ''] as const;
+    },
+  });
+
+  const attrs = editor.getAttributes('textStyle') as {
+    color?: string;
+    backgroundColor?: string;
+  };
+  const colorAttr = attrs.color;
+  const bgAttr = attrs.backgroundColor;
+
+  const atomAccent =
+    typeof atomBlockPos === 'number' ? (editor.state.doc.nodeAt(atomBlockPos)?.attrs as { accentBackground?: string | null })?.accentBackground : undefined;
+  const namedTextKey = findTextKey(colorAttr, isDark);
+  const cellBgAttr = tableScope ? firstScopedCellBackgroundColor(editor, tableScope) : undefined;
+  const namedBgKey =
+    typeof atomBlockPos === 'number'
+      ? findBackgroundKey(typeof atomAccent === 'string' ? atomAccent : undefined, isDark)
+      : findBackgroundKey(tableScope ? cellBgAttr : bgAttr, isDark);
+
+  const sections: readonly { id: PaletteSectionId; title: string; headerClass: string }[] =
+    typeof atomBlockPos === 'number' ? [{ id: 'bg', title: 'Background', headerClass: 'px-2 pb-0.5 pt-1.5' }] : paletteDropdownSections;
+
+  const applyTextColor = (key: 'default' | NamedKey) => {
+    if (tableScope) {
+      applyTextColorToTableScope(editor, tableScope, key, isDark, onAfterPick);
+      return;
+    }
+    if (blockScope && blockScope.from < blockScope.to) {
+      // Select the entire block range first, then apply color to all text in it
+      const chain = editor.chain().focus().setTextSelection({ from: blockScope.from, to: blockScope.to });
+      if (key === 'default') {
+        chain.unsetColor().run();
+      } else {
+        const hex = textHex(key, isDark);
+        if (hex) chain.setColor(hex).run();
+      }
+      onAfterPick?.();
+      return;
+    }
+    if (key === 'default') {
+      editor.chain().focus().unsetColor().run();
+    } else {
+      const hex = textHex(key, isDark);
+      if (hex) editor.chain().focus().setColor(hex).run();
+    }
+    onAfterPick?.();
+  };
+
+  const applyBackgroundColor = (key: 'default' | NamedKey) => {
+    if (typeof atomBlockPos === 'number') {
+      const hex = key === 'default' ? null : bgHex(key, isDark) ?? null;
+      const n = editor.state.doc.nodeAt(atomBlockPos);
+      if (n) {
+        editor.chain().focus().setNodeSelection(atomBlockPos).updateAttributes(n.type.name, { accentBackground: hex }).run();
+      }
+      onAfterPick?.();
+      return;
+    }
+    if (tableScope) {
+      applyCellBackgroundToTableScope(editor, tableScope, key, isDark, onAfterPick);
+      return;
+    }
+    if (blockScope && blockScope.from < blockScope.to) {
+      // Select the entire block range first, then apply background color to all text in it
+      const chain = editor.chain().focus().setTextSelection({ from: blockScope.from, to: blockScope.to });
+      if (key === 'default') {
+        chain.unsetBackgroundColor().run();
+      } else {
+        const hex = bgHex(key, isDark);
+        if (hex) chain.setBackgroundColor(hex).run();
+      }
+      onAfterPick?.();
+      return;
+    }
+    if (key === 'default') {
+      editor.chain().focus().unsetBackgroundColor().run();
+    } else {
+      const hex = bgHex(key, isDark);
+      if (hex) editor.chain().focus().setBackgroundColor(hex).run();
+    }
+    onAfterPick?.();
+  };
+
+  return (
+    <div
+      className={cn(
+        'min-w-[168px] rounded-[8px] border border-border-default-base bg-background-default-base py-1 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]',
+        className,
+      )}
+    >
+      {sections.map((sec) => {
+        const activeKey = sec.id === 'text' ? namedTextKey : namedBgKey;
+        const apply = sec.id === 'text' ? applyTextColor : applyBackgroundColor;
+        const sectionTitle =
+          tableScope && sec.id === 'bg' ? 'Cell background' : sec.title;
+        return (
+          <Fragment key={sec.id}>
+            <div className={cn(sec.headerClass, 'text-[11px] font-medium text-text-default-tertiary')}>
+              {sectionTitle}
+            </div>
+            {colorOrder.map((key) => {
+              const isActive = key === 'default' ? activeKey === 'default' : activeKey === key;
+              return (
+                <button
+                  key={`${sec.id}-${key}`}
+                  type='button'
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => apply(key)}
+                  className={cn(
+                    paletteRowBtnClass,
+                    isActive ? 'bg-background-default-secondary font-medium' : 'bg-transparent hover:bg-background-default-secondary',
+                  )}
+                >
+                  <span
+                    className={paletteSwatchClass}
+                    style={paletteSwatchStyle(sec.id, key, isDark)}
+                    aria-hidden
+                  >
+                    A
+                  </span>
+                  {colorLabels[key]}
+                </button>
+              );
+            })}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+};
+
+export type CellBackgroundPaletteProps = {
+  /** `null` clears cell background. */
+  onPick: (backgroundCssColor: string | null) => void;
+  className?: string;
+};
+
+/** Same preset background swatches as the text palette — for table cell `backgroundColor` only. */
+export function CellBackgroundPalette({ onPick, className }: CellBackgroundPaletteProps) {
+  const isDark = useDocumentTheme() === 'dark';
+
+  return (
+    <div
+      className={cn(
+        'min-w-[168px] rounded-[8px] border border-border-default-base bg-background-default-base py-1 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]',
+        className,
+      )}
+    >
+      <div className='px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-text-default-tertiary'>Background</div>
+      {colorOrder.map((key) => (
+        <button
+          key={key}
+          type='button'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onPick(key === 'default' ? null : (bgHex(key, isDark) ?? null))}
+          className={cn(
+            paletteRowBtnClass,
+            'bg-transparent hover:bg-background-default-secondary',
+          )}
+        >
+          <span
+            className={paletteSwatchClass}
+            style={paletteSwatchStyle('bg', key, isDark)}
+            aria-hidden
+          >
+            A
+          </span>
+          {colorLabels[key]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const TextColorSelect = ({ editor }: TextColorSelectProps) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -193,11 +540,7 @@ const TextColorSelect = ({ editor }: TextColorSelectProps) => {
   const colorAttr = attrs.color;
   const bgAttr = attrs.backgroundColor;
 
-  const namedTextKey = findTextKey(colorAttr, isDark);
-  const namedBgKey = findBackgroundKey(bgAttr, isDark);
-
-  const textSwatchFill =
-    colorAttr && colorAttr.length > 0 ? colorAttr : 'var(--color-text-default-base)';
+  const textSwatchFill = colorAttr && colorAttr.length > 0 ? colorAttr : 'var(--color-text-default-base)';
 
   useEffect(() => {
     if (!open) return;
@@ -209,26 +552,6 @@ const TextColorSelect = ({ editor }: TextColorSelectProps) => {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const applyTextColor = (key: 'default' | NamedKey) => {
-    if (key === 'default') {
-      editor.chain().focus().unsetColor().run();
-    } else {
-      const hex = textHex(key, isDark);
-      if (hex) editor.chain().focus().setColor(hex).run();
-    }
-    setOpen(false);
-  };
-
-  const applyBackgroundColor = (key: 'default' | NamedKey) => {
-    if (key === 'default') {
-      editor.chain().focus().unsetBackgroundColor().run();
-    } else {
-      const hex = bgHex(key, isDark);
-      if (hex) editor.chain().focus().setBackgroundColor(hex).run();
-    }
-    setOpen(false);
-  };
-
   return (
     <div ref={wrapRef} className='relative'>
       <Tooltip title='Text & background' placement='top' offset={4}>
@@ -237,56 +560,23 @@ const TextColorSelect = ({ editor }: TextColorSelectProps) => {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setOpen((v) => !v)}
           className='flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 text-icon-base transition-colors hover:bg-background-default-base-hover'
-          style={bgAttr && bgAttr.length > 0 ? { backgroundColor: bgAttr } : undefined}
           aria-label='Text and background color'
         >
           <span
-            className='select-none text-[14px]'
-            style={{ color: textSwatchFill }}
+            className='flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[4px]'
+            style={bgAttr && bgAttr.length > 0 ? { backgroundColor: bgAttr } : undefined}
             aria-hidden
           >
-            A
+            <span className='select-none text-[12px] font-medium leading-none' style={{ color: textSwatchFill }}>
+              A
+            </span>
           </span>
         </button>
       </Tooltip>
 
       {open && (
-        <div className='absolute left-0 top-full z-[9999] mt-1 min-w-[168px] rounded-[8px] border border-border-default-base bg-background-default-base py-1 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'>
-          {paletteDropdownSections.map((sec) => {
-            const activeKey = sec.id === 'text' ? namedTextKey : namedBgKey;
-            const apply = sec.id === 'text' ? applyTextColor : applyBackgroundColor;
-            return (
-              <Fragment key={sec.id}>
-                <div className={cn(sec.headerClass, 'text-[11px] font-medium text-text-default-tertiary')}>
-                  {sec.title}
-                </div>
-                {colorOrder.map((key) => {
-                  const isActive = key === 'default' ? activeKey === 'default' : activeKey === key;
-                  return (
-                    <button
-                      key={`${sec.id}-${key}`}
-                      type='button'
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => apply(key)}
-                      className={cn(
-                        paletteRowBtnClass,
-                        isActive ? 'bg-background-default-secondary font-medium' : 'bg-transparent hover:bg-background-default-secondary',
-                      )}
-                    >
-                      <span
-                        className={paletteSwatchClass}
-                        style={paletteSwatchStyle(sec.id, key, isDark)}
-                        aria-hidden
-                      >
-                        A
-                      </span>
-                      {colorLabels[key]}
-                    </button>
-                  );
-                })}
-              </Fragment>
-            );
-          })}
+        <div className='absolute left-0 top-full z-[91] mt-1'>
+          <TextColorPalettePanel editor={editor} onAfterPick={() => setOpen(false)} />
         </div>
       )}
     </div>

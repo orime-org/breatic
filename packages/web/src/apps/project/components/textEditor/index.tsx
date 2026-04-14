@@ -7,26 +7,38 @@ import TextAlign from '@tiptap/extension-text-align';
 import Link from '@tiptap/extension-link';
 import Highlight from '@tiptap/extension-highlight';
 import Placeholder from '@tiptap/extension-placeholder';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { BreaticImage } from './extensions/breaticImage';
 import { BreaticTableCell, BreaticTableHeader } from './extensions/tableCellBackground';
 import { SlashCommandExtension } from './components/SlashCommand';
-import BlockNoteImageFilePanel from './components/BlockNoteImageFilePanel';
+import { breaticSlashMenuKey, closeBreaticSlashMenu } from './plugins/slashMenuPlugin';
+import ImageFilePanel from './components/ImageFilePanel';
 import { PendingImage } from './extensions/pendingImage';
+import { PendingVideo } from './extensions/pendingVideo';
+import { PendingAudio } from './extensions/pendingAudio';
+import { PendingFile } from './extensions/pendingFile';
+import { HeadingFold } from './extensions/headingFold';
+import { FormatBubbleSuppress } from './extensions/formatBubbleSuppress';
+import { BlockIndent } from './extensions/blockIndent';
+import { BreaticVideo } from './extensions/breaticVideo';
+import { BreaticAudio } from './extensions/breaticAudio';
+import { BreaticCodeBlock } from './extensions/breaticCodeBlockView';
+import MediaFilePanel from './components/MediaFilePanel';
 import { useProjectStore } from '@/hooks/useProjectStore';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import EditorMenus from './components/EditorMenus';
 import BlockLineControl from './components/BlockLineControl';
+import TableOfContents from './components/TableOfContents';
+import 'highlight.js/styles/github-dark.css';
 import './editor.css';
 
 interface TextEditorProps {
   nodeId: string;
 }
 
-/**
- * Right panel editor: loads HTML from `node.data.content`, persists with `updateNode` (same fields as {@link TextNode}).
- */
 const TextEditor = ({ nodeId }: TextEditorProps) => {
   const { nodes, updateNode } = useProjectStore();
   const nodesRef = useRef(nodes);
@@ -41,11 +53,15 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
   }, [nodes, nodeId]);
 
   const lastWrittenHtmlRef = useRef<string | null>(null);
+  const editorWrapperRef = useRef<HTMLDivElement | null>(null);
   const isApplyingRemoteRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ dropcursor: false }),
+      StarterKit.configure({ dropcursor: false, codeBlock: false }),
+      BlockIndent,
+      TaskList.configure({ HTMLAttributes: { class: 'task-list' } }),
+      TaskItem.configure({ nested: true }),
       Underline,
       TextStyle,
       Color,
@@ -54,10 +70,16 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       Link.configure({ openOnClick: false }),
       Highlight.configure({ multicolor: false }),
       Placeholder.configure({
-        placeholder: 'Enter text or type \'/\' for commands…',
-        showOnlyCurrent: false,
+        placeholder: ({ node }) => {
+          if (node.type.name === 'paragraph') return 'Enter text or type \'/\' for commands…';
+          return '';
+        },
+        showOnlyCurrent: true,
       }),
       PendingImage,
+      PendingVideo,
+      PendingAudio,
+      PendingFile,
       BreaticImage.configure({
         inline: false,
         allowBase64: true,
@@ -76,7 +98,12 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       TableRow,
       BreaticTableCell,
       BreaticTableHeader,
+      BreaticVideo,
+      BreaticAudio,
+      BreaticCodeBlock,
       SlashCommandExtension,
+      HeadingFold,
+      FormatBubbleSuppress,
     ],
     content: contentFromNode || '',
     autofocus: false,
@@ -105,7 +132,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     },
   });
 
-  // Canvas / other surfaces changed `data.content` while this panel stays open
   useEffect(() => {
     if (!editor) return;
     const incoming = contentFromNode;
@@ -128,24 +154,87 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Dismiss slash UI when clicking outside ProseMirror (gutter / chrome).
+   * `editor.view` is only valid after EditorContent mounts — defer attach with rAF + try/catch.
+   */
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const wrap = editorWrapperRef.current;
+    if (!wrap) return;
+
+    let cancelled = false;
+    let rafId = 0;
+    let attempts = 0;
+    const maxAttempts = 120;
+    let listening = false;
+
+    const onPointerDownCapture = (e: PointerEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest('[data-breatic-slash-menu]')) return;
+      try {
+        if (editor.isDestroyed) return;
+        if (editor.view.dom.contains(t)) return;
+      } catch {
+        return;
+      }
+      try {
+        if (!breaticSlashMenuKey.getState(editor.state)) return;
+      } catch {
+        return;
+      }
+      queueMicrotask(() => {
+        try {
+          if (!editor.isDestroyed) closeBreaticSlashMenu(editor.view);
+        } catch {
+          /* view torn down */
+        }
+      });
+    };
+
+    const tryAttach = () => {
+      if (cancelled || listening || editor.isDestroyed) return;
+      if (attempts++ > maxAttempts) return;
+      try {
+        if (!editor.view.dom) {
+          rafId = requestAnimationFrame(tryAttach);
+          return;
+        }
+      } catch {
+        rafId = requestAnimationFrame(tryAttach);
+        return;
+      }
+      wrap.addEventListener('pointerdown', onPointerDownCapture, true);
+      listening = true;
+    };
+
+    tryAttach();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (listening) wrap.removeEventListener('pointerdown', onPointerDownCapture, true);
+    };
+  }, [editor]);
+
   return (
-    <div className='breatic-editor-wrapper relative h-full w-full overflow-y-auto bg-background-default-secondary text-text-default-base'>
-      <div className='breatic-editor-body relative px-24 pb-[200px] pt-[72px]'>
-        {/* EditorContent must mount first so ProseMirror `editor.view` exists for menus / block handle */}
-        <EditorContent editor={editor} />
-        {editor && <EditorMenus editor={editor} />}
-        {/* Block drag-and-drop: grip on the line handle (BlockLineControl) moves top-level blocks */}
-        {editor && <BlockLineControl editor={editor} />}
+    <div className='flex h-full w-full overflow-hidden text-text-default-base'>
+      {editor && <TableOfContents editor={editor} />}
+      <div
+        ref={editorWrapperRef}
+        className='breatic-editor-wrapper relative flex-1 overflow-y-auto bg-background-default-secondary min-w-0'
+      >
+        <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
+          <EditorContent editor={editor} />
+          {editor && <EditorMenus editor={editor} />}
+          {editor && <BlockLineControl editor={editor} />}
+        </div>
+        <ImageFilePanel />
+        <MediaFilePanel />
       </div>
-      <BlockNoteImageFilePanel />
     </div>
   );
 };
 
-interface TextEditorPanelProps {
-  nodeId: string;
-}
-
-const TextEditorPanel = ({ nodeId }: TextEditorPanelProps) => <TextEditor key={nodeId} nodeId={nodeId} />;
-
-export default TextEditorPanel;
+export default TextEditor;

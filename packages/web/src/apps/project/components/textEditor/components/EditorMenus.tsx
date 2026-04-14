@@ -1,13 +1,17 @@
+import { useCallback, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { CellSelection } from '@tiptap/pm/tables';
+import type { EditorState } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import Divider from '@/components/base/divider';
 import Tooltip from '@/components/base/tooltip';
 import BlockTypeSelect from './BlockTypeSelect';
 import TextColorSelect from './TextColorSelect';
-import BlockNoteTableHandles from './BlockNoteTableHandles';
+import TableHandles from './TableHandles';
 import ImageBubbleMenu, { formatBubbleShouldShow } from './ImageBubbleMenu';
+import AIMenu, { type AIMenuPosition } from './AIMenu';
 import {
   RiBold,
   RiItalic,
@@ -17,8 +21,8 @@ import {
   RiAlignLeft,
   RiAlignCenter,
   RiAlignRight,
-  RiMarkPenLine,
   RiMergeCellsHorizontal,
+  RiSparkling2Fill,
 } from 'react-icons/ri';
 
 interface EditorMenusProps {
@@ -27,10 +31,8 @@ interface EditorMenusProps {
 
 const formatMenuIconBtnClass = (active: boolean) =>
   [
-    'flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 transition-colors',
-    active
-      ? 'bg-[var(--color-brand-base)] text-[var(--color-text-on-button-base)]'
-      : 'text-icon-base hover:bg-background-default-base-hover',
+    'flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 transition-colors text-icon-base',
+    active ? 'bg-background-default-base-hover' : 'hover:bg-background-default-base-hover',
   ].join(' ');
 
 const EditorMenus = ({ editor }: EditorMenusProps) => {
@@ -39,142 +41,226 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
     selector: ({ transactionNumber }) => transactionNumber,
   });
 
+  // AI menu state
+  const [aiMenuOpen, setAIMenuOpen] = useState(false);
+  const [aiMenuPos, setAIMenuPos] = useState<AIMenuPosition | null>(null);
+  // Ref for synchronous check inside shouldShow (avoids stale closure)
+  const aiMenuOpenRef = useRef(false);
+
+  const handleCloseAIMenu = useCallback(() => {
+    aiMenuOpenRef.current = false;
+    setAIMenuOpen(false);
+    // Restore focus so the user can continue typing
+    editor.commands.focus();
+  }, [editor]);
+
+  const handleOpenAIMenu = useCallback(() => {
+    const { view } = editor;
+    const { $from, to } = editor.state.selection;
+
+    const blockTypesForAIMenuAnchor = new Set([
+      'paragraph',
+      'heading',
+      'blockquote',
+      'codeBlock',
+      'listItem',
+      'taskItem',
+    ]);
+
+    let anchorPos: number | null = null;
+    for (let d = $from.depth; d >= 1; d -= 1) {
+      const node = $from.node(d);
+      if (blockTypesForAIMenuAnchor.has(node.type.name)) {
+        anchorPos = $from.after(d) - 1;
+        break;
+      }
+    }
+
+    // Anchor AI toolbar at the current paragraph/block bottom rather than selection bottom.
+    const coords = view.coordsAtPos(anchorPos ?? to);
+
+    // Use the ProseMirror DOM element to get horizontal/width reference
+    const editorDom = view.dom as HTMLElement;
+    const editorRect = editorDom.getBoundingClientRect();
+
+    aiMenuOpenRef.current = true;
+    setAIMenuPos({
+      top: coords.bottom + 8,
+      left: editorRect.left,
+      width: editorRect.width,
+    });
+    setAIMenuOpen(true);
+  }, [editor]);
+
+  // Wrap shouldShow to hide bubble menu while AI menu is open
+  const shouldShow = useCallback(
+    (props: {
+      editor: Editor;
+      element: HTMLElement;
+      view: EditorView;
+      state: EditorState;
+      from: number;
+      to: number;
+    }) => {
+      if (aiMenuOpenRef.current) return false;
+      // Keep code block editing clean: no formatting bubble inside code blocks.
+      if (props.editor.isActive('codeBlock')) return false;
+      return formatBubbleShouldShow(props);
+    },
+    [],
+  );
+
   return (
     <>
-      <BubbleMenu editor={editor} className='bubble-menu' shouldShow={formatBubbleShouldShow}>
-        <BlockTypeSelect editor={editor} />
-        <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
+      {!aiMenuOpen && (
+        <BubbleMenu
+          editor={editor}
+          className='bubble-menu'
+          updateDelay={0}
+          shouldShow={shouldShow}
+        >
+          <BlockTypeSelect editor={editor} />
+          <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
 
-        <Tooltip title='Bold' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            className={formatMenuIconBtnClass(editor.isActive('bold'))}
-          >
-            <RiBold size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Italic' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            className={formatMenuIconBtnClass(editor.isActive('italic'))}
-          >
-            <RiItalic size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Underline' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor.chain().focus() as any).toggleUnderline().run()
-            }
-            className={formatMenuIconBtnClass(editor.isActive('underline'))}
-          >
-            <RiUnderline size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Strikethrough' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            className={formatMenuIconBtnClass(editor.isActive('strike'))}
-          >
-            <RiStrikethrough size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Inline code' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().toggleCode().run()}
-            className={formatMenuIconBtnClass(editor.isActive('code'))}
-          >
-            <RiCodeLine size={16} />
-          </button>
-        </Tooltip>
-        <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
-        <TextColorSelect editor={editor} />
-        <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
+          <Tooltip title='Bold' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              className={formatMenuIconBtnClass(editor.isActive('bold'))}
+            >
+              <RiBold size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Italic' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              className={formatMenuIconBtnClass(editor.isActive('italic'))}
+            >
+              <RiItalic size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Underline' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (editor.chain().focus() as any).toggleUnderline().run()
+              }
+              className={formatMenuIconBtnClass(editor.isActive('underline'))}
+            >
+              <RiUnderline size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Strikethrough' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.chain().focus().toggleStrike().run()}
+              className={formatMenuIconBtnClass(editor.isActive('strike'))}
+            >
+              <RiStrikethrough size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Inline code' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.chain().focus().toggleCode().run()}
+              className={formatMenuIconBtnClass(editor.isActive('code'))}
+            >
+              <RiCodeLine size={16} />
+            </button>
+          </Tooltip>
+          <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
+          <TextColorSelect editor={editor} />
+          <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
 
-        <Tooltip title='Align left' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor.chain().focus() as any).setTextAlign('left').run()
-            }
-            className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'left' }))}
-          >
-            <RiAlignLeft size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Align center' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor.chain().focus() as any).setTextAlign('center').run()
-            }
-            className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'center' }))}
-          >
-            <RiAlignCenter size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Align right' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor.chain().focus() as any).setTextAlign('right').run()
-            }
-            className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'right' }))}
-          >
-            <RiAlignRight size={16} />
-          </button>
-        </Tooltip>
-        <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
+          <Tooltip title='Align left' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (editor.chain().focus() as any).setTextAlign('left').run()
+              }
+              className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'left' }))}
+            >
+              <RiAlignLeft size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Align center' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (editor.chain().focus() as any).setTextAlign('center').run()
+              }
+              className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'center' }))}
+            >
+              <RiAlignCenter size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip title='Align right' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (editor.chain().focus() as any).setTextAlign('right').run()
+              }
+              className={formatMenuIconBtnClass(editor.isActive({ textAlign: 'right' }))}
+            >
+              <RiAlignRight size={16} />
+            </button>
+          </Tooltip>
+          <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
 
-        {editor.state.selection instanceof CellSelection && editor.can().mergeCells() && (
-          <>
-            <Tooltip title='Merge cells' placement='top' offset={4}>
-              <button
-                type='button'
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().mergeCells().run()}
-                className={formatMenuIconBtnClass(false)}
-              >
-                <RiMergeCellsHorizontal size={16} />
-              </button>
-            </Tooltip>
-            <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
-          </>
-        )}
+          {editor.state.selection instanceof CellSelection && editor.can().mergeCells() && (
+            <>
+              <Tooltip title='Merge cells' placement='top' offset={4}>
+                <button
+                  type='button'
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editor.chain().focus().mergeCells().run()}
+                  className={formatMenuIconBtnClass(false)}
+                >
+                  <RiMergeCellsHorizontal size={16} />
+                </button>
+              </Tooltip>
+              <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
+            </>
+          )}
 
-        <Tooltip title='Highlight' placement='top' offset={4}>
-          <button
-            type='button'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor.chain().focus() as any).toggleHighlight().run()
-            }
-            className={formatMenuIconBtnClass(editor.isActive('highlight'))}
-          >
-            <RiMarkPenLine size={16} />
-          </button>
-        </Tooltip>
-      </BubbleMenu>
+          {/* Edit with AI button — matches BlockNote xl-ai AIToolbarButton */}
+          <Tooltip title='Edit with AI' placement='top' offset={4}>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleOpenAIMenu}
+              className={[
+                formatMenuIconBtnClass(aiMenuOpen),
+                'text-brand-base',
+              ].join(' ')}
+              aria-label='Edit with AI'
+            >
+              <RiSparkling2Fill size={16} />
+            </button>
+          </Tooltip>
+        </BubbleMenu>
+      )}
+
       <ImageBubbleMenu editor={editor} />
-      <BlockNoteTableHandles editor={editor} />
+      <TableHandles editor={editor} />
+
+      {/* AI Menu — floats below the selection, matches BlockNote xl-ai AIMenu */}
+      {aiMenuOpen && aiMenuPos && (
+        <AIMenu position={aiMenuPos} onClose={handleCloseAIMenu} />
+      )}
     </>
   );
 };
