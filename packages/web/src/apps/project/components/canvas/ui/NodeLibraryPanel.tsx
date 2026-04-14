@@ -102,7 +102,6 @@ const createVideoNodeForUpload = (position: { x: number; y: number }, nodeId: st
     position,
     selected: true,
     data: {
-      nodeRuntimeData: {},
       nodeSelectedResultData: {
         resultType: 'content',
         content: '',
@@ -122,7 +121,6 @@ const createAudioNodeForUpload = (position: { x: number; y: number }, nodeId: st
     position,
     selected: true,
     data: {
-      nodeRuntimeData: {},
       nodeSelectedResultData: {
         resultType: 'content',
         content: '',

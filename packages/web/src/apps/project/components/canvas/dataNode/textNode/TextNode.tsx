@@ -120,10 +120,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
         name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
         content: newValue,
         state: 'idle',
-        nodeRuntimeData: {
-          ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-          runType: 'parameter',
-        },
+        runType: 'parameter',
       },
     });
   };
@@ -173,10 +170,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
           name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
           content: parsedText,
           state: 'idle',
-          nodeRuntimeData: {
-            ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-            runType: 'parameter',
-          },
+          runType: 'parameter',
         },
       });
       setIsUploading(false);

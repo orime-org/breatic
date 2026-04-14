@@ -38,7 +38,7 @@ type VideoNodeData = Partial<CanvasWorkflowNodeData>;
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, onNodesChange } = useCanvasActions();
+  const { updateNode, updateNodeParams, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -71,7 +71,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(null);
       setContentWidth(null);
     }
-    const param = wf?.nodeRuntimeData?.parameter as { width?: number; height?: number } | undefined;
+    const param = wf?.params as { width?: number; height?: number } | undefined;
     const w = param?.width;
     const h = param?.height;
     if (videoUrlFromData && typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
@@ -121,25 +121,16 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
       void _pf;
       void _legacy;
-      const prevRt = (restData.nodeRuntimeData as { parameter?: Record<string, unknown> } | undefined) ?? {};
-      const prevParam = prevRt.parameter ?? {};
       updateNode(id, {
         data: {
           ...restData,
           name: typeof restData.name === 'string' && restData.name ? restData.name : 'video',
           content: resourceUrl,
           state: 'idle',
-          nodeRuntimeData: {
-            ...prevRt,
-            runType: 'parameter',
-            parameter: {
-              ...prevParam,
-              width: meta.width,
-              height: meta.height,
-            },
-          },
+          runType: 'parameter',
         },
       });
+      updateNodeParams(id, { width: meta.width, height: meta.height });
       setIsLoading(false);
       onSuccess(resourceUrl);
     } catch (error) {

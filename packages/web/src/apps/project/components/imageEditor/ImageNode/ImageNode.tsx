@@ -177,7 +177,7 @@ function suggestNewProjectCanvasImagePosition(canvasNodes: Node[]): { x: number;
 /**
  * Builds a main-canvas workflow image node pre-filled with editor image URL/size.
  *
- * @param params.naturalSize - When set, stored under `nodeRuntimeData.parameter` so canvas `ImageNode` matches `style` before paint
+ * @param params.naturalSize - When set, the caller should use `updateNodeParams()` after `addNode()` to persist width/height
  */
 function createProjectCanvasImageNodeFromEditor(params: {
   content: string;
@@ -200,9 +200,6 @@ function createProjectCanvasImageNodeFromEditor(params: {
       name: params.name,
       content: params.content,
       state: 'idle',
-      nodeRuntimeData: params.naturalSize
-        ? { parameter: { width: params.naturalSize.width, height: params.naturalSize.height } }
-        : {},
       handles: {
         target: [{ handleType: 'Image', number: 0 }],
         source: [{ handleType: 'Image', number: 0 }],

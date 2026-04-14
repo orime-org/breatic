@@ -116,10 +116,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
           content: resourceUrl,
           state: 'idle',
-          nodeRuntimeData: {
-            ...((restData.nodeRuntimeData as Record<string, unknown>) ?? {}),
-            runType: 'parameter',
-          },
+          runType: 'parameter',
         },
       });
       setIsLoading(false);
@@ -216,10 +213,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
               name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
               content: resourceUrl,
               state: 'idle',
-              nodeRuntimeData: {
-                ...((restData.nodeRuntimeData as Record<string, unknown>) ?? {}),
-                runType: 'parameter',
-              },
+              runType: 'parameter',
             },
           });
           setShowRecordView(false);
@@ -286,10 +280,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           name: typeof rest.name === 'string' && rest.name ? rest.name : 'audio',
           content: trimmedUrl,
           state: 'idle',
-          nodeRuntimeData: {
-            ...((rest.nodeRuntimeData as Record<string, unknown>) ?? {}),
-            runType: 'parameter',
-          },
+          runType: 'parameter',
         },
       });
       setIsLoading(false);

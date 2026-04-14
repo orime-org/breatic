@@ -228,7 +228,6 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
             name: canvasNodeTypeDefaultName[nodeType],
             content: url,
             state: 'idle',
-            nodeRuntimeData: {},
             handles: {
               target: [{ handleType, number: 1 }],
             },
