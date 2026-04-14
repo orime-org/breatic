@@ -222,6 +222,30 @@ export function useCanvasActions() {
     [],
   );
 
+  /**
+   * Update node generation params — uses noHistoryOrigin (not undo-tracked).
+   * Params are configuration, not creative decisions.
+   */
+  const updateNodeParams = useCallback(
+    (nodeId: string, params: Record<string, unknown>) => {
+      const mgr = getCanvasYjsManager();
+      if (!mgr) return;
+
+      const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
+      if (!(nodeMap instanceof Y.Map)) return;
+
+      mgr.doc.transact(() => {
+        const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
+        if (!(dataMap instanceof Y.Map)) return;
+        const paramsMap = dataMap.get('params') as Y.Map<unknown>;
+        if (paramsMap instanceof Y.Map) {
+          Object.entries(params).forEach(([k, v]) => paramsMap.set(k, v));
+        }
+      }, noHistoryOrigin);
+    },
+    [],
+  );
+
   const undo = useCallback(() => {
     const mgr = getCanvasYjsManager();
     if (!mgr || mgr.undoManager.undoStack.length === 0) return false;
@@ -239,6 +263,7 @@ export function useCanvasActions() {
   return {
     addNode,
     updateNode,
+    updateNodeParams,
     onNodesChange,
     onEdgesChange,
     onConnect,

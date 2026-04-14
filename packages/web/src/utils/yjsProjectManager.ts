@@ -76,17 +76,28 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   const snapshotOrigin = Symbol('snapshot-origin');
 
   // Canvas UndoManager — tracks topology changes (node create/delete,
-  // position, name, edges). Does NOT track prompt edits (those go
-  // through TipTap's own UndoManager scoped to Y.XmlFragment).
-  // The `noHistoryOrigin` is excluded so bulk operations like
-  // "apply to node" or state machine transitions (from Collab) don't
-  // pollute the undo stack.
+  // position, name, edges). Does NOT track:
+  // - Prompt edits (TipTap's own UndoManager on Y.XmlFragment)
+  // - Attachment/params changes (use noHistoryOrigin)
+  // - Collab/remote writes (remote origin, not in trackedOrigins)
+  //
+  // Only `userOrigin` is tracked — `null` is excluded to prevent
+  // TipTap's y-prosemirror writes from polluting the canvas undo stack.
+  const UNDO_STACK_MAX = 50;
   const undoManager = new Y.UndoManager(
     [nodesMap as Y.Map<unknown>, edgesMap as Y.Map<unknown>],
     {
-      trackedOrigins: new Set([userOrigin, null]),
+      trackedOrigins: new Set([userOrigin]),
+      captureTimeout: 500,
     },
   );
+
+  // Trim undo stack to prevent unbounded memory growth (1000+ nodes scenario).
+  undoManager.on('stack-item-added', () => {
+    while (undoManager.undoStack.length > UNDO_STACK_MAX) {
+      undoManager.undoStack.shift();
+    }
+  });
 
   let isSynced = false;
 
