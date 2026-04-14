@@ -236,7 +236,7 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
             </>
           )}
 
-          {/* Edit with AI button — matches BlockNote xl-ai AIToolbarButton */}
+          {/* Edit with AI button */}
           <Tooltip title='Edit with AI' placement='top' offset={4}>
             <button
               type='button'
@@ -257,7 +257,7 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
       <ImageBubbleMenu editor={editor} />
       <TableHandles editor={editor} />
 
-      {/* AI Menu — floats below the selection, matches BlockNote xl-ai AIMenu */}
+      {/* AI Menu — floats below the selection */}
       {aiMenuOpen && aiMenuPos && (
         <AIMenu position={aiMenuPos} onClose={handleCloseAIMenu} />
       )}

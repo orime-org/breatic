@@ -67,7 +67,7 @@ export function openBreaticSlashMenu(
   const view = editor.view;
   if (!view) return;
   const deleteTriggerCharacter = options?.deleteTriggerCharacter ?? false;
-  // Single transaction like BlockNote `openSuggestionMenu` (focus + optional "/" + meta + scroll).
+  // Use a single transaction for focus + optional "/" + plugin meta + scroll.
   editor
     .chain()
     .focus()

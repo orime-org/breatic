@@ -56,14 +56,14 @@
 .breatic-editor-body .ProseMirror {
   outline: none;
   min-height: 300px;
-  /* 与 BlockNote .bn-default-styles 一致，标题的 rem/em 层级才对齐其设计 */
+  /* 标题使用 rem/em 层级，保持字号缩放一致 */
   font-size: 16px;
   line-height: 1.5;
   color: theme('colors.text-default-base');
   word-break: break-word;
 }
 
-/* 与 BlockNote .bn-default-styles 一致：块内标签不占纵向 margin/padding */
+/* 块内标签不占纵向 margin/padding */
 .breatic-editor-body .ProseMirror p,
 .breatic-editor-body .ProseMirror h1,
 .breatic-editor-body .ProseMirror h2,
@@ -88,7 +88,7 @@
   padding: 0;
 }
 
-/* 标题：字号阶梯对齐 BlockNote Block.css（[data-content-type=heading] 的 --level） */
+/* 标题字号阶梯 */
 .breatic-editor-body .ProseMirror h1,
 .breatic-editor-body .ProseMirror h2,
 .breatic-editor-body .ProseMirror h3,

@@ -186,7 +186,7 @@ const AIMenu = ({ position, onClose }: AIMenuProps) => {
       }}
       className='flex flex-col gap-1'
     >
-      {/* Combobox input — matches .bn-combobox-input (large variant) */}
+      {/* Prompt input area */}
       <div
         className={cn(
           'flex items-center gap-2 rounded-[8px] border border-border-default-base bg-background-default-base px-3',
@@ -225,7 +225,7 @@ const AIMenu = ({ position, onClose }: AIMenuProps) => {
         )}
       </div>
 
-      {/* Suggestion list — matches .bn-combobox-items */}
+      {/* Suggestion list */}
       {currentItems.length > 0 && (
         <div
           className={cn(

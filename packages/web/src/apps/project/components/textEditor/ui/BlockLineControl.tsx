@@ -41,7 +41,7 @@ interface BlockLineControlProps {
 /**
  * Innermost line-level block for a resolved position.
  * Table chrome (`table` / `tableRow` / `tableCell`) is excluded so the gutter
- * anchors to content inside cells (BlockNote-style `blockContainer`), not the whole table.
+ * anchors to content inside cells, not the whole table.
  */
 const getBlockStartPosFromResolved = ($pos: {
   depth: number;
@@ -107,8 +107,8 @@ const getAncestorNodeStartByType = (doc: PMNode, pos: number, typeName: string):
 };
 
 /**
- * Keep table hover behavior as a single block (first-row handle), matching the
- * expected UX where side controls represent the table block, not each row.
+ * Keep table hover behavior as a single block (first-row handle), so side
+ * controls represent the table block instead of individual rows.
  */
 const normalizeBlockStartForTable = (editor: Editor, blockStart: number): number => {
   const tableStart = getAncestorNodeStartByType(editor.state.doc, blockStart + 1, 'table');
@@ -200,7 +200,7 @@ const getEditorView = (editor: Editor) => {
 };
 
 /**
- * Horizontal bounds for hit-testing and gutter `contentLeft` (BlockNote-style column).
+ * Horizontal bounds for hit-testing and gutter `contentLeft`.
  * Must use the ProseMirror root — `firstElementChild` is the *first block* (e.g. a wide
  * `tableWrapper`), so using it shifts every handle after a table is inserted.
  */
@@ -468,8 +468,7 @@ const attachGlobalPointerMoveForBlockHover = (args: PointerTrackingArgs): (() =>
       // Cursor is over a floating UI overlay (BubbleMenu, TableHandles, etc.)
       // that lives inside the editor's visual area but outside editorDom.
       // Keep the current hover position frozen — do NOT clear or update.
-      // This matches BlockNote's SideMenu behaviour: the side menu stays at
-      // the last known block while the formatting toolbar is being used.
+      // Keep side controls on the last known block while interacting with overlays.
       cancelClearHover();
       return;
     }
@@ -713,7 +712,7 @@ const applyBlockDragStart = (
 
 const POS_EPS = 0.75;
 
-/** Gutter control size (matches `h-6 w-6` + buttons). */
+/** Gutter control size (`h-6 w-6` + buttons). */
 const GUTTER_BTN_PX = 24;
 const GUTTER_FLEX_GAP_PX = 0;
 /** Space between gutter cluster and prose inner edge. */
@@ -775,7 +774,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   const dragPayloadRef = useRef<{ from: number; to: number } | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const displayedBlockStartRef = useRef<number | null>(null);
-  /** Frozen when the drag-handle menu opens — same role as BlockNote `SideMenuExtension.state.block` (stable delete/turn-into target). */
+  /** Frozen when the drag-handle menu opens (stable delete/turn-into target). */
   const frozenHandleMenuBlockStartRef = useRef<number | null>(null);
   const hoverBlockStartRef = useRef<number | null>(null);
   const lastHoveredBlockStartRef = useRef<number | null>(null);
@@ -889,8 +888,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       requestAnimationFrame(() => {
         // Re-detect block from the last known mouse position after each doc change.
         // Document edits shift ProseMirror positions, so hoverBlockStartRef may now
-        // refer to a different block. Matches BlockNote SideMenu's `update()` PM hook
-        // that calls `updateStateFromMousePos()` with stored mouse coordinates.
+        // refer to a different block, so refresh from the stored mouse position.
         if (hoverBlockStartRef.current != null) {
           const { x, y } = lastMousePosRef.current;
           if (x !== 0 || y !== 0) {
