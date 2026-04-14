@@ -12,17 +12,17 @@ import { useCallback } from 'react';
 import { useSelector, useDispatch, shallowEqual } from 'react-redux';
 import type { RootState } from '@/store';
 import {
-  setNodeTemplateData as setNodeTemplateDataAction,
+  setNodeTemplateData,
   setWorkflowId as setWorkflowIdAction,
-  openRightPanel as openRightPanelAction,
-  closeRightPanel as closeRightPanelAction,
-  setRightPanelAutoOpenResizableLeftPanel as setRightPanelAutoOpenResizableLeftPanelAction,
-  openCanvasOverlayPanel as openCanvasOverlayPanelAction,
-  closeCanvasOverlayPanel as closeCanvasOverlayPanelAction,
-  setAddResourceToInputRequest as setAddResourceToInputRequestAction,
-  setCanvasCommentMode as setCanvasCommentModeAction,
-  openCanvasCommentComposer as openCanvasCommentComposerAction,
-  closeCanvasCommentComposer as closeCanvasCommentComposerAction,
+  openRightPanelAction,
+  closeRightPanelAction,
+  setRightPanelAutoOpenResizableLeftPanelAction,
+  openCanvasOverlayPanelAction,
+  closeCanvasOverlayPanelAction,
+  setAddResourceToInputRequestAction,
+  setCanvasCommentModeAction,
+  openCanvasCommentComposerAction,
+  closeCanvasCommentComposerAction,
   type CanvasNodeTemplateRow,
   type CanvasCommentComposerState,
   type CanvasOverlayPanelState,
@@ -65,7 +65,7 @@ export function useCanvasUI() {
   const canvasCommentComposer = useSelector(selectCanvasCommentComposer, shallowEqual);
 
   const setNodeTemplateData = useCallback(
-    (data: CanvasNodeTemplateRow[]) => dispatch(setNodeTemplateDataAction(data)),
+    (data: CanvasNodeTemplateRow[]) => dispatch(setNodeTemplateData(data)),
     [dispatch],
   );
 

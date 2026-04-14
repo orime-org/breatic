@@ -4,14 +4,13 @@
  *
  * In the old architecture this hook also created a YjsStoreSync
  * bridge. That bridge is gone — Yjs→Redux sync is now handled by
- * `useCanvasYjs`, and writes go directly to Yjs via
- * `useProjectStore`.
+ * `CanvasDataProvider` via `useCanvasYjsInternal`, and writes go
+ * directly to Yjs via `useCanvasActions`.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { createYjsProjectManager, type YjsProjectManager } from '@/utils/yjsProjectManager';
 import { setCanvasYjsManager } from '@/utils/canvasYjsRef';
-import { useCanvasYjs } from './useCanvasYjs';
 
 export interface UseYjsStoreOptions {
   id: string;
@@ -46,9 +45,6 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
   const [canRedo, setCanRedo] = useState(false);
   const [yjsLoading, setYjsLoading] = useState(false);
   const [edgeSelections, setEdgeSelections] = useState<Map<string, { color: string }>>(new Map());
-
-  // Wire Yjs→Redux bridge for canvas nodes/edges.
-  useCanvasYjs(manager);
 
   useEffect(() => {
     if (!enabled || !id) {
