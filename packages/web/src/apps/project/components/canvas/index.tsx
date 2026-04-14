@@ -28,6 +28,7 @@ import GroupToolbarPanel from './common/GroupToolbarPanel';
 import CustomMiniMap from './common/CustomMiniMap';
 import UndoRedoToolbar from './common/UndoRedoToolbar';
 import NodeContextMenu from './common/NodeContextMenu';
+import { CanvasToastStack } from './ui/CanvasToastStack';
 import ConnectEndCommandMenu from './common/ConnectEndCommandMenu';
 import ConnectEndAnchorNode, {
   connectEndAnchorSourceHandleId,
@@ -911,6 +912,7 @@ type ProjectCanvasProps = {
 const ProjectCanvas: React.FC<ProjectCanvasProps> = ({ yjs, hotkeysDisabled }) => (
   <ReactFlowProvider>
     <ProjectCanvasContent yjs={yjs} hotkeysDisabled={hotkeysDisabled} />
+    <CanvasToastStack />
   </ReactFlowProvider>
 );
 
