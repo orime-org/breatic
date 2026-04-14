@@ -60,9 +60,13 @@ The frontend is divided into three panels:
 | Scope | Visibility | Sync Mechanism |
 |---|---|---|
 | Agent Panel conversations | **Private** per user | Server-side, per-user session |
-| Canvas nodes and edges | **Shared** across all collaborators | Yjs (CRDT) |
-| Editor state | **Per-user** (follows selected node) | Local |
-| Generation results | **Shared** via Canvas | SSE → client writes Yjs |
+| Canvas nodes and edges | **Shared** across all collaborators | Yjs (CRDT) via Hocuspocus |
+| Editor state | **Per-user** (follows selected node) | Local React state |
+| Generation results | **Shared** via Canvas | Worker → Redis Streams → Collab → Yjs |
+
+> **No offline mode.** Breatic requires network for all AIGC operations.
+> Canvas data is synced server-first (loading screen until WebSocket
+> sync completes). No local IndexedDB cache.
 
 ---
 
