@@ -48,7 +48,6 @@ export * as projectService from "./modules/project.service.js";
 export * as projectRepo from "./modules/project.repo.js";
 export * as skillService from "./modules/skill.service.js";
 export * as textToolService from "./modules/text-tool.service.js";
-export * as uploadService from "./modules/upload.service.js";
 export * as attachmentService from "./modules/conversation-attachment.service.js";
 
 // ── Agent ────────────────────────────────────────────────────────
