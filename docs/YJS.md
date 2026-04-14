@@ -58,18 +58,44 @@ collaborators.
 
 ### 3.1 Node Y.Map fields
 
-Each value in `nodesMap` is a `Y.Map` with the following keys:
+Each value in `nodesMap` is a `Y.Map` with a nested `data` Y.Map,
+mirroring ReactFlow's `{ id, type, position, data }` shape:
+
+```
+nodeMap: Y.Map
+  ├── id:       string                    ← top level
+  ├── type:     string                    ← top level
+  ├── position: Y.Map { x, y }           ← top level
+  └── data:     Y.Map                     ← nested, matches ReactFlow node.data
+        ├── name:         string
+        ├── content:      string
+        ├── coverUrl:     string | undefined
+        ├── state:        "idle" | "handling"
+        ├── handlingBy:   Y.Map { userId, username } | undefined
+        ├── runType:      "parameter" | "sensitive"
+        ├── params:       Y.Map<string, unknown>
+        ├── attachments:  Y.Array<Y.Map>
+        └── prompt:       Y.XmlFragment
+```
+
+**Top-level keys** (immutable after creation or frontend-owned topology):
 
 | Key | Yjs type | Description | Written by |
 |-----|----------|-------------|------------|
 | `id` | string | Stable node ID (immutable after creation) | Frontend |
 | `type` | string | Modality: `"1001"` text, `"1002"` image, `"1003"` video, `"1004"` audio, `"group"` | Frontend |
 | `position` | `Y.Map { x, y }` | Canvas coordinates | Frontend (drag) |
+
+**Nested `data` Y.Map keys**:
+
+| Key | Yjs type | Description | Written by |
+|-----|----------|-------------|------------|
 | `name` | string | Display label | Frontend |
 | `state` | `"idle"` \| `"handling"` | Pipeline state | Collab (event-stream) |
 | `handlingBy` | `Y.Map { userId, username }` \| undefined | Who triggered the current handling | Collab |
 | `content` | string | Primary result: URL or text body | Collab (completed event) |
 | `coverUrl` | string \| undefined | Video first-frame cover | Collab |
+| `runType` | `"parameter"` \| `"sensitive"` | Generation run type | Frontend |
 | `prompt` | `Y.XmlFragment` | Rich text prompt with inline `@` mentions (TipTap / y-prosemirror) | Frontend |
 | `attachments` | `Y.Array<Y.Map>` | Upload pool for this node | Frontend |
 | `params` | `Y.Map<string, unknown>` | Generation parameters | Frontend |
@@ -122,15 +148,22 @@ destroyed. The OSS/S3 object at the URL is never deleted.
 
 ### 3.4 Frontend UI-only extensions
 
-The frontend's `CanvasWorkflowNodeData` extends the shared fields
-with UI-only state that the backend never touches:
+The frontend's `CanvasWorkflowNodeData` mirrors the `data` Y.Map
+keys and adds UI-only state that is **NOT** synced to Yjs:
 
 ```ts
 // packages/web/src/apps/project/components/canvas/types.ts
 interface CanvasWorkflowNodeData {
+  // ── From data Y.Map (synced) ──
+  name: string;
+  content: string;
+  coverUrl?: string;
+  state: 'idle' | 'handling';
+  handlingBy?: { userId: string; username: string };
+  runType?: 'parameter' | 'sensitive';
+  // ── UI-only (NOT in Yjs) ──
   pickState?: PickState | null;         // image-pick-mode overlay state
   handles?: { target?: HandleConfig[]; source?: HandleConfig[] };
-  pendingFileId?: string;               // in-flight upload id
 }
 ```
 
@@ -158,20 +191,21 @@ Only two states: **`idle`** and **`handling`**.
 
 ## 5. Ownership — who writes what
 
-The fundamental rule: **the frontend does not write `state` / `handlingBy` / `content` / `coverUrl`**.
+The fundamental rule: **the frontend does not write `data.state` / `data.handlingBy` / `data.content` / `data.coverUrl`**.
 
 | Field | Written by | When |
 |-------|------------|------|
-| `content` | Collab (via Worker/upload events) | After generation/upload completes |
-| `coverUrl` | Collab (via Worker/upload events) | After video generation/upload completes |
-| `state` | Collab (via API/Worker events) | handling → idle on completion |
-| `handlingBy` | Collab (via API events) | handling (set) / completion (cleared) |
-| `name` | Frontend | User renames the node |
-| `prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) |
-| `attachments` | Frontend | User uploads / deletes attach items |
-| `params` | Frontend | User changes generation parameters |
-| `position` | Frontend | User drags the node |
 | `id`, `type` | Frontend | Node creation (immutable after) |
+| `position` | Frontend | User drags the node |
+| `data.name` | Frontend | User renames the node |
+| `data.content` | Collab (via Worker/upload events) | After generation/upload completes |
+| `data.coverUrl` | Collab (via Worker/upload events) | After video generation/upload completes |
+| `data.state` | Collab (via API/Worker events) | handling → idle on completion |
+| `data.handlingBy` | Collab (via API events) | handling (set) / completion (cleared) |
+| `data.runType` | Frontend | User changes generation mode |
+| `data.prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) |
+| `data.attachments` | Frontend | User uploads / deletes attach items |
+| `data.params` | Frontend | User changes generation parameters |
 | `edges` | Frontend | User creates / deletes connections |
 | Node creation / deletion | Frontend | User adds or deletes a node |
 
@@ -241,7 +275,7 @@ rather than direct RPC between services.
                              ▼
                     ┌──────────────────┐
                     │  Canvas Y.Doc    │
-                    │  canvas.nodes[]  │
+                    │  canvas.nodesMap │
                     └──────────────────┘
                              │
                              │ Yjs WebSocket broadcast
@@ -284,11 +318,13 @@ type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
 | Publisher | Event | When |
 |-----------|-------|------|
 | API `POST /canvas/tasks` | `handling` | Immediately after acquiring the Redis lock, before returning 201 |
-| API `POST /assets/upload/prepare` | `handling` | Canvas context only, after acquiring the Redis lock |
-| API `POST /assets/upload/complete` | `completed` | Canvas context only, on successful verification |
-| API `POST /assets/upload/complete` | `failed` | Canvas context only, when the uploaded file is missing in storage |
 | Worker `runTask` | `completed` | Task finished and result was persisted |
 | Worker `runTask` | `failed` | Task threw an error; `node_history` gets a failed entry in parallel |
+
+> **Note**: User-initiated uploads (presigned URL flow) write directly
+> to Yjs via the frontend — they do NOT go through the Redis Stream
+> event bus. The frontend sets `data.content` on the node's Y.Map
+> after uploading to the presigned URL.
 
 ### 6.3 Stream persistence
 
@@ -336,8 +372,10 @@ wins on the full-array `set`), but:
 The `task-listener` in `packages/collab/src/task-listener.ts`
 defends against edge cases:
 
-- **`canvas.nodes` is not an array** → warn log + skip (first-time
+- **`canvas.nodesMap` is not a Y.Map** → warn log + skip (first-time
   document that no client has populated yet).
+- **Node missing nested `data` Y.Map** → warn log + skip (legacy
+  node created before the nested data migration).
 - **Node not found by id** → warn log + skip + release lock (node
   was deleted mid-operation, or the event references a stale id).
 - **Same event re-delivered** after a Collab restart → idempotent
@@ -404,7 +442,6 @@ Y.js updates over pub/sub:
 > | Stream last-id | `${env}:collab:canvas-nodes:last-id` | Collab |
 > | BullMQ task queue | `${env}:bull:*` | API + Worker |
 > | Session store | `${env}:session:*` | API |
-> | Upload tickets | `${env}:upload:ticket:*` | API |
 
 ### 9.3 How a single Y.Doc write reaches everyone
 
@@ -448,10 +485,13 @@ try {
     const nodeMap = nodesMap.get(targetNodeId) as Y.Map<unknown>;
     if (!(nodeMap instanceof Y.Map)) return;
 
-    // Direct field set — only touches this node, no array copy.
-    nodeMap.set("content", newUrl);
-    nodeMap.set("state", "idle");
-    nodeMap.delete("handlingBy");
+    const dataMap = nodeMap.get("data") as Y.Map<unknown>;
+    if (!(dataMap instanceof Y.Map)) return;
+
+    // Write to the nested data Y.Map — never to nodeMap directly.
+    dataMap.set("content", newUrl);
+    dataMap.set("state", "idle");
+    dataMap.delete("handlingBy");
   });
 } finally {
   await connection.disconnect();
@@ -460,8 +500,9 @@ try {
 
 **Do not**:
 
-- Touch `position`, `id`, or `type` — those are frontend-owned
-- Mutate `name`, `prompt`, `attachments`, or `params` — frontend-owned
+- Touch `position`, `id`, or `type` — those are frontend-owned (top-level)
+- Write fields directly on `nodeMap` — always use `nodeMap.get("data")`
+- Mutate `data.name`, `data.prompt`, `data.attachments`, or `data.params` — frontend-owned
 - Perform many individual writes outside a single `transact` call
 
 ## 11. Node editor documents (Launch Editor sub-canvas)

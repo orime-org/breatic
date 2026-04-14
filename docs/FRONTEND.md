@@ -7,7 +7,7 @@
 | Framework | React 19 + TypeScript 5.6 |
 | Build | Vite 5.2 |
 | Canvas | @xyflow/react v12 (ReactFlow) |
-| Collaboration | Yjs + y-websocket + y-indexeddb + createYjsStoreSync |
+| Collaboration | Yjs + y-websocket + y-indexeddb |
 | State | Redux Toolkit + Zustand |
 | Image Editor | Fabric.js (@erase2d/fabric) + react-image-crop + Excalidraw |
 | Audio | WaveSurfer.js |
@@ -51,7 +51,8 @@ packages/web/src/
 │       ├── projectInfo.ts       #   Auto-save timestamp
 │       └── loading.ts           #   Global loading counter
 ├── hooks/
-│   ├── useProjectStore.ts       # Canvas graph state accessor
+│   ├── useProjectStore.ts       # Canvas graph state accessor (writes to Yjs)
+│   ├── useCanvasYjs.ts          # Yjs → Redux bridge (incremental observe)
 │   ├── useYjsProjectStore.ts    # Yjs lifecycle (connect/disconnect/sync)
 │   ├── useImageEditorStore.ts   # Image editor state accessor
 │   ├── useUserCenterStore.ts    # User/auth state accessor
@@ -66,7 +67,7 @@ packages/web/src/
 │   ├── miniTools.ts             # executeImage, executeVideo, executeAudio, executeText(SSE)
 │   ├── models.ts                # getAll (model catalog)
 │   ├── payment.ts               # getTiers, createCheckout, getHistory
-│   ├── assets.ts                # getUploadUrl, getOssSts, query
+│   ├── assets.ts                # presign, uploadToPresignedUrl, reportHistory
 │   ├── index.ts                 # barrel export
 │   ├── projectApi.ts            # LEGACY — /api/workflow/* (pending migration)
 │   ├── userCenterApi.ts         # LEGACY — /api/auth/*, /api/stripe/* (pending migration)
@@ -79,8 +80,6 @@ packages/web/src/
 │   ├── sse.ts                   # SSE stream helper
 │   ├── token.ts                 # Auth token persistence (localStorage)
 │   ├── websocket.ts             # WebSocket connection management
-│   ├── ossClient.ts             # Alibaba OSS client (legacy direct upload)
-│   ├── pendingFileStore.ts      # File upload queue tracking
 │   ├── mediaUtils.ts            # Image/audio/video utilities
 │   └── common.ts                # Misc utilities
 ├── router/index.tsx             # React Router v7 (lazy-loaded)
@@ -193,19 +192,27 @@ useCanvasYjs.ts         → Observe: Yjs → Redux (one-directional)
 canvasYjsRef.ts         → Module-level manager ref for useProjectStore
 ```
 
-### Data Flow (Yjs-first)
+### Data Flow (Yjs-first, incremental observe)
 
 Write operations in `useProjectStore` go directly to Yjs. The
 `useCanvasYjs` hook observes changes and syncs back to Redux for
 ReactFlow rendering:
 
 ```
-User action → Yjs nodesMap.get(id).set(field, value)
+User action → Yjs nodesMap.get(id).get("data").set(field, value)
                         ↓
-              observeDeep → readAllNodes() → dispatch setNodes
+              observeDeep → getAffectedNodeIds(events)
                         ↓
-              ReactFlow renders from Redux (read cache)
+              only rebuild changed nodes, reuse old refs for unchanged
+                        ↓
+              dispatch setNodes → ReactFlow renders from Redux
 ```
+
+**Incremental observe**: instead of calling `readAllNodes()` on every
+change, `useCanvasYjs` extracts affected node IDs from Yjs events
+and only reconstructs those Node objects. Unchanged nodes keep their
+old object reference, so React's `shallowEqual` skips re-renders.
+This is critical for supporting 1000+ nodes.
 
 Redux is a **read-through cache** — it holds nodes/edges for
 ReactFlow to consume, but the source of truth is the Yjs document.
@@ -218,12 +225,21 @@ NOT synced to Yjs.
 canvas: Y.Map
   ├── nodesMap: Y.Map<nodeId, Y.Map>   ← each node is an independent Y.Map
   └── edges:    Y.Map<edgeId, Y.Map>
+
+Each node Y.Map:
+  ├── id:       string                  ← top level
+  ├── type:     string                  ← top level
+  ├── position: Y.Map { x, y }         ← top level
+  └── data:     Y.Map                   ← nested, matches ReactFlow node.data
+        ├── name, content, coverUrl, state, handlingBy, runType
+        ├── params:       Y.Map<string, unknown>
+        ├── attachments:  Y.Array<Y.Map>
+        └── prompt:       Y.XmlFragment (TipTap binding)
 ```
 
-Each node Y.Map contains: `id`, `type`, `position` (Y.Map {x,y}),
-`name`, `state`, `handlingBy`, `content`, `coverUrl`, `prompt`
-(Y.XmlFragment for TipTap), `attachments` (Y.Array), `params`
-(Y.Map). Editing one node's field is a single Yjs op — no
+The nested `data` Y.Map mirrors ReactFlow's `node.data` shape, so
+`yMapToNode()` is a direct structural mapping with no field
+reshuffling. Editing one node's data field is a single Yjs op — no
 whole-array replacement, no collateral impact on other nodes.
 
 Concurrency on node generation state is guarded by a **Redis lock**,
@@ -308,7 +324,7 @@ apis/
 ├── miniTools.ts       # executeImage, executeVideo, executeAudio, executeText(SSE)
 ├── models.ts          # getAll (model catalog)
 ├── payment.ts         # getTiers, createCheckout, getHistory
-├── assets.ts          # getUploadUrl, getOssSts, notifyUploadComplete, query
+├── assets.ts          # presign, uploadToPresignedUrl, reportHistory
 └── index.ts           # barrel export
 ```
 
@@ -338,9 +354,9 @@ Old files (`projectApi.ts`, `userCenterApi.ts`, `workspaceApi.ts`) still exist �
 
 ### Patterns
 
-- **Canvas state**: single `canvas.ts` slice holds nodes (array) + edges (record) + UI state
-- **Edge storage**: Redux stores as `Record<string, Edge>` (efficient Yjs map sync), converted to `Edge[]` for ReactFlow
-- **Yjs sync**: `createYjsStoreSync()` replaces old `yjs-redux` binder — cleaner, with debounce support
+- **Canvas state**: single `canvas.ts` slice holds `Node[]` + `Edge[]` + UI state (Redux is a read cache, not source of truth)
+- **Yjs-first writes**: `useProjectStore` writes directly to Yjs; `useCanvasYjs` observeDeep syncs changes back to Redux
+- **Incremental observe**: only changed nodes are rebuilt — unchanged nodes reuse old object refs for React shallow compare
 - **Undo/redo**: Yjs UndoManager with tracked origins per editor mode
 
 ## i18n
@@ -372,11 +388,7 @@ All `VITE_*` variables are in the root `.env` file (shared with backend). Vite r
 
 13 components still reference old API files (`projectApi.ts`, `userCenterApi.ts`, `workspaceApi.ts`). Should be migrated to new domain-based APIs (`auth.ts`, `projects.ts`, etc.) incrementally.
 
-### 2. Direct OSS Upload
-
-`ossClient.ts` uses ali-oss SDK directly with STS credentials. Should migrate to presigned URL pattern (backend `POST /api/v1/assets/upload-url` already supports this).
-
-### 3. Auth Integration
+### 2. Auth Integration
 
 Google OAuth via `@react-oauth/google` needs to connect with backend's `/api/v1/auth` routes. Email+password auth flow needs to be wired up.
 
@@ -385,4 +397,5 @@ Google OAuth via `@react-oauth/google` needs to connect with backend's `/api/v1/
 - ~~API Endpoint Mismatch~~ — New API files created, aligned with `/api/v1/*`
 - ~~No @breatic/shared Integration~~ — Frontend now imports from `@breatic/shared`
 - ~~Duplicate i18n System~~ — Unified to root `locales/*.json`, shared by frontend and backend
-- ~~State Management Complexity~~ — Clarified: `ossClient.ts` is the remaining direct-upload issue (see #2)
+- ~~State Management Complexity~~ — Clarified: canvas state is Yjs-first with Redux as read cache
+- ~~Direct OSS Upload~~ — Replaced with presigned URL flow (`GET /assets/presign` → direct PUT). `ossClient.ts` and `pendingFileStore.ts` removed
