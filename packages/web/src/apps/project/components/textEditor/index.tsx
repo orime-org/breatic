@@ -27,7 +27,7 @@ import { BreaticVideo } from './extensions/BreaticVideoExtension';
 import { BreaticAudio } from './extensions/BreaticAudioExtension';
 import { BreaticCodeBlock } from './extensions/breaticCodeBlockView';
 import MediaFilePanel from './media/MediaFilePanel';
-import { useProjectStore } from '@/hooks/useProjectStore';
+import { useImageEditorStore as useProjectStore } from '@/hooks/useImageEditorStore';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import type { TextEditorProps } from './types';
 import EditorMenus from './ui/EditorMenus';
