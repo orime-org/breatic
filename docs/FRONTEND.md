@@ -90,19 +90,77 @@ packages/web/src/
 └── styles/                      # Global CSS
 ```
 
+## Three Zones (Agent / Canvas / Editor)
+
+项目页面分为三个功能区域，各自有不同的 AI 能力和数据源：
+
+| 区域 | 位置 | AI 能力 | 数据源 |
+|------|------|---------|--------|
+| **Agent 区** | 右侧聊天面板 | 多轮对话，注入三层记忆 + 压缩历史，SubAgent 可 spawn | Conversation（SSE 流式） |
+| **Canvas 区** | 中央画布 | 节点级 AIGC 生成（Worker 单次执行），Mini-Tool 快捷操作 | Yjs `nodesMap` / `edgesMap` |
+| **Editor 区** | 节点子画布（Launch Editor） | 无 Skill，纯编辑 | 独立 Yjs 文档 `project-{id}/node/{nodeId}` |
+
+- Agent 区和 Canvas 区的数据**独立**——聊天消息在 Conversation 表，画布状态在 Yjs。Agent 可以通过 spawn tool 触发 Canvas 节点的 AIGC 任务
+- Editor 区是 Canvas 节点的子画布，通过 `getCanvasYjsManager()` 只读访问父节点数据（如 attachments），Apply 操作写回父节点的 `data.content`
+- Skill 系统的三区边界：Agent（scope: agent）| Canvas（scope: canvas）| Editor（不用 Skill）
+
 ## Canvas Implementation
 
 **Tech**: @xyflow/react v12 + custom node types
 
 ### Node Types
 
-| Type ID | Name | Content |
-|---------|------|---------|
-| 1001 | Text | Text input/display |
-| 1002 | Image | Image display + lazy loading |
-| 1003 | Video | Video playback + timeline |
-| 1004 | Audio | Waveform + playback |
-| group | Group | Container for organizing sub-graphs |
+| Type ID | Name | Content 渲染 |
+|---------|------|-------------|
+| `1001` | Text | 文本预览 |
+| `1002` | Image | `<img>` lazy loading |
+| `1003` | Video | `<video>` + coverUrl 封面 |
+| `1004` | Audio | WaveSurfer 波形 |
+| `group` | Group | 容器，组织子节点 |
+
+### Node Card Structure
+
+每个 Canvas 节点 Card 的组成：
+
+```
+┌─────────────────────────────────┐
+│  Header: name + type icon       │  ← 显示名称，点击可编辑
+│  ─────────────────────────────  │
+│  Content area:                  │  ← 根据 type 渲染（见 Node Types 表）
+│    idle → 显示已有内容            │
+│    handling → spinner + actor   │
+│  ─────────────────────────────  │
+│  Prompt: TipTap rich text       │  ← Y.XmlFragment，聚焦时创建编辑器实例
+│    @ mentions → attachments     │     非聚焦 → generateHTML() 静态预览
+│  ─────────────────────────────  │
+│  Attachments toolbar            │  ← 文件上传池（presign → 直传 → Y.Array）
+│  Params bar (model, size, etc.) │  ← 生成参数（Y.Map）
+│  ─────────────────────────────  │
+│  [Generate] button              │  ← 触发 AIGC → state: handling
+└─────────────────────────────────┘
+   ↕ handles (source/target)        ← 上下游节点连接
+```
+
+### Node Data Attribution
+
+各属性的数据层归属：
+
+| 属性 | 存储层 | 写入方 | 说明 |
+|------|--------|--------|------|
+| `name` | Yjs `data` Y.Map | 前端 | 显示标签 |
+| `content` | Yjs `data` Y.Map | Collab（后端事件） | 生成结果 URL 或文本 |
+| `coverUrl` | Yjs `data` Y.Map | Collab（后端事件） | 视频封面 |
+| `state` | Yjs `data` Y.Map | Collab（后端事件） | `idle` / `handling` |
+| `handlingBy` | Yjs `data` Y.Map | Collab（后端事件） | 触发者 `{ userId, username }` |
+| `runType` | Yjs `data` Y.Map | 前端 | `parameter` / `sensitive` |
+| `prompt` | Yjs `data` Y.Map (Y.XmlFragment) | 前端 | TipTap 绑定，每用户同时只编辑 1 个节点 |
+| `attachments` | Yjs `data` Y.Map (Y.Array) | 前端 | 上传池，prompt 里 @ mention 引用 |
+| `params` | Yjs `data` Y.Map (Y.Map) | 前端 | 生成参数（模型、尺寸等） |
+| `pickState` | React local state | 前端 | 图片拾取模式，UI-only |
+| `handles` | React local state | 前端 | 连接点元数据，UI-only |
+
+> 前端**不写** `state` / `handlingBy` / `content` / `coverUrl`。
+> 后端**不写** `name` / `prompt` / `attachments` / `params` / `position`。
 
 ### Features
 
