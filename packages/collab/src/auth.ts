@@ -86,6 +86,11 @@ export function createAuthHook({
     token: string;
     documentName: string;
   }): Promise<AuthContext> => {
+    // NoAccount mode: skip auth, use dev user.
+    if (process.env.LOGIN_MODE === "NoAccount") {
+      return { user: { id: "00000000-0000-0000-0000-000000000000" } };
+    }
+
     if (!token) {
       throw new Error("No authentication token provided");
     }
