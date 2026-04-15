@@ -2,8 +2,10 @@ import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
+import Divider from '@/components/base/divider';
 import { message } from '@/components/base/message';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import Upload, { type UploadFile } from '@/components/base/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
@@ -138,7 +140,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const [openSidePanel, setOpenSidePanel] = useState<ImageEditorRightSidePanelId | null>(null);
   const [toolbarSegment, setToolbarSegment] = useState<ExclusiveToolbarSegment | null>(null);
   const [pendingUploadMode, setPendingUploadMode] = useState<'insert' | 'overwrite' | null>(null);
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadProxyRef = useRef<HTMLDivElement | null>(null);
 
   const sidePanelItems = useMemo((): Partial<Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>> => {
     const canvasNode = projectNodes.find((n) => n.id === nodeId);
@@ -208,10 +210,14 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
     setToolbarSegment(null);
   }, []);
 
-  const activePanelConfig =
-    openSidePanel && (openSidePanel === 'assets' || openSidePanel === 'attach' || openSidePanel === 'link')
-      ? panelConfig[openSidePanel]
-      : null;
+  const getActivePanelConfig = () => {
+    if (!openSidePanel) return null;
+    if (openSidePanel === 'assets' || openSidePanel === 'attach' || openSidePanel === 'link') {
+      return panelConfig[openSidePanel];
+    }
+    return null;
+  };
+  const activePanelConfig = getActivePanelConfig();
   const activePanelItems = openSidePanel ? sidePanelItems[openSidePanel] ?? [] : [];
 
   const handlePanelItemAddClick = useCallback(
@@ -292,7 +298,8 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
 
   const openUploadDialog = useCallback((mode: 'insert' | 'overwrite') => {
     setPendingUploadMode(mode);
-    uploadInputRef.current?.click();
+    const input = uploadProxyRef.current?.querySelector('input[type="file"]') as HTMLInputElement | null;
+    input?.click();
   }, []);
 
   const handleUploadMenuClick = useCallback(
@@ -306,11 +313,11 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
     [openUploadDialog],
   );
 
-  const handleUploadInputChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
+  const handleUploadChange = useCallback(
+    async (info: { fileList: UploadFile[] }) => {
+      const latest = info.fileList[info.fileList.length - 1];
+      const file = latest?.originFileObj;
       const mode = pendingUploadMode;
-      e.target.value = '';
       setPendingUploadMode(null);
       if (!file || !mode) return;
       try {
@@ -337,13 +344,16 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   return (
     <div className='pointer-events-auto relative flex h-full min-h-0 shrink-0 items-center'>
       <div className='flex flex-col items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
-        <input
-          ref={uploadInputRef}
-          type='file'
-          accept='.txt,.md,.json,.csv,.docx,.xlsx,.xls'
-          className='hidden'
-          onChange={handleUploadInputChange}
-        />
+        <div ref={uploadProxyRef} className='hidden'>
+          <Upload
+            accept='.txt,.md,.json,.csv,.docx,.xlsx,.xls'
+            showUploadList={false}
+            fileList={[]}
+            onChange={handleUploadChange}
+          >
+            <span />
+          </Upload>
+        </div>
         <Dropdown
           trigger='click'
           placement='left-start'
@@ -360,6 +370,8 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
           </Tooltip>
         </Dropdown>
 
+        <Divider className='mx-1 my-0.5 w-5' />
+
         {primaryTools.map((tool) => (
           <Tooltip key={tool.id} title={tool.label} placement='right' offset={4}>
             <button
@@ -374,7 +386,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
           </Tooltip>
         ))}
 
-        <div className='mx-1 my-0.5 h-px w-5 bg-border-default-base' />
+        <Divider className='mx-1 my-0.5 w-5' />
 
         {locationTool ? (
           <Tooltip key={locationTool.id} title={locationTool.label} placement='right' offset={4}>

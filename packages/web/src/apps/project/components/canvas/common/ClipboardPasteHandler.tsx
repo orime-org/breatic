@@ -5,6 +5,32 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { nanoid } from 'nanoid';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 
+/** True when paste should stay inside text-editor/contenteditable context. */
+const isEditablePasteContext = (e: ClipboardEvent): boolean => {
+  const target = e.target;
+  if (target instanceof HTMLElement) {
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return true;
+    if (target.closest('.ProseMirror, .breatic-editor-wrapper')) return true;
+  }
+
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable) return true;
+    if (active.closest('.ProseMirror, .breatic-editor-wrapper')) return true;
+  }
+
+  const sel = window.getSelection();
+  const anchorEl =
+    sel?.anchorNode instanceof Element
+      ? sel.anchorNode
+      : sel?.anchorNode instanceof Node
+        ? sel.anchorNode.parentElement
+        : null;
+  if (anchorEl?.closest('.ProseMirror, .breatic-editor-wrapper')) return true;
+
+  return false;
+};
+
 /** Builds a text node for pasted plain text. */
 const createTextNode = (
   textContent: string,
@@ -160,9 +186,8 @@ const ClipboardPasteHandler: React.FC = () => {
   const { addNode } = useCanvasActions();
 
   const handlePaste = async (e: ClipboardEvent) => {
-    // Skip when focus is in an editable field so normal typing/paste works.
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    // Skip when focus/selection is inside editor inputs or ProseMirror.
+    if (isEditablePasteContext(e)) {
       return;
     }
 
