@@ -182,4 +182,43 @@ auth.post("/logout", requireAuth, async (c) => {
   return c.json({ message: "Logged out" });
 });
 
+// ── Password Reset ───────────────────────────────────────────────
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+auth.post(
+  "/forgot-password",
+  rateLimit({ prefix: "forgot", max: 3, windowSeconds: 3600 }),
+  zValidator("json", forgotPasswordSchema),
+  async (c) => {
+    const { email } = c.req.valid("json");
+    const resetBaseUrl = c.req.header("Origin")
+      ? `${c.req.header("Origin")}/reset-password`
+      : "http://localhost:5173/reset-password";
+
+    await authService.forgotPassword(email, resetBaseUrl);
+
+    // Always return success (don't reveal if email exists)
+    return c.json({ message: "If this email is registered, a reset link has been sent." });
+  },
+);
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+});
+
+auth.post(
+  "/reset-password",
+  rateLimit({ prefix: "reset", max: 5, windowSeconds: 3600 }),
+  zValidator("json", resetPasswordSchema),
+  async (c) => {
+    const { token, password } = c.req.valid("json");
+    await authService.resetPassword(token, password);
+    return c.json({ message: "Password reset successful. Please log in." });
+  },
+);
+
 export { auth as authRoute };
