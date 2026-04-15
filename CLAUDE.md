@@ -168,14 +168,17 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 # 关键规范
 
-- **软删除（MANDATORY）**：所有数据库删除一律软删除，**禁止硬删除**。每张表用 `deleted_at: timestamp` 列标记；list 查询默认过滤 `deleted_at IS NULL`；service/repo 提供 `softDelete()` 方法而非 `delete()`；删除后文件/存储资源**永不清理**。例外：GDPR 删号、合规清理走单独管理流程，不在常规代码路径
-- **禁止 AI 作者署名（MANDATORY）**：commit 的 author / committer / `Co-Authored-By` / `Signed-off-by` 里**禁止**出现 Claude / Anthropic / GPT / Copilot / Cursor / ChatGPT / Codex 等 AI 工具名。强制手段：`.husky/commit-msg` 本地 hook + `.github/workflows/no-ai-attribution.yml` PR CI
-- **PostgreSQL**：Drizzle ORM，UUID 主键，JSONB，积分原子操作
-- **Redis**：Key 格式 `{env}:{service}:{entity}:{id}`，禁止无 TTL
+- **软删除（MANDATORY）**：所有数据库删除一律软删除，**禁止硬删除**。每张表用 `deleted_at: timestamp` 列标记；list 查询默认过滤 `deleted_at IS NULL`；所有 FK 约束为 `restrict`（硬删父记录会被数据库阻止）。例外：GDPR 删号走单独管理流程
+- **禁止 AI 作者署名（MANDATORY）**：commit 署名字段禁止 AI 工具名。强制手段：`.husky/commit-msg` + PR CI
+- **PostgreSQL**：Drizzle ORM，UUID 主键，JSONB，积分原子操作（`db.transaction()` 包裹扣费+记流水）
+- **Redis**：Key 格式 `{env}:{service}:{entity}:{id}`，禁止无 TTL。Stream MAXLEN ~ 10000
+- **Auth 安全**：登录 5 次/分钟、注册 3 次/小时、Google OAuth 10 次/分钟（Redis 滑窗限速）。NoAccount 模式仅 dev 环境可用（ENV=prod 时启动拒绝）
+- **XSS 防护**：所有 HTML 渲染走 DOMPurify `sanitizeRichText()`。粘贴内容、LLM 输出、prompt 预览均清洗
+- **Prompt 安全**：发给 AIGC 的 prompt 先经 `extractPromptText()` 去除 HTML/注释/不可见字符
 - **异常**：AppError(status, msg) → NotFound/Conflict/Validation/Forbidden/Unauthorized，Service 层抛，路由层 handler 处理
 - **SSE**：仅 Agent 聊天 + Text mini-tool，`data` 含 `userId` + `projectId`
-- **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`），前端直传。AIGC 结果从临时 CDN 下载到永久存储
-- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等
+- **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`，5 分钟过期，30 次/分钟限速），前端直传
+- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等（CAS 原子状态转换）。Mini-tool 入队前预检余额（402）。`deductOnce()` 保证同 refKey 只扣一次
 
 # 禁止清单
 

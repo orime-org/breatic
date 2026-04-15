@@ -30,7 +30,9 @@
 
 ### Frontend
 
-- [ ] 前端组件迁移：13 个组件从旧 API (projectApi/userCenterApi/workspaceApi) 迁移到新 API
+- [x] 前端组件迁移：27 组件从 useProjectStore 迁移到 useCanvasData/Actions/UI
+- [x] 安全加固：XSS 清洗（DOMPurify）、Auth 限速、FK restrict、锁 CAS 验证、presign 安全、prompt 提取
+- [x] 测试覆盖恢复：17 文件 65 测试（从 5 文件 21 测试）
 - [ ] 前后端联调：SSE 流式聊天跑通，AIGC 任务状态同步
 - [ ] 模型参数动态表单：根据 `GET /api/v1/models` 返回的 params 动态渲染 UI（模态模板 + tier 过滤）
 - [ ] 认证页面：登录 / 注册 / Google OAuth 对接后端 auth 路由
