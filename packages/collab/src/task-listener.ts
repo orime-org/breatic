@@ -85,13 +85,20 @@ async function handleNodeEvent(
         return;
       }
 
-      const dataMap = nodeMap.get("data");
+      let dataMap = nodeMap.get("data");
       if (!(dataMap instanceof Y.Map)) {
+        // Legacy format: migrate plain value → Y.Map
         logger.warn(
           { docName, nodeId: event.nodeId, type: event.type },
-          "Node missing nested data Y.Map, skipping",
+          "Migrating legacy node data (plain → Y.Map)",
         );
-        return;
+        const oldData = (dataMap ?? {}) as Record<string, unknown>;
+        const newDataMap = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries(oldData)) {
+          newDataMap.set(k, v);
+        }
+        nodeMap.set("data", newDataMap);
+        dataMap = newDataMap;
       }
 
       if (event.type === "handling") {
@@ -109,9 +116,11 @@ async function handleNodeEvent(
         if (event.cover_url !== undefined) {
           dataMap.set("coverUrl", event.cover_url);
         }
+        dataMap.set("lastEventType", "completed");
         dataMap.delete("handlingBy");
       } else {
         // failed — content untouched
+        dataMap.set("lastEventType", "failed");
         dataMap.set("state", "idle");
         dataMap.delete("handlingBy");
       }
