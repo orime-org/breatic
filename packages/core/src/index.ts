@@ -58,6 +58,7 @@ export { listAvailableModels } from "./config/model-catalog.js";
 export type { SkillModelInfo } from "./config/model-catalog.js";
 export { loadAgents, getAgent, listAgents } from "./agent/agent-loader.js";
 export type { AgentDefinition } from "./agent/agent-loader.js";
+export { extractPromptText } from "./agent/extract-prompt.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { extractVideoCover } from "./video-cover.js";

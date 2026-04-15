@@ -127,11 +127,13 @@ export function useCanvasYjsInternal(
   nodes: Node[];
   edges: Edge[];
   loading: boolean;
+  syncError: string | null;
   applyLocalNodeChanges: (changes: NodeChange[]) => void;
 } {
   const [yjsNodes, setYjsNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const yjsNodesRef = useRef<Node[]>([]);
 
   const [localOverlay, setLocalOverlay] = useState<Map<string, NodeLocalState>>(new Map());
@@ -145,10 +147,20 @@ export function useCanvasYjsInternal(
     if (!manager) return;
 
     setLoading(true);
+    setSyncError(null);
     let destroyed = false;
+
+    // Timeout: if sync doesn't complete in 15 seconds, show error
+    const syncTimeout = setTimeout(() => {
+      if (!destroyed && loading) {
+        setSyncError('Connection timeout. Check your network and try again.');
+        setLoading(false);
+      }
+    }, 15000);
 
     const unsubSynced = manager.onSynced(() => {
       if (destroyed) return;
+      clearTimeout(syncTimeout);
 
       const { nodesMap, edgesMap } = manager;
 
@@ -242,6 +254,7 @@ export function useCanvasYjsInternal(
 
     return () => {
       destroyed = true;
+      clearTimeout(syncTimeout);
       unsubSynced();
       if (cleanupObservers) cleanupObservers();
     };
@@ -291,5 +304,5 @@ export function useCanvasYjsInternal(
     });
   }, []);
 
-  return { nodes, edges, loading, applyLocalNodeChanges };
+  return { nodes, edges, loading, syncError, applyLocalNodeChanges };
 }
