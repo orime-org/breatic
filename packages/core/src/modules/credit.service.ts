@@ -8,6 +8,7 @@
 
 import * as userRepo from "./user.repo.js";
 import * as creditRepo from "./credit.repo.js";
+import { db } from "../db/client.js";
 import { env } from "../config/env.js";
 import { t } from "@breatic/shared";
 import { AppError } from "../errors.js";
@@ -15,6 +16,12 @@ import { logger } from "../logger.js";
 
 /** Sentinel balance returned when payments are disabled. */
 const UNLIMITED_BALANCE = 999_999;
+
+/** Get user's current credit balance. Returns unlimited when payments disabled. */
+export async function getBalance(userId: string): Promise<number> {
+  if (!env.PAYMENT_ENABLED) return UNLIMITED_BALANCE;
+  return userRepo.getCredits(userId);
+}
 
 /**
  * Record usage and optionally deduct credits.
@@ -40,31 +47,47 @@ export async function deduct(
   let newBalance: number;
 
   if (env.PAYMENT_ENABLED) {
-    const success = await userRepo.deductCredits(userId, amount);
-    if (!success) {
-      const currentBalance = await userRepo.getCredits(userId);
-      throw new AppError(
-        402,
-        t("server.error.insufficient_credits", { required: amount, available: currentBalance }),
-      );
-    }
-    newBalance = await userRepo.getCredits(userId);
+    // Deduct + record in a single transaction so both succeed or both roll back.
+    newBalance = await db.transaction(async () => {
+      const success = await userRepo.deductCredits(userId, amount);
+      if (!success) {
+        const currentBalance = await userRepo.getCredits(userId);
+        throw new AppError(
+          402,
+          t("server.error.insufficient_credits", { required: amount, available: currentBalance }),
+        );
+      }
+      const balance = await userRepo.getCredits(userId);
+
+      await creditRepo.recordTransaction({
+        userId,
+        txType: "deduct",
+        amount: -amount,
+        balanceAfter: balance,
+        tokensUsed: options?.tokensUsed,
+        model: options?.model,
+        provider: options?.provider,
+        description: description ?? "",
+        referenceId,
+      });
+
+      return balance;
+    });
   } else {
     newBalance = UNLIMITED_BALANCE;
+    // Still record for audit trail (no deduction)
+    await creditRepo.recordTransaction({
+      userId,
+      txType: "deduct",
+      amount: -amount,
+      balanceAfter: newBalance,
+      tokensUsed: options?.tokensUsed,
+      model: options?.model,
+      provider: options?.provider,
+      description: description ?? "",
+      referenceId,
+    });
   }
-
-  // Always record the transaction (audit trail)
-  await creditRepo.recordTransaction({
-    userId,
-    txType: "deduct",
-    amount: -amount,
-    balanceAfter: newBalance,
-    tokensUsed: options?.tokensUsed,
-    model: options?.model,
-    provider: options?.provider,
-    description: description ?? "",
-    referenceId,
-  });
 
   logger.info(
     { userId, amount, tokens: options?.tokensUsed, model: options?.model, balance: newBalance, paymentEnabled: env.PAYMENT_ENABLED },

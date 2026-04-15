@@ -18,12 +18,20 @@ import { createYjsManager, type YjsManager as BaseYjsManager } from './yjsManage
 /** Transactions with this origin are excluded from canvas UndoManager. */
 export const noHistoryOrigin = Symbol('no-history');
 
-/** Origin used for normal user operations (tracked by UndoManager). */
+/**
+ * Origin used for normal user operations (tracked by UndoManager).
+ * Per-user so collaborators can't undo each other's operations.
+ * Set via createYjsProjectManager config; defaults to 'canvas-user'.
+ */
+let _userOrigin = 'canvas-user';
+export function getUserOrigin(): string { return _userOrigin; }
+/** @deprecated Use getUserOrigin() — this is kept for backward compat. */
 export const userOrigin = 'canvas-user';
 
 export interface YjsProjectManagerConfig {
   workflowId: string;
   wsUrl?: string;
+  userId?: string;
   onSynced?: () => void;
 }
 
@@ -54,7 +62,10 @@ export interface YjsProjectManager {
 }
 
 export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsProjectManager => {
-  const { workflowId, wsUrl } = config;
+  const { workflowId, wsUrl, userId } = config;
+
+  // Set per-user origin for UndoManager tracking
+  _userOrigin = userId ? `canvas-user:${userId}` : 'canvas-user';
 
   const baseManager = createYjsManager({ docId: `project-${workflowId}/canvas`, wsUrl });
   const doc = baseManager.doc;
@@ -92,7 +103,7 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
     undoManager = new Y.UndoManager(
       [nodesMap, edgesMap],
       {
-        trackedOrigins: new Set([userOrigin]),
+        trackedOrigins: new Set([_userOrigin]),
         captureTimeout: 500,
       },
     );

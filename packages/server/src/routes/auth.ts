@@ -17,6 +17,25 @@ import type { AuthVariables } from "../middleware/auth.js";
 import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { checkRateLimit, getRedis } from "@breatic/core";
+import type { MiddlewareHandler } from "hono";
+
+/** Rate limit middleware factory. */
+function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
+  return async (c, next) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const redis = getRedis();
+    const allowed = await checkRateLimit(redis, `${opts.prefix}:${ip}`, opts.max, opts.windowSeconds);
+    if (!allowed) {
+      return c.json(
+        { error: { code: 429, message: "Too many requests. Try again later." } },
+        429,
+        { "Retry-After": String(opts.windowSeconds) },
+      );
+    }
+    await next();
+  };
+}
 
 const auth = new Hono<{ Variables: AuthVariables }>();
 
@@ -41,7 +60,7 @@ function getGoogleClient(): OAuth2Client {
  * @returns `201` with `{ user, token }` on success
  * @throws `409` if email is already registered
  */
-auth.post("/register", zValidator("json", registerSchema), async (c) => {
+auth.post("/register", rateLimit({ prefix: "register", max: 3, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const user = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
@@ -55,7 +74,7 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
  * @returns `200` with `{ user, token }` on success
  * @throws `401` if credentials are invalid
  */
-auth.post("/login", zValidator("json", loginSchema), async (c) => {
+auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   return c.json({ data: { user, token } });
@@ -95,7 +114,7 @@ const googleAuthSchema = z.object({
  * @throws `401` if the credential is invalid, expired, or unverified
  * @throws `503` if Google OAuth is not configured on this server
  */
-auth.post("/google", zValidator("json", googleAuthSchema), async (c) => {
+auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
     return c.json({ error: "Google OAuth is not configured on this server" }, 503);
