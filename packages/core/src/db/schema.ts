@@ -69,7 +69,7 @@ export const projects = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     canvasData: jsonb("canvas_data").$type<Record<string, unknown>>().default({}),
@@ -100,7 +100,7 @@ export const conversations = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     title: varchar("title", { length: 200 }).default("New conversation").notNull(),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
@@ -124,7 +124,7 @@ export const tasks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -185,7 +185,7 @@ export const nodeHistory = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     projectId: uuid("project_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "restrict" }),
     nodeId: varchar("node_id", { length: 255 }).notNull(),
     userId: uuid("user_id")
       .notNull()
@@ -229,7 +229,7 @@ export const conversationAttachments = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     conversationId: uuid("conversation_id")
       .notNull()
-      .references(() => conversations.id, { onDelete: "cascade" }),
+      .references(() => conversations.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
@@ -262,7 +262,7 @@ export const payments = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     stripeSessionId: varchar("stripe_session_id", { length: 255 }),
     stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
     amountCents: integer("amount_cents").notNull(),
@@ -286,7 +286,7 @@ export const creditTransactions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     txType: varchar("tx_type", { length: 20 }).notNull(),
     amount: doublePrecision("amount").notNull(),
     balanceAfter: doublePrecision("balance_after").notNull(),
@@ -308,9 +308,10 @@ export const conversationMemories = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     conversationId: uuid("conversation_id")
       .notNull()
-      .references(() => conversations.id, { onDelete: "cascade" }),
+      .references(() => conversations.id, { onDelete: "restrict" }),
     content: text("content").default("").notNull(),
     ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("conv_memories_conv_id_idx").on(table.conversationId),
@@ -325,11 +326,12 @@ export const memoryHistoryEntries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     conversationId: uuid("conversation_id")
       .notNull()
-      .references(() => conversations.id, { onDelete: "cascade" }),
+      .references(() => conversations.id, { onDelete: "restrict" }),
     entry: text("entry").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("mem_history_conv_id_idx").on(table.conversationId),
@@ -344,10 +346,11 @@ export const userMemories = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     content: text("content").default("").notNull(),
     version: integer("version").default(1).notNull(),
     ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [uniqueIndex("user_memories_user_id_idx").on(table.userId)],
 );
@@ -360,7 +363,7 @@ export const userMemoryEntries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     content: text("content").notNull(),
     sourceConversationId: uuid("source_conversation_id").references(
       () => conversations.id,
@@ -369,6 +372,7 @@ export const userMemoryEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("user_mem_entries_user_id_idx").on(table.userId)],
 );
@@ -381,10 +385,11 @@ export const projectMemories = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     projectId: uuid("project_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "restrict" }),
     content: text("content").default("").notNull(),
     version: integer("version").default(1).notNull(),
     ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("project_memories_project_id_idx").on(table.projectId),
@@ -399,7 +404,7 @@ export const projectMemoryEntries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     projectId: uuid("project_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "restrict" }),
     authorId: uuid("author_id")
       .notNull()
       .references(() => users.id),
@@ -411,6 +416,7 @@ export const projectMemoryEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("project_mem_entries_project_id_idx").on(table.projectId),
@@ -425,7 +431,7 @@ export const customSkills = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     name: varchar("name", { length: 64 }).notNull(),
     description: text("description").default("").notNull(),
     version: varchar("version", { length: 32 }).default("1.0.0").notNull(),
@@ -453,10 +459,10 @@ export const skillInstalls = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     skillId: uuid("skill_id")
       .notNull()
-      .references(() => customSkills.id, { onDelete: "cascade" }),
+      .references(() => customSkills.id, { onDelete: "restrict" }),
     installedAt: timestamp("installed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
