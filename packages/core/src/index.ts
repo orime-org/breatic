@@ -26,6 +26,7 @@ export { checkRateLimit } from "./infra/rate-limiter.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";
+export { sendMail } from "./infra/mailer.js";
 export { acquireNodeLock, releaseNodeLock } from "./infra/canvas-lock.js";
 export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "./infra/request-context.js";

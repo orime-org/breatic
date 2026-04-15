@@ -10,6 +10,8 @@ import bcrypt from "bcryptjs";
 
 import * as userRepo from "./user.repo.js";
 import { getRedis } from "../infra/redis.js";
+import { sendMail } from "../infra/mailer.js";
+import { env } from "../config/env.js";
 import {
   setSession,
   getSession,
@@ -160,4 +162,63 @@ export async function logout(token: string): Promise<void> {
 export async function logoutAll(userId: string): Promise<void> {
   const redis = getRedis();
   await deleteAllSessions(redis, userId);
+}
+
+const RESET_TOKEN_TTL = 3600; // 1 hour
+
+/**
+ * Generate a password reset token and send reset email.
+ *
+ * Silently succeeds even if email not found (prevents email enumeration).
+ */
+export async function forgotPassword(email: string, resetBaseUrl: string): Promise<void> {
+  const user = await userRepo.getUserByEmail(email);
+  if (!user) {
+    logger.info({ email }, "Password reset requested for non-existent email");
+    return; // Don't reveal whether email exists
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const redis = getRedis();
+  const key = `${env.ENV}:password-reset:${token}`;
+  await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
+
+  const resetUrl = `${resetBaseUrl}?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: "Breatic — Reset your password",
+    html: `
+      <p>You requested a password reset.</p>
+      <p><a href="${resetUrl}">Click here to reset your password</a></p>
+      <p>This link expires in 1 hour. If you didn't request this, ignore this email.</p>
+    `,
+  });
+
+  logger.info({ userId: user.id }, "Password reset email sent");
+}
+
+/**
+ * Verify reset token and update password.
+ *
+ * @throws {UnauthorizedError} if token is invalid or expired
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const redis = getRedis();
+  const key = `${env.ENV}:password-reset:${token}`;
+  const userId = await redis.get(key);
+
+  if (!userId) {
+    throw new UnauthorizedError("Invalid or expired reset token");
+  }
+
+  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await userRepo.updatePassword(userId, hashed);
+
+  // Delete the token so it can't be reused
+  await redis.del(key);
+
+  // Invalidate all existing sessions (security: force re-login)
+  await deleteAllSessions(redis, userId);
+
+  logger.info({ userId }, "Password reset completed");
 }

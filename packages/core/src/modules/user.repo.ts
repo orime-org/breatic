@@ -104,6 +104,17 @@ export async function updateUser(
 /**
  * Atomically deduct credits. Fails if insufficient balance.
  *
+/** Update a user's hashed password. */
+export async function updatePassword(userId: string, hashedPassword: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ hashedPassword, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+/**
+ * Atomically deduct credits. Fails if insufficient balance.
+ *
  * @returns `true` if deduction succeeded, `false` if insufficient credits
  */
 export async function deductCredits(userId: string, amount: number): Promise<boolean> {
