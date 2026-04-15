@@ -2,9 +2,13 @@ import {
   KeyboardEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
+import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
+import type { Editor } from '@tiptap/react';
 import {
   RiArrowGoBackFill,
   RiCheckFill,
@@ -29,24 +33,65 @@ interface AISuggestionItem {
   onClick: () => void;
 }
 
-export interface AIMenuPosition {
-  top: number;
-  left: number;
-  width: number;
-}
-
 export interface AIMenuProps {
-  position: AIMenuPosition;
+  editor: Editor;
+  anchorPos: number;
   onClose: () => void;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const AIMenu = ({ position, onClose }: AIMenuProps) => {
+const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
   const [status, setStatus] = useState<AIStatus>('user-input');
   const [prompt, setPrompt] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const editorRectRef = useRef<DOMRect | null>(null);
+
+  const { refs, floatingStyles, update } = useFloating({
+    open: true,
+    placement: 'bottom-start',
+    strategy: 'fixed',
+    middleware: [offset(8), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const reference = useMemo(() => {
+    const editorDom = editor.view.dom as HTMLElement;
+    return {
+      contextElement: editorDom,
+      getBoundingClientRect: () => {
+        const coords = editor.view.coordsAtPos(anchorPos);
+        const editorRect = editorDom.getBoundingClientRect();
+        editorRectRef.current = editorRect;
+        return {
+          x: editorRect.left,
+          y: coords.bottom,
+          width: editorRect.width,
+          height: 1,
+          top: coords.bottom,
+          left: editorRect.left,
+          right: editorRect.left + editorRect.width,
+          bottom: coords.bottom + 1,
+        };
+      },
+    };
+  }, [editor, anchorPos]);
+
+  useLayoutEffect(() => {
+    refs.setReference(reference);
+    update();
+  }, [refs, reference, update]);
+
+  useEffect(() => {
+    const onViewportChanged = () => update();
+    window.addEventListener('scroll', onViewportChanged, true);
+    window.addEventListener('resize', onViewportChanged);
+    return () => {
+      window.removeEventListener('scroll', onViewportChanged, true);
+      window.removeEventListener('resize', onViewportChanged);
+    };
+  }, [update]);
 
   // Auto-focus input when menu opens
   useEffect(() => {
@@ -152,39 +197,38 @@ const AIMenu = ({ position, onClose }: AIMenuProps) => {
     },
   ];
 
-  const currentItems: AISuggestionItem[] =
-    status === 'user-input'
-      ? withSelectionItems
-      : status === 'user-reviewing'
-        ? reviewItems
-        : status === 'error'
-          ? errorItems
-          : [];
+  const getCurrentItems = (): AISuggestionItem[] => {
+    if (status === 'user-input') return withSelectionItems;
+    if (status === 'user-reviewing') return reviewItems;
+    if (status === 'error') return errorItems;
+    return [];
+  };
+  const currentItems: AISuggestionItem[] = getCurrentItems();
 
   const isDisabled = status === 'thinking' || status === 'ai-writing';
 
-  const placeholder =
-    status === 'thinking'
-      ? 'Thinking…'
-      : status === 'ai-writing'
-        ? 'Editing…'
-        : status === 'error'
-          ? 'Oops! Something went wrong'
-          : 'Ask AI anything…';
+  const getPlaceholder = (): string => {
+    if (status === 'thinking') return 'Thinking…';
+    if (status === 'ai-writing') return 'Editing…';
+    if (status === 'error') return 'Oops! Something went wrong';
+    return 'Ask AI anything…';
+  };
+  const placeholder = getPlaceholder();
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div
-      ref={menuRef}
+      ref={(node) => {
+        menuRef.current = node;
+        refs.setFloating(node);
+      }}
       style={{
-        position: 'fixed',
-        top: position.top,
-        left: position.left,
-        width: position.width,
+        ...floatingStyles,
+        width: editorRectRef.current?.width ?? (editor.view.dom as HTMLElement).getBoundingClientRect().width,
         zIndex: 88,
       }}
-      className='flex flex-col gap-1'
+      className='flex flex-col gap-1 outline-none'
     >
       {/* Prompt input area */}
       <div

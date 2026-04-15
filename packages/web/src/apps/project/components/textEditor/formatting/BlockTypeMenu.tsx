@@ -8,8 +8,9 @@ import {
   type RefObject,
 } from 'react';
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from '@floating-ui/react';
-import type { Editor } from '@tiptap/react';
+import { useEditorState, type Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { TableMap } from '@tiptap/pm/tables';
 import {
   isMediaLikeBlockType,
   mediaBlockSupportsTextAlign,
@@ -19,6 +20,9 @@ import {
   RiAlignLeft,
   RiAlignCenter,
   RiAlignRight,
+  RiAlignTop,
+  RiAlignVertically,
+  RiAlignBottom,
   RiIndentIncrease,
   RiIndentDecrease,
   RiArrowRightSLine,
@@ -40,6 +44,31 @@ import {
   decreaseBlockIndent,
   increaseBlockIndent,
 } from '@/apps/project/components/textEditor/extensions/BlockIndentExtension';
+import {
+  selectWholeTable,
+  setWholeTableVerticalAlign,
+} from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
+
+/** Same horizontal alignment as row/column handle menus (`cell.attrs.align`). */
+function setTableAllCellsAlign(editor: Editor, tableStart: number, align: 'left' | 'center' | 'right'): boolean {
+  const table = editor.state.doc.nodeAt(tableStart);
+  if (!table || table.type.name !== 'table') return false;
+  const map = TableMap.get(table);
+  const tableContentStart = tableStart + 1;
+  const { state, view } = editor;
+  let tr = state.tr;
+  for (let row = 0; row < map.height; row += 1) {
+    for (let col = 0; col < map.width; col += 1) {
+      const abs = tableContentStart + map.map[row * map.width + col];
+      const cell = tr.doc.nodeAt(abs);
+      if (!cell || (cell.type.name !== 'tableCell' && cell.type.name !== 'tableHeader')) continue;
+      tr = tr.setNodeMarkup(abs, undefined, { ...cell.attrs, align });
+    }
+  }
+  if (!tr.docChanged) return false;
+  view.dispatch(tr);
+  return true;
+}
 
 const getTopLevelBlockRange = (doc: PMNode, innerBlockStart: number): { start: number; end: number } | null => {
   const safe = Math.min(Math.max(innerBlockStart + 1, 1), doc.content.size);
@@ -67,6 +96,7 @@ const resolveAnchorActiveKey = (doc: PMNode, bs: number | null): string | null =
     if (name === 'taskList') return 'taskList';
     if (name === 'blockquote') return 'blockquote';
     if (name === 'codeBlock') return 'codeBlock';
+    if (name === 'horizontalRule') return 'horizontalRule';
     if (name === 'heading') return `h${node.attrs.level as number}`;
     if (name === 'paragraph') return 'paragraph';
     if (name === 'highlight') return 'highlight';
@@ -89,6 +119,15 @@ const blockTypeAlignSubmenuSurfaceClass =
 /** Above block-line controls, below top text bubbles. */
 const BLOCK_TYPE_MENU_Z = 70;
 const BLOCK_TYPE_SUBMENU_Z = 71;
+
+/** Block handle menu: only “Delete block” (no turn-into / align / color). */
+const BLOCK_TYPES_DELETE_ONLY_MENU = new Set<string>([
+  'codeBlock',
+  'horizontalRule',
+  'audio',
+  'pendingAudio',
+  'pendingFile',
+]);
 
 type BlockTypeFloatRef = RefObject<HTMLDivElement | null>;
 
@@ -246,6 +285,15 @@ const BlockTypeMenu = ({
   const alignIndentBtnRef = useRef<HTMLButtonElement>(null);
   const colorBtnRef = useRef<HTMLButtonElement>(null);
   const activeNodeKey = resolveAnchorActiveKey(editor.state.doc, anchorBlockStartRef.current);
+  /** Doc node at frozen anchor — reliable for horizontalRule (resolveAnchorActiveKey can miss thin blocks). */
+  const anchoredBlockType = useEditorState({
+    editor,
+    selector: ({ editor: ed }) => {
+      const bs = anchorBlockStartRef.current;
+      if (bs == null) return null;
+      return ed.state.doc.nodeAt(bs)?.type.name ?? null;
+    },
+  });
 
   const focusAnchorBlock = useCallback(() => {
     const bs = anchorBlockStartRef.current;
@@ -253,6 +301,10 @@ const BlockTypeMenu = ({
     const n = editor.state.doc.nodeAt(bs);
     if (n && isMediaLikeBlockType(n.type.name)) {
       editor.chain().focus().setNodeSelection(bs).run();
+      return;
+    }
+    if (n?.type.name === 'table') {
+      selectWholeTable(editor, bs);
       return;
     }
     editor.chain().focus().setTextSelection(bs + 1).run();
@@ -296,6 +348,12 @@ const BlockTypeMenu = ({
       return;
     }
     const node = editor.state.doc.nodeAt(bs);
+    if (node?.type.name === 'table') {
+      setTableAllCellsAlign(editor, bs, align);
+      selectWholeTable(editor, bs);
+      onClose();
+      return;
+    }
     if (node && mediaBlockSupportsTextAlign(node.type.name)) {
       editor.chain().focus().setNodeSelection(bs).updateAttributes(node.type.name, { textAlign: align }).run();
       onClose();
@@ -306,6 +364,25 @@ const BlockTypeMenu = ({
       (ch as any).setTextAlign(align).run(),
     );
   };
+
+  const setTableVerticalAlign = useCallback(
+    (verticalAlign: 'top' | 'middle' | 'bottom') => {
+      const bs = anchorBlockStartRef.current;
+      if (bs == null) {
+        onClose();
+        return;
+      }
+      const table = editor.state.doc.nodeAt(bs);
+      if (!table || table.type.name !== 'table') {
+        onClose();
+        return;
+      }
+      setWholeTableVerticalAlign(editor, bs, verticalAlign);
+      selectWholeTable(editor, bs);
+      onClose();
+    },
+    [editor, anchorBlockStartRef, onClose],
+  );
 
   const sinkOrLift = (dir: 'sink' | 'lift') => {
     focusAnchorBlock();
@@ -327,9 +404,12 @@ const BlockTypeMenu = ({
   const anchorBs = anchorBlockStartRef.current;
   const anchorNode = anchorBs != null ? editor.state.doc.nodeAt(anchorBs) : null;
   const mediaMenu = Boolean(anchorNode && isMediaLikeBlockType(anchorNode.type.name));
-  const codeBlockMenu = activeNodeKey === 'codeBlock';
+  const deleteOnlyMenu =
+    anchoredBlockType != null && BLOCK_TYPES_DELETE_ONLY_MENU.has(anchoredBlockType);
+  /** Table: horizontal + vertical align, Color, Delete (no Turn into / no indent). */
+  const tableAnchorMenu = anchoredBlockType === 'table';
 
-  const blockRows = !mediaMenu ? (
+  const blockRows = !mediaMenu && !tableAnchorMenu ? (
     <>
       <p className={labelClass}>Turn into</p>
       {BASIC_BLOCKS.map(({ label, Icon, nodeKey, apply }) => {
@@ -362,10 +442,10 @@ const BlockTypeMenu = ({
       zIndex={BLOCK_TYPE_MENU_Z}
       floatingRef={mainFloatingRef}
     >
-      {!codeBlockMenu && (
+      {!deleteOnlyMenu && (
         <>
           {blockRows}
-          {!mediaMenu && <div className='my-1.5 border-t border-border-default-base' />}
+          {blockRows && <div className='my-1.5 border-t border-border-default-base' />}
 
           <button
             ref={alignIndentBtnRef}
@@ -380,7 +460,7 @@ const BlockTypeMenu = ({
             <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
               <BlockIndentAlignIcon size={16} />
             </span>
-            {'Indent & align'}
+            {tableAnchorMenu ? 'Align' : 'Indent & align'}
             <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
           </button>
           <BlockTypeMenuSubFloat
@@ -390,28 +470,70 @@ const BlockTypeMenu = ({
             zIndex={BLOCK_TYPE_SUBMENU_Z}
             floatingRef={subFloatingRef}
           >
-            <p className={labelClass}>Align</p>
-            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('left')}>
-              <RiAlignLeft size={15} className='shrink-0 text-text-default-tertiary' />
-              Align left
-            </button>
-            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('center')}>
-              <RiAlignCenter size={15} className='shrink-0 text-text-default-tertiary' />
-              Align center
-            </button>
-            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('right')}>
-              <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
-              Align right
-            </button>
-            <p className={labelClass}>Indent</p>
-            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('sink')}>
-              <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
-              Increase indent
-            </button>
-            <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('lift')}>
-              <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
-              Decrease indent
-            </button>
+            <>
+              <p className={labelClass}>Align</p>
+              <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('left')}>
+                <RiAlignLeft size={15} className='shrink-0 text-text-default-tertiary' />
+                Align left
+              </button>
+              <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('center')}>
+                <RiAlignCenter size={15} className='shrink-0 text-text-default-tertiary' />
+                Align center
+              </button>
+              <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => setAlign('right')}>
+                <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
+                Align right
+              </button>
+              {tableAnchorMenu && (
+                <>
+                  <div className='my-1.5 border-t border-border-default-base' />
+                  <p className={labelClass}>Vertical align</p>
+                  <button
+                    type='button'
+                    role='menuitem'
+                    className={itemClass}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setTableVerticalAlign('top')}
+                  >
+                    <RiAlignTop size={15} className='shrink-0 text-text-default-tertiary' />
+                    Align top
+                  </button>
+                  <button
+                    type='button'
+                    role='menuitem'
+                    className={itemClass}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setTableVerticalAlign('middle')}
+                  >
+                    <RiAlignVertically size={15} className='shrink-0 text-text-default-tertiary' />
+                    Align middle
+                  </button>
+                  <button
+                    type='button'
+                    role='menuitem'
+                    className={itemClass}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setTableVerticalAlign('bottom')}
+                  >
+                    <RiAlignBottom size={15} className='shrink-0 text-text-default-tertiary' />
+                    Align bottom
+                  </button>
+                </>
+              )}
+              {!tableAnchorMenu && (
+                <>
+                  <p className={labelClass}>Indent</p>
+                  <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('sink')}>
+                    <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
+                    Increase indent
+                  </button>
+                  <button type='button' role='menuitem' className={itemClass} onMouseDown={(e) => e.preventDefault()} onClick={() => sinkOrLift('lift')}>
+                    <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
+                    Decrease indent
+                  </button>
+                </>
+              )}
+            </>
           </BlockTypeMenuSubFloat>
 
           <button
@@ -440,8 +562,11 @@ const BlockTypeMenu = ({
             <TextColorPalettePanel
               editor={editor}
               atomBlockPos={mediaMenu && anchorBs != null ? anchorBs : undefined}
+              tableScope={
+                tableAnchorMenu && anchorBs != null ? { axis: 'whole', tableStart: anchorBs } : undefined
+              }
               blockScope={(() => {
-                if (mediaMenu) return undefined;
+                if (mediaMenu || tableAnchorMenu) return undefined;
                 const bs = anchorBlockStartRef.current;
                 if (bs == null) return undefined;
                 const range = getTopLevelBlockRange(editor.state.doc, bs);

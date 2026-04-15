@@ -22,6 +22,9 @@ import {
   RiAlignCenter,
   RiAlignLeft,
   RiAlignRight,
+  RiAlignTop,
+  RiAlignVertically,
+  RiAlignBottom,
   RiArrowDownLine,
   RiArrowLeftLine,
   RiArrowRightLine,
@@ -33,17 +36,17 @@ import {
   RiInsertColumnRight,
   RiInsertRowBottom,
   RiInsertRowTop,
-  RiIndentDecrease,
-  RiIndentIncrease,
   RiPaletteLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
 import { BlockIndentAlignIcon } from '@/apps/project/components/textEditor/ui/TextEditorIcons';
 import {
-  decreaseBlockIndent,
-  increaseBlockIndent,
-} from '@/apps/project/components/textEditor/extensions/BlockIndentExtension';
+  setColumnVerticalAlign,
+  setRowVerticalAlign,
+  selectTableColumn,
+  selectTableRow,
+} from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
 
 function addTableRowAtEnd(editor: Editor): boolean {
   try {
@@ -214,6 +217,26 @@ function setTableRowCellAlign(editor: Editor, rowIndex: number, align: 'left' | 
   return true;
 }
 
+function setTableColumnCellVerticalAlign(
+  editor: Editor,
+  colIndex: number,
+  verticalAlign: 'top' | 'middle' | 'bottom' | null,
+): boolean {
+  const r = tableSelRect(editor);
+  if (!r) return false;
+  return setColumnVerticalAlign(editor, r.tableStart, r.map, colIndex, verticalAlign);
+}
+
+function setTableRowCellVerticalAlign(
+  editor: Editor,
+  rowIndex: number,
+  verticalAlign: 'top' | 'middle' | 'bottom' | null,
+): boolean {
+  const r = tableSelRect(editor);
+  if (!r) return false;
+  return setRowVerticalAlign(editor, r.tableStart, r.map, rowIndex, verticalAlign);
+}
+
 const tableHandleMenuSurfaceClass =
   'bn-table-handle-menu min-w-[220px] overflow-visible rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)] outline-none';
 
@@ -330,15 +353,9 @@ function TableHandleFloatingSubmenu({
   );
 }
 
-/** Match BlockTypeMenu “Indent & align” submenu labels. */
+/** Submenu section labels (row/column “Align” entry matches gutter table menu wording). */
 const blockMenuLabelClass =
   'px-2.5 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-default-tertiary select-none';
-
-function runTableSinkOrLift(editor: Editor, dir: 'sink' | 'lift', onDone: () => void): void {
-  if (dir === 'sink') increaseBlockIndent(editor);
-  else decreaseBlockIndent(editor);
-  onDone();
-}
 
 /** Row and column table grip dimensions in pixels. */
 const handleRowWidth = 18;
@@ -346,6 +363,7 @@ const handleRowHeight = 26;
 const handleColWidth = 26;
 const handleColHeight = 18;
 const extendColMargin = 4;
+const handleOuterGap = 4;
 
 /** Row/column grip chips (closed); menus use a higher layer when open. */
 const handleGripZ = 62;
@@ -385,12 +403,12 @@ const layoutHandles = (table: HTMLElement, cell: HTMLElement): Layout => {
   const c = cell.getBoundingClientRect();
   return {
     row: {
-      left: t.left - handleRowWidth / 2,
+      left: t.left - handleRowWidth - handleOuterGap,
       top: c.top + (c.height - handleRowHeight) / 2,
     },
     col: {
       left: c.left + (c.width - handleColWidth) / 2,
-      top: t.top - handleColHeight / 2,
+      top: t.top - handleColHeight - handleOuterGap,
     },
     extRow: {
       left: t.left,
@@ -459,53 +477,43 @@ const cellDomAtPoint = (editor: Editor, clientX: number, clientY: number): Table
 const readGrid = (editor: Editor) => {
   try {
     const r = selectedRect(editor.state);
-    return { row: r.top, col: r.left, map: r.map };
+    return { row: r.top, col: r.left, map: r.map, tableStart: r.tableStart };
   } catch {
     return null;
   }
 };
 
-/** DOM row index among all `<tr>` in document order (thead + tbody + tfoot). */
-const domCellRowCol = (cell: HTMLTableCellElement): { row: number; col: number } | null => {
-  const tr = cell.parentElement as HTMLTableRowElement | null;
-  if (!tr) return null;
-  const table = cell.closest('table');
-  if (!table) return null;
-  const allRows = table.querySelectorAll('tr');
-  let row = -1;
-  for (let i = 0; i < allRows.length; i++) {
-    if (allRows[i] === tr) {
-      row = i;
-      break;
-    }
-  }
-  if (row < 0) return null;
-  const col = Array.prototype.indexOf.call(tr.children, cell);
-  if (col < 0) return null;
-  return { row, col };
-};
-
 /** Row/col for the hovered cell from the document model (works without a table selection). */
-const readGridForDomCell = (editor: Editor, cellEl: HTMLTableCellElement): { row: number; col: number; map: TableMap } | null => {
+const readGridForDomCell = (
+  editor: Editor,
+  cellEl: HTMLTableCellElement,
+): { row: number; col: number; map: TableMap; tableStart: number } | null => {
   const view = getPmView(editor);
   if (!view) return null;
-  const idx = domCellRowCol(cellEl);
-  if (!idx) return null;
   try {
     const pos = view.posAtDOM(cellEl, 0);
     const $pos = view.state.doc.resolve(pos);
+    let cellDepth = -1;
     let tableDepth = -1;
     for (let d = $pos.depth; d > 0; d -= 1) {
+      const name = $pos.node(d).type.name;
+      if (cellDepth < 0 && (name === 'tableCell' || name === 'tableHeader')) {
+        cellDepth = d;
+      }
       if ($pos.node(d).type.name === 'table') {
         tableDepth = d;
         break;
       }
     }
-    if (tableDepth < 0) return null;
+    if (tableDepth < 0 || cellDepth < 0) return null;
     const table = $pos.node(tableDepth);
+    const tableStart = $pos.start(tableDepth);
     const map = TableMap.get(table);
-    if (idx.row < 0 || idx.row >= map.height || idx.col < 0 || idx.col >= map.width) return null;
-    return { row: idx.row, col: idx.col, map };
+    const cellStart = $pos.before(cellDepth);
+    const rel = cellStart - tableStart;
+    const rect = map.findCell(rel);
+    if (rect.top < 0 || rect.left < 0 || rect.top >= map.height || rect.left >= map.width) return null;
+    return { row: rect.top, col: rect.left, map, tableStart };
   } catch {
     return null;
   }
@@ -641,7 +649,8 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
   }, [editor]);
 
   const editorRootDom = getEditorRootDom(editor);
-  const portalEl = editorRootDom?.closest('.breatic-editor-wrapper');
+  const portalEl =
+    editorRootDom?.closest('.breatic-editor-scroll') ?? editorRootDom?.closest('.breatic-editor-wrapper');
   const portalRoot =
     portalEl instanceof HTMLElement ? portalEl : typeof document !== 'undefined' ? document.body : null;
 
@@ -725,11 +734,9 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
       const nextDom =
         !wantsChrome && !menusOpen
           ? null
-          : (d ??
-            lastTableDomRef.current ??
-            (menusOpen && isInTable(editor.state) ? cellDom(editor) : null));
+          : (d ?? lastTableDomRef.current ?? (menusOpen && isInTable(editor.state) ? cellDom(editor) : null));
 
-      let nextGrid: { row: number; col: number; map: TableMap } | null = null;
+      let nextGrid: { row: number; col: number; map: TableMap; tableStart: number } | null = null;
       if (nextDom?.cell instanceof HTMLTableCellElement) {
         nextGrid = readGridForDomCell(editor, nextDom.cell);
       }
@@ -775,7 +782,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
         lastCol = Boolean(under.closest('.bn-extend-button-add-remove-columns'));
         const cell = under.closest('td, th');
         if (cell && t.contains(cell)) {
-          const idx = domCellRowCol(cell as HTMLTableCellElement);
+          const idx = readGridForDomCell(editor, cell as HTMLTableCellElement);
           if (idx) {
             if (!lastRow) lastRow = idx.row === g.map.height - 1;
             if (!lastCol) lastCol = idx.col === g.map.width - 1;
@@ -852,6 +859,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
             className={cn('bn-table-handle bn-table-handle-row bn-table-handle-not-draggable')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
+              selectTableRow(editor, grid.tableStart, grid.map, grid.row);
               setOpenColMenu(false);
               setColMenuSub('none');
               setOpenRowMenu((v) => {
@@ -959,7 +967,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
             >
               <TextColorPalettePanel
                 editor={editor}
-                tableScope={{ axis: 'row', index: grid.row }}
+                tableScope={{ axis: 'row', index: grid.row, tableStart: grid.tableStart }}
                 onAfterPick={closeMenus}
               />
             </TableHandleFloatingSubmenu>
@@ -975,7 +983,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
               <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
                 <BlockIndentAlignIcon size={16} />
               </span>
-              {'Indent & align'}
+              Align
               <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
             </button>
             <TableHandleFloatingSubmenu
@@ -1025,26 +1033,45 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
                 <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
                 Align right
               </button>
-              <p className={blockMenuLabelClass}>Indent</p>
+              <p className={blockMenuLabelClass}>Vertical align</p>
               <button
                 type='button'
                 role='menuitem'
                 className={tableMenuItemClass}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runTableSinkOrLift(editor, 'sink', closeMenus)}
+                onClick={() => {
+                  setTableRowCellVerticalAlign(editor, grid.row, 'top');
+                  closeMenus();
+                }}
               >
-                <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
-                Increase indent
+                <RiAlignTop size={15} className='shrink-0 text-text-default-tertiary' />
+                Align top
               </button>
               <button
                 type='button'
                 role='menuitem'
                 className={tableMenuItemClass}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runTableSinkOrLift(editor, 'lift', closeMenus)}
+                onClick={() => {
+                  setTableRowCellVerticalAlign(editor, grid.row, 'middle');
+                  closeMenus();
+                }}
               >
-                <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
-                Decrease indent
+                <RiAlignVertically size={15} className='shrink-0 text-text-default-tertiary' />
+                Align middle
+              </button>
+              <button
+                type='button'
+                role='menuitem'
+                className={tableMenuItemClass}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setTableRowCellVerticalAlign(editor, grid.row, 'bottom');
+                  closeMenus();
+                }}
+              >
+                <RiAlignBottom size={15} className='shrink-0 text-text-default-tertiary' />
+                Align bottom
               </button>
             </TableHandleFloatingSubmenu>
             <div className={tableMenuDivider} />
@@ -1096,6 +1123,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
             className={cn('bn-table-handle bn-table-handle-col bn-table-handle-not-draggable')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
+              selectTableColumn(editor, grid.tableStart, grid.map, grid.col);
               setOpenRowMenu(false);
               setRowMenuSub('none');
               setOpenColMenu((v) => {
@@ -1203,7 +1231,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
             >
               <TextColorPalettePanel
                 editor={editor}
-                tableScope={{ axis: 'column', index: grid.col }}
+                tableScope={{ axis: 'column', index: grid.col, tableStart: grid.tableStart }}
                 onAfterPick={closeMenus}
               />
             </TableHandleFloatingSubmenu>
@@ -1219,7 +1247,7 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
               <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
                 <BlockIndentAlignIcon size={16} />
               </span>
-              {'Indent & align'}
+              Align
               <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
             </button>
             <TableHandleFloatingSubmenu
@@ -1269,26 +1297,45 @@ const TableHandles = ({ editor }: { editor: Editor }) => {
                 <RiAlignRight size={15} className='shrink-0 text-text-default-tertiary' />
                 Align right
               </button>
-              <p className={blockMenuLabelClass}>Indent</p>
+              <p className={blockMenuLabelClass}>Vertical align</p>
               <button
                 type='button'
                 role='menuitem'
                 className={tableMenuItemClass}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runTableSinkOrLift(editor, 'sink', closeMenus)}
+                onClick={() => {
+                  setTableColumnCellVerticalAlign(editor, grid.col, 'top');
+                  closeMenus();
+                }}
               >
-                <RiIndentIncrease size={15} className='shrink-0 text-text-default-tertiary' />
-                Increase indent
+                <RiAlignTop size={15} className='shrink-0 text-text-default-tertiary' />
+                Align top
               </button>
               <button
                 type='button'
                 role='menuitem'
                 className={tableMenuItemClass}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runTableSinkOrLift(editor, 'lift', closeMenus)}
+                onClick={() => {
+                  setTableColumnCellVerticalAlign(editor, grid.col, 'middle');
+                  closeMenus();
+                }}
               >
-                <RiIndentDecrease size={15} className='shrink-0 text-text-default-tertiary' />
-                Decrease indent
+                <RiAlignVertically size={15} className='shrink-0 text-text-default-tertiary' />
+                Align middle
+              </button>
+              <button
+                type='button'
+                role='menuitem'
+                className={tableMenuItemClass}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setTableColumnCellVerticalAlign(editor, grid.col, 'bottom');
+                  closeMenus();
+                }}
+              >
+                <RiAlignBottom size={15} className='shrink-0 text-text-default-tertiary' />
+                Align bottom
               </button>
             </TableHandleFloatingSubmenu>
             <div className={tableMenuDivider} />

@@ -31,12 +31,33 @@ import {
 } from '@/apps/project/components/textEditor/extensions/HeadingFoldExtension';
 import { isMediaLikeBlockType } from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
 import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/apps/project/components/textEditor/extensions/FormatBubbleSuppressExtension';
+import { selectWholeTable } from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
 
 interface BlockLineControlProps {
   editor: Editor;
 }
 
 /* ─── ProseMirror helpers ─────────────────────────────────────────── */
+
+/** Block types used for gutter line / hit-test (matches innermost block walk). */
+const isLineLevelBlockType = (name: string): boolean =>
+  name === 'paragraph' ||
+  name === 'heading' ||
+  name === 'blockquote' ||
+  name === 'codeBlock' ||
+  name === 'horizontalRule' ||
+  name === 'image' ||
+  name === 'video' ||
+  name === 'audio' ||
+  name === 'pendingImage' ||
+  name === 'pendingVideo' ||
+  name === 'pendingAudio' ||
+  name === 'pendingFile' ||
+  name === 'bulletList' ||
+  name === 'orderedList' ||
+  name === 'taskList' ||
+  name === 'listItem' ||
+  name === 'taskItem';
 
 /**
  * Innermost line-level block for a resolved position.
@@ -49,28 +70,7 @@ const getBlockStartPosFromResolved = ($pos: {
   node: (d: number) => { type: { name: string } };
 }): number | null => {
   for (let d = $pos.depth; d >= 1; d -= 1) {
-    const name = $pos.node(d).type.name;
-    if (
-      name === 'paragraph' ||
-      name === 'heading' ||
-      name === 'blockquote' ||
-      name === 'codeBlock' ||
-      name === 'horizontalRule' ||
-      name === 'image' ||
-      name === 'video' ||
-      name === 'audio' ||
-      name === 'pendingImage' ||
-      name === 'pendingVideo' ||
-      name === 'pendingAudio' ||
-      name === 'pendingFile' ||
-      name === 'bulletList' ||
-      name === 'orderedList' ||
-      name === 'taskList' ||
-      name === 'listItem' ||
-      name === 'taskItem'
-    ) {
-      return $pos.before(d);
-    }
+    if (isLineLevelBlockType($pos.node(d).type.name)) return $pos.before(d);
   }
   if ($pos.depth >= 1) return $pos.before(1);
   return null;
@@ -137,11 +137,30 @@ const getBlockEndPosRobust = (editor: Editor, blockStart: number): number | null
   return null;
 };
 
-/** Inner block node whose start position in the document is `blockStart`. */
+/**
+ * Inner block node whose start position in the document is `blockStart`.
+ * When `posAtCoords` / gap alignment yields `blockStart` off by one from any `before(d)`,
+ * fall back to the innermost line-level node at the resolved cursor (same set as gutter hit-test).
+ */
 const getInnerBlockNodeAtStart = (doc: PMNode, blockStart: number): PMNode | null => {
-  const $pos = doc.resolve(blockStart + 1);
+  const safePos = Math.min(Math.max(blockStart + 1, 1), doc.content.size);
+  let $pos;
+  try {
+    $pos = doc.resolve(safePos);
+  } catch {
+    return null;
+  }
   for (let d = $pos.depth; d >= 1; d -= 1) {
     if ($pos.before(d) === blockStart) return $pos.node(d);
+  }
+  if ($pos.depth >= 1) {
+    const topStart = $pos.before(1);
+    if (Math.abs(topStart - blockStart) <= 1) {
+      for (let d = $pos.depth; d >= 1; d -= 1) {
+        if (isLineLevelBlockType($pos.node(d).type.name)) return $pos.node(d);
+      }
+      return $pos.node(1);
+    }
   }
   return null;
 };
@@ -206,29 +225,63 @@ const getEditorView = (editor: Editor) => {
  */
 const getEditorInnerContentRect = (editorDom: HTMLElement): DOMRect => editorDom.getBoundingClientRect();
 
-/** DOM for the block at `blockStart` — used for handle position and right-edge refinement. */
-const resolveBlockDomForHandle = (view: EditorView, editorDom: HTMLElement, blockStart: number): HTMLElement | null => {
-  const tryDomAtPos = (pos: number): HTMLElement | null => {
+/**
+ * DOM for the block at `blockStart` — used for handle vertical alignment.
+ * Must not walk up to the ProseMirror **direct child** only (e.g. whole `<ul>`): that centers
+ * the gutter on the entire list while the cursor is on one `<li>` / `<p>`.
+ */
+const resolveBlockDomForHandle = (
+  editor: Editor,
+  view: EditorView,
+  editorDom: HTMLElement,
+  blockStart: number,
+): HTMLElement | null => {
+  const doc = view.state.doc;
+  const innerPos = Math.min(Math.max(blockStart + 1, 1), doc.content.size);
+
+  const isLineishForRect = (h: HTMLElement): boolean => {
+    const r = h.getBoundingClientRect();
+    if (r.height >= 6) return true;
+    const d = getComputedStyle(h).display;
+    return d !== 'inline' && d !== 'contents';
+  };
+
+  /** Deepest ancestor of `domAtPos(entryPos)` that still maps to `blockStart` (and is line-ish for rect). */
+  const domFromAscend = (entryPos: number): HTMLElement | null => {
+    let el: HTMLElement | null;
     try {
-      const domAt = view.domAtPos(pos);
-      let el = domAt.node as HTMLElement;
-      if (el.nodeType === Node.TEXT_NODE) el = el.parentElement as HTMLElement;
-      while (el && el.parentElement !== editorDom) {
-        el = el.parentElement as HTMLElement;
-      }
-      return el && el !== editorDom ? el : null;
+      const domAt = view.domAtPos(entryPos);
+      let n = domAt.node as HTMLElement;
+      if (n.nodeType === Node.TEXT_NODE) n = n.parentElement as HTMLElement;
+      el = n;
     } catch {
       return null;
     }
+    while (el && el !== editorDom) {
+      try {
+        const at = view.posAtDOM(el, 0);
+        if (getBlockStartAtDocPos(editor, at) === blockStart && isLineishForRect(el)) return el;
+      } catch {
+        /* posAtDOM not valid for this node */
+      }
+      el = el.parentElement as HTMLElement;
+    }
+    return null;
   };
 
   for (const probe of [blockStart, blockStart + 1]) {
     const raw = view.nodeDOM(probe);
     const asEl = raw instanceof HTMLElement ? raw : raw?.parentElement ?? null;
-    if (asEl && editorDom.contains(asEl)) return asEl;
+    if (asEl && editorDom.contains(asEl)) {
+      try {
+        if (getBlockStartAtDocPos(editor, view.posAtDOM(asEl, 0)) === blockStart) return asEl;
+      } catch {
+        /* keep trying */
+      }
+    }
   }
 
-  return tryDomAtPos(blockStart + 1) ?? tryDomAtPos(blockStart);
+  return domFromAscend(innerPos) ?? domFromAscend(Math.min(Math.max(blockStart, 1), doc.content.size));
 };
 
 const getTableFirstRowRect = (tableBlockDom: HTMLElement): DOMRect | null => {
@@ -244,39 +297,39 @@ const getTableFirstRowRect = (tableBlockDom: HTMLElement): DOMRect | null => {
 };
 
 /**
- * From a hit target, walk up and keep the innermost recognized block (largest ProseMirror depth).
- * On equal depth, prefer the candidate anchored on a DOM node closer to the hit (`gen` smaller),
- * so e.g. `td`/`p` beats outer wrappers that map to the same depth.
+ * Normalize a hit element to the direct child block under ProseMirror root.
+ * This mirrors BlockNote's "draggable block" lookup and avoids anchoring to
+ * nested inline DOM in large node views (e.g. code blocks).
  */
-const domToInnermostBlockStart = (view: EditorView, editor: Editor, startEl: Element): number | null => {
+const getTopLevelBlockElementFromHit = (editorDom: HTMLElement, startEl: Element): HTMLElement | null => {
   let el: Element | null = startEl;
-  let best: number | null = null;
-  let bestDepth = -1;
-  let bestGen = Number.POSITIVE_INFINITY;
-  let gen = 0;
-  const doc = view.state.doc;
-  while (el && el !== view.dom) {
-    if (el instanceof HTMLElement) {
-      try {
-        const pos = view.posAtDOM(el, 0);
-        const bs = getBlockStartAtDocPos(editor, pos);
-        if (bs != null) {
-          const safePos = Math.min(Math.max(bs + 1, 1), doc.content.size);
-          const depth = doc.resolve(safePos).depth;
-          if (depth > bestDepth || (depth === bestDepth && gen < bestGen)) {
-            bestDepth = depth;
-            bestGen = gen;
-            best = bs;
-          }
-        }
-      } catch {
-        /* not mapped to doc */
-      }
+  while (el && el !== editorDom) {
+    if (el.parentElement === editorDom) {
+      return el instanceof HTMLElement ? el : null;
     }
-    gen += 1;
     el = el.parentElement;
   }
-  return best;
+  return null;
+};
+
+/**
+ * Map pointer coords to a block start using ProseMirror layout (`posAtCoords`).
+ * Prefer over `elementsFromPoint` so node views (media, code block, resize wrappers) do not
+ * steal hits for lines rendered visually below them.
+ */
+const getBlockStartFromViewCoords = (
+  view: EditorView,
+  editor: Editor,
+  clientX: number,
+  clientY: number,
+): number | null => {
+  try {
+    const hit = view.posAtCoords({ left: clientX, top: clientY });
+    if (!hit) return null;
+    return getBlockStartAtDocPos(editor, hit.pos);
+  } catch {
+    return null;
+  }
 };
 
 const getBlockStartFromElementsAt = (
@@ -296,48 +349,71 @@ const getBlockStartFromElementsAt = (
   for (const item of list) {
     if (!(item instanceof Element)) continue;
     if (!editorDom.contains(item)) continue;
-    const bs = domToInnermostBlockStart(view, editor, item);
+    const topLevelEl = getTopLevelBlockElementFromHit(editorDom, item);
+    if (!topLevelEl) continue;
+    let bs: number | null = null;
+    try {
+      bs = getBlockStartAtDocPos(editor, view.posAtDOM(topLevelEl, 0));
+    } catch {
+      bs = null;
+    }
     if (bs != null) return bs;
   }
   return null;
 };
 
-const getBlockStartFromMousePos = (editor: Editor, clientX: number, clientY: number): number | null => {
+type BlockHitResult = { blockStart: number; dom: HTMLElement | null };
+
+/**
+ * Detect which block the pointer is over and return both the ProseMirror position
+ * and the resolved DOM element in one pass.  Callers that previously used only the
+ * block position can use `getBlockStartFromMousePos` below.
+ */
+const getBlockHitFromMousePos = (editor: Editor, clientX: number, clientY: number): BlockHitResult | null => {
   const v = getEditorView(editor);
   if (!v) return null;
   const editorDom = v.dom as HTMLElement;
   const box = getEditorInnerContentRect(editorDom);
   const clampedX = Math.min(Math.max(box.left + 10, clientX), box.right - 10);
 
-  // Prefer PM geometry first: inside tables, `elementsFromPoint` often hits wrappers / chrome
-  // and resolves to the wrong row; `posAtCoords` tracks the caret position reliably.
-  const coords = v.posAtCoords({ left: clampedX, top: clientY });
-  let bs = coords ? getBlockStartAtDocPos(editor, coords.pos) : null;
-  if (bs == null) bs = getBlockStartFromElementsAt(v, editor, clampedX, clientY);
+  let coordsHit: { pos: number; inside: number } | null = null;
+  try {
+    coordsHit = v.posAtCoords({ left: clampedX, top: clientY });
+  } catch {
+    coordsHit = null;
+  }
+  const fromCoords = coordsHit != null ? getBlockStartAtDocPos(editor, coordsHit.pos) : null;
+  const fromElements = fromCoords == null ? getBlockStartFromElementsAt(v, editor, clampedX, clientY) : null;
+  let bs = fromCoords ?? fromElements;
   if (bs == null) return null;
   bs = normalizeBlockStartForTable(editor, bs);
 
-  const refDom = resolveBlockDomForHandle(v, editorDom, bs);
-  const blockRect = refDom ? refDom.getBoundingClientRect() : null;
-  if (blockRect) {
-    // Ignore whitespace above/below a block: don't snap side controls to nearest node.
-    if (clientY < blockRect.top - 2 || clientY > blockRect.bottom + 2) return null;
-  }
+  const refDom = resolveBlockDomForHandle(editor, v, editorDom, bs);
 
   const hitNode = getInnerBlockNodeAtStart(editor.state.doc, bs);
-  if (hitNode?.type.name === 'table') return bs;
+  if (hitNode?.type.name === 'table') return { blockStart: bs, dom: refDom };
+  if (hitNode && isMediaLikeBlockType(hitNode.type.name)) return { blockStart: bs, dom: refDom };
+  // Full-width but very thin: right-edge refinement often lands on the block below/above.
+  if (hitNode?.type.name === 'horizontalRule') return { blockStart: bs, dom: refDom };
 
-  if (hitNode && isMediaLikeBlockType(hitNode.type.name)) {
-    return bs;
-  }
-
+  const blockRect = refDom ? refDom.getBoundingClientRect() : null;
   if (blockRect && blockRect.width >= 4) {
     const refineX = Math.min(Math.max(blockRect.left + 1, blockRect.right - 10), blockRect.right - 1);
-    const refined = getBlockStartFromElementsAt(v, editor, refineX, clientY);
-    if (refined != null) return normalizeBlockStartForTable(editor, refined);
+    const refined =
+      getBlockStartFromViewCoords(v, editor, refineX, clientY) ??
+      getBlockStartFromElementsAt(v, editor, refineX, clientY);
+    if (refined != null) {
+      const refinedBs = normalizeBlockStartForTable(editor, refined);
+      const refinedDom = resolveBlockDomForHandle(editor, v, editorDom, refinedBs);
+      return { blockStart: refinedBs, dom: refinedDom };
+    }
   }
-  return bs;
+  return { blockStart: bs, dom: refDom };
 };
+
+/** Convenience wrapper for callers that only need the block position (e.g. drag-drop). */
+const getBlockStartFromMousePos = (editor: Editor, clientX: number, clientY: number): number | null =>
+  getBlockHitFromMousePos(editor, clientX, clientY)?.blockStart ?? null;
 
 const getEditorPortalHost = (editor: Editor): HTMLElement | null => {
   const v = getEditorView(editor);
@@ -349,7 +425,11 @@ const getBlockLinePortalHost = (editor: Editor): HTMLElement | null => {
   const v = getEditorView(editor);
   if (!v) return null;
   const dom = v.dom as HTMLElement;
-  return (dom.closest('.breatic-editor-wrapper') as HTMLElement | null) ?? dom.closest('.breatic-editor-body');
+  return (
+    (dom.closest('.breatic-editor-scroll') as HTMLElement | null) ??
+    (dom.closest('.breatic-editor-wrapper') as HTMLElement | null) ??
+    dom.closest('.breatic-editor-body')
+  );
 };
 
 /** Keep drag/insert/fold gutter controls below the text bubble toolbar. */
@@ -364,6 +444,8 @@ type PointerTrackingArgs = {
   editorDom: HTMLElement;
   rootRef: RefObject<HTMLDivElement | null>;
   hoverBlockStartRef: RefObject<number | null>;
+  /** Caches the DOM element for the currently hovered block so updatePosition can use it directly. */
+  hoverBlockDomRef: RefObject<HTMLElement | null>;
   lastHoveredBlockStartRef: RefObject<number | null>;
   menuOpenRef: RefObject<boolean>;
   /** True while block handle menu is open — synced on pointer events before React re-renders. */
@@ -379,6 +461,7 @@ const attachGlobalPointerMoveForBlockHover = (args: PointerTrackingArgs): (() =>
     editorDom,
     rootRef,
     hoverBlockStartRef,
+    hoverBlockDomRef,
     lastHoveredBlockStartRef,
     menuOpenRef,
     blockTypeMenuOpenSyncRef,
@@ -419,6 +502,7 @@ const attachGlobalPointerMoveForBlockHover = (args: PointerTrackingArgs): (() =>
       if (t && root && root.contains(t)) return;
       if (menuOpenRef.current || blockTypeMenuOpenSyncRef.current) return;
       hoverBlockStartRef.current = null;
+      hoverBlockDomRef.current = null;
       lastHoveredBlockStartRef.current = null;
       updatePosition();
     }, 100);
@@ -476,10 +560,11 @@ const attachGlobalPointerMoveForBlockHover = (args: PointerTrackingArgs): (() =>
     // Cursor is directly over editable content — detect and update the hovered block.
     cancelClearHover();
 
-    const bs = getBlockStartFromMousePos(editor, e.clientX, e.clientY);
-    if (bs != null) {
-      hoverBlockStartRef.current = bs;
-      lastHoveredBlockStartRef.current = bs;
+    const hit = getBlockHitFromMousePos(editor, e.clientX, e.clientY);
+    if (hit != null) {
+      hoverBlockStartRef.current = hit.blockStart;
+      hoverBlockDomRef.current = hit.dom;
+      lastHoveredBlockStartRef.current = hit.blockStart;
     }
     updatePosition();
   };
@@ -516,7 +601,9 @@ const attachEditorWrapperScrollAndResize = (args: ScrollAttachArgs): (() => void
   const view = getEditorView(editor);
   if (!view) return undefined;
   const editorDom = view.dom as HTMLElement;
-  const wrap = editorDom.closest('.breatic-editor-wrapper');
+  const wrap =
+    (editorDom.closest('.breatic-editor-scroll') as HTMLElement | null) ??
+    (editorDom.closest('.breatic-editor-wrapper') as HTMLElement | null);
   if (!wrap) return undefined;
 
   const onScroll = () => {
@@ -723,7 +810,7 @@ const gutterClusterWidthPx = (showFold: boolean): number => {
   return n * GUTTER_BTN_PX + (n - 1) * GUTTER_FLEX_GAP_PX;
 };
 
-type HandleBarPos = { top: number; left: number; position: 'fixed' | 'absolute'; blockStart: number };
+type HandleBarPos = { top: number; left: number; position: 'fixed' | 'absolute'; blockStart: number; animate: boolean };
 
 type SideMenuState = 'none' | 'handle';
 
@@ -751,10 +838,10 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   const [pos, setPos] = useState<HandleBarPos | null>(null);
 
   /** Avoid setState when coordinates unchanged — prevents update ⟷ transaction loops with useLayoutEffect. */
-  const setPosStable = useCallback((next: HandleBarPos | null) => {
+  const setPosStable = useCallback((next: Omit<HandleBarPos, 'animate'> | null) => {
     setPos((prev) => {
       if (next === null) return prev === null ? prev : null;
-      if (prev === null) return next;
+      if (prev === null) return { ...next, animate: false };
       if (
         prev.position === next.position &&
         prev.blockStart === next.blockStart &&
@@ -763,7 +850,10 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       ) {
         return prev;
       }
-      return next;
+      // Only animate when the same block's position changes (content reflow).
+      // When switching to a different block, jump instantly to avoid the gutter
+      // visually sliding across unrelated blocks during fast mouse movement.
+      return { ...next, animate: prev.blockStart === next.blockStart };
     });
   }, []);
 
@@ -777,6 +867,8 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
   /** Frozen when the drag-handle menu opens (stable delete/turn-into target). */
   const frozenHandleMenuBlockStartRef = useRef<number | null>(null);
   const hoverBlockStartRef = useRef<number | null>(null);
+  /** DOM element for the currently hovered block, captured at hover-detection time. */
+  const hoverBlockDomRef = useRef<HTMLElement | null>(null);
   const lastHoveredBlockStartRef = useRef<number | null>(null);
   /** Last known pointer position — shared with pointer-tracking closure for re-detection on doc changes. */
   const lastMousePosRef = useRef({ x: 0, y: 0 });
@@ -839,7 +931,14 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     const editorDom = view.dom as HTMLElement;
     const hostEl = getBlockLinePortalHost(editor);
 
-    const dom = resolveBlockDomForHandle(view, editorDom, blockStart);
+    // Prefer the DOM element captured at hover-detection time — it is the exact element
+    // the pointer was over, so it is always correct regardless of document complexity.
+    // Fall back to fresh resolution (e.g. after doc changes invalidate the cached ref).
+    let dom = hoverBlockDomRef.current;
+    if (!dom || !editorDom.contains(dom)) {
+      dom = resolveBlockDomForHandle(editor, view, editorDom, blockStart);
+      hoverBlockDomRef.current = dom; // refresh cache
+    }
 
     if (!dom) {
       setPosStable(null);
@@ -855,7 +954,11 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     const lh = cs.lineHeight;
     const lineHeight = lh === 'normal' ? (parseFloat(cs.fontSize) || 16) * 1.25 : parseFloat(lh) || 22;
     const firstRowRect = isTableBlock ? getTableFirstRowRect(dom) : null;
-    const visualCenterY = firstRowRect ? firstRowRect.top + firstRowRect.height / 2 : rect.top + lineHeight / 2;
+    // For thin elements (e.g. <hr>) whose rendered height is less than one line,
+    // use the element's actual height to center the gutter; otherwise the
+    // lineHeight-based offset places the handle far below the visible element.
+    const halfCenter = rect.height > 0 && rect.height < lineHeight ? rect.height / 2 : lineHeight / 2;
+    const visualCenterY = firstRowRect ? firstRowRect.top + firstRowRect.height / 2 : rect.top + halfCenter;
 
     const contentLeft = getEditorInnerContentRect(editorDom).left;
 
@@ -872,8 +975,12 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     }
 
     const hostRect = hostEl.getBoundingClientRect();
-    const left = contentLeft - hostRect.left - clusterW - GUTTER_EDGE_GAP_PX;
-    const top = visualCenterY - hostRect.top - btnH / 2;
+    // Portal host is the scroll container (`.breatic-editor-wrapper`): `position:absolute` `top`
+    // is in **document/scroll content** coordinates, not viewport-only. Without `scrollTop`,
+    // `visualCenterY - hostRect.top` is only correct at scrollTop=0; after scroll it drifts and
+    // can go negative (wrong block DOM rect vs. visible host).
+    const left = contentLeft - hostRect.left + hostEl.scrollLeft - clusterW - GUTTER_EDGE_GAP_PX;
+    const top = visualCenterY - hostRect.top + hostEl.scrollTop - btnH / 2;
 
     displayedBlockStartRef.current = blockStart;
     setPosStable({ top, left: Math.max(8, left), position: 'absolute' as const, blockStart });
@@ -892,10 +999,11 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
         if (hoverBlockStartRef.current != null) {
           const { x, y } = lastMousePosRef.current;
           if (x !== 0 || y !== 0) {
-            const bs = getBlockStartFromMousePos(editor, x, y);
-            if (bs != null) {
-              hoverBlockStartRef.current = bs;
-              lastHoveredBlockStartRef.current = bs;
+            const hit = getBlockHitFromMousePos(editor, x, y);
+            if (hit != null) {
+              hoverBlockStartRef.current = hit.blockStart;
+              hoverBlockDomRef.current = hit.dom;
+              lastHoveredBlockStartRef.current = hit.blockStart;
             }
           }
         }
@@ -934,6 +1042,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       editorDom,
       rootRef,
       hoverBlockStartRef,
+      hoverBlockDomRef,
       lastHoveredBlockStartRef,
       menuOpenRef,
       blockTypeMenuOpenSyncRef,
@@ -1033,7 +1142,15 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
 
   const handleDragHandleClick = useCallback(
     (e: ReactMouseEvent<HTMLSpanElement>) => {
+      e.preventDefault();
       e.stopPropagation();
+      const anchor =
+        pos?.blockStart ??
+        hoverBlockStartRef.current ??
+        displayedBlockStartRef.current ??
+        lastHoveredBlockStartRef.current;
+      const anchorNode = anchor != null ? editor.state.doc.nodeAt(anchor) : null;
+
       setMenuOpen((m) => {
         if (m === 'handle') {
           blockTypeMenuOpenSyncRef.current = false;
@@ -1042,24 +1159,24 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
         }
         const view = editor.view;
         if (breaticSlashMenuKey.getState(editor.state)) closeBreaticSlashMenu(view);
-        const anchor =
-          pos?.blockStart ??
-          hoverBlockStartRef.current ??
-          displayedBlockStartRef.current ??
-          lastHoveredBlockStartRef.current;
         frozenHandleMenuBlockStartRef.current = anchor ?? null;
         if (anchor != null) {
           hoverBlockStartRef.current = anchor;
           lastHoveredBlockStartRef.current = anchor;
         }
         blockTypeMenuOpenSyncRef.current = true;
+        if (anchorNode?.type.name === 'table' && anchor != null) {
+          selectWholeTable(editor, anchor);
+        }
         return 'handle';
       });
     },
     [editor, pos?.blockStart],
   );
 
-  const handleDragHandleMouseDown = useCallback(() => {
+  const handleDragHandleMouseDown = useCallback((e: ReactMouseEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     clearMenuHoverCloseTimer();
   }, [clearMenuHoverCloseTimer]);
 
@@ -1157,6 +1274,7 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
             'flex select-none items-center gap-0',
             !dragging &&
               !isScrollAnimSuppressed &&
+              pos?.animate &&
               'transition-[top,left] duration-150 ease-out motion-reduce:transition-none',
           )}
           style={{

@@ -17,7 +17,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as Y from 'yjs';
-import { applyNodeChanges, type Node, type Edge, type NodeChange } from '@xyflow/react';
+import { type Node, type Edge, type NodeChange } from '@xyflow/react';
 import type { YjsProjectManager } from '@/utils/yjsProjectManager';
 import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
@@ -49,16 +49,16 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
     },
     data: dataMap instanceof Y.Map
       ? {
-          name: (dataMap.get('name') as string) ?? '',
-          content: (dataMap.get('content') as string) ?? '',
-          coverUrl: dataMap.get('coverUrl') as string | undefined,
-          state: (dataMap.get('state') as string) ?? 'idle',
-          handlingBy: handlingBy instanceof Y.Map
-            ? { userId: handlingBy.get('userId') as string, username: handlingBy.get('username') as string }
-            : undefined,
-          runType: dataMap.get('runType') as string | undefined,
-          params: paramsMap instanceof Y.Map ? yMapToPlain(paramsMap) : {},
-        }
+        name: (dataMap.get('name') as string) ?? '',
+        content: (dataMap.get('content') as string) ?? '',
+        coverUrl: dataMap.get('coverUrl') as string | undefined,
+        state: (dataMap.get('state') as string) ?? 'idle',
+        handlingBy: handlingBy instanceof Y.Map
+          ? { userId: handlingBy.get('userId') as string, username: handlingBy.get('username') as string }
+          : undefined,
+        runType: dataMap.get('runType') as string | undefined,
+        params: paramsMap instanceof Y.Map ? yMapToPlain(paramsMap) : {},
+      }
       : { name: '', content: '', state: 'idle', params: {} },
   };
 }
@@ -95,6 +95,7 @@ function readAllEdges(edgesMap: Y.Map<unknown>): Edge[] {
 
 // ── Incremental observe helpers ────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getAffectedNodeIds(events: Y.YEvent<Y.AbstractType<unknown>>[]): Set<string> | 'all' {
   const ids = new Set<string>();
   for (const event of events) {

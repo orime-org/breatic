@@ -14,11 +14,26 @@ const backgroundColorAttr = {
   },
 };
 
+const verticalAlignAttr = {
+  default: null as 'top' | 'middle' | 'bottom' | null,
+  parseHTML: (element: HTMLElement) => {
+    const v = (element.style.verticalAlign || '').toLowerCase();
+    if (v === 'top' || v === 'middle' || v === 'bottom') return v as 'top' | 'middle' | 'bottom';
+    return null;
+  },
+  renderHTML: (attributes: { verticalAlign?: 'top' | 'middle' | 'bottom' | null }) => {
+    const v = attributes.verticalAlign;
+    if (!v) return {};
+    return { style: `vertical-align: ${v}` };
+  },
+};
+
 export const BreaticTableCell = TableCell.extend({
   addAttributes() {
     return {
       ...this.parent?.() ?? {},
       backgroundColor: backgroundColorAttr,
+      verticalAlign: verticalAlignAttr,
     };
   },
 });
@@ -28,6 +43,7 @@ export const BreaticTableHeader = TableHeader.extend({
     return {
       ...this.parent?.() ?? {},
       backgroundColor: backgroundColorAttr,
+      verticalAlign: verticalAlignAttr,
     };
   },
 });

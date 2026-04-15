@@ -257,10 +257,12 @@ interface SlashMenuListHandle {
 
 const GROUP_ORDER = ['Basic blocks', 'Media'];
 
-/** Scroll container for the text editor — menu must live here to move with content scroll. */
+/** Scroll column for the text editor — menu must live here to move with content scroll. */
 function getSlashMenuPortalRoot(editor: Editor): HTMLElement {
   try {
     const dom = editor.view?.dom as HTMLElement | undefined;
+    const scroll = dom?.closest('.breatic-editor-scroll');
+    if (scroll instanceof HTMLElement) return scroll;
     const wrap = dom?.closest('.breatic-editor-wrapper');
     if (wrap instanceof HTMLElement) return wrap;
   } catch {

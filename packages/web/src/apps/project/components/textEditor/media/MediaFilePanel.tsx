@@ -155,7 +155,7 @@ const MediaFilePanelFloating = ({ editor, pos, mediaType, onClose }: InnerProps)
 
   useEffect(() => {
     if (!hostEl) return;
-    const scrollRoot = hostEl.closest('.breatic-editor-wrapper');
+    const scrollRoot = hostEl.closest('.breatic-editor-scroll') ?? hostEl.closest('.breatic-editor-wrapper');
     scrollRoot?.addEventListener('scroll', syncPosition, { passive: true });
     window.addEventListener('resize', syncPosition);
     return () => {

@@ -32,6 +32,7 @@ import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/ty
 import type { TextEditorProps } from './types';
 import EditorMenus from './ui/EditorMenus';
 import BlockLineControl from './ui/BlockLineControl';
+import RightToolbar from './ui/RightToolbar';
 import TableOfContents from './toc/TableOfContents';
 import 'highlight.js/styles/github-dark.css';
 import '@/styles/editor.css';
@@ -63,7 +64,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       TextStyle,
       Color,
       BackgroundColor,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextAlign.configure({ types: ['heading', 'paragraph', 'table'] }),
       Link.configure({ openOnClick: false }),
       Highlight.configure({ multicolor: false }),
       Placeholder.configure({
@@ -91,6 +92,8 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       Table.configure({
         resizable: true,
         cellMinWidth: 120,
+        /** Lets gutter menu apply `textAlign` on the whole `table` node via `setNodeSelection`. */
+        allowTableNodeSelection: true,
       }),
       TableRow,
       BreaticTableCell,
@@ -220,15 +223,22 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       {editor && <TableOfContents editor={editor} />}
       <div
         ref={editorWrapperRef}
-        className='breatic-editor-wrapper relative flex-1 overflow-y-auto bg-background-default-secondary min-w-0'
+        className='breatic-editor-wrapper relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background-default-secondary'
       >
-        <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
-          <EditorContent editor={editor} />
-          {editor && <EditorMenus editor={editor} />}
-          {editor && <BlockLineControl editor={editor} />}
+        <div className='breatic-editor-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto'>
+          <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
+            <EditorContent editor={editor} />
+            {editor && <EditorMenus editor={editor} />}
+            {editor && <BlockLineControl editor={editor} />}
+          </div>
+          <ImageFilePanel />
+          <MediaFilePanel />
         </div>
-        <ImageFilePanel />
-        <MediaFilePanel />
+        {editor && (
+          <div className='pointer-events-none absolute inset-y-0 right-3 z-10 flex flex-col items-end justify-center py-3'>
+            <RightToolbar editor={editor} nodeId={nodeId} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -608,8 +608,9 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(53, 200, 56, 0.12);
   pointer-events: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 /* Column resize handle */

@@ -48,6 +48,7 @@ const BreaticCodeBlockView = ({ node, updateAttributes, editor }: NodeViewProps)
         <Dropdown
           trigger='click'
           placement='bottom-start'
+          strategy='fixed'
           items={languageItems}
           selectedKeys={[language]}
           popupClassName='breatic-code-block-language-menu rounded-[8px]'

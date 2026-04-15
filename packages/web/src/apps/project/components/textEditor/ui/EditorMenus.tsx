@@ -10,8 +10,9 @@ import Tooltip from '@/components/base/tooltip';
 import BlockTypeSelect from '../formatting/BlockTypeSelect';
 import TextColorSelect from '../formatting/TextColorSelect';
 import TableHandles from '../table/TableHandles';
+import TableSelectionChrome from '../table/TableSelectionChrome';
 import ImageBubbleMenu, { formatBubbleShouldShow } from '../media/ImageBubbleMenu';
-import AIMenu, { type AIMenuPosition } from './AIMenu';
+import AIMenu from './AIMenu';
 import {
   RiBold,
   RiItalic,
@@ -43,19 +44,19 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
 
   // AI menu state
   const [aiMenuOpen, setAIMenuOpen] = useState(false);
-  const [aiMenuPos, setAIMenuPos] = useState<AIMenuPosition | null>(null);
+  const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
   // Ref for synchronous check inside shouldShow (avoids stale closure)
   const aiMenuOpenRef = useRef(false);
 
   const handleCloseAIMenu = useCallback(() => {
     aiMenuOpenRef.current = false;
     setAIMenuOpen(false);
+    setAiAnchorPos(null);
     // Restore focus so the user can continue typing
     editor.commands.focus();
   }, [editor]);
 
   const handleOpenAIMenu = useCallback(() => {
-    const { view } = editor;
     const { $from, to } = editor.state.selection;
 
     const blockTypesForAIMenuAnchor = new Set([
@@ -76,19 +77,8 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
       }
     }
 
-    // Anchor AI toolbar at the current paragraph/block bottom rather than selection bottom.
-    const coords = view.coordsAtPos(anchorPos ?? to);
-
-    // Use the ProseMirror DOM element to get horizontal/width reference
-    const editorDom = view.dom as HTMLElement;
-    const editorRect = editorDom.getBoundingClientRect();
-
     aiMenuOpenRef.current = true;
-    setAIMenuPos({
-      top: coords.bottom + 8,
-      left: editorRect.left,
-      width: editorRect.width,
-    });
+    setAiAnchorPos(anchorPos ?? to);
     setAIMenuOpen(true);
   }, [editor]);
 
@@ -256,10 +246,11 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
 
       <ImageBubbleMenu editor={editor} />
       <TableHandles editor={editor} />
+      <TableSelectionChrome editor={editor} />
 
       {/* AI Menu — floats below the selection */}
-      {aiMenuOpen && aiMenuPos && (
-        <AIMenu position={aiMenuPos} onClose={handleCloseAIMenu} />
+      {aiMenuOpen && aiAnchorPos != null && (
+        <AIMenu editor={editor} anchorPos={aiAnchorPos} onClose={handleCloseAIMenu} />
       )}
     </>
   );
