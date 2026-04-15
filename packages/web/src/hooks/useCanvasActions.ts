@@ -10,13 +10,13 @@
 import { useCallback } from 'react';
 import * as Y from 'yjs';
 import { getCanvasYjsManager } from '@/utils/canvasYjsRef';
-import { userOrigin, noHistoryOrigin } from '@/utils/yjsProjectManager';
+import { getUserOrigin, noHistoryOrigin } from '@/utils/yjsProjectManager';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 
 type HistoryOptions = { history?: 'default' | 'skip' };
 
 function getOrigin(options?: HistoryOptions): string | symbol {
-  return options?.history === 'skip' ? noHistoryOrigin : userOrigin;
+  return options?.history === 'skip' ? noHistoryOrigin : getUserOrigin();
 }
 
 export function useCanvasActions() {
@@ -167,7 +167,7 @@ export function useCanvasActions() {
             mgr.edgesMap.delete(change.id);
           }
         }
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );
@@ -186,7 +186,7 @@ export function useCanvasActions() {
         if (connection.sourceHandle) edgeMap.set('sourceHandle', connection.sourceHandle);
         if (connection.targetHandle) edgeMap.set('targetHandle', connection.targetHandle);
         mgr.edgesMap.set(edgeId, edgeMap);
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );
@@ -207,7 +207,7 @@ export function useCanvasActions() {
           if (edge.targetHandle) edgeMap.set('targetHandle', edge.targetHandle);
           mgr.edgesMap.set(edge.id, edgeMap);
         }
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );

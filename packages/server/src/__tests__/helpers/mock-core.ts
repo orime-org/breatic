@@ -14,6 +14,14 @@
 
 import { vi } from "vitest";
 
+const mockPipeline = {
+  zremrangebyscore: () => mockPipeline,
+  zcard: () => mockPipeline,
+  zadd: () => mockPipeline,
+  expire: () => mockPipeline,
+  exec: () => Promise.resolve([[null, 0], [null, 0], [null, 1], [null, 1]]),
+};
+
 const mockRedis = {
   ping: () => Promise.resolve("PONG"),
   on: () => mockRedis,
@@ -25,6 +33,9 @@ const mockRedis = {
   del: () => Promise.resolve(1),
   sadd: () => Promise.resolve(1),
   smembers: () => Promise.resolve([]),
+  incr: () => Promise.resolve(1),
+  expire: () => Promise.resolve(1),
+  pipeline: () => mockPipeline,
 };
 
 /** Mock references — tests can override behavior per-test. */

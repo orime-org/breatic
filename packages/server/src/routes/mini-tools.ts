@@ -17,7 +17,7 @@ import {
 } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import { taskService } from "@breatic/core";
+import { taskService, creditService, env } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
@@ -28,6 +28,19 @@ const tasksQueue = createQueue("mini-tools");
 
 /** TTS-class tool names that use task_type="tts" instead of "audio". */
 const TTS_TOOLS = new Set(["tts", "voice-clone"]);
+
+/** Minimum credit cost per tool — reject if user can't afford. */
+const MIN_CREDIT_COST = 5;
+
+/** Pre-check: reject if user has insufficient credits. */
+async function checkCredits(userId: string): Promise<string | null> {
+  if (!env.PAYMENT_ENABLED) return null;
+  const balance = await creditService.getBalance(userId);
+  if (balance < MIN_CREDIT_COST) {
+    return `Insufficient credits. Required: ${MIN_CREDIT_COST}, available: ${balance}`;
+  }
+  return null;
+}
 
 /**
  * Shared helper — create task and enqueue BullMQ job.
@@ -86,6 +99,9 @@ async function enqueueMiniTool(
  */
 miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
   const user = c.get("user");
+  const err = await checkCredits(user.id);
+  if (err) return c.json({ error: { code: 402, message: err } }, 402);
+
   const body = c.req.valid("json");
   const { tool, node_id, project_id, ...params } = body;
 
@@ -104,6 +120,9 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
  */
 miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
   const user = c.get("user");
+  const err = await checkCredits(user.id);
+  if (err) return c.json({ error: { code: 402, message: err } }, 402);
+
   const body = c.req.valid("json");
   const { tool, node_id, project_id, ...params } = body;
 
@@ -123,6 +142,9 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
  */
 miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
   const user = c.get("user");
+  const err = await checkCredits(user.id);
+  if (err) return c.json({ error: { code: 402, message: err } }, 402);
+
   const body = c.req.valid("json");
   const { tool, node_id, project_id, ...params } = body;
 
