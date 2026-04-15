@@ -259,6 +259,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       type: "completed",
       projectId,
       nodeId,
+      taskId,
       content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
       cover_url: result.cover_url as string | undefined,
     });
@@ -303,7 +304,7 @@ async function publishFailedEvent(
   redis: ReturnType<typeof getRedis>,
   projectId: string | undefined,
   nodeId: string | undefined,
-  _taskId: string,
+  taskId: string,
   _userId: string,
   _model: string | undefined,
   _params: Record<string, unknown>,
@@ -311,7 +312,7 @@ async function publishFailedEvent(
 ): Promise<void> {
   if (!nodeId || !projectId) return;
   try {
-    await publishNodeEvent(redis, { type: "failed", projectId, nodeId });
+    await publishNodeEvent(redis, { type: "failed", projectId, nodeId, taskId });
   } catch (err) {
     logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
   }
