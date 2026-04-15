@@ -10,6 +10,7 @@ import * as userRepo from "./user.repo.js";
 import * as creditRepo from "./credit.repo.js";
 import { db } from "../db/client.js";
 import { env } from "../config/env.js";
+import { getRedis } from "../infra/redis.js";
 import { t } from "@breatic/shared";
 import { AppError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -127,4 +128,39 @@ export async function add(
     "credits_added",
   );
   return newBalance;
+}
+
+/**
+ * Idempotent deduction — same refKey only deducts once.
+ *
+ * Uses Redis SETNX with 24h TTL. If the refKey was already used,
+ * returns `{ deducted: false }`. Safe for network retries, stream
+ * replays, and concurrent calls.
+ *
+ * Use for non-task-level billing: text stream, agent turn, subagent spawn.
+ */
+export async function deductOnce(
+  userId: string,
+  refKey: string,
+  amount: number,
+  description: string,
+  options?: { tokensUsed?: number; model?: string; provider?: string },
+): Promise<{ deducted: boolean; creditsAfter?: number }> {
+  const redis = getRedis();
+  const lockKey = `${env.ENV}:bill:${refKey}`;
+
+  const acquired = await redis.set(lockKey, userId, "EX", 86400, "NX");
+  if (acquired !== "OK") {
+    logger.debug({ refKey }, "deductOnce: already billed, skipping");
+    return { deducted: false };
+  }
+
+  try {
+    const creditsAfter = await deduct(userId, amount, description, refKey, options);
+    return { deducted: true, creditsAfter };
+  } catch (err) {
+    // Deduction failed — release lock so retry can attempt again
+    await redis.del(lockKey);
+    throw err;
+  }
 }

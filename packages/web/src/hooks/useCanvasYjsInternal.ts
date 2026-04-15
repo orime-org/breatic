@@ -52,6 +52,7 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
             ? { userId: handlingBy.get('userId') as string, username: handlingBy.get('username') as string }
             : undefined,
           runType: dataMap.get('runType') as string | undefined,
+          lastEventType: dataMap.get('lastEventType') as string | undefined,
           params: paramsMap instanceof Y.Map ? yMapToPlain(paramsMap) : {},
         }
       : { name: '', content: '', state: 'idle', params: {} },
@@ -207,10 +208,11 @@ export function useCanvasYjsInternal(
 
               // Toast: handling → idle transition
               if (node.data?.state === 'handling' && newNode.data?.state === 'idle') {
+                const eventType = newNode.data?.lastEventType as string | undefined;
                 pushToastRef.current({
                   nodeId: node.id,
                   nodeName: (newNode.data?.name as string) || node.id,
-                  type: newNode.data?.content !== node.data?.content ? 'completed' : 'failed',
+                  type: eventType === 'failed' ? 'failed' : 'completed',
                 });
               }
 
