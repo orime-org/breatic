@@ -139,7 +139,7 @@ export async function getCredits(userId: string): Promise<number> {
   const rows = await db
     .select({ credits: users.credits })
     .from(users)
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return rows[0]?.credits ?? 0;
 }
