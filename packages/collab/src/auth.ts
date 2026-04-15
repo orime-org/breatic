@@ -16,6 +16,7 @@
 
 import type Redis from "ioredis";
 import postgres from "postgres";
+import { DEV_USER_ID } from "@breatic/shared";
 
 /** Resolved user context from authentication. */
 export interface AuthContext {
@@ -86,9 +87,12 @@ export function createAuthHook({
     token: string;
     documentName: string;
   }): Promise<AuthContext> => {
-    // NoAccount mode: skip auth, use dev user.
+    // NoAccount mode: skip auth, use dev user (dev/test only).
     if (process.env.LOGIN_MODE === "NoAccount") {
-      return { user: { id: "00000000-0000-0000-0000-000000000000" } };
+      if (process.env.ENV === "prod") {
+        throw new Error("NoAccount mode forbidden in production");
+      }
+      return { user: { id: DEV_USER_ID } };
     }
 
     if (!token) {

@@ -334,7 +334,7 @@ importers:
         specifier: ^1.11.19
         version: 1.11.20
       dompurify:
-        specifier: ^3.3.1
+        specifier: ^3.3.3
         version: 3.3.3
       fabric:
         specifier: ^7.2.0
@@ -476,7 +476,7 @@ importers:
         specifier: ^6.23.1
         version: 6.23.3
       '@types/dompurify':
-        specifier: ^3.0.5
+        specifier: ^3.2.0
         version: 3.2.0
       '@types/fontfaceobserver':
         specifier: ^2.1.3

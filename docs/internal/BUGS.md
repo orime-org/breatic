@@ -9,14 +9,14 @@
 
 ### BUG-001 · NoAccount 模式生产逃逸（CRITICAL）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`packages/server/src/middleware/auth.ts:42` · `packages/collab/src/auth.ts:90` · `packages/core/src/config/env.ts`
 - **问题**：两处 NoAccount bypass 无 NODE_ENV 守卫。生产环境误设 LOGIN_MODE=NoAccount 时任意匿名者绕过全部认证
 - **修复**：env.ts Zod schema 加 NODE_ENV + refine 拒绝 production NoAccount；两处 bypass 加 NODE_ENV 守卫；DEV_USER_ID 抽常量
 
 ### BUG-002 · XSS — TextNodeContent 预览渲染（CRITICAL）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`packages/web/src/.../textNode/TextNodeContent.tsx:337`
 - **问题**：渲染用户内容时未清洗 HTML，协作者可注入恶意脚本
 - **修复**：创建 `utils/sanitize.ts`（DOMPurify），所有 HTML 渲染前调用 sanitizeRichText()
@@ -24,7 +24,7 @@
 
 ### BUG-003 · XSS — Paste Handler（CRITICAL）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`packages/web/src/.../textNode/TextNodeContent.tsx:196-199`
 - **问题**：粘贴的 HTML 未经清洗直接插入编辑器
 - **修复**：粘贴前调用 sanitizeRichText()
@@ -32,7 +32,7 @@
 
 ### BUG-004 · XSS — CanvasRightOverlayPanel（CRITICAL）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`packages/web/src/.../canvas/ui/CanvasRightOverlayPanel.tsx:39,592`
 - **问题**：两处渲染 LLM 输出和 prompt 时 HTML 未清洗
 - **修复**：同 BUG-002 使用 sanitizeRichText()，或改为纯文本渲染
@@ -48,14 +48,14 @@
 
 ### BUG-006 · /uploads/ 路径穿越（CRITICAL）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`packages/server/src/app.ts:58-63`
 - **问题**：文件路径未验证是否在 uploads 目录内，可通过 ../.. 读取任意文件
 - **修复**：resolve 后验证 startsWith(UPLOADS_DIR)，realpath 防 symlink
 
 ### BUG-007 · Worker 脚本路径错误（部署阻塞）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #81）
 - **位置**：`package.json:9,12`
 - **问题**：dev:worker 和 start:worker 指向 packages/server/（6-package split 后应为 packages/worker/）
 - **修复**：改为 packages/worker/src/index.ts 和 packages/worker/dist/index.js
@@ -234,8 +234,8 @@
 
 | 优先级 | 总数 | 待修 | 已修 | 不修 |
 |--------|------|------|------|------|
-| P0     | 9    | 9    | 0    | 0    |
+| P0     | 9    | 3    | 6    | 0    |
 | P1     | 11   | 10   | 0    | 1    |
 | P2     | 8    | 8    | 0    | 0    |
 | P3     | 1    | 1    | 0    | 0    |
-| **合计** | **29** | **28** | **0** | **1** |
+| **合计** | **29** | **22** | **6** | **1** |
