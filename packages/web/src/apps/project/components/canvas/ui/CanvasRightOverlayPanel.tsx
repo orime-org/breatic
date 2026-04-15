@@ -11,6 +11,7 @@ import Divider from '@/components/base/divider';
 import { message } from '@/components/base/message';
 import type { ResourceTypeForInput } from '@/store/modules/canvas';
 import Video from '@/apps/project/components/canvas/common/Video';
+import { sanitizeRichText } from '@/utils/sanitize';
 import AudioWaveformPlayer from '@/apps/project/components/canvas/common/AudioWaveformPlayer';
 
 const markdownProseClass =
@@ -36,7 +37,7 @@ const renderOutputContent = (params: {
         <div className='text-[12px] text-text-default-base leading-relaxed break-words break-all min-w-0 overflow-hidden inline-flex flex-wrap items-center gap-0.5'>
           <span
             className='chat-message-html break-all min-w-0 [&_img]:h-[16px] [&_img]:w-[16px] [&_img]:rounded [&_img]:object-cover'
-            dangerouslySetInnerHTML={{ __html: outputContent }}
+            dangerouslySetInnerHTML={{ __html: sanitizeRichText(outputContent) }}
           />
         </div>
       </div>
@@ -589,7 +590,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                         <div className='text-[12px] text-text-default-base leading-relaxed break-words break-all min-w-0 overflow-hidden inline-flex flex-wrap items-center gap-0.5'>
                           <span
                             className='chat-message-html break-all min-w-0 [&_img]:h-[16px] [&_img]:w-[16px] [&_img]:rounded [&_img]:object-cover'
-                            dangerouslySetInnerHTML={{ __html: inputContent }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichText(inputContent) }}
                           />
                         </div>
                       </div>

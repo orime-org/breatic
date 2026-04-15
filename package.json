@@ -1,0 +1,35 @@
+{
+  "name": "breatic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:collab": "tsx packages/collab/src/index.ts",
+    "dev:worker": "tsx packages/worker/src/index.ts",
+    "start": "node packages/server/dist/index.js",
+    "start:collab": "node packages/collab/dist/index.js",
+    "start:worker": "node packages/worker/dist/index.js",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "docs": "turbo run docs",
+    "clean": "turbo run clean",
+    "prepare": "git config core.hooksPath .husky || true"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.0",
+    "eslint-plugin-tsdoc": "^0.5.2",
+    "turbo": "^2.4.0",
+    "typedoc": "^0.28.18",
+    "typescript": "~5.8.0",
+    "typescript-eslint": "^8.58.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

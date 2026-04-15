@@ -119,3 +119,14 @@ export const env = createEnv({
   runtimeEnv: process.env,
   emptyStringAsUndefined: false,
 });
+
+// ── Startup safety check ─────────────────────────────────────
+// NoAccount mode disables ALL authentication. It must never run
+// in production — a single misconfigured env var would expose
+// every user's data to anonymous access.
+if (env.LOGIN_MODE === "NoAccount" && env.ENV === "prod") {
+  throw new Error(
+    "FATAL: LOGIN_MODE=NoAccount is forbidden when ENV=prod. " +
+    "This would disable all authentication. Refusing to start.",
+  );
+}
