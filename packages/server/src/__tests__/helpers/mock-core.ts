@@ -101,7 +101,15 @@ export const mocks = {
   userRepo: {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
   },
-  skillService: {},
+  skillService: {
+    listBuiltin: vi.fn().mockReturnValue([
+      { name: "creative_research", description: "Research", scope: ["agent"] },
+    ]),
+    listUserSkills: vi.fn().mockResolvedValue([]),
+  },
+  textToolService: {
+    execute: vi.fn(),
+  },
   creditService: {
     deduct: vi.fn().mockResolvedValue(100),
     deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
@@ -152,6 +160,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     memoryService: mocks.memoryService,
     userRepo: mocks.userRepo,
     skillService: mocks.skillService,
+    textToolService: mocks.textToolService,
+    modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     creditService: mocks.creditService,
     // Agent
     getSkillRegistry: () => ({
