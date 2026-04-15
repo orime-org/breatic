@@ -43,6 +43,9 @@ export async function publishToStream(
 ): Promise<void> {
   const id = await redis.xadd(
     streamKey,
+    "MAXLEN",
+    "~",
+    "10000",
     "*",
     "payload",
     JSON.stringify(payload),
