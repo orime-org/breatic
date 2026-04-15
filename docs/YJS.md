@@ -73,6 +73,7 @@ nodeMap: Y.Map
         ├── state:        "idle" | "handling"
         ├── handlingBy:   Y.Map { userId, username } | undefined
         ├── runType:      "parameter" | "sensitive"
+        ├── lastEventType: "completed" | "failed" | undefined
         ├── params:       Y.Map<string, unknown>
         ├── attachments:  Y.Array<Y.Map>
         └── prompt:       Y.XmlFragment
@@ -212,7 +213,7 @@ The fundamental rule: **the frontend does not write `data.state` / `data.handlin
 ## 5.1 Undo / redo
 
 Two independent `Y.UndoManager` instances, each tracking only its
-own user's operations (`trackedOrigins: [LOCAL_ORIGIN]`):
+own user's operations (per-user origin `canvas-user:${userId}`):
 
 | Undo scope | Tracks | Active when | Lifetime |
 |------------|--------|-------------|----------|
@@ -291,6 +292,7 @@ interface NodeHandlingEvent {
   type: "handling";
   projectId: string;
   nodeId: string;
+  taskId: string;                       // for lock ownership verification
   actor: { userId: string; username: string };
 }
 
@@ -299,6 +301,7 @@ interface NodeCompletedEvent {
   type: "completed";
   projectId: string;
   nodeId: string;
+  taskId: string;                       // for lock release CAS
   content: string;                      // new URL or text
   cover_url?: string;                   // video first-frame, if applicable
 }
@@ -308,6 +311,7 @@ interface NodeFailedEvent {
   type: "failed";
   projectId: string;
   nodeId: string;
+  taskId: string;                       // for lock release CAS
 }
 
 type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
@@ -341,11 +345,11 @@ One operation per node at a time. Enforced by Redis SETNX with a
 2-hour TTL.
 
 - **Key**: `${env}:canvas:lock:${projectId}:${nodeId}`
-- **Value**: `{ userId, username, lockedAt }` (JSON)
-- **Acquired by**: API at `POST /canvas/tasks` and
-  `POST /assets/upload/prepare` (canvas context)
+- **Value**: `{ userId, username, taskId, lockedAt }` (JSON)
+- **Acquired by**: API at `POST /canvas/tasks` with taskId
 - **Released by**: Collab after processing a `completed` or `failed`
-  event, so the lock lifetime exactly matches the handling window
+  event — **verified via taskId CAS** (only the task that holds the
+  lock can release it, preventing forged events from stealing locks)
 - **Idempotent re-acquire**: the same user can re-enter the lock
   (refresh the TTL) without being rejected
 - **TTL**: 2 hours, long enough for 1 GB video uploads and 10-minute

@@ -273,13 +273,35 @@ Two independent scopes, `captureTimeout: 500ms`, max stack depth 50:
 | Canvas undo | create/delete node, move, rename, create/delete edge | prompt, attachments, params, backend writes | Entire canvas session |
 | Prompt undo | One node's Y.XmlFragment (TipTap internal) | canvas topology | Focus → blur, then destroyed |
 
-Canvas UndoManager scoped to `canvasMap`, `trackedOrigins: [userOrigin]` only.
+Canvas UndoManager scoped to nodesMap + edgesMap, per-user origin
+`trackedOrigins: ['canvas-user:${userId}']` — 协作者不会互相撤销。
 Prompt/attachment/params writes use `noHistoryOrigin` to avoid polluting canvas undo stack.
 
 ### Toast Notifications
 
-AIGC 生成完成时弹出 toast（右下角堆叠，5s 自动消失，点击跳转节点）。
-通过 `useCanvasYjsInternal` 检测 `handling → idle` 状态转换触发。
+AIGC 生成完成时弹出 toast（右下角堆叠，5s 自动消失，点击跳转节点，
+`role="status" aria-live="polite"`）。Collab 写入 `lastEventType`
+（completed/failed）到 Yjs data Y.Map，前端直接读取判断成功/失败。
+
+### Sync Timeout
+
+HocuspocusProvider 配置 `timeout: 10000`，React 层 15 秒兜底。
+超时后设置 `syncError` 状态，CanvasDataContext 暴露给 UI 显示错误。
+
+### CanvasDataContext
+
+```ts
+interface CanvasDataContextValue {
+  nodes: Node[];
+  edges: Edge[];
+  nodesById: Map<string, Node>;  // O(1) 节点查找
+  loading: boolean;
+  syncError: string | null;
+  toasts: CanvasToast[];
+  dismissToast: (id: string) => void;
+  applyLocalNodeChanges: (changes: NodeChange[]) => void;
+}
+```
 
 ## Image Editor
 

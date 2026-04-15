@@ -66,7 +66,11 @@ The frontend is divided into three panels:
 
 > **No offline mode.** Breatic requires network for all AIGC operations.
 > Canvas data is synced server-first (loading screen until WebSocket
-> sync completes). No local IndexedDB cache.
+> sync completes, 15s timeout). No local IndexedDB cache.
+>
+> **Credit pre-check**: Mini-tool endpoints check balance before
+> enqueueing. Insufficient credits → 402 (no wasted AIGC API calls).
+> Billing is idempotent via `deductOnce()` (Redis SETNX).
 
 ---
 
