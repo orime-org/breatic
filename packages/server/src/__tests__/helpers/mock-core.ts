@@ -102,7 +102,12 @@ export const mocks = {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
   },
   skillService: {},
-  creditService: { deduct: vi.fn() },
+  creditService: {
+    deduct: vi.fn().mockResolvedValue(100),
+    deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
+    getBalance: vi.fn().mockResolvedValue(100),
+    add: vi.fn().mockResolvedValue(200),
+  },
 };
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -122,6 +127,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     createQueue: () => ({ add: vi.fn().mockResolvedValue({ id: "job-1" }) }),
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
+    checkRateLimit: vi.fn().mockResolvedValue(true),
     acquireNodeLock: vi.fn().mockResolvedValue(true),
     releaseNodeLock: vi.fn(),
     publishNodeEvent: vi.fn(),
@@ -129,7 +135,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     setSession: vi.fn(),
     getSession: vi.fn(),
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com" },
+    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, LOGIN_MODE: "WithAccount" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Logger
