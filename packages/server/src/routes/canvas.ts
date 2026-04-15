@@ -67,18 +67,6 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     username: user.email,
   };
 
-  // Acquire the node lock before creating the task so that a second
-  // concurrent request is rejected cleanly with a 409 and never
-  // enqueues a duplicate BullMQ job.
-  if (nodeId && projectId) {
-    const acquired = await acquireNodeLock(redis, projectId, nodeId, actor);
-    if (!acquired) {
-      throw new ConflictError(
-        "Another user is currently handling this node. Try again after they finish.",
-      );
-    }
-  }
-
   const task = await taskService.create(
     user.id,
     projectId,
@@ -88,6 +76,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.skill_name,
     body.source,
   );
+
+  // Acquire the node lock with taskId so only this task can release it.
+  if (nodeId && projectId) {
+    const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
+    if (!acquired) {
+      throw new ConflictError(
+        "Another user is currently handling this node. Try again after they finish.",
+      );
+    }
+  }
 
   const job = await tasksQueue.add(
     "execute-task",
@@ -113,6 +111,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       type: "handling",
       projectId,
       nodeId,
+      taskId: task.id,
       actor,
     });
   }

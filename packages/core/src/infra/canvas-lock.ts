@@ -25,6 +25,7 @@ const LOCK_TTL_SECONDS = 2 * 60 * 60;
 interface LockEntry {
   userId: string;
   username: string;
+  taskId: string;
   lockedAt: number;
 }
 
@@ -47,11 +48,13 @@ export async function acquireNodeLock(
   projectId: string,
   nodeId: string,
   actor: HandlingActor,
+  taskId: string,
 ): Promise<boolean> {
   const key = nodeLockKey(projectId, nodeId);
   const entry: LockEntry = {
     userId: actor.userId,
     username: actor.username,
+    taskId,
     lockedAt: Date.now(),
   };
 
@@ -90,18 +93,36 @@ export async function acquireNodeLock(
 }
 
 /**
- * Release a canvas node lock unconditionally.
+ * Release a canvas node lock, verifying the caller holds it.
  *
- * Called by Collab after processing a `completed` or `failed`
- * NodeEvent. The lock is keyed by (projectId, nodeId) so every
- * handled completion releases exactly the right lock.
+ * Uses a Redis Lua script (CAS): only deletes if the stored taskId
+ * matches. This prevents a forged/stale event from releasing another
+ * task's lock.
+ *
+ * @returns true if released or already gone, false if held by different task
  */
+// Lua script for atomic check-and-delete (runs on Redis server, not JS eval)
+const RELEASE_LOCK_LUA = `
+  local v = redis.call('GET', KEYS[1])
+  if not v then return 0 end
+  local ok, data = pcall(cjson.decode, v)
+  if not ok then redis.call('DEL', KEYS[1]) return 1 end
+  if data.taskId == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+  end
+  return -1
+`;
+
 export async function releaseNodeLock(
   redis: Redis,
   projectId: string,
   nodeId: string,
-): Promise<void> {
-  await redis.del(nodeLockKey(projectId, nodeId));
+  taskId: string,
+): Promise<boolean> {
+  const key = nodeLockKey(projectId, nodeId);
+  // redis.eval runs a Lua script on the Redis server (not JS eval)
+  const result = await redis.eval(RELEASE_LOCK_LUA, 1, key, taskId) as number;
+  return result >= 0; // 0 = already gone, 1 = released, -1 = wrong holder
 }
 
 /**

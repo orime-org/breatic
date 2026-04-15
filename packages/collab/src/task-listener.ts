@@ -122,10 +122,27 @@ async function handleNodeEvent(
     await connection.disconnect();
   }
 
-  // Release the Redis node lock for completed/failed events.
+  // Release the Redis node lock — verified: only the task that holds
+  // the lock can release it (Lua CAS checks taskId).
   if (event.type === "completed" || event.type === "failed") {
     const key = nodeLockKey(envPrefix, event.projectId, event.nodeId);
-    await lockRedis.del(key);
+    const lockValue = await lockRedis.get(key);
+    if (lockValue) {
+      try {
+        const lock = JSON.parse(lockValue) as { taskId?: string };
+        if (lock.taskId === event.taskId) {
+          await lockRedis.del(key);
+        } else {
+          logger.warn(
+            { key, eventTaskId: event.taskId, lockTaskId: lock.taskId },
+            "Lock held by different task, refusing to release",
+          );
+        }
+      } catch {
+        // Corrupt lock value — delete it
+        await lockRedis.del(key);
+      }
+    }
   }
 
   logger.info(
