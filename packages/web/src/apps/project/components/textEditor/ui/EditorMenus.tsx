@@ -72,7 +72,9 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
     for (let d = $from.depth; d >= 1; d -= 1) {
       const node = $from.node(d);
       if (blockTypesForAIMenuAnchor.has(node.type.name)) {
-        anchorPos = $from.after(d) - 1;
+        // Anchor to the start of the current block so the AI menu
+        // appears above the paragraph instead of covering its content.
+        anchorPos = $from.start(d);
         break;
       }
     }

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
@@ -51,8 +51,58 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
   }, [nodes, nodeId]);
 
   const lastWrittenHtmlRef = useRef<string | null>(null);
-  const editorWrapperRef = useRef<HTMLDivElement | null>(null);
+  const lastPersistedHtmlRef = useRef<string | null>(null);
+  const pendingSyncHtmlRef = useRef<string | null>(null);
+  const pendingSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isApplyingRemoteRef = useRef(false);
+
+  const persistEditorHtml = useCallback((html: string) => {
+    if (isApplyingRemoteRef.current) return;
+    if (html === lastPersistedHtmlRef.current) return;
+
+    const cur = (nodesRef.current.find((x) => x.id === nodeId)?.data ?? {}) as Record<string, unknown>;
+    if (typeof cur.content === 'string' && cur.content === html) {
+      lastPersistedHtmlRef.current = html;
+      return;
+    }
+
+    updateNode(nodeId, {
+      data: {
+        ...cur,
+        name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
+        content: html,
+        state: 'idle',
+        nodeRuntimeData: {
+          ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
+          runType: 'parameter',
+        },
+      },
+    });
+    lastPersistedHtmlRef.current = html;
+  }, [nodeId, updateNode]);
+
+  const flushPendingEditorSync = useCallback(() => {
+    if (pendingSyncTimerRef.current) {
+      clearTimeout(pendingSyncTimerRef.current);
+      pendingSyncTimerRef.current = null;
+    }
+    const html = pendingSyncHtmlRef.current;
+    if (html == null) return;
+    pendingSyncHtmlRef.current = null;
+    persistEditorHtml(html);
+  }, [persistEditorHtml]);
+
+  const scheduleEditorSync = useCallback((html: string) => {
+    pendingSyncHtmlRef.current = html;
+    if (pendingSyncTimerRef.current) clearTimeout(pendingSyncTimerRef.current);
+    pendingSyncTimerRef.current = setTimeout(() => {
+      pendingSyncTimerRef.current = null;
+      const nextHtml = pendingSyncHtmlRef.current;
+      if (nextHtml == null) return;
+      pendingSyncHtmlRef.current = null;
+      persistEditorHtml(nextHtml);
+    }, 180);
+  }, [persistEditorHtml]);
 
   const editor = useEditor({
     extensions: [
@@ -108,28 +158,44 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     content: contentFromNode || '',
     autofocus: false,
     editable: true,
-    onCreate: ({ editor: ed }) => {
-      lastWrittenHtmlRef.current = ed.getHTML();
+    shouldRerenderOnTransaction: false,
+    editorProps: {
+      handleDOMEvents: {
+        focusout: (view, event) => {
+          const nextTarget = (event as FocusEvent).relatedTarget;
+          if (nextTarget instanceof Element && nextTarget.closest('[data-breatic-slash-menu]')) {
+            return false;
+          }
+          try {
+            if (!breaticSlashMenuKey.getState(view.state)) return false;
+            closeBreaticSlashMenu(view);
+          } catch {
+            // ignore when editor/view is being torn down
+          }
+          return false;
+        },
+      },
     },
-    onUpdate: ({ editor: ed }) => {
+    onCreate: ({ editor: ed }) => {
+      const html = ed.getHTML();
+      lastWrittenHtmlRef.current = html;
+      lastPersistedHtmlRef.current = html;
+    },
+    onTransaction: ({ editor: ed, transaction }) => {
+      if (!transaction.docChanged) return;
       const html = ed.getHTML();
       lastWrittenHtmlRef.current = html;
       if (isApplyingRemoteRef.current) return;
-
-      const cur = (nodesRef.current.find((x) => x.id === nodeId)?.data ?? {}) as Record<string, unknown>;
-      updateNode(nodeId, {
-        data: {
-          ...cur,
-          name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
-          content: html,
-          state: 'idle',
-          nodeRuntimeData: {
-            ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-            runType: 'parameter',
-          },
-        },
-      });
+      scheduleEditorSync(html);
     },
+    onBlur: () => {
+      flushPendingEditorSync();
+    },
+  });
+
+  useEditorState({
+    editor,
+    selector: ({ transactionNumber }) => transactionNumber,
   });
 
   useEffect(() => {
@@ -139,90 +205,45 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     const curHtml = editor.getHTML();
     if (incoming === curHtml) {
       lastWrittenHtmlRef.current = incoming;
+      lastPersistedHtmlRef.current = incoming;
       return;
     }
+
+    // Incoming remote content wins: cancel any pending local write based on stale html.
+    if (pendingSyncTimerRef.current) {
+      clearTimeout(pendingSyncTimerRef.current);
+      pendingSyncTimerRef.current = null;
+    }
+    pendingSyncHtmlRef.current = null;
+
     isApplyingRemoteRef.current = true;
     editor.commands.setContent(incoming, { emitUpdate: false });
-    lastWrittenHtmlRef.current = editor.getHTML();
+    const appliedHtml = editor.getHTML();
+    lastWrittenHtmlRef.current = appliedHtml;
+    lastPersistedHtmlRef.current = appliedHtml;
     queueMicrotask(() => {
       isApplyingRemoteRef.current = false;
     });
   }, [editor, contentFromNode]);
 
   useEffect(() => {
-    return () => editor?.destroy();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /**
-   * Dismiss slash UI when clicking outside ProseMirror (gutter / chrome).
-   * `editor.view` is only valid after EditorContent mounts — defer attach with rAF + try/catch.
-   */
-  useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
-    const wrap = editorWrapperRef.current;
-    if (!wrap) return;
-
-    let cancelled = false;
-    let rafId = 0;
-    let attempts = 0;
-    const maxAttempts = 120;
-    let listening = false;
-
-    const onPointerDownCapture = (e: PointerEvent) => {
-      const t = e.target;
-      if (!(t instanceof Element)) return;
-      if (t.closest('[data-breatic-slash-menu]')) return;
-      try {
-        if (editor.isDestroyed) return;
-        if (editor.view.dom.contains(t)) return;
-      } catch {
-        return;
-      }
-      try {
-        if (!breaticSlashMenuKey.getState(editor.state)) return;
-      } catch {
-        return;
-      }
-      queueMicrotask(() => {
-        try {
-          if (!editor.isDestroyed) closeBreaticSlashMenu(editor.view);
-        } catch {
-          /* view torn down */
-        }
-      });
-    };
-
-    const tryAttach = () => {
-      if (cancelled || listening || editor.isDestroyed) return;
-      if (attempts++ > maxAttempts) return;
-      try {
-        if (!editor.view.dom) {
-          rafId = requestAnimationFrame(tryAttach);
-          return;
-        }
-      } catch {
-        rafId = requestAnimationFrame(tryAttach);
-        return;
-      }
-      wrap.addEventListener('pointerdown', onPointerDownCapture, true);
-      listening = true;
-    };
-
-    tryAttach();
-
+    if (!editor) return;
     return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-      if (listening) wrap.removeEventListener('pointerdown', onPointerDownCapture, true);
+      if (!editor.isDestroyed) editor.destroy();
     };
   }, [editor]);
+
+  useEffect(() => () => {
+    if (pendingSyncTimerRef.current) {
+      clearTimeout(pendingSyncTimerRef.current);
+      pendingSyncTimerRef.current = null;
+    }
+  }, []);
 
   return (
     <div className='flex h-full w-full overflow-hidden text-text-default-base'>
       {editor && <TableOfContents editor={editor} />}
       <div
-        ref={editorWrapperRef}
         className='breatic-editor-wrapper relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background-default-secondary'
       >
         <div className='breatic-editor-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto'>

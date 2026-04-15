@@ -1,5 +1,6 @@
 import {
   KeyboardEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,17 +8,19 @@ import {
   useRef,
   useState,
 } from 'react';
-import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
+import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react';
 import type { Editor } from '@tiptap/react';
 import {
   RiArrowGoBackFill,
   RiCheckFill,
-  RiCheckLine,
-  RiEarthLine,
+  RiEdit2Line,
+  RiFileTextLine,
+  RiListCheck2,
   RiLoopLeftFill,
   RiMagicLine,
   RiSparkling2Fill,
-  RiText,
+  RiTranslate2,
+  RiExpandLeftRightLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import { AiErrorIcon, AiSpinnerIcon } from './TextEditorIcons';
@@ -29,7 +32,7 @@ type AIStatus = 'user-input' | 'thinking' | 'ai-writing' | 'user-reviewing' | 'e
 interface AISuggestionItem {
   key: string;
   title: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onClick: () => void;
 }
 
@@ -37,46 +40,87 @@ export interface AIMenuProps {
   editor: Editor;
   anchorPos: number;
   onClose: () => void;
+  menuVariant?: 'selection' | 'generation';
+  onPreviewApplied?: () => void;
 }
+
+const getBlockVerticalBounds = (editor: Editor, blockStartPos: number): { top: number; bottom: number } => {
+  const { doc } = editor.state;
+  const safePos = Math.max(0, Math.min(blockStartPos, doc.content.size));
+  const $pos = doc.resolve(safePos);
+
+  let targetDepth = 1;
+  for (let d = $pos.depth; d >= 1; d -= 1) {
+    if ($pos.start(d) === safePos) {
+      targetDepth = d;
+      break;
+    }
+  }
+
+  const blockTopPos = $pos.start(targetDepth);
+  const blockBottomPos = $pos.end(targetDepth);
+  const topCoords = editor.view.coordsAtPos(blockTopPos);
+  const bottomCoords = editor.view.coordsAtPos(blockBottomPos);
+
+  return {
+    top: topCoords.top,
+    bottom: bottomCoords.bottom,
+  };
+};
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
+const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPreviewApplied }: AIMenuProps) => {
   const [status, setStatus] = useState<AIStatus>('user-input');
   const [prompt, setPrompt] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const editorRectRef = useRef<DOMRect | null>(null);
+  const timersRef = useRef<number[]>([]);
+  const previewRef = useRef<{ from: number; to: number; originalText: string } | null>(null);
 
-  const { refs, floatingStyles, update } = useFloating({
+  const previewColor = '#2563EB';
+
+  const { refs, floatingStyles, update, placement } = useFloating({
     open: true,
     placement: 'bottom-start',
     strategy: 'fixed',
-    middleware: [offset(8), shift({ padding: 8 })],
+    middleware: [
+      offset(10),
+      flip({
+        fallbackPlacements: ['top-start', 'bottom-end', 'top-end'],
+        padding: 8,
+      }),
+      shift({ padding: 8 }),
+    ],
     whileElementsMounted: autoUpdate,
   });
 
+  const menuPlacedOnTop = placement.startsWith('top');
+
   const reference = useMemo(() => {
     const editorDom = editor.view.dom as HTMLElement;
+    const anchorToTop = placement.startsWith('top');
     return {
       contextElement: editorDom,
       getBoundingClientRect: () => {
-        const coords = editor.view.coordsAtPos(anchorPos);
+        const bounds = getBlockVerticalBounds(editor, anchorPos);
         const editorRect = editorDom.getBoundingClientRect();
+        const anchorY = anchorToTop ? bounds.top : bounds.bottom;
         editorRectRef.current = editorRect;
         return {
           x: editorRect.left,
-          y: coords.bottom,
+          y: anchorY,
           width: editorRect.width,
           height: 1,
-          top: coords.bottom,
+          top: anchorY,
           left: editorRect.left,
           right: editorRect.left + editorRect.width,
-          bottom: coords.bottom + 1,
+          bottom: anchorY + 1,
         };
       },
     };
-  }, [editor, anchorPos]);
+  }, [editor, anchorPos, placement]);
 
   useLayoutEffect(() => {
     refs.setReference(reference);
@@ -99,71 +143,181 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
     return () => cancelAnimationFrame(id);
   }, []);
 
+  const clearTimers = useCallback(() => {
+    for (const id of timersRef.current) window.clearTimeout(id);
+    timersRef.current = [];
+  }, []);
+
+  const revertPreview = useCallback(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    const { from, to, originalText } = preview;
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from, to }, originalText)
+      .setTextSelection(from + originalText.length)
+      .unsetColor()
+      .run();
+    previewRef.current = null;
+  }, [editor]);
+
+  const closeMenu = useCallback(
+    (options?: { revertPreview?: boolean }) => {
+      clearTimers();
+      if (options?.revertPreview !== false) revertPreview();
+      onClose();
+    },
+    [clearTimers, onClose, revertPreview],
+  );
+
+  const acceptPreview = useCallback(() => {
+    const preview = previewRef.current;
+    if (!preview) {
+      closeMenu({ revertPreview: false });
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: preview.from, to: preview.to })
+      .unsetColor()
+      .setTextSelection(preview.to)
+      .run();
+    previewRef.current = null;
+    closeMenu({ revertPreview: false });
+  }, [closeMenu, editor]);
+
+  const applyPreviewReplacement = useCallback(
+    (replacement: string) => {
+      const { from, to } = editor.state.selection;
+      const originalText = editor.state.doc.textBetween(from, to, '\n', '\n');
+      editor
+        .chain()
+        .focus()
+        .insertContentAt({ from, to }, replacement)
+        .setTextSelection({ from, to: from + replacement.length })
+        .setColor(previewColor)
+        .setTextSelection(from + replacement.length)
+        // Clear stored color mark so subsequent typing stays default-colored.
+        .unsetColor()
+        .run();
+      previewRef.current = { from, to: from + replacement.length, originalText };
+      onPreviewApplied?.();
+      return true;
+    },
+    [editor, onPreviewApplied],
+  );
+
+  const runPreviewFlow = useCallback(
+    (replacement: string) => {
+      clearTimers();
+      setStatus('thinking');
+      const thinkingTimer = window.setTimeout(() => {
+        setStatus('ai-writing');
+        const writingTimer = window.setTimeout(() => {
+          const ok = applyPreviewReplacement(replacement);
+          setStatus(ok ? 'user-reviewing' : 'error');
+        }, 550);
+        timersRef.current.push(writingTimer);
+      }, 700);
+      timersRef.current.push(thinkingTimer);
+    },
+    [applyPreviewReplacement, clearTimers],
+  );
+
   // Close on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current?.contains(e.target as Node)) return;
-      onClose();
+      closeMenu();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  // Simulate AI thinking → writing → reviewing (static demo)
-  const simulateAI = useCallback(() => {
-    setStatus('thinking');
-    const t1 = setTimeout(() => {
-      setStatus('ai-writing');
-      const t2 = setTimeout(() => setStatus('user-reviewing'), 800);
-      return () => clearTimeout(t2);
-    }, 1200);
-    return () => clearTimeout(t1);
-  }, []);
+  }, [closeMenu]);
 
   const handleSuggestionClick = (item: AISuggestionItem) => {
     item.onClick();
-    simulateAI();
   };
 
   const handleSubmit = useCallback(() => {
     if (!prompt.trim()) return;
-    simulateAI();
-  }, [prompt, simulateAI]);
+    runPreviewFlow('[AI PREVIEW] This is fixed replacement content.');
+  }, [prompt, runPreviewFlow]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       handleSubmit();
     } else if (e.key === 'Escape') {
-      onClose();
+      closeMenu();
     }
   };
 
   // ── Suggestion items based on status ────────────────────────────────────
 
-  const withSelectionItems: AISuggestionItem[] = [
+  const selectionItems: AISuggestionItem[] = [
     {
-      key: 'improve',
-      title: 'Improve writing',
-      icon: <RiText size={16} />,
-      onClick: () => {},
+      key: 'polish',
+      title: 'polish',
+      icon: <RiMagicLine size={16} />,
+      onClick: () => runPreviewFlow('[POLISH] This is fixed replacement content.'),
     },
     {
-      key: 'spelling',
-      title: 'Fix spelling',
-      icon: <RiCheckLine size={16} />,
-      onClick: () => {},
+      key: 'expand',
+      title: 'expand',
+      icon: <RiExpandLeftRightLine size={16} />,
+      onClick: () => runPreviewFlow('[EXPAND] This is fixed replacement content.'),
+    },
+    {
+      key: 'summarize',
+      title: 'summarize',
+      icon: <RiListCheck2 size={16} />,
+      onClick: () => runPreviewFlow('[SUMMARIZE] This is fixed replacement content.'),
     },
     {
       key: 'translate',
-      title: 'Translate…',
-      icon: <RiEarthLine size={16} />,
-      onClick: () => {},
+      title: 'translate',
+      icon: <RiTranslate2 size={16} />,
+      onClick: () => runPreviewFlow('[TRANSLATE] This is fixed replacement content.'),
     },
     {
-      key: 'simplify',
-      title: 'Simplify',
+      key: 'rewrite',
+      title: 'rewrite',
+      icon: <RiEdit2Line size={16} />,
+      onClick: () => runPreviewFlow('[REWRITE] This is fixed replacement content.'),
+    },
+    {
+      key: 'continue',
+      title: 'continue',
+      icon: <RiFileTextLine size={16} />,
+      onClick: () => runPreviewFlow('[CONTINUE] This is fixed replacement content.'),
+    },
+  ];
+
+  const generationItems: AISuggestionItem[] = [
+    {
+      key: 'generate',
+      title: 'generate',
       icon: <RiMagicLine size={16} />,
-      onClick: () => {},
+      onClick: () => runPreviewFlow('[GENERATE] This is fixed replacement content.'),
+    },
+    {
+      key: 'character',
+      title: 'character',
+      icon: <RiEdit2Line size={16} />,
+      onClick: () => runPreviewFlow('[CHARACTER] This is fixed replacement content.'),
+    },
+    {
+      key: 'storyboard',
+      title: 'storyboard',
+      icon: <RiListCheck2 size={16} />,
+      onClick: () => runPreviewFlow('[STORYBOARD] This is fixed replacement content.'),
+    },
+    {
+      key: 'script',
+      title: 'script',
+      icon: <RiFileTextLine size={16} />,
+      onClick: () => runPreviewFlow('[SCRIPT] This is fixed replacement content.'),
     },
   ];
 
@@ -172,13 +326,13 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
       key: 'accept',
       title: 'Accept',
       icon: <RiCheckFill size={16} />,
-      onClick: onClose,
+      onClick: acceptPreview,
     },
     {
       key: 'revert',
       title: 'Revert',
       icon: <RiArrowGoBackFill size={16} />,
-      onClick: onClose,
+      onClick: () => closeMenu(),
     },
   ];
 
@@ -187,23 +341,24 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
       key: 'retry',
       title: 'Retry',
       icon: <RiLoopLeftFill size={16} />,
-      onClick: () => simulateAI(),
+      onClick: () => runPreviewFlow('[RETRY] This is fixed replacement content.'),
     },
     {
       key: 'cancel',
       title: 'Cancel',
       icon: <RiArrowGoBackFill size={16} />,
-      onClick: onClose,
+      onClick: () => closeMenu(),
     },
   ];
 
   const getCurrentItems = (): AISuggestionItem[] => {
-    if (status === 'user-input') return withSelectionItems;
+    if (status === 'user-input') return menuVariant === 'generation' ? generationItems : selectionItems;
     if (status === 'user-reviewing') return reviewItems;
     if (status === 'error') return errorItems;
     return [];
   };
   const currentItems: AISuggestionItem[] = getCurrentItems();
+  const renderedItems: AISuggestionItem[] = menuPlacedOnTop ? [...currentItems].reverse() : currentItems;
 
   const isDisabled = status === 'thinking' || status === 'ai-writing';
 
@@ -214,6 +369,12 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
     return 'Ask AI anything…';
   };
   const placeholder = getPlaceholder();
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, [clearTimers]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -228,7 +389,7 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
         width: editorRectRef.current?.width ?? (editor.view.dom as HTMLElement).getBoundingClientRect().width,
         zIndex: 88,
       }}
-      className='flex flex-col gap-1 outline-none'
+      className={cn('flex gap-1 outline-none', menuPlacedOnTop ? 'flex-col-reverse' : 'flex-col')}
     >
       {/* Prompt input area */}
       <div
@@ -277,7 +438,7 @@ const AIMenu = ({ editor, anchorPos, onClose }: AIMenuProps) => {
             'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
           )}
         >
-          {currentItems.map((item) => (
+          {renderedItems.map((item) => (
             <button
               key={item.key}
               type='button'
