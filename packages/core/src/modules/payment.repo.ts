@@ -2,7 +2,7 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { payments } from "../db/schema.js";
 import type { PaymentEntity } from "@breatic/shared";
@@ -71,6 +71,28 @@ export async function updatePaymentStatus(
   const updates: Record<string, unknown> = { status, updatedAt: new Date() };
   if (stripePaymentIntentId) updates.stripePaymentIntentId = stripePaymentIntentId;
   await db.update(payments).set(updates).where(eq(payments.id, id));
+}
+
+/**
+ * CAS update: transition status from `fromStatus` to `toStatus`.
+ * Returns true if the row was updated (i.e., it was in `fromStatus`).
+ * Returns false if another concurrent call already transitioned it.
+ * This is the idempotent guard for webhook replay.
+ */
+export async function updatePaymentStatusCAS(
+  id: string,
+  fromStatus: string,
+  toStatus: string,
+  stripePaymentIntentId?: string,
+): Promise<boolean> {
+  const updates: Record<string, unknown> = { status: toStatus, updatedAt: new Date() };
+  if (stripePaymentIntentId) updates.stripePaymentIntentId = stripePaymentIntentId;
+  const result = await db
+    .update(payments)
+    .set(updates)
+    .where(and(eq(payments.id, id), eq(payments.status, fromStatus)))
+    .returning({ id: payments.id });
+  return result.length > 0;
 }
 
 /** List payments for a user, ordered by most recent. */

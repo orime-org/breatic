@@ -23,6 +23,7 @@ import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { extractPromptText } from "@breatic/core";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -356,7 +357,7 @@ async function runUnderstand(
   const sourceType = params.source_type as string;
   const sourceUrl = params.source_url as string;
   const modelName = model ?? UNDERSTAND_DEFAULTS[sourceType] ?? "gemini-flash-vi";
-  const prompt = (params.prompt ?? `Analyze this ${sourceType}`) as string;
+  const prompt = extractPromptText(params.prompt) || `Analyze this ${sourceType}`;
 
   const cleanParams: Record<string, unknown> = {};
   if (sourceType === "image") cleanParams.images = [sourceUrl];
@@ -381,8 +382,8 @@ async function runAigcDirect(
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
-  // Extract prompt/text before validation (validateParams drops unknown fields)
-  const prompt = (params.prompt ?? params.text ?? "") as string;
+  // Extract prompt/text and strip HTML before sending to provider
+  const prompt = extractPromptText(params.prompt ?? params.text);
   const cleanParams = { ...params };
   delete cleanParams.prompt;
   delete cleanParams.text;

@@ -40,7 +40,7 @@
 
 ### BUG-005 · Prompt 注入 — 富文本未纯文本提取就发 LLM
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #82）
 - **位置**：`packages/core/src/agent/` · `packages/worker/src/handlers/`
 - **问题**：节点 prompt 可能含 HTML 隐藏文本，直接发给 LLM 可能被注入指令
 - **修复**：创建 extractPromptText() 工具，发 LLM 前强制调用
@@ -62,14 +62,14 @@
 
 ### BUG-008 · Sync-first 无超时 → UI 永远卡 loading
 
-- **状态**：`[ ]` 待修
+- **状态**：`[x]` 已修（PR #82）
 - **位置**：`packages/web/src/utils/yjsManager.ts` · `packages/web/src/hooks/useCanvasYjsInternal.ts`
 - **问题**：HocuspocusProvider 连不上时用户永远看到 loading，无提示
 - **修复**：HocuspocusProvider 配置 timeout，React 层 15 秒兜底，显示错误和重试
 
 ### BUG-009 · Stripe Webhook 双倍充值竞态
 
-- **状态**：`[ ]` 待修（需确认当前代码）
+- **状态**：`[x]` 已修（PR #82）
 - **位置**：`packages/core/src/modules/payment.service.ts`
 - **问题**：Stripe webhook 重发时并发通过 status 检查导致双倍充值
 - **修复**：UPDATE WHERE status='pending' RETURNING CAS 原子操作
@@ -234,8 +234,8 @@
 
 | 优先级 | 总数 | 待修 | 已修 | 不修 |
 |--------|------|------|------|------|
-| P0     | 9    | 3    | 6    | 0    |
+| P0     | 9    | 0    | 9    | 0    |
 | P1     | 11   | 10   | 0    | 1    |
 | P2     | 8    | 8    | 0    | 0    |
 | P3     | 1    | 1    | 0    | 0    |
-| **合计** | **29** | **22** | **6** | **1** |
+| **合计** | **29** | **19** | **9** | **1** |

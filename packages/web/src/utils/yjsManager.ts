@@ -41,6 +41,7 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
     name: docId,
     document: doc,
     token: 'dev',
+    timeout: 10000,
   });
 
   const awareness = provider.awareness!;
