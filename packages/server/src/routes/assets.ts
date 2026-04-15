@@ -26,7 +26,10 @@ import {
   nodeHistoryService,
   logger,
   ValidationError,
+  checkRateLimit,
+  getRedis,
 } from "@breatic/core";
+import type { MiddlewareHandler } from "hono";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
@@ -43,6 +46,19 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
   if (contentType.startsWith("text/") || contentType === "application/pdf") return "document";
   return "file";
 }
+
+// ── Rate limit for presign ──────────────────────────────────────────
+
+const presignRateLimit: MiddlewareHandler = async (c, next) => {
+  const user = c.get("user") as { id: string } | undefined;
+  const key = user?.id ?? "anonymous";
+  const redis = getRedis();
+  const allowed = await checkRateLimit(redis, `presign:${key}`, 30, 60);
+  if (!allowed) {
+    return c.json({ error: { code: 429, message: "Too many upload requests" } }, 429);
+  }
+  await next();
+};
 
 // ── Presign ─────────────────────────────────────────────────────────
 
@@ -69,6 +85,7 @@ const presignSchema = z.object({
 assets.get(
   "/presign",
   requireAuth,
+  presignRateLimit,
   zValidator("query", presignSchema),
   async (c) => {
     const user = c.get("user");
@@ -89,8 +106,8 @@ assets.get(
     let uploadUrl: string;
 
     if (adapter.getUploadUrl) {
-      // S3 / OSS — presigned PUT directly to cloud
-      uploadUrl = await adapter.getUploadUrl(key, content_type, 3600);
+      // S3 / OSS — presigned PUT directly to cloud (5 min expiry)
+      uploadUrl = await adapter.getUploadUrl(key, content_type, 300);
     } else {
       // Local storage — PUT to this server
       const url = new URL(c.req.url);
@@ -128,9 +145,9 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
   // Extract the key from the URL path (everything after /local-upload/)
   const key = decodeURIComponent(c.req.path.replace(/^\/api\/v1\/assets\/local-upload\//, ""));
 
-  // Security: ensure the key starts with the user's ID
-  if (!key.startsWith(user.id)) {
-    throw new ValidationError("Upload key does not match authenticated user");
+  // Security: validate key format and ownership
+  if (key.includes("..") || key.includes("//") || !key.startsWith(user.id)) {
+    throw new ValidationError("Invalid or unauthorized upload key");
   }
 
   const arrayBuf = await c.req.arrayBuffer();
