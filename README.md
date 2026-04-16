@@ -123,8 +123,8 @@ pnpm install
 docker compose up -d postgres redis
 
 # Configure environment
-cp .env.example .env
-# Edit .env: set SESSION_SECRET_KEY, VITE_API_URL, VITE_WS_URL, OPENROUTER_API_KEY, etc.
+cp .env.dev .env    # Local dev (localhost)
+# Or: cp .env.docker .env  # Docker deployment (container names)
 
 # Create uploads directory (for local AIGC file storage)
 mv uploads.example uploads
@@ -144,7 +144,7 @@ pnpm test
 
 ## Configuration
 
-All settings validated at startup via Zod. See `.env.example` for the full list.
+All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for the full list.
 
 ### Required
 

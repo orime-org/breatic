@@ -59,7 +59,7 @@ pnpm install
 docker compose up -d postgres redis
 
 # Create environment config
-cp .env.example .env
+cp .env.dev .env
 # Edit .env — defaults work for local dev
 ```
 
@@ -86,12 +86,14 @@ cd packages/web && pnpm dev  # Vite on :8000
 
 ### Local Dev Environment Variables
 
-Default values in `.env.example` work out of the box:
+Default values in `.env.dev` work out of the box:
 
 | Variable | Value | Note |
 |----------|-------|------|
 | `DATABASE_URL` | `postgres://breatic:breatic@localhost:5432/breatic` | Docker PG |
-| `REDIS_URL` | `redis://localhost:6379/0` | Docker Redis |
+| `REDIS_URL` | `redis://localhost:6379/0` | Session, lock, rate-limit |
+| `REDIS_QUEUE_URL` | `redis://localhost:6379/1` | BullMQ task queue |
+| `REDIS_STREAM_URL` | `redis://localhost:6379/2` | Streams + Hocuspocus pub/sub |
 | `VITE_API_URL` | `http://localhost:3000` | API direct |
 | `VITE_WS_URL` | `ws://localhost:1234` | Collab direct |
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server |
@@ -121,8 +123,8 @@ One command deploys everything. For open-source users and internal networks.
 git clone https://github.com/orime-org/breatic_ai.git
 cd breatic_ai
 
-cp .env.example .env
-# Edit .env — see configuration below
+cp .env.docker .env
+# Edit .env — set your domain, SESSION_SECRET_KEY, AI provider keys
 
 docker compose up -d
 
@@ -143,12 +145,16 @@ curl http://localhost/api/health
 
 > `VITE_*` variables are baked into the frontend at Docker build time. After changing them, rebuild: `docker compose build web && docker compose up -d web`
 
-#### Database (defaults work for Docker)
+#### Database & Redis (defaults work for Docker)
 
 | Variable | Default | Note |
 |----------|---------|------|
-| `DATABASE_URL` | `postgres://breatic:breatic@postgres:5432/breatic` | Use container name `postgres`, not `localhost` |
-| `REDIS_URL` | `redis://redis:6379/0` | Use container name `redis`, not `localhost` |
+| `DATABASE_URL` | `postgres://breatic:breatic@postgres:5432/breatic` | Use container name `postgres` |
+| `REDIS_URL` | `redis://redis:6379/0` | Session, lock, rate-limit |
+| `REDIS_QUEUE_URL` | `redis://redis:6379/1` | BullMQ task queue |
+| `REDIS_STREAM_URL` | `redis://redis:6379/2` | Streams + Hocuspocus pub/sub |
+
+> Use container name `redis`, not `localhost`. Three logical DBs on one Redis instance; at scale, swap URLs to separate instances.
 
 #### AI Providers (optional — add as needed)
 
@@ -294,7 +300,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to main:
 
 ### Monitoring
 
-- **Application logs**: `logs/{api,collab,worker}/` with daily rotation (pino-roll)
+- **Application logs**: Daily rotation (pino-roll), each entry has `timestamp` (ISO 8601) + `time` (epoch ms)
+  - `logs/api/` — API server (default via `initLogger("api")`)
+  - `logs/worker/` — BullMQ worker (explicit `initLogger("worker")`)
+  - `logs/collab/` — Hocuspocus (standalone logger)
+  - `logs/nginx/` — Nginx access + error (logrotate, 30-day retention)
 - **Docker logs**: `docker compose logs -f <service>`
 - **Health check**: `GET /api/health` returns DB + Redis status
 - **Error tracking**: Sentry (optional, `VITE_SENTRY_DSN`)

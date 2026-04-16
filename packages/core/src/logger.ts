@@ -13,10 +13,10 @@
 import pino from "pino";
 import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { env } from "./config/env.js";
+import { env, MONOREPO_ROOT } from "./config/env.js";
 
 function buildLogger(serviceName: string): pino.Logger {
-  const logsRoot = resolve(import.meta.dirname, "../../../logs");
+  const logsRoot = resolve(MONOREPO_ROOT, "logs");
   const serviceLogsDir = resolve(logsRoot, serviceName);
 
   try {

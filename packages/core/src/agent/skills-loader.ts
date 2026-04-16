@@ -12,11 +12,12 @@ import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import type { SkillMeta } from "@breatic/shared";
+import { MONOREPO_ROOT } from "../config/env.js";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
-const BUILTIN_SKILLS_DIR = resolve(import.meta.dirname, "../../../../../skills");
-const MODES_CONFIG_PATH = resolve(import.meta.dirname, "../../../../../config/models/modes.yaml");
+const BUILTIN_SKILLS_DIR = resolve(MONOREPO_ROOT, "skills");
+const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 // ── Internal skill metadata (superset of shared SkillMeta) ──────────
 

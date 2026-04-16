@@ -10,11 +10,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
-import { env } from "./env.js";
+import { env, MONOREPO_ROOT } from "./env.js";
 import { logger } from "../logger.js";
 
 /** Root directory for model YAML configs. */
-const MODELS_DIR = resolve(import.meta.dirname, "../../../../config/models");
+const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
 
 /** Supported modalities (subdirectory names). */
 const MODALITIES = ["image", "video", "audio", "tts", "three_d", "understand"] as const;

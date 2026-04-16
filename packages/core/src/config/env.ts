@@ -7,14 +7,27 @@
  */
 
 import { config } from "dotenv";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 
 /**
- * Monorepo root directory.
- * env.ts is at packages/server/src/config/ → 4 levels up = root.
- * This is the single source of truth for root path resolution.
+ * Find the monorepo root by walking up from the current file
+ * until we find `pnpm-workspace.yaml`. Works from both source
+ * (packages/core/src/config/) and compiled (packages/core/dist/).
  */
-export const MONOREPO_ROOT = resolve(import.meta.dirname, "../../../..");
+function findMonorepoRoot(): string {
+  let dir = import.meta.dirname;
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Fallback: process.cwd() (works in Docker where cwd = /app)
+  return process.cwd();
+}
+
+export const MONOREPO_ROOT = findMonorepoRoot();
 
 // Load .env from monorepo root (not packages/server/)
 config({ path: resolve(MONOREPO_ROOT, ".env") });

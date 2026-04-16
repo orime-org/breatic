@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MONOREPO_ROOT } from "./env.js";
 
 const workerConfigSchema = z.object({
   concurrency: z.number().int().positive().default(5),
@@ -37,7 +38,7 @@ let _cached: Readonly<WorkerConfig> | null = null;
 export function getWorkerConfig(): Readonly<WorkerConfig> {
   if (_cached) return _cached;
 
-  const configPath = resolve(import.meta.dirname, "../../../../config/worker.yaml");
+  const configPath = resolve(MONOREPO_ROOT, "config/worker.yaml");
   const raw = readFileSync(configPath, "utf-8");
   const parsed = parse(raw) as unknown;
   const config = workerConfigSchema.parse(parsed);
