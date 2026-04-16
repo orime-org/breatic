@@ -400,6 +400,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
           trigger='click'
           placement='left-start'
           items={uploadDropdownItems}
+          popupClassName='min-w-[220px]'
           onClick={(key) => handleUploadMenuClick(key)}
         >
           <Tooltip title='Upload' placement='right' offset={4}>
@@ -418,6 +419,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
           trigger='click'
           placement='left-start'
           items={askAIDropdownItems}
+          popupClassName='min-w-[220px]'
           onClick={(key) => {
             const selected = askAIQuickOptions.find((item) => item.key === key);
             if (!selected) return;
