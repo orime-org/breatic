@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+
+# SSL certificates (never commit)
+docker/certs/*.pem
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+.trae
+
+# OS
+.DS_Store
+
+# Test & coverage
+coverage/
+.pytest_cache/
+
+# Documentation build (site generators)
+site/
+
+# Logs
+*.log
+logs/*
+!logs/.gitignore
+
+# Uploads (user creates from uploads.example/)
+uploads/
+
+# Worktrees (optional parallel dev setup, see docs/WORKTREE.md)
+worktrees/
+
+# Claude Code local config
+.claude/
+.remember/
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# TypeDoc output (generated, per-package under api-reference/)
+api-reference/
