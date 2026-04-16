@@ -19,9 +19,9 @@ import * as Y from "yjs";
 import { createAuthHook } from "./auth.js";
 import { createPersistenceExtension, ensureTable } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
-import pino from "pino";
+import { createLogger } from "./logger.js";
 
-const logger = pino({ name: "hocuspocus" });
+const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {

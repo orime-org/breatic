@@ -14,12 +14,12 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-import pino from "pino";
+import { createLogger } from "./logger.js";
 import { createCollabServer } from "./server.js";
 import { startTaskListener } from "./task-listener.js";
 import { getCollabConfig } from "./config.js";
 
-const logger = pino({ name: "collab" });
+const logger = createLogger("main");
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "postgres://breatic:breatic@localhost:5432/breatic";
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379/0";

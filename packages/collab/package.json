@@ -1,0 +1,37 @@
+{
+  "name": "@breatic/collab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --format esm",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@breatic/shared": "workspace:*",
+    "@hocuspocus/extension-database": "^3.4.4",
+    "@hocuspocus/extension-redis": "^3.4.4",
+    "@hocuspocus/extension-throttle": "^3.4.4",
+    "@hocuspocus/server": "^3.4.4",
+    "dotenv": "^16.4.0",
+    "ioredis": "^5.4.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "pino-roll": "^4.0.0",
+    "postgres": "^3.4.0",
+    "yaml": "^2.7.0",
+    "yjs": "^13.6.30",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0"
+  }
+}
