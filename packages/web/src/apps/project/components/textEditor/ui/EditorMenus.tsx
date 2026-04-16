@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
@@ -13,6 +13,7 @@ import TableHandles from '../table/TableHandles';
 import TableSelectionChrome from '../table/TableSelectionChrome';
 import ImageBubbleMenu, { formatBubbleShouldShow } from '../media/ImageBubbleMenu';
 import AIMenu from './AIMenu';
+import { getTextEditorBridgeStorage } from '../extensions/TextEditorBridgeExtension';
 import {
   RiBold,
   RiItalic,
@@ -101,6 +102,14 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
     },
     [],
   );
+
+  useEffect(() => {
+    const bridge = getTextEditorBridgeStorage(editor);
+    bridge.openSelectionAIMenu = handleOpenAIMenu;
+    return () => {
+      bridge.openSelectionAIMenu = null;
+    };
+  }, [editor, handleOpenAIMenu]);
 
   return (
     <>

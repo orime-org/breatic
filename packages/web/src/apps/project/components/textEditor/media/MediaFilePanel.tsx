@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
+import { message } from '@/components/base/message';
 
 export const MEDIA_FILE_PANEL_EVENT = 'breatic:open-media-file-panel';
 
@@ -15,12 +16,74 @@ export type MediaFilePanelOpenDetail = {
   mediaType: MediaType;
 };
 
-export function openMediaFilePanel(editor: Editor, pos: number, mediaType: MediaType): void {
-  window.dispatchEvent(
-    new CustomEvent<MediaFilePanelOpenDetail>(MEDIA_FILE_PANEL_EVENT, {
-      detail: { editor, pos, mediaType },
-    }),
-  );
+export function openMediaFilePanel(editor: Editor, pos: number | null | undefined, mediaType: MediaType): void {
+  const cfg = getLabel(mediaType);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = cfg.accept;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  const cleanup = () => {
+    input.removeEventListener('change', onChange);
+    input.remove();
+  };
+
+  const onChange = async () => {
+    const file = input.files?.[0] ?? null;
+    if (!file || !cfg.isAccepted(file)) {
+      cleanup();
+      return;
+    }
+
+    try {
+      const src = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result;
+          if (typeof result === 'string') resolve(result);
+          else reject(new Error('invalid-data-url'));
+        };
+        reader.onerror = () => reject(reader.error ?? new Error('read-failed'));
+        reader.readAsDataURL(file);
+      });
+
+      let extraAttrs: Record<string, unknown> | undefined;
+      if (mediaType === 'video') {
+        const aspectRatio = await getVideoAspectRatio(src);
+        extraAttrs = {
+          width: DEFAULT_MEDIA_WIDTH,
+          ...(aspectRatio && Number.isFinite(aspectRatio) ? { aspectRatio } : {}),
+        };
+      }
+
+      if (typeof pos === 'number') {
+        const ok = replacePendingWithMedia(editor, pos, mediaType, src, file.name, extraAttrs);
+        if (!ok) message.warning('Upload target no longer available');
+      } else {
+        const attrs =
+          mediaType === 'file'
+            ? { src, title: file.name, alt: file.name, showPreview: false }
+            : { src, title: file.name, ...(extraAttrs ?? {}) };
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: cfg.outputType,
+            attrs,
+          })
+          .run();
+      }
+    } catch (error) {
+      console.error('Media upload failed:', error);
+      message.warning(cfg.uploadError);
+    } finally {
+      cleanup();
+    }
+  };
+
+  input.addEventListener('change', onChange);
+  input.click();
 }
 
 const PANEL_OFFSET_Y = 10;

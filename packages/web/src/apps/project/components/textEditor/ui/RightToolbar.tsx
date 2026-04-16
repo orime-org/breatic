@@ -17,12 +17,12 @@ import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/ty
 import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from '@/apps/project/components/imageEditor/ui/MediaResourceListPanel';
 import type { ImageEditorRightSidePanelId } from '@/apps/project/components/imageEditor/types';
-import AIMenu from './AIMenu';
 
 type RightToolbarProps = {
   editor: Editor;
   /** Workflow canvas node id for this text editor panel. */
   nodeId: string;
+  onOpenAIMenu: () => void;
 };
 
 const panelConfig: Record<
@@ -134,7 +134,7 @@ async function parseTextUploadFile(file: File): Promise<string> {
   throw new Error(`unsupported:${ext}`);
 }
 
-const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
+const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMenu }) => {
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const { favoriteAssets, toggleFavoriteAsset } = useImageEditorStore();
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
@@ -142,10 +142,6 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const [openSidePanel, setOpenSidePanel] = useState<ImageEditorRightSidePanelId | null>(null);
   const [toolbarSegment, setToolbarSegment] = useState<ExclusiveToolbarSegment | null>(null);
   const [pendingUploadMode, setPendingUploadMode] = useState<'insert' | 'overwrite' | null>(null);
-  const [aiMenuOpen, setAIMenuOpen] = useState(false);
-  const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
-  const [aiCursorPos, setAiCursorPos] = useState<number | null>(null);
-  const [aiCursorHintRect, setAiCursorHintRect] = useState<{ top: number; left: number; height: number } | null>(null);
   const uploadProxyRef = useRef<HTMLDivElement | null>(null);
 
   const sidePanelItems = useMemo((): Partial<Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>> => {
@@ -347,73 +343,6 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
     [editor, pendingUploadMode],
   );
 
-  const handleOpenAIMenu = useCallback(() => {
-    const { $from, from } = editor.state.selection;
-    const blockTypesForAIMenuAnchor = new Set([
-      'paragraph',
-      'heading',
-      'blockquote',
-      'codeBlock',
-      'listItem',
-      'taskItem',
-    ]);
-    let anchorPos: number | null = null;
-    for (let d = $from.depth; d >= 1; d -= 1) {
-      const node = $from.node(d);
-      if (blockTypesForAIMenuAnchor.has(node.type.name)) {
-        anchorPos = $from.start(d);
-        break;
-      }
-    }
-    setAiAnchorPos(anchorPos ?? from);
-    setAiCursorPos(from);
-    setAIMenuOpen(true);
-  }, [editor]);
-
-  const handleCloseAIMenu = useCallback(() => {
-    setAIMenuOpen(false);
-    setAiAnchorPos(null);
-    setAiCursorPos(null);
-    setAiCursorHintRect(null);
-    editor.commands.focus();
-  }, [editor]);
-
-  const hideAiCursorHint = useCallback(() => {
-    setAiCursorPos(null);
-    setAiCursorHintRect(null);
-  }, []);
-
-  const updateAiCursorHintRect = useCallback(
-    (pos: number) => {
-      try {
-        const coords = editor.view.coordsAtPos(pos);
-        const lineHeight = Math.max(12, coords.bottom - coords.top);
-        const hintHeight = Math.min(20, lineHeight);
-        setAiCursorHintRect({
-          left: coords.left,
-          top: coords.top,
-          height: hintHeight,
-        });
-      } catch {
-        setAiCursorHintRect(null);
-      }
-    },
-    [editor],
-  );
-
-  React.useEffect(() => {
-    if (!aiMenuOpen || aiCursorPos == null) return;
-    updateAiCursorHintRect(aiCursorPos);
-
-    const onViewportChange = () => updateAiCursorHintRect(aiCursorPos);
-    window.addEventListener('scroll', onViewportChange, true);
-    window.addEventListener('resize', onViewportChange);
-    return () => {
-      window.removeEventListener('scroll', onViewportChange, true);
-      window.removeEventListener('resize', onViewportChange);
-    };
-  }, [aiMenuOpen, aiCursorPos, updateAiCursorHintRect]);
-
   return (
     <div className='pointer-events-auto relative flex h-full min-h-0 shrink-0 items-center'>
       <div className='flex flex-col items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
@@ -449,9 +378,9 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
           <button
             type='button'
             className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
-            onClick={handleOpenAIMenu}
+            onClick={onOpenAIMenu}
           >
-            <RiSparkling2Fill size={16} />
+            <RiSparkling2Fill size={22} />
           </button>
         </Tooltip>
 
@@ -499,28 +428,6 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
         onItemFavoriteClick={sidePanelOnItemFavoriteClickProp}
         className={sidePanelOpen ? 'absolute right-full top-1/2 z-10 mr-2 -translate-y-1/2' : undefined}
       />
-      {aiMenuOpen && aiAnchorPos != null && (
-        <AIMenu
-          editor={editor}
-          anchorPos={aiAnchorPos}
-          onClose={handleCloseAIMenu}
-          menuVariant='generation'
-          onPreviewApplied={hideAiCursorHint}
-        />
-      )}
-      {aiMenuOpen && aiCursorHintRect && (
-        <div
-          className='pointer-events-none fixed rounded-full bg-[#4F46E5] shadow-[0_0_0_1px_rgba(79,70,229,0.25),0_0_10px_rgba(79,70,229,0.6)] animate-pulse'
-          style={{
-            zIndex: 9999,
-            top: aiCursorHintRect.top,
-            left: aiCursorHintRect.left - 1,
-            width: 3,
-            height: aiCursorHintRect.height,
-          }}
-          aria-hidden
-        />
-      )}
     </div>
   );
 };

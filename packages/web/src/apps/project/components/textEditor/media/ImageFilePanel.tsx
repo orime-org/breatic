@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
+import { message } from '@/components/base/message';
 
 export const IMAGE_FILE_PANEL_EVENT = 'breatic:open-image-file-panel';
 
@@ -13,12 +14,66 @@ export type ImageFilePanelOpenDetail = {
   pos: number;
 };
 
-export function openImageFilePanel(editor: Editor, pos: number): void {
-  window.dispatchEvent(
-    new CustomEvent<ImageFilePanelOpenDetail>(IMAGE_FILE_PANEL_EVENT, {
-      detail: { editor, pos },
-    }),
-  );
+export function openImageFilePanel(editor: Editor, pos?: number | null): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  const cleanup = () => {
+    input.removeEventListener('change', onChange);
+    input.remove();
+  };
+
+  const onChange = async () => {
+    const file = input.files?.[0] ?? null;
+    if (!file || !file.type.startsWith('image/')) {
+      cleanup();
+      return;
+    }
+
+    try {
+      const src = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result;
+          if (typeof result === 'string') resolve(result);
+          else reject(new Error('invalid-data-url'));
+        };
+        reader.onerror = () => reject(reader.error ?? new Error('read-failed'));
+        reader.readAsDataURL(file);
+      });
+      const dimensions = await getImageDimensions(src);
+      const alt = file.name?.trim() || filenameFromURL(src);
+      if (typeof pos === 'number') {
+        const ok = replacePendingWithImage(editor, pos, src, alt, dimensions);
+        if (!ok) message.warning('Upload target no longer available');
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'image',
+            attrs: {
+              src,
+              alt,
+              title: null,
+              ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+            },
+          })
+          .run();
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      message.warning(DICT.uploadError);
+    } finally {
+      cleanup();
+    }
+  };
+
+  input.addEventListener('change', onChange);
+  input.click();
 }
 
 const DICT = {

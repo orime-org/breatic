@@ -37,14 +37,15 @@ import {
   RiVolumeUpFill,
   RiTable2,
   RiArrowRightSLine,
+  RiSparkling2Fill,
 } from 'react-icons/ri';
-import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
 import { openImageFilePanel } from '../media/ImageFilePanel';
 import { openMediaFilePanel } from '../media/MediaFilePanel';
 import { BlockHighlightIcon } from '../ui/TextEditorIcons';
 import { SlashTableSizePicker } from './SlashTableSizePicker';
+import { getTextEditorBridgeStorage } from '../extensions/TextEditorBridgeExtension';
 
 export { openBreaticSlashMenu } from './SlashMenuPlugin';
 
@@ -57,25 +58,6 @@ const insertSlashTable = (editor: Editor, range: Range, rows: number, cols: numb
   editor.chain().focus().deleteRange({ from, to }).insertTable({ rows, cols, withHeaderRow: true }).run();
 };
 
-const getPendingPosAfterInsert = (editor: Editor, typeName: string): number | null => {
-  const sel = editor.state.selection;
-  if (sel instanceof NodeSelection && sel.node.type.name === typeName) {
-    return sel.from;
-  }
-  const { $from } = sel;
-  for (let d = $from.depth; d > 0; d -= 1) {
-    const n = $from.node(d);
-    if (n.type.name === typeName) {
-      return $from.before(d);
-    }
-  }
-  const nb = $from.nodeBefore;
-  if (nb?.type.name === typeName) {
-    return $from.pos - nb.nodeSize;
-  }
-  return null;
-};
-
 interface SlashItem {
   title: string;
   subtext?: string;
@@ -86,6 +68,20 @@ interface SlashItem {
 }
 
 const SLASH_ITEMS: SlashItem[] = [
+  {
+    title: 'AI tools',
+    subtext: 'Generate or edit with AI',
+    group: 'AI',
+    icon: <RiSparkling2Fill size={16} />,
+    aliases: ['ai', 'gpt', 'assist', 'spark', 'llm', 'magic'],
+    command: ({ editor, range }) => {
+      const cursorPos = Math.max(1, Math.min(range.from, editor.state.doc.content.size));
+      editor.chain().focus().deleteRange(range).setTextSelection(cursorPos).run();
+      queueMicrotask(() => {
+        getTextEditorBridgeStorage(editor).openGenerationAIMenu?.();
+      });
+    },
+  },
   {
     title: 'Paragraph',
     subtext: 'Plain paragraph',
@@ -183,11 +179,8 @@ const SLASH_ITEMS: SlashItem[] = [
     icon: <RiImage2Fill size={18} />,
     aliases: ['image', 'imageupload', 'upload', 'img', 'picture', 'media', 'url'],
     command: ({ editor, range }) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingImage' }).run();
-      const pos = getPendingPosAfterInsert(editor, 'pendingImage');
-      if (pos == null) return;
-      editor.chain().focus().setNodeSelection(pos).run();
-      openImageFilePanel(editor, pos);
+      editor.chain().focus().deleteRange(range).run();
+      openImageFilePanel(editor);
     },
   },
   {
@@ -197,11 +190,8 @@ const SLASH_ITEMS: SlashItem[] = [
     icon: <RiFilmLine size={16} />,
     aliases: ['video', 'movie', 'clip', 'mp4', 'media'],
     command: ({ editor, range }) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingVideo' }).run();
-      const pos = getPendingPosAfterInsert(editor, 'pendingVideo');
-      if (pos == null) return;
-      editor.chain().focus().setNodeSelection(pos).run();
-      openMediaFilePanel(editor, pos, 'video');
+      editor.chain().focus().deleteRange(range).run();
+      openMediaFilePanel(editor, null, 'video');
     },
   },
   {
@@ -211,11 +201,8 @@ const SLASH_ITEMS: SlashItem[] = [
     icon: <RiVolumeUpFill size={16} />,
     aliases: ['audio', 'sound', 'voice', 'music', 'mp3'],
     command: ({ editor, range }) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingAudio' }).run();
-      const pos = getPendingPosAfterInsert(editor, 'pendingAudio');
-      if (pos == null) return;
-      editor.chain().focus().setNodeSelection(pos).run();
-      openMediaFilePanel(editor, pos, 'audio');
+      editor.chain().focus().deleteRange(range).run();
+      openMediaFilePanel(editor, null, 'audio');
     },
   },
   {
@@ -225,11 +212,8 @@ const SLASH_ITEMS: SlashItem[] = [
     icon: <RiFile2Line size={16} />,
     aliases: ['file', 'document', 'attachment', 'pdf', 'doc'],
     command: ({ editor, range }) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'pendingFile' }).run();
-      const pos = getPendingPosAfterInsert(editor, 'pendingFile');
-      if (pos == null) return;
-      editor.chain().focus().setNodeSelection(pos).run();
-      openMediaFilePanel(editor, pos, 'file');
+      editor.chain().focus().deleteRange(range).run();
+      openMediaFilePanel(editor, null, 'file');
     },
   },
   {
@@ -255,7 +239,7 @@ interface SlashMenuListHandle {
   onKeyDown: (props: { event: KeyboardEvent }) => boolean;
 }
 
-const GROUP_ORDER = ['Basic blocks', 'Media'];
+const GROUP_ORDER = ['Basic blocks', 'Media', 'AI'];
 
 /** Scroll column for the text editor — menu must live here to move with content scroll. */
 function getSlashMenuPortalRoot(editor: Editor): HTMLElement {
@@ -280,12 +264,18 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
   const [, bumpLayout] = useReducer((n: number) => n + 1, 0);
   const editor = props.editor as Editor;
 
-  const tableFlatIndex = useMemo(
-    () => props.items.findIndex((it) => it.title === TABLE_SLASH_TITLE),
+  const flatItemsInRenderOrder = useMemo(
+    () => GROUP_ORDER.flatMap((group) => props.items.filter((item) => item.group === group)),
     [props.items],
   );
 
+  const tableFlatIndex = useMemo(
+    () => flatItemsInRenderOrder.findIndex((it) => it.title === TABLE_SLASH_TITLE),
+    [flatItemsInRenderOrder],
+  );
+
   const showTablePicker = tableFlatIndex >= 0 && selectedIndex === tableFlatIndex;
+  const itemCount = Math.max(flatItemsInRenderOrder.length, 1);
 
   const portalRoot = useMemo(() => getSlashMenuPortalRoot(editor), [editor]);
 
@@ -372,15 +362,15 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
   useImperativeHandle(ref, () => ({
     onKeyDown({ event }) {
       if (event.key === 'ArrowUp') {
-        setSelectedIndex((i) => (i - 1 + Math.max(props.items.length, 1)) % Math.max(props.items.length, 1));
+        setSelectedIndex((i) => (i - 1 + itemCount) % itemCount);
         return true;
       }
       if (event.key === 'ArrowDown') {
-        setSelectedIndex((i) => (i + 1) % Math.max(props.items.length, 1));
+        setSelectedIndex((i) => (i + 1) % itemCount);
         return true;
       }
       if (event.key === 'Enter') {
-        const item = props.items[selectedIndex];
+        const item = flatItemsInRenderOrder[selectedIndex];
         if (item) {
           const ed = props.editor as Editor;
           const range = getBreaticSlashCommandRange(ed) ?? props.range;
@@ -395,7 +385,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
       }
       return false;
     },
-  }), [props.items, props.editor, props.range, selectedIndex, tableHover]);
+  }), [flatItemsInRenderOrder, itemCount, props.editor, props.range, selectedIndex, tableHover]);
 
   if (!props.items.length) {
     return createPortal(

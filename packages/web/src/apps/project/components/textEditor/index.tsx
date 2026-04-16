@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
@@ -15,6 +16,10 @@ import { BreaticImage } from './extensions/BreaticImageExtension';
 import { BreaticTableCell, BreaticTableHeader } from './table/TableCellBackground';
 import { SlashCommandExtension } from './slash/SlashCommand';
 import { breaticSlashMenuKey, closeBreaticSlashMenu } from './slash/SlashMenuPlugin';
+import {
+  TextEditorBridgeExtension,
+  getTextEditorBridgeStorage,
+} from './extensions/TextEditorBridgeExtension';
 import ImageFilePanel from './media/ImageFilePanel';
 import { PendingImage } from './extensions/PendingImageExtension';
 import { PendingVideo } from './extensions/PendingVideoExtension';
@@ -33,6 +38,7 @@ import type { TextEditorProps } from './types';
 import EditorMenus from './ui/EditorMenus';
 import BlockLineControl from './ui/BlockLineControl';
 import RightToolbar from './ui/RightToolbar';
+import AIMenu from './ui/AIMenu';
 import TableOfContents from './toc/TableOfContents';
 import 'highlight.js/styles/github-dark.css';
 import '@/styles/editor.css';
@@ -151,6 +157,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       BreaticVideo,
       BreaticAudio,
       BreaticCodeBlock,
+      TextEditorBridgeExtension,
       SlashCommandExtension,
       HeadingFold,
       FormatBubbleSuppress,
@@ -164,6 +171,9 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
         focusout: (view, event) => {
           const nextTarget = (event as FocusEvent).relatedTarget;
           if (nextTarget instanceof Element && nextTarget.closest('[data-breatic-slash-menu]')) {
+            return false;
+          }
+          if (nextTarget instanceof Element && nextTarget.closest('[data-breatic-text-editor-ai-menu]')) {
             return false;
           }
           try {
@@ -192,6 +202,92 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       flushPendingEditorSync();
     },
   });
+
+  const [aiMenuOpen, setAIMenuOpen] = useState(false);
+  const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
+  const [aiCursorPos, setAiCursorPos] = useState<number | null>(null);
+  const [aiCursorHintRect, setAiCursorHintRect] = useState<{ top: number; left: number; height: number } | null>(null);
+
+  const handleOpenGenerationAIMenu = useCallback(() => {
+    if (!editor) return;
+    const { $from, from } = editor.state.selection;
+    const blockTypesForAIMenuAnchor = new Set([
+      'paragraph',
+      'heading',
+      'blockquote',
+      'codeBlock',
+      'listItem',
+      'taskItem',
+    ]);
+    let anchorPos: number | null = null;
+    for (let d = $from.depth; d >= 1; d -= 1) {
+      const node = $from.node(d);
+      if (blockTypesForAIMenuAnchor.has(node.type.name)) {
+        anchorPos = $from.start(d);
+        break;
+      }
+    }
+    setAiAnchorPos(anchorPos ?? from);
+    setAiCursorPos(from);
+    setAIMenuOpen(true);
+  }, [editor]);
+
+  const handleCloseGenerationAIMenu = useCallback(() => {
+    setAIMenuOpen(false);
+    setAiAnchorPos(null);
+    setAiCursorPos(null);
+    setAiCursorHintRect(null);
+    editor?.commands.focus();
+  }, [editor]);
+
+  const hideAiCursorHint = useCallback(() => {
+    setAiCursorPos(null);
+    setAiCursorHintRect(null);
+  }, []);
+
+  const updateAiCursorHintRect = useCallback((ed: Editor, pos: number) => {
+    const docSize = ed.state.doc.content.size;
+    const basePos = Math.max(1, Math.min(pos, Math.max(1, docSize)));
+    const candidates = [basePos, Math.max(1, basePos - 1), Math.min(Math.max(1, docSize), basePos + 1)];
+    for (const p of candidates) {
+      try {
+        const coords = ed.view.coordsAtPos(p);
+        const lineHeight = Math.max(12, coords.bottom - coords.top);
+        const hintHeight = Math.min(20, lineHeight);
+        setAiCursorHintRect({
+          left: coords.left,
+          top: coords.top,
+          height: hintHeight,
+        });
+        return;
+      } catch {
+        // Try nearby position.
+      }
+    }
+    setAiCursorHintRect(null);
+  }, []);
+
+  useEffect(() => {
+    if (!editor) return;
+    const bridge = getTextEditorBridgeStorage(editor);
+    bridge.openGenerationAIMenu = handleOpenGenerationAIMenu;
+    return () => {
+      bridge.openGenerationAIMenu = null;
+    };
+  }, [editor, handleOpenGenerationAIMenu]);
+
+  useEffect(() => {
+    if (!aiMenuOpen || aiCursorPos == null || !editor) return;
+    updateAiCursorHintRect(editor, aiCursorPos);
+
+    const onViewportChange = () => updateAiCursorHintRect(editor, aiCursorPos);
+    window.addEventListener('scroll', onViewportChange, true);
+    window.addEventListener('resize', onViewportChange);
+    return () => {
+      window.removeEventListener('scroll', onViewportChange, true);
+      window.removeEventListener('resize', onViewportChange);
+    };
+  }, [aiMenuOpen, aiCursorPos, editor, updateAiCursorHintRect]);
 
   useEditorState({
     editor,
@@ -241,27 +337,51 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
   }, []);
 
   return (
-    <div className='flex h-full w-full overflow-hidden text-text-default-base'>
-      {editor && <TableOfContents editor={editor} />}
-      <div
-        className='breatic-editor-wrapper relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background-default-secondary'
-      >
-        <div className='breatic-editor-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto'>
-          <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
-            <EditorContent editor={editor} />
-            {editor && <EditorMenus editor={editor} />}
-            {editor && <BlockLineControl editor={editor} />}
+    <>
+      <div className='flex h-full w-full overflow-hidden text-text-default-base'>
+        {editor && <TableOfContents editor={editor} />}
+        <div
+          className='breatic-editor-wrapper relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background-default-secondary'
+        >
+          <div className='breatic-editor-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto'>
+            <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
+              <EditorContent editor={editor} />
+              {editor && <EditorMenus editor={editor} />}
+              {editor && <BlockLineControl editor={editor} />}
+            </div>
+            <ImageFilePanel />
+            <MediaFilePanel />
           </div>
-          <ImageFilePanel />
-          <MediaFilePanel />
+          {editor && (
+            <div className='pointer-events-none absolute inset-y-0 right-3 z-10 flex flex-col items-end justify-center py-3'>
+              <RightToolbar editor={editor} nodeId={nodeId} onOpenAIMenu={handleOpenGenerationAIMenu} />
+            </div>
+          )}
         </div>
-        {editor && (
-          <div className='pointer-events-none absolute inset-y-0 right-3 z-10 flex flex-col items-end justify-center py-3'>
-            <RightToolbar editor={editor} nodeId={nodeId} />
-          </div>
-        )}
       </div>
-    </div>
+      {editor && aiMenuOpen && aiAnchorPos != null && (
+        <AIMenu
+          editor={editor}
+          anchorPos={aiAnchorPos}
+          onClose={handleCloseGenerationAIMenu}
+          menuVariant='generation'
+          onPreviewApplied={hideAiCursorHint}
+        />
+      )}
+      {editor && aiMenuOpen && aiCursorHintRect && (
+        <div
+          className='pointer-events-none fixed rounded-full bg-[#4F46E5] shadow-[0_0_0_1px_rgba(79,70,229,0.25),0_0_10px_rgba(79,70,229,0.6)] animate-pulse'
+          style={{
+            zIndex: 100,
+            top: aiCursorHintRect.top,
+            left: aiCursorHintRect.left - 1,
+            width: 3,
+            height: aiCursorHintRect.height,
+          }}
+          aria-hidden
+        />
+      )}
+    </>
   );
 };
 

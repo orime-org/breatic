@@ -17,6 +17,7 @@ import {
 } from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
 import {
   RiDeleteBin6Line,
+  RiSparkling2Fill,
   RiAlignLeft,
   RiAlignCenter,
   RiAlignRight,
@@ -48,6 +49,7 @@ import {
   selectWholeTable,
   setWholeTableVerticalAlign,
 } from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
+import { getTextEditorBridgeStorage } from '@/apps/project/components/textEditor/extensions/TextEditorBridgeExtension';
 
 /** Same horizontal alignment as row/column handle menus (`cell.attrs.align`). */
 function setTableAllCellsAlign(editor: Editor, tableStart: number, align: 'left' | 'center' | 'right'): boolean {
@@ -341,6 +343,28 @@ const BlockTypeMenu = ({
     onClose();
   };
 
+  const editWithAI = useCallback(() => {
+    const bs = anchorBlockStartRef.current;
+    if (bs == null) {
+      onClose();
+      return;
+    }
+    const node = editor.state.doc.nodeAt(bs);
+    if (!node) {
+      onClose();
+      return;
+    }
+    const from = bs + 1;
+    const to = bs + node.nodeSize - 1;
+    if (to > from) {
+      editor.chain().focus().setTextSelection({ from, to }).run();
+    } else {
+      editor.chain().focus().setTextSelection(from).run();
+    }
+    getTextEditorBridgeStorage(editor).openSelectionAIMenu?.();
+    onClose();
+  }, [anchorBlockStartRef, editor, onClose]);
+
   const setAlign = (align: 'left' | 'center' | 'right') => {
     const bs = anchorBlockStartRef.current;
     if (bs == null) {
@@ -582,6 +606,18 @@ const BlockTypeMenu = ({
           <div className='my-1.5 border-t border-border-default-base' />
         </>
       )}
+
+      <button
+        type='button'
+        role='menuitem'
+        className={itemClass}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={editWithAI}
+      >
+        <RiSparkling2Fill size={15} className='shrink-0 text-text-default-tertiary' />
+        Edit with AI
+      </button>
+      <div className='my-1.5 border-t border-border-default-base' />
 
       <button
         type='button'
