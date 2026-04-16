@@ -31,6 +31,7 @@ import { BlockIndent } from './extensions/BlockIndentExtension';
 import { BreaticVideo } from './extensions/BreaticVideoExtension';
 import { BreaticAudio } from './extensions/BreaticAudioExtension';
 import { BreaticCodeBlock } from './extensions/breaticCodeBlockView';
+import { HighlightBlock } from './extensions/HighlightBlockExtension';
 import MediaFilePanel from './media/MediaFilePanel';
 import { useImageEditorStore as useProjectStore } from '@/hooks/useImageEditorStore';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
@@ -123,6 +124,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       TextAlign.configure({ types: ['heading', 'paragraph', 'table'] }),
       Link.configure({ openOnClick: false }),
       Highlight.configure({ multicolor: false }),
+      HighlightBlock,
       Placeholder.configure({
         placeholder: ({ node }) => {
           if (node.type.name === 'paragraph') return 'Enter text or type \'/\' for commands…';

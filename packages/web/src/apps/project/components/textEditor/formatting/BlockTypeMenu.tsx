@@ -100,8 +100,8 @@ const resolveAnchorActiveKey = (doc: PMNode, bs: number | null): string | null =
     if (name === 'codeBlock') return 'codeBlock';
     if (name === 'horizontalRule') return 'horizontalRule';
     if (name === 'heading') return `h${node.attrs.level as number}`;
+    if (name === 'highlightBlock') return 'highlight';
     if (name === 'paragraph') return 'paragraph';
-    if (name === 'highlight') return 'highlight';
   }
   return null;
 };
@@ -270,7 +270,7 @@ const BASIC_BLOCKS: readonly {
     nodeKey: 'highlight',
     apply: (ch) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (ch as any).toggleHighlight().run(),
+      (ch as any).toggleHighlightBlock().run(),
   },
 ] as const;
 type HandleSubmenu = 'none' | 'alignIndent' | 'color';

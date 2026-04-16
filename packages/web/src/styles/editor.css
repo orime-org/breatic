@@ -148,6 +148,14 @@
   padding: 0;
 }
 
+.breatic-editor-body .ProseMirror .breatic-highlight-block {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 134, 199, 0.35);
+  background: rgba(79, 70, 229, 0.1);
+}
+
 .breatic-editor-body .ProseMirror .breatic-code-block-node {
   position: relative;
   margin: 1.5rem 0;

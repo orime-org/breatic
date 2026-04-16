@@ -104,10 +104,10 @@ const BLOCK_TYPES: BlockTypeItem[] = [
     key: 'highlight',
     label: 'Highlight block',
     icon: BlockHighlightIcon,
-    isActive: (e) => e.isActive('highlight'),
+    isActive: (e) => e.isActive('highlightBlock'),
     command: (e) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (e.chain().focus() as any).toggleHighlight().run(),
+      (e.chain().focus() as any).toggleHighlightBlock().run(),
   },
 ];
 

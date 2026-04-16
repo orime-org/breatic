@@ -96,8 +96,8 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
       to: number;
     }) => {
       if (aiMenuOpenRef.current) return false;
-      // Keep code block editing clean: no formatting bubble inside code blocks.
-      if (props.editor.isActive('codeBlock')) return false;
+      // Keep block-editing clean: no formatting bubble inside code-like blocks.
+      if (props.editor.isActive('codeBlock') || props.editor.isActive('highlightBlock')) return false;
       return formatBubbleShouldShow(props);
     },
     [],

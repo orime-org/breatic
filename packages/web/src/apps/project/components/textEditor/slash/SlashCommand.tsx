@@ -148,13 +148,13 @@ const SLASH_ITEMS: SlashItem[] = [
   },
   {
     title: 'Highlight block',
-    subtext: 'Emphasized background on text',
+    subtext: 'Emphasized background for this block',
     group: 'Basic blocks',
     icon: <BlockHighlightIcon size={15} />,
     aliases: ['highlight', 'marker', 'callout', 'bg'],
     command: ({ editor, range }) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (editor.chain().focus().deleteRange(range) as any).toggleHighlight().run(),
+      (editor.chain().focus().deleteRange(range) as any).toggleHighlightBlock().run(),
   },
   {
     title: 'Code Block',
