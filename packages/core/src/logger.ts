@@ -71,6 +71,6 @@ function buildTransport(): pino.TransportMultiOptions {
 /** Singleton pino logger instance. */
 export const logger = pino({
   level: env.DEBUG ? "debug" : "info",
-  timestamp: pino.stdTimeFunctions.isoTime,
+  timestamp: () => `,"time":${Date.now()},"timestamp":"${new Date().toISOString()}"`,
   transport: buildTransport(),
 });
