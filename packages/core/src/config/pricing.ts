@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { env } from "./env.js";
+import { env, MONOREPO_ROOT } from "./env.js";
 
 const tierSchema = z.object({
   name: z.string(),
@@ -51,7 +51,7 @@ let _cachedTiers: PricingTier[] | null = null;
 export function getPricingTiers(): PricingTier[] {
   if (_cachedTiers) return _cachedTiers;
 
-  const configPath = resolve(import.meta.dirname, "../../../../config/pricing.yaml");
+  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
   const raw = readFileSync(configPath, "utf-8");
   const parsed = pricingSchema.parse(parse(raw));
 

@@ -12,12 +12,13 @@ import { resolve, extname } from "node:path";
 import { existsSync } from "node:fs";
 import { tool } from "ai";
 import { z } from "zod";
+import { MONOREPO_ROOT } from "../../config/env.js";
 
 const MAX_OUTPUT = 10_000;
 const TIMEOUT_MS = 60_000;
 
 /** Root directory for built-in skills. */
-const SKILLS_DIR = resolve(import.meta.dirname, "../../../../../skills");
+const SKILLS_DIR = resolve(MONOREPO_ROOT, "skills");
 
 /** Map file extensions to their interpreter commands. */
 const INTERPRETERS: Readonly<Record<string, string>> = {

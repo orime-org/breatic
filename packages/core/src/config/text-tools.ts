@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MONOREPO_ROOT } from "./env.js";
 
 const textToolsConfigSchema = z.object({
   model: z.string().default("google/gemini-2.5-flash"),
@@ -18,7 +19,7 @@ let _cached: z.infer<typeof textToolsConfigSchema> | null = null;
 
 function loadConfig(): z.infer<typeof textToolsConfigSchema> {
   if (_cached) return _cached;
-  const dir = resolve(import.meta.dirname, "../../../../config");
+  const dir = resolve(MONOREPO_ROOT, "config");
   const raw = readFileSync(resolve(dir, "text-tools.yaml"), "utf-8");
   _cached = textToolsConfigSchema.parse(parse(raw) as unknown);
   return _cached;
