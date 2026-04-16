@@ -23,7 +23,7 @@ export default defineConfig(({ command, mode }) => {
     // Inject backend-only env vars into frontend (avoids duplicating VITE_ prefixed vars)
     define: {
       'import.meta.env.VITE_LOGIN_MODE': JSON.stringify(env.LOGIN_MODE || 'WithAccount'),
-      'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
+      '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
     },
     plugins: [
       react(),

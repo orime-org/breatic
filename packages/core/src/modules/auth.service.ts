@@ -46,7 +46,8 @@ export async function register(
   }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const user = await userRepo.createUser({ email, hashedPassword });
+  const username = email.split("@")[0];
+  const user = await userRepo.createUser({ email, hashedPassword, username });
   logger.info({ userId: user.id, email }, "user_registered");
   return user;
 }
@@ -112,15 +113,15 @@ export async function loginOrCreateGoogle(
       user =
         (await userRepo.updateUser(user.id, { googleId })) ?? user;
     } else {
-      user = await userRepo.createUser({ email, googleId });
-      user =
-        (await userRepo.updateUser(user.id, {
-          username: name,
-          avatarUrl: avatar,
-          emailVerified: true,
-        })) ?? user;
+      user = await userRepo.createUser({ email, googleId, username: name || email.split("@")[0] });
     }
   }
+
+  // 每次 Google 登录都同步最新的昵称和头像
+  const updates: Parameters<typeof userRepo.updateUser>[1] = { emailVerified: true };
+  if (name && !user.username) updates.username = name;
+  if (avatar) updates.avatarUrl = avatar;
+  user = (await userRepo.updateUser(user.id, updates)) ?? user;
 
   const token = crypto.randomUUID();
   const redis = getRedis();

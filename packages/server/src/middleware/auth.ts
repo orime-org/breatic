@@ -12,11 +12,27 @@ import { DEV_USER_ID } from "@breatic/shared";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
-  user: { id: string; email: string };
+  user: {
+    id: string;
+    email: string;
+    username: string | null;
+    avatarUrl: string | null;
+    credits: number;
+    membershipType: string;
+    membershipExpiresAt: Date | null;
+  };
 }
 
 /** Default dev user for NoAccount mode. */
-const DEV_USER = { id: DEV_USER_ID, email: "dev@localhost" };
+const DEV_USER = {
+  id: DEV_USER_ID,
+  email: "dev@localhost",
+  username: "Dev User",
+  avatarUrl: null,
+  credits: 99999,
+  membershipType: "free" as const,
+  membershipExpiresAt: null,
+};
 
 /** Ensure the dev user row exists in the DB (NoAccount mode only, runs once). */
 let devUserEnsured = false;
@@ -62,6 +78,14 @@ export const requireAuth: MiddlewareHandler<{
     return c.json({ error: { code: 401, message: "Invalid or expired token" } }, 401);
   }
 
-  c.set("user", { id: user.id, email: user.email });
+  c.set("user", {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    avatarUrl: user.avatarUrl,
+    credits: user.credits,
+    membershipType: user.membershipType,
+    membershipExpiresAt: user.membershipExpiresAt,
+  });
   await next();
 };

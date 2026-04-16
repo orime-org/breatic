@@ -76,6 +76,7 @@ export async function createUser(data: {
   email: string;
   hashedPassword?: string;
   googleId?: string;
+  username?: string;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -83,6 +84,7 @@ export async function createUser(data: {
       email: data.email,
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
+      username: data.username,
     })
     .returning();
   return toEntity(rows[0]!);
