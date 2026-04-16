@@ -21,7 +21,7 @@ export { getPricingTiers, findTierByName, findTierByPriceId } from "./config/pri
 export { getModelForTool, getPromptForTool } from "./config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
-export { getRedis, closeRedis } from "./infra/redis.js";
+export { getRedis, closeRedis, getQueueRedis, closeQueueRedis, getStreamRedis, closeStreamRedis } from "./infra/redis.js";
 export { checkRateLimit } from "./infra/rate-limiter.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";

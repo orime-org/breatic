@@ -42,6 +42,8 @@ export const env = createEnv({
 
     // ── Redis ─────────────────────────────────────────
     REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
+    REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
+    REDIS_STREAM_URL: z.string().url().default("redis://localhost:6379/2"),
 
     // ── CORS ──────────────────────────────────────────
     ALLOWED_ORIGINS: z.string().default("http://localhost:3001"),
