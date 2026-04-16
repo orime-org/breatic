@@ -1,0 +1,48 @@
+# Dependencies (installed in Docker)
+node_modules
+packages/*/node_modules
+
+# Build output (built in Docker)
+packages/*/dist
+*.tsbuildinfo
+.turbo
+
+# Environment (secrets — never copy into image)
+.env
+.env.local
+.env.*.local
+.env.dev
+.env.docker
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+.trae
+
+# Claude Code
+.claude
+.claudeignore
+.remember
+.playwright-mcp
+
+# Git
+.git
+.gitignore
+
+# Docs (not needed at runtime, but keep skills/ and agents/ .md files)
+README.md
+CLAUDE.md
+CHANGELOG.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+LICENSE
+docs/
+
+# Tests (not needed at runtime)
+packages/*/src/__tests__
+
+# Dev config
+eslint.config.mjs
+packages/*/vitest.config.ts
+packages/*/typedoc.json
