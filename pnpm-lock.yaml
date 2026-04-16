@@ -59,6 +59,9 @@ importers:
       pino-pretty:
         specifier: ^13.0.0
         version: 13.0.0
+      pino-roll:
+        specifier: ^4.0.0
+        version: 4.0.0
       postgres:
         specifier: ^3.4.0
         version: 3.4.0

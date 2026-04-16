@@ -20,12 +20,12 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import Redis from "ioredis";
 import * as Y from "yjs";
-import pino from "pino";
 import type { NodeEvent } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
 import { canvasDocName } from "./schema.js";
+import { createLogger } from "./logger.js";
 
-const logger = pino({ name: "task-listener" });
+const logger = createLogger("task-listener");
 
 function canvasNodeStreamKey(envPrefix: string): string {
   return `${envPrefix}:stream:canvas-nodes`;
