@@ -59,7 +59,7 @@ pnpm install
 docker compose up -d postgres redis
 
 # Create environment config
-cp .env.example .env
+cp .env.dev .env
 # Edit .env — defaults work for local dev
 ```
 
@@ -86,7 +86,7 @@ cd packages/web && pnpm dev  # Vite on :8000
 
 ### Local Dev Environment Variables
 
-Default values in `.env.example` work out of the box:
+Default values in `.env.dev` work out of the box:
 
 | Variable | Value | Note |
 |----------|-------|------|
@@ -121,8 +121,8 @@ One command deploys everything. For open-source users and internal networks.
 git clone https://github.com/orime-org/breatic_ai.git
 cd breatic_ai
 
-cp .env.example .env
-# Edit .env — see configuration below
+cp .env.docker .env
+# Edit .env — set your domain, SESSION_SECRET_KEY, AI provider keys
 
 docker compose up -d
 
