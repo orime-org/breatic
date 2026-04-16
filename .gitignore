@@ -10,7 +10,8 @@ dist/
 .env
 
 # SSL certificates (never commit)
-docker/certs/*.pem
+docker/certs/*
+!docker/certs/README.md
 .env.local
 .env.*.local
 
