@@ -60,6 +60,7 @@ export function createLogger(name: string): pino.Logger {
 const rootLogger = pino({
   name: "collab",
   level: DEBUG ? "debug" : "info",
+  timestamp: pino.stdTimeFunctions.isoTime,
   transport: buildTransport(),
 });
 
