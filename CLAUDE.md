@@ -4,18 +4,30 @@
 
 # 技术栈
 
-Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQL (postgres.js) | ioredis | BullMQ | Vercel AI SDK | Hocuspocus 3.4.4 | Zod | Vitest | pino
+Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQL (postgres.js) | ioredis | BullMQ | Vercel AI SDK | Hocuspocus 3.4.4 | Zod | Vitest | pino + pino-roll
 
 # 开发命令
 
 ```bash
-pnpm dev              # API (port 3000)
+# 本地开发（先启动 PG + Redis）
+docker compose up -d postgres redis
+cp .env.dev .env           # 首次
+
+pnpm dev              # turbo 启动所有服务（自动先 build shared/core）
 pnpm dev:collab       # Hocuspocus (port 1234)
 pnpm dev:worker       # BullMQ Worker
+
+# Docker 全量部署
+cp .env.docker .env        # 首次，改域名和密钥
+docker compose up -d       # 6 个容器
+
+# 质量检查
 pnpm test             # 单元测试 (mock，无需外部依赖)
 pnpm typecheck        # tsc --noEmit
 pnpm lint             # ESLint
 ```
+
+> `pnpm dev` 通过 turbo `dependsOn: ["^build"]` 自动先编译 shared → core，再启动 server/worker/collab（tsup --watch / tsc --watch）。
 
 # 目录结构
 
@@ -48,13 +60,15 @@ uploads/               # AIGC 生成文件本地存储（git-ignored）
 
 ```
 shared（零依赖）
+  ↑           ↑
+core        collab（只依赖 shared，不依赖 core）
   ↑
-core（所有业务逻辑）
-  ↑
-server / worker / collab / web
+server / worker / web
 ```
 
-**严格边界**：server 不 import worker，worker 不 import server。所有共享逻辑在 core。
+**严格边界**：server 不 import worker，worker 不 import server。所有共享业务逻辑在 core。collab 是独立进程，只依赖 shared 类型。
+
+**Package exports**：shared/core 导出 `./dist/index.js`（行业标准），本地开发和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`（向上查找 `pnpm-workspace.yaml`），不依赖 `import.meta.dirname` 相对层级。
 
 # 架构
 
@@ -161,6 +175,19 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
 | `config/pricing.yaml` | 积分套餐（5 tier，test+live Stripe ID） |
 | `config/models/*.yaml` | AI 模型路由（46 文件，model-centric） |
+
+# 日志
+
+每个服务独立日志目录，pino-roll 每日轮转：
+
+| 服务 | 目录 | 初始化 |
+|------|------|--------|
+| API | `logs/api/` | 默认 `initLogger("api")` |
+| Worker | `logs/worker/` | 入口显式 `initLogger("worker")` |
+| Collab | `logs/collab/` | 独立 logger（不依赖 core） |
+| Nginx | `logs/nginx/` | logrotate，30 天保留 |
+
+每条日志双时间戳：`timestamp`（ISO 8601）+ `time`（epoch ms）。
 
 # 代码风格
 
