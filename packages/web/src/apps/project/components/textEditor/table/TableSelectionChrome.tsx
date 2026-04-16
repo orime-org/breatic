@@ -121,6 +121,31 @@ const TableSelectionChrome = ({ editor }: { editor: Editor }) => {
     };
   }, [editor, syncOverlay]);
 
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const view = getPmView(editor);
+    if (!view?.dom || !(view.dom instanceof HTMLElement)) return;
+
+    const editorDom = view.dom;
+    const scrollRoot =
+      (editorDom.closest('.breatic-editor-scroll') as HTMLElement | null) ??
+      (editorDom.closest('.breatic-editor-wrapper') as HTMLElement | null);
+
+    const ro = new ResizeObserver(() => {
+      syncOverlay();
+    });
+
+    ro.observe(editorDom);
+    if (scrollRoot) ro.observe(scrollRoot);
+    editorDom.querySelectorAll('table').forEach((tableEl) => {
+      if (tableEl instanceof HTMLElement) ro.observe(tableEl);
+    });
+
+    return () => {
+      ro.disconnect();
+    };
+  }, [editor, syncOverlay, tick]);
+
   const onDotPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();

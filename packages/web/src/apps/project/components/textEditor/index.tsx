@@ -253,10 +253,11 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       try {
         const coords = ed.view.coordsAtPos(p);
         const lineHeight = Math.max(12, coords.bottom - coords.top);
-        const hintHeight = Math.min(20, lineHeight);
+        const hintHeight = Math.max(10, lineHeight * 0.8);
+        const verticalOffset = (lineHeight - hintHeight) / 2;
         setAiCursorHintRect({
           left: coords.left,
-          top: coords.top,
+          top: coords.top + verticalOffset,
           height: hintHeight,
         });
         return;
