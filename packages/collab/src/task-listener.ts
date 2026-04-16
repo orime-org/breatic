@@ -164,24 +164,26 @@ async function handleNodeEvent(
  * Start listening for canvas node events on the Redis stream.
  *
  * @param hocuspocus - Running Hocuspocus server instance
- * @param redisUrl - Redis connection URL
+ * @param streamRedisUrl - Redis URL for Streams (DB 2)
+ * @param lockRedisUrl - Redis URL for canvas lock operations (DB 0)
  * @param envPrefix - Environment prefix for stream + last-id keys
  * @returns Cleanup function to stop listening
  */
 export function startTaskListener(
   hocuspocus: Hocuspocus,
-  redisUrl: string,
+  streamRedisUrl: string,
+  lockRedisUrl: string,
   envPrefix: string,
 ): () => Promise<void> {
   const streamKey = canvasNodeStreamKey(envPrefix);
   const lastIdKey = canvasNodeLastIdKey(envPrefix);
 
-  const lockRedis = new Redis(redisUrl);
+  const lockRedis = new Redis(lockRedisUrl);
 
   logger.info({ streamKey }, "Canvas node event listener starting");
 
   const stopStream = startStreamConsumer<NodeEvent>({
-    redisUrl,
+    redisUrl: streamRedisUrl,
     streamKey,
     lastIdKey,
     parse: (raw) => JSON.parse(raw) as NodeEvent,

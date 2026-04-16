@@ -5,7 +5,9 @@
  * All shared modules (db, redis, services) come from @breatic/core.
  */
 
-import { createWorker, runMigrations, logger } from "@breatic/core";
+import { initLogger, createWorker, runMigrations, logger } from "@breatic/core";
+
+initLogger("worker");
 import { runTask } from "./handlers.js";
 import type { TaskJobData } from "./handlers.js";
 

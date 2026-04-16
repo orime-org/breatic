@@ -47,8 +47,6 @@ services:
     ports:
       - "3000:3000"
     env_file: .env
-    environment:
-      - SERVICE_NAME=api
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
@@ -65,8 +63,6 @@ services:
     ports:
       - "1234:1234"
     env_file: .env
-    environment:
-      - SERVICE_NAME=collab
     volumes:
       - ./logs:/app/logs
     depends_on:
@@ -80,8 +76,6 @@ services:
     build: .
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
-    environment:
-      - SERVICE_NAME=worker
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads

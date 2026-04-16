@@ -21,7 +21,7 @@ import { taskService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { getRedis } from "@breatic/core";
+import { getRedis, getStreamRedis } from "@breatic/core";
 import { acquireNodeLock } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { ConflictError, ValidationError } from "@breatic/core";
@@ -62,6 +62,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   }
 
   const redis = getRedis();
+  const streamRedis = getStreamRedis();
   const actor = {
     userId: user.id,
     username: user.email,
@@ -107,7 +108,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // Broadcast `handling` so every collaborator sees the node enter
   // its busy state immediately — before the Worker picks up the job.
   if (nodeId && projectId) {
-    await publishNodeEvent(redis, {
+    await publishNodeEvent(streamRedis, {
       type: "handling",
       projectId,
       nodeId,

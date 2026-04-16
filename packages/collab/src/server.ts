@@ -26,7 +26,10 @@ const logger = createLogger("hocuspocus");
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
   databaseUrl: string;
+  /** General Redis (DB 0) — session verification in auth hook. */
   redisUrl: string;
+  /** Stream Redis (DB 2) — Hocuspocus cross-instance pub/sub. */
+  streamRedisUrl: string;
   envPrefix: string;
 }
 
@@ -51,10 +54,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const extensions: any[] = [
     createPersistenceExtension(infra.databaseUrl),
     new RedisExtension({
-      host: new URL(infra.redisUrl).hostname,
-      port: Number(new URL(infra.redisUrl).port) || 6379,
+      host: new URL(infra.streamRedisUrl).hostname,
+      port: Number(new URL(infra.streamRedisUrl).port) || 6379,
       options: {
-        db: Number(new URL(infra.redisUrl).pathname.slice(1)) || 0,
+        db: Number(new URL(infra.streamRedisUrl).pathname.slice(1)) || 0,
       },
       prefix: `${infra.envPrefix}:hocuspocus`,
     }),
