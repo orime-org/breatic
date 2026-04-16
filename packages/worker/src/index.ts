@@ -5,10 +5,9 @@
  * All shared modules (db, redis, services) come from @breatic/core.
  */
 
-// Set SERVICE_NAME before importing logger so logs go to logs/worker/
-process.env.SERVICE_NAME = "worker";
+import { initLogger, createWorker, runMigrations, logger } from "@breatic/core";
 
-import { createWorker, runMigrations, logger } from "@breatic/core";
+initLogger("worker");
 import { runTask } from "./handlers.js";
 import type { TaskJobData } from "./handlers.js";
 

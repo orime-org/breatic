@@ -1,14 +1,12 @@
 /**
  * Application logger (pino).
  *
- * Outputs to both console and daily-rotated log files.
- * Directory structure:
- *   logs/api/api.log          ← current day
- *   logs/api/api.2026-04-08.log ← archived
- *   logs/collab/collab.log
- *   logs/worker/worker.log
+ * Call {@link initLogger} at the entry point before any logging:
+ *   - API:    initLogger("api")    — or skip (default)
+ *   - Worker: initLogger("worker")
  *
- * Rotation: daily at midnight (00:00).
+ * Log files: logs/{service}/{service}.2026-04-16.1.log
+ * Rotation: daily at midnight (pino-roll).
  * Console: pretty-printed in dev, JSON in production.
  */
 
@@ -17,26 +15,18 @@ import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import { env } from "./config/env.js";
 
-/** Service name — set via SERVICE_NAME env var in docker-compose. */
-const SERVICE_NAME = process.env.SERVICE_NAME ?? "api";
+function buildLogger(serviceName: string): pino.Logger {
+  const logsRoot = resolve(import.meta.dirname, "../../../logs");
+  const serviceLogsDir = resolve(logsRoot, serviceName);
 
-/** Logs root at monorepo root. */
-const LOGS_ROOT = resolve(import.meta.dirname, "../../../logs");
+  try {
+    mkdirSync(serviceLogsDir, { recursive: true });
+  } catch {
+    // May fail in read-only environments — console-only logging
+  }
 
-/** Per-service logs directory: logs/api/, logs/collab/, logs/worker/. */
-const SERVICE_LOGS_DIR = resolve(LOGS_ROOT, SERVICE_NAME);
-
-// Ensure per-service logs directory exists
-try {
-  mkdirSync(SERVICE_LOGS_DIR, { recursive: true });
-} catch {
-  // May fail in read-only environments — console-only logging
-}
-
-function buildTransport(): pino.TransportMultiOptions {
   const targets: pino.TransportTargetOptions[] = [];
 
-  // Console output
   if (env.ENV === "dev") {
     targets.push({
       target: "pino-pretty",
@@ -46,31 +36,37 @@ function buildTransport(): pino.TransportMultiOptions {
   } else {
     targets.push({
       target: "pino/file",
-      options: { destination: 1 }, // stdout
+      options: { destination: 1 },
       level: "info",
     });
   }
 
-  // File output with daily rotation at midnight
-  // Current: logs/api/api.log → Archived: logs/api/api.2026-04-08.log
   targets.push({
     target: "pino-roll",
     options: {
-      file: resolve(SERVICE_LOGS_DIR, `${SERVICE_NAME}.log`),
+      file: resolve(serviceLogsDir, `${serviceName}.log`),
       frequency: "daily",
       dateFormat: "yyyy-MM-dd",
       mkdir: true,
-      // pino-roll renames current file to {name}.{date}.log at midnight
     },
     level: env.DEBUG ? "debug" : "info",
   });
 
-  return { targets };
+  return pino({
+    level: env.DEBUG ? "debug" : "info",
+    timestamp: () => `,"timestamp":"${new Date().toISOString()}","time":${Date.now()}`,
+    transport: { targets },
+  });
 }
 
-/** Singleton pino logger instance. */
-export const logger = pino({
-  level: env.DEBUG ? "debug" : "info",
-  timestamp: () => `,"time":${Date.now()},"timestamp":"${new Date().toISOString()}"`,
-  transport: buildTransport(),
-});
+/**
+ * Initialize the logger for a specific service.
+ * Must be called before any logging occurs.
+ */
+export function initLogger(serviceName: string): void {
+  logger = buildLogger(serviceName);
+}
+
+/** Logger instance — defaults to "api", call initLogger() to override. */
+// eslint-disable-next-line import/no-mutable-exports
+export let logger: pino.Logger = buildLogger("api");

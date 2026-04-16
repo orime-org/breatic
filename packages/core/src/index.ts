@@ -64,7 +64,7 @@ export { extractPromptText } from "./agent/extract-prompt.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { extractVideoCover } from "./video-cover.js";
-export { logger } from "./logger.js";
+export { logger, initLogger } from "./logger.js";
 export {
   AppError,
   NotFoundError,
