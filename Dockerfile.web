@@ -43,6 +43,9 @@ RUN cd packages/web && pnpm build -- --base=/
 # ── Stage 2: Serve with nginx ───────────────────────────────────────
 FROM nginx:1.27-alpine
 
+# Install logrotate for daily log rotation
+RUN apk add --no-cache logrotate
+
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 
@@ -50,6 +53,9 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY docker/nginx.conf /etc/nginx/templates/nginx.conf
 COPY docker/nginx-ssl.conf /etc/nginx/templates/nginx-ssl.conf
 COPY docker/breatic-locations.conf /etc/nginx/conf.d/breatic-locations.conf
+
+# Log rotation: daily, keep 30 days, compress old logs
+COPY docker/logrotate-nginx.conf /etc/logrotate.d/nginx
 
 # Entrypoint auto-selects HTTP or HTTPS based on cert presence
 COPY docker/entrypoint.sh /entrypoint.sh

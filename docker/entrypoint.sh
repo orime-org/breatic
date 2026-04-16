@@ -9,4 +9,7 @@ else
   cp /etc/nginx/templates/nginx.conf /etc/nginx/conf.d/breatic.conf
 fi
 
+# Start crond for daily log rotation
+crond -b -l 8
+
 exec nginx -g "daemon off;"
