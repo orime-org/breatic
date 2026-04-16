@@ -428,7 +428,7 @@ All `VITE_*` variables are in the root `.env` file (shared with backend). Vite r
 | `VITE_BASE_URL` | Page navigation base URL |
 | `VITE_LOGIN_MODE` | Login mode (must match backend) |
 | `VITE_APP_VERSION` | App version string |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth (optional) |
+| `GOOGLE_CLIENT_ID` | Google OAuth — injected via Vite `define` as `__GOOGLE_CLIENT_ID__` (optional) |
 | `VITE_SENTRY_DSN` | Sentry error tracking (optional) |
 
 ---
@@ -439,10 +439,6 @@ All `VITE_*` variables are in the root `.env` file (shared with backend). Vite r
 
 13 components still reference old API files (`projectApi.ts`, `userCenterApi.ts`, `workspaceApi.ts`). Should be migrated to new domain-based APIs (`auth.ts`, `projects.ts`, etc.) incrementally.
 
-### 2. Auth Integration
-
-Google OAuth via `@react-oauth/google` needs to connect with backend's `/api/v1/auth` routes. Email+password auth flow needs to be wired up.
-
 ### Resolved
 
 - ~~API Endpoint Mismatch~~ — New API files created, aligned with `/api/v1/*`
@@ -450,3 +446,4 @@ Google OAuth via `@react-oauth/google` needs to connect with backend's `/api/v1/
 - ~~Duplicate i18n System~~ — Unified to root `locales/*.json`, shared by frontend and backend
 - ~~State Management Complexity~~ — Clarified: canvas state is Yjs-first with Redux as read cache
 - ~~Direct OSS Upload~~ — Replaced with presigned URL flow (`GET /assets/presign` → direct PUT). `ossClient.ts` and `pendingFileStore.ts` removed
+- ~~Auth Integration~~ — Login page (email/password + Google OAuth + password reset) wired to `/api/v1/auth`. UserCenter fetches real user info from `/auth/me`. Google OAuth uses `__GOOGLE_CLIENT_ID__` global constant (not `import.meta.env`). axios 401 interceptor loop fixed
