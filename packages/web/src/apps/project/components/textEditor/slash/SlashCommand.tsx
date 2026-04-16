@@ -39,8 +39,9 @@ import {
   RiArrowRightSLine,
   RiSparkling2Fill,
 } from 'react-icons/ri';
-import { LiaExpandSolid } from 'react-icons/lia';
-import { MdOutlinePlaylistAdd } from 'react-icons/md';
+import { LuUserRound } from 'react-icons/lu';
+import { CgTranscript } from 'react-icons/cg';
+import { IoClipboardOutline } from 'react-icons/io5';
 import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
 import { openImageFilePanel } from '../media/ImageFilePanel';
@@ -55,12 +56,10 @@ const TABLE_SLASH_TITLE = 'Table';
 const AI_SLASH_TITLE = 'Ask AI';
 
 const AI_QUICK_ACTIONS: Array<{ key: string; title: string; replacement: string; icon: React.ReactNode }> = [
-  { key: 'polish', title: 'polish', replacement: '[POLISH] This is fixed replacement content.', icon: <RiSparkling2Fill size={15} /> },
-  { key: 'expand', title: 'expand', replacement: '[EXPAND] This is fixed replacement content.', icon: <LiaExpandSolid size={15} /> },
-  { key: 'summarize', title: 'summarize', replacement: '[SUMMARIZE] This is fixed replacement content.', icon: <RiCheckboxLine size={15} /> },
-  { key: 'translate', title: 'translate', replacement: '[TRANSLATE] This is fixed replacement content.', icon: <RiText size={15} /> },
-  { key: 'rewrite', title: 'rewrite', replacement: '[REWRITE] This is fixed replacement content.', icon: <RiCodeBoxLine size={15} /> },
-  { key: 'continue', title: 'continue', replacement: '[CONTINUE] This is fixed replacement content.', icon: <MdOutlinePlaylistAdd size={15} /> },
+  { key: 'generate', title: 'generate', replacement: '[GENERATE] This is fixed replacement content.', icon: <RiSparkling2Fill size={15} /> },
+  { key: 'character', title: 'character', replacement: '[CHARACTER] This is fixed replacement content.', icon: <LuUserRound size={15} /> },
+  { key: 'storyboard', title: 'storyboard', replacement: '[STORYBOARD] This is fixed replacement content.', icon: <IoClipboardOutline size={15} /> },
+  { key: 'script', title: 'script', replacement: '[SCRIPT] This is fixed replacement content.', icon: <CgTranscript size={15} /> },
 ];
 
 const insertSlashTable = (editor: Editor, range: Range, rows: number, cols: number) => {

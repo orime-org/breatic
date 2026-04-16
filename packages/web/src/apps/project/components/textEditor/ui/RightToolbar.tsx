@@ -8,7 +8,10 @@ import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
 import Upload, { type UploadFile } from '@/components/base/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import { RiSparkling2Fill } from 'react-icons/ri';
+import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
+import { LuUserRound } from 'react-icons/lu';
+import { CgTranscript } from 'react-icons/cg';
+import { IoClipboardOutline } from 'react-icons/io5';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
@@ -98,13 +101,11 @@ const tools: ToolItem[] = [
   { id: 'location', icon: 'project-image-editor-right-expand-corner-icon', label: 'Location', width: 20, height: 20 },
 ];
 
-const askAIQuickOptions: Array<{ key: string; label: string; replacement: string }> = [
-  { key: 'polish', label: 'polish', replacement: '[POLISH] This is fixed replacement content.' },
-  { key: 'expand', label: 'expand', replacement: '[EXPAND] This is fixed replacement content.' },
-  { key: 'summarize', label: 'summarize', replacement: '[SUMMARIZE] This is fixed replacement content.' },
-  { key: 'translate', label: 'translate', replacement: '[TRANSLATE] This is fixed replacement content.' },
-  { key: 'rewrite', label: 'rewrite', replacement: '[REWRITE] This is fixed replacement content.' },
-  { key: 'continue', label: 'continue', replacement: '[CONTINUE] This is fixed replacement content.' },
+const askAIQuickOptions: Array<{ key: string; label: string; replacement: string; icon: React.ReactNode }> = [
+  { key: 'generate', label: 'generate', replacement: '[GENERATE] This is fixed replacement content.', icon: <RiSparkling2Fill size={16} /> },
+  { key: 'character', label: 'character', replacement: '[CHARACTER] This is fixed replacement content.', icon: <LuUserRound size={16} /> },
+  { key: 'storyboard', label: 'storyboard', replacement: '[STORYBOARD] This is fixed replacement content.', icon: <IoClipboardOutline size={16} /> },
+  { key: 'script', label: 'script', replacement: '[SCRIPT] This is fixed replacement content.', icon: <CgTranscript size={16} /> },
 ];
 
 async function parseTextUploadFile(file: File): Promise<string> {
@@ -301,8 +302,24 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
 
   const uploadDropdownItems: MenuItemType[] = useMemo(
     () => [
-      { key: 'upload-insert', label: 'Insert' },
-      { key: 'upload-overwrite', label: 'Overwrite' },
+      {
+        key: 'upload-insert',
+        label: (
+          <span className='inline-flex items-center gap-2'>
+            <RiAddLine size={14} />
+            Insert
+          </span>
+        ),
+      },
+      {
+        key: 'upload-overwrite',
+        label: (
+          <span className='inline-flex items-center gap-2'>
+            <RiEdit2Line size={14} />
+            Overwrite
+          </span>
+        ),
+      },
     ],
     [],
   );
@@ -311,7 +328,12 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
     () =>
       askAIQuickOptions.map((item) => ({
         key: item.key,
-        label: item.label,
+        label: (
+          <span className='inline-flex items-center gap-2'>
+            <span className='text-text-default-secondary'>{item.icon}</span>
+            {item.label}
+          </span>
+        ),
       })),
     [],
   );
@@ -392,17 +414,17 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
 
         <Divider className='mx-1 my-0.5 w-5' />
 
-        <Tooltip title='Ask AI' placement='right' offset={4}>
-          <Dropdown
-            trigger='click'
-            placement='left-start'
-            items={askAIDropdownItems}
-            onClick={(key) => {
-              const selected = askAIQuickOptions.find((item) => item.key === key);
-              if (!selected) return;
-              onOpenAIMenu(selected.replacement);
-            }}
-          >
+        <Dropdown
+          trigger='click'
+          placement='left-start'
+          items={askAIDropdownItems}
+          onClick={(key) => {
+            const selected = askAIQuickOptions.find((item) => item.key === key);
+            if (!selected) return;
+            onOpenAIMenu(selected.replacement);
+          }}
+        >
+          <Tooltip title='Ask AI' placement='right' offset={4}>
             <button
               type='button'
               className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
@@ -410,8 +432,8 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
             >
               <RiSparkling2Fill size={22} />
             </button>
-          </Dropdown>
-        </Tooltip>
+          </Tooltip>
+        </Dropdown>
 
         {primaryTools.map((tool) => (
           <Tooltip key={tool.id} title={tool.label} placement='right' offset={4}>
