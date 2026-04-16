@@ -22,7 +22,7 @@ type RightToolbarProps = {
   editor: Editor;
   /** Workflow canvas node id for this text editor panel. */
   nodeId: string;
-  onOpenAIMenu: () => void;
+  onOpenAIMenu: (initialReplacement?: string | null) => void;
 };
 
 const panelConfig: Record<
@@ -96,6 +96,15 @@ const tools: ToolItem[] = [
   { id: 'attatch', sidePanel: 'attach', icon: 'project-image-editor-right-plus-icon', label: 'attatch', width: 20, height: 20 },
   { id: 'upstream', sidePanel: 'link', icon: 'project-image-editor-right-link-icon', label: 'Upstream', width: 20, height: 20 },
   { id: 'location', icon: 'project-image-editor-right-expand-corner-icon', label: 'Location', width: 20, height: 20 },
+];
+
+const askAIQuickOptions: Array<{ key: string; label: string; replacement: string }> = [
+  { key: 'polish', label: 'polish', replacement: '[POLISH] This is fixed replacement content.' },
+  { key: 'expand', label: 'expand', replacement: '[EXPAND] This is fixed replacement content.' },
+  { key: 'summarize', label: 'summarize', replacement: '[SUMMARIZE] This is fixed replacement content.' },
+  { key: 'translate', label: 'translate', replacement: '[TRANSLATE] This is fixed replacement content.' },
+  { key: 'rewrite', label: 'rewrite', replacement: '[REWRITE] This is fixed replacement content.' },
+  { key: 'continue', label: 'continue', replacement: '[CONTINUE] This is fixed replacement content.' },
 ];
 
 async function parseTextUploadFile(file: File): Promise<string> {
@@ -298,6 +307,15 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
     [],
   );
 
+  const askAIDropdownItems: MenuItemType[] = useMemo(
+    () =>
+      askAIQuickOptions.map((item) => ({
+        key: item.key,
+        label: item.label,
+      })),
+    [],
+  );
+
   const openUploadDialog = useCallback((mode: 'insert' | 'overwrite') => {
     setPendingUploadMode(mode);
     const input = uploadProxyRef.current?.querySelector('input[type="file"]') as HTMLInputElement | null;
@@ -374,14 +392,25 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
 
         <Divider className='mx-1 my-0.5 w-5' />
 
-        <Tooltip title='AI tools' placement='right' offset={4}>
-          <button
-            type='button'
-            className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
-            onClick={onOpenAIMenu}
+        <Tooltip title='Ask AI' placement='right' offset={4}>
+          <Dropdown
+            trigger='click'
+            placement='left-start'
+            items={askAIDropdownItems}
+            onClick={(key) => {
+              const selected = askAIQuickOptions.find((item) => item.key === key);
+              if (!selected) return;
+              onOpenAIMenu(selected.replacement);
+            }}
           >
-            <RiSparkling2Fill size={22} />
-          </button>
+            <button
+              type='button'
+              className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+              aria-haspopup='menu'
+            >
+              <RiSparkling2Fill size={22} />
+            </button>
+          </Dropdown>
         </Tooltip>
 
         {primaryTools.map((tool) => (

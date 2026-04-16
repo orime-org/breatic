@@ -2,8 +2,10 @@ import { Extension } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 
 export type TextEditorBridgeStorage = {
-  openGenerationAIMenu: (() => void) | null;
-  openSelectionAIMenu: (() => void) | null;
+  openGenerationAIMenu: ((initialReplacement?: string | null) => void) | null;
+  openSelectionAIMenu:
+    | ((options?: { initialReplacement?: string | null; range?: { from: number; to: number } }) => void)
+    | null;
 };
 
 export const TextEditorBridgeExtension = Extension.create({
@@ -11,8 +13,10 @@ export const TextEditorBridgeExtension = Extension.create({
 
   addStorage() {
     return {
-      openGenerationAIMenu: null as (() => void) | null,
-      openSelectionAIMenu: null as (() => void) | null,
+      openGenerationAIMenu: null as ((initialReplacement?: string | null) => void) | null,
+      openSelectionAIMenu: null as
+        | ((options?: { initialReplacement?: string | null; range?: { from: number; to: number } }) => void)
+        | null,
     } satisfies TextEditorBridgeStorage;
   },
 });

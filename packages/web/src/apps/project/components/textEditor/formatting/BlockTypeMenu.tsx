@@ -18,6 +18,10 @@ import {
 import {
   RiDeleteBin6Line,
   RiSparkling2Fill,
+  RiMagicLine,
+  RiListCheck2,
+  RiTranslate2,
+  RiEdit2Line,
   RiAlignLeft,
   RiAlignCenter,
   RiAlignRight,
@@ -38,6 +42,8 @@ import {
   RiPaletteLine,
   RiCheckLine,
 } from 'react-icons/ri';
+import { LiaExpandSolid } from 'react-icons/lia';
+import { MdOutlinePlaylistAdd } from 'react-icons/md';
 import { cn } from '@/utils/classnames';
 import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
 import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../ui/TextEditorIcons';
@@ -273,7 +279,45 @@ const BASIC_BLOCKS: readonly {
       (ch as any).toggleHighlightBlock().run(),
   },
 ] as const;
-type HandleSubmenu = 'none' | 'alignIndent' | 'color';
+type HandleSubmenu = 'none' | 'alignIndent' | 'color' | 'askAI';
+const ASK_AI_ACTIONS: Array<{ key: string; label: string; icon: ReactNode; replacement: string }> = [
+  {
+    key: 'polish',
+    label: 'polish',
+    icon: <RiMagicLine size={15} />,
+    replacement: '[POLISH] This is fixed replacement content.',
+  },
+  {
+    key: 'expand',
+    label: 'expand',
+    icon: <LiaExpandSolid size={15} />,
+    replacement: '[EXPAND] This is fixed replacement content.',
+  },
+  {
+    key: 'summarize',
+    label: 'summarize',
+    icon: <RiListCheck2 size={15} />,
+    replacement: '[SUMMARIZE] This is fixed replacement content.',
+  },
+  {
+    key: 'translate',
+    label: 'translate',
+    icon: <RiTranslate2 size={15} />,
+    replacement: '[TRANSLATE] This is fixed replacement content.',
+  },
+  {
+    key: 'rewrite',
+    label: 'rewrite',
+    icon: <RiEdit2Line size={15} />,
+    replacement: '[REWRITE] This is fixed replacement content.',
+  },
+  {
+    key: 'continue',
+    label: 'continue',
+    icon: <MdOutlinePlaylistAdd size={15} />,
+    replacement: '[CONTINUE] This is fixed replacement content.',
+  },
+];
 
 const BlockTypeMenu = ({
   editor,
@@ -286,6 +330,7 @@ const BlockTypeMenu = ({
   const [handleSubmenu, setHandleSubmenu] = useState<HandleSubmenu>('none');
   const alignIndentBtnRef = useRef<HTMLButtonElement>(null);
   const colorBtnRef = useRef<HTMLButtonElement>(null);
+  const askAIBtnRef = useRef<HTMLButtonElement>(null);
   const activeNodeKey = resolveAnchorActiveKey(editor.state.doc, anchorBlockStartRef.current);
   /** Doc node at frozen anchor — reliable for horizontalRule (resolveAnchorActiveKey can miss thin blocks). */
   const anchoredBlockType = useEditorState({
@@ -343,7 +388,7 @@ const BlockTypeMenu = ({
     onClose();
   };
 
-  const editWithAI = useCallback(() => {
+  const editWithAI = useCallback((initialReplacement: string | null = null) => {
     const bs = anchorBlockStartRef.current;
     if (bs == null) {
       onClose();
@@ -356,12 +401,14 @@ const BlockTypeMenu = ({
     }
     const from = bs + 1;
     const to = bs + node.nodeSize - 1;
-    if (to > from) {
-      editor.chain().focus().setTextSelection({ from, to }).run();
-    } else {
-      editor.chain().focus().setTextSelection(from).run();
+    if (to <= from) {
+      onClose();
+      return;
     }
-    getTextEditorBridgeStorage(editor).openSelectionAIMenu?.();
+    getTextEditorBridgeStorage(editor).openSelectionAIMenu?.({
+      initialReplacement,
+      range: { from, to },
+    });
     onClose();
   }, [anchorBlockStartRef, editor, onClose]);
 
@@ -424,6 +471,10 @@ const BlockTypeMenu = ({
     focusAnchorBlock();
     setHandleSubmenu((s) => (s === 'color' ? 'none' : 'color'));
   };
+  const toggleAskAISubmenu = () => {
+    focusAnchorBlock();
+    setHandleSubmenu((s) => (s === 'askAI' ? 'none' : 'askAI'));
+  };
 
   const anchorBs = anchorBlockStartRef.current;
   const anchorNode = anchorBs != null ? editor.state.doc.nodeAt(anchorBs) : null;
@@ -432,6 +483,15 @@ const BlockTypeMenu = ({
     anchoredBlockType != null && BLOCK_TYPES_DELETE_ONLY_MENU.has(anchoredBlockType);
   /** Table: horizontal + vertical align, Color, Delete (no Turn into / no indent). */
   const tableAnchorMenu = anchoredBlockType === 'table';
+  const showAskAI =
+    Boolean(anchorNode) &&
+    !mediaMenu &&
+    !tableAnchorMenu &&
+    !deleteOnlyMenu &&
+    (Boolean(anchorNode?.isTextblock) ||
+      anchorNode?.type.name === 'bulletList' ||
+      anchorNode?.type.name === 'orderedList' ||
+      anchorNode?.type.name === 'taskList');
 
   const blockRows = !mediaMenu && !tableAnchorMenu ? (
     <>
@@ -603,21 +663,55 @@ const BlockTypeMenu = ({
               }}
             />
           </BlockTypeMenuSubFloat>
+          {showAskAI && <div className='my-1.5 border-t border-border-default-base' />}
+
+          {showAskAI && (
+            <>
+              <button
+                ref={askAIBtnRef}
+                type='button'
+                role='menuitem'
+                aria-expanded={handleSubmenu === 'askAI'}
+                aria-haspopup='menu'
+                className={cn(itemClass, handleSubmenu === 'askAI' && 'bg-background-default-secondary')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={toggleAskAISubmenu}
+              >
+                <RiSparkling2Fill size={15} className='shrink-0 text-text-default-tertiary' />
+                Ask AI
+                <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
+              </button>
+              <BlockTypeMenuSubFloat
+                open={handleSubmenu === 'askAI'}
+                anchorEl={askAIBtnRef.current}
+                className={blockTypeAlignSubmenuSurfaceClass}
+                zIndex={BLOCK_TYPE_SUBMENU_Z}
+                floatingRef={subFloatingRef}
+              >
+                <>
+                  <p className={labelClass}>Ask AI</p>
+                  {ASK_AI_ACTIONS.map((item) => (
+                    <button
+                      key={item.key}
+                      type='button'
+                      role='menuitem'
+                      className={itemClass}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => editWithAI(item.replacement)}
+                    >
+                      <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+                        {item.icon}
+                      </span>
+                      {item.label}
+                    </button>
+                  ))}
+                </>
+              </BlockTypeMenuSubFloat>
+            </>
+          )}
           <div className='my-1.5 border-t border-border-default-base' />
         </>
       )}
-
-      <button
-        type='button'
-        role='menuitem'
-        className={itemClass}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={editWithAI}
-      >
-        <RiSparkling2Fill size={15} className='shrink-0 text-text-default-tertiary' />
-        Edit with AI
-      </button>
-      <div className='my-1.5 border-t border-border-default-base' />
 
       <button
         type='button'

@@ -38,6 +38,19 @@ const languageItems: MenuItemType[] = CODE_LANGUAGES.map((item) => ({
   label: item.label,
 }));
 
+const getCodeBlockDropdownContainer = (editor: NodeViewProps['editor']): HTMLElement => {
+  try {
+    const dom = editor.view?.dom as HTMLElement | undefined;
+    const scroll = dom?.closest('.breatic-editor-scroll');
+    if (scroll instanceof HTMLElement) return scroll;
+    const wrap = dom?.closest('.breatic-editor-wrapper');
+    if (wrap instanceof HTMLElement) return wrap;
+  } catch {
+    // fall through to document.body
+  }
+  return document.body;
+};
+
 const BreaticCodeBlockView = ({ node, updateAttributes, editor }: NodeViewProps) => {
   const language = normalizeLanguage(node.attrs.language);
   const languageLabel = CODE_LANGUAGES.find((item) => item.value === language)?.label ?? 'Plain text';
@@ -48,7 +61,8 @@ const BreaticCodeBlockView = ({ node, updateAttributes, editor }: NodeViewProps)
         <Dropdown
           trigger='click'
           placement='bottom-start'
-          strategy='fixed'
+          strategy='absolute'
+          getPopupContainer={() => getCodeBlockDropdownContainer(editor)}
           items={languageItems}
           selectedKeys={[language]}
           popupClassName='breatic-code-block-language-menu rounded-[8px]'

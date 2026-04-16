@@ -12,8 +12,10 @@ import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import {
+  RiArrowUpLine,
   RiArrowGoBackFill,
   RiCheckFill,
+  RiCloseLine,
   RiEdit2Line,
   RiListCheck2,
   RiLoopLeftFill,
@@ -21,17 +23,19 @@ import {
   RiSparkling2Fill,
   RiTranslate2,
 } from 'react-icons/ri';
+import { FaStopCircle } from 'react-icons/fa';
 import { LiaExpandSolid } from 'react-icons/lia';
 import { LuUserRound } from 'react-icons/lu';
 import { CgTranscript } from 'react-icons/cg';
 import { IoClipboardOutline } from 'react-icons/io5';
 import { MdOutlinePlaylistAdd } from 'react-icons/md';
+import { Button } from '@/components/base/button';
 import { cn } from '@/utils/classnames';
-import { AiErrorIcon, AiSpinnerIcon } from './TextEditorIcons';
+import { AiErrorIcon } from './TextEditorIcons';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type AIStatus = 'user-input' | 'thinking' | 'ai-writing' | 'user-reviewing' | 'error';
+type AIStatus = 'quick-actions' | 'user-input' | 'thinking' | 'ai-writing' | 'user-reviewing' | 'error';
 
 interface AISuggestionItem {
   key: string;
@@ -43,9 +47,11 @@ interface AISuggestionItem {
 export interface AIMenuProps {
   editor: Editor;
   anchorPos: number;
+  anchorRect?: DOMRect | null;
   onClose: () => void;
   menuVariant?: 'selection' | 'generation';
   onPreviewApplied?: () => void;
+  initialReplacement?: string | null;
 }
 
 const getBlockVerticalBounds = (editor: Editor, blockStartPos: number): { top: number; bottom: number } => {
@@ -74,10 +80,19 @@ const getBlockVerticalBounds = (editor: Editor, blockStartPos: number): { top: n
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPreviewApplied }: AIMenuProps) => {
-  const [status, setStatus] = useState<AIStatus>('user-input');
+const AIMenu = ({
+  editor,
+  anchorPos,
+  anchorRect = null,
+  onClose,
+  menuVariant = 'selection',
+  onPreviewApplied,
+  initialReplacement = null,
+}: AIMenuProps) => {
+  const [status, setStatus] = useState<AIStatus>('quick-actions');
   const [prompt, setPrompt] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isPromptFocused, setIsPromptFocused] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const editorRectRef = useRef<DOMRect | null>(null);
   const openedAtRef = useRef<number>(Date.now());
@@ -111,6 +126,20 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
     return {
       contextElement: editorDom,
       getBoundingClientRect: () => {
+        if (anchorRect) {
+          const anchorY = anchorToTop ? anchorRect.top : anchorRect.bottom;
+          return {
+            x: anchorRect.left,
+            y: anchorY,
+            width: anchorRect.width,
+            height: 1,
+            top: anchorY,
+            left: anchorRect.left,
+            right: anchorRect.left + anchorRect.width,
+            bottom: anchorY + 1,
+          };
+        }
+
         const bounds = getBlockVerticalBounds(editor, anchorPos);
         const editorRect = editorDom.getBoundingClientRect();
         const anchorY = anchorToTop ? bounds.top : bounds.bottom;
@@ -127,7 +156,7 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
         };
       },
     };
-  }, [editor, anchorPos, placement]);
+  }, [editor, anchorPos, anchorRect, placement]);
 
   useLayoutEffect(() => {
     refs.setReference(reference);
@@ -235,7 +264,14 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
       let to: number;
       let originalText = '';
 
-      if (menuVariant === 'generation') {
+      // Retry should replace the current preview range directly, otherwise
+      // stale selection ranges can leave trailing text behind.
+      const existingPreview = previewRef.current;
+      if (existingPreview) {
+        from = existingPreview.from;
+        to = existingPreview.to;
+        originalText = existingPreview.originalText;
+      } else if (menuVariant === 'generation') {
         const docSize = editor.state.doc.content.size;
         const insertPos = Math.max(1, Math.min(Math.max(fallbackSel.from, fallbackSel.to), docSize));
         from = insertPos;
@@ -255,9 +291,9 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
         .setTextSelection({ from, to: from + replacement.length })
         .setColor(previewColor)
         .setTextSelection(from + replacement.length)
-        // Clear stored color mark so subsequent typing stays default-colored.
-        .unsetColor()
         .run();
+      // Clear stored textStyle mark for subsequent typing without touching preview color.
+      editor.chain().focus().unsetMark('textStyle').run();
       previewRef.current = { from, to: from + replacement.length, originalText };
       onPreviewApplied?.();
       return true;
@@ -282,6 +318,11 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
     [applyPreviewReplacement, clearTimers],
   );
 
+  useEffect(() => {
+    if (!initialReplacement) return;
+    runPreviewFlow(initialReplacement);
+  }, [initialReplacement, runPreviewFlow]);
+
   // Close on click outside
   useEffect(() => {
     openedAtRef.current = Date.now();
@@ -304,13 +345,36 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
     runPreviewFlow('[AI PREVIEW] This is fixed replacement content.');
   }, [prompt, runPreviewFlow]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleStopGeneration = useCallback(() => {
+    clearTimers();
+    // Stopping generation should return to review mode immediately.
+    setStatus('user-reviewing');
+  }, [clearTimers]);
+
+  const handleStopButtonKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleStopGeneration();
+      }
+    },
+    [handleStopGeneration],
+  );
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
       handleSubmit();
     } else if (e.key === 'Escape') {
       closeMenu();
     }
   };
+
+  const handleMenuMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, [contenteditable="true"]')) return;
+    e.preventDefault();
+  }, []);
 
   // ── Suggestion items based on status ────────────────────────────────────
 
@@ -380,21 +444,6 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
     },
   ];
 
-  const reviewItems: AISuggestionItem[] = [
-    {
-      key: 'accept',
-      title: 'Accept',
-      icon: <RiCheckFill size={16} />,
-      onClick: acceptPreview,
-    },
-    {
-      key: 'revert',
-      title: 'Revert',
-      icon: <RiArrowGoBackFill size={16} />,
-      onClick: () => closeMenu(),
-    },
-  ];
-
   const errorItems: AISuggestionItem[] = [
     {
       key: 'retry',
@@ -411,37 +460,26 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
   ];
 
   const getCurrentItems = (): AISuggestionItem[] => {
-    if (status === 'user-input') return menuVariant === 'generation' ? generationItems : selectionItems;
-    if (status === 'user-reviewing') return reviewItems;
+    if (status === 'quick-actions' || status === 'user-input' || status === 'user-reviewing') {
+      return menuVariant === 'generation' ? generationItems : selectionItems;
+    }
     if (status === 'error') return errorItems;
     return [];
   };
   const currentItems: AISuggestionItem[] = getCurrentItems();
   const renderedItems: AISuggestionItem[] = menuPlacedOnTop ? [...currentItems].reverse() : currentItems;
+  const showSuggestionList =
+    (status === 'quick-actions' ||
+      ((status === 'user-input' || status === 'user-reviewing') && isPromptFocused)) &&
+    currentItems.length > 0;
 
   const isDisabled = status === 'thinking' || status === 'ai-writing';
 
-  // Focus prompt when menu opens.
-  // Selection mode uses a temporary highlight mark to keep target text visible.
-  useLayoutEffect(() => {
-    const input = inputRef.current;
-    if (!input || isDisabled) return;
-    const focusInput = () => {
-      try {
-        (editor.view.dom as HTMLElement).blur();
-      } catch {
-        /* view tearing down */
-      }
-      input.focus({ preventScroll: true });
-    };
-    focusInput();
-    const t1 = window.setTimeout(focusInput, 0);
-    const t2 = window.setTimeout(focusInput, 40);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, [anchorPos, editor, isDisabled]);
+  // Do not auto-focus; suggestions should only open after user interaction.
+  useEffect(() => {
+    inputRef.current?.blur();
+    setIsPromptFocused(false);
+  }, [anchorPos, status]);
 
   const getPlaceholder = (): string => {
     if (status === 'thinking') return 'Thinking…';
@@ -450,6 +488,36 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
     return 'Ask AI anything…';
   };
   const placeholder = getPlaceholder();
+  const isPromptEditable = status === 'user-input' || status === 'user-reviewing';
+  const promptPlaceholder = isPromptFocused
+    ? 'Ask AI what you want...'
+    : status === 'user-reviewing'
+      ? 'Tell AI what else needs to be changed...'
+      : placeholder;
+
+  const renderSubmitButton = useCallback(
+    (extraClassName?: string) => (
+      <Button
+        type='default'
+        size='medium'
+        shape='circle'
+        bordered={false}
+        icon={<RiArrowUpLine size={15} />}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={handleSubmit}
+        disabled={isDisabled || !prompt.trim()}
+        aria-label='Submit AI prompt'
+        className={cn(
+          '!h-8 !w-8 shrink-0 !p-0 transition-colors',
+          isDisabled || !prompt.trim()
+            ? '!bg-background-default-secondary !text-text-default-tertiary'
+            : '!bg-brand-base !text-white hover:!bg-brand-dark',
+          extraClassName,
+        )}
+      />
+    ),
+    [handleSubmit, isDisabled, prompt],
+  );
 
   useEffect(() => {
     return () => {
@@ -466,62 +534,136 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
         refs.setFloating(node);
       }}
       data-breatic-text-editor-ai-menu
-      onMouseDown={(e) => {
-        const t = e.target as HTMLElement;
-        if (t.closest('input, textarea, [contenteditable="true"]')) return;
-        e.preventDefault();
-      }}
+      onMouseDown={handleMenuMouseDown}
       style={{
         ...floatingStyles,
-        width: editorRectRef.current?.width ?? (editor.view.dom as HTMLElement).getBoundingClientRect().width,
-        zIndex: 10050,
+        width:
+          status === 'quick-actions'
+            ? 'auto'
+            : (editorRectRef.current?.width ?? (editor.view.dom as HTMLElement).getBoundingClientRect().width),
+        zIndex: 100,
       }}
       className={cn('flex gap-1 outline-none', menuPlacedOnTop ? 'flex-col-reverse' : 'flex-col')}
     >
       {/* Prompt input area */}
-      <div
-        className={cn(
-          'flex items-center gap-2 rounded-[8px] border border-border-default-base bg-background-default-base px-3',
-          'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
-        )}
-        style={{ minHeight: 40 }}
-      >
-        {/* Left icon */}
-        <span className='shrink-0 text-brand-base'>
-          <RiSparkling2Fill size={16} />
-        </span>
-
-        {/* Input */}
-        <input
-          ref={inputRef}
-          className='flex-1 bg-transparent py-2 text-[14px] text-text-default-base outline-none placeholder:text-text-default-tertiary disabled:pointer-events-none'
-          placeholder={placeholder}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isDisabled}
-          autoComplete='off'
-          aria-label='AI prompt'
-        />
-
-        {/* Right section: spinner or error */}
-        {isDisabled && (
-          <span className='shrink-0 text-text-default-tertiary'>
-            <AiSpinnerIcon size={14} className='animate-spin' />
-          </span>
-        )}
-        {status === 'error' && (
-          <span className='shrink-0 text-red-500'>
-            <AiErrorIcon size={16} />
-          </span>
-        )}
-      </div>
-
-      {/* Suggestion list */}
-      {currentItems.length > 0 && (
+      {status !== 'quick-actions' && (
         <div
           className={cn(
-            'overflow-hidden rounded-[8px] border border-border-default-base bg-background-default-base py-1',
+            'flex items-center gap-2 rounded-[12px] bg-background-default-base pl-3 pr-2',
+            'border border-border-default-base',
+            'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
+          )}
+          style={{ minHeight: 56 }}
+        >
+          {isPromptEditable ? (
+            <div className='flex w-full flex-col py-2'>
+              <textarea
+                ref={inputRef}
+                rows={2}
+                className='w-full resize-none bg-transparent text-[14px] text-text-default-base outline-none placeholder:text-text-default-tertiary'
+                placeholder={promptPlaceholder}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setIsPromptFocused(true)}
+                onBlur={() => setIsPromptFocused(false)}
+                autoComplete='off'
+                aria-label={status === 'user-reviewing' ? 'AI follow-up prompt' : 'AI prompt'}
+              />
+              {status === 'user-reviewing' ? (
+                <div className='mt-2 flex items-center gap-3 text-[14px]'>
+                  <Button
+                    bordered={false}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => runPreviewFlow('[RETRY] This is fixed replacement content.')}
+                    className='inline-flex items-center gap-1 text-text-default-base hover:text-text-default-secondary'
+                  >
+                    <RiLoopLeftFill size={14} />
+                    Try again
+                  </Button>
+                  <div className='ml-auto flex items-center gap-3'>
+                    <Button
+                      bordered={false}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => closeMenu()}
+                      className='inline-flex items-center gap-1 text-text-default-secondary hover:text-text-default-base'
+                    >
+                      <RiCloseLine size={14} />
+                      Discard
+                    </Button>
+                    <Button
+                      shape='round'
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={acceptPreview}
+                      className='inline-flex items-center gap-1 rounded-full bg-brand-base px-3 py-1 text-[14px] font-medium text-white hover:bg-brand-dark'
+                    >
+                      <RiCheckFill size={14} />
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className='mt-2 flex items-center'>{renderSubmitButton('ml-auto')}</div>
+              )}
+            </div>
+          ) : isDisabled ? (
+            <>
+              <div className='flex flex-1 items-center gap-2 py-3'>
+                <span className='text-[14px] font-medium text-brand-base'>
+                  {status === 'ai-writing' ? 'AI is writing' : 'Thinking'}
+                </span>
+                <span className='inline-flex items-center gap-1 text-text-default-tertiary'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+                  <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+                  <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+                </span>
+              </div>
+              <Button
+                type='default'
+                size='small'
+                shape='circle'
+                bordered={false}
+                icon={<FaStopCircle size={22} />}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleStopGeneration}
+                onKeyDown={handleStopButtonKeyDown}
+                aria-label='Stop AI generation'
+              />
+            </>
+          ) : (
+            <>
+              <textarea
+                ref={inputRef}
+                rows={2}
+                className='flex-1 resize-none bg-transparent py-1 text-[14px] text-text-default-base outline-none placeholder:text-text-default-tertiary disabled:pointer-events-none'
+                placeholder={promptPlaceholder}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setIsPromptFocused(true)}
+                onBlur={() => setIsPromptFocused(false)}
+                disabled={isDisabled}
+                autoComplete='off'
+                aria-label='AI prompt'
+              />
+
+              {status === 'error' ? (
+                <span className='shrink-0 text-red-500'>
+                  <AiErrorIcon size={16} />
+                </span>
+              ) : (
+                renderSubmitButton()
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Suggestion list */}
+      {showSuggestionList && (
+        <div
+          className={cn(
+            'self-start min-w-[220px] overflow-hidden rounded-[8px] border border-border-default-base bg-background-default-base py-1',
             'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
           )}
         >
@@ -531,7 +673,7 @@ const AIMenu = ({ editor, anchorPos, onClose, menuVariant = 'selection', onPrevi
               type='button'
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleSuggestionClick(item)}
-              className='flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-1.5 text-left text-[13px] text-text-default-base hover:bg-background-default-secondary'
+              className='flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base hover:bg-background-default-secondary'
             >
               <span className='shrink-0 text-text-default-secondary'>{item.icon}</span>
               {item.title}

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { CellSelection } from '@tiptap/pm/tables';
+import { TextSelection } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import Divider from '@/components/base/divider';
@@ -24,12 +25,25 @@ import {
   RiAlignCenter,
   RiAlignRight,
   RiMergeCellsHorizontal,
+  RiEdit2Line,
+  RiListCheck2,
+  RiMagicLine,
   RiSparkling2Fill,
+  RiTranslate2,
 } from 'react-icons/ri';
+import { LiaExpandSolid } from 'react-icons/lia';
+import { MdOutlinePlaylistAdd } from 'react-icons/md';
 
 interface EditorMenusProps {
   editor: Editor;
 }
+
+type SelectionAIAction = {
+  key: string;
+  title: string;
+  icon: ReactNode;
+  replacement: string;
+};
 
 const formatMenuIconBtnClass = (active: boolean) =>
   [
@@ -38,54 +52,93 @@ const formatMenuIconBtnClass = (active: boolean) =>
   ].join(' ');
 
 const EditorMenus = ({ editor }: EditorMenusProps) => {
+  type SelectionRange = { from: number; to: number };
   useEditorState({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
   });
 
-  // AI menu state
   const [aiMenuOpen, setAIMenuOpen] = useState(false);
   const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
-  // Ref for synchronous check inside shouldShow (avoids stale closure)
+  const [aiInitialReplacement, setAiInitialReplacement] = useState<string | null>(null);
   const aiMenuOpenRef = useRef(false);
+
+  const [selectionAIMenuOpen, setSelectionAIMenuOpen] = useState(false);
+  const selectionAIMenuRef = useRef<HTMLDivElement>(null);
+
+  const selectionAIActions = useMemo<SelectionAIAction[]>(
+    () => [
+      { key: 'polish', title: 'polish', icon: <RiMagicLine size={16} />, replacement: '[POLISH] This is fixed replacement content.' },
+      { key: 'expand', title: 'expand', icon: <LiaExpandSolid size={16} />, replacement: '[EXPAND] This is fixed replacement content.' },
+      { key: 'summarize', title: 'summarize', icon: <RiListCheck2 size={16} />, replacement: '[SUMMARIZE] This is fixed replacement content.' },
+      { key: 'translate', title: 'translate', icon: <RiTranslate2 size={16} />, replacement: '[TRANSLATE] This is fixed replacement content.' },
+      { key: 'rewrite', title: 'rewrite', icon: <RiEdit2Line size={16} />, replacement: '[REWRITE] This is fixed replacement content.' },
+      { key: 'continue', title: 'continue', icon: <MdOutlinePlaylistAdd size={16} />, replacement: '[CONTINUE] This is fixed replacement content.' },
+    ],
+    [],
+  );
+
+  const openAIMenuFromSelection = useCallback(
+    (initialReplacement: string | null, explicitRange?: SelectionRange) => {
+      let from: number;
+      let to: number;
+      if (explicitRange) {
+        from = Math.min(explicitRange.from, explicitRange.to);
+        to = Math.max(explicitRange.from, explicitRange.to);
+        if (to <= from) return;
+        // Suppress format bubble before changing selection, then open AI menu directly.
+        aiMenuOpenRef.current = true;
+        editor.chain().focus().setTextSelection({ from, to }).run();
+      } else {
+        const sel = editor.state.selection;
+        if (!(sel instanceof TextSelection) || sel.empty) return;
+        from = Math.min(sel.from, sel.to);
+        to = Math.max(sel.from, sel.to);
+      }
+
+      const $from = editor.state.doc.resolve(from);
+      const blockTypesForAIMenuAnchor = new Set([
+        'paragraph',
+        'heading',
+        'blockquote',
+        'codeBlock',
+        'listItem',
+        'taskItem',
+      ]);
+
+      let anchorPos: number | null = null;
+      for (let d = $from.depth; d >= 1; d -= 1) {
+        const node = $from.node(d);
+        if (blockTypesForAIMenuAnchor.has(node.type.name)) {
+          anchorPos = $from.start(d);
+          break;
+        }
+      }
+
+      aiMenuOpenRef.current = true;
+      setAiAnchorPos(anchorPos ?? to);
+      setAiInitialReplacement(initialReplacement);
+      setAIMenuOpen(true);
+    },
+    [editor],
+  );
 
   const handleCloseAIMenu = useCallback(() => {
     aiMenuOpenRef.current = false;
     setAIMenuOpen(false);
     setAiAnchorPos(null);
-    // Restore focus so the user can continue typing
+    setAiInitialReplacement(null);
     editor.commands.focus();
   }, [editor]);
 
-  const handleOpenAIMenu = useCallback(() => {
-    const { $from, to } = editor.state.selection;
+  const runSelectionAIAction = useCallback(
+    (replacement: string) => {
+      setSelectionAIMenuOpen(false);
+      openAIMenuFromSelection(replacement);
+    },
+    [openAIMenuFromSelection],
+  );
 
-    const blockTypesForAIMenuAnchor = new Set([
-      'paragraph',
-      'heading',
-      'blockquote',
-      'codeBlock',
-      'listItem',
-      'taskItem',
-    ]);
-
-    let anchorPos: number | null = null;
-    for (let d = $from.depth; d >= 1; d -= 1) {
-      const node = $from.node(d);
-      if (blockTypesForAIMenuAnchor.has(node.type.name)) {
-        // Anchor to the start of the current block so the AI menu
-        // appears above the paragraph instead of covering its content.
-        anchorPos = $from.start(d);
-        break;
-      }
-    }
-
-    aiMenuOpenRef.current = true;
-    setAiAnchorPos(anchorPos ?? to);
-    setAIMenuOpen(true);
-  }, [editor]);
-
-  // Wrap shouldShow to hide bubble menu while AI menu is open
   const shouldShow = useCallback(
     (props: {
       editor: Editor;
@@ -96,8 +149,7 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
       to: number;
     }) => {
       if (aiMenuOpenRef.current) return false;
-      // Keep block-editing clean: no formatting bubble inside code-like blocks.
-      if (props.editor.isActive('codeBlock') || props.editor.isActive('highlightBlock')) return false;
+      if (props.editor.isActive('codeBlock')) return false;
       return formatBubbleShouldShow(props);
     },
     [],
@@ -105,41 +157,44 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
 
   useEffect(() => {
     const bridge = getTextEditorBridgeStorage(editor);
-    bridge.openSelectionAIMenu = handleOpenAIMenu;
+    bridge.openSelectionAIMenu = (options) => {
+      const initialReplacement = options?.initialReplacement ?? null;
+      const explicitRange = options?.range;
+      if (initialReplacement || explicitRange) {
+        openAIMenuFromSelection(initialReplacement, explicitRange);
+        return;
+      }
+      setSelectionAIMenuOpen(true);
+    };
     return () => {
       bridge.openSelectionAIMenu = null;
     };
-  }, [editor, handleOpenAIMenu]);
+  }, [editor, openAIMenuFromSelection]);
+
+  useEffect(() => {
+    if (!selectionAIMenuOpen) return;
+    const onPointerDownOutside = (e: MouseEvent) => {
+      if (selectionAIMenuRef.current?.contains(e.target as Node)) return;
+      setSelectionAIMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDownOutside);
+    return () => document.removeEventListener('mousedown', onPointerDownOutside);
+  }, [selectionAIMenuOpen]);
 
   return (
     <>
       {!aiMenuOpen && (
-        <BubbleMenu
-          editor={editor}
-          className='bubble-menu'
-          updateDelay={0}
-          shouldShow={shouldShow}
-        >
+        <BubbleMenu editor={editor} className='bubble-menu' updateDelay={0} shouldShow={shouldShow}>
           <BlockTypeSelect editor={editor} />
           <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
 
           <Tooltip title='Bold' placement='top' offset={4}>
-            <button
-              type='button'
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              className={formatMenuIconBtnClass(editor.isActive('bold'))}
-            >
+            <button type='button' onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBold().run()} className={formatMenuIconBtnClass(editor.isActive('bold'))}>
               <RiBold size={16} />
             </button>
           </Tooltip>
           <Tooltip title='Italic' placement='top' offset={4}>
-            <button
-              type='button'
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              className={formatMenuIconBtnClass(editor.isActive('italic'))}
-            >
+            <button type='button' onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleItalic().run()} className={formatMenuIconBtnClass(editor.isActive('italic'))}>
               <RiItalic size={16} />
             </button>
           </Tooltip>
@@ -157,22 +212,12 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
             </button>
           </Tooltip>
           <Tooltip title='Strikethrough' placement='top' offset={4}>
-            <button
-              type='button'
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleStrike().run()}
-              className={formatMenuIconBtnClass(editor.isActive('strike'))}
-            >
+            <button type='button' onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleStrike().run()} className={formatMenuIconBtnClass(editor.isActive('strike'))}>
               <RiStrikethrough size={16} />
             </button>
           </Tooltip>
           <Tooltip title='Inline code' placement='top' offset={4}>
-            <button
-              type='button'
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleCode().run()}
-              className={formatMenuIconBtnClass(editor.isActive('code'))}
-            >
+            <button type='button' onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={formatMenuIconBtnClass(editor.isActive('code'))}>
               <RiCodeLine size={16} />
             </button>
           </Tooltip>
@@ -224,12 +269,7 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
           {editor.state.selection instanceof CellSelection && editor.can().mergeCells() && (
             <>
               <Tooltip title='Merge cells' placement='top' offset={4}>
-                <button
-                  type='button'
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().mergeCells().run()}
-                  className={formatMenuIconBtnClass(false)}
-                >
+                <button type='button' onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().mergeCells().run()} className={formatMenuIconBtnClass(false)}>
                   <RiMergeCellsHorizontal size={16} />
                 </button>
               </Tooltip>
@@ -237,21 +277,36 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
             </>
           )}
 
-          {/* Edit with AI button */}
-          <Tooltip title='Edit with AI' placement='top' offset={4}>
-            <button
-              type='button'
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={handleOpenAIMenu}
-              className={[
-                formatMenuIconBtnClass(aiMenuOpen),
-                'text-brand-base',
-              ].join(' ')}
-              aria-label='Edit with AI'
-            >
-              <RiSparkling2Fill size={16} />
-            </button>
-          </Tooltip>
+          <div ref={selectionAIMenuRef} className='relative'>
+            <Tooltip title='Ask AI' placement='top' offset={4}>
+              <button
+                type='button'
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setSelectionAIMenuOpen((v) => !v)}
+                className={[formatMenuIconBtnClass(selectionAIMenuOpen), 'text-brand-base'].join(' ')}
+                aria-label='Ask AI'
+              >
+                <RiSparkling2Fill size={16} />
+              </button>
+            </Tooltip>
+
+            {selectionAIMenuOpen && (
+              <div className='absolute right-0 top-full z-[101] mt-1 min-w-[200px] rounded-[8px] border border-border-default-base bg-background-default-base py-1 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'>
+                {selectionAIActions.map((item) => (
+                  <button
+                    key={item.key}
+                    type='button'
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => runSelectionAIAction(item.replacement)}
+                    className='flex min-h-8 w-full cursor-pointer items-center gap-2.5 border-0 px-2.5 py-1.5 text-left text-[13px] text-text-default-base transition-colors hover:bg-background-default-secondary'
+                  >
+                    <span className='inline-flex shrink-0 text-icon-base'>{item.icon}</span>
+                    {item.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </BubbleMenu>
       )}
 
@@ -259,9 +314,13 @@ const EditorMenus = ({ editor }: EditorMenusProps) => {
       <TableHandles editor={editor} />
       <TableSelectionChrome editor={editor} />
 
-      {/* AI Menu — floats below the selection */}
       {aiMenuOpen && aiAnchorPos != null && (
-        <AIMenu editor={editor} anchorPos={aiAnchorPos} onClose={handleCloseAIMenu} />
+        <AIMenu
+          editor={editor}
+          anchorPos={aiAnchorPos}
+          onClose={handleCloseAIMenu}
+          initialReplacement={aiInitialReplacement}
+        />
       )}
     </>
   );

@@ -34,6 +34,8 @@ export type DropdownProps = {
   offset?: number;
   /** Floating positioning strategy. @default 'absolute' */
   strategy?: Strategy;
+  /** Portal root container. Defaults to document.body. */
+  getPopupContainer?: () => HTMLElement;
   children: ReactNode;
 };
 
@@ -54,6 +56,7 @@ const Dropdown: FC<DropdownProps> = ({
   itemClassName,
   offset = 8,
   strategy = 'absolute',
+  getPopupContainer,
   children,
 }) => {
   const [localOpen, setLocalOpen] = useState(false);
@@ -167,7 +170,7 @@ const Dropdown: FC<DropdownProps> = ({
       >
         {children}
       </div>
-      <FloatingPortal>
+      <FloatingPortal root={getPopupContainer?.()}>
         <div
           ref={refs.setFloating}
           style={{

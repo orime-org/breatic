@@ -209,8 +209,9 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
   const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
   const [aiCursorPos, setAiCursorPos] = useState<number | null>(null);
   const [aiCursorHintRect, setAiCursorHintRect] = useState<{ top: number; left: number; height: number } | null>(null);
+  const [aiInitialReplacement, setAiInitialReplacement] = useState<string | null>(null);
 
-  const handleOpenGenerationAIMenu = useCallback(() => {
+  const handleOpenGenerationAIMenu = useCallback((initialReplacement: string | null = null) => {
     if (!editor) return;
     const { $from, from } = editor.state.selection;
     const blockTypesForAIMenuAnchor = new Set([
@@ -231,6 +232,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     }
     setAiAnchorPos(anchorPos ?? from);
     setAiCursorPos(from);
+    setAiInitialReplacement(initialReplacement);
     setAIMenuOpen(true);
   }, [editor]);
 
@@ -239,6 +241,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     setAiAnchorPos(null);
     setAiCursorPos(null);
     setAiCursorHintRect(null);
+    setAiInitialReplacement(null);
     editor?.commands.focus();
   }, [editor]);
 
@@ -369,6 +372,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
           onClose={handleCloseGenerationAIMenu}
           menuVariant='generation'
           onPreviewApplied={hideAiCursorHint}
+          initialReplacement={aiInitialReplacement}
         />
       )}
       {editor && aiMenuOpen && aiCursorHintRect && (
