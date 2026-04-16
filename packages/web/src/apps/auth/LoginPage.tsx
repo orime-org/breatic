@@ -17,7 +17,8 @@ import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 
 type Tab = 'login' | 'register' | 'forgot';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+declare const __GOOGLE_CLIENT_ID__: string;
+const GOOGLE_CLIENT_ID = typeof __GOOGLE_CLIENT_ID__ !== 'undefined' ? __GOOGLE_CLIENT_ID__ : '';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -48,9 +49,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.login({ email, password });
-      handleLoginSuccess(res.data.data.token);
+      handleLoginSuccess(res.data.token);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      const errData = (err as { response?: { data?: { error?: { message?: string } | string } } })?.response?.data;
+      const msg = typeof errData?.error === 'string' ? errData.error : errData?.error?.message;
       setError(msg || 'Login failed');
     } finally {
       setLoading(false);
@@ -71,9 +73,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.register({ email, password });
-      handleLoginSuccess(res.data.data.token);
+      handleLoginSuccess(res.data.token);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      const errData = (err as { response?: { data?: { error?: { message?: string } | string } } })?.response?.data;
+      const msg = typeof errData?.error === 'string' ? errData.error : errData?.error?.message;
       setError(msg || 'Registration failed');
     } finally {
       setLoading(false);
@@ -96,14 +99,18 @@ export default function LoginPage() {
   };
 
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
-    if (!credentialResponse.credential) return;
+    if (!credentialResponse.credential) {
+      setError('Google returned no credential');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
       const res = await authApi.loginGoogle(credentialResponse.credential);
-      handleLoginSuccess(res.data.data.token);
+      handleLoginSuccess(res.data.token);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      const errData = (err as { response?: { data?: { error?: { message?: string } | string } } })?.response?.data;
+      const msg = typeof errData?.error === 'string' ? errData.error : errData?.error?.message;
       setError(msg || 'Google login failed');
     } finally {
       setLoading(false);
@@ -282,7 +289,7 @@ export default function LoginPage() {
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={() => setError('Google login failed')}
-                  width="100%"
+                  width={360}
                 />
               </div>
             </GoogleOAuthProvider>

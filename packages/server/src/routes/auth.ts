@@ -117,7 +117,7 @@ const googleAuthSchema = z.object({
 auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
-    return c.json({ error: "Google OAuth is not configured on this server" }, 503);
+    return c.json({ error: { code: 503, message: "Google OAuth is not configured on this server" } }, 503);
   }
 
   const { credential } = c.req.valid("json");
@@ -132,26 +132,26 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
     payload = ticket.getPayload();
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "google_id_token_verification_failed");
-    return c.json({ error: "Invalid Google credential" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential" } }, 401);
   }
 
   if (!payload) {
-    return c.json({ error: "Invalid Google credential: empty payload" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: empty payload" } }, 401);
   }
 
   // `verifyIdToken` already enforces aud/iss/exp, but double-check iss
   // in case the library ever changes defaults. Google emits both forms.
   const VALID_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
   if (!payload.iss || !VALID_ISSUERS.has(payload.iss)) {
-    return c.json({ error: "Invalid Google credential: wrong issuer" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: wrong issuer" } }, 401);
   }
 
   if (!payload.sub || !payload.email) {
-    return c.json({ error: "Invalid Google credential: missing sub or email" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: missing sub or email" } }, 401);
   }
 
   if (payload.email_verified !== true) {
-    return c.json({ error: "Google account email is not verified" }, 401);
+    return c.json({ error: { code: 401, message: "Google account email is not verified" } }, 401);
   }
 
   const { user, token } = await authService.loginOrCreateGoogle(
@@ -196,7 +196,7 @@ auth.post(
     const { email } = c.req.valid("json");
     const resetBaseUrl = c.req.header("Origin")
       ? `${c.req.header("Origin")}/reset-password`
-      : "http://localhost:5173/reset-password";
+      : "http://localhost:8000/reset-password";
 
     await authService.forgotPassword(email, resetBaseUrl);
 
