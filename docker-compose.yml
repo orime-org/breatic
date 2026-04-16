@@ -44,8 +44,6 @@ services:
       - "443:443"
     volumes:
       - ./docker/certs:/etc/nginx/certs:ro
-      # Enable HTTPS: uncomment the next line to override HTTP-only config
-      # - ./docker/nginx-ssl.conf:/etc/nginx/conf.d/breatic.conf:ro
     depends_on:
       - api
       - collab
