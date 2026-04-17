@@ -238,8 +238,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     setAIMenuOpen(false);
     setAiAnchorPos(null);
     setAiInitialReplacement(null);
-    editor?.commands.focus();
-  }, [editor]);
+  }, []);
 
   useEffect(() => {
     if (!editor) return;

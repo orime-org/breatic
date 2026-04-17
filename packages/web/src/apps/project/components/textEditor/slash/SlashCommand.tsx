@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import type { Range } from '@tiptap/core';
 import { ReactRenderer } from '@tiptap/react';
 import {
+  breaticSlashMenuKey,
   closeBreaticSlashMenu,
   createBreaticSlashMenuPlugin,
   getBreaticSlashCommandRange,
@@ -268,10 +269,16 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
   const [tableHover, setTableHover] = useState({ rows: 3, cols: 3 });
   const [, bumpLayout] = useReducer((n: number) => n + 1, 0);
   const editor = props.editor as Editor;
+  const slashMenuState = breaticSlashMenuKey.getState(editor.state);
+  const hideAskAIInInsertBlock = Boolean(slashMenuState && !slashMenuState.deleteTriggerCharacter);
+  const visibleItems = useMemo(
+    () => props.items.filter((item) => !(hideAskAIInInsertBlock && item.title === AI_SLASH_TITLE)),
+    [props.items, hideAskAIInInsertBlock],
+  );
 
   const flatItemsInRenderOrder = useMemo(
-    () => GROUP_ORDER.flatMap((group) => props.items.filter((item) => item.group === group)),
-    [props.items],
+    () => GROUP_ORDER.flatMap((group) => visibleItems.filter((item) => item.group === group)),
+    [visibleItems],
   );
 
   const tableFlatIndex = useMemo(
@@ -376,7 +383,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [props.items]);
+  }, [visibleItems]);
 
   useEffect(() => {
     if (tableFlatIndex >= 0 && selectedIndex === tableFlatIndex) {
@@ -415,7 +422,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
     },
   }), [flatItemsInRenderOrder, itemCount, props.editor, props.range, selectedIndex, tableHover]);
 
-  if (!props.items.length) {
+  if (!visibleItems.length) {
     return createPortal(
       <>
         <div
@@ -433,7 +440,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
 
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
-    items: props.items.filter((item) => item.group === g),
+    items: visibleItems.filter((item) => item.group === g),
   })).filter(({ items }) => items.length > 0);
 
   let flatIdx = 0;
