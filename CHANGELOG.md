@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-17
+
+- **Auth hydration at store init** (#115): `userCenter` reducer now reads `localStorage.auth` in `loadInitialAuthInfo()` at module-import time, replacing the `useEffect` in `Workspace`. Deep links like `/project/<id>` no longer bypass hydration — Redux has the session token on the very first render, which was blocking Yjs from connecting (empty token → `enabled=false` → `addNode` silent no-op)
+- **Canvas loading overlay removed** (#114): the project page already owns a top-level loading while `useYjsStore` syncs. The inner canvas-level overlay was redundant duplication
+- **Yjs WebSocket session token auth** (#113, BUG-046): replaced the hardcoded `token: 'dev'` in `yjsManager.ts` with an explicit required `token` parameter plumbed from the Redux auth slice. `HocuspocusProvider.onAuthenticationFailed` calls `provider.disconnect()` + user-supplied callback to break the close→reconnect loop when Hocuspocus rejects the token in prod (`NoAccount` mode is dev-only)
+- **Canonical domain (apex → www) + strict env** (#112): nginx serves only `www.*` and 301-redirects all other hosts, eliminating the localStorage split-brain between apex and `www`. Removed all silent fallbacks from `yjsManager.ts` and `request.ts` — missing `VITE_API_URL`/`VITE_WS_URL` now throws at startup so distributed deployments can't quietly misroute traffic
+- **VITE_API_URL drops `/api` suffix** (#111): axios prepends `/api/v1/` itself; including it in the env caused `/api/api/v1/*` double-prefix 404s. `.env.docker` and `DEPLOY.md` updated accordingly
+- **Frontend served from nginx root** (#110): removed the `/breatic/` Vite base path. Nginx already serves the SPA at `/`
+- **Fail-fast connectivity check** (#108): API/Worker/Collab call `checkInfraReady()` at boot and exit immediately if PG/Redis are unreachable, with a clear error — prevents silent hangs
+- **Independent migration service** (#107): `pnpm db:migrate` is now an explicit standalone step. Docker gets a dedicated `migrate` container that runs once and exits, decoupled from API/Worker startup. `dev` mode does not auto-migrate
+
 ## 2026-04-11
 
 - **Canvas Yjs-first architecture**: flipped frontend data flow from Redux-first (500ms debounce + whole-array replace) to Yjs-first (direct Y.Map writes → observe → Redux read cache). Deleted `yjsStoreSync.ts` + `yjsSliceSyncs.ts` bridge. New: `useCanvasYjs.ts` observe hook, `canvasYjsRef.ts` module-level manager ref (#53)
