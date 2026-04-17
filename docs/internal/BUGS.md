@@ -2,9 +2,9 @@
 
 当前所有活跃未修复的 bug 一览。**本文件是状态机**——每条 bug 从发现到关闭都在这里更新。详细分析（代码片段、问题根因、修复方案、验证步骤）按发现事件归档在 `audit/YYYY-MM-DD-round-N-found.md`。
 
-**状态标记**：`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修（修完即移除本行并追加到月度归档）
+**状态标记**：`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修（修完即移除本行并追加到月度归档）· `⚫ 不修`（附原因，保留可追溯）
 
-**当前总计**：48 个活跃条目（P0 × 13 + P1 × 19 + P2 × 15 + 长期 × 1）
+**当前总计**：47 个活跃条目（P0 × 12 + P1 × 19 + P2 × 15 + 长期 × 1）· 1 个不修（BUG-034）
 
 > **本分支（`bugs_list`）职责**：审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -18,7 +18,7 @@
 | BUG-031 | 🔴 HIGH | deleteProject 不级联软删子记录 | `core/src/modules/project.repo.ts:190` | R2 | 1h | [→](audit/2026-04-15-round-2-found.md#bug-031-deleteproject-不级联软删子记录high) |
 | BUG-032 | 🔴 HIGH | Presigned URL 修复遗漏 3 子问题 | `server/src/routes/assets.ts` + `core/src/infra/storage/s3.ts` | R2 | 2.5h | [→](audit/2026-04-15-round-2-found.md#bug-032-presigned-url-修复只做了-47-子问题high) |
 | BUG-033 | 🔴 HIGH | Canvas task 创建顺序错（孤儿 task） | `server/src/routes/canvas.ts:80` | R2 | 15m | [→](audit/2026-04-15-round-2-found.md#bug-033-canvas-task-创建顺序错孤儿-taskhigh) |
-| BUG-034 | 🔴 HIGH | Docker 端口暴露到公网 | `docker-compose.yml` | R2 | 5m | [→](audit/2026-04-15-round-2-found.md#bug-034-docker-compose-端口暴露到公网high) |
+| ~~BUG-034~~ | ⚫ 不修 | Docker 端口暴露到公网（由防火墙处理） | `docker-compose.yml` | R2 | — | [→](audit/2026-04-15-round-2-found.md#bug-034-docker-compose-端口暴露到公网high) |
 | BUG-046 | 🔴 HIGH | WebSocket token 硬编码 `'dev'`（协作认证形同虚设） | `web/src/utils/yjsManager.ts:43,87` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-046) |
 | BUG-047 | 🔴 HIGH | `deductOnce` refKey 无校验 → 空 key 碰撞 | `core/src/modules/credit.service.ts:142` | R3 | 30m | [→](audit/2026-04-17-round-3-found.md#bug-047) |
 | BUG-048 | 🔴 HIGH | `deductOnce` 不校验 userId → 跨用户锁污染 | `core/src/modules/credit.service.ts:149` | R3 | 30m | [→](audit/2026-04-17-round-3-found.md#bug-048) |
@@ -28,7 +28,7 @@
 | BUG-052 | 🔴 HIGH | `nodeHistory.userId` FK 缺 `onDelete` | `core/src/db/schema.ts:190` | R3 | 15m | [→](audit/2026-04-17-round-3-found.md#bug-052) |
 | BUG-053 | 🔴 HIGH | Stripe webhook secret 可为空字符串 → 签名绕过 | `core/src/infra/stripe.ts:39` + `env.ts:104` | R3 | 15m | [→](audit/2026-04-17-round-3-found.md#bug-053) |
 
-**P0 小计**：13 个 · 预估 **~9 小时**
+**P0 小计**：12 个活跃 · 预估 **~9 小时**（BUG-034 不计入，已标不修）
 
 ---
 
@@ -99,11 +99,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 13 | ~9 h |
+| P0 | 12（+1 不修） | ~9 h |
 | P1 | 19 | ~8 h |
 | P2 | 16 | ~5.5 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **49**（含长期） | **~34.5 h** |
+| **总计** | **48**（含长期，+1 不修） | **~34.5 h** |
 
 ---
 

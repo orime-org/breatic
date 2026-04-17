@@ -39,7 +39,7 @@ Breatic supports three deployment modes:
 | **API** | Hono HTTP server. Agent chat SSE, text mini-tool SSE, REST endpoints. |
 | **Collab** | Hocuspocus WebSocket server. Yjs real-time sync, Redis Streams consumer. |
 | **Worker** | BullMQ background processor. AIGC generation (image/video/audio/tts/3d). |
-| **PostgreSQL** | Primary database. Drizzle ORM, auto-migration on startup. |
+| **PostgreSQL** | Primary database (Drizzle ORM). Schema managed by explicit migration — `pnpm db:migrate` locally, `migrate` service in Docker. |
 | **Redis** | 3 logical DBs: DB 0 (session/lock/rate-limit), DB 1 (BullMQ), DB 2 (Streams + Hocuspocus pub/sub). |
 
 ---
@@ -66,6 +66,9 @@ docker compose up -d postgres redis
 # Create environment config
 cp .env.dev .env
 # Defaults work for local dev — edit AI provider keys as needed
+
+# Run migrations (first time, or after pulling changes that add migrations)
+pnpm db:migrate
 ```
 
 ### Start Services
@@ -83,7 +86,13 @@ pnpm dev:worker       # BullMQ Worker
 cd packages/web && pnpm dev  # Vite frontend (port 8000)
 ```
 
-> `pnpm dev` runs `turbo run dev` with `dependsOn: ["^build"]`, which auto-compiles `@breatic/shared` and `@breatic/core` before starting app services.
+> **Fail-fast startup**: If PostgreSQL or Redis is unreachable, each service exits immediately with a clear error (no silent hangs). You'll see:
+> ```
+> ❌ PostgreSQL not reachable: connect ECONNREFUSED
+>    → Check DATABASE_URL=... or run: docker compose up -d postgres
+> ```
+>
+> `pnpm dev` runs `turbo run dev` with `dependsOn: ["^build"]`, which auto-compiles `@breatic/shared` and `@breatic/core` before starting app services. Migration is a **separate step** (`pnpm db:migrate`) — dev mode does not auto-migrate.
 
 ### Local Dev Environment Variables
 

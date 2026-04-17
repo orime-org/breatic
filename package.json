@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "turbo run dev",
+    "db:migrate": "tsx scripts/db-migrate.ts",
     "dev:collab": "tsx packages/collab/src/index.ts",
     "dev:worker": "tsx packages/worker/src/index.ts",
     "start": "node packages/server/dist/index.js",
@@ -23,6 +24,7 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.1.0",
     "eslint-plugin-tsdoc": "^0.5.2",
+    "tsx": "^4.19.0",
     "turbo": "^2.4.0",
     "typedoc": "^0.28.18",
     "typescript": "~5.8.0",
