@@ -18,6 +18,7 @@ import { createLogger } from "./logger.js";
 import { createCollabServer } from "./server.js";
 import { startTaskListener } from "./task-listener.js";
 import { getCollabConfig } from "./config.js";
+import { checkCollabInfraReady } from "./connectivity-check.js";
 
 const logger = createLogger("main");
 
@@ -27,6 +28,9 @@ const REDIS_STREAM_URL = process.env["REDIS_STREAM_URL"] ?? "redis://localhost:6
 const ENV_PREFIX = process.env["ENV"] ?? "dev";
 
 async function main(): Promise<void> {
+  // Fail-fast: verify PG + Redis are reachable before starting the server.
+  await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
+
   const cfg = getCollabConfig();
 
   // Create and start Hocuspocus server

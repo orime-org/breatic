@@ -23,6 +23,7 @@ export { getModelForTool, getPromptForTool } from "./config/text-tools.js";
 // ── Infrastructure ───────────────────────────────────────────────
 export { getRedis, closeRedis, getQueueRedis, closeQueueRedis, getStreamRedis, closeStreamRedis } from "./infra/redis.js";
 export { checkRateLimit } from "./infra/rate-limiter.js";
+export { checkInfraReady } from "./infra/connectivity-check.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";

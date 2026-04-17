@@ -5,7 +5,7 @@
  * All shared modules (db, redis, services) come from @breatic/core.
  */
 
-import { initLogger, createWorker, logger } from "@breatic/core";
+import { initLogger, createWorker, checkInfraReady, logger } from "@breatic/core";
 
 initLogger("worker");
 import { runTask } from "./handlers.js";
@@ -25,4 +25,6 @@ export function startWorker(): void {
   logger.info("BullMQ worker started, listening on 'tasks' queue");
 }
 
+// Fail-fast: verify PG + Redis are reachable before consuming jobs.
+await checkInfraReady();
 startWorker();

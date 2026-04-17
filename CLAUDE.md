@@ -9,9 +9,10 @@ Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQ
 # 开发命令
 
 ```bash
-# 本地开发（先启动 PG + Redis）
+# 本地开发（首次或拉取新 migration 后）
 docker compose up -d postgres redis
-cp .env.dev .env           # 首次
+cp .env.dev .env                       # 首次
+pnpm db:migrate                        # 首次或有新 migration 时
 
 pnpm dev              # turbo 启动所有服务（自动先 build shared/core）
 pnpm dev:collab       # Hocuspocus (port 1234)
@@ -19,7 +20,7 @@ pnpm dev:worker       # BullMQ Worker
 
 # Docker 全量部署
 cp .env.docker .env        # 首次，改域名和密钥
-docker compose up -d       # 6 个容器
+docker compose up -d       # migrate 容器先跑，再启动 6 个服务
 
 # 质量检查
 pnpm test             # 单元测试 (mock，无需外部依赖)
@@ -27,6 +28,8 @@ pnpm typecheck        # tsc --noEmit
 pnpm lint             # ESLint
 ```
 
+> **启动行为**：服务（API/Worker/Collab）启动时先调 `checkInfraReady()` 验证 PG/Redis 可达，连不上**立即退出**并打印清晰错误（避免无声挂死）。Migration 是独立步骤（`pnpm db:migrate` 或 Docker 的 `migrate` 服务），**不绑在 dev 启动里**。
+>
 > `pnpm dev` 通过 turbo `dependsOn: ["^build"]` 自动先编译 shared → core，再启动 server/worker/collab（tsup --watch / tsc --watch）。
 
 # 目录结构
