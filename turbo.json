@@ -6,9 +6,13 @@
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["//#predev", "^build"],
       "cache": false,
       "persistent": true
+    },
+    "predev": {
+      "dependsOn": ["^build"],
+      "cache": false
     },
     "test": {
       "dependsOn": ["build"],

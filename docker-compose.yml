@@ -50,6 +50,15 @@ services:
       - collab
     restart: unless-stopped
 
+  # ── Database Migration (runs once, then exits) ──
+  migrate:
+    build: .
+    command: ["node", "-e", "import('./packages/core/dist/index.js').then(m => m.runMigrations()).then(() => process.exit(0))"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── Application ────────────────────────────────
   api:
     build: .
@@ -61,8 +70,8 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -76,8 +85,8 @@ services:
     volumes:
       - ./logs:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -90,25 +99,11 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
-
-  # ── One-off: Database migration ────────────────
-  # NOTE: Migrations run automatically on API + Worker startup.
-  # This service is only needed for manual/standalone migration runs.
-  # Usage: docker compose run --rm migrate
-  migrate:
-    build: .
-    command: ["node", "-e", "import('./packages/core/dist/index.js').then(m => m.runMigrations())"]
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    profiles:
-      - tools
 
 volumes:
   pgdata:
