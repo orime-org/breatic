@@ -37,8 +37,8 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_LOGIN_MODE=${VITE_LOGIN_MODE} \
     VITE_APP_VERSION=${VITE_APP_VERSION}
 
-# Override base to "/" for self-hosted (nginx serves at root)
-RUN cd packages/web && pnpm build -- --base=/
+# Vite config hardcodes base='/' — no CLI override needed
+RUN cd packages/web && pnpm build
 
 # ── Stage 2: Serve with nginx ───────────────────────────────────────
 FROM nginx:1.27-alpine
