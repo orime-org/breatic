@@ -616,7 +616,308 @@ Claude C: BUG-036（memory 表 deletedAt filter）
 
 ---
 
+# Round 3（2026-04-17）
+
+审计日期：2026-04-17。新增 33 个 bug（8 个 P0 + 12 个 P1 + 13 个 P2）。
+
+---
+
+## P0 — 立刻修（安全 + 数据完整性）
+
+### BUG-046 · WebSocket token 硬编码 'dev'（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/web/src/utils/yjsManager.ts:43,87`
+- **问题**：前端连 Hocuspocus 时 token 写死 `'dev'`，所有环境的协作认证形同虚设。任何人知道 projectId 即可连接读写画布数据
+- **修复**：从 localStorage 读取实际的 session token，传给 HocuspocusProvider
+- **预估**：30 分钟
+
+### BUG-047 · deductOnce refKey 无校验（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/credit.service.ts:142`
+- **问题**：`refKey=""` 时锁键变成 `dev:bill:`，不同交易共享同一锁，跳过扣费
+- **修复**：校验 refKey 非空，空则抛 ValidationError
+- **预估**：10 分钟
+
+### BUG-048 · deductOnce 不校验 userId（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/credit.service.ts:149`
+- **问题**：锁键不含 userId，用户 B 用用户 A 的 refKey 可让自己的扣费被跳过
+- **修复**：锁键格式改为 `{env}:bill:{userId}:{refKey}`
+- **预估**：10 分钟
+
+### BUG-049 · Worker HTTP 响应无大小限制（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/worker/src/providers/http.ts:76`
+- **问题**：`response.json()` 无 size limit，恶意 provider 返回 GB 级 JSON 导致 Worker OOM
+- **修复**：先读 Content-Length header 校验上限（如 50MB），或用流式解析限制缓冲区大小
+- **预估**：30 分钟
+
+### BUG-050 · Spawn 无深度限制（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/agent/tools/spawn.ts:105`
+- **问题**：删除了自身 spawn 但子 agent 仍可 spawn 其他 agent，无深度计数，无限递归耗光积分
+- **修复**：在 AsyncLocalStorage context 中加 `spawnDepth` 计数器，超过阈值（如 3）拒绝 spawn
+- **预估**：30 分钟
+
+### BUG-051 · TextNode 内容未 sanitize（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/web/src/apps/project/components/canvas/nodes/textNode/TextNodeContent.tsx:141`
+- **问题**：Yjs 同步时直接赋值 HTML 内容未调 `sanitizeRichText()`，存储型 XSS
+- **修复**：所有 HTML 内容赋值改为经过 `sanitizeRichText()` 清洗
+- **预估**：15 分钟
+
+### BUG-052 · nodeHistory.userId FK 缺 onDelete（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/db/schema.ts:190`
+- **问题**：唯一一个 FK 没声明 onDelete，用户删除时 nodeHistory 变孤儿记录
+- **修复**：添加 `.onDelete("restrict")`（与其他 FK 一致）+ migration
+- **预估**：20 分钟
+
+### BUG-053 · Stripe webhook secret 可为空字符串（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/infra/stripe.ts:39` + `packages/core/src/config/env.ts:104`
+- **问题**：`STRIPE_WEBHOOK_SECRET` 默认 `""`，如果 `PAYMENT_ENABLED=true` 但忘设 secret，签名校验被绕过
+- **修复**：启动时校验：`PAYMENT_ENABLED=true` 时 `STRIPE_WEBHOOK_SECRET` 必须非空，否则 fatal
+- **预估**：10 分钟
+
+---
+
+## P1 — 本周修
+
+### BUG-054 · NoAccount 只守 prod，staging 可绕过（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/server/src/middleware/auth.ts:60`
+- **问题**：NoAccount 模式只在 `ENV=prod` 时拒绝，`ENV=staging` 时仍可绕过认证
+- **修复**：改为只允许 `ENV=dev` 时使用 NoAccount
+- **预估**：10 分钟
+
+### BUG-055 · Skill metadata.json 解析失败静默 fallback（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/agent/skills-loader.ts:346`
+- **问题**：metadata.json 格式错误时静默跳过，skill 不可用但无任何提示
+- **修复**：解析失败时 logger.error 并记录具体错误
+- **预估**：15 分钟
+
+### BUG-056 · Worker polling 无单次请求超时（HIGH）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/worker/src/providers/http.ts:129`
+- **问题**：轮询 AIGC provider 状态时无超时，provider 挂起导致 Worker 线程永久阻塞
+- **修复**：fetch 加 `signal: AbortSignal.timeout(30_000)`
+- **预估**：15 分钟
+
+### BUG-057 · 密码无最大长度限制（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/shared/src/schemas/api.ts:17,23`
+- **问题**：bcrypt 处理超长密码时 CPU 开销大，1MB 密码可 DoS
+- **修复**：Zod schema 加 `.max(128)`
+- **预估**：5 分钟
+
+### BUG-058 · Collab PG 持久化 store 无 try-catch（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/collab/src/persistence.ts:30`
+- **问题**：PG 写入失败时异常冒泡到 Hocuspocus，可能导致整个 Collab 服务崩溃
+- **修复**：store/fetch 方法加 try-catch + logger.error
+- **预估**：20 分钟
+
+### BUG-059 · 事件流 parse 失败时直接更新 last-id（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/collab/src/event-stream.ts:91`
+- **问题**：JSON parse 失败后仍然更新 last-id，该事件永久丢失不会重试
+- **修复**：parse 失败时不更新 last-id，记录错误后 continue
+- **预估**：15 分钟
+
+### BUG-060 · Checkout webhook 无事务包裹（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/payment.service.ts:96`
+- **问题**：CAS 状态更新 + addCredits + recordTransaction 三步不在同一事务中，中间失败导致状态不一致
+- **修复**：整个 handler 包在 `db.transaction()` 中
+- **预估**：30 分钟
+
+### BUG-061 · addCredits 接受负数（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/user.repo.ts:136`
+- **问题**：addCredits 没有校验参数为正数，传入负数可以减少用户积分
+- **修复**：加 `if (amount <= 0) throw new ValidationError("amount must be positive")`
+- **预估**：5 分钟
+
+### BUG-062 · deductCredits 接受 0/负数（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/user.repo.ts:122`
+- **问题**：deductCredits 没有校验参数为正数
+- **修复**：同 BUG-061
+- **预估**：5 分钟
+
+### BUG-063 · Worker 无 Docker healthcheck（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`docker-compose.yml:85`
+- **问题**：Worker 没有 healthcheck，挂了不会被 Docker 自动重启
+- **修复**：添加 healthcheck（检查进程存活或 Redis 连接）
+- **预估**：15 分钟
+
+### BUG-064 · Webhook 不校验 creditsGranted 金额（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/payment.service.ts:85`
+- **问题**：不校验 webhook 传入的金额是否匹配 payment 记录的预期金额
+- **修复**：比较 webhook 金额与 payment.amount，不一致则拒绝
+- **预估**：15 分钟
+
+### BUG-065 · 密码重置 token 无尝试次数限制（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/modules/auth.service.ts:206`
+- **问题**：重置 token 可被无限尝试暴力破解
+- **修复**：Redis 记录尝试次数，超过 5 次失效 token
+- **预估**：20 分钟
+
+---
+
+## P2 — 本月修
+
+### BUG-066 · Worker 扣费失败仅 log 无恢复（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/worker/src/handlers.ts:221`
+- **问题**：AIGC 生成成功但扣费失败时只 log warning，用户白嫖
+- **修复**：扣费失败时将 task 标记为 `billing_failed`，后续补扣或人工处理
+- **预估**：30 分钟
+
+### BUG-067 · Spawn 注入无界 memory context（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/agent/tools/spawn.ts:76`
+- **问题**：SubAgent 继承完整的三层记忆上下文，记忆量大会超出 context window
+- **修复**：限制注入的 memory 大小（如只取最近 N 条）
+- **预估**：30 分钟
+
+### BUG-068 · 空 toolset skill 静默完成（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/worker/src/handlers.ts:417`
+- **问题**：skill 需要的 tools 全部不可用时，LLM 无工具可用但仍然跑完，浪费 token
+- **修复**：toolset 为空时提前失败
+- **预估**：10 分钟
+
+### BUG-069 · Collab auth PG 连接池未关闭（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/collab/src/auth.ts:76`
+- **问题**：auth hook 创建的 PG 连接在 shutdown 时未关闭，连接泄漏
+- **修复**：在 shutdown handler 中关闭 auth PG 连接
+- **预估**：10 分钟
+
+### BUG-070 · 前端 Yjs observer 内存泄漏（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/web/src/hooks/useYjsProjectStore.ts:73`
+- **问题**：observeDeep 回调在组件卸载时未移除
+- **修复**：useEffect cleanup 中调用 `unobserveDeep`
+- **预估**：10 分钟
+
+### BUG-071 · Subdoc provider 清理不完整（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/web/src/utils/yjsManager.ts:100`
+- **问题**：切换项目时 subdoc provider 未 destroy，旧连接残留
+- **修复**：disconnect 时遍历并 destroy 所有 subdoc provider
+- **预估**：15 分钟
+
+### BUG-072 · creditTransactions 缺 referenceId 索引（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/db/schema.ts:283`
+- **问题**：deductOnce 每次查 `referenceId` 但没有索引，表大了会慢
+- **修复**：新增 migration 加索引
+- **预估**：15 分钟
+
+### BUG-073 · creditTransactions 缺 deletedAt（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/core/src/db/schema.ts:283`
+- **问题**：软删除规范要求每张表有 deletedAt，creditTransactions 缺失
+- **修复**：新增 migration 加列
+- **预估**：15 分钟
+
+### BUG-074 · Docker 硬编码 postgres 密码（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`docker-compose.yml:6`
+- **问题**：`POSTGRES_PASSWORD: breatic` 硬编码，应从 .env 读取
+- **修复**：改为 `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-breatic}`
+- **预估**：5 分钟
+
+### BUG-075 · Worker 死 redis 变量（拆库遗留）（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/worker/src/handlers.ts:84`
+- **问题**：Redis 拆分后 handlers.ts 中 `const redis = getRedis()` 仍在用，部分操作可能走错 DB
+- **修复**：审查 handlers.ts 中所有 redis 用途，确认走对应的 DB
+- **预估**：20 分钟
+
+### BUG-076 · Logout 重新解析 token 而非从 ctx 读（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/server/src/routes/auth.ts:179`
+- **问题**：logout 路由重新从 Authorization header 解析 token，但 requireAuth 中间件已经做过了
+- **修复**：从 context 读取已验证的 token
+- **预估**：5 分钟
+
+### BUG-077 · CORS 无 wildcard + credentials 校验（MEDIUM）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/server/src/middleware/cors.ts:13`
+- **问题**：如果 ALLOWED_ORIGINS 设为 `*` 且 credentials=true，浏览器会拒绝
+- **修复**：校验 `*` 与 credentials 互斥
+- **预估**：10 分钟
+
+### BUG-078 · 锁释放 del 失败未 log（LOW）
+
+- **状态**：`[ ]` 待修
+- **位置**：`packages/collab/src/task-listener.ts:142`
+- **问题**：Redis DEL 失败时没有日志，锁残留原因无法排查
+- **修复**：catch 块加 logger.error
+- **预估**：5 分钟
+
+---
+
+## 📋 Round 3 汇总
+
+| 优先级 | 数量 | 预估 |
+|--------|------|------|
+| P0 (HIGH) | 8 | ~2.5h |
+| P1 (本周) | 12 | ~3.5h |
+| P2 (本月) | 13 | ~4h |
+| **合计** | **33** | **~10h** |
+
+**两轮合计活跃 bug**：Round 2 (15) + Round 3 (33) = **48 个**
+
+**最危险的 3 个**：
+1. BUG-046（WebSocket token 硬编码 'dev'）— 任何人可读写任何项目画布
+2. BUG-047/048（deductOnce 双漏洞）— 可免费使用 AIGC
+3. BUG-051（TextNode 存储型 XSS）— 通过 Yjs 注入恶意 HTML
+
+---
+
 ## 历史记录
 
 - **Round 1**（2026-04-15）：29 个 bug 全部关闭。详见 [audit/2026-04-15-round-1-closed.md](./audit/2026-04-15-round-1-closed.md)
-- **Round 2**（2026-04-15）：本文档，15 个 regression + 1 个测试质量 meta issue
+- **Round 2**（2026-04-15）：15 个 regression + 1 个测试质量 meta issue
+- **Round 3**（2026-04-17）：33 个新发现（含 8 个 P0）
