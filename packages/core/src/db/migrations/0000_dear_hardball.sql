@@ -156,7 +156,7 @@ CREATE TABLE "users" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "yjs_documents" (
+CREATE TABLE IF NOT EXISTS "yjs_documents" (
 	"name" text PRIMARY KEY NOT NULL,
 	"data" "bytea" NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now()
