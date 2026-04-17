@@ -58,6 +58,43 @@ type TextToolMockPayload =
   | { tool: 'storyboard'; instructions: string; scene_count?: number; document?: string; node_id?: string; project_id?: string }
   | { tool: 'script'; scene_description: string; characters?: string[]; document?: string; node_id?: string; project_id?: string };
 
+type MockTool = TextToolMockPayload['tool'];
+
+type QuickActionMeta = {
+  key: SelectionToolKey;
+  title: string;
+  icon: ReactNode;
+};
+
+const MOCK_TOOL_REPLACEMENTS: Record<MockTool, string> = {
+  generate: '[GENERATE] This is fixed replacement content.',
+  character: '[CHARACTER] This is fixed replacement content.',
+  storyboard: '[STORYBOARD] This is fixed replacement content.',
+  script: '[SCRIPT] This is fixed replacement content.',
+  polish: '[POLISH] This is fixed replacement content.',
+  expand: '[EXPAND] This is fixed replacement content.',
+  summarize: '[SUMMARIZE] This is fixed replacement content.',
+  translate: '[TRANSLATE] This is fixed replacement content.',
+  rewrite: '[REWRITE] This is fixed replacement content.',
+  continue: '[CONTINUE] This is fixed replacement content.',
+};
+
+const QUICK_ACTION_META: readonly QuickActionMeta[] = [
+  { key: 'polish', title: 'Polish', icon: <RiSparkling2Line size={16} /> },
+  { key: 'expand', title: 'Expand', icon: <RiExpandUpDownLine size={16} /> },
+  { key: 'summarize', title: 'Summarize', icon: <RiContractUpDownLine size={16} /> },
+  { key: 'translate', title: 'Translate', icon: <RiTranslateAi size={16} /> },
+  { key: 'rewrite', title: 'Rewrite', icon: <RiExchangeLine size={16} /> },
+  { key: 'continue', title: 'Continue', icon: <RiPlayListAddLine size={16} /> },
+] as const;
+
+const GENERATION_SEND_ITEMS: readonly AIGenerationOption[] = [
+  { key: 'generate', title: 'Generate' },
+  { key: 'character', title: 'Character' },
+  { key: 'storyboard', title: 'Storyboard' },
+  { key: 'script', title: 'Script' },
+] as const;
+
 export interface AIMenuProps {
   editor: Editor;
   anchorPos: number;
@@ -364,18 +401,7 @@ const AIMenu = ({
     item.onClick();
   };
 
-  const getMockReplacementByTool = useCallback((tool: TextToolMockPayload['tool']): string => {
-    if (tool === 'character') return '[CHARACTER] This is fixed replacement content.';
-    if (tool === 'storyboard') return '[STORYBOARD] This is fixed replacement content.';
-    if (tool === 'script') return '[SCRIPT] This is fixed replacement content.';
-    if (tool === 'polish') return '[POLISH] This is fixed replacement content.';
-    if (tool === 'expand') return '[EXPAND] This is fixed replacement content.';
-    if (tool === 'summarize') return '[SUMMARIZE] This is fixed replacement content.';
-    if (tool === 'translate') return '[TRANSLATE] This is fixed replacement content.';
-    if (tool === 'rewrite') return '[REWRITE] This is fixed replacement content.';
-    if (tool === 'continue') return '[CONTINUE] This is fixed replacement content.';
-    return '[GENERATE] This is fixed replacement content.';
-  }, []);
+  const getMockReplacementByTool = useCallback((tool: MockTool): string => MOCK_TOOL_REPLACEMENTS[tool], []);
 
   const getDocumentText = useCallback((): string => {
     const size = editor.state.doc.content.size;
@@ -394,10 +420,17 @@ const AIMenu = ({
     return editor.state.doc.textBetween(from, to, '\n', '\n');
   }, [editor]);
 
+  const getPreviewText = useCallback((): string => {
+    const preview = previewRef.current;
+    if (!preview) return '';
+    if (preview.to <= preview.from) return '';
+    return editor.state.doc.textBetween(preview.from, preview.to, '\n', '\n');
+  }, [editor]);
+
   const buildSelectionMockPayload = useCallback(
     (tool: SelectionToolKey): TextToolMockPayload | null => {
       const document = getDocumentText();
-      const selection = getSelectionText();
+      const selection = getSelectionText() || getPreviewText();
       if (!document || !selection) return null;
       const trimmedPrompt = prompt.trim();
 
@@ -428,7 +461,7 @@ const AIMenu = ({
         instructions: trimmedPrompt || undefined,
       };
     },
-    [getDocumentText, getSelectionText, prompt],
+    [getDocumentText, getPreviewText, getSelectionText, prompt],
   );
 
   const buildGenerationMockPayload = useCallback(
@@ -525,82 +558,22 @@ const AIMenu = ({
   // ── Suggestion items based on status ────────────────────────────────────
 
   /** 结束输入框（审阅 / Discard·Apply）：聚焦时始终用这组快捷项。 */
-  const quickActionItems: AISuggestionItem[] = [
-    {
-      key: 'polish',
-      title: 'Polish',
-      icon: <RiSparkling2Line size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('polish');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-    {
-      key: 'expand',
-      title: 'Expand',
-      icon: <RiExpandUpDownLine size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('expand');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-    {
-      key: 'summarize',
-      title: 'Summarize',
-      icon: <RiContractUpDownLine size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('summarize');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-    {
-      key: 'translate',
-      title: 'Translate',
-      icon: <RiTranslateAi size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('translate');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-    {
-      key: 'rewrite',
-      title: 'Rewrite',
-      icon: <RiExchangeLine size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('rewrite');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-    {
-      key: 'continue',
-      title: 'Continue',
-      icon: <RiPlayListAddLine size={16} />,
-      onClick: () => {
-        const payload = buildSelectionMockPayload('continue');
-        if (payload) runMockTextTool(payload);
-      },
-    },
-  ];
+  const quickActionItems: AISuggestionItem[] = useMemo(
+    () =>
+      QUICK_ACTION_META.map(({ key, title, icon }) => ({
+        key,
+        title,
+        icon,
+        onClick: () => {
+          const payload = buildSelectionMockPayload(key);
+          if (payload) runMockTextTool(payload);
+        },
+      })),
+    [buildSelectionMockPayload, runMockTextTool],
+  );
 
   /** 发送输入框（首次输入 + generation）模式下的执行选项。 */
-  const generationSendItems: AIGenerationOption[] = [
-    {
-      key: 'generate',
-      title: 'Generate',
-    },
-    {
-      key: 'character',
-      title: 'Character',
-    },
-    {
-      key: 'storyboard',
-      title: 'Storyboard',
-    },
-    {
-      key: 'script',
-      title: 'Script',
-    },
-  ];
+  const generationSendItems = GENERATION_SEND_ITEMS;
 
   const selectedGenerationAction = generationSendItems.find((item) => item.key === generationActionKey) ?? generationSendItems[0];
   const isGenerationUserInput = menuVariant === 'generation' && status === 'user-input';
@@ -657,11 +630,13 @@ const AIMenu = ({
   };
   const placeholder = getPlaceholder();
   const isPromptEditable = status === 'user-input' || status === 'user-reviewing';
-  const promptPlaceholder = isPromptFocused
-    ? 'Ask AI what you want...'
-    : status === 'user-reviewing'
-      ? 'Tell AI what else needs to be changed...'
-      : placeholder;
+  let promptPlaceholder = placeholder;
+  if (status === 'user-reviewing') {
+    promptPlaceholder = 'Tell AI what else needs to be changed...';
+  }
+  if (isPromptFocused) {
+    promptPlaceholder = 'Ask AI what you want...';
+  }
 
   const renderSubmitButton = useCallback(
     (extraClassName?: string) => (
@@ -687,6 +662,11 @@ const AIMenu = ({
     [handleSubmit, isDisabled, prompt],
   );
 
+  const editorWidth =
+    editorRectRef.current?.width ??
+    (editor.view.dom as HTMLElement).getBoundingClientRect().width;
+  const menuWidth = status === 'quick-actions' ? 'auto' : editorWidth;
+
   useEffect(() => {
     return () => {
       clearTimers();
@@ -705,10 +685,7 @@ const AIMenu = ({
       onMouseDown={handleMenuMouseDown}
       style={{
         ...floatingStyles,
-        width:
-          status === 'quick-actions'
-            ? 'auto'
-            : (editorRectRef.current?.width ?? (editor.view.dom as HTMLElement).getBoundingClientRect().width),
+        width: menuWidth,
         zIndex: 100,
       }}
       className={cn('flex gap-1 outline-none', menuPlacedOnTop ? 'flex-col-reverse' : 'flex-col')}
