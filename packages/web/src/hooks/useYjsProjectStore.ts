@@ -13,8 +13,16 @@ import { setCanvasYjsManager } from '@/utils/canvasYjsRef';
 
 export interface UseYjsStoreOptions {
   id: string;
+  /** Session token for Hocuspocus auth. When empty, the hook refuses to start Yjs. */
+  token: string;
   wsUrl?: string;
   enabled?: boolean;
+  /**
+   * Called when Hocuspocus rejects the token. Should clear localStorage
+   * auth + redirect to /login. The manager disconnects automatically
+   * to stop reconnect loops; this callback handles the UX side.
+   */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface UseYjsStoreResult {
@@ -36,7 +44,7 @@ export interface UseYjsStoreResult {
 }
 
 export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
-  const { id, wsUrl, enabled = true } = options;
+  const { id, token, wsUrl, enabled = true, onAuthFailed } = options;
 
   const [manager, setManager] = useState<YjsProjectManager | null>(null);
   const managerRef = useRef<YjsProjectManager | null>(null);
@@ -46,7 +54,12 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
   const [edgeSelections, setEdgeSelections] = useState<Map<string, { color: string }>>(new Map());
 
   useEffect(() => {
-    if (!enabled || !id) {
+    // Do not start Yjs when unauthenticated — there is no valid session
+    // token to pass to Hocuspocus. Starting without a token would trigger
+    // an infinite reconnect loop (server rejects empty token → close →
+    // client reconnects). Upstream should pass enabled=false or empty
+    // token before login completes.
+    if (!enabled || !id || !token) {
       managerRef.current = null;
       setManager(null);
       setCanUndo(false);
@@ -60,7 +73,9 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
 
     const mgr = createYjsProjectManager({
       workflowId: id,
+      token,
       wsUrl,
+      onAuthFailed,
     });
 
     managerRef.current = mgr;
@@ -115,7 +130,9 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
       setManager(null);
       setYjsLoading(false);
     };
-  }, [id, wsUrl, enabled]);
+    // onAuthFailed intentionally omitted from deps — it should be stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, token, wsUrl, enabled]);
 
   const createSnapshot = useCallback(() => managerRef.current?.createSnapshot() || new Uint8Array(0), []);
   const restoreSnapshot = useCallback((binary: Uint8Array) => managerRef.current?.restoreSnapshot(binary), []);

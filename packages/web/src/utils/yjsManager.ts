@@ -11,7 +11,24 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 
 export interface YjsManagerConfig {
   docId: string;
+  /**
+   * Session token used by Hocuspocus `onAuthenticate` to verify the
+   * user and enforce project ownership. Must be a real session token
+   * from the auth store — previously hardcoded to `'dev'`, which
+   * caused production reconnect loops (server rejected `dev`).
+   *
+   * Empty string means "unauthenticated"; callers should avoid
+   * constructing a manager in that case. If passed anyway, the
+   * auth failure handler will clear session + redirect to login.
+   */
+  token: string;
   wsUrl?: string;
+  /**
+   * Called when the server rejects the token (expired / invalid).
+   * Should clear client session state and redirect to /login.
+   * Without this, the provider would reconnect forever.
+   */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface YjsManager {
@@ -48,7 +65,7 @@ function resolveWsUrl(explicit?: string): string {
 }
 
 export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
-  const { docId } = config;
+  const { docId, token, onAuthFailed } = config;
   const wsUrl = resolveWsUrl(config.wsUrl);
 
   const doc = new Y.Doc();
@@ -57,8 +74,14 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
     url: wsUrl,
     name: docId,
     document: doc,
-    token: 'dev',
+    token,
     timeout: 10000,
+    onAuthenticationFailed: ({ reason }) => {
+      // Stop the infinite reconnect loop — the client cannot recover
+      // from an invalid token without new credentials.
+      provider.disconnect();
+      onAuthFailed?.(reason);
+    },
   });
 
   const awareness = provider.awareness!;
@@ -101,7 +124,11 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
         url: wsUrl,
         name: subdoc.guid,
         document: subdoc,
-        token: 'dev',
+        token,
+        onAuthenticationFailed: ({ reason }) => {
+          subdocProviders.get(subdoc.guid)?.disconnect();
+          onAuthFailed?.(reason);
+        },
       }));
     }
     return subdoc;
