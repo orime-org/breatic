@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import '@xyflow/react/dist/style.css';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/components/base/icon';
@@ -9,6 +9,8 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
+import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { removeToken } from '@/utils/token';
 import ImageEditor from './components/imageEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
@@ -44,9 +46,23 @@ const ProjectPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
+  const { authInfo } = useUserCenterStore();
+  const navigate = useNavigate();
+  const sessionToken = authInfo?.state?.token ?? '';
+
   const yjs = useYjsStore({
     id: workflowId ?? '',
-    enabled: !!workflowId,
+    token: sessionToken,
+    enabled: !!workflowId && !!sessionToken,
+    onAuthFailed: useCallback((reason: string) => {
+      // Session expired or token rejected — clear client state and
+      // redirect to login. Without this, HocuspocusProvider would
+      // reconnect forever against an invalid token.
+      // eslint-disable-next-line no-console
+      console.warn('[yjs] Authentication failed:', reason);
+      removeToken();
+      navigate('/login', { replace: true });
+    }, [navigate]),
   });
 
   return (
