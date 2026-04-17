@@ -65,8 +65,9 @@ export default defineConfig(({ command, mode }) => {
         gzipSize: true,
       }),
     ],
-    // dev 用 / 方便本地访问；build 用 /breatic/ 供 nginx 部署
-    base: command === 'build' ? '/breatic/' : '/',
+    // 前端部署在 nginx 根路径（/）下，dev 和 build 统一。
+    // 如需挂在子路径，通过 VITE_PUBLIC_PATH 覆盖。
+    base: '/',
     root: path.resolve(__dirname, 'src'),
     publicDir: path.resolve(__dirname, 'public'),
     resolve: {
