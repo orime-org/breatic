@@ -18,6 +18,23 @@ export const HighlightBlock = Node.create({
   selectable: true,
   draggable: false,
 
+  addAttributes() {
+    return {
+      aiPlaceholder: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const raw = element.getAttribute('data-ai-placeholder');
+          if (raw == null) return null;
+          return raw === 'true';
+        },
+        renderHTML: (attributes: { aiPlaceholder?: boolean | null }) => {
+          if (!attributes.aiPlaceholder) return {};
+          return { 'data-ai-placeholder': 'true' };
+        },
+      },
+    };
+  },
+
   parseHTML() {
     return [{ tag: 'div[data-highlight-block]' }];
   },

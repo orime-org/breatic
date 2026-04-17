@@ -45,12 +45,18 @@ import { openImageFilePanel } from '../media/ImageFilePanel';
 import { openMediaFilePanel } from '../media/MediaFilePanel';
 import { BlockHighlightIcon } from '../ui/TextEditorIcons';
 import { SlashTableSizePicker } from './SlashTableSizePicker';
-import { getTextEditorBridgeStorage } from '../extensions/TextEditorBridgeExtension';
+import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
 
 export { openBreaticSlashMenu } from './SlashMenuPlugin';
 
 const TABLE_SLASH_TITLE = 'Table';
 const AI_SLASH_TITLE = 'Ask AI';
+const AI_SLASH_ACTIONS = [
+  { key: 'generate', title: 'Generate', replacement: '[GENERATE] This is fixed replacement content.' },
+  { key: 'character', title: 'Character', replacement: '[CHARACTER] This is fixed replacement content.' },
+  { key: 'storyboard', title: 'Storyboard', replacement: '[STORYBOARD] This is fixed replacement content.' },
+  { key: 'script', title: 'Script', replacement: '[SCRIPT] This is fixed replacement content.' },
+] as const;
 
 const insertSlashTable = (editor: Editor, range: Range, rows: number, cols: number) => {
   const from = range.from;
@@ -60,11 +66,7 @@ const insertSlashTable = (editor: Editor, range: Range, rows: number, cols: numb
 };
 
 const openAskAIMenuFromSlash = (editor: Editor, range: Range, replacement: string | null) => {
-  const cursorPos = Math.max(1, Math.min(range.from, editor.state.doc.content.size));
-  editor.chain().focus().deleteRange(range).setTextSelection(cursorPos).run();
-  queueMicrotask(() => {
-    getTextEditorBridgeStorage(editor).openGenerationAIMenu?.(replacement);
-  });
+  openGenerationAIMenuAtBottom(editor, { replacement, deleteRange: range });
 };
 
 interface SlashItem {
@@ -276,12 +278,18 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
     () => flatItemsInRenderOrder.findIndex((it) => it.title === TABLE_SLASH_TITLE),
     [flatItemsInRenderOrder],
   );
+  const aiFlatIndex = useMemo(
+    () => flatItemsInRenderOrder.findIndex((it) => it.title === AI_SLASH_TITLE),
+    [flatItemsInRenderOrder],
+  );
   const showTablePicker = tableFlatIndex >= 0 && selectedIndex === tableFlatIndex;
+  const showAIPicker = aiFlatIndex >= 0 && selectedIndex === aiFlatIndex;
   const itemCount = Math.max(flatItemsInRenderOrder.length, 1);
 
   const portalRoot = useMemo(() => getSlashMenuPortalRoot(editor), [editor]);
 
   const tableTriggerRef = useRef<HTMLButtonElement>(null);
+  const aiTriggerRef = useRef<HTMLButtonElement>(null);
 
   const {
     refs: menuRefs,
@@ -303,6 +311,16 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
     middleware: [offset({ mainAxis: 10, crossAxis: 0 }), flip({ padding: 8 }), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
+  const {
+    refs: aiPickerRefs,
+    floatingStyles: aiPickerFloatingStyles,
+    update: updateAIPickerPosition,
+  } = useFloating({
+    placement: 'right-start',
+    strategy: 'fixed',
+    middleware: [offset({ mainAxis: 10, crossAxis: 0 }), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
 
   const clientRectForMenu = props.clientRect;
 
@@ -318,6 +336,12 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
     tablePickerRefs.setReference(tableTriggerRef.current);
     void updateTablePickerPosition();
   }, [showTablePicker, bumpLayout, tablePickerRefs, updateTablePickerPosition, selectedIndex]);
+
+  useLayoutEffect(() => {
+    if (!showAIPicker || !aiTriggerRef.current) return;
+    aiPickerRefs.setReference(aiTriggerRef.current);
+    void updateAIPickerPosition();
+  }, [showAIPicker, bumpLayout, aiPickerRefs, updateAIPickerPosition, selectedIndex]);
 
   const commitTableSize = useCallback(
     (rows: number, cols: number) => {
@@ -379,7 +403,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
             insertSlashTable(ed, range, tableHover.rows, tableHover.cols);
           } else if (item.title === AI_SLASH_TITLE) {
             closeBreaticSlashMenu(ed.view);
-            openAskAIMenuFromSlash(ed, range, null);
+            openAskAIMenuFromSlash(ed, range, AI_SLASH_ACTIONS[0].replacement);
           } else {
             closeBreaticSlashMenu(ed.view);
             item.command({ editor: ed, range });
@@ -431,6 +455,7 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
             {items.map((item) => {
               const idx = flatIdx++;
               const isTable = item.title === TABLE_SLASH_TITLE;
+              const isAskAI = item.title === AI_SLASH_TITLE;
 
               const rowButton = (
                 <>
@@ -473,6 +498,35 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
                 );
               }
 
+              if (isAskAI) {
+                return (
+                  <div key={item.title}>
+                    <button
+                      ref={aiTriggerRef}
+                      type='button'
+                      className={cn(
+                        'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base',
+                        idx === selectedIndex ? 'bg-background-default-secondary' : 'hover:bg-background-default-secondary',
+                      )}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                      }}
+                    >
+                      <span className='flex min-w-0 flex-1 items-center gap-2.5'>{rowButton}</span>
+                      <RiArrowRightSLine
+                        size={14}
+                        className={cn(
+                          'shrink-0 text-text-default-tertiary',
+                          showAIPicker && 'text-text-default-secondary',
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  </div>
+                );
+              }
+
               return (
                 <button
                   key={item.title}
@@ -504,6 +558,30 @@ const SlashMenuList = forwardRef<SlashMenuListHandle, BreaticSlashRendererProps<
             onCommit={commitTableSize}
             onHoverChange={onTableHoverChange}
           />
+        </div>
+      )}
+      {showAIPicker && (
+        <div
+          ref={aiPickerRefs.setFloating}
+          style={{ ...aiPickerFloatingStyles, zIndex: SLASH_TABLE_PICKER_Z }}
+          className='min-w-[170px] overflow-hidden rounded-[10px] border border-border-default-base bg-background-default-base py-1.5 shadow-[0_8px_24px_var(--color-shadow-overlay)]'
+        >
+          {AI_SLASH_ACTIONS.map((action) => (
+            <button
+              key={action.key}
+              type='button'
+              className='flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-text-default-base hover:bg-background-default-secondary'
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const ed = props.editor as Editor;
+                const range = getBreaticSlashCommandRange(ed) ?? props.range;
+                closeBreaticSlashMenu(ed.view);
+                openAskAIMenuFromSlash(ed, range, action.replacement);
+              }}
+            >
+              {action.title}
+            </button>
+          ))}
         </div>
       )}
     </>,

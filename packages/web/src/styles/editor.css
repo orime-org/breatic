@@ -156,6 +156,14 @@
   background: rgba(79, 70, 229, 0.1);
 }
 
+.breatic-editor-body .ProseMirror .breatic-highlight-block[data-ai-placeholder='true'] {
+  margin: 0.25rem 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 2px;
+  border: none;
+  background: rgba(59, 130, 246, 0.12);
+}
+
 .breatic-editor-body .ProseMirror .breatic-code-block-node {
   position: relative;
   margin: 1.5rem 0;
@@ -274,8 +282,9 @@
   z-index: 90;
 }
 
-/* Placeholder — only for empty paragraph blocks */
-.breatic-editor-body .ProseMirror p.is-empty::before {
+/* Placeholder — empty paragraph and empty highlight block */
+.breatic-editor-body .ProseMirror p.is-empty::before,
+.breatic-editor-body .ProseMirror .breatic-highlight-block.is-empty::before {
   content: attr(data-placeholder);
   float: left;
   color: theme('colors.text-default-tertiary');

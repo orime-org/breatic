@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
-import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
@@ -127,7 +126,9 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       HighlightBlock,
       Placeholder.configure({
         placeholder: ({ node }) => {
-          if (node.type.name === 'paragraph') return 'Enter text or type \'/\' for commands…';
+          if (node.type.name === 'paragraph' || node.type.name === 'highlightBlock') {
+            return 'Enter text or type \'/\' for commands…';
+          }
           return '';
         },
         showOnlyCurrent: true,
@@ -207,8 +208,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
 
   const [aiMenuOpen, setAIMenuOpen] = useState(false);
   const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
-  const [aiCursorPos, setAiCursorPos] = useState<number | null>(null);
-  const [aiCursorHintRect, setAiCursorHintRect] = useState<{ top: number; left: number; height: number } | null>(null);
   const [aiInitialReplacement, setAiInitialReplacement] = useState<string | null>(null);
 
   const handleOpenGenerationAIMenu = useCallback((initialReplacement: string | null = null) => {
@@ -231,7 +230,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       }
     }
     setAiAnchorPos(anchorPos ?? from);
-    setAiCursorPos(from);
     setAiInitialReplacement(initialReplacement);
     setAIMenuOpen(true);
   }, [editor]);
@@ -239,39 +237,9 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
   const handleCloseGenerationAIMenu = useCallback(() => {
     setAIMenuOpen(false);
     setAiAnchorPos(null);
-    setAiCursorPos(null);
-    setAiCursorHintRect(null);
     setAiInitialReplacement(null);
     editor?.commands.focus();
   }, [editor]);
-
-  const hideAiCursorHint = useCallback(() => {
-    setAiCursorPos(null);
-    setAiCursorHintRect(null);
-  }, []);
-
-  const updateAiCursorHintRect = useCallback((ed: Editor, pos: number) => {
-    const docSize = ed.state.doc.content.size;
-    const basePos = Math.max(1, Math.min(pos, Math.max(1, docSize)));
-    const candidates = [basePos, Math.max(1, basePos - 1), Math.min(Math.max(1, docSize), basePos + 1)];
-    for (const p of candidates) {
-      try {
-        const coords = ed.view.coordsAtPos(p);
-        const lineHeight = Math.max(12, coords.bottom - coords.top);
-        const hintHeight = Math.max(10, lineHeight * 0.8);
-        const verticalOffset = (lineHeight - hintHeight) / 2;
-        setAiCursorHintRect({
-          left: coords.left,
-          top: coords.top + verticalOffset,
-          height: hintHeight,
-        });
-        return;
-      } catch {
-        // Try nearby position.
-      }
-    }
-    setAiCursorHintRect(null);
-  }, []);
 
   useEffect(() => {
     if (!editor) return;
@@ -281,19 +249,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       bridge.openGenerationAIMenu = null;
     };
   }, [editor, handleOpenGenerationAIMenu]);
-
-  useEffect(() => {
-    if (!aiMenuOpen || aiCursorPos == null || !editor) return;
-    updateAiCursorHintRect(editor, aiCursorPos);
-
-    const onViewportChange = () => updateAiCursorHintRect(editor, aiCursorPos);
-    window.addEventListener('scroll', onViewportChange, true);
-    window.addEventListener('resize', onViewportChange);
-    return () => {
-      window.removeEventListener('scroll', onViewportChange, true);
-      window.removeEventListener('resize', onViewportChange);
-    };
-  }, [aiMenuOpen, aiCursorPos, editor, updateAiCursorHintRect]);
 
   useEditorState({
     editor,
@@ -360,7 +315,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
           </div>
           {editor && (
             <div className='pointer-events-none absolute inset-y-0 right-3 z-10 flex flex-col items-end justify-center py-3'>
-              <RightToolbar editor={editor} nodeId={nodeId} onOpenAIMenu={handleOpenGenerationAIMenu} />
+              <RightToolbar editor={editor} nodeId={nodeId} />
             </div>
           )}
         </div>
@@ -371,21 +326,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
           anchorPos={aiAnchorPos}
           onClose={handleCloseGenerationAIMenu}
           menuVariant='generation'
-          onPreviewApplied={hideAiCursorHint}
           initialReplacement={aiInitialReplacement}
-        />
-      )}
-      {editor && aiMenuOpen && aiCursorHintRect && (
-        <div
-          className='pointer-events-none fixed rounded-full bg-[#4F46E5] shadow-[0_0_0_1px_rgba(79,70,229,0.25),0_0_10px_rgba(79,70,229,0.6)] animate-pulse'
-          style={{
-            zIndex: 100,
-            top: aiCursorHintRect.top,
-            left: aiCursorHintRect.left - 1,
-            width: 3,
-            height: aiCursorHintRect.height,
-          }}
-          aria-hidden
         />
       )}
     </>

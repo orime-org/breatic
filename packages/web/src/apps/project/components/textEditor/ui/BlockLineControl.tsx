@@ -271,7 +271,7 @@ const resolveBlockDomForHandle = (
 
   for (const probe of [blockStart, blockStart + 1]) {
     const raw = view.nodeDOM(probe);
-    const asEl = raw instanceof HTMLElement ? raw : raw?.parentElement ?? null;
+    const asEl = raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
     if (asEl && editorDom.contains(asEl)) {
       try {
         if (getBlockStartAtDocPos(editor, view.posAtDOM(asEl, 0)) === blockStart) return asEl;
@@ -1121,7 +1121,12 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
       const { doc } = editor.state;
 
       if (isEmptyInsertLineBlock(doc, bs)) {
-        editor.chain().focus().setTextSelection(bs + 1).scrollIntoView().run();
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(bs + 1)
+          .scrollIntoView()
+          .run();
         openBreaticSlashMenu(editor, { deleteTriggerCharacter: false });
         return;
       }
@@ -1174,11 +1179,14 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
     [editor, pos?.blockStart],
   );
 
-  const handleDragHandleMouseDown = useCallback((e: ReactMouseEvent<HTMLSpanElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    clearMenuHoverCloseTimer();
-  }, [clearMenuHoverCloseTimer]);
+  const handleDragHandleMouseDown = useCallback(
+    (e: ReactMouseEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearMenuHoverCloseTimer();
+    },
+    [clearMenuHoverCloseTimer],
+  );
 
   const handleDragHandleDragStart = useCallback(
     (e: ReactDragEvent<HTMLSpanElement>) => {

@@ -129,6 +129,24 @@ const getBlockVerticalBounds = (editor: Editor, blockStartPos: number): { top: n
   };
 };
 
+const clearAIGenerationPlaceholderIfNeeded = (editor: Editor, pos: number): void => {
+  try {
+    const docSize = editor.state.doc.content.size;
+    const safePos = Math.max(1, Math.min(pos, Math.max(1, docSize)));
+    const $pos = editor.state.doc.resolve(safePos);
+    for (let d = $pos.depth; d >= 1; d -= 1) {
+      const node = $pos.node(d);
+      if (node.type.name !== 'highlightBlock') continue;
+      if (node.attrs?.aiPlaceholder !== true) continue;
+      const blockStart = $pos.start(d);
+      editor.chain().focus().setTextSelection(blockStart).setParagraph().run();
+      return;
+    }
+  } catch {
+    // no-op
+  }
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 const AIMenu = ({
@@ -319,45 +337,56 @@ const AIMenu = ({
 
   const applyPreviewReplacement = useCallback(
     (replacement: string) => {
-      clearTemporarySelectionHighlight();
-      const fallbackSel = editor.state.selection;
-      let from: number;
-      let to: number;
-      let originalText = '';
+      try {
+        clearTemporarySelectionHighlight();
+        const fallbackSel = editor.state.selection;
+        let from: number;
+        let to: number;
+        let originalText = '';
 
-      // Retry should replace the current preview range directly, otherwise
-      // stale selection ranges can leave trailing text behind.
-      const existingPreview = previewRef.current;
-      if (existingPreview) {
-        from = existingPreview.from;
-        to = existingPreview.to;
-        originalText = existingPreview.originalText;
-      } else if (menuVariant === 'generation') {
-        const docSize = editor.state.doc.content.size;
-        const insertPos = Math.max(1, Math.min(Math.max(fallbackSel.from, fallbackSel.to), docSize));
-        from = insertPos;
-        to = insertPos;
-      } else {
-        const preferredRange = selectionRangeRef.current;
-        from = preferredRange?.from ?? Math.min(fallbackSel.from, fallbackSel.to);
-        to = preferredRange?.to ?? Math.max(fallbackSel.from, fallbackSel.to);
-        if (to <= from) return false;
-        originalText = editor.state.doc.textBetween(from, to, '\n', '\n');
+        // Retry should replace the current preview range directly, otherwise
+        // stale selection ranges can leave trailing text behind.
+        const existingPreview = previewRef.current;
+        if (existingPreview) {
+          from = existingPreview.from;
+          to = existingPreview.to;
+          originalText = existingPreview.originalText;
+        } else if (menuVariant === 'generation') {
+          const docSize = editor.state.doc.content.size;
+          const insertPos = Math.max(1, Math.min(Math.max(fallbackSel.from, fallbackSel.to), docSize));
+          from = insertPos;
+          to = insertPos;
+        } else {
+          const preferredRange = selectionRangeRef.current;
+          from = preferredRange?.from ?? Math.min(fallbackSel.from, fallbackSel.to);
+          to = preferredRange?.to ?? Math.max(fallbackSel.from, fallbackSel.to);
+          if (to <= from) return false;
+          originalText = editor.state.doc.textBetween(from, to, '\n', '\n');
+        }
+
+        const previewApplied = editor
+          .chain()
+          .focus()
+          .insertContentAt({ from, to }, replacement)
+          .setTextSelection({ from, to: from + replacement.length })
+          .setColor(previewColor)
+          .setTextSelection(from + replacement.length)
+          .run();
+        if (!previewApplied) return false;
+
+        if (menuVariant === 'generation') {
+          clearAIGenerationPlaceholderIfNeeded(editor, Math.max(from + 1, 1));
+        }
+
+        // Clear stored textStyle mark for subsequent typing without touching preview color.
+        editor.chain().focus().unsetMark('textStyle').run();
+        previewRef.current = { from, to: from + replacement.length, originalText };
+        onPreviewApplied?.();
+        return true;
+      } catch (err) {
+        console.error('[AIMenu] Failed to apply AI preview replacement', err);
+        return false;
       }
-
-      editor
-        .chain()
-        .focus()
-        .insertContentAt({ from, to }, replacement)
-        .setTextSelection({ from, to: from + replacement.length })
-        .setColor(previewColor)
-        .setTextSelection(from + replacement.length)
-        .run();
-      // Clear stored textStyle mark for subsequent typing without touching preview color.
-      editor.chain().focus().unsetMark('textStyle').run();
-      previewRef.current = { from, to: from + replacement.length, originalText };
-      onPreviewApplied?.();
-      return true;
     },
     [clearTemporarySelectionHighlight, editor, menuVariant, onPreviewApplied],
   );
@@ -369,8 +398,13 @@ const AIMenu = ({
       const thinkingTimer = window.setTimeout(() => {
         setStatus('ai-writing');
         const writingTimer = window.setTimeout(() => {
-          const ok = applyPreviewReplacement(replacement);
-          setStatus(ok ? 'user-reviewing' : 'error');
+          try {
+            const ok = applyPreviewReplacement(replacement);
+            setStatus(ok ? 'user-reviewing' : 'error');
+          } catch (err) {
+            console.error('[AIMenu] Failed during AI writing phase', err);
+            setStatus('error');
+          }
         }, 550);
         timersRef.current.push(writingTimer);
       }, 700);
@@ -604,10 +638,7 @@ const AIMenu = ({
   };
   const currentItems: AISuggestionItem[] = getCurrentItems();
   const renderedItems: AISuggestionItem[] = menuPlacedOnTop ? [...currentItems].reverse() : currentItems;
-  const showSuggestionList =
-    (status === 'quick-actions' ||
-      ((status === 'user-input' || status === 'user-reviewing') && isPromptFocused)) &&
-    currentItems.length > 0;
+  const showSuggestionList = status === 'quick-actions' && currentItems.length > 0;
 
   useEffect(() => {
     if (!isGenerationUserInput) setGenerationActionMenuOpen(false);
@@ -617,6 +648,11 @@ const AIMenu = ({
 
   // Do not auto-focus; suggestions should only open after user interaction.
   useEffect(() => {
+    if (status === 'user-reviewing') {
+      inputRef.current?.focus();
+      setIsPromptFocused(true);
+      return;
+    }
     if (menuVariant === 'generation' && !initialReplacement && status === 'user-input') return;
     inputRef.current?.blur();
     setIsPromptFocused(false);
@@ -632,7 +668,7 @@ const AIMenu = ({
   const isPromptEditable = status === 'user-input' || status === 'user-reviewing';
   let promptPlaceholder = placeholder;
   if (status === 'user-reviewing') {
-    promptPlaceholder = 'Tell AI what else needs to be changed...';
+    promptPlaceholder = 'Ask AI what you want...';
   }
   if (isPromptFocused) {
     promptPlaceholder = 'Ask AI what you want...';

@@ -20,74 +20,38 @@ import {
   resetImageEditorNodes,
   resetImageEditorEdges,
 } from '@/store/modules/imageEditor';
-import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
-import type { AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
-import { getProjectCanvasViewportApi, type CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { message } from '@/components/base/message';
+import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
 import Loading from '@/components/loading';
 import EmptyState from './ui/EmptyState';
-import RightToolbar from './ui/RightToolbar';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
-import ImageNode from './ImageNode/ImageNode';
+import ImageNode from './node/imageNode/ImageNode';
+import ImageSidePanel from './node/imageNode/ImageSidePanel';
 import GroupNode from './common/GroupNode';
-import StitchPlaceholderNode from './stitch/StitchPlaceholderNode';
+import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
 import {
   StitchPlaceholderPanel,
   stitchPlaceholderDefaultCols,
   stitchPlaceholderDefaultHeight,
   stitchPlaceholderDefaultRows,
   stitchPlaceholderDefaultWidth,
-} from './stitch/StitchPlaceholderPanel';
-import BlankPlaceholderNode from './blank/BlankPlaceholderNode';
+} from './node/imageNode/stitch/StitchPlaceholderPanel';
+import StitchModeBanner from './node/imageNode/stitch/StitchModeBanner';
+import AgentPickModeBanner from './node/imageNode/pick/AgentPickModeBanner';
+import BlankPlaceholderNode from './node/imageNode/blank/BlankPlaceholderNode';
 import {
   BlankPlaceholderPanel,
   blankPlaceholderDefaultHeight,
   blankPlaceholderDefaultWidth,
-} from './blank/BlankPlaceholderPanel';
+} from './node/imageNode/blank/BlankPlaceholderPanel';
 import GroupToolbarPanel from './common/GroupToolbarPanel';
 import NodeContextMenu from './common/NodeContextMenu';
 import {
-  createEditorImageNodeData,
   imageEditorImageNodeType,
-  type ImageEditorRightSidePanelId,
   type ImageFlowNodeData,
 } from './types';
-import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
-import type { MediaResourceListItem } from './ui/MediaResourceListPanel';
 
-/** Default tile size when placing a resource onto the image editor flow (see `ImageNode` defaults). */
-const imageEditorPlaceNodeWidth = 260;
-const imageEditorPlaceNodeHeight = 160;
-
-/**
- * Whether a side-panel row can become a `2002` image tile.
- *
- * @param item - Row from a side panel list (image-only)
- * @returns True when the editor can place this resource
- */
-function canPlaceMediaItemOnImageEditorFlow(item: MediaResourceListItem): boolean {
-  return Boolean(item.previewUrl?.trim());
-}
-
-function canvasImageAttachToListItem(item: AgentComposerUploadItem): MediaResourceListItem {
-  return {
-    id: item.id,
-    previewUrl: item.previewUrl ?? '',
-    name: item.name,
-  };
-}
-
-function canvasUpstreamImageToListItem(item: UpstreamExternalFileItem): MediaResourceListItem {
-  return {
-    id: item.uid,
-    previewUrl: item.content ?? '',
-    name: item.name,
-  };
-}
-
-type ImageEditorInnerProps = {
+type EditorInnerProps = {
   nodeId: string;
   hotkeysDisabled?: boolean;
 };
@@ -137,7 +101,7 @@ const getAgentImagePickOverlayAnchorFromClick = (
   return undefined;
 };
 
-const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisabled = false }) => {
+const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = false }) => {
   const hotkeysDisabledRef = useRef(hotkeysDisabled);
   hotkeysDisabledRef.current = hotkeysDisabled;
   const [contextMenu, setContextMenu] = useState<{
@@ -153,15 +117,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   const [stitchEditingNodeId, setStitchEditingNodeId] = useState<string | null>(null);
   const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
   const dispatch = useDispatch();
-  const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const { workflowId } = useCanvasUI();
-  /** Main workflow canvas node id for this editor panel (see `project/index.tsx` `panelNode.id`). */
-  const projectCanvasTargetNodeId = nodeId;
-  const projectCanvasUpstream = useUpstreamExternalFileList(
-    projectNodes,
-    projectEdges,
-    projectCanvasTargetNodeId,
-  );
 
   /** Clears local slice when there is no workflowId; with workflowId the main Yjs doc repopulates—no reset here. */
   useEffect(() => {
@@ -199,207 +155,9 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
    */
   const flowWheelPanAndPinchEnabled = !expandViewportLocked;
   const previewZoom = getZoom();
-  const activeStitchNode = useMemo(
-    () => (stitchEditingNodeId ? nodes.find((n) => n.id === stitchEditingNodeId && n.type === 'stitchPlaceholderNode') ?? null : null),
-    [nodes, stitchEditingNodeId],
-  );
-  const stitchEditMode = activeStitchNode != null;
-
-  useEffect(() => {
-    const source = nodes.find(
-      (n) => (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true,
-    );
-    if (source && agentCanvasPickEditingNodeId !== source.id) {
-      setAgentCanvasPickEditingNodeId(source.id);
-      return;
-    }
-    if (!agentCanvasPickEditingNodeId) return;
-    const editing = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
-    const stillPicking =
-      editing &&
-      (editing.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true;
-    if (!stillPicking) {
-      setAgentCanvasPickEditingNodeId(null);
-    }
-  }, [nodes, agentCanvasPickEditingNodeId]);
+  const stitchEditMode = stitchEditingNodeId != null;
 
   const agentCanvasPickEditMode = agentCanvasPickEditingNodeId != null;
-
-  const exitAgentCanvasPickMode = useCallback(() => {
-    if (!agentCanvasPickEditingNodeId) return;
-    const list = nodes;
-    updateNode(agentCanvasPickEditingNodeId, { data: { pickState: null } }, { history: 'skip' });
-    for (const n of list) {
-      const boxes = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.resultBoxes;
-      if (boxes?.length) {
-        updateNode(n.id, { data: { pickState: null } }, { history: 'skip' });
-      }
-    }
-  }, [agentCanvasPickEditingNodeId, nodes, updateNode]);
-
-  useEffect(() => {
-    if (!agentCanvasPickEditMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      exitAgentCanvasPickMode();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [agentCanvasPickEditMode, exitAgentCanvasPickMode]);
-
-  const handleUpload = useCallback((file: File) => {
-    const el = flowInteractionRootRef.current;
-    if (!el) {
-      void importImagesFromFiles([file]);
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const viewportCenterFlow = screenToFlowPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    });
-    void importImagesFromFiles([file], { viewportCenterFlow });
-  }, [importImagesFromFiles, screenToFlowPosition]);
-
-  const imageEditorSidePanelItems = useMemo((): Partial<
-    Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>
-  > => {
-    const history: MediaResourceListItem[] = nodes
-      .filter((n) => n.type === imageEditorImageNodeType)
-      .map((n) => {
-        const d = n.data as ImageFlowNodeData;
-        return {
-          id: n.id,
-          name: d.name,
-          previewUrl: d.content,
-        };
-      });
-
-    const canvasNode = projectNodes.find((n) => n.id === projectCanvasTargetNodeId);
-    const canvasData = canvasNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-    const rawAttach = canvasData?.attach;
-    const canvasAttach = (Array.isArray(rawAttach) ? rawAttach : []) as AgentComposerUploadItem[];
-    const canvasImageAttach = canvasAttach.filter((u) => u.type === 'image');
-    const upstreamImages = projectCanvasUpstream.filter((u) => u.type === 'image');
-
-    const assets: MediaResourceListItem[] = favoriteAssets.map((f) => ({
-      id: f.id,
-      previewUrl: f.previewUrl,
-      name: f.name,
-    }));
-
-    return {
-      history,
-      assets,
-      attach: canvasImageAttach.map(canvasImageAttachToListItem),
-      link: upstreamImages.map(canvasUpstreamImageToListItem),
-    };
-  }, [nodes, projectCanvasTargetNodeId, projectNodes, projectCanvasUpstream, favoriteAssets]);
-
-  /**
-   * Adds a new image tile on this image editor React Flow, centered like {@link handleUpload}.
-   */
-  const addMediaItemToImageEditorFlowAtCenter = useCallback(
-    (item: MediaResourceListItem) => {
-      if (!canPlaceMediaItemOnImageEditorFlow(item)) {
-        message.warning('Nothing to add to the image editor');
-        return;
-      }
-      const content = item.previewUrl.trim();
-      const el = flowInteractionRootRef.current;
-      let viewportCenterFlow: { x: number; y: number };
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        viewportCenterFlow = screenToFlowPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        });
-      } else {
-        viewportCenterFlow = { x: 120, y: 80 };
-      }
-
-      const w = imageEditorPlaceNodeWidth;
-      const h = imageEditorPlaceNodeHeight;
-      const newId = `image-flow-${nanoid(12)}`;
-      const newNode: Node = {
-        id: newId,
-        type: imageEditorImageNodeType,
-        position: {
-          x: viewportCenterFlow.x - w / 2,
-          y: viewportCenterFlow.y - h / 2,
-        },
-        selected: true,
-        style: { width: w, height: h },
-        data: createEditorImageNodeData(item.name?.trim() || 'image', content),
-      };
-      setNodes([...nodes.map((n) => ({ ...n, selected: false })), newNode]);
-    },
-    [nodes, screenToFlowPosition, setNodes],
-  );
-
-  const handleSidePanelItemAdd = useCallback(
-    (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => {
-      if (panel === 'history' || panel === 'attach' || panel === 'link' || panel === 'assets') {
-        addMediaItemToImageEditorFlowAtCenter(item);
-      }
-    },
-    [addMediaItemToImageEditorFlowAtCenter],
-  );
-
-  const isSidePanelItemFavorited = useCallback(
-    (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => {
-      if (panel === 'assets') {
-        return favoriteAssets.some((f) => f.id === item.id);
-      }
-      return favoriteAssets.some(
-        (f) => f.sourcePanel === panel && f.sourceItemId === item.id,
-      );
-    },
-    [favoriteAssets],
-  );
-
-  const handleSidePanelItemFavoriteClick = useCallback(
-    (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => {
-      toggleFavoriteAsset({ panel, item });
-    },
-    [toggleFavoriteAsset],
-  );
-
-  const handleUpstreamPanelOpen = useCallback(() => {
-    const api = getProjectCanvasViewportApi();
-    if (!api) return;
-    const targetId = projectCanvasTargetNodeId;
-    api.centerOnFirstNodeId([targetId], true);
-  }, [projectCanvasTargetNodeId]);
-
-  const handleSidePanelItemDownload = useCallback(
-    async (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => {
-      if (panel !== 'history' && panel !== 'attach' && panel !== 'link' && panel !== 'assets') return;
-      const url = item.previewUrl;
-      if (!url) {
-        message.warning('No content to download');
-        return;
-      }
-      try {
-        const res = await fetch(url, { mode: 'cors' });
-        if (!res.ok) throw new Error(res.statusText);
-        const blob = await res.blob();
-        const fromUrl = url.split('?')[0].match(/\.([a-z0-9]+)$/i)?.[1];
-        const ext = fromUrl && fromUrl.length <= 5 ? fromUrl : 'jpg';
-        const base = (item.name ?? `asset-${Date.now()}`).replace(/[<>:"/\\|?*]/g, '_');
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = base.includes('.') ? base : `${base}.${ext}`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      } catch (err) {
-        console.error('Download failed:', err);
-        message.warning('Download failed');
-      }
-    },
-    [],
-  );
 
   const handleMouseMoveCapture = (e: React.MouseEvent<HTMLDivElement>) => {
     if (activeTool === 'crop') {
@@ -426,6 +184,24 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
       left: e.clientX,
       top: e.clientY,
       contextNodeId: node.id,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    });
+  };
+
+  const handlePaneContextMenu = (e: MouseEvent | React.MouseEvent) => {
+    e.preventDefault();
+    if (activeTool === 'crop' || activeTool === 'blank') {
+      setGridPreviewPos(null);
+      setBlankPreviewPos(null);
+      setActiveTool('select');
+      closeContextMenu();
+      return;
+    }
+    setContextMenu({
+      left: e.clientX,
+      top: e.clientY,
+      contextNodeId: null,
       clientX: e.clientX,
       clientY: e.clientY,
     });
@@ -486,8 +262,8 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     const stitchNode = nodes.find((n) => {
       if (n.type !== 'stitchPlaceholderNode') return false;
       if (n.selected) return true;
-      const d = (n.data ?? {}) as { selectedCellIndex?: number | null };
-      return d.selectedCellIndex != null;
+      const stitchData = (n.data ?? {}) as { selectedCellIndex?: number | null };
+      return stitchData.selectedCellIndex != null;
     });
     if (!stitchNode) return;
 
@@ -502,30 +278,6 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
       [String(targetIndex)]: imageSrc,
     };
     updateNode(stitchNode.id, { selected: true, data: { cellImages: nextCellImages } });
-  };
-
-  const exitStitchEditMode = useCallback(() => {
-    if (!activeStitchNode) return;
-    setStitchEditingNodeId(null);
-    updateNode(activeStitchNode.id, { selected: true, data: { selectedCellIndex: null } });
-  }, [activeStitchNode, updateNode]);
-
-  const handlePaneContextMenu = (e: MouseEvent | React.MouseEvent) => {
-    e.preventDefault();
-    if (activeTool === 'crop' || activeTool === 'blank') {
-      setGridPreviewPos(null);
-      setBlankPreviewPos(null);
-      setActiveTool('select');
-      closeContextMenu();
-      return;
-    }
-    setContextMenu({
-      left: e.clientX,
-      top: e.clientY,
-      contextNodeId: null,
-      clientX: e.clientX,
-      clientY: e.clientY,
-    });
   };
 
   const handlePaneClick = (e: MouseEvent | React.MouseEvent) => {
@@ -746,37 +498,6 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     if (activeTool !== 'blank') setBlankPreviewPos(null);
   }, [activeTool]);
 
-  useEffect(() => {
-    const selectedStitchNode = nodes.find((n) => n.type === 'stitchPlaceholderNode' && n.selected);
-    const selectedStitchData = (selectedStitchNode?.data ?? {}) as { selectedCellIndex?: number | null };
-    const selectedCellIndex = selectedStitchData.selectedCellIndex ?? null;
-    if (selectedStitchNode && selectedCellIndex != null && stitchEditingNodeId !== selectedStitchNode.id) {
-      setStitchEditingNodeId(selectedStitchNode.id);
-      return;
-    }
-    if (!stitchEditingNodeId) return;
-    const editingNode = nodes.find((n) => n.id === stitchEditingNodeId && n.type === 'stitchPlaceholderNode');
-    if (!editingNode) {
-      setStitchEditingNodeId(null);
-      return;
-    }
-    const editingData = (editingNode.data ?? {}) as { selectedCellIndex?: number | null };
-    if (editingData.selectedCellIndex == null) {
-      setStitchEditingNodeId(null);
-    }
-  }, [nodes, stitchEditingNodeId]);
-
-  useEffect(() => {
-    if (!stitchEditMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      exitStitchEditMode();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [exitStitchEditMode, stitchEditMode]);
-
   const onNodeDragStop = (_: React.MouseEvent, node: Node) => {
     const allNodes = getNodes();
     const selectedNodes = allNodes.filter((n) => n.selected);
@@ -963,49 +684,33 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
       onMouseLeave={handleMouseLeave}
       onMouseDownCapture={handleMouseDownCapture}
     >
-      {!stitchEditMode && (
-        <div className='pointer-events-none absolute inset-y-0 right-3 z-10 flex h-full min-h-0 justify-end'>
-          <RightToolbar
-            activeTool={activeTool}
-            onToolChange={setActiveTool}
-            onUpload={handleUpload}
-            sidePanelItems={imageEditorSidePanelItems}
-            onSidePanelItemAddClick={handleSidePanelItemAdd}
-            onSidePanelItemDownloadClick={handleSidePanelItemDownload}
-            isSidePanelItemFavorited={isSidePanelItemFavorited}
-            onSidePanelItemFavoriteClick={handleSidePanelItemFavoriteClick}
-            onUpstreamPanelOpen={handleUpstreamPanelOpen}
-          />
-        </div>
-      )}
+      <ImageSidePanel
+        nodeId={nodeId}
+        hidden={stitchEditMode}
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
+        nodes={nodes}
+        setNodes={setNodes}
+        importImagesFromFiles={importImagesFromFiles}
+        favoriteAssets={favoriteAssets}
+        toggleFavoriteAsset={toggleFavoriteAsset}
+        flowInteractionRootRef={flowInteractionRootRef}
+        screenToFlowPosition={screenToFlowPosition}
+      />
       <div id='image-editor-bottom-toolbar-portal' className='pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center' />
       {(stitchEditMode || agentCanvasPickEditMode) && <div className='pointer-events-none absolute inset-0 z-0 bg-black/35' />}
-      {stitchEditMode && (
-        <div className='pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center'>
-          <button
-            type='button'
-            className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
-            onClick={exitStitchEditMode}
-          >
-            <span>Click here or press</span>
-            <span className='rounded border border-white/55 px-1 text-[10px]'>ESC</span>
-            <span>to exit</span>
-          </button>
-        </div>
-      )}
-      {agentCanvasPickEditMode && (
-        <div className='pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center'>
-          <button
-            type='button'
-            className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
-            onClick={exitAgentCanvasPickMode}
-          >
-            <span>Click here or press</span>
-            <span className='rounded border border-white/55 px-1 text-[10px]'>ESC</span>
-            <span>to exit</span>
-          </button>
-        </div>
-      )}
+      <StitchModeBanner
+        nodes={nodes}
+        stitchEditingNodeId={stitchEditingNodeId}
+        setStitchEditingNodeId={setStitchEditingNodeId}
+        updateNode={updateNode}
+      />
+      <AgentPickModeBanner
+        nodes={nodes}
+        agentCanvasPickEditingNodeId={agentCanvasPickEditingNodeId}
+        setAgentCanvasPickEditingNodeId={setAgentCanvasPickEditingNodeId}
+        updateNode={updateNode}
+      />
       <ReactFlow
         className='relative z-[1] origin-[0px_0px] backface-hidden antialiased'
         nodes={flowNodes}
@@ -1105,15 +810,15 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   );
 };
 
-export type ImageEditorProps = {
+export type EditorProps = {
   nodeId: string;
   hotkeysDisabled?: boolean;
 };
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ nodeId, hotkeysDisabled }) => (
+const Editor: React.FC<EditorProps> = ({ nodeId, hotkeysDisabled }) => (
   <ReactFlowProvider>
-    <ImageEditorInner nodeId={nodeId} hotkeysDisabled={hotkeysDisabled} />
+    <EditorInner nodeId={nodeId} hotkeysDisabled={hotkeysDisabled} />
   </ReactFlowProvider>
 );
 
-export default ImageEditor;
+export default Editor;

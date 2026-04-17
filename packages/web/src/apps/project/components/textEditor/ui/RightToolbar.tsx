@@ -15,14 +15,14 @@ import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import type { AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
-import MediaResourceListPanel, { type MediaResourceListItem } from '@/apps/project/components/imageEditor/ui/MediaResourceListPanel';
-import type { ImageEditorRightSidePanelId } from '@/apps/project/components/imageEditor/types';
+import MediaResourceListPanel, { type MediaResourceListItem } from '@/apps/project/components/mixedEditor/ui/MediaResourceListPanel';
+import type { ImageEditorRightSidePanelId } from '@/apps/project/components/mixedEditor/types';
+import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
 
 type RightToolbarProps = {
   editor: Editor;
   /** Workflow canvas node id for this text editor panel. */
   nodeId: string;
-  onOpenAIMenu: (initialReplacement?: string | null) => void;
 };
 
 const panelConfig: Record<
@@ -98,6 +98,13 @@ const tools: ToolItem[] = [
   { id: 'location', icon: 'project-image-editor-right-expand-corner-icon', label: 'Location', width: 20, height: 20 },
 ];
 
+const AI_TOOL_INITIAL_REPLACEMENTS = {
+  generate: '[GENERATE] This is fixed replacement content.',
+  character: '[CHARACTER] This is fixed replacement content.',
+  storyboard: '[STORYBOARD] This is fixed replacement content.',
+  script: '[SCRIPT] This is fixed replacement content.',
+} as const;
+
 async function parseTextUploadFile(file: File): Promise<string> {
   const fileName = file.name.toLowerCase();
   const ext = fileName.substring(fileName.lastIndexOf('.') + 1);
@@ -134,7 +141,7 @@ async function parseTextUploadFile(file: File): Promise<string> {
   throw new Error(`unsupported:${ext}`);
 }
 
-const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMenu }) => {
+const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const { favoriteAssets, toggleFavoriteAsset } = useImageEditorStore();
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
@@ -314,6 +321,16 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
     [],
   );
 
+  const aiDropdownItems: MenuItemType[] = useMemo(
+    () => [
+      { key: 'ai-generate', label: 'Generate' },
+      { key: 'ai-character', label: 'Character' },
+      { key: 'ai-storyboard', label: 'Storyboard' },
+      { key: 'ai-script', label: 'Script' },
+    ],
+    [],
+  );
+
   const openUploadDialog = useCallback((mode: 'insert' | 'overwrite') => {
     setPendingUploadMode(mode);
     const input = uploadProxyRef.current?.querySelector('input[type="file"]') as HTMLInputElement | null;
@@ -329,6 +346,27 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
       }
     },
     [openUploadDialog],
+  );
+
+  const handleAIMenuClick = useCallback(
+    (key: string) => {
+      if (key === 'ai-generate') {
+        openGenerationAIMenuAtBottom(editor, { replacement: AI_TOOL_INITIAL_REPLACEMENTS.generate });
+        return;
+      }
+      if (key === 'ai-character') {
+        openGenerationAIMenuAtBottom(editor, { replacement: AI_TOOL_INITIAL_REPLACEMENTS.character });
+        return;
+      }
+      if (key === 'ai-storyboard') {
+        openGenerationAIMenuAtBottom(editor, { replacement: AI_TOOL_INITIAL_REPLACEMENTS.storyboard });
+        return;
+      }
+      if (key === 'ai-script') {
+        openGenerationAIMenuAtBottom(editor, { replacement: AI_TOOL_INITIAL_REPLACEMENTS.script });
+      }
+    },
+    [editor],
   );
 
   const handleUploadChange = useCallback(
@@ -391,15 +429,22 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
 
         <Divider className='mx-1 my-0.5 w-5' />
 
-        <Tooltip title='Ask AI' placement='right' offset={4}>
-          <button
-            type='button'
-            className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
-            onClick={() => onOpenAIMenu(null)}
-          >
-            <RiSparkling2Fill size={22} />
-          </button>
-        </Tooltip>
+        <Dropdown
+          trigger='click'
+          placement='left-start'
+          items={aiDropdownItems}
+          popupClassName='min-w-[170px]'
+          onClick={(key) => handleAIMenuClick(key)}
+        >
+          <Tooltip title='Ask AI' placement='right' offset={4}>
+            <button
+              type='button'
+              className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+            >
+              <RiSparkling2Fill size={22} />
+            </button>
+          </Tooltip>
+        </Dropdown>
 
         {primaryTools.map((tool) => (
           <Tooltip key={tool.id} title={tool.label} placement='right' offset={4}>

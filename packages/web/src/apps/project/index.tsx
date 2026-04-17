@@ -9,13 +9,13 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
-import ImageEditor from './components/imageEditor';
+import ImageEditor from './components/mixedEditor';
 import TextEditor from './components/textEditor';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
 import store from '@/store';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
-import type { ImageFlowNodeData } from './components/imageEditor/types';
+import type { ImageFlowNodeData } from './components/mixedEditor/types';
 
 /** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
 const builtInNodeTemplateData = [
