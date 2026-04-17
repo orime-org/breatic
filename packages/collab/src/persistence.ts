@@ -39,4 +39,4 @@ export function createPersistenceExtension(databaseUrl: string): Database {
 }
 
 // Table creation is handled by Drizzle migration (0000_dear_hardball.sql).
-// No ensureTable() needed — API runs migrations before Collab serves requests.
+// No ensureTable() needed — migrate service runs before all app services.

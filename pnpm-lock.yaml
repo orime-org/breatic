@@ -17,6 +17,9 @@ importers:
       eslint-plugin-tsdoc:
         specifier: ^0.5.2
         version: 0.5.2(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.2)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.19.0
       turbo:
         specifier: ^2.4.0
         version: 2.4.0
