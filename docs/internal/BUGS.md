@@ -172,7 +172,7 @@ Round 1 在 PR #81-90 密集修复了 29 个 bug（XSS、提示词注入、NoAcc
 
 ### BUG-034 · Docker Compose 端口暴露到公网（HIGH）
 
-- **状态**：`[ ]` 待修
+- **状态**：`[-]` 不修 — 服务器防火墙处理，不在 compose 层限制
 - **位置**：`docker-compose.yml`
 - **问题**：`postgres:5432`、`redis:6379`、`collab:1234` 全部 bind 到 `0.0.0.0`。公网部署直接暴露数据库和 Redis
 - **修复**：
@@ -542,7 +542,7 @@ Round 1 在 PR #81-90 密集修复了 29 个 bug（XSS、提示词注入、NoAcc
 | BUG-031 | deleteProject 不级联软删 | 🔴 HIGH | project.repo.ts | 1h |
 | BUG-032 | Presigned URL 3 子问题遗漏 | 🔴 HIGH | assets.ts + s3.ts | 2.5h |
 | BUG-033 | Canvas task 创建顺序错 | 🔴 HIGH | canvas.ts | 15m |
-| BUG-034 | Docker 端口暴露公网 | 🔴 HIGH | docker-compose.yml | 5m |
+| BUG-034 | Docker 端口暴露公网 | ~~🔴 HIGH~~ | docker-compose.yml | 不修（防火墙） |
 | BUG-035 | Lua 脚本 null taskId | 🟠 MED | canvas-lock.ts | 10m |
 | BUG-036 | 6 张表 deletedAt filter | 🟠 MED | memory repos | 1h |
 | BUG-037 | 工具栏上传绕过 presign | 🟠 MED | RightToolbar.tsx | 1h |
