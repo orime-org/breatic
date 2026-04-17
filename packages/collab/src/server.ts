@@ -17,7 +17,7 @@ import { Throttle } from "@hocuspocus/extension-throttle";
 import IoRedis from "ioredis";
 import * as Y from "yjs";
 import { createAuthHook } from "./auth.js";
-import { createPersistenceExtension, ensureTable } from "./persistence.js";
+import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 
@@ -44,8 +44,6 @@ export interface CollabServerInfra {
  */
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus }> {
   const cfg = getCollabConfig();
-
-  await ensureTable(infra.databaseUrl);
 
   const authRedis = new IoRedis(infra.redisUrl);
 

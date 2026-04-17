@@ -65,6 +65,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
 
   collab:
@@ -76,7 +82,7 @@ services:
     volumes:
       - ./logs:/app/logs
     depends_on:
-      postgres:
+      api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -90,7 +96,7 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     depends_on:
-      postgres:
+      api:
         condition: service_healthy
       redis:
         condition: service_healthy
