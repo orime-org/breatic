@@ -9,9 +9,6 @@ import Upload, { type UploadFile } from '@/components/base/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
-import { LuUserRound } from 'react-icons/lu';
-import { CgTranscript } from 'react-icons/cg';
-import { IoClipboardOutline } from 'react-icons/io5';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
@@ -99,13 +96,6 @@ const tools: ToolItem[] = [
   { id: 'attatch', sidePanel: 'attach', icon: 'project-image-editor-right-plus-icon', label: 'attatch', width: 20, height: 20 },
   { id: 'upstream', sidePanel: 'link', icon: 'project-image-editor-right-link-icon', label: 'Upstream', width: 20, height: 20 },
   { id: 'location', icon: 'project-image-editor-right-expand-corner-icon', label: 'Location', width: 20, height: 20 },
-];
-
-const askAIQuickOptions: Array<{ key: string; label: string; replacement: string; icon: React.ReactNode }> = [
-  { key: 'generate', label: 'generate', replacement: '[GENERATE] This is fixed replacement content.', icon: <RiSparkling2Fill size={16} /> },
-  { key: 'character', label: 'character', replacement: '[CHARACTER] This is fixed replacement content.', icon: <LuUserRound size={16} /> },
-  { key: 'storyboard', label: 'storyboard', replacement: '[STORYBOARD] This is fixed replacement content.', icon: <IoClipboardOutline size={16} /> },
-  { key: 'script', label: 'script', replacement: '[SCRIPT] This is fixed replacement content.', icon: <CgTranscript size={16} /> },
 ];
 
 async function parseTextUploadFile(file: File): Promise<string> {
@@ -324,20 +314,6 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
     [],
   );
 
-  const askAIDropdownItems: MenuItemType[] = useMemo(
-    () =>
-      askAIQuickOptions.map((item) => ({
-        key: item.key,
-        label: (
-          <span className='inline-flex items-center gap-2'>
-            <span className='text-text-default-secondary'>{item.icon}</span>
-            {item.label}
-          </span>
-        ),
-      })),
-    [],
-  );
-
   const openUploadDialog = useCallback((mode: 'insert' | 'overwrite') => {
     setPendingUploadMode(mode);
     const input = uploadProxyRef.current?.querySelector('input[type="file"]') as HTMLInputElement | null;
@@ -415,27 +391,15 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId, onOpenAIMen
 
         <Divider className='mx-1 my-0.5 w-5' />
 
-        <Dropdown
-          trigger='click'
-          placement='left-start'
-          items={askAIDropdownItems}
-          popupClassName='min-w-[220px]'
-          onClick={(key) => {
-            const selected = askAIQuickOptions.find((item) => item.key === key);
-            if (!selected) return;
-            onOpenAIMenu(selected.replacement);
-          }}
-        >
-          <Tooltip title='Ask AI' placement='right' offset={4}>
-            <button
-              type='button'
-              className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
-              aria-haspopup='menu'
-            >
-              <RiSparkling2Fill size={22} />
-            </button>
-          </Tooltip>
-        </Dropdown>
+        <Tooltip title='Ask AI' placement='right' offset={4}>
+          <button
+            type='button'
+            className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+            onClick={() => onOpenAIMenu(null)}
+          >
+            <RiSparkling2Fill size={22} />
+          </button>
+        </Tooltip>
 
         {primaryTools.map((tool) => (
           <Tooltip key={tool.id} title={tool.label} placement='right' offset={4}>

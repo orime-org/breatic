@@ -12,23 +12,20 @@ import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import {
+  RiArrowDropDownLine,
   RiArrowUpLine,
   RiArrowGoBackFill,
   RiCheckFill,
   RiCloseLine,
-  RiEdit2Line,
-  RiListCheck2,
+  RiContractUpDownLine,
+  RiExchangeLine,
+  RiExpandUpDownLine,
   RiLoopLeftFill,
-  RiMagicLine,
-  RiSparkling2Fill,
-  RiTranslate2,
+  RiPlayListAddLine,
+  RiSparkling2Line,
+  RiTranslateAi,
 } from 'react-icons/ri';
 import { FaStopCircle } from 'react-icons/fa';
-import { LiaExpandSolid } from 'react-icons/lia';
-import { LuUserRound } from 'react-icons/lu';
-import { CgTranscript } from 'react-icons/cg';
-import { IoClipboardOutline } from 'react-icons/io5';
-import { MdOutlinePlaylistAdd } from 'react-icons/md';
 import { Button } from '@/components/base/button';
 import { cn } from '@/utils/classnames';
 import { AiErrorIcon } from './TextEditorIcons';
@@ -42,6 +39,12 @@ interface AISuggestionItem {
   title: string;
   icon: ReactNode;
   onClick: () => void;
+}
+
+interface AIGenerationOption {
+  key: string;
+  title: string;
+  replacement: string;
 }
 
 export interface AIMenuProps {
@@ -89,9 +92,13 @@ const AIMenu = ({
   onPreviewApplied,
   initialReplacement = null,
 }: AIMenuProps) => {
-  const [status, setStatus] = useState<AIStatus>('quick-actions');
+  const [status, setStatus] = useState<AIStatus>(() =>
+    menuVariant === 'generation' && !initialReplacement ? 'user-input' : 'quick-actions',
+  );
   const [prompt, setPrompt] = useState('');
   const [isPromptFocused, setIsPromptFocused] = useState(false);
+  const [generationActionKey, setGenerationActionKey] = useState('generate');
+  const [generationActionMenuOpen, setGenerationActionMenuOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const editorRectRef = useRef<DOMRect | null>(null);
@@ -162,6 +169,12 @@ const AIMenu = ({
     refs.setReference(reference);
     update();
   }, [refs, reference, update]);
+
+  useLayoutEffect(() => {
+    if (menuVariant !== 'generation' || initialReplacement) return;
+    if (status !== 'user-input') return;
+    inputRef.current?.focus();
+  }, [menuVariant, initialReplacement, status]);
 
   useEffect(() => {
     const onViewportChanged = () => update();
@@ -340,10 +353,21 @@ const AIMenu = ({
     item.onClick();
   };
 
+  const getGenerationReplacement = useCallback((key: string): string => {
+    if (key === 'character') return '[CHARACTER] This is fixed replacement content.';
+    if (key === 'storyboard') return '[STORYBOARD] This is fixed replacement content.';
+    if (key === 'script') return '[SCRIPT] This is fixed replacement content.';
+    return '[GENERATE] This is fixed replacement content.';
+  }, []);
+
   const handleSubmit = useCallback(() => {
     if (!prompt.trim()) return;
+    if (menuVariant === 'generation' && status === 'user-input') {
+      runPreviewFlow(getGenerationReplacement(generationActionKey));
+      return;
+    }
     runPreviewFlow('[AI PREVIEW] This is fixed replacement content.');
-  }, [prompt, runPreviewFlow]);
+  }, [generationActionKey, getGenerationReplacement, menuVariant, prompt, runPreviewFlow, status]);
 
   const handleStopGeneration = useCallback(() => {
     clearTimers();
@@ -376,73 +400,81 @@ const AIMenu = ({
     e.preventDefault();
   }, []);
 
+  const handlePickGenerationAction = useCallback((key: string) => {
+    setGenerationActionKey(key);
+    setGenerationActionMenuOpen(false);
+    inputRef.current?.focus();
+  }, []);
+
   // ── Suggestion items based on status ────────────────────────────────────
 
-  const selectionItems: AISuggestionItem[] = [
+  /** 结束输入框（审阅 / Discard·Apply）：聚焦时始终用这组快捷项。 */
+  const quickActionItems: AISuggestionItem[] = [
     {
       key: 'polish',
-      title: 'polish',
-      icon: <RiMagicLine size={16} />,
+      title: 'Polish',
+      icon: <RiSparkling2Line size={16} />,
       onClick: () => runPreviewFlow('[POLISH] This is fixed replacement content.'),
     },
     {
       key: 'expand',
-      title: 'expand',
-      icon: <LiaExpandSolid size={16} />,
+      title: 'Expand',
+      icon: <RiExpandUpDownLine size={16} />,
       onClick: () => runPreviewFlow('[EXPAND] This is fixed replacement content.'),
     },
     {
       key: 'summarize',
-      title: 'summarize',
-      icon: <RiListCheck2 size={16} />,
+      title: 'Summarize',
+      icon: <RiContractUpDownLine size={16} />,
       onClick: () => runPreviewFlow('[SUMMARIZE] This is fixed replacement content.'),
     },
     {
       key: 'translate',
-      title: 'translate',
-      icon: <RiTranslate2 size={16} />,
+      title: 'Translate',
+      icon: <RiTranslateAi size={16} />,
       onClick: () => runPreviewFlow('[TRANSLATE] This is fixed replacement content.'),
     },
     {
       key: 'rewrite',
-      title: 'rewrite',
-      icon: <RiEdit2Line size={16} />,
+      title: 'Rewrite',
+      icon: <RiExchangeLine size={16} />,
       onClick: () => runPreviewFlow('[REWRITE] This is fixed replacement content.'),
     },
     {
       key: 'continue',
-      title: 'continue',
-      icon: <MdOutlinePlaylistAdd size={16} />,
+      title: 'Continue',
+      icon: <RiPlayListAddLine size={16} />,
       onClick: () => runPreviewFlow('[CONTINUE] This is fixed replacement content.'),
     },
   ];
 
-  const generationItems: AISuggestionItem[] = [
+  /** 发送输入框（首次输入 + generation）模式下的执行选项。 */
+  const generationSendItems: AIGenerationOption[] = [
     {
       key: 'generate',
-      title: 'generate',
-      icon: <RiSparkling2Fill size={16} />,
-      onClick: () => runPreviewFlow('[GENERATE] This is fixed replacement content.'),
+      title: 'Generate',
+      replacement: '[GENERATE] This is fixed replacement content.',
     },
     {
       key: 'character',
-      title: 'character',
-      icon: <LuUserRound size={16} />,
-      onClick: () => runPreviewFlow('[CHARACTER] This is fixed replacement content.'),
+      title: 'Character',
+      replacement: '[CHARACTER] This is fixed replacement content.',
     },
     {
       key: 'storyboard',
-      title: 'storyboard',
-      icon: <IoClipboardOutline size={16} />,
-      onClick: () => runPreviewFlow('[STORYBOARD] This is fixed replacement content.'),
+      title: 'Storyboard',
+      replacement: '[STORYBOARD] This is fixed replacement content.',
     },
     {
       key: 'script',
-      title: 'script',
-      icon: <CgTranscript size={16} />,
-      onClick: () => runPreviewFlow('[SCRIPT] This is fixed replacement content.'),
+      title: 'Script',
+      replacement: '[SCRIPT] This is fixed replacement content.',
     },
   ];
+
+  const selectedGenerationAction =
+    generationSendItems.find((item) => item.key === generationActionKey) ?? generationSendItems[0];
+  const isGenerationUserInput = menuVariant === 'generation' && status === 'user-input';
 
   const errorItems: AISuggestionItem[] = [
     {
@@ -460,9 +492,11 @@ const AIMenu = ({
   ];
 
   const getCurrentItems = (): AISuggestionItem[] => {
-    if (status === 'quick-actions' || status === 'user-input' || status === 'user-reviewing') {
-      return menuVariant === 'generation' ? generationItems : selectionItems;
+    if (status === 'user-reviewing') return quickActionItems;
+    if (status === 'user-input') {
+      return menuVariant === 'generation' ? [] : quickActionItems;
     }
+    if (status === 'quick-actions') return quickActionItems;
     if (status === 'error') return errorItems;
     return [];
   };
@@ -473,13 +507,18 @@ const AIMenu = ({
       ((status === 'user-input' || status === 'user-reviewing') && isPromptFocused)) &&
     currentItems.length > 0;
 
+  useEffect(() => {
+    if (!isGenerationUserInput) setGenerationActionMenuOpen(false);
+  }, [isGenerationUserInput]);
+
   const isDisabled = status === 'thinking' || status === 'ai-writing';
 
   // Do not auto-focus; suggestions should only open after user interaction.
   useEffect(() => {
+    if (menuVariant === 'generation' && !initialReplacement && status === 'user-input') return;
     inputRef.current?.blur();
     setIsPromptFocused(false);
-  }, [anchorPos, status]);
+  }, [anchorPos, status, menuVariant, initialReplacement]);
 
   const getPlaceholder = (): string => {
     if (status === 'thinking') return 'Thinking…';
@@ -603,7 +642,50 @@ const AIMenu = ({
                   </div>
                 </div>
               ) : (
-                <div className='mt-2 flex items-center'>{renderSubmitButton('ml-auto')}</div>
+                <div className='mt-2 flex items-center'>
+                  {isGenerationUserInput && (
+                    <div className='relative mr-2'>
+                      <button
+                        type='button'
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setGenerationActionMenuOpen((v) => !v)}
+                        className='inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-text-default-base hover:bg-background-default-secondary'
+                        aria-haspopup='menu'
+                        aria-expanded={generationActionMenuOpen}
+                      >
+                        <span className='leading-none'>{selectedGenerationAction.title}</span>
+                        <RiArrowDropDownLine
+                          size={16}
+                          className={cn(
+                            'shrink-0 text-icon-base transition-transform',
+                            generationActionMenuOpen && 'rotate-180',
+                          )}
+                        />
+                      </button>
+
+                      {generationActionMenuOpen && (
+                        <div className='absolute left-0 top-full z-[101] mt-1 min-w-[170px] overflow-hidden rounded-[8px] border border-border-default-base bg-background-default-base py-1 shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]'>
+                          {generationSendItems.map((item) => (
+                            <button
+                              key={item.key}
+                              type='button'
+                              role='menuitem'
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handlePickGenerationAction(item.key)}
+                              className={cn(
+                                'flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-text-default-base transition-colors hover:bg-background-default-secondary',
+                                item.key === selectedGenerationAction.key && 'bg-background-default-secondary',
+                              )}
+                            >
+                              {item.title}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {renderSubmitButton('ml-auto')}
+                </div>
               )}
             </div>
           ) : isDisabled ? (
@@ -673,9 +755,9 @@ const AIMenu = ({
               type='button'
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleSuggestionClick(item)}
-              className='flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-text-default-base hover:bg-background-default-secondary'
+              className='flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-text-default-base transition-colors hover:bg-background-default-secondary'
             >
-              <span className='shrink-0 text-text-default-secondary'>{item.icon}</span>
+              <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>{item.icon}</span>
               {item.title}
             </button>
           ))}

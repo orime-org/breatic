@@ -4,7 +4,7 @@ import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { isTextSelection } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
-import { NodeSelection, PluginKey } from '@tiptap/pm/state';
+import { NodeSelection, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
 import { isFormatBubbleSuppressed } from '../extensions/FormatBubbleSuppressExtension';
@@ -325,7 +325,7 @@ export default function ImageBubbleMenu({ editor }: ImageBubbleMenuProps) {
   );
 }
 
-/** Hide the text formatting bubble while an image (or pending placeholder) is selected. */
+/** Hide the text formatting bubble for media node selection, table cell selection, or inside a `highlightBlock`. */
 export function formatBubbleShouldShow(props: {
   editor: Editor;
   element: HTMLElement;
@@ -351,6 +351,22 @@ export function formatBubbleShouldShow(props: {
       'pendingFile',
     ]);
     if (mediaNodeTypes.has(sel.node.type.name)) {
+      return false;
+    }
+    if (sel.node.type.name === 'highlightBlock') {
+      return false;
+    }
+  }
+
+  const isInsideHighlightBlock = (pos: number): boolean => {
+    const $pos = state.doc.resolve(Math.max(0, Math.min(pos, state.doc.content.size)));
+    for (let d = $pos.depth; d >= 0; d -= 1) {
+      if ($pos.node(d).type.name === 'highlightBlock') return true;
+    }
+    return false;
+  };
+  if (sel instanceof TextSelection) {
+    if (isInsideHighlightBlock(sel.from) || isInsideHighlightBlock(sel.to)) {
       return false;
     }
   }

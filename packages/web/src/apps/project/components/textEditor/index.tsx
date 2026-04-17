@@ -352,7 +352,7 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
           <div className='breatic-editor-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto'>
             <div className='breatic-editor-body relative px-[84px] pb-32 pt-12'>
               <EditorContent editor={editor} />
-              {editor && <EditorMenus editor={editor} />}
+              {editor && <EditorMenus editor={editor} generationAIMenuOpen={aiMenuOpen} />}
               {editor && <BlockLineControl editor={editor} />}
             </div>
             <ImageFilePanel />

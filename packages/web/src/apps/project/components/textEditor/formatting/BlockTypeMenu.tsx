@@ -18,10 +18,12 @@ import {
 import {
   RiDeleteBin6Line,
   RiSparkling2Fill,
-  RiMagicLine,
-  RiListCheck2,
-  RiTranslate2,
-  RiEdit2Line,
+  RiSparkling2Line,
+  RiExpandUpDownLine,
+  RiContractUpDownLine,
+  RiTranslateAi,
+  RiExchangeLine,
+  RiPlayListAddLine,
   RiAlignLeft,
   RiAlignCenter,
   RiAlignRight,
@@ -42,8 +44,6 @@ import {
   RiPaletteLine,
   RiCheckLine,
 } from 'react-icons/ri';
-import { LiaExpandSolid } from 'react-icons/lia';
-import { MdOutlinePlaylistAdd } from 'react-icons/md';
 import { cn } from '@/utils/classnames';
 import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
 import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../ui/TextEditorIcons';
@@ -280,44 +280,23 @@ const BASIC_BLOCKS: readonly {
   },
 ] as const;
 type HandleSubmenu = 'none' | 'alignIndent' | 'color' | 'askAI';
-const ASK_AI_ACTIONS: Array<{ key: string; label: string; icon: ReactNode; replacement: string }> = [
-  {
-    key: 'polish',
-    label: 'polish',
-    icon: <RiMagicLine size={15} />,
-    replacement: '[POLISH] This is fixed replacement content.',
-  },
-  {
-    key: 'expand',
-    label: 'expand',
-    icon: <LiaExpandSolid size={15} />,
-    replacement: '[EXPAND] This is fixed replacement content.',
-  },
-  {
-    key: 'summarize',
-    label: 'summarize',
-    icon: <RiListCheck2 size={15} />,
-    replacement: '[SUMMARIZE] This is fixed replacement content.',
-  },
-  {
-    key: 'translate',
-    label: 'translate',
-    icon: <RiTranslate2 size={15} />,
-    replacement: '[TRANSLATE] This is fixed replacement content.',
-  },
-  {
-    key: 'rewrite',
-    label: 'rewrite',
-    icon: <RiEdit2Line size={15} />,
-    replacement: '[REWRITE] This is fixed replacement content.',
-  },
-  {
-    key: 'continue',
-    label: 'continue',
-    icon: <MdOutlinePlaylistAdd size={15} />,
-    replacement: '[CONTINUE] This is fixed replacement content.',
-  },
-];
+
+/** Improve 子菜单行：与「Indent & align」里 Align / Indent 行一致（15px 图标 + tertiary）。 */
+const submenuRowIconClass = 'shrink-0 text-text-default-tertiary';
+
+const ASK_AI_ACTIONS: readonly {
+  key: string;
+  label: string;
+  Icon: BlockMenuIcon;
+  replacement: string;
+}[] = [
+  { key: 'polish', label: 'Polish', Icon: RiSparkling2Line, replacement: '[POLISH] This is fixed replacement content.' },
+  { key: 'expand', label: 'Expand', Icon: RiExpandUpDownLine, replacement: '[EXPAND] This is fixed replacement content.' },
+  { key: 'summarize', label: 'Summarize', Icon: RiContractUpDownLine, replacement: '[SUMMARIZE] This is fixed replacement content.' },
+  { key: 'translate', label: 'Translate', Icon: RiTranslateAi, replacement: '[TRANSLATE] This is fixed replacement content.' },
+  { key: 'rewrite', label: 'Rewrite', Icon: RiExchangeLine, replacement: '[REWRITE] This is fixed replacement content.' },
+  { key: 'continue', label: 'Continue', Icon: RiPlayListAddLine, replacement: '[CONTINUE] This is fixed replacement content.' },
+] as const;
 
 const BlockTypeMenu = ({
   editor,
@@ -677,8 +656,10 @@ const BlockTypeMenu = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={toggleAskAISubmenu}
               >
-                <RiSparkling2Fill size={15} className='shrink-0 text-text-default-tertiary' />
-                Ask AI
+                <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
+                  <RiSparkling2Fill size={16} />
+                </span>
+                Improve
                 <RiArrowRightSLine size={16} className='ml-auto shrink-0 text-text-default-tertiary' />
               </button>
               <BlockTypeMenuSubFloat
@@ -689,20 +670,18 @@ const BlockTypeMenu = ({
                 floatingRef={subFloatingRef}
               >
                 <>
-                  <p className={labelClass}>Ask AI</p>
-                  {ASK_AI_ACTIONS.map((item) => (
+                  <p className={labelClass}>Improve</p>
+                  {ASK_AI_ACTIONS.map(({ key, label, Icon, replacement }) => (
                     <button
-                      key={item.key}
+                      key={key}
                       type='button'
                       role='menuitem'
                       className={itemClass}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => editWithAI(item.replacement)}
+                      onClick={() => editWithAI(replacement)}
                     >
-                      <span className='inline-flex h-6 w-6 shrink-0 items-center justify-center text-icon-base'>
-                        {item.icon}
-                      </span>
-                      {item.label}
+                      <Icon size={15} className={submenuRowIconClass} />
+                      {label}
                     </button>
                   ))}
                 </>
