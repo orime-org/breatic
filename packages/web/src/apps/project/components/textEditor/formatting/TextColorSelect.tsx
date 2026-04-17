@@ -175,24 +175,10 @@ export type TextColorPaletteBlockScope = {
 
 export type TextColorPalettePanelProps = {
   editor: Editor;
-  /** Extra classes on the outer panel (e.g. shadow) */
   className?: string;
-  /** Called after a color is applied (e.g. close parent submenu) */
   onAfterPick?: () => void;
-  /**
-   * When set: **Text** applies text color to all text in that row/column/whole table; **Background** applies
-   * the table cell `backgroundColor` attribute (not text highlight). Use `axis: 'whole'` for the block handle menu on a table.
-   */
   tableScope?: TextColorPaletteTableScope;
-  /**
-   * When set: applies text / background color to all text within the given document range
-   * (i.e. the entire paragraph / block). Used by BlockTypeMenu ("Click for options").
-   */
   blockScope?: TextColorPaletteBlockScope;
-  /**
-   * Media / atom blocks: position before the node. Background swatches set the node's
-   * `accentBackground` attribute (text section is omitted).
-   */
   atomBlockPos?: number;
 };
 

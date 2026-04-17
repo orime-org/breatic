@@ -462,15 +462,18 @@ const BlockTypeMenu = ({
     anchoredBlockType != null && BLOCK_TYPES_DELETE_ONLY_MENU.has(anchoredBlockType);
   /** Table: horizontal + vertical align, Color, Delete (no Turn into / no indent). */
   const tableAnchorMenu = anchoredBlockType === 'table';
+  const anchorNodeType = anchorNode?.type.name;
+  const isAskAISupportedBlockType =
+    Boolean(anchorNode?.isTextblock) ||
+    anchorNodeType === 'bulletList' ||
+    anchorNodeType === 'orderedList' ||
+    anchorNodeType === 'taskList';
   const showAskAI =
     Boolean(anchorNode) &&
     !mediaMenu &&
     !tableAnchorMenu &&
     !deleteOnlyMenu &&
-    (Boolean(anchorNode?.isTextblock) ||
-      anchorNode?.type.name === 'bulletList' ||
-      anchorNode?.type.name === 'orderedList' ||
-      anchorNode?.type.name === 'taskList');
+    isAskAISupportedBlockType;
 
   const blockRows = !mediaMenu && !tableAnchorMenu ? (
     <>
