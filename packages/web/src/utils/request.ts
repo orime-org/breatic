@@ -9,8 +9,15 @@ interface CustomAxiosRequestConfig extends AxiosRequestConfig {
   needGlobalLoading?: boolean;
 }
 
+const apiUrl = import.meta.env.VITE_API_URL;
+if (!apiUrl) {
+  throw new Error(
+    'VITE_API_URL is not configured. Set it in .env (copy from .env.dev or .env.docker).',
+  );
+}
+
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/',
+  baseURL: apiUrl,
   timeout: 180000,
 });
 

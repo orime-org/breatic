@@ -28,11 +28,28 @@ export interface YjsManager {
   destroy: () => void;
 }
 
+/**
+ * Resolve the WebSocket URL. No runtime fallback — supports distributed
+ * deployment where frontend and Collab may be on different domains.
+ *
+ * Priority:
+ *   1. Explicit `wsUrl` from config (tests / advanced setups).
+ *   2. `VITE_WS_URL` env (baked at build time via .env).
+ *   3. Throw — if neither is provided, misconfiguration must fail loudly.
+ */
+function resolveWsUrl(explicit?: string): string {
+  const url = explicit ?? import.meta.env.VITE_WS_URL;
+  if (!url) {
+    throw new Error(
+      'VITE_WS_URL is not configured. Set it in .env (copy from .env.dev or .env.docker).',
+    );
+  }
+  return url;
+}
+
 export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
-  const {
-    docId,
-    wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1234',
-  } = config;
+  const { docId } = config;
+  const wsUrl = resolveWsUrl(config.wsUrl);
 
   const doc = new Y.Doc();
 
