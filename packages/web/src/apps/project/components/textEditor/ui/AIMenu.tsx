@@ -41,11 +41,22 @@ interface AISuggestionItem {
   onClick: () => void;
 }
 
+type GenerationToolKey = 'generate' | 'character' | 'storyboard' | 'script';
+type SelectionToolKey = 'polish' | 'expand' | 'summarize' | 'translate' | 'rewrite' | 'continue';
+
 interface AIGenerationOption {
-  key: string;
+  key: GenerationToolKey;
   title: string;
-  replacement: string;
 }
+
+type TextToolMockPayload =
+  | { tool: 'polish' | 'expand' | 'summarize' | 'continue'; document: string; selection: string; instructions?: string; node_id?: string; project_id?: string }
+  | { tool: 'translate'; document: string; selection: string; language: string; instructions?: string; node_id?: string; project_id?: string }
+  | { tool: 'rewrite'; document: string; selection: string; style?: string; instructions?: string; node_id?: string; project_id?: string }
+  | { tool: 'generate'; instructions: string; document?: string; node_id?: string; project_id?: string }
+  | { tool: 'character'; name: string; traits?: string; context?: string; document?: string; node_id?: string; project_id?: string }
+  | { tool: 'storyboard'; instructions: string; scene_count?: number; document?: string; node_id?: string; project_id?: string }
+  | { tool: 'script'; scene_description: string; characters?: string[]; document?: string; node_id?: string; project_id?: string };
 
 export interface AIMenuProps {
   editor: Editor;
@@ -97,7 +108,7 @@ const AIMenu = ({
   );
   const [prompt, setPrompt] = useState('');
   const [isPromptFocused, setIsPromptFocused] = useState(false);
-  const [generationActionKey, setGenerationActionKey] = useState('generate');
+  const [generationActionKey, setGenerationActionKey] = useState<GenerationToolKey>('generate');
   const [generationActionMenuOpen, setGenerationActionMenuOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -353,21 +364,126 @@ const AIMenu = ({
     item.onClick();
   };
 
-  const getGenerationReplacement = useCallback((key: string): string => {
-    if (key === 'character') return '[CHARACTER] This is fixed replacement content.';
-    if (key === 'storyboard') return '[STORYBOARD] This is fixed replacement content.';
-    if (key === 'script') return '[SCRIPT] This is fixed replacement content.';
+  const getMockReplacementByTool = useCallback((tool: TextToolMockPayload['tool']): string => {
+    if (tool === 'character') return '[CHARACTER] This is fixed replacement content.';
+    if (tool === 'storyboard') return '[STORYBOARD] This is fixed replacement content.';
+    if (tool === 'script') return '[SCRIPT] This is fixed replacement content.';
+    if (tool === 'polish') return '[POLISH] This is fixed replacement content.';
+    if (tool === 'expand') return '[EXPAND] This is fixed replacement content.';
+    if (tool === 'summarize') return '[SUMMARIZE] This is fixed replacement content.';
+    if (tool === 'translate') return '[TRANSLATE] This is fixed replacement content.';
+    if (tool === 'rewrite') return '[REWRITE] This is fixed replacement content.';
+    if (tool === 'continue') return '[CONTINUE] This is fixed replacement content.';
     return '[GENERATE] This is fixed replacement content.';
   }, []);
+
+  const getDocumentText = useCallback((): string => {
+    const size = editor.state.doc.content.size;
+    return editor.state.doc.textBetween(1, Math.max(1, size), '\n', '\n');
+  }, [editor]);
+
+  const getSelectionText = useCallback((): string => {
+    const preferred = selectionRangeRef.current;
+    if (preferred && preferred.to > preferred.from) {
+      return editor.state.doc.textBetween(preferred.from, preferred.to, '\n', '\n');
+    }
+    const sel = editor.state.selection;
+    const from = Math.min(sel.from, sel.to);
+    const to = Math.max(sel.from, sel.to);
+    if (to <= from) return '';
+    return editor.state.doc.textBetween(from, to, '\n', '\n');
+  }, [editor]);
+
+  const buildSelectionMockPayload = useCallback(
+    (tool: SelectionToolKey): TextToolMockPayload | null => {
+      const document = getDocumentText();
+      const selection = getSelectionText();
+      if (!document || !selection) return null;
+      const trimmedPrompt = prompt.trim();
+
+      if (tool === 'translate') {
+        return {
+          tool,
+          document,
+          selection,
+          language: trimmedPrompt || 'English',
+          instructions: trimmedPrompt || undefined,
+        };
+      }
+
+      if (tool === 'rewrite') {
+        return {
+          tool,
+          document,
+          selection,
+          style: trimmedPrompt || undefined,
+          instructions: trimmedPrompt || undefined,
+        };
+      }
+
+      return {
+        tool,
+        document,
+        selection,
+        instructions: trimmedPrompt || undefined,
+      };
+    },
+    [getDocumentText, getSelectionText, prompt],
+  );
+
+  const buildGenerationMockPayload = useCallback(
+    (tool: GenerationToolKey): TextToolMockPayload => {
+      const document = getDocumentText();
+      const trimmedPrompt = prompt.trim();
+      if (tool === 'character') {
+        return {
+          tool,
+          name: trimmedPrompt || 'Unnamed Character',
+          traits: trimmedPrompt || undefined,
+          context: document || undefined,
+          document: document || undefined,
+        };
+      }
+      if (tool === 'storyboard') {
+        return {
+          tool,
+          instructions: trimmedPrompt || 'Create a storyboard.',
+          scene_count: undefined,
+          document: document || undefined,
+        };
+      }
+      if (tool === 'script') {
+        return {
+          tool,
+          scene_description: trimmedPrompt || 'A cinematic scene.',
+          characters: undefined,
+          document: document || undefined,
+        };
+      }
+      return {
+        tool: 'generate',
+        instructions: trimmedPrompt || 'Generate text.',
+        document: document || undefined,
+      };
+    },
+    [getDocumentText, prompt],
+  );
+
+  const runMockTextTool = useCallback(
+    (payload: TextToolMockPayload) => {
+      runPreviewFlow(getMockReplacementByTool(payload.tool));
+    },
+    [getMockReplacementByTool, runPreviewFlow],
+  );
 
   const handleSubmit = useCallback(() => {
     if (!prompt.trim()) return;
     if (menuVariant === 'generation' && status === 'user-input') {
-      runPreviewFlow(getGenerationReplacement(generationActionKey));
+      runMockTextTool(buildGenerationMockPayload(generationActionKey));
       return;
     }
     runPreviewFlow('[AI PREVIEW] This is fixed replacement content.');
-  }, [generationActionKey, getGenerationReplacement, menuVariant, prompt, runPreviewFlow, status]);
+  }, [buildGenerationMockPayload, generationActionKey, menuVariant, prompt, runMockTextTool, runPreviewFlow, status]);
 
   const handleStopGeneration = useCallback(() => {
     clearTimers();
@@ -400,7 +516,7 @@ const AIMenu = ({
     e.preventDefault();
   }, []);
 
-  const handlePickGenerationAction = useCallback((key: string) => {
+  const handlePickGenerationAction = useCallback((key: GenerationToolKey) => {
     setGenerationActionKey(key);
     setGenerationActionMenuOpen(false);
     inputRef.current?.focus();
@@ -414,37 +530,55 @@ const AIMenu = ({
       key: 'polish',
       title: 'Polish',
       icon: <RiSparkling2Line size={16} />,
-      onClick: () => runPreviewFlow('[POLISH] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('polish');
+        if (payload) runMockTextTool(payload);
+      },
     },
     {
       key: 'expand',
       title: 'Expand',
       icon: <RiExpandUpDownLine size={16} />,
-      onClick: () => runPreviewFlow('[EXPAND] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('expand');
+        if (payload) runMockTextTool(payload);
+      },
     },
     {
       key: 'summarize',
       title: 'Summarize',
       icon: <RiContractUpDownLine size={16} />,
-      onClick: () => runPreviewFlow('[SUMMARIZE] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('summarize');
+        if (payload) runMockTextTool(payload);
+      },
     },
     {
       key: 'translate',
       title: 'Translate',
       icon: <RiTranslateAi size={16} />,
-      onClick: () => runPreviewFlow('[TRANSLATE] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('translate');
+        if (payload) runMockTextTool(payload);
+      },
     },
     {
       key: 'rewrite',
       title: 'Rewrite',
       icon: <RiExchangeLine size={16} />,
-      onClick: () => runPreviewFlow('[REWRITE] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('rewrite');
+        if (payload) runMockTextTool(payload);
+      },
     },
     {
       key: 'continue',
       title: 'Continue',
       icon: <RiPlayListAddLine size={16} />,
-      onClick: () => runPreviewFlow('[CONTINUE] This is fixed replacement content.'),
+      onClick: () => {
+        const payload = buildSelectionMockPayload('continue');
+        if (payload) runMockTextTool(payload);
+      },
     },
   ];
 
@@ -453,22 +587,18 @@ const AIMenu = ({
     {
       key: 'generate',
       title: 'Generate',
-      replacement: '[GENERATE] This is fixed replacement content.',
     },
     {
       key: 'character',
       title: 'Character',
-      replacement: '[CHARACTER] This is fixed replacement content.',
     },
     {
       key: 'storyboard',
       title: 'Storyboard',
-      replacement: '[STORYBOARD] This is fixed replacement content.',
     },
     {
       key: 'script',
       title: 'Script',
-      replacement: '[SCRIPT] This is fixed replacement content.',
     },
   ];
 
