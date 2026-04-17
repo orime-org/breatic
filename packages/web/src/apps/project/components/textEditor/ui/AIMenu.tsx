@@ -12,7 +12,7 @@ import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import {
-  RiArrowDropDownLine,
+  RiArrowDownSFill,
   RiArrowUpLine,
   RiArrowGoBackFill,
   RiCheckFill,
@@ -472,8 +472,7 @@ const AIMenu = ({
     },
   ];
 
-  const selectedGenerationAction =
-    generationSendItems.find((item) => item.key === generationActionKey) ?? generationSendItems[0];
+  const selectedGenerationAction = generationSendItems.find((item) => item.key === generationActionKey) ?? generationSendItems[0];
   const isGenerationUserInput = menuVariant === 'generation' && status === 'user-input';
 
   const errorItems: AISuggestionItem[] = [
@@ -654,7 +653,7 @@ const AIMenu = ({
                         aria-expanded={generationActionMenuOpen}
                       >
                         <span className='leading-none'>{selectedGenerationAction.title}</span>
-                        <RiArrowDropDownLine
+                        <RiArrowDownSFill
                           size={16}
                           className={cn(
                             'shrink-0 text-icon-base transition-transform',
