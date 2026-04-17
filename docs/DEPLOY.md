@@ -139,8 +139,8 @@ cd breatic_ai
 cp .env.docker .env
 # Edit .env — change these at minimum:
 #   SESSION_SECRET_KEY=<random-string-min-16-chars>
-#   VITE_API_URL=https://your-domain.com/api
-#   VITE_WS_URL=wss://your-domain.com/ws
+#   VITE_API_URL=https://your-domain.com      # ⚠️ no /api suffix — frontend prepends /api/v1/
+#   VITE_WS_URL=wss://your-domain.com/ws       # full WebSocket endpoint
 #   VITE_BASE_URL=https://your-domain.com
 
 # 3. (Optional) Enable HTTPS — place cert files
@@ -179,7 +179,7 @@ docker compose restart web
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SESSION_SECRET_KEY` | Session signing key (random string, min 16 chars) | `my-super-secret-key-2026` |
-| `VITE_API_URL` | API URL seen by browser | `https://your-domain.com/api` |
+| `VITE_API_URL` | API host seen by browser (no `/api` suffix — frontend prepends `/api/v1/...`) | `https://your-domain.com` |
 | `VITE_WS_URL` | WebSocket URL seen by browser | `wss://your-domain.com/ws` |
 | `VITE_BASE_URL` | Frontend base URL | `https://your-domain.com` |
 
@@ -334,8 +334,8 @@ For running breatic.ai as a hosted service. Key differences from self-hosted:
 ```bash
 # Production (breatic.ai)
 ENV=prod
-VITE_API_URL=https://breatic.ai/api
-VITE_WS_URL=wss://breatic.ai/ws
+VITE_API_URL=https://breatic.ai              # host only, frontend prepends /api/v1/
+VITE_WS_URL=wss://breatic.ai/ws              # full WebSocket endpoint
 VITE_BASE_URL=https://breatic.ai
 DATABASE_URL=postgres://user:pass@rds-host:5432/breatic
 REDIS_URL=redis://redis-host:6379/0
@@ -346,7 +346,7 @@ PAYMENT_ENABLED=true
 
 # Staging (thinkai.cc)
 ENV=staging
-VITE_API_URL=https://thinkai.cc/api
+VITE_API_URL=https://thinkai.cc
 VITE_WS_URL=wss://thinkai.cc/ws
 VITE_BASE_URL=https://thinkai.cc
 ```
