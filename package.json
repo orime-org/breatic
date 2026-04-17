@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "tsx scripts/predev.ts",
     "dev": "turbo run dev",
-    "db:migrate": "tsx scripts/predev.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
     "dev:collab": "tsx packages/collab/src/index.ts",
     "dev:worker": "tsx packages/worker/src/index.ts",
     "start": "node packages/server/dist/index.js",

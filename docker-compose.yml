@@ -51,9 +51,14 @@ services:
     restart: unless-stopped
 
   # ── Database Migration (runs once, then exits) ──
+  # Must run from packages/server so Node can resolve @breatic/core's
+  # transitive deps (drizzle-orm, postgres) via server's node_modules.
+  # core has no node_modules of its own — pnpm deploy flattens them
+  # into each consumer package.
   migrate:
     build: .
-    command: ["node", "-e", "import('./packages/core/dist/index.js').then(m => m.runMigrations()).then(() => process.exit(0))"]
+    working_dir: /app/packages/server
+    command: ["node", "-e", "import('@breatic/core').then(m => m.runMigrations()).then(() => process.exit(0))"]
     env_file: .env
     depends_on:
       postgres:

@@ -11,7 +11,11 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
+import { checkInfraReady } from "@breatic/core";
 import { logger } from "@breatic/core";
+
+// Fail-fast: verify PG + Redis are reachable before starting the server.
+await checkInfraReady();
 
 const app = createApp();
 
