@@ -24,7 +24,7 @@ import type {
   ToggleImageEditorFavoritePayload,
 } from '@/store/modules/imageEditor';
 import { message } from '@/components/base/message';
-import { getImageMeta } from '@/utils/mediaUtils';
+import { getImageMeta, getVideoMeta } from '@/utils/mediaUtils';
 import { noHistoryOrigin } from '@/utils/yjsProjectManager';
 import { requestNextYjsWriteOrigin } from '@/utils/yjsHistoryControl';
 import type {
@@ -32,12 +32,21 @@ import type {
   ImageEditorNodeDataPatch,
   ImageFlowNodeData,
 } from '@/apps/project/components/mixedEditor/types';
-import { createEditorImageNodeData, imageEditorImageNodeType } from '@/apps/project/components/mixedEditor/types';
+import {
+  createEditorAudioNodeData,
+  createEditorImageNodeData,
+  createEditorVideoNodeData,
+  imageEditorAudioNodeType,
+  imageEditorImageNodeType,
+  imageEditorVideoNodeType,
+} from '@/apps/project/components/mixedEditor/types';
 
 type HistoryOptions = { history?: 'default' | 'skip' };
 
 const imageFlowDefaultWidth = 260;
 const imageFlowDefaultHeight = 160;
+const audioFlowDefaultWidth = 300;
+const audioFlowDefaultHeight = 250;
 const uploadGap = 30;
 const flowTopOffset = 10;
 
@@ -145,6 +154,16 @@ export interface UseImageEditorStoreResult {
    * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
    */
   importImagesFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
+  /**
+   * Creates video-flow nodes from local files.
+   * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
+   */
+  importVideosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
+  /**
+   * Creates audio-flow nodes from local files.
+   * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
+   */
+  importAudiosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
   /** When true for a node, the canvas disables pan/zoom for expand editing. */
   setExpandViewportLock: (nodeId: string, locked: boolean) => void;
   expandViewportLocked: boolean;
@@ -622,6 +641,157 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
     [dispatch, reduxStore],
   );
 
+  const importVideosFromFiles = useCallback(
+    async (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => {
+      if (!files.length) return;
+
+      const toDataUrl = (file: File) =>
+        new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result ?? ''));
+          reader.readAsDataURL(file);
+        });
+
+      type Prepared = { file: File; src: string; nodeSize: { width: number; height: number } };
+      const prepared: Prepared[] = [];
+      for (const file of files) {
+        const src = await toDataUrl(file);
+        const meta = await getVideoMeta(file);
+        const nodeSize = calcNodeSizeFromImage(meta.width, meta.height);
+        prepared.push({ file, src, nodeSize });
+      }
+
+      const created: Node<ImageFlowNodeData>[] = [];
+      const center = options?.viewportCenterFlow;
+      const currentNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const maxZIndex = currentNodes.reduce((max, n) => {
+        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
+        return Math.max(max, z);
+      }, 0);
+      let zIndexCursor = maxZIndex;
+
+      if (center) {
+        const totalH = prepared.reduce((h, item, i) => h + item.nodeSize.height + (i > 0 ? uploadGap : 0), 0);
+        let y = center.y - totalH / 2;
+        for (const { file, src, nodeSize } of prepared) {
+          const nid = `video-flow-${nanoid(12)}`;
+          zIndexCursor += 1;
+          created.push({
+            id: nid,
+            type: imageEditorVideoNodeType,
+            position: { x: center.x - nodeSize.width / 2, y },
+            selected: true,
+            zIndex: zIndexCursor,
+            style: { width: nodeSize.width, height: nodeSize.height },
+            data: createEditorVideoNodeData(file.name || 'video', src),
+          });
+          y += nodeSize.height + uploadGap;
+        }
+      } else {
+        const list = currentNodes;
+        let y = getNextStackY(list);
+        for (const { file, src, nodeSize } of prepared) {
+          const nid = `video-flow-${nanoid(12)}`;
+          zIndexCursor += 1;
+          created.push({
+            id: nid,
+            type: imageEditorVideoNodeType,
+            position: { x: 120, y },
+            selected: true,
+            zIndex: zIndexCursor,
+            style: { width: nodeSize.width, height: nodeSize.height },
+            data: createEditorVideoNodeData(file.name || 'video', src),
+          });
+          y += nodeSize.height + uploadGap;
+        }
+      }
+
+      const deselectChanges = currentNodes
+        .filter((n) => n.selected)
+        .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
+      if (deselectChanges.length > 0) {
+        dispatch(applyImageEditorNodeChanges(deselectChanges));
+      }
+
+      dispatch(appendImageEditorNodes(created));
+    },
+    [dispatch, reduxStore],
+  );
+
+  const importAudiosFromFiles = useCallback(
+    async (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => {
+      if (!files.length) return;
+
+      const toDataUrl = (file: File) =>
+        new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result ?? ''));
+          reader.readAsDataURL(file);
+        });
+
+      type Prepared = { file: File; src: string };
+      const prepared: Prepared[] = [];
+      for (const file of files) {
+        const src = await toDataUrl(file);
+        prepared.push({ file, src });
+      }
+
+      const created: Node<ImageFlowNodeData>[] = [];
+      const center = options?.viewportCenterFlow;
+      const currentNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const maxZIndex = currentNodes.reduce((max, n) => {
+        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
+        return Math.max(max, z);
+      }, 0);
+      let zIndexCursor = maxZIndex;
+
+      if (center) {
+        const totalH = prepared.length * audioFlowDefaultHeight + Math.max(0, prepared.length - 1) * uploadGap;
+        let y = center.y - totalH / 2;
+        for (const { file, src } of prepared) {
+          const nid = `audio-flow-${nanoid(12)}`;
+          zIndexCursor += 1;
+          created.push({
+            id: nid,
+            type: imageEditorAudioNodeType,
+            position: { x: center.x - audioFlowDefaultWidth / 2, y },
+            selected: true,
+            zIndex: zIndexCursor,
+            style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
+            data: createEditorAudioNodeData(file.name || 'audio', src),
+          });
+          y += audioFlowDefaultHeight + uploadGap;
+        }
+      } else {
+        let y = getNextStackY(currentNodes);
+        for (const { file, src } of prepared) {
+          const nid = `audio-flow-${nanoid(12)}`;
+          zIndexCursor += 1;
+          created.push({
+            id: nid,
+            type: imageEditorAudioNodeType,
+            position: { x: 120, y },
+            selected: true,
+            zIndex: zIndexCursor,
+            style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
+            data: createEditorAudioNodeData(file.name || 'audio', src),
+          });
+          y += audioFlowDefaultHeight + uploadGap;
+        }
+      }
+
+      const deselectChanges = currentNodes
+        .filter((n) => n.selected)
+        .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
+      if (deselectChanges.length > 0) {
+        dispatch(applyImageEditorNodeChanges(deselectChanges));
+      }
+
+      dispatch(appendImageEditorNodes(created));
+    },
+    [dispatch, reduxStore],
+  );
+
   const onNodesChange = useCallback(
     (changes: NodeChange[], options?: HistoryOptions) => {
       if (options?.history === 'skip') {
@@ -690,6 +860,8 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
     importImagesFromFiles,
+    importVideosFromFiles,
+    importAudiosFromFiles,
     setExpandViewportLock,
     toggleFavoriteAsset,
   };

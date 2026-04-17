@@ -123,6 +123,8 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
 
   const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
   const isImageNode = String(panelNode?.type ?? '') === '1002';
+  const isVideoNode = String(panelNode?.type ?? '') === '1003';
+  const isAudioNode = String(panelNode?.type ?? '') === '1004';
   const isTextNode = String(panelNode?.type ?? '') === '1001';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
   const showChatSeparator = chatPanelVisible && (canvasPanelVisible || isRightEditorOpen);
@@ -279,7 +281,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
                       />
                     </button>
                   </Tooltip>
-                  {isImageNode && panelNode ? (
+                  {(isImageNode || isVideoNode || isAudioNode) && panelNode ? (
                     <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : isTextNode && rightPanel.nodeId ? (
                     <TextEditor key={rightPanel.nodeId} nodeId={rightPanel.nodeId} />

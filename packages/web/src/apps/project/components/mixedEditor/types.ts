@@ -8,6 +8,16 @@ export type ImageEditorImageNodeType = '2002';
 
 export const imageEditorImageNodeType = '2002' as const satisfies ImageEditorImageNodeType;
 
+/** React Flow node `type` for video tiles inside the mixed editor. */
+export type ImageEditorVideoNodeType = '2003';
+
+export const imageEditorVideoNodeType = '2003' as const satisfies ImageEditorVideoNodeType;
+
+/** React Flow node `type` for audio tiles inside the mixed editor. */
+export type ImageEditorAudioNodeType = '2004';
+
+export const imageEditorAudioNodeType = '2004' as const satisfies ImageEditorAudioNodeType;
+
 /** Image editor node `data.nodeRuntimeData` (title lives on `data.name`, not here). */
 export interface ImageEditorNodeRuntimeData {
   /** JSON string (HTML) prompt payload. */
@@ -36,6 +46,30 @@ export interface ImageEditorNodeData extends Record<string, unknown> {
  * @returns Default `data` for a new editor flow tile
  */
 export const createEditorImageNodeData = (name: string, content: string): ImageEditorNodeData => ({
+  name,
+  content,
+  state: 'idle',
+  nodeRuntimeData: {},
+});
+
+/**
+ * @param name - Display / file name
+ * @param content - Video URL or data URL
+ * @returns Default `data` for a new editor flow video tile
+ */
+export const createEditorVideoNodeData = (name: string, content: string): ImageEditorNodeData => ({
+  name,
+  content,
+  state: 'idle',
+  nodeRuntimeData: {},
+});
+
+/**
+ * @param name - Display / file name
+ * @param content - Audio URL or data URL
+ * @returns Default `data` for a new editor flow audio tile
+ */
+export const createEditorAudioNodeData = (name: string, content: string): ImageEditorNodeData => ({
   name,
   content,
   state: 'idle',

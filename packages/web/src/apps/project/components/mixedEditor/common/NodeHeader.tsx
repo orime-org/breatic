@@ -1,19 +1,14 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useViewport } from '@xyflow/react';
 
-type ImageNodeHeaderProps = {
+type NodeHeaderProps = {
   title: string;
   resolutionText?: string;
   editable?: boolean;
   onTitleChange?: (value: string) => void;
 };
 
-const ImageNodeHeader: React.FC<ImageNodeHeaderProps> = ({
-  title,
-  resolutionText,
-  editable = false,
-  onTitleChange,
-}) => {
+const NodeHeader: React.FC<NodeHeaderProps> = ({ title, resolutionText, editable = false, onTitleChange }) => {
   const { zoom } = useViewport();
   // Counteract React Flow canvas scaling so header text keeps stable visual size.
   const safeZoom = Math.max(0.01, zoom);
@@ -95,12 +90,18 @@ const ImageNodeHeader: React.FC<ImageNodeHeaderProps> = ({
             {!isTitleEditable && localTitle}
           </div>
         ) : (
-          <div className={`inline-block w-fit min-w-0 ${titleMaxWidthClass} truncate overflow-hidden whitespace-nowrap py-[2px] px-[4px] text-left font-bold leading-none select-none`} style={{ fontSize }}>
+          <div
+            className={`inline-block w-fit min-w-0 ${titleMaxWidthClass} truncate overflow-hidden whitespace-nowrap py-[2px] px-[4px] text-left font-bold leading-none select-none`}
+            style={{ fontSize }}
+          >
             {localTitle}
           </div>
         )}
         {resolutionText ? (
-          <div className='max-w-[45%] shrink-0 truncate overflow-hidden whitespace-nowrap px-[2px] text-right font-semibold leading-none tabular-nums' style={{ fontSize }}>
+          <div
+            className='max-w-[45%] shrink-0 truncate overflow-hidden whitespace-nowrap px-[2px] text-right font-semibold leading-none tabular-nums'
+            style={{ fontSize }}
+          >
             {resolutionText}
           </div>
         ) : null}
@@ -109,4 +110,4 @@ const ImageNodeHeader: React.FC<ImageNodeHeaderProps> = ({
   );
 };
 
-export default memo(ImageNodeHeader);
+export default memo(NodeHeader);

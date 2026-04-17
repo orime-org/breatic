@@ -10,6 +10,7 @@ type RightToolbarProps = {
   activeTool: EditorTool;
   onToolChange: (tool: EditorTool) => void;
   onUpload?: (file: File) => void;
+  uploadAccept?: string;
   /** Per-panel list rows; only panels with keys present need data. */
   sidePanelItems?: Partial<Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>>;
   onSidePanelItemAddClick?: (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => void;
@@ -50,6 +51,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
   activeTool,
   onToolChange,
   onUpload,
+  uploadAccept = 'image/*',
   sidePanelItems = {},
   onSidePanelItemAddClick,
   onSidePanelItemDownloadClick,
@@ -191,7 +193,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
   return (
     <div className='pointer-events-auto relative flex h-full min-h-0 shrink-0 items-center'>
       <div className='flex flex-col items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
-        <Upload accept='image/*' showUploadList={false} fileList={[]} onChange={handleUploadChange}>
+        <Upload accept={uploadAccept} showUploadList={false} fileList={[]} onChange={handleUploadChange}>
           <Tooltip title='upload' placement='right' offset={4}>
             <button
               type='button'

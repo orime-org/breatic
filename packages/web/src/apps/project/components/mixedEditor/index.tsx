@@ -21,12 +21,15 @@ import {
   resetImageEditorEdges,
 } from '@/store/modules/imageEditor';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
 import Loading from '@/components/loading';
 import EmptyState from './ui/EmptyState';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
 import ImageNode from './node/imageNode/ImageNode';
 import ImageSidePanel from './node/imageNode/ImageSidePanel';
+import AudioNode from './node/audioNode';
+import VideoNode from './node/videoNode';
 import GroupNode from './common/GroupNode';
 import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
 import {
@@ -47,7 +50,12 @@ import {
 import GroupToolbarPanel from './common/GroupToolbarPanel';
 import NodeContextMenu from './common/NodeContextMenu';
 import {
+  createEditorImageNodeData,
+  createEditorAudioNodeData,
+  createEditorVideoNodeData,
+  imageEditorAudioNodeType,
   imageEditorImageNodeType,
+  imageEditorVideoNodeType,
   type ImageFlowNodeData,
 } from './types';
 
@@ -118,6 +126,7 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
   const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
   const dispatch = useDispatch();
   const { workflowId } = useCanvasUI();
+  const { nodes: canvasNodes } = useCanvasData();
 
   /** Clears local slice when there is no workflowId; with workflowId the main Yjs doc repopulates—no reset here. */
   useEffect(() => {
@@ -143,9 +152,16 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
     onEdgesChange,
     updateNode,
     importImagesFromFiles,
+    importAudiosFromFiles,
+    importVideosFromFiles,
     favoriteAssets,
     toggleFavoriteAsset,
   } = useImageEditorStore();
+  const panelCanvasNode = canvasNodes.find((n) => n.id === nodeId);
+  const panelCanvasNodeType = String(panelCanvasNode?.type ?? '');
+  const mixedEditorMediaType: 'image' | 'video' | 'audio' =
+    panelCanvasNodeType === '1003' ? 'video' : panelCanvasNodeType === '1004' ? 'audio' : 'image';
+  const hasBootstrappedFromSourceRef = useRef(false);
   const flowInteractionRootRef = useRef<HTMLDivElement>(null);
   const { getIntersectingNodes, getNodes, screenToFlowPosition, getZoom } = useReactFlow();
   const closeContextMenu = () => setContextMenu(null);
@@ -547,9 +563,46 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
 
   const { yjsUndo, yjsRedo, yjsCanUndo, yjsCanRedo, yjsEnabled, yjsLoading } = useYjsStore({
     id: nodeId,
-    mode: 'imageEditor',
     enabled: !!nodeId,
   });
+
+  useEffect(() => {
+    if (hasBootstrappedFromSourceRef.current) return;
+    if (yjsLoading) return;
+    if ((nodes?.length ?? 0) > 0) {
+      hasBootstrappedFromSourceRef.current = true;
+      return;
+    }
+    const sourceContent = typeof panelCanvasNode?.data?.content === 'string' ? panelCanvasNode.data.content : '';
+    if (!sourceContent) {
+      hasBootstrappedFromSourceRef.current = true;
+      return;
+    }
+    const sourceName =
+      typeof panelCanvasNode?.data?.name === 'string' && panelCanvasNode.data.name.trim()
+        ? panelCanvasNode.data.name.trim()
+        : mixedEditorMediaType;
+    const seededNode: Node = {
+      id: `${mixedEditorMediaType}-flow-${nanoid(12)}`,
+      type:
+        mixedEditorMediaType === 'video'
+          ? imageEditorVideoNodeType
+          : mixedEditorMediaType === 'audio'
+            ? imageEditorAudioNodeType
+            : imageEditorImageNodeType,
+      position: { x: 120, y: 80 },
+      selected: true,
+      style: mixedEditorMediaType === 'audio' ? { width: 300, height: 250 } : { width: 260, height: 160 },
+      data:
+        mixedEditorMediaType === 'video'
+          ? createEditorVideoNodeData(sourceName, sourceContent)
+          : mixedEditorMediaType === 'audio'
+            ? createEditorAudioNodeData(sourceName, sourceContent)
+            : createEditorImageNodeData(sourceName, sourceContent),
+    };
+    setNodes([seededNode], { history: 'skip' });
+    hasBootstrappedFromSourceRef.current = true;
+  }, [mixedEditorMediaType, nodeId, nodes, panelCanvasNode, setNodes, yjsLoading]);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -603,6 +656,8 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
   const nodeTypes = useMemo<NodeTypes>(
     () => ({
       [imageEditorImageNodeType]: ImageNode,
+      [imageEditorVideoNodeType]: VideoNode,
+      [imageEditorAudioNodeType]: AudioNode,
       group: GroupNode,
       stitchPlaceholderNode: StitchPlaceholderNode,
       blankPlaceholderNode: BlankPlaceholderNode,
@@ -686,12 +741,15 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
     >
       <ImageSidePanel
         nodeId={nodeId}
+        mediaType={mixedEditorMediaType}
         hidden={stitchEditMode}
         activeTool={activeTool}
         setActiveTool={setActiveTool}
         nodes={nodes}
         setNodes={setNodes}
         importImagesFromFiles={importImagesFromFiles}
+        importAudiosFromFiles={importAudiosFromFiles}
+        importVideosFromFiles={importVideosFromFiles}
         favoriteAssets={favoriteAssets}
         toggleFavoriteAsset={toggleFavoriteAsset}
         flowInteractionRootRef={flowInteractionRootRef}

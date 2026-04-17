@@ -20,7 +20,7 @@ import type { ImageFlowNodeData } from '../../types';
 import type { ImageEditorPickResultBox } from '../../types';
 import ImageNodeToolbar from './ImageNodeToolbar';
 import NodeBottomToolbar from './NodeBottomToolbar';
-import ImageNodeHeader from './ImageNodeHeader';
+import NodeHeader from '../../common/NodeHeader';
 import MarkBottomToolbar from './mark/MarkBottomToolbar';
 import GraffitiBottomToolbar from './graffiti/GraffitiBottomToolbar';
 import InpaintBottomToolbar from './inpaint/InpaintBottomToolbar';
@@ -1254,7 +1254,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
         style={{ width, height, minWidth: imageFlowMinWidth, minHeight: imageFlowMinHeight }}
       >
         <div className='absolute -translate-y-full left-0 right-0 -top-0 overflow-hidden'>
-          <ImageNodeHeader
+          <NodeHeader
             title={nodeData.name || t('project.toolbar.imageNode')}
             resolutionText={resolutionText}
             editable

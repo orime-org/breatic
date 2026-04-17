@@ -8,8 +8,12 @@ import { getProjectCanvasViewportApi, type CanvasWorkflowNodeData } from '@/apps
 import { message } from '@/components/base/message';
 import RightToolbar from '../../ui/RightToolbar';
 import {
+  createEditorAudioNodeData,
   createEditorImageNodeData,
+  createEditorVideoNodeData,
+  imageEditorAudioNodeType,
   imageEditorImageNodeType,
+  imageEditorVideoNodeType,
   type EditorTool,
   type ImageEditorRightSidePanelId,
   type ImageFlowNodeData,
@@ -18,12 +22,15 @@ import type { MediaResourceListItem } from '../../ui/MediaResourceListPanel';
 
 type ImageSidePanelProps = {
   nodeId: string;
+  mediaType?: 'image' | 'video' | 'audio';
   hidden?: boolean;
   activeTool: EditorTool;
   setActiveTool: (tool: EditorTool) => void;
   nodes: Node[];
   setNodes: (nodes: Node[]) => void;
   importImagesFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
+  importVideosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
+  importAudiosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
   favoriteAssets: Array<{
     id: string;
     previewUrl: string;
@@ -38,15 +45,20 @@ type ImageSidePanelProps = {
 
 const imageEditorPlaceNodeWidth = 260;
 const imageEditorPlaceNodeHeight = 160;
+const audioEditorPlaceNodeWidth = 300;
+const audioEditorPlaceNodeHeight = 250;
 
 const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
   nodeId,
+  mediaType = 'image',
   hidden = false,
   activeTool,
   setActiveTool,
   nodes,
   setNodes,
   importImagesFromFiles,
+  importVideosFromFiles,
+  importAudiosFromFiles,
   favoriteAssets,
   toggleFavoriteAsset,
   flowInteractionRootRef,
@@ -55,11 +67,20 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
 
+  const isVideoMode = mediaType === 'video';
+  const isAudioMode = mediaType === 'audio';
+
   const handleUpload = useCallback(
     (file: File) => {
       const el = flowInteractionRootRef.current;
       if (!el) {
-        void importImagesFromFiles([file]);
+        if (isAudioMode) {
+          void importAudiosFromFiles([file]);
+        } else if (isVideoMode) {
+          void importVideosFromFiles([file]);
+        } else {
+          void importImagesFromFiles([file]);
+        }
         return;
       }
       const rect = el.getBoundingClientRect();
@@ -67,14 +88,34 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       });
-      void importImagesFromFiles([file], { viewportCenterFlow });
+      if (isAudioMode) {
+        void importAudiosFromFiles([file], { viewportCenterFlow });
+      } else if (isVideoMode) {
+        void importVideosFromFiles([file], { viewportCenterFlow });
+      } else {
+        void importImagesFromFiles([file], { viewportCenterFlow });
+      }
     },
-    [flowInteractionRootRef, importImagesFromFiles, screenToFlowPosition],
+    [
+      flowInteractionRootRef,
+      importAudiosFromFiles,
+      importImagesFromFiles,
+      importVideosFromFiles,
+      isAudioMode,
+      isVideoMode,
+      screenToFlowPosition,
+    ],
   );
 
   const sidePanelItems = useMemo((): Partial<Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>> => {
+    const targetNodeType = isAudioMode
+      ? imageEditorAudioNodeType
+      : isVideoMode
+        ? imageEditorVideoNodeType
+        : imageEditorImageNodeType;
+    const targetAttachType = isAudioMode ? 'audio' : isVideoMode ? 'video' : 'image';
     const history: MediaResourceListItem[] = nodes
-      .filter((n) => n.type === imageEditorImageNodeType)
+      .filter((n) => n.type === targetNodeType)
       .map((n) => {
         const data = n.data as ImageFlowNodeData;
         return {
@@ -88,8 +129,8 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
     const canvasData = canvasNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
     const rawAttach = canvasData?.attach;
     const canvasAttach = (Array.isArray(rawAttach) ? rawAttach : []) as AgentComposerUploadItem[];
-    const canvasImageAttach = canvasAttach.filter((item) => item.type === 'image');
-    const upstreamImages = projectCanvasUpstream.filter((item) => item.type === 'image');
+    const canvasMediaAttach = canvasAttach.filter((item) => item.type === targetAttachType);
+    const upstreamMedia = projectCanvasUpstream.filter((item) => item.type === targetAttachType);
 
     const assets: MediaResourceListItem[] = favoriteAssets.map((item) => ({
       id: item.id,
@@ -100,18 +141,18 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
     return {
       history,
       assets,
-      attach: canvasImageAttach.map((item) => ({
+      attach: canvasMediaAttach.map((item) => ({
         id: item.id,
         previewUrl: item.previewUrl ?? '',
         name: item.name,
       })),
-      link: upstreamImages.map((item: UpstreamExternalFileItem) => ({
+      link: upstreamMedia.map((item: UpstreamExternalFileItem) => ({
         id: item.uid,
         previewUrl: item.content ?? '',
         name: item.name,
       })),
     };
-  }, [favoriteAssets, nodeId, nodes, projectCanvasUpstream, projectNodes]);
+  }, [favoriteAssets, isAudioMode, isVideoMode, nodeId, nodes, projectCanvasUpstream, projectNodes]);
 
   const addMediaItemAtCenter = useCallback(
     (item: MediaResourceListItem) => {
@@ -121,6 +162,8 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
       }
 
       const content = item.previewUrl.trim();
+      const placeWidth = isAudioMode ? audioEditorPlaceNodeWidth : imageEditorPlaceNodeWidth;
+      const placeHeight = isAudioMode ? audioEditorPlaceNodeHeight : imageEditorPlaceNodeHeight;
       const el = flowInteractionRootRef.current;
       let viewportCenterFlow: { x: number; y: number };
       if (el) {
@@ -134,20 +177,24 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
       }
 
       const newNode: Node = {
-        id: `image-flow-${nanoid(12)}`,
-        type: imageEditorImageNodeType,
+        id: `${isAudioMode ? 'audio' : isVideoMode ? 'video' : 'image'}-flow-${nanoid(12)}`,
+        type: isAudioMode ? imageEditorAudioNodeType : isVideoMode ? imageEditorVideoNodeType : imageEditorImageNodeType,
         position: {
-          x: viewportCenterFlow.x - imageEditorPlaceNodeWidth / 2,
-          y: viewportCenterFlow.y - imageEditorPlaceNodeHeight / 2,
+          x: viewportCenterFlow.x - placeWidth / 2,
+          y: viewportCenterFlow.y - placeHeight / 2,
         },
         selected: true,
-        style: { width: imageEditorPlaceNodeWidth, height: imageEditorPlaceNodeHeight },
-        data: createEditorImageNodeData(item.name?.trim() || 'image', content),
+        style: { width: placeWidth, height: placeHeight },
+        data: isAudioMode
+          ? createEditorAudioNodeData(item.name?.trim() || 'audio', content)
+          : isVideoMode
+            ? createEditorVideoNodeData(item.name?.trim() || 'video', content)
+            : createEditorImageNodeData(item.name?.trim() || 'image', content),
       };
 
       setNodes([...nodes.map((n) => ({ ...n, selected: false })), newNode]);
     },
-    [flowInteractionRootRef, nodes, screenToFlowPosition, setNodes],
+    [flowInteractionRootRef, isAudioMode, isVideoMode, nodes, screenToFlowPosition, setNodes],
   );
 
   const handleSidePanelItemAdd = useCallback(
@@ -218,6 +265,7 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
         activeTool={activeTool}
         onToolChange={setActiveTool}
         onUpload={handleUpload}
+        uploadAccept={isAudioMode ? 'audio/*' : isVideoMode ? 'video/*' : 'image/*'}
         sidePanelItems={sidePanelItems}
         onSidePanelItemAddClick={handleSidePanelItemAdd}
         onSidePanelItemDownloadClick={handleSidePanelItemDownload}
