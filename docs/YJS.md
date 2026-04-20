@@ -386,6 +386,43 @@ defends against edge cases:
   re-apply (state is already the target value, lock is already
   released — both operations are harmless repeats).
 
+## 8.5 WebSocket authentication
+
+Every `HocuspocusProvider` connection must present a session token in
+the `token` field of the Hocuspocus `onAuthenticate` hook. The server
+looks the token up in Redis (`${env}:session:<token>`) and resolves
+the caller's `userId`, then validates that the user is a member of
+the project derived from the document name (`project-<uuid>/...`).
+
+On the client side (`packages/web/src/utils/yjsManager.ts`):
+
+- `token` is a **required** constructor parameter — no fallback, no
+  default, no dev token. Empty token → refuse to construct.
+- `onAuthenticationFailed` is wired to call `provider.disconnect()`
+  and an injected callback. Without `disconnect()`, Hocuspocus will
+  keep reconnecting after the server closes the socket, producing an
+  infinite loop of rejected connects. The callback typically clears
+  the stored auth and navigates to `/login`.
+
+```ts
+const provider = new HocuspocusProvider({
+  url: wsUrl,
+  name: docId,
+  document: doc,
+  token,  // Required — the caller plumbs this from Redux auth state.
+  timeout: 10000,
+  onAuthenticationFailed: ({ reason }) => {
+    provider.disconnect();  // Stop the reconnect loop.
+    onAuthFailed?.(reason);
+  },
+});
+```
+
+Upstream in `useYjsProjectStore`, the hook refuses to start Yjs at all
+until it sees a non-empty token + enabled project id. This is the
+second gate — it prevents the hook from constructing a manager that
+would immediately fail auth.
+
 ## 9. Persistence and multi-instance sync
 
 Yjs documents are **not in-memory only**. Hocuspocus wires two

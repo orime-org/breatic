@@ -326,17 +326,19 @@ For running breatic.ai as a hosted service. Key differences from self-hosted:
 | Storage | S3 / Aliyun OSS + CDN (CloudFront / Cloudflare) | `STORAGE_PROVIDER=s3` or `aliyun_oss` |
 | Compute | Docker on VM / K8s / ECS | API + Collab + Worker containers |
 | Frontend | Nginx container or CDN (Cloudflare Pages / Vercel) | Static files + reverse proxy |
-| Domain | breatic.ai (prod), thinkai.cc (staging) | Cloudflare DNS + SSL |
+| Domain | breatic.ai (prod), thinkai.cc (staging) | Cloudflare DNS + SSL. Nginx 301-redirects apex and every non-`www.*` host to `www.<domain>` — see [Canonical domain](#canonical-domain) |
 | CI/CD | GitHub Actions | Build → Push to registry → Deploy |
 
 ### Environment Config
 
 ```bash
-# Production (breatic.ai)
+# Production (breatic.ai) — all VITE_* use the canonical www. host so the
+# frontend, API calls, and WebSocket all share one origin. Apex is 301'd to
+# www by nginx; see "Canonical domain" below for why.
 ENV=prod
-VITE_API_URL=https://breatic.ai              # host only, frontend prepends /api/v1/
-VITE_WS_URL=wss://breatic.ai/ws              # full WebSocket endpoint
-VITE_BASE_URL=https://breatic.ai
+VITE_API_URL=https://www.breatic.ai          # host only, frontend prepends /api/v1/
+VITE_WS_URL=wss://www.breatic.ai/ws          # full WebSocket endpoint
+VITE_BASE_URL=https://www.breatic.ai
 DATABASE_URL=postgres://user:pass@rds-host:5432/breatic
 REDIS_URL=redis://redis-host:6379/0
 REDIS_QUEUE_URL=redis://redis-host:6379/1
@@ -346,10 +348,27 @@ PAYMENT_ENABLED=true
 
 # Staging (thinkai.cc)
 ENV=staging
-VITE_API_URL=https://thinkai.cc
-VITE_WS_URL=wss://thinkai.cc/ws
-VITE_BASE_URL=https://thinkai.cc
+VITE_API_URL=https://www.thinkai.cc
+VITE_WS_URL=wss://www.thinkai.cc/ws
+VITE_BASE_URL=https://www.thinkai.cc
 ```
+
+### Canonical domain
+
+Nginx enforces a single origin per deployment. Any host that is not
+`www.<your-domain>` — including the bare apex `your-domain.com` and
+alternate subdomains — gets a 301 redirect to `https://www.<your-domain>$request_uri`.
+
+Why this matters in practice: browser `localStorage` is scoped per
+origin. If a user lands on `https://breatic.ai` and logs in, the session
+token only exists on that origin. Navigating to `https://www.breatic.ai`
+would look unauthenticated (different origin → empty `localStorage`),
+and the two tabs would silently disagree about auth state. Forcing one
+canonical host makes the session unambiguous.
+
+The `VITE_*` env vars above must use the same canonical host, otherwise
+the built frontend will call APIs on the wrong origin and the browser
+will either CORS-block them or silently fail the WebSocket handshake.
 
 ### CI/CD Pipeline
 
@@ -427,6 +446,41 @@ Docker deployment doesn't need CORS — Nginx proxies everything through one ori
 2. Check entrypoint log: `docker compose logs web | head -3`
    - Should show: `[entrypoint] SSL certs found, enabling HTTPS`
 3. Ensure port 443 is not blocked by firewall
+
+### User says "I'm logged in but nothing works" — apex vs www split-brain
+
+Symptom: user lands on the apex domain (`https://breatic.ai`), logs in,
+then follows a link to `https://www.breatic.ai` (or vice versa) and is
+silently logged out, or WebSocket never connects.
+
+Cause: `localStorage` is scoped per origin. Two hosts = two separate
+session stores. Check which host the browser is actually on.
+
+Fix is already deployed — nginx 301-redirects everything that isn't
+`www.*` to the canonical `www.` host. If you're seeing this symptom,
+your nginx config or DNS is routing some traffic around the redirect.
+Verify:
+
+```bash
+curl -I https://breatic.ai            # expect 301 → https://www.breatic.ai/
+curl -I https://api.breatic.ai        # expect 301 → https://www.breatic.ai/
+```
+
+### Canvas deep link shows empty page / "add node" does nothing
+
+The `/project/<id>` route depends on a session token being present in
+Redux on first render. The token is hydrated from `localStorage.auth`
+at store-init time (`packages/web/src/store/modules/userCenter.ts`), so
+this should always work for a logged-in user.
+
+If you're seeing this after a deploy: check that the frontend build
+actually includes the fix (search the built bundle for
+`loadInitialAuthInfo`). If the bundle is stale, rebuild:
+
+```bash
+docker compose build web
+docker compose up -d web
+```
 
 ### Forgot password email not sending
 
