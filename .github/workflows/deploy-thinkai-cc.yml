@@ -22,14 +22,18 @@ jobs:
           echo "=== Runner public IP ==="
           curl -s https://api.ipify.org || echo "ipify failed"
           echo ""
-          echo "=== DNS resolve ==="
-          getent hosts 47.83.161.93 || echo "(IP doesn't need DNS)"
+          echo "=== nc to 47.83.161.93:22 (5s) ==="
+          nc -zv -w 5 47.83.161.93 22 2>&1 || echo "FAILED"
           echo ""
-          echo "=== TCP connect to 47.83.161.93:22 (10s timeout) ==="
-          timeout 10 bash -c 'cat < /dev/tcp/47.83.161.93/22' && echo "SUCCESS" || echo "FAILED (timeout or refused)"
+          echo "=== nc to github.com:443 (control) ==="
+          nc -zv -w 5 github.com 443 2>&1 || echo "FAILED"
           echo ""
-          echo "=== Control: connect to github.com:443 ==="
-          timeout 10 bash -c 'cat < /dev/tcp/github.com/443' && echo "SUCCESS" || echo "FAILED"
+          echo "=== SSH banner grab (nc, 3s) ==="
+          timeout 3 nc 47.83.161.93 22 2>&1 | head -3 || echo "No banner received"
+          echo ""
+          echo "=== traceroute (first 10 hops) ==="
+          sudo apt-get install -qq -y traceroute >/dev/null 2>&1 || true
+          traceroute -n -m 10 -w 2 47.83.161.93 2>&1 | head -15 || echo "traceroute unavailable"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
