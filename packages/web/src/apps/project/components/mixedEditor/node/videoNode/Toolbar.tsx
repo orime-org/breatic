@@ -7,6 +7,7 @@ import Divider from '@/components/base/divider';
 export type ToolbarProps = {
   nodeId: string;
   onCut?: (nodeId: string) => void;
+  onSpeed?: (nodeId: string) => void;
 };
 
 const iconColor = 'var(--color-icon-base)';
@@ -15,7 +16,7 @@ type IconToolbarItem = { key: string; label: string; icon: string; w: number; h:
 
 const dividerClass = 'mx-[2px] h-[18px]';
 
-const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed }) => {
   const mainActionsAfterQuickEdit: IconToolbarItem[] = [
     { key: 'cut', label: 'Cut', icon: 'videoNode-cut', w: 20, h: 21 },
     { key: 'speed', label: 'Speed', icon: 'videoNode-speed', w: 22, h: 18 },
@@ -68,6 +69,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut }) => {
             className='flex h-8 shrink-0 items-center gap-1 rounded-[6px] px-[8px] text-icon-base transition-colors hover:bg-background-default-base-hover'
             onClick={() => {
               if (item.key === 'cut') onCut?.(nodeId);
+              if (item.key === 'speed') onSpeed?.(nodeId);
             }}
           >
             <Icon name={item.icon} width={item.w} height={item.h} color={iconColor} />

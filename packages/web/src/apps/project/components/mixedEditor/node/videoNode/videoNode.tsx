@@ -8,6 +8,7 @@ import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
 import { cutVideoWithFfmpeg } from '@/utils/videoCutWithFfmpeg';
+import { speedVideoWithFfmpeg } from '@/utils/videoSpeedWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageFlowNodeData } from '../../types';
@@ -16,6 +17,7 @@ import Toolbar from './Toolbar';
 import PlaybackPanel from './playback/PlaybackPanel';
 import BottomToolbar from './BottomToolbar';
 import CutBottomToolbar from './cut/CutBottomToolbar';
+import SpeedBottomToolbar from './speed/SpeedBottomToolbar';
 import type { TimelineCutMarker } from './playback/PlaybackPanel';
 
 const videoFlowMinWidth = 120;
@@ -143,7 +145,7 @@ function shouldShowVideoFlowToolbars(params: {
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
   const { setCenter } = useReactFlow();
-  const { createCutVideoResultNodesRight, updateNodeData, nodes } = useMixedEditorStore();
+  const { createCutVideoResultNodesRight, createVideoPlaceholderNodeRight, resolveVideoResultNode, removeNode, updateNodeData, nodes } = useMixedEditorStore();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
   const nodeData = data as ImageFlowNodeData | undefined;
@@ -161,8 +163,9 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isPlaying: false,
     volume: 1,
   });
-  const [editingMode, setEditingMode] = useState<'cut' | null>(null);
+  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | null>(null);
   const [isCutSaving, setIsCutSaving] = useState(false);
+  const [isSpeedSaving, setIsSpeedSaving] = useState(false);
   const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
 
   const handlePlaybackUpdate = useCallback((snapshot: VideoPlaybackSnapshot) => {
@@ -204,8 +207,19 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode('cut');
   }, [editingMode, focusCurrentNode, videoContent]);
 
+  const handleSpeedOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'speed') return;
+    focusCurrentNode();
+    setEditingMode('speed');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
   const handleCutClose = useCallback(() => {
     if (editingMode !== 'cut') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
+  const handleSpeedClose = useCallback(() => {
+    if (editingMode !== 'speed') return;
     setEditingMode(null);
   }, [editingMode]);
 
@@ -225,6 +239,30 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       }
     },
     [createCutVideoResultNodesRight, id, isCutSaving, videoContent],
+  );
+
+  const handleSpeedSave = useCallback(
+    async (payload: { playbackRate: number }) => {
+      if (!videoContent || isSpeedSaving) return;
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'speed', state: 'generating' });
+      if (!placeholderId) return;
+      setEditingMode(null);
+      setIsSpeedSaving(true);
+      try {
+        const speedSrc = await speedVideoWithFfmpeg(videoContent, payload.playbackRate);
+        if (!speedSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        resolveVideoResultNode(placeholderId, speedSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        return;
+      } finally {
+        setIsSpeedSaving(false);
+      }
+    },
+    [createVideoPlaceholderNodeRight, id, isSpeedSaving, removeNode, resolveVideoResultNode, videoContent],
   );
 
   const handleCreateNewCanvasVideoNode = useCallback(() => {
@@ -288,7 +326,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   return (
     <>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Top} offset={50} align='center'>
-        <Toolbar nodeId={id} onCut={handleCutOpen} />
+        <Toolbar nodeId={id} onCut={handleCutOpen} onSpeed={handleSpeedOpen} />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Bottom} offset={12} align='center'>
         <div className='flex flex-col items-center gap-1' onMouseDown={(e) => e.stopPropagation()}>
@@ -324,6 +362,21 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           isSaving={isCutSaving}
           onClose={handleCutClose}
           onSave={handleCutSave}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'speed'} position={Position.Bottom} offset={12} align='center'>
+        <SpeedBottomToolbar
+          active={editingMode === 'speed'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          isSaving={isSpeedSaving}
+          onClose={handleSpeedClose}
+          onSave={handleSpeedSave}
         />
       </FlowNodeToolbar>
       <div

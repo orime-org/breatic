@@ -40,6 +40,8 @@ export interface VideoRef {
   getCurrentTime: () => number;
   getDuration: () => number;
   setCurrentTime: (seconds: number) => void;
+  getPlaybackRate: () => number;
+  setPlaybackRate: (rate: number) => void;
   play: () => void;
   pause: () => void;
   isPlaying: () => boolean;
@@ -169,6 +171,16 @@ const Video = forwardRef<VideoRef, VideoProps>(
           const next = range ? Math.min(range.start + relative, range.end) : relative;
           p.currentTime(next);
           emitPlayback();
+        },
+        getPlaybackRate: () => {
+          if (!playerRef.current?.playbackRate) return 1;
+          const rate = playerRef.current.playbackRate();
+          return Number.isFinite(rate) ? rate : 1;
+        },
+        setPlaybackRate: (rate: number) => {
+          if (!playerRef.current?.playbackRate) return;
+          const nextRate = Math.max(0.25, Math.min(4, rate));
+          playerRef.current.playbackRate(nextRate);
         },
         play: () => {
           void playerRef.current?.play?.()?.catch(() => {});

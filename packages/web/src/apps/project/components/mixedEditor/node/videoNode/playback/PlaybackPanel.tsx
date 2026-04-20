@@ -1,7 +1,13 @@
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
 import PlaybackTimelineSection from './PlaybackTimelineSection';
 import PlaybackToolbar from './PlaybackToolbar';
+import {
+  PLAYBACK_SPEED_DEFAULT,
+  PLAYBACK_SPEED_MIN,
+  isPlaybackSpeedEqual,
+  roundPlaybackSpeedToStep,
+} from './playbackSpeed';
 
 export type TimelineCutMarker = {
   id: string;
@@ -23,6 +29,9 @@ export type PlaybackPanelProps = {
   onAddCutMarker?: (progressPct: number) => void;
   onActivateCutMarker?: (id: string) => void;
   onRemoveCutMarker?: (id: string) => void;
+  playbackRate?: number;
+  onPlaybackRateChange?: (value: number) => void;
+  showSpeedControls?: boolean;
 };
 
 const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
@@ -39,9 +48,45 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
   onAddCutMarker,
   onActivateCutMarker,
   onRemoveCutMarker,
+  playbackRate: playbackRateProp,
+  onPlaybackRateChange,
+  showSpeedControls = false,
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [timelineZoom, setTimelineZoom] = useState(50);
+  const [internalPlaybackRate, setInternalPlaybackRate] = useState(PLAYBACK_SPEED_DEFAULT);
+  const playbackRate = playbackRateProp ?? internalPlaybackRate;
+  const handlePlaybackRateChange = useCallback(
+    (next: number) => {
+      const normalized = Math.max(PLAYBACK_SPEED_MIN, roundPlaybackSpeedToStep(next));
+      if (playbackRateProp == null) {
+        setInternalPlaybackRate(normalized);
+      }
+      onPlaybackRateChange?.(normalized);
+    },
+    [onPlaybackRateChange, playbackRateProp],
+  );
+
+  const timelineDisplayDuration = useMemo(() => {
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    return duration / playbackRate;
+  }, [duration, playbackRate]);
+
+  const timelineDisplayCurrentTime = useMemo(() => {
+    if (!Number.isFinite(currentTime) || currentTime <= 0) return 0;
+    return currentTime / playbackRate;
+  }, [currentTime, playbackRate]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video?.setPlaybackRate) return;
+    video.setPlaybackRate(playbackRate);
+  }, [playbackRate, videoRef]);
+
+  useEffect(() => {
+    if (!mediaSrc) return;
+    if (playbackRateProp != null) return;
+    setInternalPlaybackRate((prev) => (isPlaybackSpeedEqual(prev, PLAYBACK_SPEED_DEFAULT) ? prev : PLAYBACK_SPEED_DEFAULT));
+  }, [mediaSrc, playbackRateProp]);
 
   const progressPct = useMemo(() => {
     if (!duration || duration <= 0) return 0;
@@ -76,18 +121,21 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
         videoRef={videoRef}
         currentTime={currentTime}
         duration={duration}
+        displayCurrentTime={timelineDisplayCurrentTime}
+        displayDuration={timelineDisplayDuration}
         isPlaying={isPlaying}
         volume={volume}
-        timelineZoom={timelineZoom}
-        onTimelineZoomChange={setTimelineZoom}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={handlePlaybackRateChange}
+        showSpeedControls={showSpeedControls}
         onFullscreen={handleFullscreen}
       />
       <PlaybackTimelineSection
         progressPct={progressPct}
-        duration={duration}
+        duration={timelineDisplayDuration}
         mediaSrc={mediaSrc}
         onProgressChange={handleProgressChange}
-        timelineZoom={timelineZoom}
+        timelineZoom={50}
         cutModeEnabled={cutModeEnabled}
         cutMarkers={cutMarkers}
         activeCutMarkerId={activeCutMarkerId}

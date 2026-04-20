@@ -144,6 +144,13 @@ export interface UseMixedEditorStoreResult {
     results: Array<{ row: number; col: number; src: string; width: number; height: number }>,
     delayMs?: number,
   ) => void;
+  createVideoPlaceholderNodeRight: (sourceNodeId: string, options?: { nameSuffix?: string; state?: 'idle' | 'generating' }) => string | null;
+  resolveVideoResultNode: (nodeId: string, nextVideoSrc: string, options?: { state?: 'idle' | 'generating' }) => void;
+  createVideoResultNodeRight: (
+    sourceNodeId: string,
+    nextVideoSrc: string,
+    delayMs?: number,
+  ) => void;
   createCutVideoResultNodesRight: (
     sourceNodeId: string,
     payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
@@ -549,6 +556,81 @@ export const useMixedEditorStore = (): UseMixedEditorStoreResult => {
       }, delayMs);
     },
     [dispatch, reduxStore, updateNodeData],
+  );
+
+  const createVideoPlaceholderNodeRight = useCallback(
+    (
+      sourceNodeId: string,
+      options?: { nameSuffix?: string; state?: 'idle' | 'generating' },
+    ): string | null => {
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
+      const source = allNodes.find((n) => n.id === sourceNodeId);
+      if (!source) return null;
+
+      const deselectChanges = allNodes
+        .filter((n) => n.selected)
+        .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
+
+      const data = source.data as ImageFlowNodeData;
+      const sourceName = typeof data?.name === 'string' && data.name.trim() ? data.name.trim() : 'video';
+      const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
+      const copyW = typeof sourceStyle.width === 'number' ? sourceStyle.width : imageFlowDefaultWidth;
+      const copyH = typeof sourceStyle.height === 'number' ? sourceStyle.height : imageFlowDefaultHeight;
+      const nodeId = `video-flow-${nanoid(12)}`;
+      const x = source.position.x + copyW + uploadGap;
+      const y = source.position.y;
+      const nameSuffix = options?.nameSuffix?.trim() ? options.nameSuffix.trim() : 'copy';
+      const state = options?.state ?? 'generating';
+
+      const inheritParentFromSource = inheritParentFieldsFromNode(source);
+      dispatch(
+        appendMixedEditorNodes([
+          {
+            id: nodeId,
+            type: imageEditorVideoNodeType,
+            position: { x, y },
+            selected: true,
+            style: { width: copyW, height: copyH },
+            data: {
+              ...createEditorVideoNodeData(`${sourceName} (${nameSuffix})`, ''),
+              state,
+            },
+            ...inheritParentFromSource,
+          },
+        ]),
+      );
+      return nodeId;
+    },
+    [dispatch, reduxStore],
+  );
+
+  const resolveVideoResultNode = useCallback(
+    (
+      nodeId: string,
+      nextVideoSrc: string,
+      options?: { state?: 'idle' | 'generating' },
+    ) => {
+      if (!nodeId || !nextVideoSrc) return;
+      updateNodeData(nodeId, { content: nextVideoSrc, state: options?.state ?? 'idle' });
+    },
+    [updateNodeData],
+  );
+
+  const createVideoResultNodeRight = useCallback(
+    (
+      sourceNodeId: string,
+      nextVideoSrc: string,
+      delayMs: number = 200,
+    ) => {
+      if (!nextVideoSrc) return;
+      const nodeId = createVideoPlaceholderNodeRight(sourceNodeId, { nameSuffix: 'speed', state: 'generating' });
+      if (!nodeId) return;
+      window.setTimeout(() => {
+        resolveVideoResultNode(nodeId, nextVideoSrc, { state: 'idle' });
+      }, delayMs);
+    },
+    [createVideoPlaceholderNodeRight, resolveVideoResultNode],
   );
 
   const createCutVideoResultNodesRight = useCallback(
@@ -976,6 +1058,9 @@ export const useMixedEditorStore = (): UseMixedEditorStoreResult => {
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
+    createVideoPlaceholderNodeRight,
+    resolveVideoResultNode,
+    createVideoResultNodeRight,
     createCutVideoResultNodesRight,
     importImagesFromFiles,
     importVideosFromFiles,
