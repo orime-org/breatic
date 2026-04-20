@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-04-20
+
+- **CI: buildx + GitHub Actions cache** (#118): the docker job ran a bare `docker build` with no layer cache, so every run re-pulled `node:22-slim` from registry-1.docker.io and was vulnerable to any Docker Hub 5xx. Switched to `docker/build-push-action@v7` with `cache-from: type=gha` + `cache-to: type=gha,mode=max`. First successful build seeds the cache; subsequent builds skip the Docker Hub round-trip entirely. Typical CI time dropped from ~5-8 min to ~1-2 min
+- **CI: Node 24 action bumps** (#118): GitHub is removing Node 20 from runners on 2026-09-16. Bumped `actions/checkout@v4→v6`, `actions/setup-node@v4→v6`, `actions/cache@v4→v5`, `pnpm/action-setup@v4→v6` — all first Node 24 majors. Header comment on `.github/workflows/ci.yml` links the runner deprecation timeline for future reference
+- **nginx: canonical redirect was silently broken** (#117): PR #112 added `server_name _;` server blocks intending them as catch-all for apex hosts, but `_` is just a non-matching placeholder with no special semantics in nginx. Without the `default_server` directive, nginx falls back to the FIRST listener on the port — which was the `www`-regex block. Apex requests were being served by the www block (HTTPS apex returned 200 directly, HTTP apex 301'd to apex instead of www). Added `default_server` to both port-80 and port-443 apex blocks and reordered so the default appears first. Config comment now explains the gotcha
+- **CLAUDE.md #5 tightened**: 彻底解决/禁止补丁 条款精简为 5 条规则 + 2 条动手前自检。新增硬性要求：方案未经用户确认前不动代码；方案不唯一时必须列权衡请用户选，不许自己拍板；自己拿不准时必须问，不许猜
+
 ## 2026-04-17
 
 - **Auth hydration at store init** (#115): `userCenter` reducer now reads `localStorage.auth` in `loadInitialAuthInfo()` at module-import time, replacing the `useEffect` in `Workspace`. Deep links like `/project/<id>` no longer bypass hydration — Redux has the session token on the very first render, which was blocking Yjs from connecting (empty token → `enabled=false` → `addNode` silent no-op)
