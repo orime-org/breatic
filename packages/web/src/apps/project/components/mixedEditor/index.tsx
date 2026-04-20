@@ -13,13 +13,13 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import {
-  resetImageEditor,
-  resetImageEditorNodes,
-  resetImageEditorEdges,
-} from '@/store/modules/imageEditor';
+  resetMixedEditor,
+  resetMixedEditorNodes,
+  resetMixedEditorEdges,
+} from '@/store/modules/mixedEditor';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
@@ -131,13 +131,13 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
   /** Clears local slice when there is no workflowId; with workflowId the main Yjs doc repopulates—no reset here. */
   useEffect(() => {
     if (workflowId) return;
-    dispatch(resetImageEditorNodes());
-    dispatch(resetImageEditorEdges());
-    dispatch(resetImageEditor());
+    dispatch(resetMixedEditorNodes());
+    dispatch(resetMixedEditorEdges());
+    dispatch(resetMixedEditor());
     return () => {
-      dispatch(resetImageEditorNodes());
-      dispatch(resetImageEditorEdges());
-      dispatch(resetImageEditor());
+      dispatch(resetMixedEditorNodes());
+      dispatch(resetMixedEditorEdges());
+      dispatch(resetMixedEditor());
     };
   }, [dispatch, workflowId]);
 
@@ -156,7 +156,7 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
     importVideosFromFiles,
     favoriteAssets,
     toggleFavoriteAsset,
-  } = useImageEditorStore();
+  } = useMixedEditorStore();
   const panelCanvasNode = canvasNodes.find((n) => n.id === nodeId);
   const panelCanvasNodeType = String(panelCanvasNode?.type ?? '');
   const mixedEditorMediaType: 'image' | 'video' | 'audio' =
@@ -799,19 +799,19 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
       >
         {minimapOpen && <MiniMap position='bottom-right' />}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-        {yjsEnabled && (
-          <UndoRedoToolbar
-            yjsUndo={yjsUndo}
-            yjsRedo={yjsRedo}
-            yjsCanUndo={yjsCanUndo}
-            yjsCanRedo={yjsCanRedo}
-            minimapOpen={minimapOpen}
-            onToggleMinimap={handleToggleMinimap}
-            className='right-3 bottom-3 left-auto'
-          />
-        )}
         <GroupToolbarPanel />
       </ReactFlow>
+      {yjsEnabled && (
+        <UndoRedoToolbar
+          yjsUndo={yjsUndo}
+          yjsRedo={yjsRedo}
+          yjsCanUndo={yjsCanUndo}
+          yjsCanRedo={yjsCanRedo}
+          minimapOpen={minimapOpen}
+          onToggleMinimap={handleToggleMinimap}
+          className='right-3 bottom-3 left-auto z-20'
+        />
+      )}
       <NodeContextMenu
         open={!!contextMenu}
         left={contextMenu?.left ?? 0}

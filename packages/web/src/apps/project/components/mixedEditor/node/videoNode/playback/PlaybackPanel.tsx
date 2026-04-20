@@ -3,6 +3,11 @@ import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
 import PlaybackTimelineSection from './PlaybackTimelineSection';
 import PlaybackToolbar from './PlaybackToolbar';
 
+export type TimelineCutMarker = {
+  id: string;
+  progressPct: number;
+};
+
 export type PlaybackPanelProps = {
   videoRef: React.RefObject<VideoRef | null>;
   mediaSrc?: string;
@@ -12,6 +17,12 @@ export type PlaybackPanelProps = {
   volume: number;
   /** Node body element for fullscreen (toolbar is portaled outside the node DOM) */
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
+  cutModeEnabled?: boolean;
+  cutMarkers?: TimelineCutMarker[];
+  activeCutMarkerId?: string | null;
+  onAddCutMarker?: (progressPct: number) => void;
+  onActivateCutMarker?: (id: string) => void;
+  onRemoveCutMarker?: (id: string) => void;
 };
 
 const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
@@ -22,6 +33,12 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
   isPlaying,
   volume,
   fullscreenTargetRef,
+  cutModeEnabled = false,
+  cutMarkers = [],
+  activeCutMarkerId = null,
+  onAddCutMarker,
+  onActivateCutMarker,
+  onRemoveCutMarker,
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(50);
@@ -71,6 +88,12 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
         mediaSrc={mediaSrc}
         onProgressChange={handleProgressChange}
         timelineZoom={timelineZoom}
+        cutModeEnabled={cutModeEnabled}
+        cutMarkers={cutMarkers}
+        activeCutMarkerId={activeCutMarkerId}
+        onAddCutMarker={onAddCutMarker}
+        onActivateCutMarker={onActivateCutMarker}
+        onRemoveCutMarker={onRemoveCutMarker}
       />
     </div>
   );

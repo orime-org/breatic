@@ -4,25 +4,25 @@ import { nanoid } from 'nanoid';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@xyflow/react';
 import type { RootState } from '@/store';
 import {
-  setImageEditorActiveTool,
-  setImageEditorExpandViewportLock,
-  clearImageEditorExpandLock,
-  pruneImageEditorExpandLocks,
-  applyImageEditorNodeChanges,
-  appendImageEditorNodes,
-  patchImageEditorNodeData,
-  updateImageEditorNode,
-  removeImageEditorNode,
-  setImageEditorNodes,
-  applyImageEditorEdgeChanges,
-  addImageEditorEdge,
-  toggleImageEditorFavoriteAsset,
-} from '@/store/modules/imageEditor';
+  setMixedEditorActiveTool,
+  setMixedEditorExpandViewportLock,
+  clearMixedEditorExpandLock,
+  pruneMixedEditorExpandLocks,
+  applyMixedEditorNodeChanges,
+  appendMixedEditorNodes,
+  patchMixedEditorNodeData,
+  updateMixedEditorNode,
+  removeMixedEditorNode,
+  setMixedEditorNodes,
+  applyMixedEditorEdgeChanges,
+  addMixedEditorEdge,
+  toggleMixedEditorFavoriteAsset,
+} from '@/store/modules/mixedEditor';
 import type {
-  ImageEditorActiveTool,
-  ImageEditorFavoriteAsset,
-  ToggleImageEditorFavoritePayload,
-} from '@/store/modules/imageEditor';
+  MixedEditorActiveTool,
+  MixedEditorFavoriteAsset,
+  ToggleMixedEditorFavoritePayload,
+} from '@/store/modules/mixedEditor';
 import { message } from '@/components/base/message';
 import { getImageMeta, getVideoMeta } from '@/utils/mediaUtils';
 import { noHistoryOrigin } from '@/utils/yjsProjectManager';
@@ -91,7 +91,6 @@ const getNextStackY = (nodes: Node[]): number => {
   return maxBottom + uploadGap;
 };
 
-/** Parent-relative fields to spread onto a new child node (only when `source` has a parent). */
 const inheritParentFieldsFromNode = (source: Node): Pick<Partial<Node>, 'parentId' | 'extent'> => {
   const out: Pick<Partial<Node>, 'parentId' | 'extent'> = {};
   if (source.parentId == null) {
@@ -104,13 +103,13 @@ const inheritParentFieldsFromNode = (source: Node): Pick<Partial<Node>, 'parentI
   return out;
 };
 
-const selectImageEditorNodes = (s: RootState) => s.imageEditor.nodes ?? [];
-const selectImageEditorEdges = (s: RootState) => s.imageEditor.edges ?? [];
-const selectImageEditorActiveTool = (s: RootState) => s.imageEditor.activeTool;
-const selectExpandViewportLocked = (s: RootState) => Object.keys(s.imageEditor.expandViewportLocks ?? {}).length > 0;
-const selectImageEditorFavoriteAssets = (s: RootState) => s.imageEditor.favoriteAssets ?? [];
+const selectMixedEditorNodes = (s: RootState) => s.mixedEditor.nodes ?? [];
+const selectMixedEditorEdges = (s: RootState) => s.mixedEditor.edges ?? [];
+const selectMixedEditorActiveTool = (s: RootState) => s.mixedEditor.activeTool;
+const selectExpandViewportLocked = (s: RootState) => Object.keys(s.mixedEditor.expandViewportLocks ?? {}).length > 0;
+const selectMixedEditorFavoriteAssets = (s: RootState) => s.mixedEditor.favoriteAssets ?? [];
 
-export interface UseImageEditorStoreResult {
+export interface UseMixedEditorStoreResult {
   nodes: Node[];
   edges: Edge[];
   activeTool: EditorTool;
@@ -127,10 +126,6 @@ export interface UseImageEditorStoreResult {
   onCropNode: (nodeId: string) => void;
   copyNodeImageSrc: (nodeId: string) => void;
   createNewNodeBelow: (nodeId: string) => void;
-  /**
-   * Creates a loading placeholder to the right of the source node, then sets `src` after `delayMs`.
-   * Optional `resultImageSize` drives sizing with the same rules as image import; otherwise source size is reused.
-   */
   createInpaintResultNodeRight: (
     sourceNodeId: string,
     nextImageSrc: string,
@@ -149,44 +144,36 @@ export interface UseImageEditorStoreResult {
     results: Array<{ row: number; col: number; src: string; width: number; height: number }>,
     delayMs?: number,
   ) => void;
-  /**
-   * Creates image-flow nodes from local files.
-   * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
-   */
+  createCutVideoResultNodesRight: (
+    sourceNodeId: string,
+    payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
+    nextVideoSrc: string,
+    delayMs?: number,
+  ) => void;
   importImagesFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
-  /**
-   * Creates video-flow nodes from local files.
-   * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
-   */
   importVideosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
-  /**
-   * Creates audio-flow nodes from local files.
-   * @param options.viewportCenterFlow - When set, centers the stack horizontally at this flow point and stacks vertically.
-   */
   importAudiosFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
-  /** When true for a node, the canvas disables pan/zoom for expand editing. */
   setExpandViewportLock: (nodeId: string, locked: boolean) => void;
   expandViewportLocked: boolean;
-  /** Starred images listed in the Assets side panel (deduped by `previewUrl`). */
-  favoriteAssets: ImageEditorFavoriteAsset[];
-  toggleFavoriteAsset: (payload: ToggleImageEditorFavoritePayload) => void;
+  favoriteAssets: MixedEditorFavoriteAsset[];
+  toggleFavoriteAsset: (payload: ToggleMixedEditorFavoritePayload) => void;
 }
 
-export const useImageEditorStore = (): UseImageEditorStoreResult => {
+export const useMixedEditorStore = (): UseMixedEditorStoreResult => {
   const dispatch = useDispatch();
   const reduxStore = useStore<RootState>();
-  const nodes = useSelector(selectImageEditorNodes, shallowEqual);
-  const edges = useSelector(selectImageEditorEdges, shallowEqual);
-  const activeTool = useSelector(selectImageEditorActiveTool) as EditorTool;
+  const nodes = useSelector(selectMixedEditorNodes, shallowEqual);
+  const edges = useSelector(selectMixedEditorEdges, shallowEqual);
+  const activeTool = useSelector(selectMixedEditorActiveTool) as EditorTool;
   const expandViewportLocked = useSelector(selectExpandViewportLocked);
-  const favoriteAssets = useSelector(selectImageEditorFavoriteAssets, shallowEqual);
+  const favoriteAssets = useSelector(selectMixedEditorFavoriteAssets, shallowEqual);
 
   const updateNodeData = useCallback(
     (nodeId: string, patch: ImageEditorNodeDataPatch, options?: HistoryOptions) => {
       if (options?.history === 'skip') {
         requestNextYjsWriteOrigin(noHistoryOrigin);
       }
-      dispatch(patchImageEditorNodeData({ nodeId, patch }));
+      dispatch(patchMixedEditorNodeData({ nodeId, patch }));
     },
     [dispatch],
   );
@@ -196,8 +183,8 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       if (options?.history === 'skip') {
         requestNextYjsWriteOrigin(noHistoryOrigin);
       }
-      dispatch(setImageEditorNodes(nextNodes));
-      dispatch(pruneImageEditorExpandLocks(nextNodes.map((n) => n.id)));
+      dispatch(setMixedEditorNodes(nextNodes));
+      dispatch(pruneMixedEditorExpandLocks(nextNodes.map((n) => n.id)));
     },
     [dispatch],
   );
@@ -207,29 +194,29 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       if (options?.history === 'skip') {
         requestNextYjsWriteOrigin(noHistoryOrigin);
       }
-      dispatch(updateImageEditorNode({ nodeId, updates }));
+      dispatch(updateMixedEditorNode({ nodeId, updates }));
     },
     [dispatch],
   );
 
   const setNodeDraggable = useCallback(
     (nodeId: string, draggable: boolean) => {
-      dispatch(updateImageEditorNode({ nodeId, updates: { draggable } }));
+      dispatch(updateMixedEditorNode({ nodeId, updates: { draggable } }));
     },
     [dispatch],
   );
 
   const removeNode = useCallback(
     (nodeId: string) => {
-      dispatch(removeImageEditorNode(nodeId));
-      dispatch(clearImageEditorExpandLock(nodeId));
+      dispatch(removeMixedEditorNode(nodeId));
+      dispatch(clearMixedEditorExpandLock(nodeId));
     },
     [dispatch],
   );
 
   const onCropNode = useCallback(
     (_nodeId: string) => {
-      dispatch(setImageEditorActiveTool('crop'));
+      dispatch(setMixedEditorActiveTool('crop'));
     },
     [dispatch],
   );
@@ -246,7 +233,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       const meta = await getImageMeta(file);
       const nextSize = calcNodeSizeFromImage(meta.width, meta.height);
       dispatch(
-        updateImageEditorNode({
+        updateMixedEditorNode({
           nodeId,
           updates: {
             style: {
@@ -263,7 +250,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
 
   const copyNodeImageSrc = useCallback(
     (nodeId: string) => {
-      const node = (reduxStore.getState().imageEditor.nodes ?? []).find((n) => n.id === nodeId);
+      const node = (reduxStore.getState().mixedEditor.nodes ?? []).find((n) => n.id === nodeId);
       const d = node?.data as ImageFlowNodeData | undefined;
       const src = d?.content;
       if (!src) return;
@@ -275,7 +262,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
 
   const createNewNodeBelow = useCallback(
     (nodeId: string) => {
-      const allNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const source = allNodes.find((n) => n.id === nodeId);
       if (!source) return;
       const data = source.data as ImageFlowNodeData;
@@ -303,8 +290,8 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       const deselectChanges = allNodes
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
-      if (deselectChanges.length > 0) dispatch(applyImageEditorNodeChanges(deselectChanges));
-      dispatch(appendImageEditorNodes([newNode]));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
+      dispatch(appendMixedEditorNodes([newNode]));
     },
     [dispatch, reduxStore],
   );
@@ -316,7 +303,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       delayMs: number = 3000,
       resultImageSize?: { width: number; height: number },
     ) => {
-      const allNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const source = allNodes.find((n) => n.id === sourceNodeId);
       if (!source) return;
 
@@ -348,8 +335,8 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       const deselectChanges = allNodes
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
-      if (deselectChanges.length > 0) dispatch(applyImageEditorNodeChanges(deselectChanges));
-      dispatch(appendImageEditorNodes([newNode]));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
+      dispatch(appendMixedEditorNodes([newNode]));
 
       window.setTimeout(() => {
         updateNodeData(nid, { content: nextImageSrc });
@@ -366,14 +353,14 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       delayMs: number = 3000,
       resultImageSize?: { width: number; height: number },
     ) => {
-      const allNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const source = allNodes.find((n) => n.id === sourceNodeId);
       if (!source) return;
 
       const deselectChanges = allNodes
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
-      if (deselectChanges.length > 0) dispatch(applyImageEditorNodeChanges(deselectChanges));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
 
       const normalizedCount = Math.max(1, Math.floor(count));
       const data = source.data as ImageFlowNodeData;
@@ -403,7 +390,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
           data: createEditorImageNodeData(`${name} (copy)`, ''),
           ...inheritParentFromSource,
         };
-        dispatch(appendImageEditorNodes([newNode]));
+        dispatch(appendMixedEditorNodes([newNode]));
       } else {
         const groupPadding = 40;
         const spacingY = uploadGap;
@@ -444,7 +431,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
             data: createEditorImageNodeData(`${name} (copy ${index + 1})`, ''),
           };
         });
-        dispatch(appendImageEditorNodes([groupNode, ...childNodes]));
+        dispatch(appendMixedEditorNodes([groupNode, ...childNodes]));
       }
 
       window.setTimeout(() => {
@@ -462,14 +449,14 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       results: Array<{ row: number; col: number; src: string; width: number; height: number }>,
       delayMs: number = 3000,
     ) => {
-      const allNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const source = allNodes.find((n) => n.id === sourceNodeId);
       if (!source || results.length === 0) return;
 
       const deselectChanges = allNodes
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
-      if (deselectChanges.length > 0) dispatch(applyImageEditorNodeChanges(deselectChanges));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
 
       const data = source.data as ImageFlowNodeData;
       const name = data.name || 'Image';
@@ -496,7 +483,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
         const nid = `image-flow-${nanoid(12)}`;
         resultIds.push(nid);
         dispatch(
-          appendImageEditorNodes([
+          appendMixedEditorNodes([
             {
               id: nid,
               type: imageEditorImageNodeType,
@@ -550,7 +537,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
             data: createEditorImageNodeData(`${name} (enhance ${index + 1})`, ''),
           };
         });
-        dispatch(appendImageEditorNodes([groupNode, ...childNodes]));
+        dispatch(appendMixedEditorNodes([groupNode, ...childNodes]));
       }
 
       window.setTimeout(() => {
@@ -558,6 +545,131 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
           const next = sizedResults[index];
           if (!next) return;
           updateNodeData(nodeId, { content: next.src });
+        });
+      }, delayMs);
+    },
+    [dispatch, reduxStore, updateNodeData],
+  );
+
+  const createCutVideoResultNodesRight = useCallback(
+    (
+      sourceNodeId: string,
+      payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
+      nextVideoSrc: string,
+      delayMs: number = 1800,
+    ) => {
+      const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
+      const source = allNodes.find((n) => n.id === sourceNodeId);
+      if (!source || !nextVideoSrc) return;
+
+      const normalizedSegments = payload.segments
+        .map((segment) => ({
+          start: Number.isFinite(segment.start) ? Math.max(0, segment.start) : 0,
+          end: Number.isFinite(segment.end) ? Math.max(0, segment.end) : 0,
+        }))
+        .filter((segment) => segment.end - segment.start > 1e-3);
+      if (normalizedSegments.length === 0) return;
+
+      const deselectChanges = allNodes
+        .filter((n) => n.selected)
+        .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
+      if (deselectChanges.length > 0) dispatch(applyMixedEditorNodeChanges(deselectChanges));
+
+      const data = source.data as ImageFlowNodeData;
+      const sourceName = typeof data?.name === 'string' && data.name.trim() ? data.name.trim() : 'video';
+      const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
+      const copyW = typeof sourceStyle.width === 'number' ? sourceStyle.width : imageFlowDefaultWidth;
+      const copyH = typeof sourceStyle.height === 'number' ? sourceStyle.height : imageFlowDefaultHeight;
+      const startX = source.position.x + copyW + uploadGap;
+      const startY = source.position.y;
+      const resultIds: string[] = [];
+
+      if (normalizedSegments.length === 1) {
+        const onlySegment = normalizedSegments[0];
+        const nodeId = `video-flow-${nanoid(12)}`;
+        resultIds.push(nodeId);
+        dispatch(
+          appendMixedEditorNodes([
+            {
+              id: nodeId,
+              type: imageEditorVideoNodeType,
+              position: { x: startX, y: startY },
+              selected: true,
+              style: { width: copyW, height: copyH },
+              data: {
+                ...createEditorVideoNodeData(`${sourceName} (clip 1)`, ''),
+                nodeRuntimeData: {
+                  parameter: {
+                    cutMarkers: payload.cutMarkers ?? [],
+                    cutSegments: normalizedSegments,
+                    cutSegment: onlySegment,
+                    cutSegmentIndex: 0,
+                    cutSegmentCount: 1,
+                    cutSourceNodeId: sourceNodeId,
+                  },
+                },
+              },
+            },
+          ]),
+        );
+      } else {
+        const spacingY = uploadGap;
+        const groupPadding = 40;
+        const minGroupGapX = 40;
+        const groupWidth = copyW + groupPadding * 2;
+        const contentHeight = normalizedSegments.length * copyH + (normalizedSegments.length - 1) * spacingY;
+        const groupHeight = contentHeight + groupPadding * 2;
+        const sourceCenterY = source.position.y + copyH / 2;
+        const groupLeft = source.position.x + copyW + minGroupGapX;
+        const groupTop = sourceCenterY - groupHeight / 2;
+        const groupId = `group-${nanoid(8)}`;
+        const groupNode: Node = {
+          id: groupId,
+          type: 'group',
+          position: { x: groupLeft, y: groupTop },
+          style: {
+            width: groupWidth,
+            height: groupHeight,
+            border: 0,
+            boxShadow: 'none',
+          },
+          data: { collapsed: false, backgroundColor: 'rgba(12, 12, 13, 0.1)' },
+          selected: true,
+        };
+        const childNodes: Node<ImageFlowNodeData>[] = normalizedSegments.map((segment, index) => {
+          const nodeId = `video-flow-${nanoid(12)}`;
+          resultIds.push(nodeId);
+          return {
+            id: nodeId,
+            type: imageEditorVideoNodeType,
+            parentId: groupId,
+            position: {
+              x: groupPadding,
+              y: groupPadding + index * (copyH + spacingY),
+            },
+            selected: false,
+            style: { width: copyW, height: copyH },
+            data: {
+              ...createEditorVideoNodeData(`${sourceName} (clip ${index + 1})`, ''),
+              nodeRuntimeData: {
+                parameter: {
+                  cutMarkers: payload.cutMarkers ?? [],
+                  cutSegments: normalizedSegments,
+                  cutSegment: segment,
+                  cutSegmentIndex: index,
+                  cutSegmentCount: normalizedSegments.length,
+                  cutSourceNodeId: sourceNodeId,
+                },
+              },
+            },
+          };
+        });
+        dispatch(appendMixedEditorNodes([groupNode, ...childNodes]));
+      }
+
+      window.setTimeout(() => {
+        resultIds.forEach((nodeId) => {
+          updateNodeData(nodeId, { content: nextVideoSrc });
         });
       }, delayMs);
     },
@@ -586,7 +698,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
-      const currentNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const currentNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const maxZIndex = currentNodes.reduce((max, n) => {
         const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
         return Math.max(max, z);
@@ -633,10 +745,10 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
       if (deselectChanges.length > 0) {
-        dispatch(applyImageEditorNodeChanges(deselectChanges));
+        dispatch(applyMixedEditorNodeChanges(deselectChanges));
       }
 
-      dispatch(appendImageEditorNodes(created));
+      dispatch(appendMixedEditorNodes(created));
     },
     [dispatch, reduxStore],
   );
@@ -663,7 +775,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
-      const currentNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const currentNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const maxZIndex = currentNodes.reduce((max, n) => {
         const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
         return Math.max(max, z);
@@ -710,10 +822,10 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
       if (deselectChanges.length > 0) {
-        dispatch(applyImageEditorNodeChanges(deselectChanges));
+        dispatch(applyMixedEditorNodeChanges(deselectChanges));
       }
 
-      dispatch(appendImageEditorNodes(created));
+      dispatch(appendMixedEditorNodes(created));
     },
     [dispatch, reduxStore],
   );
@@ -738,7 +850,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
-      const currentNodes = reduxStore.getState().imageEditor.nodes ?? [];
+      const currentNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const maxZIndex = currentNodes.reduce((max, n) => {
         const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
         return Math.max(max, z);
@@ -784,10 +896,10 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
         .filter((n) => n.selected)
         .map((n) => ({ type: 'select' as const, id: n.id, selected: false }));
       if (deselectChanges.length > 0) {
-        dispatch(applyImageEditorNodeChanges(deselectChanges));
+        dispatch(applyMixedEditorNodeChanges(deselectChanges));
       }
 
-      dispatch(appendImageEditorNodes(created));
+      dispatch(appendMixedEditorNodes(created));
     },
     [dispatch, reduxStore],
   );
@@ -797,42 +909,42 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
       if (options?.history === 'skip') {
         requestNextYjsWriteOrigin(noHistoryOrigin);
       }
-      dispatch(applyImageEditorNodeChanges(changes));
+      dispatch(applyMixedEditorNodeChanges(changes));
     },
     [dispatch],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      dispatch(applyImageEditorEdgeChanges(changes));
+      dispatch(applyMixedEditorEdgeChanges(changes));
     },
     [dispatch],
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      dispatch(addImageEditorEdge(connection));
+      dispatch(addMixedEditorEdge(connection));
     },
     [dispatch],
   );
 
   const setActiveTool = useCallback(
     (tool: EditorTool) => {
-      dispatch(setImageEditorActiveTool(tool as ImageEditorActiveTool));
+      dispatch(setMixedEditorActiveTool(tool as MixedEditorActiveTool));
     },
     [dispatch],
   );
 
   const setExpandViewportLock = useCallback(
     (nodeId: string, locked: boolean) => {
-      dispatch(setImageEditorExpandViewportLock({ nodeId, locked }));
+      dispatch(setMixedEditorExpandViewportLock({ nodeId, locked }));
     },
     [dispatch],
   );
 
   const toggleFavoriteAsset = useCallback(
-    (payload: ToggleImageEditorFavoritePayload) => {
-      dispatch(toggleImageEditorFavoriteAsset(payload));
+    (payload: ToggleMixedEditorFavoritePayload) => {
+      dispatch(toggleMixedEditorFavoriteAsset(payload));
     },
     [dispatch],
   );
@@ -859,6 +971,7 @@ export const useImageEditorStore = (): UseImageEditorStoreResult => {
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
+    createCutVideoResultNodesRight,
     importImagesFromFiles,
     importVideosFromFiles,
     importAudiosFromFiles,

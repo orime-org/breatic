@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import type { AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
@@ -143,7 +143,7 @@ async function parseTextUploadFile(file: File): Promise<string> {
 
 const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
-  const { favoriteAssets, toggleFavoriteAsset } = useImageEditorStore();
+  const { favoriteAssets, toggleFavoriteAsset } = useMixedEditorStore();
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
 
   const [openSidePanel, setOpenSidePanel] = useState<ImageEditorRightSidePanelId | null>(null);

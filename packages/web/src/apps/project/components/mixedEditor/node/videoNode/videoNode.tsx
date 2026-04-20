@@ -1,9 +1,9 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { NodeResizer, NodeToolbar as FlowNodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react';
+import { NodeResizer, NodeToolbar as FlowNodeToolbar, Position, useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import Loading from '@/components/loading';
 import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
@@ -14,6 +14,8 @@ import { imageEditorVideoNodeType } from '../../types';
 import Toolbar from './Toolbar';
 import PlaybackPanel from './playback/PlaybackPanel';
 import BottomToolbar from './BottomToolbar';
+import CutBottomToolbar from './cut/CutBottomToolbar';
+import type { TimelineCutMarker } from './playback/PlaybackPanel';
 
 const videoFlowMinWidth = 120;
 const videoFlowMinHeight = 80;
@@ -126,18 +128,21 @@ function shouldShowVideoFlowToolbars(params: {
   selected: boolean;
   selectedVideoFlowNodeCount: number;
   dragging: boolean;
+  isEditing: boolean;
   hasVideoContent: boolean;
 }): boolean {
   return (
     params.selected &&
     params.selectedVideoFlowNodeCount === 1 &&
     !params.dragging &&
+    !params.isEditing &&
     params.hasVideoContent
   );
 }
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
-  const { updateNodeData, nodes } = useImageEditorStore();
+  const { setCenter } = useReactFlow();
+  const { createCutVideoResultNodesRight, updateNodeData, nodes } = useMixedEditorStore();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
   const nodeData = data as ImageFlowNodeData | undefined;
@@ -155,6 +160,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isPlaying: false,
     volume: 1,
   });
+  const [editingMode, setEditingMode] = useState<'cut' | null>(null);
+  const nodeFromStore = useMemo(() => nodes.find((n) => n.id === id), [nodes, id]);
 
   const handlePlaybackUpdate = useCallback((snapshot: VideoPlaybackSnapshot) => {
     setPlayback(snapshot);
@@ -174,10 +181,40 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     selected,
     selectedVideoFlowNodeCount: selectedVideoCount,
     dragging,
+    isEditing: editingMode !== null,
     hasVideoContent: Boolean(videoContent),
   });
 
   const syncPlaybackFromVideo = selected && Boolean(videoContent);
+
+  const focusCurrentNode = useCallback(
+    (zoom = 1) => {
+      const p = nodeFromStore?.position;
+      if (!p) return;
+      setCenter(p.x + currentWidth / 2, p.y + currentHeight / 2, { zoom, duration: 220 });
+    },
+    [currentHeight, currentWidth, nodeFromStore?.position, setCenter],
+  );
+
+  const handleCutOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'cut') return;
+    focusCurrentNode();
+    setEditingMode('cut');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
+  const handleCutClose = useCallback(() => {
+    if (editingMode !== 'cut') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
+  const handleCutSave = useCallback(
+    (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => {
+      if (!videoContent) return;
+      createCutVideoResultNodesRight(id, payload, videoContent, 1800);
+      setEditingMode(null);
+    },
+    [createCutVideoResultNodesRight, id, videoContent],
+  );
 
   const handleCreateNewCanvasVideoNode = useCallback(() => {
     if (!videoContent) return;
@@ -240,7 +277,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   return (
     <>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Top} offset={50} align='center'>
-        <Toolbar nodeId={id} />
+        <Toolbar nodeId={id} onCut={handleCutOpen} />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Bottom} offset={12} align='center'>
         <div className='flex flex-col items-center gap-1' onMouseDown={(e) => e.stopPropagation()}>
@@ -263,6 +300,20 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           />
         </div>
       </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'cut'} position={Position.Bottom} offset={12} align='center'>
+        <CutBottomToolbar
+          active={editingMode === 'cut'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          onClose={handleCutClose}
+          onSave={handleCutSave}
+        />
+      </FlowNodeToolbar>
       <div
         ref={nodeFrameRef}
         className='relative h-full w-full min-w-0'
@@ -277,7 +328,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           />
         </div>
         <NodeResizer
-          isVisible={selected}
+          isVisible={selected && editingMode === null}
           keepAspectRatio
           minWidth={videoFlowMinWidth}
           minHeight={videoFlowMinHeight}

@@ -18,7 +18,7 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { imageEditorImageNodeType } from '@/apps/project/components/mixedEditor/types';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '@/apps/project/components/mixedEditor/types';
 import store from '@/store';
@@ -114,7 +114,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       updateNode: updateImageEditorNode,
       onEdgesChange: onImageEditorEdgesChange,
       onConnect: onImageEditorConnect,
-    } = useImageEditorStore();
+    } = useMixedEditorStore();
     const nodesRef = useRef(nodes);
     /** Active node id from the right panel or current selection; empty string shows an empty thread. */
     const selectedNode = nodes.find((n) => n.selected);
@@ -582,7 +582,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
         inputRef.current?.appendCanvasPickRecognizingPlaceholder(placeholderId);
 
         window.setTimeout(() => {
-          const currentNodes = store.getState().imageEditor.nodes as typeof imageEditorNodes;
+          const currentNodes = store.getState().mixedEditor.nodes as typeof imageEditorNodes;
           const source = currentNodes.find((n) => n.id === imageEditorPickSourceNodeId);
           const sourcePs = (source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
           const currentList = sourcePs?.pendingList ?? [];
@@ -857,7 +857,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
 
     const handleCanvasPickSurfaceRemoved = useCallback(
       (detail: AgentCanvasPickSurfaceRemovalDetail) => {
-        const imageEditorNodesForRemoval = store.getState().imageEditor.nodes;
+        const imageEditorNodesForRemoval = store.getState().mixedEditor.nodes;
 
         if (detail.surface === 'recognizing') {
           for (const n of nodes) {

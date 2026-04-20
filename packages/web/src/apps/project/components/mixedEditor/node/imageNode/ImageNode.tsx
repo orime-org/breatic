@@ -13,7 +13,7 @@ import { nanoid } from 'nanoid';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/apps/project/components/canvas/common/NodeSkeleton';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import { useTranslation } from 'react-i18next';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
@@ -410,7 +410,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
     setExpandViewportLock,
-  } = useImageEditorStore();
+  } = useMixedEditorStore();
   const {
     nodes: projectCanvasNodes,
   } = useCanvasData();

@@ -12,7 +12,7 @@ import AgentComposerTabs, {
   type AgentComposerUpstreamItem,
   type AgentComposerUploadItem,
 } from '@/components/base/agent/AgentComposerTabs';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import type { ImageFlowNodeData } from '../../../types';
 import type { ImageEditorPickResultBox, ImageEditorPickState } from '../../../types';
 import store from '@/store';
@@ -71,7 +71,7 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
   onComposerLayoutClick,
   topSlot,
 }) => {
-  const { nodes, edges, updateNode, onNodesChange, onEdgesChange, onConnect } = useImageEditorStore();
+  const { nodes, edges, updateNode, onNodesChange, onEdgesChange, onConnect } = useMixedEditorStore();
   const inputRef = useRef<AgentComposerInputHandle>(null);
   const [inputEmpty, setInputEmpty] = useState(true);
   const processedPickIdsRef = useRef(new Set<string>());
@@ -223,7 +223,7 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
 
   const handleCanvasPickSurfaceRemoved = useCallback(
     (detail: AgentCanvasPickSurfaceRemovalDetail) => {
-      const nodesForRemoval = store.getState().imageEditor.nodes;
+      const nodesForRemoval = store.getState().mixedEditor.nodes;
       if (detail.surface === 'recognizing') {
         for (const n of nodesForRemoval) {
           const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
@@ -333,7 +333,7 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
       inputRef.current?.appendCanvasPickRecognizingPlaceholder(placeholderId);
 
       window.setTimeout(() => {
-        const currentNodes = store.getState().imageEditor.nodes;
+        const currentNodes = store.getState().mixedEditor.nodes;
         const source = currentNodes.find((n) => n.id === nodeId);
         const sourcePs = (source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
         const currentList = sourcePs?.pendingList ?? [];

@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import { NodeToolbar as FlowNodeToolbar, Position, type NodeProps } from '@xyflow/react';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { createEditorImageNodeData, imageEditorImageNodeType } from '../../../types';
 import BlankBottomToolbar from './BlankBottomToolbar';
 import { BlankPlaceholderPanel, blankPlaceholderDefaultHeight, blankPlaceholderDefaultWidth } from './BlankPlaceholderPanel';
@@ -29,7 +29,7 @@ const whiteCanvasToDataUrl = (width: number, height: number): string | null => {
  * White placeholder on the flow: resizable until confirmed, then becomes a normal image node.
  */
 const BlankPlaceholderNode: React.FC<NodeProps> = ({ id, selected, width, height }) => {
-  const { updateNode } = useImageEditorStore();
+  const { updateNode } = useMixedEditorStore();
   const nodeWidth = Math.max(1, Math.round(width ?? blankPlaceholderDefaultWidth));
   const nodeHeight = Math.max(1, Math.round(height ?? blankPlaceholderDefaultHeight));
 

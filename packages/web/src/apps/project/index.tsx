@@ -7,7 +7,7 @@ import Tooltip from '@/components/base/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import ImageEditor from './components/mixedEditor';
 import TextEditor from './components/textEditor';
@@ -61,7 +61,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
-  const { updateNode: updateImageEditorNode } = useImageEditorStore();
+  const { updateNode: updateImageEditorNode } = useMixedEditorStore();
   const [workflowName, setWorkflowName] = useState<string>('');
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
@@ -81,7 +81,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   }, [nodes, updateNode]);
 
   const exitImageEditorPickMode = useCallback(() => {
-    const currentNodes = store.getState().imageEditor.nodes;
+    const currentNodes = store.getState().mixedEditor.nodes;
     const hasPickMode = currentNodes.some(
       (n) => (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true,
     );

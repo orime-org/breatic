@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { NodeResizer, type NodeProps } from '@xyflow/react';
 import Loading from '@/components/loading';
 import AudioNodePlayer from '@/apps/project/components/canvas/dataNode/audioNode/AudioNodePlayer';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageFlowNodeData } from '../../types';
 
@@ -12,7 +12,7 @@ const audioFlowMinWidth = 180;
 const audioFlowMinHeight = 140;
 
 const AudioNode: React.FC<NodeProps> = ({ id, data, selected, width, height }) => {
-  const { updateNodeData } = useImageEditorStore();
+  const { updateNodeData } = useMixedEditorStore();
   const nodeData = data as ImageFlowNodeData | undefined;
   const audioContent = String(nodeData?.content ?? '');
   const title = nodeData?.name?.trim() || 'audio';

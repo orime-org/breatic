@@ -6,23 +6,16 @@ import Divider from '@/components/base/divider';
 
 export type ToolbarProps = {
   nodeId: string;
+  onCut?: (nodeId: string) => void;
 };
 
 const iconColor = 'var(--color-icon-base)';
-
-const QuickEditSparkles: React.FC = () => (
-  <span className='flex shrink-0 items-end gap-px' aria-hidden>
-    <Icon name='videoNode-quick-edit-sparkle-top' width={8} height={8} color={iconColor} />
-    <Icon name='videoNode-quick-edit-sparkle-bottom' width={8} height={8} color={iconColor} />
-    <Icon name='videoNode-quick-edit-sparkle-main' width={18} height={18} color={iconColor} />
-  </span>
-);
 
 type IconToolbarItem = { key: string; label: string; icon: string; w: number; h: number };
 
 const dividerClass = 'mx-[2px] h-[18px]';
 
-const Toolbar: React.FC<ToolbarProps> = ({ nodeId: _nodeId }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut }) => {
   const mainActionsAfterQuickEdit: IconToolbarItem[] = [
     { key: 'cut', label: 'Cut', icon: 'videoNode-cut', w: 20, h: 21 },
     { key: 'speed', label: 'Speed', icon: 'videoNode-speed', w: 22, h: 18 },
@@ -63,7 +56,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId: _nodeId }) => {
           type='button'
           className='flex h-8 shrink-0 items-center gap-1 rounded-[6px] px-[8px] text-icon-base transition-colors hover:bg-background-default-base-hover'
         >
-          <QuickEditSparkles />
+          <Icon name='project-excalidraw-top-quick-edit-icon' width={18} height={18} color={iconColor} />
           <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>Quick Edit</span>
         </button>
       </Tooltip>
@@ -73,6 +66,9 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId: _nodeId }) => {
           <button
             type='button'
             className='flex h-8 shrink-0 items-center gap-1 rounded-[6px] px-[8px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+            onClick={() => {
+              if (item.key === 'cut') onCut?.(nodeId);
+            }}
           >
             <Icon name={item.icon} width={item.w} height={item.h} color={iconColor} />
             <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>{item.label}</span>
