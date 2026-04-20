@@ -30,6 +30,10 @@ export interface VideoProps {
   className?: string;
   /** Container style */
   style?: React.CSSProperties;
+  /** Optional clip start time (seconds); when set, playback is constrained to this range. */
+  clipStartTime?: number;
+  /** Optional clip end time (seconds); when set with start, playback is constrained to this range. */
+  clipEndTime?: number;
 }
 
 export interface VideoRef {
@@ -58,8 +62,38 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+const normalizeClipRange = (
+  duration: number,
+  clipStartTime?: number,
+  clipEndTime?: number,
+): { start: number; end: number; duration: number } | null => {
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  const hasStart = Number.isFinite(clipStartTime);
+  const hasEnd = Number.isFinite(clipEndTime);
+  if (!hasStart && !hasEnd) return null;
+  const rawStart = hasStart ? Number(clipStartTime) : 0;
+  const rawEnd = hasEnd ? Number(clipEndTime) : duration;
+  const start = Math.min(Math.max(0, rawStart), duration);
+  const end = Math.min(Math.max(0, rawEnd), duration);
+  if (end - start <= 1e-3) return null;
+  return { start, end, duration: end - start };
+};
+
 const Video = forwardRef<VideoRef, VideoProps>(
-  ({ src, initialTime, autoPlay = false, showControlBar = true, onPlaybackUpdate, className = '', style }, ref) => {
+  (
+    {
+      src,
+      initialTime,
+      autoPlay = false,
+      showControlBar = true,
+      onPlaybackUpdate,
+      className = '',
+      style,
+      clipStartTime,
+      clipEndTime,
+    },
+    ref,
+  ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const playerRef = useRef<any>(null);
@@ -81,13 +115,16 @@ const Video = forwardRef<VideoRef, VideoProps>(
       const cb = onPlaybackUpdateRef.current;
       if (!p || !cb) return;
       const dur = p.duration();
+      const range = normalizeClipRange(dur, clipStartTime, clipEndTime);
+      const absCurrent = p.currentTime();
+      const currentTime = range ? Math.min(Math.max(absCurrent - range.start, 0), range.duration) : absCurrent;
       cb({
-        currentTime: p.currentTime(),
-        duration: Number.isFinite(dur) ? dur : 0,
+        currentTime,
+        duration: range ? range.duration : Number.isFinite(dur) ? dur : 0,
         isPlaying: !p.paused(),
         volume: typeof p.volume === 'function' ? p.volume() : 1,
       });
-    }, []);
+    }, [clipEndTime, clipStartTime]);
 
     const schedulePlaybackEmit = useCallback(() => {
       if (playbackRafRef.current != null) return;
@@ -96,6 +133,12 @@ const Video = forwardRef<VideoRef, VideoProps>(
         emitPlayback();
       });
     }, [emitPlayback]);
+
+    useEffect(() => {
+      if (!onPlaybackUpdate || !playerRef.current) return;
+      // When toolbar starts listening after metadata already loaded, emit once immediately.
+      schedulePlaybackEmit();
+    }, [onPlaybackUpdate, schedulePlaybackEmit, src, clipStartTime, clipEndTime]);
 
     const handleVolumeMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
       const next = e.relatedTarget as Node | null;
@@ -106,14 +149,25 @@ const Video = forwardRef<VideoRef, VideoProps>(
     useImperativeHandle(
       ref,
       () => ({
-        getCurrentTime: () => (playerRef.current ? playerRef.current.currentTime() : 0),
+        getCurrentTime: () => {
+          if (!playerRef.current) return 0;
+          const p = playerRef.current;
+          const range = normalizeClipRange(p.duration(), clipStartTime, clipEndTime);
+          const absCurrent = p.currentTime();
+          return range ? Math.min(Math.max(absCurrent - range.start, 0), range.duration) : absCurrent;
+        },
         getDuration: () => {
           const d = playerRef.current?.duration?.();
-          return Number.isFinite(d) ? d : 0;
+          const range = normalizeClipRange(d, clipStartTime, clipEndTime);
+          return range ? range.duration : Number.isFinite(d) ? d : 0;
         },
         setCurrentTime: (seconds: number) => {
           if (!playerRef.current) return;
-          playerRef.current.currentTime(seconds);
+          const p = playerRef.current;
+          const range = normalizeClipRange(p.duration(), clipStartTime, clipEndTime);
+          const relative = Math.max(0, seconds);
+          const next = range ? Math.min(range.start + relative, range.end) : relative;
+          p.currentTime(next);
           emitPlayback();
         },
         play: () => {
@@ -149,7 +203,7 @@ const Video = forwardRef<VideoRef, VideoProps>(
           emitPlayback();
         },
       }),
-      [emitPlayback],
+      [clipEndTime, clipStartTime, emitPlayback],
     );
 
     useEffect(() => {
@@ -176,10 +230,16 @@ const Video = forwardRef<VideoRef, VideoProps>(
           emitPlayback();
         });
         playerRef.current.on('loadedmetadata', () => {
-          setDuration(playerRef.current.duration());
-          if (initialTime !== undefined && playerRef.current) {
-            playerRef.current.currentTime(initialTime);
-            setCurrentTime(initialTime);
+          const p = playerRef.current;
+          const dur = p.duration();
+          const range = normalizeClipRange(dur, clipStartTime, clipEndTime);
+          setDuration(range ? range.duration : dur);
+          const nextCurrent = range
+            ? range.start + Math.max(0, Math.min(range.duration, initialTime ?? 0))
+            : initialTime;
+          if (nextCurrent !== undefined && playerRef.current) {
+            playerRef.current.currentTime(nextCurrent);
+            setCurrentTime(range ? nextCurrent - range.start : nextCurrent);
           }
           if (autoPlay && playerRef.current) {
             playerRef.current.play().catch(() => {});
@@ -187,9 +247,15 @@ const Video = forwardRef<VideoRef, VideoProps>(
           emitPlayback();
         });
         playerRef.current.on('loadeddata', () => {
-          if (initialTime !== undefined && playerRef.current) {
-            playerRef.current.currentTime(initialTime);
-            setCurrentTime(initialTime);
+          const p = playerRef.current;
+          const dur = p.duration();
+          const range = normalizeClipRange(dur, clipStartTime, clipEndTime);
+          const nextCurrent = range
+            ? range.start + Math.max(0, Math.min(range.duration, initialTime ?? 0))
+            : initialTime;
+          if (nextCurrent !== undefined && playerRef.current) {
+            playerRef.current.currentTime(nextCurrent);
+            setCurrentTime(range ? nextCurrent - range.start : nextCurrent);
           }
           if (autoPlay && playerRef.current) {
             playerRef.current.play().catch(() => {});
@@ -197,9 +263,29 @@ const Video = forwardRef<VideoRef, VideoProps>(
           emitPlayback();
         });
         playerRef.current.on('timeupdate', () => {
-          const current = playerRef.current.currentTime();
-          const dur = playerRef.current.duration();
+          const p = playerRef.current;
+          const current = p.currentTime();
+          const dur = p.duration();
+          const range = normalizeClipRange(dur, clipStartTime, clipEndTime);
+          if (range) {
+            if (current >= range.end - 1e-3) {
+              p.pause();
+              p.currentTime(range.end);
+              setIsPlaying(false);
+              setCurrentTime(range.duration);
+              setProgress(100);
+              schedulePlaybackEmit();
+              return;
+            }
+            const relativeCurrent = Math.min(Math.max(current - range.start, 0), range.duration);
+            setCurrentTime(relativeCurrent);
+            setDuration(range.duration);
+            setProgress(range.duration > 0 ? (relativeCurrent / range.duration) * 100 : 0);
+            schedulePlaybackEmit();
+            return;
+          }
           setCurrentTime(current);
+          setDuration(Number.isFinite(dur) ? dur : 0);
           setProgress(dur > 0 ? (current / dur) * 100 : 0);
           schedulePlaybackEmit();
         });
@@ -215,18 +301,28 @@ const Video = forwardRef<VideoRef, VideoProps>(
       if (src && playerRef.current) {
         playerRef.current.src({ src, type: getVideoMime(src) });
       }
-    }, [src, initialTime, autoPlay, emitPlayback, schedulePlaybackEmit]);
+    }, [src, initialTime, autoPlay, emitPlayback, schedulePlaybackEmit, clipStartTime, clipEndTime]);
 
     const handlePlayPause = () => {
       if (!playerRef.current) return;
-      if (isPlaying) playerRef.current.pause();
-      else playerRef.current.play();
+      const p = playerRef.current;
+      if (isPlaying) {
+        p.pause();
+        return;
+      }
+      const range = normalizeClipRange(p.duration(), clipStartTime, clipEndTime);
+      if (range && p.currentTime() >= range.end - 1e-3) {
+        p.currentTime(range.start);
+      }
+      p.play();
     };
 
     const handleProgressChange = (value: number) => {
       if (!playerRef.current) return;
-      const newTime = (value / 100) * duration;
-      playerRef.current.currentTime(newTime);
+      const p = playerRef.current;
+      const range = normalizeClipRange(p.duration(), clipStartTime, clipEndTime);
+      const newTime = range ? range.start + (value / 100) * range.duration : (value / 100) * duration;
+      p.currentTime(newTime);
       setProgress(value);
     };
 

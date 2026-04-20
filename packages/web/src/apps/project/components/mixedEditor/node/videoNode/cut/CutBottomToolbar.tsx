@@ -15,6 +15,7 @@ export type CutBottomToolbarProps = {
   isPlaying: boolean;
   volume: number;
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
+  isSaving?: boolean;
   onClose: () => void;
   onSave?: (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => void;
 };
@@ -31,6 +32,7 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
   isPlaying,
   volume,
   fullscreenTargetRef,
+  isSaving = false,
   onClose,
   onSave,
 }) => {
@@ -55,6 +57,7 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
     }
     return result;
   }, [duration, sortedCutMarkers]);
+  const canSave = sortedCutMarkers.length > 0 && segments.length > 1 && !isSaving;
 
   const handleAddCutMarker = useCallback((progressPct: number) => {
     const id = `cut-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -124,11 +127,17 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
           <Button
             type='primary'
             shape='round'
-            className='nodrag nopan !h-[28px] !bg-[#2FB344] !px-3 !text-[13px] !font-semibold !text-white hover:!bg-[#28A13D]'
+            className='nodrag nopan !h-[28px] !bg-[#2FB344] !px-3 !text-[13px] !font-semibold !text-white hover:!bg-[#28A13D] disabled:!cursor-not-allowed disabled:!border-[#D9D9D9] disabled:!bg-[#F0F0F0] disabled:!text-[#B5B5B5]'
             onClick={handleSave}
+            disabled={!canSave}
           >
-            <Icon name='imageEditor-mark-save-icon' width={18} height={18} />
-            <span className='pl-2'>Save</span>
+            <Icon
+              name='imageEditor-mark-save-icon'
+              width={18}
+              height={18}
+              color={canSave ? '#FFFFFF' : '#B5B5B5'}
+            />
+            <span className='pl-2'>{isSaving ? 'Saving...' : 'Save'}</span>
           </Button>
           <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
           <button

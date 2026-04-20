@@ -7,6 +7,7 @@ import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
+import { cutVideoWithFfmpeg } from '@/utils/videoCutWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageFlowNodeData } from '../../types';
@@ -161,14 +162,15 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     volume: 1,
   });
   const [editingMode, setEditingMode] = useState<'cut' | null>(null);
-  const nodeFromStore = useMemo(() => nodes.find((n) => n.id === id), [nodes, id]);
+  const [isCutSaving, setIsCutSaving] = useState(false);
+  const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
 
   const handlePlaybackUpdate = useCallback((snapshot: VideoPlaybackSnapshot) => {
     setPlayback(snapshot);
   }, []);
 
   const selectedVideoCount = useMemo(
-    () => nodes.filter((n) => n.selected && n.type === imageEditorVideoNodeType).length,
+    () => nodes.filter((n: Node) => n.selected && n.type === imageEditorVideoNodeType).length,
     [nodes],
   );
 
@@ -208,12 +210,21 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   }, [editingMode]);
 
   const handleCutSave = useCallback(
-    (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => {
-      if (!videoContent) return;
-      createCutVideoResultNodesRight(id, payload, videoContent, 1800);
-      setEditingMode(null);
+    async (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => {
+      if (!videoContent || isCutSaving) return;
+      setIsCutSaving(true);
+      try {
+        const clipSources = await cutVideoWithFfmpeg(videoContent, payload.segments);
+        if (clipSources.length === 0) return;
+        createCutVideoResultNodesRight(id, payload, clipSources, 200);
+        setEditingMode(null);
+      } catch {
+        return;
+      } finally {
+        setIsCutSaving(false);
+      }
     },
-    [createCutVideoResultNodesRight, id, videoContent],
+    [createCutVideoResultNodesRight, id, isCutSaving, videoContent],
   );
 
   const handleCreateNewCanvasVideoNode = useCallback(() => {
@@ -310,6 +321,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           isPlaying={playback.isPlaying}
           volume={playback.volume}
           fullscreenTargetRef={nodeFrameRef}
+          isSaving={isCutSaving}
           onClose={handleCutClose}
           onSave={handleCutSave}
         />
@@ -347,7 +359,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                 className='h-full w-full !rounded-none'
               />
             ) : (
-              <Loading inline width='100%' height='100%' text='Loading Video...' />
+              <Loading inline backgroundColor='#ffffff' width='100%' height='100%' />
             )}
           </div>
         </div>

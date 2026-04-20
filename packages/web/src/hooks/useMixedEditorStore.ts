@@ -147,7 +147,7 @@ export interface UseMixedEditorStoreResult {
   createCutVideoResultNodesRight: (
     sourceNodeId: string,
     payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
-    nextVideoSrc: string,
+    nextVideoSrc: string | string[],
     delayMs?: number,
   ) => void;
   importImagesFromFiles: (files: File[], options?: { viewportCenterFlow: { x: number; y: number } }) => Promise<void>;
@@ -555,12 +555,13 @@ export const useMixedEditorStore = (): UseMixedEditorStoreResult => {
     (
       sourceNodeId: string,
       payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
-      nextVideoSrc: string,
+      nextVideoSrc: string | string[],
       delayMs: number = 1800,
     ) => {
       const allNodes = reduxStore.getState().mixedEditor.nodes ?? [];
       const source = allNodes.find((n) => n.id === sourceNodeId);
-      if (!source || !nextVideoSrc) return;
+      const hasNextVideoSrc = Array.isArray(nextVideoSrc) ? nextVideoSrc.some((src) => Boolean(src)) : Boolean(nextVideoSrc);
+      if (!source || !hasNextVideoSrc) return;
 
       const normalizedSegments = payload.segments
         .map((segment) => ({
@@ -668,8 +669,12 @@ export const useMixedEditorStore = (): UseMixedEditorStoreResult => {
       }
 
       window.setTimeout(() => {
-        resultIds.forEach((nodeId) => {
-          updateNodeData(nodeId, { content: nextVideoSrc });
+        resultIds.forEach((nodeId, index) => {
+          const nextSrc = Array.isArray(nextVideoSrc)
+            ? nextVideoSrc[index] ?? nextVideoSrc[nextVideoSrc.length - 1] ?? ''
+            : nextVideoSrc;
+          if (!nextSrc) return;
+          updateNodeData(nodeId, { content: nextSrc });
         });
       }, delayMs);
     },
