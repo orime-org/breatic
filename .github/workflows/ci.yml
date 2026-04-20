@@ -6,21 +6,27 @@ on:
   pull_request:
     branches: [main]
 
+# Action versions are tracked to major (e.g. @v6). These majors are all the
+# Node.js 24 runtime releases — pinning below major would require manual
+# bumps for every security patch. See
+# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+# for the Node 20 → 24 runner deprecation timeline that drove these bumps.
+
 jobs:
   lint-typecheck-test:
     name: Lint + Typecheck + Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
@@ -30,7 +36,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -62,8 +68,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-typecheck-test
 
+    # Buildx + GitHub Actions cache: reuses base-image layers and intermediate
+    # build layers across runs, so we don't re-pull `node:22-slim` from
+    # Docker Hub every time. This both accelerates CI and makes us resilient
+    # to transient Docker Hub 5xx errors — once a layer is in the gha cache,
+    # the build proceeds without touching docker.io.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
-        run: docker build -t breatic:ci .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          tags: breatic:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
