@@ -1,16 +1,16 @@
 /**
- * Image flow node bottom toolbar: Apply to Node (main canvas) | Create New Node (on main canvas) | Download
- * Style consistent with dataNode's NodeToolbar, positioned below the node by FlowNodeToolbar
+ * Video flow node bottom toolbar: Apply to Node (main canvas) | Create New Node (on main canvas) | Download
+ * Visual style matches `imageNode/BottomToolbar`; sits below `playback/PlaybackPanel` in FlowNodeToolbar.
  */
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
 import { message } from '@/components/base/message';
 
-/** Trigger browser download from a data URL or http(s) address */
-const downloadImageFromSrc = async (src: string): Promise<void> => {
+/** Trigger browser download from a video URL or data URL */
+const downloadVideoFromSrc = async (src: string): Promise<void> => {
   if (!src) {
-    message.warning('No image to download');
+    message.warning('No video to download');
     return;
   }
   try {
@@ -23,11 +23,14 @@ const downloadImageFromSrc = async (src: string): Promise<void> => {
       if (!res.ok) throw new Error(res.statusText);
       blob = await res.blob();
     }
-    const ext = src.split('?')[0].match(/\.(jpe?g|png|webp|gif|tiff?)$/i)?.[1] || 'png';
+    const clean = src.split('?')[0].split('#')[0];
+    const ext =
+      clean.match(/\.(mp4|webm|mov|m4v|mkv|ogv)$/i)?.[1]?.toLowerCase() ||
+      (blob.type.includes('webm') ? 'webm' : blob.type.includes('quicktime') ? 'mov' : 'mp4');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `image-${Date.now()}.${ext}`;
+    a.download = `video-${Date.now()}.${ext}`;
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -38,22 +41,19 @@ const downloadImageFromSrc = async (src: string): Promise<void> => {
   }
 };
 
-export interface NodeBottomToolbarProps {
-  /** Replaces content of selected main-canvas image node(s) with this node’s image (not agent input). */
+export interface BottomToolbarProps {
   onAddToNodeClick?: (e: React.MouseEvent) => void;
-  /** Adds a new main-canvas image node with the same image as this editor node. */
   onCreateNewNodeClick?: (e: React.MouseEvent) => void;
-  /** Current node image URL; if set, download is handled inside this component */
-  imageSrc?: string;
+  videoSrc?: string;
   disableAddToNode?: boolean;
   disableCreateNewNode?: boolean;
   disableDownload?: boolean;
 }
 
-const NodeBottomToolbar: React.FC<NodeBottomToolbarProps> = ({
+const BottomToolbar: React.FC<BottomToolbarProps> = ({
   onAddToNodeClick,
   onCreateNewNodeClick,
-  imageSrc,
+  videoSrc,
   disableAddToNode = false,
   disableCreateNewNode = false,
   disableDownload = false,
@@ -102,7 +102,7 @@ const NodeBottomToolbar: React.FC<NodeBottomToolbarProps> = ({
             if (!disableCreateNewNode) onCreateNewNodeClick?.(e);
           }}
         >
-          <Icon name='project-document-icon' width={14} height={14} color={iconColor} />
+          <Icon name='project-document-create-new-icon' width={14} height={14} color={iconColor} />
           <span className='text-[11px] font-medium leading-none text-text-default-base whitespace-nowrap'>
             {t('project.toolbar.createNewNode', 'Create New Node')}
           </span>
@@ -118,8 +118,8 @@ const NodeBottomToolbar: React.FC<NodeBottomToolbarProps> = ({
           }`}
           onClick={(e) => {
             e.stopPropagation();
-            if (disableDownload || !imageSrc) return;
-            void downloadImageFromSrc(imageSrc);
+            if (disableDownload || !videoSrc) return;
+            void downloadVideoFromSrc(videoSrc);
           }}
         >
           <Icon name='project-chat-download-icon' width={14} height={14} color={iconColor} />
@@ -129,4 +129,4 @@ const NodeBottomToolbar: React.FC<NodeBottomToolbarProps> = ({
   );
 };
 
-export default memo(NodeBottomToolbar);
+export default memo(BottomToolbar);

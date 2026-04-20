@@ -27,9 +27,9 @@ import Loading from '@/components/loading';
 import EmptyState from './ui/EmptyState';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
 import ImageNode from './node/imageNode/ImageNode';
-import ImageSidePanel from './node/imageNode/ImageSidePanel';
+import SidePanel from './node/imageNode/SidePanel';
 import AudioNode from './node/audioNode';
-import VideoNode from './node/videoNode';
+import VideoNode from './node/videoNode/videoNode';
 import GroupNode from './common/GroupNode';
 import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
 import {
@@ -739,7 +739,7 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
       onMouseLeave={handleMouseLeave}
       onMouseDownCapture={handleMouseDownCapture}
     >
-      <ImageSidePanel
+      <SidePanel
         nodeId={nodeId}
         mediaType={mixedEditorMediaType}
         hidden={stitchEditMode}

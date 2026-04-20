@@ -4,7 +4,7 @@ import Tooltip from '@/components/base/tooltip';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
 import Divider from '@/components/base/divider';
 
-type ImageNodeToolbarProps = {
+export type ToolbarProps = {
   nodeId: string;
   onReplace: (id: string, file: File) => void;
   onCrop: (id: string) => void;
@@ -21,7 +21,7 @@ type ImageNodeToolbarProps = {
   onGraffiti: (id: string) => void;
 };
 
-const ImageNodeToolbar: React.FC<ImageNodeToolbarProps> = ({
+const Toolbar: React.FC<ToolbarProps> = ({
   nodeId,
   onReplace: _onReplace,
   onCrop,
@@ -175,4 +175,4 @@ const ImageNodeToolbar: React.FC<ImageNodeToolbarProps> = ({
   );
 };
 
-export default ImageNodeToolbar;
+export default Toolbar;

@@ -18,8 +18,8 @@ import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
 import type { ImageEditorPickResultBox } from '../../types';
-import ImageNodeToolbar from './ImageNodeToolbar';
-import NodeBottomToolbar from './NodeBottomToolbar';
+import Toolbar from './Toolbar';
+import BottomToolbar from './BottomToolbar';
 import NodeHeader from '../../common/NodeHeader';
 import MarkBottomToolbar from './mark/MarkBottomToolbar';
 import GraffitiBottomToolbar from './graffiti/GraffitiBottomToolbar';
@@ -1082,7 +1082,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
   return (
     <>
       <FlowNodeToolbar isVisible={showStandardToolbars} position={Position.Top} offset={50} align='center'>
-        <ImageNodeToolbar
+        <Toolbar
           nodeId={id}
           onReplace={replaceNodeWithFile}
           onCrop={(_nid) => {
@@ -1124,7 +1124,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showStandardToolbars} position={Position.Bottom} offset={12} align='center'>
-        <NodeBottomToolbar
+        <BottomToolbar
           onAddToNodeClick={handleAddToNodeClick}
           onCreateNewNodeClick={handleCreateNewCanvasImageNode}
           imageSrc={imageContent}

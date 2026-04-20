@@ -26,8 +26,7 @@ const shapeInitialSize = 2;
 const minShapeDragPx = 8;
 const markLabelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
 /** Aligned with h-8 tool buttons: range track height is less than thumb, needs vertical centering inside .slider-container */
-const markSliderWrapClass =
-  'nodrag nopan mx-1 flex h-8 w-[96px] shrink-0 [&_.slider-container]:flex [&_.slider-container]:h-full [&_.slider-container]:w-full [&_.slider-container]:items-center';
+const markSliderWrapClass = 'nodrag nopan mx-1 flex h-8 w-[96px] shrink-0 [&_.slider-container]:flex [&_.slider-container]:h-full [&_.slider-container]:w-full [&_.slider-container]:items-center';
 const colorOptions = [
   '#9CA3AF',
   '#0C0C0D',

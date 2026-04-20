@@ -20,7 +20,7 @@ import {
 } from '../../types';
 import type { MediaResourceListItem } from '../../ui/MediaResourceListPanel';
 
-type ImageSidePanelProps = {
+export type SidePanelProps = {
   nodeId: string;
   mediaType?: 'image' | 'video' | 'audio';
   hidden?: boolean;
@@ -48,7 +48,7 @@ const imageEditorPlaceNodeHeight = 160;
 const audioEditorPlaceNodeWidth = 300;
 const audioEditorPlaceNodeHeight = 250;
 
-const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
+const SidePanel: React.FC<SidePanelProps> = ({
   nodeId,
   mediaType = 'image',
   hidden = false,
@@ -277,4 +277,4 @@ const ImageSidePanel: React.FC<ImageSidePanelProps> = ({
   );
 };
 
-export default ImageSidePanel;
+export default SidePanel;
