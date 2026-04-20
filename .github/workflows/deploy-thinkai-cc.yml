@@ -17,6 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Diagnose network connectivity (temporary)
+        run: |
+          echo "=== Runner public IP ==="
+          curl -s https://api.ipify.org || echo "ipify failed"
+          echo ""
+          echo "=== DNS resolve ==="
+          getent hosts 47.83.161.93 || echo "(IP doesn't need DNS)"
+          echo ""
+          echo "=== TCP connect to 47.83.161.93:22 (10s timeout) ==="
+          timeout 10 bash -c 'cat < /dev/tcp/47.83.161.93/22' && echo "SUCCESS" || echo "FAILED (timeout or refused)"
+          echo ""
+          echo "=== Control: connect to github.com:443 ==="
+          timeout 10 bash -c 'cat < /dev/tcp/github.com/443' && echo "SUCCESS" || echo "FAILED"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
