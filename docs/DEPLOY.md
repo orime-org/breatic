@@ -370,6 +370,24 @@ The `VITE_*` env vars above must use the same canonical host, otherwise
 the built frontend will call APIs on the wrong origin and the browser
 will either CORS-block them or silently fail the WebSocket handshake.
 
+#### If you edit `docker/nginx-ssl.conf`, do not drop `default_server`
+
+The apex-redirect server blocks (on both `:80` and `:443`) are marked
+`listen ... default_server` on purpose. `server_name _;` by itself is
+**not** a catch-all — it is just a non-matching placeholder name that
+never matches any `Host` header. Without an explicit `default_server`
+directive, nginx routes "no server_name matched" requests to the
+first `listen` block on that port, which would be the `www`-regex
+block. That path serves the SPA for apex hosts and silently breaks
+canonical enforcement (apex stays as apex, token split-brain returns).
+
+Concretely: the config must keep both of these directives intact.
+
+```nginx
+server { listen 80  default_server; server_name _; return 301 https://www.$host$request_uri; }
+server { listen 443 ssl default_server; server_name _; ...; return 301 https://www.$host$request_uri; }
+```
+
 ### CI/CD Pipeline
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to main:
