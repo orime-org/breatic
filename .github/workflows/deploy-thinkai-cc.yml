@@ -1,0 +1,29 @@
+name: Deploy to thinkai.cc
+
+# Only triggers on pushes to test_thinkai_cc branch.
+# This workflow file lives only on test_thinkai_cc — main never has it.
+
+on:
+  push:
+    branches: [test_thinkai_cc]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-thinkai-cc
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.THINKAI_SSH_HOST }}
+          port: ${{ secrets.THINKAI_SSH_PORT }}
+          username: ${{ secrets.THINKAI_SSH_USER }}
+          key: ${{ secrets.THINKAI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 20m
+          script: /opt/breatic/deploy.sh
