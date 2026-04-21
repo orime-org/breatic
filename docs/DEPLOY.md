@@ -191,6 +191,29 @@ From then on, anyone can `docker pull ghcr.io/orime-org/breatic:latest` without 
 
 Deployments behind a firewall that want to keep images private: skip the visibility change, and have the deployment environment run `docker login ghcr.io` with a PAT (classic token, `read:packages` scope) before `docker compose pull`.
 
+### Using external PostgreSQL / Redis (managed services)
+
+The default `docker-compose.yml` includes `postgres` and `redis` services so a single `docker compose up -d` gives you a fully working stack. In production you'll usually want managed services (RDS / Neon / Supabase for PG, ElastiCache / Upstash / Aiven for Redis) for backups, failover, and independent scaling.
+
+To switch to external infra, edit `docker-compose.yml` before `docker compose up`:
+
+1. **Delete (or comment out) the `postgres` and `redis` service blocks** near the top of the file.
+2. **Delete (or comment out) the `depends_on` entries that reference them** in `migrate`, `api`, `collab`, and `worker`. Compose will error if a service depends on one that doesn't exist.
+3. **Point the URLs at your external hosts** in `.env`:
+
+   ```bash
+   DATABASE_URL=postgres://user:pass@your-rds-host:5432/breatic
+   REDIS_URL=redis://your-redis-host:6379/0
+   REDIS_QUEUE_URL=redis://your-redis-host:6379/1
+   REDIS_STREAM_URL=redis://your-redis-host:6379/2
+   ```
+
+4. `docker compose up -d` — only the 5 app containers (api / worker / collab / migrate / web) come up; there is no embedded PG/Redis running unused.
+
+This is the pattern Immich, Outline, Mattermost, and most other Compose-distributed OSS projects use. It's a one-time ~5-line edit, done once per deployment.
+
+> Do NOT keep the `postgres` / `redis` services running and point URLs at external hosts at the same time — compose would bind `:5432` and `:6379` on the host unnecessarily, risking conflicts with existing databases. The embedded services exist only for the all-in-one convenience path.
+
 ### HTTPS (SSL)
 
 The Nginx container auto-detects SSL certificates at startup:
