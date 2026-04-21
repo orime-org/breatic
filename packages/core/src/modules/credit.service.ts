@@ -12,8 +12,21 @@ import { db } from "../db/client.js";
 import { env } from "../config/env.js";
 import { getRedis } from "../infra/redis.js";
 import { t } from "@breatic/shared";
-import { AppError } from "../errors.js";
+import { AppError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+
+/**
+ * refKey format contract: ASCII alphanumerics plus a small punctuation
+ * set (`_`, `:`, `.`, `-`), length 1-255. Matches the typical output of
+ * UUID generators, `${conversationId}-turn-${N}` composites, and
+ * `${taskId}:spawn:${idx}` patterns we'll use at call sites.
+ *
+ * Enforced at `deductOnce` entry so an empty/malformed key can never
+ * slip through and create a lock-key collision like `dev:bill::userId:`.
+ *
+ * Exported for unit testing — not intended as a public API.
+ */
+export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 
 /** Sentinel balance returned when payments are disabled. */
 const UNLIMITED_BALANCE = 999_999;
@@ -131,11 +144,20 @@ export async function add(
 }
 
 /**
- * Idempotent deduction — same refKey only deducts once.
+ * Idempotent deduction — same refKey only deducts once **per user**.
  *
- * Uses Redis SETNX with 24h TTL. If the refKey was already used,
- * returns `{ deducted: false }`. Safe for network retries, stream
+ * Uses Redis SETNX with 24h TTL. If the refKey was already used by this
+ * user, returns `{ deducted: false }`. Safe for network retries, stream
  * replays, and concurrent calls.
+ *
+ * The lock key is scoped by userId (`${env}:bill:${userId}:${refKey}`),
+ * matching the industry-standard idempotency pattern used by Stripe,
+ * Square, AWS, and PayPal — different users with colliding refKeys
+ * never interfere. This is what prevents "user B reuses user A's
+ * refKey to skip their own charge": B's scoped key is independent
+ * of A's, so B's SETNX succeeds and B gets billed normally.
+ *
+ * @throws {ValidationError} if refKey doesn't match REFKEY_PATTERN.
  *
  * Use for non-task-level billing: text stream, agent turn, subagent spawn.
  */
@@ -146,12 +168,18 @@ export async function deductOnce(
   description: string,
   options?: { tokensUsed?: number; model?: string; provider?: string },
 ): Promise<{ deducted: boolean; creditsAfter?: number }> {
-  const redis = getRedis();
-  const lockKey = `${env.ENV}:bill:${refKey}`;
+  if (!REFKEY_PATTERN.test(refKey)) {
+    throw new ValidationError(
+      `deductOnce: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`,
+    );
+  }
 
-  const acquired = await redis.set(lockKey, userId, "EX", 86400, "NX");
+  const redis = getRedis();
+  const lockKey = `${env.ENV}:bill:${userId}:${refKey}`;
+
+  const acquired = await redis.set(lockKey, "1", "EX", 86400, "NX");
   if (acquired !== "OK") {
-    logger.debug({ refKey }, "deductOnce: already billed, skipping");
+    logger.debug({ userId, refKey }, "deductOnce: already billed, skipping");
     return { deducted: false };
   }
 

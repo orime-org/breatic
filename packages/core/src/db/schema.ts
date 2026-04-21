@@ -189,7 +189,7 @@ export const nodeHistory = pgTable(
     nodeId: varchar("node_id", { length: 255 }).notNull(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "restrict" }),
 
     entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
