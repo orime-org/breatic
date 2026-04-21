@@ -1,3 +1,16 @@
+# docker-compose.yml — deployment stack.
+#
+# Default: pulls pre-built images from GHCR. `BREATIC_TAG` in .env picks
+# which tag to pull (defaults to `:latest` = main branch). Deployers
+# never build from source — that's CI's job.
+#
+# Developers contributing to breatic should use `pnpm dev` instead; this
+# compose file is not in the dev path. The only shared concern is the
+# postgres + redis pair below, which both dev and deploy can run via
+# `docker compose up -d postgres redis` (dev) or `up -d` (deploy).
+#
+# See docs/DEPLOY.md for the full deploy flow and BREATIC_TAG usage.
+
 services:
   # ── Infrastructure ─────────────────────────────
   postgres:
@@ -30,12 +43,7 @@ services:
 
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-      args:
-        VITE_LOGIN_MODE: ${VITE_LOGIN_MODE:-WithAccount}
-        VITE_APP_VERSION: ${VITE_APP_VERSION:-0.1.0}
+    image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:-latest}
     ports:
       - "80:80"
       - "443:443"
@@ -50,10 +58,8 @@ services:
   # ── Database Migration (runs once, then exits) ──
   # Must run from packages/server so Node can resolve @breatic/core's
   # transitive deps (drizzle-orm, postgres) via server's node_modules.
-  # core has no node_modules of its own — pnpm deploy flattens them
-  # into each consumer package.
   migrate:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     working_dir: /app/packages/server
     command: ["node", "-e", "import('@breatic/core').then(m => m.runMigrations()).then(() => process.exit(0))"]
     env_file: .env
@@ -63,7 +69,7 @@ services:
 
   # ── Application ────────────────────────────────
   api:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
     ports:
       - "3000:3000"
@@ -79,7 +85,7 @@ services:
     restart: unless-stopped
 
   collab:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/collab/dist/index.js"]
     ports:
       - "1234:1234"
@@ -94,7 +100,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
     volumes:

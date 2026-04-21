@@ -131,7 +131,7 @@ One command deploys everything. For open-source users and internal networks.
 ### Quick Start
 
 ```bash
-# 1. Clone
+# 1. Clone (you only need docker-compose.yml + .env.docker from here)
 git clone https://github.com/orime-org/breatic_ai.git
 cd breatic_ai
 
@@ -148,13 +148,48 @@ cp .env.docker .env
 cp /path/to/your-cert.pem docker/certs/cert.pem
 cp /path/to/your-cert.key docker/certs/cert.key
 
-# 4. Build and start
-docker compose up -d --build
+# 4. Pull pre-built images and start
+docker compose pull
+docker compose up -d
 
 # 5. Verify
 curl http://localhost/api/health
 # → { "status": "ok", "services": { "db": "ok", "redis": "ok" } }
 ```
+
+You don't need Node, pnpm, or to build anything locally — `docker compose` pulls images from GHCR (`ghcr.io/orime-org/breatic` + `ghcr.io/orime-org/breatic-web`) that CI built and published.
+
+### Choosing an image version (`BREATIC_TAG`)
+
+Every service in `docker-compose.yml` references `${BREATIC_TAG:-latest}`. Set `BREATIC_TAG` in your `.env` to pick which version this deployment tracks. Leave it unset to follow `:latest`.
+
+| Value | What it tracks | Who uses it |
+|-------|----------------|-------------|
+| *(unset)* or `latest` | `main` branch, updated on every merge | Open-source users who want the latest stable |
+| `test_thinkai_cc` | `test_thinkai_cc` branch | The thinkai.cc staging deployment |
+| `1.2.3` | git tag `v1.2.3` | Production deployments pinning a specific release |
+| `1.2` | latest patch of the `1.2.x` line | Production deployments tracking a minor line |
+
+To upgrade (after CI publishes a new image):
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+The `--force-recreate` is important — without it, compose keeps using the old image even after pulling the new one.
+
+### GHCR package visibility (one-time setup)
+
+The first time CI publishes images, the packages are **private by default**. For open-source users to pull without authenticating, switch them to public once:
+
+1. Go to https://github.com/orgs/orime-org/packages
+2. Click the `breatic` package → Package settings → "Change visibility" → Public
+3. Repeat for `breatic-web`
+
+From then on, anyone can `docker pull ghcr.io/orime-org/breatic:latest` without a GitHub token.
+
+Deployments behind a firewall that want to keep images private: skip the visibility change, and have the deployment environment run `docker login ghcr.io` with a PAT (classic token, `read:packages` scope) before `docker compose pull`.
 
 ### HTTPS (SSL)
 

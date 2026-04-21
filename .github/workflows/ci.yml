@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test_thinkai_cc]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -68,22 +69,79 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-typecheck-test
 
-    # Buildx + GitHub Actions cache: reuses base-image layers and intermediate
-    # build layers across runs, so we don't re-pull `node:22-slim` from
-    # Docker Hub every time. This both accelerates CI and makes us resilient
-    # to transient Docker Hub 5xx errors — once a layer is in the gha cache,
-    # the build proceeds without touching docker.io.
+    # Builds both images (API-shared + web) and pushes to GHCR.
+    # - PR:            build-only (no push) — smoke test that Dockerfiles still work
+    # - push to main:  tags `:main` + `:latest`
+    # - push to any other branch (e.g. test_thinkai_cc): tag = branch name
+    # - push to v* tag: semver tags (`:1.2.3` + `:1.2`)
+    #
+    # docker/metadata-action@v5 generates all the tag permutations from the
+    # triggering git ref — the rule table lives inline below so future edits
+    # don't require reading metadata-action docs.
+    #
+    # Buildx + gha cache persists base-image layers across runs so we don't
+    # re-pull `node:22-slim` every time and are resilient to Docker Hub 5xx.
+    permissions:
+      contents: read
+      packages: write  # required to push images to GHCR
+
     steps:
       - uses: actions/checkout@v6
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build Docker image
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags (breatic)
+        id: meta-breatic
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/breatic
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build + push breatic (API/Worker/Collab/Migrate)
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
-          tags: breatic:ci
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta-breatic.outputs.tags }}
+          labels: ${{ steps.meta-breatic.outputs.labels }}
+          cache-from: type=gha,scope=breatic
+          cache-to: type=gha,mode=max,scope=breatic
+
+      - name: Compute tags (breatic-web)
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/breatic-web
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build + push breatic-web (nginx + SPA)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.web
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha,scope=breatic-web
+          cache-to: type=gha,mode=max,scope=breatic-web
