@@ -21,6 +21,7 @@ import BottomToolbar from './BottomToolbar';
 import CutBottomToolbar from './cut/CutBottomToolbar';
 import SpeedBottomToolbar from './speed/SpeedBottomToolbar';
 import EraseBottomToolbar from './erase/EraseBottomToolbar';
+import ExtendBottomToolbar, { type VideoExtendDurationSec } from './extend/ExtendBottomToolbar';
 import TrackedBoxesOverlay from './erase/TrackedBoxesOverlay';
 import type { VideoEraseMaskTool } from './erase/EraseBottomToolbar';
 import type { EraseTrackingBox, EraseTrackingPhase, EraseTrackingSegment, EraseTrackingStatus } from './erase/EraseTrackingPanel';
@@ -242,7 +243,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isPlaying: false,
     volume: 1,
   });
-  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | 'erase' | null>(null);
+  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | 'erase' | 'extend' | null>(null);
   const [eraseMaskTool, setEraseMaskTool] = useState<VideoEraseMaskTool>('selection');
   const [trackingSegments, setTrackingSegments] = useState<EraseTrackingSegment[]>([]);
   const [canEraseUndo, setCanEraseUndo] = useState(false);
@@ -274,15 +275,30 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     updateEraseHistoryFlags();
   }, [updateEraseHistoryFlags]);
 
+  const cloneResultBoxes = useCallback(
+    (boxes: ImageEditorPickResultBox[]) => boxes.map((box) => ({ ...box })),
+    [],
+  );
+
   const readCurrentResultBoxes = useCallback(() => {
     const source = nodesRef.current.find((n) => n.id === id);
     return ((source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.resultBoxes ?? []) as ImageEditorPickResultBox[];
   }, [id]);
 
+  const startTrackingAnalysis = useCallback(
+    (anchorSec: number, sourceBoxes?: ImageEditorPickResultBox[]) => {
+      const duration = playback.duration > 0 ? playback.duration : 0;
+      const trackedBoxes = toTrackingBoxes(sourceBoxes ?? readCurrentResultBoxes());
+      setTrackingSegments(buildTrackingSegments(duration, anchorSec, trackedBoxes));
+    },
+    [playback.duration, readCurrentResultBoxes],
+  );
+
   const applyResultBoxes = useCallback(
     (nextBoxes: ImageEditorPickResultBox[], options?: { recordHistory?: boolean }) => {
       const recordHistory = options?.recordHistory !== false;
-      const currentBoxes = readCurrentResultBoxes();
+      const currentBoxes = cloneResultBoxes(readCurrentResultBoxes());
+      const normalizedNextBoxes = cloneResultBoxes(nextBoxes);
       if (recordHistory) {
         eraseUndoStackRef.current.push(currentBoxes);
         eraseRedoStackRef.current = [];
@@ -292,15 +308,22 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         {
           data: {
             pickState: {
-              resultBoxes: nextBoxes.length ? nextBoxes : null,
+              resultBoxes: normalizedNextBoxes.length ? normalizedNextBoxes : null,
             },
           },
         },
         { history: 'skip' },
       );
+      if (normalizedNextBoxes.length > 0) {
+        const anchorBox = normalizedNextBoxes.find((box) => Number.isFinite(box.frameTimeSec));
+        const anchorSec = anchorBox?.frameTimeSec ?? playback.currentTime;
+        startTrackingAnalysis(anchorSec, normalizedNextBoxes);
+      } else {
+        setTrackingSegments([]);
+      }
       updateEraseHistoryFlags();
     },
-    [id, readCurrentResultBoxes, updateEraseHistoryFlags, updateNode],
+    [cloneResultBoxes, id, playback.currentTime, readCurrentResultBoxes, setTrackingSegments, startTrackingAnalysis, updateEraseHistoryFlags, updateNode],
   );
 
   const applyResultBoxesTransient = useCallback(
@@ -320,14 +343,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     [id, updateNode],
   );
 
-  const startTrackingAnalysis = useCallback(
-    (anchorSec: number, sourceBoxes?: ImageEditorPickResultBox[]) => {
-      const duration = playback.duration > 0 ? playback.duration : 0;
-      const trackedBoxes = toTrackingBoxes(sourceBoxes ?? readCurrentResultBoxes());
-      setTrackingSegments(buildTrackingSegments(duration, anchorSec, trackedBoxes));
-    },
-    [playback.duration, readCurrentResultBoxes],
-  );
   const currentTrackingStatus = useMemo(
     () => resolveTrackingStatusAtTime(trackingSegments, playback.currentTime),
     [trackingSegments, playback.currentTime],
@@ -382,41 +397,19 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
 
   const handleEraseUndo = useCallback(() => {
     if (eraseUndoStackRef.current.length === 0) return;
-    const currentBoxes = readCurrentResultBoxes();
-    const prevBoxes = eraseUndoStackRef.current.pop() ?? [];
+    const currentBoxes = cloneResultBoxes(readCurrentResultBoxes());
+    const prevBoxes = cloneResultBoxes(eraseUndoStackRef.current.pop() ?? []);
     eraseRedoStackRef.current.push(currentBoxes);
-    updateNode(
-      id,
-      {
-        data: {
-          pickState: {
-            resultBoxes: prevBoxes.length ? prevBoxes : null,
-          },
-        },
-      },
-      { history: 'skip' },
-    );
-    updateEraseHistoryFlags();
-  }, [id, readCurrentResultBoxes, updateEraseHistoryFlags, updateNode]);
+    applyResultBoxes(prevBoxes, { recordHistory: false });
+  }, [applyResultBoxes, cloneResultBoxes, readCurrentResultBoxes]);
 
   const handleEraseRedo = useCallback(() => {
     if (eraseRedoStackRef.current.length === 0) return;
-    const currentBoxes = readCurrentResultBoxes();
-    const nextBoxes = eraseRedoStackRef.current.pop() ?? [];
+    const currentBoxes = cloneResultBoxes(readCurrentResultBoxes());
+    const nextBoxes = cloneResultBoxes(eraseRedoStackRef.current.pop() ?? []);
     eraseUndoStackRef.current.push(currentBoxes);
-    updateNode(
-      id,
-      {
-        data: {
-          pickState: {
-            resultBoxes: nextBoxes.length ? nextBoxes : null,
-          },
-        },
-      },
-      { history: 'skip' },
-    );
-    updateEraseHistoryFlags();
-  }, [id, readCurrentResultBoxes, updateEraseHistoryFlags, updateNode]);
+    applyResultBoxes(nextBoxes, { recordHistory: false });
+  }, [applyResultBoxes, cloneResultBoxes, readCurrentResultBoxes]);
 
   useEffect(() => {
     playbackTimeRef.current = playback.currentTime;
@@ -515,6 +508,12 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode('erase');
   }, [clearEraseInteractionState, editingMode, focusCurrentNode, id, nodeFromStore?.data, resetEraseHistory, updateNode, videoContent]);
 
+  const handleExtendOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'extend') return;
+    focusCurrentNode();
+    setEditingMode('extend');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
   const handleUpscale = useCallback((_nodeId: string, _target: VideoUpscaleTarget) => {
     message.warning('Upscale coming soon');
   }, []);
@@ -552,8 +551,17 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode(null);
   }, [clearEraseInteractionState, editingMode, id, resetEraseHistory, updateNode]);
 
+  const handleExtendClose = useCallback(() => {
+    if (editingMode !== 'extend') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
   const handleEraseSend = useCallback((_payload: { maskTool: VideoEraseMaskTool }) => {
     message.warning('Erase coming soon');
+  }, []);
+
+  const handleExtendSend = useCallback((_payload: { durationSec: VideoExtendDurationSec; prompt: string }) => {
+    message.warning('Extend coming soon');
   }, []);
 
   const handleEraseMaskToolChange = useCallback((tool: VideoEraseMaskTool) => {
@@ -673,6 +681,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onUpscale={handleUpscale}
           onInterpolate={handleInterpolate}
           onErase={handleEraseOpen}
+          onExtend={handleExtendOpen}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Bottom} offset={12} align='center'>
@@ -745,6 +754,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onRedo={handleEraseRedo}
           onClose={handleEraseClose}
           onSend={handleEraseSend}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'extend'} position={Position.Bottom} offset={12} align='center'>
+        <ExtendBottomToolbar
+          active={editingMode === 'extend'}
+          onClose={handleExtendClose}
+          onSend={handleExtendSend}
         />
       </FlowNodeToolbar>
       <div

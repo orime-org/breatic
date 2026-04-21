@@ -14,6 +14,7 @@ export type ToolbarProps = {
   onUpscale?: (nodeId: string, target: VideoUpscaleTarget) => void;
   onInterpolate?: (nodeId: string, target: VideoInterpolateTarget) => void;
   onErase?: (nodeId: string) => void;
+  onExtend?: (nodeId: string) => void;
 };
 
 const iconColor = 'var(--color-icon-base)';
@@ -73,7 +74,7 @@ type IconToolbarItem = { key: string; label: string; icon: string; w: number; h:
 
 const dividerClass = 'mx-[2px] h-[18px]';
 
-const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, onInterpolate, onErase }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, onInterpolate, onErase, onExtend }) => {
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [interpolateOpen, setInterpolateOpen] = useState(false);
 
@@ -196,6 +197,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, on
                 if (item.key === 'cut') onCut?.(nodeId);
                 if (item.key === 'speed') onSpeed?.(nodeId);
                 if (item.key === 'erase') onErase?.(nodeId);
+                if (item.key === 'extend') onExtend?.(nodeId);
               }}
             >
               <Icon name={item.icon} width={item.w} height={item.h} color={iconColor} />

@@ -101,6 +101,12 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
     onSend?.({ maskTool });
   }, [maskTool, onSend]);
 
+  const handleMaskToolSelect = useCallback((tool: VideoEraseMaskTool) => {
+    videoRef.current?.pause();
+    onMaskToolChange(tool);
+    enterVideoErasePickMode(tool);
+  }, [enterVideoErasePickMode, onMaskToolChange, videoRef]);
+
   if (!active) return null;
 
   return (
@@ -140,10 +146,7 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
               type='button'
               className={iconBtnClass}
               aria-label='Selection tool'
-              onClick={() => {
-                onMaskToolChange('selection');
-                enterVideoErasePickMode('selection');
-              }}
+              onClick={() => handleMaskToolSelect('selection')}
             >
               <Icon name='videoNode-erase-selection' width={20} height={20} color='var(--color-icon-base)' />
             </button>
@@ -153,10 +156,7 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
               type='button'
               className={iconBtnClass}
               aria-label='Circle mask'
-              onClick={() => {
-                onMaskToolChange('circle');
-                enterVideoErasePickMode('circle');
-              }}
+              onClick={() => handleMaskToolSelect('circle')}
             >
               <Icon name='imageEditor-flow-inpaint-circle-icon' width={20} height={20} />
             </button>
@@ -166,10 +166,7 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
               type='button'
               className={iconBtnClass}
               aria-label='Rectangle mask'
-              onClick={() => {
-                onMaskToolChange('rectangle');
-                enterVideoErasePickMode('rectangle');
-              }}
+              onClick={() => handleMaskToolSelect('rectangle')}
             >
               <Icon name='imageEditor-flow-inpaint-rectangle-icon' width={20} height={20} />
             </button>
