@@ -15,6 +15,7 @@ export type ToolbarProps = {
   onInterpolate?: (nodeId: string, target: VideoInterpolateTarget) => void;
   onErase?: (nodeId: string) => void;
   onExtend?: (nodeId: string) => void;
+  onAnimate?: (nodeId: string) => void;
 };
 
 const iconColor = 'var(--color-icon-base)';
@@ -73,8 +74,9 @@ const interpolateMenuItems: MenuItemType[] = videoInterpolateOptions.map((opt) =
 type IconToolbarItem = { key: string; label: string; icon: string; w: number; h: number };
 
 const dividerClass = 'mx-[2px] h-[18px]';
+const moreMenuItemLabelClass = 'text-[13px] text-text-default-base';
 
-const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, onInterpolate, onErase, onExtend }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, onInterpolate, onErase, onExtend, onAnimate }) => {
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [interpolateOpen, setInterpolateOpen] = useState(false);
 
@@ -89,20 +91,38 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, on
 
   const moreItems: MenuItemType[] = [
     {
-      key: 'stabilize',
+      key: 'animate',
       label: (
-        <div className='flex items-center gap-1'>
-          <Icon name='videoNode-speed' width={16} height={14} color={iconColor} />
-          <span className='text-[13px] text-text-default-base'>Stabilize</span>
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-animate' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Animate</span>
         </div>
       ),
     },
     {
-      key: 'caption',
+      key: 'adjust',
       label: (
-        <div className='flex items-center gap-1'>
-          <Icon name='videoNode-interpolate' width={16} height={16} color={iconColor} />
-          <span className='text-[13px] text-text-default-base'>Captions</span>
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-adjust' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Adjust</span>
+        </div>
+      ),
+    },
+    {
+      key: 'stabilization',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-stabilization' width={16} height={13} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Stabilization</span>
+        </div>
+      ),
+    },
+    {
+      key: 'lip-sync',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-lip-sync' width={16} height={14} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Lip Sync</span>
         </div>
       ),
     },
@@ -212,7 +232,9 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, on
         placement='bottom-end'
         offset={6}
         items={moreItems}
-        onClick={() => {}}
+        onClick={(key) => {
+          if (key === 'animate') onAnimate?.(nodeId);
+        }}
         popupClassName='rounded-[8px] border border-border-default-base shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'
         itemClassName='min-h-8 px-2 py-1.5'
       >

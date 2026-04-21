@@ -22,6 +22,7 @@ import CutBottomToolbar from './cut/CutBottomToolbar';
 import SpeedBottomToolbar from './speed/SpeedBottomToolbar';
 import EraseBottomToolbar from './erase/EraseBottomToolbar';
 import ExtendBottomToolbar, { type VideoExtendDurationSec } from './extend/ExtendBottomToolbar';
+import AnimateBottomToolbar, { type VideoAnimateStyleKey } from './animate/AnimateBottomToolbar';
 import TrackedBoxesOverlay from './erase/TrackedBoxesOverlay';
 import type { VideoEraseMaskTool } from './erase/EraseBottomToolbar';
 import type { EraseTrackingBox, EraseTrackingPhase, EraseTrackingSegment, EraseTrackingStatus } from './erase/EraseTrackingPanel';
@@ -243,7 +244,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isPlaying: false,
     volume: 1,
   });
-  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | 'erase' | 'extend' | null>(null);
+  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | 'erase' | 'extend' | 'animate' | null>(null);
   const [eraseMaskTool, setEraseMaskTool] = useState<VideoEraseMaskTool>('selection');
   const [trackingSegments, setTrackingSegments] = useState<EraseTrackingSegment[]>([]);
   const [canEraseUndo, setCanEraseUndo] = useState(false);
@@ -514,6 +515,12 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode('extend');
   }, [editingMode, focusCurrentNode, videoContent]);
 
+  const handleAnimateOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'animate') return;
+    focusCurrentNode();
+    setEditingMode('animate');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
   const handleUpscale = useCallback((_nodeId: string, _target: VideoUpscaleTarget) => {
     message.warning('Upscale coming soon');
   }, []);
@@ -556,12 +563,21 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode(null);
   }, [editingMode]);
 
+  const handleAnimateClose = useCallback(() => {
+    if (editingMode !== 'animate') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
   const handleEraseSend = useCallback((_payload: { maskTool: VideoEraseMaskTool }) => {
     message.warning('Erase coming soon');
   }, []);
 
   const handleExtendSend = useCallback((_payload: { durationSec: VideoExtendDurationSec; prompt: string }) => {
     message.warning('Extend coming soon');
+  }, []);
+
+  const handleAnimateSend = useCallback((_payload: { style: VideoAnimateStyleKey; prompt: string }) => {
+    message.warning('Animate coming soon');
   }, []);
 
   const handleEraseMaskToolChange = useCallback((tool: VideoEraseMaskTool) => {
@@ -682,6 +698,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onInterpolate={handleInterpolate}
           onErase={handleEraseOpen}
           onExtend={handleExtendOpen}
+          onAnimate={handleAnimateOpen}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Bottom} offset={12} align='center'>
@@ -759,8 +776,29 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       <FlowNodeToolbar isVisible={editingMode === 'extend'} position={Position.Bottom} offset={12} align='center'>
         <ExtendBottomToolbar
           active={editingMode === 'extend'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
           onClose={handleExtendClose}
           onSend={handleExtendSend}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'animate'} position={Position.Bottom} offset={12} align='center'>
+        <AnimateBottomToolbar
+          active={editingMode === 'animate'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          onClose={handleAnimateClose}
+          onSend={handleAnimateSend}
         />
       </FlowNodeToolbar>
       <div

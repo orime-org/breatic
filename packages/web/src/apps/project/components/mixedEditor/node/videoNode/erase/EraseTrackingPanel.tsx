@@ -165,7 +165,7 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
         >
           {segment.status === 'lost' ? (
             <div className='relative h-full w-full bg-[#EC221F]/50'>
-              <div className='absolute inset-0 flex items-center gap-1 overflow-hidden px-1 opacity-90'>
+              <div className='absolute inset-0 flex flex-nowrap items-center gap-1 overflow-hidden px-1 opacity-90 whitespace-nowrap leading-none'>
                 {Array.from({ length: lostTileCount }).map((_, iconIdx) => (
                   <Icon
                     key={`lost-tile-${idx}-${iconIdx}`}
@@ -235,11 +235,6 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
             {statusText}
           </div>
         ) : null}
-        {showTrackingBar && currentStatus === 'lost' && (
-          <div className='absolute inset-y-0 right-1 flex items-center text-white'>
-            <Icon name='videoNode-tracking-lost' width={14} height={14} color='#fff' />
-          </div>
-        )}
       </div>
     </div>
   );
