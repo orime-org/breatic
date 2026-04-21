@@ -46,22 +46,18 @@ export interface YjsManager {
 }
 
 /**
- * Resolve the WebSocket URL. No runtime fallback — supports distributed
- * deployment where frontend and Collab may be on different domains.
+ * Resolve the WebSocket URL.
  *
- * Priority:
- *   1. Explicit `wsUrl` from config (tests / advanced setups).
- *   2. `VITE_WS_URL` env (baked at build time via .env).
- *   3. Throw — if neither is provided, misconfiguration must fail loudly.
+ * Default: same-origin as the page, path `/ws` — nginx (docker) or the Vite
+ * dev proxy reverse-proxies `/ws` to the Collab server. This means one built
+ * bundle works on any host without a rebuild.
+ *
+ * Tests can inject an explicit `wsUrl`; production never needs to.
  */
 function resolveWsUrl(explicit?: string): string {
-  const url = explicit ?? import.meta.env.VITE_WS_URL;
-  if (!url) {
-    throw new Error(
-      'VITE_WS_URL is not configured. Set it in .env (copy from .env.dev or .env.docker).',
-    );
-  }
-  return url;
+  if (explicit) return explicit;
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/ws`;
 }
 
 export const createYjsManager = (config: YjsManagerConfig): YjsManager => {

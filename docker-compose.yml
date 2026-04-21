@@ -34,9 +34,6 @@ services:
       context: .
       dockerfile: Dockerfile.web
       args:
-        VITE_API_URL: ${VITE_API_URL}
-        VITE_WS_URL: ${VITE_WS_URL}
-        VITE_BASE_URL: ${VITE_BASE_URL:-}
         VITE_LOGIN_MODE: ${VITE_LOGIN_MODE:-WithAccount}
         VITE_APP_VERSION: ${VITE_APP_VERSION:-0.1.0}
     ports:

@@ -104,15 +104,15 @@ Default values in `.env.dev` work out of the box:
 | `REDIS_URL` | `redis://localhost:6379/0` | Session, lock, rate-limit |
 | `REDIS_QUEUE_URL` | `redis://localhost:6379/1` | BullMQ task queue |
 | `REDIS_STREAM_URL` | `redis://localhost:6379/2` | Streams + Hocuspocus pub/sub |
-| `VITE_API_URL` | `http://localhost:3000` | API direct |
-| `VITE_WS_URL` | `ws://localhost:1234` | Collab direct |
-| `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS) |
+| `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS, only needed if you bypass the dev proxy) |
+
+Frontend API/WebSocket URLs are **not** in `.env` — they resolve automatically from `window.location` at runtime. Vite's dev proxy (configured in `packages/web/vite.config.ts`) forwards `/api/*` to `localhost:3000`, `/ws` to `localhost:1234`, and `/uploads/*` to `localhost:3000`, so the browser sees a single origin (`localhost:8000`) just like it would see a single origin in production (`your-domain.com` via nginx).
 
 ### Key Differences from Docker Deployment
 
 - App code runs via `tsx watch` — changes auto-reload in seconds.
 - Frontend uses Vite dev server with HMR (port 8000), not Nginx.
-- No Nginx reverse proxy — frontend connects to API/Collab directly (CORS required).
+- Vite's dev proxy plays the role Nginx plays in production — same `/api`, `/ws`, `/uploads` routes, same single-origin model.
 - Database/Redis URLs use `localhost` (not container names).
 
 ---
@@ -139,9 +139,10 @@ cd breatic_ai
 cp .env.docker .env
 # Edit .env — change these at minimum:
 #   SESSION_SECRET_KEY=<random-string-min-16-chars>
-#   VITE_API_URL=https://your-domain.com      # ⚠️ no /api suffix — frontend prepends /api/v1/
-#   VITE_WS_URL=wss://your-domain.com/ws       # full WebSocket endpoint
-#   VITE_BASE_URL=https://your-domain.com
+#   DATABASE_URL / REDIS_URL / REDIS_QUEUE_URL / REDIS_STREAM_URL — real infra
+#   Stripe / OAuth / AIGC API keys as applicable
+# The frontend's API/WebSocket host is NOT configured in .env — it auto-detects
+# from window.location at runtime. Same bundle works on any domain.
 
 # 3. (Optional) Enable HTTPS — place cert files
 cp /path/to/your-cert.pem docker/certs/cert.pem
@@ -179,11 +180,8 @@ docker compose restart web
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SESSION_SECRET_KEY` | Session signing key (random string, min 16 chars) | `my-super-secret-key-2026` |
-| `VITE_API_URL` | API host seen by browser (no `/api` suffix — frontend prepends `/api/v1/...`) | `https://your-domain.com` |
-| `VITE_WS_URL` | WebSocket URL seen by browser | `wss://your-domain.com/ws` |
-| `VITE_BASE_URL` | Frontend base URL | `https://your-domain.com` |
 
-> `VITE_*` variables are baked into the frontend at Docker build time. After changing them: `docker compose build web && docker compose up -d web`
+> The frontend has no `VITE_API_URL` / `VITE_WS_URL` / `VITE_BASE_URL` — API and WebSocket URLs resolve from `window.location` at runtime, so one bundle works on any host behind a single reverse proxy. See the [Canonical domain](#canonical-domain) section for why same-origin matters.
 
 #### Database & Redis (defaults work for Docker)
 
@@ -332,13 +330,12 @@ For running breatic.ai as a hosted service. Key differences from self-hosted:
 ### Environment Config
 
 ```bash
-# Production (breatic.ai) — all VITE_* use the canonical www. host so the
-# frontend, API calls, and WebSocket all share one origin. Apex is 301'd to
-# www by nginx; see "Canonical domain" below for why.
+# Production (breatic.ai). The frontend bundle has no baked-in host —
+# it resolves /api/* and /ws against window.location, so the same built
+# image runs on breatic.ai, a staging domain, or a preview URL with zero
+# rebuild. All that matters is that the browser, API, and WebSocket share
+# one origin (nginx in the web container makes this true).
 ENV=prod
-VITE_API_URL=https://www.breatic.ai          # host only, frontend prepends /api/v1/
-VITE_WS_URL=wss://www.breatic.ai/ws          # full WebSocket endpoint
-VITE_BASE_URL=https://www.breatic.ai
 DATABASE_URL=postgres://user:pass@rds-host:5432/breatic
 REDIS_URL=redis://redis-host:6379/0
 REDIS_QUEUE_URL=redis://redis-host:6379/1
@@ -346,11 +343,8 @@ REDIS_STREAM_URL=redis://redis-host:6379/2
 STORAGE_PROVIDER=s3
 PAYMENT_ENABLED=true
 
-# Staging (thinkai.cc)
+# Staging (thinkai.cc) — identical to prod apart from infra hosts
 ENV=staging
-VITE_API_URL=https://www.thinkai.cc
-VITE_WS_URL=wss://www.thinkai.cc/ws
-VITE_BASE_URL=https://www.thinkai.cc
 ```
 
 ### Canonical domain
@@ -366,9 +360,10 @@ would look unauthenticated (different origin → empty `localStorage`),
 and the two tabs would silently disagree about auth state. Forcing one
 canonical host makes the session unambiguous.
 
-The `VITE_*` env vars above must use the same canonical host, otherwise
-the built frontend will call APIs on the wrong origin and the browser
-will either CORS-block them or silently fail the WebSocket handshake.
+The same single-origin discipline is also what lets the frontend ship
+without any baked-in API host. Because browser, API, and WebSocket all
+resolve to `www.<your-domain>`, relative URLs in the frontend bundle
+just work — no `VITE_API_URL`, no rebuild per environment.
 
 #### If you edit `docker/nginx-ssl.conf`, do not drop `default_server`
 
@@ -445,18 +440,17 @@ Most AIGC features require external API keys. Check that the relevant `*_API_KEY
 
 ### Frontend can't connect to API/WebSocket
 
-`VITE_API_URL` and `VITE_WS_URL` are baked into the frontend at Docker build time. After changing:
+The frontend uses relative paths (`/api/*`, `/ws`) — the browser resolves them against `window.location`. If requests fail:
 
-```bash
-docker compose build web
-docker compose up -d web
-```
+1. **Check the URL the browser is actually on** (`location.origin` in DevTools console). All API calls go to that same origin.
+2. **Check nginx is reverse-proxying correctly** — `curl -sI https://www.your-domain.com/api/health` should return 200 from the API container via nginx.
+3. **Docker compose changes** — if you edited `docker-compose.yml` or `Dockerfile.web`, rebuild: `docker compose build web && docker compose up -d web`. You no longer need to rebuild when the domain changes, because the domain isn't baked in.
 
 ### CORS errors in browser
 
-Only relevant for **local development** (API on :3000, frontend on :8000 are different origins). Set `ALLOWED_ORIGINS=http://localhost:8000` in `.env`.
+Only relevant for **local development** if you bypass the Vite dev proxy (e.g. you point the frontend at `http://localhost:3000` directly instead of `/api`). Normally Vite's `server.proxy` makes the browser see a single origin (`localhost:8000`) and no CORS is needed.
 
-Docker deployment doesn't need CORS — Nginx proxies everything through one origin.
+Docker deployment also has no CORS — nginx reverse-proxies everything through one origin.
 
 ### SSL not working
 
