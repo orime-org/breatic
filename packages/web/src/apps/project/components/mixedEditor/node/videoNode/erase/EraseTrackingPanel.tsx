@@ -23,6 +23,8 @@ export type EraseTrackingSegment = {
 const PLAYHEAD_EDGE_INSET_PX = 6;
 const TIMELINE_ZOOM_MIN_PX_PER_SEC = 4;
 const TIMELINE_ZOOM_MAX_PX_PER_SEC = 32;
+const LOST_PATTERN_ICON_SIZE_PX = 14;
+const LOST_PATTERN_ICON_GAP_PX = 4;
 
 const timelineScrollbarClass = 'overflow-x-auto overflow-y-visible pb-0.5 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]';
 
@@ -152,6 +154,9 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
       const right = safeDuration > 0 ? Math.min(100, Math.max(0, (segment.endSec / safeDuration) * 100)) : 0;
       const width = Math.max(0, right - left);
       const item = legendItems.find((l) => l.key === segment.status);
+      const segmentWidthPx = (timelineWidthPx * width) / 100;
+      const lostTileUnitPx = LOST_PATTERN_ICON_SIZE_PX + LOST_PATTERN_ICON_GAP_PX;
+      const lostTileCount = Math.max(1, Math.ceil(segmentWidthPx / lostTileUnitPx) + 2);
       return (
         <div
           key={`thumb-segment-${idx}-${segment.status}-${segment.startSec}-${segment.endSec}`}
@@ -160,13 +165,13 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
         >
           {segment.status === 'lost' ? (
             <div className='relative h-full w-full bg-[#EC221F]/50'>
-              <div className='absolute inset-0 flex items-center gap-2 overflow-hidden px-2 opacity-90'>
-                {Array.from({ length: 18 }).map((_, iconIdx) => (
+              <div className='absolute inset-0 flex items-center gap-1 overflow-hidden px-1 opacity-90'>
+                {Array.from({ length: lostTileCount }).map((_, iconIdx) => (
                   <Icon
                     key={`lost-tile-${idx}-${iconIdx}`}
                     name='videoNode-tracking-lost'
-                    width={14}
-                    height={14}
+                    width={LOST_PATTERN_ICON_SIZE_PX}
+                    height={LOST_PATTERN_ICON_SIZE_PX}
                     color='#fff'
                     className='shrink-0'
                   />
