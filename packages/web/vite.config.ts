@@ -135,6 +135,25 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 8000,
       open: '/',
+      // Dev server runs on :8000, API on :3000, Collab on :1234 — different
+      // origins from the browser's perspective. Proxy /api, /uploads, /ws
+      // through Vite so frontend code can use relative URLs (same-origin)
+      // in dev just like it does in prod (where nginx does the same job).
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/uploads': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/ws': {
+          target: 'ws://localhost:1234',
+          ws: true,
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

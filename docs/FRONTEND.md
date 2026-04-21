@@ -347,7 +347,7 @@ Frontend imports types and Zod schemas from `@breatic/shared` — single source 
 
 ### HTTP (Axios)
 
-- Base URL: `VITE_API_URL` (from root `.env`)
+- Base URL: none — call sites write the full `/api/v1/...` path and axios sends it relative to `window.location.origin`
 - Timeout: 180s
 - Auto Bearer token injection (via `token.ts`)
 - 401 → logout + redirect
@@ -434,13 +434,21 @@ All `VITE_*` variables are in the root `.env` file (shared with backend). Vite r
 
 | Variable | Purpose |
 |----------|---------|
-| `VITE_API_URL` | Backend API base URL |
-| `VITE_WS_URL` | WebSocket server for Yjs sync |
-| `VITE_BASE_URL` | Page navigation base URL |
 | `VITE_LOGIN_MODE` | Login mode (must match backend) |
 | `VITE_APP_VERSION` | App version string |
 | `GOOGLE_CLIENT_ID` | Google OAuth — injected via Vite `define` as `__GOOGLE_CLIENT_ID__` (optional) |
 | `VITE_SENTRY_DSN` | Sentry error tracking (optional) |
+
+### Why there's no `VITE_API_URL` / `VITE_WS_URL`
+
+The frontend talks to the backend over **relative URLs** (`/api/*`, `/ws`, `/uploads/*`). The browser resolves these against `window.location`, so:
+
+- The built bundle has **no host baked in** — the same `dist/` works on `localhost:8000`, `staging.example.com`, `breatic.ai`, or any preview URL.
+- Dev mode relies on Vite's `server.proxy` (in `vite.config.ts`) to forward `/api` → `localhost:3000` and `/ws` → `localhost:1234`. From the browser's view it's single-origin on `localhost:8000`.
+- Production relies on nginx (in the `web` Docker container) to reverse-proxy the same routes to the API/Collab containers. Same single-origin model.
+- WebSocket URLs can't be purely relative (the `new WebSocket()` constructor requires a full URL), so `utils/yjsManager.ts` and `utils/websocket.ts` build them at runtime from `window.location.protocol` + `window.location.host`.
+
+The upshot: changing deployment domains requires zero frontend rebuild; the only constraint is that frontend and backend must share one reverse proxy, which they always do in breatic's architecture.
 
 ---
 
