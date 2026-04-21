@@ -57,6 +57,13 @@
       "when": 1776226700362,
       "tag": "0007_tense_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776769358508,
+      "tag": "0008_mean_jubilee",
+      "breakpoints": true
     }
   ]
 }
