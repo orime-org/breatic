@@ -1085,42 +1085,18 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
         <Toolbar
           nodeId={id}
           onReplace={replaceNodeWithFile}
-          onCrop={(_nid) => {
-            handleCropOpen();
-          }}
-          onExpand={(_nid) => {
-            handleExpandOpen();
-          }}
-          onAdjust={(_nid) => {
-            handleAdjustOpen();
-          }}
-          onInpaint={(_nid) => {
-            handleInpaintFocus();
-          }}
-          onQuickEdit={(_nid) => {
-            handleQuickEditOpen();
-          }}
-          onMark={(_nid) => {
-            handleMarkFocus();
-          }}
-          onEnhance={(_nid) => {
-            handleEnhanceOpen();
-          }}
-          onMultiAngle={(_nid) => {
-            handleMultiAngleOpen();
-          }}
-          onRelight={(_nid) => {
-            handleRelightOpen();
-          }}
-          onGridSlice={(_nid) => {
-            handleGridSliceOpen();
-          }}
-          onFlipRotate={(_nid) => {
-            handleFlipRotateOpen();
-          }}
-          onGraffiti={(_nid) => {
-            handleGraffitiFocus();
-          }}
+          onCrop={(_nid) => handleCropOpen()}
+          onExpand={(_nid) => handleExpandOpen()}
+          onAdjust={(_nid) => handleAdjustOpen()}
+          onInpaint={(_nid) => handleInpaintFocus()}
+          onQuickEdit={(_nid) => handleQuickEditOpen()}
+          onMark={(_nid) => handleMarkFocus()}
+          onEnhance={(_nid) => handleEnhanceOpen()}
+          onMultiAngle={(_nid) => handleMultiAngleOpen()}
+          onRelight={(_nid) => handleRelightOpen()}
+          onGridSlice={(_nid) => handleGridSliceOpen()}
+          onFlipRotate={(_nid) => handleFlipRotateOpen()}
+          onGraffiti={(_nid) => handleGraffitiFocus()}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showStandardToolbars} position={Position.Bottom} offset={12} align='center'>

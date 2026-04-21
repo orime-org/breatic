@@ -347,7 +347,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
   return (
     <div
       ref={scrollRef}
-      className='mt-1 overflow-x-scroll overflow-y-visible pb-1 pt-4 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]'
+      className='overflow-x-scroll overflow-y-visible pb-1 pt-4 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]'
     >
       <div ref={timelineOuterRef} className='relative min-w-full overflow-visible' style={{ width: `max(100%, ${timelineOuterMinWidthPx}px)` }}>
         <div
@@ -358,7 +358,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
             width: `calc(100% - ${PLAYHEAD_EDGE_INSET_PX * 2}px)`,
           }}
         >
-          <div className='relative h-7 cursor-pointer select-none rounded-sm bg-transparent' onPointerDown={onRulerPointerDown}>
+          <div className='relative h-7 cursor-pointer select-none rounded-sm bg-transparent mb-2' onPointerDown={onRulerPointerDown}>
             {minorTicks.map((v) => {
               const left = safeDuration > 0 ? (v / safeDuration) * 100 : 0;
               const isMajor = Math.abs(v / majorStep - Math.round(v / majorStep)) < 1e-6;

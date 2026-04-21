@@ -23,7 +23,6 @@ export type SpeedBottomToolbarProps = {
   isPlaying: boolean;
   volume: number;
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
-  isSaving?: boolean;
   onClose: () => void;
   onSave?: (payload: { playbackRate: number }) => void;
 };
@@ -48,7 +47,6 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
   isPlaying,
   volume,
   fullscreenTargetRef,
-  isSaving = false,
   onClose,
   onSave,
 }) => {
@@ -69,7 +67,7 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
     return `${seconds}s`;
   }, [adjustedDuration]);
 
-  const canSave = !isSaving && Boolean(mediaSrc);
+  const canSave = Boolean(mediaSrc);
 
   if (!active) return null;
 
@@ -86,7 +84,6 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
           fullscreenTargetRef={fullscreenTargetRef}
           playbackRate={playbackRate}
           onPlaybackRateChange={setPlaybackRate}
-          showSpeedControls={false}
         />
         <div
           className='nodrag nopan pointer-events-auto flex h-[40px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[12px] py-[4px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'

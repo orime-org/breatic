@@ -96,6 +96,11 @@ const getAgentImagePickOverlayAnchorFromClick = (
       if (hit) return hit;
       break;
     }
+    if (el.getAttribute('data-agent-video-viewport') === nodeId) {
+      const hit = pctInRect(e.clientX, e.clientY, el.getBoundingClientRect());
+      if (hit) return hit;
+      break;
+    }
     el = el.parentElement;
   }
 
@@ -228,10 +233,17 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
     closeContextMenu();
 
     if (agentCanvasPickEditingNodeId) {
-      if (node.type !== imageEditorImageNodeType) return;
       const sourceNode = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
       const sourceData = sourceNode?.data as Partial<ImageFlowNodeData> | undefined;
       const consumeFrom = sourceData?.pickState?.consumeFrom;
+      const isVideoErasePickMode = consumeFrom === 'videoErase';
+      const videoEraseTool = sourceData?.pickState?.eraseMaskTool ?? 'selection';
+      if (isVideoErasePickMode) {
+        if (node.type !== imageEditorVideoNodeType) return;
+        if (videoEraseTool !== 'selection') return;
+      } else if (node.type !== imageEditorImageNodeType) {
+        return;
+      }
       const isMentionPickMode = consumeFrom === 'quickEditMention' || consumeFrom === 'chatRecordPanelMention';
       if (isMentionPickMode) {
         if (node.id === agentCanvasPickEditingNodeId) return;
@@ -239,19 +251,23 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
         if (alreadyLinked) return;
       }
       const targetEl = e.target as HTMLElement | null;
-      const hitImageViewport = Boolean(targetEl?.closest(`[data-agent-image-viewport="${node.id}"]`));
-      if (!hitImageViewport) return;
+      const hitViewport = isVideoErasePickMode
+        ? Boolean(targetEl?.closest(`[data-agent-video-viewport="${node.id}"]`))
+        : Boolean(targetEl?.closest(`[data-agent-image-viewport="${node.id}"]`));
+      if (!hitViewport) return;
       const d = node.data as ImageFlowNodeData | undefined;
       const legacy = (node.data as unknown as { src?: string } | undefined)?.src;
       const imageSrc = String(d?.content ?? legacy ?? '');
       if (!imageSrc) return;
-      const nameFromUrl = imageSrc.split('/').pop()?.split('?')[0] || 'image';
+      const nameFromUrl = imageSrc.split('/').pop()?.split('?')[0] || (isVideoErasePickMode ? 'video' : 'image');
       const overlayAnchor = getAgentImagePickOverlayAnchorFromClick(e, node.id);
       const composerFocused = Boolean(sourceData?.pickState?.composerFocused);
-      if (!composerFocused) return;
+      if (!composerFocused && consumeFrom !== 'videoErase') return;
       const prevPendingList = sourceData?.pickState?.pendingList ?? [];
       const placeholderId = nanoid();
-      captureCanvasPickCaretRange(placeholderId, agentCanvasPickEditingNodeId);
+      if (consumeFrom !== 'videoErase') {
+        captureCanvasPickCaretRange(placeholderId, agentCanvasPickEditingNodeId);
+      }
       const nextPending = {
         targetNodeId: node.id,
         placeholderId,
@@ -262,7 +278,8 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
       updateNode(agentCanvasPickEditingNodeId, {
         data: {
           pickState: {
-            pendingList: [...prevPendingList, nextPending],
+            pendingList: consumeFrom === 'videoErase' ? [nextPending] : [...prevPendingList, nextPending],
+            ...(consumeFrom === 'videoErase' ? { resultBoxes: null } : {}),
           },
         },
       });
@@ -578,27 +595,29 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
       hasBootstrappedFromSourceRef.current = true;
       return;
     }
-    const sourceName =
-      typeof panelCanvasNode?.data?.name === 'string' && panelCanvasNode.data.name.trim()
-        ? panelCanvasNode.data.name.trim()
-        : mixedEditorMediaType;
+    let sourceName: string = mixedEditorMediaType;
+    if (typeof panelCanvasNode?.data?.name === 'string' && panelCanvasNode.data.name.trim()) {
+      sourceName = panelCanvasNode.data.name.trim();
+    }
+    let seededNodeType: Node['type'] = imageEditorImageNodeType;
+    if (mixedEditorMediaType === 'video') {
+      seededNodeType = imageEditorVideoNodeType;
+    } else if (mixedEditorMediaType === 'audio') {
+      seededNodeType = imageEditorAudioNodeType;
+    }
+    let seededNodeData = createEditorImageNodeData(sourceName, sourceContent);
+    if (mixedEditorMediaType === 'video') {
+      seededNodeData = createEditorVideoNodeData(sourceName, sourceContent);
+    } else if (mixedEditorMediaType === 'audio') {
+      seededNodeData = createEditorAudioNodeData(sourceName, sourceContent);
+    }
     const seededNode: Node = {
       id: `${mixedEditorMediaType}-flow-${nanoid(12)}`,
-      type:
-        mixedEditorMediaType === 'video'
-          ? imageEditorVideoNodeType
-          : mixedEditorMediaType === 'audio'
-            ? imageEditorAudioNodeType
-            : imageEditorImageNodeType,
+      type: seededNodeType,
       position: { x: 120, y: 80 },
       selected: true,
       style: mixedEditorMediaType === 'audio' ? { width: 300, height: 250 } : { width: 260, height: 160 },
-      data:
-        mixedEditorMediaType === 'video'
-          ? createEditorVideoNodeData(sourceName, sourceContent)
-          : mixedEditorMediaType === 'audio'
-            ? createEditorAudioNodeData(sourceName, sourceContent)
-            : createEditorImageNodeData(sourceName, sourceContent),
+      data: seededNodeData,
     };
     setNodes([seededNode], { history: 'skip' });
     hasBootstrappedFromSourceRef.current = true;
@@ -673,20 +692,26 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
         const legacy = (node.data as unknown as { src?: string } | undefined)?.src;
         const imageSrc = String(d?.content ?? legacy ?? '');
         const isSelectableImageTarget = node.type === imageEditorImageNodeType && Boolean(imageSrc);
-        const isHighlighted = isActivePickSource || isSelectableImageTarget;
-        const pointerEvents: React.CSSProperties['pointerEvents'] = isHighlighted ? 'auto' : 'none';
-        const cursor: React.CSSProperties['cursor'] = isHighlighted
+        const sourceNode = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
+        const sourceConsume = (sourceNode?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.consumeFrom;
+        /** Video erase: only the video node is bright; other nodes (incl. pick targets) are dimmed but images stay clickable. */
+        const onlySourceBright = sourceConsume === 'videoErase';
+        const isHighlighted = onlySourceBright ? isActivePickSource : isActivePickSource || isSelectableImageTarget;
+        const isInteractive = onlySourceBright ? isActivePickSource : isActivePickSource || isSelectableImageTarget;
+        const pointerEvents: React.CSSProperties['pointerEvents'] = isInteractive ? 'auto' : 'none';
+        const cursor: React.CSSProperties['cursor'] = isInteractive
           ? isSelectableImageTarget
             ? 'pointer'
             : 'default'
           : 'not-allowed';
-        const pickRing = isSelectableImageTarget ? '0 0 0 2px rgba(151, 160, 255, 0.35)' : undefined;
+        const pickRing =
+          !onlySourceBright && isSelectableImageTarget ? '0 0 0 2px rgba(151, 160, 255, 0.35)' : undefined;
         return {
           ...node,
           selected: isActivePickSource,
           selectable: isActivePickSource,
           draggable: false,
-          focusable: isHighlighted,
+          focusable: isInteractive,
           style: {
             ...(node.style ?? {}),
             pointerEvents,
@@ -734,7 +759,7 @@ const EditorInner: React.FC<EditorInnerProps> = ({ nodeId, hotkeysDisabled = fal
     <div
       ref={flowInteractionRootRef}
       className='relative h-full w-full overflow-hidden bg-background-default-secondary'
-      style={{ cursor: stitchEditMode || agentCanvasPickEditMode ? 'not-allowed' : 'default' }}
+      style={{ cursor: stitchEditMode ? 'not-allowed' : 'default' }}
       onMouseMoveCapture={handleMouseMoveCapture}
       onMouseLeave={handleMouseLeave}
       onMouseDownCapture={handleMouseDownCapture}

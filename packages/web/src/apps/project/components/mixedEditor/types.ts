@@ -99,13 +99,19 @@ export type ImageEditorPickConsumeFrom =
   | 'chatRecordPanel'
   | 'quickEditMention'
   | 'nodeComposerMention'
-  | 'chatRecordPanelMention';
+  | 'chatRecordPanelMention'
+  /** Video erase: canvas pick targets an image node for tracking (no composer chip pipeline). */
+  | 'videoErase';
 
 export interface ImageEditorPickResultBox {
   cxPct: number;
   cyPct: number;
   wPct: number;
   hPct: number;
+  /** Optional media timestamp anchor (seconds), used by video-frame-aligned overlays. */
+  frameTimeSec?: number;
+  /** Optional shape used by erase manual-box mode. */
+  maskShape?: 'rectangle' | 'circle';
   /** Same id as the composer placeholder / chip; used to drop the overlay when the chip is removed. */
   placeholderId?: string;
   /** Source composer node id that created this pick. */
@@ -120,6 +126,8 @@ export interface ImageEditorPickState {
   fromCanvas?: boolean;
   /** True when the associated composer input is focused and can accept inserts. */
   composerFocused?: boolean;
+  /** Active erase mask tool when consumeFrom === 'videoErase'. */
+  eraseMaskTool?: 'selection' | 'rectangle' | 'circle';
   /** @deprecated No longer written; “Apply to Node” updates main canvas image nodes instead. */
   inject?: { content: string; name: string; type: 'image' } | null;
   pending?: ImageEditorPickPending | null;

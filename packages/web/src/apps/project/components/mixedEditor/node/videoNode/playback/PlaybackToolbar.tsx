@@ -3,13 +3,6 @@ import { Icon } from '@/components/base/icon';
 import Slider from '@/components/base/slider';
 import Tooltip from '@/components/base/tooltip';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import {
-  PLAYBACK_SPEED_MAX,
-  PLAYBACK_SPEED_MIN,
-  PLAYBACK_SPEED_STEP,
-  formatPlaybackSpeed,
-  roundPlaybackSpeedToStep,
-} from './playbackSpeed';
 
 const formatPlaybackTime = (seconds: number) => {
   const s = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -38,9 +31,8 @@ export type PlaybackToolbarProps = {
   displayDuration?: number;
   isPlaying: boolean;
   volume: number;
-  playbackRate: number;
-  onPlaybackRateChange: (value: number) => void;
-  showSpeedControls?: boolean;
+  timelineZoom: number;
+  onTimelineZoomChange: (value: number) => void;
   onFullscreen: () => void;
 };
 
@@ -52,9 +44,8 @@ const PlaybackToolbar: React.FC<PlaybackToolbarProps> = ({
   displayDuration,
   isPlaying,
   volume,
-  playbackRate,
-  onPlaybackRateChange,
-  showSpeedControls = true,
+  timelineZoom,
+  onTimelineZoomChange,
   onFullscreen,
 }) => {
   const handlePlayPause = () => {
@@ -127,11 +118,9 @@ const PlaybackToolbar: React.FC<PlaybackToolbarProps> = ({
             )}
           </button>
         </Tooltip>
-        <Tooltip title='Current time / duration' placement='top' offset={4}>
-          <span className='min-w-0 shrink-0 cursor-default whitespace-nowrap text-center text-[10px] tabular-nums text-text-default-secondary'>
-            {formatPlaybackTime(displayCurrentTime ?? currentTime)} / {formatPlaybackTime(displayDuration ?? duration)}
-          </span>
-        </Tooltip>
+        <span className='min-w-0 shrink-0 cursor-default whitespace-nowrap text-center text-[10px] tabular-nums text-text-default-secondary'>
+          {formatPlaybackTime(displayCurrentTime ?? currentTime)} / {formatPlaybackTime(displayDuration ?? duration)}
+        </span>
         <Tooltip title='Step forward one frame' placement='top' offset={4}>
           <button
             type='button'
@@ -154,45 +143,37 @@ const PlaybackToolbar: React.FC<PlaybackToolbarProps> = ({
         </Tooltip>
       </div>
       <div className='flex h-7 shrink-0 items-center gap-1'>
-        {showSpeedControls ? (
-          <>
-            <Tooltip title='Slow down playback speed' placement='top' offset={4}>
-              <button
-                type='button'
-                className='flex h-7 w-7 items-center justify-center rounded hover:bg-black/5'
-                aria-label='Slow down playback speed'
-                onClick={() => onPlaybackRateChange(roundPlaybackSpeedToStep(playbackRate - PLAYBACK_SPEED_STEP))}
-              >
-                <Icon name='videoNode-zoom-out' width={16} height={16} color={icon} />
-              </button>
-            </Tooltip>
-            <div className='flex h-7 w-[150px] shrink-0 items-center justify-center gap-1 px-0.5'>
-              <span className='w-[38px] shrink-0 text-[11px] font-medium text-text-default-secondary'>Speed</span>
-              <Slider
-                className='nodrag !m-0 !w-full'
-                min={PLAYBACK_SPEED_MIN}
-                max={PLAYBACK_SPEED_MAX}
-                step={PLAYBACK_SPEED_STEP}
-                value={playbackRate}
-                onChange={(value) => onPlaybackRateChange(roundPlaybackSpeedToStep(value))}
-                {...MULTI_ANGLE_SLIDER_CHROME}
-              />
-              <span className='w-[34px] shrink-0 text-right text-[11px] tabular-nums text-text-default-secondary'>
-                {formatPlaybackSpeed(playbackRate)}
-              </span>
-            </div>
-            <Tooltip title='Speed up playback speed' placement='top' offset={4}>
-              <button
-                type='button'
-                className='flex h-7 w-7 items-center justify-center rounded hover:bg-black/5'
-                aria-label='Speed up playback speed'
-                onClick={() => onPlaybackRateChange(roundPlaybackSpeedToStep(playbackRate + PLAYBACK_SPEED_STEP))}
-              >
-                <Icon name='videoNode-zoom-in' width={16} height={16} color={icon} />
-              </button>
-            </Tooltip>
-          </>
-        ) : null}
+        <Tooltip title='Zoom timeline out' placement='top' offset={4}>
+          <button
+            type='button'
+            className='flex h-7 w-7 items-center justify-center rounded hover:bg-black/5'
+            aria-label='Zoom timeline out'
+            onClick={() => onTimelineZoomChange(Math.max(0, timelineZoom - 5))}
+          >
+            <Icon name='videoNode-zoom-out' width={16} height={16} color={icon} />
+          </button>
+        </Tooltip>
+        <div className='flex h-7 w-[100px] shrink-0 items-center justify-center gap-1 px-0.5'>
+          <Slider
+            className='nodrag !m-0 !w-full'
+            min={0}
+            max={100}
+            step={1}
+            value={timelineZoom}
+            onChange={onTimelineZoomChange}
+            {...MULTI_ANGLE_SLIDER_CHROME}
+          />
+        </div>
+        <Tooltip title='Zoom timeline in' placement='top' offset={4}>
+          <button
+            type='button'
+            className='flex h-7 w-7 items-center justify-center rounded hover:bg-black/5'
+            aria-label='Zoom timeline in'
+            onClick={() => onTimelineZoomChange(Math.min(100, timelineZoom + 5))}
+          >
+            <Icon name='videoNode-zoom-in' width={16} height={16} color={icon} />
+          </button>
+        </Tooltip>
         <Tooltip title={volume === 0 ? 'Unmute' : 'Mute'} placement='top' offset={4}>
           <button
             type='button'
