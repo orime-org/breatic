@@ -11,6 +11,8 @@ type RightToolbarProps = {
   onToolChange: (tool: EditorTool) => void;
   onUpload?: (file: File) => void;
   uploadAccept?: string;
+  onVideoStabilizationClick?: () => void;
+  onVideoAudioDenoiseClick?: () => void;
   /** Per-panel list rows; only panels with keys present need data. */
   sidePanelItems?: Partial<Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>>;
   onSidePanelItemAddClick?: (panel: ImageEditorRightSidePanelId, item: MediaResourceListItem) => void;
@@ -52,6 +54,8 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
   onToolChange,
   onUpload,
   uploadAccept = 'image/*',
+  onVideoStabilizationClick,
+  onVideoAudioDenoiseClick,
   sidePanelItems = {},
   onSidePanelItemAddClick,
   onSidePanelItemDownloadClick,
@@ -61,6 +65,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
 }) => {
   const [openSidePanel, setOpenSidePanel] = useState<ImageEditorRightSidePanelId | null>(null);
   const [toolbarSegment, setToolbarSegment] = useState<ExclusiveToolbarSegment | null>(null);
+  const isVideoMode = uploadAccept.toLowerCase().includes('video');
 
   const isToolActive = (tool?: EditorTool) => !!tool && activeTool === tool && tool !== 'select';
 
@@ -70,9 +75,42 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
     return isToolActive(tool.key);
   };
 
+  const imageModeEntryTools: ToolItem[] = [
+    {
+      id: 'blank',
+      key: 'blank',
+      icon: 'project-image-editor-right-square-icon',
+      label: 'blank',
+      width: 18,
+      height: 18,
+    },
+    {
+      id: 'stitch',
+      key: 'crop',
+      icon: 'project-image-editor-more-grid-slice-icon',
+      label: 'stitch',
+      width: 20,
+      height: 20,
+    },
+  ];
+  const videoModeEntryTools: ToolItem[] = [
+    {
+      id: 'video-stabilization',
+      icon: 'project-video-right-stabilization-icon',
+      label: 'stabilization',
+      width: 22,
+      height: 18,
+    },
+    {
+      id: 'video-audio-denoise',
+      icon: 'project-video-right-audio-denoise-icon',
+      label: 'audio denoise',
+      width: 22,
+      height: 22,
+    },
+  ];
   const tools: ToolItem[] = [
-    { id: 'blank', key: 'blank', icon: 'project-image-editor-right-square-icon', label: 'blank', width: 18, height: 18 },
-    { id: 'stitch', key: 'crop', icon: 'project-image-editor-more-grid-slice-icon', label: 'stitch', width: 20, height: 20 },
+    ...(isVideoMode ? videoModeEntryTools : imageModeEntryTools),
     {
       id: 'history',
       key: 'brush',
@@ -107,6 +145,20 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
 
   const handleToolButtonClick = useCallback(
     (tool: ToolItem) => {
+      if (tool.id === 'video-stabilization') {
+        setToolbarSegment(null);
+        setOpenSidePanel(null);
+        onVideoStabilizationClick?.();
+        return;
+      }
+
+      if (tool.id === 'video-audio-denoise') {
+        setToolbarSegment(null);
+        setOpenSidePanel(null);
+        onVideoAudioDenoiseClick?.();
+        return;
+      }
+
       if (tool.id === 'blank' || tool.id === 'stitch') {
         setToolbarSegment(null);
         setOpenSidePanel(null);
@@ -145,7 +197,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
         else onToolChange('select');
       }
     },
-    [onToolChange, onUpstreamPanelOpen, toolbarSegment],
+    [onToolChange, onUpstreamPanelOpen, onVideoAudioDenoiseClick, onVideoStabilizationClick, toolbarSegment],
   );
 
   const closeSidePanel = useCallback(() => {

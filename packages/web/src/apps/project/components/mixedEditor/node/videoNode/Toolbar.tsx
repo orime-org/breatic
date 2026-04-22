@@ -18,6 +18,7 @@ export type ToolbarProps = {
   onAnimate?: (nodeId: string) => void;
   onAdjust?: (nodeId: string) => void;
   onStabilization?: (nodeId: string) => void;
+  onLipSync?: (nodeId: string) => void;
   onCrop?: (nodeId: string) => void;
   onHdrConversion?: (nodeId: string) => void;
   onCutout?: (nodeId: string) => void;
@@ -94,6 +95,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onAnimate,
   onAdjust,
   onStabilization,
+  onLipSync,
   onCrop,
   onHdrConversion,
   onCutout,
@@ -304,6 +306,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
           if (key === 'animate') onAnimate?.(nodeId);
           if (key === 'adjust') onAdjust?.(nodeId);
           if (key === 'stabilization') onStabilization?.(nodeId);
+          if (key === 'lip-sync') onLipSync?.(nodeId);
           if (key === 'crop') onCrop?.(nodeId);
           if (key === 'hdr-conversion') onHdrConversion?.(nodeId);
           if (key === 'cutout') onCutout?.(nodeId);
