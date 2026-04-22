@@ -13,8 +13,6 @@ export interface UserEntity {
   username: string | null;
   avatarUrl: string | null;
   credits: number;
-  membershipType: string;
-  membershipExpiresAt: Date | null;
   emailVerified: boolean;
   googleId: string | null;
   createdAt: Date;

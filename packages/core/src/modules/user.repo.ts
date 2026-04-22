@@ -17,8 +17,6 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
     username: row.username,
     avatarUrl: row.avatarUrl,
     credits: row.credits,
-    membershipType: row.membershipType,
-    membershipExpiresAt: row.membershipExpiresAt,
     emailVerified: row.emailVerified,
     googleId: row.googleId,
     createdAt: row.createdAt,
@@ -93,7 +91,7 @@ export async function createUser(data: {
 /** Update user profile fields. */
 export async function updateUser(
   userId: string,
-  data: Partial<Pick<typeof users.$inferInsert, "username" | "avatarUrl" | "emailVerified" | "membershipType" | "membershipExpiresAt" | "googleId">>,
+  data: Partial<Pick<typeof users.$inferInsert, "username" | "avatarUrl" | "emailVerified" | "googleId">>,
 ): Promise<UserEntity | null> {
   const rows = await db
     .update(users)
