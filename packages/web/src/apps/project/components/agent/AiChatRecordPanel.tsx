@@ -18,7 +18,8 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { imageEditorImageNodeType } from '@/apps/project/components/mixedEditor/types';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '@/apps/project/components/mixedEditor/types';
 import store from '@/store';
@@ -111,10 +112,12 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     const {
       nodes: imageEditorNodes,
       edges: imageEditorEdges,
+    } = useMixedEditorData();
+    const {
       updateNode: updateImageEditorNode,
       onEdgesChange: onImageEditorEdgesChange,
       onConnect: onImageEditorConnect,
-    } = useMixedEditorStore();
+    } = useMixedEditorActions();
     const nodesRef = useRef(nodes);
     /** Active node id from the right panel or current selection; empty string shows an empty thread. */
     const selectedNode = nodes.find((n) => n.selected);

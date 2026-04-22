@@ -1,19 +1,23 @@
+/**
+ * Mixed editor Redux slice — UI-only state.
+ *
+ * Data (`nodes`, `edges`) now lives in the per-node Yjs editor doc and
+ * is consumed via {@link MixedEditorDataContext}. Redux keeps only the
+ * non-replicated per-user UI state:
+ *
+ *   - `activeTool`          — toolbar mode (select / crop / brush / ...)
+ *   - `expandViewportLocks` — per-node "expand locks the viewport"
+ *                             interaction mode
+ *   - `favoriteAssets`      — user's starred side-panel assets
+ *
+ * All these are local to each collaborator — starring an asset on one
+ * browser must not appear on another; neither should one user's crop
+ * tool selection.
+ */
+
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  type Connection,
-  type Edge,
-  type EdgeChange,
-  type Node,
-  type NodeChange,
-} from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import type {
-  ImageEditorNodeDataPatch,
-  ImageEditorRightSidePanelId,
-} from '@/apps/project/components/mixedEditor/types';
+import type { ImageEditorRightSidePanelId } from '@/apps/project/components/mixedEditor/types';
 
 export type MixedEditorActiveTool = 'select' | 'crop' | 'blank' | 'brush' | 'text';
 
@@ -35,16 +39,13 @@ export type ToggleMixedEditorFavoritePayload = {
 };
 
 export interface MixedEditorState {
-  nodes: Node[];
-  edges: Edge[];
   activeTool: MixedEditorActiveTool;
+  /** Per-node flag. When non-empty, ReactFlow wheel pan/pinch is disabled. */
   expandViewportLocks: Record<string, true>;
   favoriteAssets: MixedEditorFavoriteAsset[];
 }
 
 const initialState: MixedEditorState = {
-  nodes: [],
-  edges: [],
   activeTool: 'select',
   expandViewportLocks: {},
   favoriteAssets: [],
@@ -54,96 +55,6 @@ const mixedEditorSlice = createSlice({
   name: 'mixedEditor',
   initialState,
   reducers: {
-    resetMixedEditor: () => ({ ...initialState }),
-    resetMixedEditorNodes: (state) => {
-      state.nodes = [];
-    },
-    setMixedEditorNodes: (state, action: PayloadAction<Node[]>) => {
-      state.nodes = action.payload;
-    },
-    applyMixedEditorNodeChanges: (state, action: PayloadAction<NodeChange[]>) => {
-      state.nodes ??= [];
-      state.nodes = applyNodeChanges(action.payload, state.nodes);
-    },
-    addMixedEditorNode: (state, action: PayloadAction<{ node: Node; select?: boolean }>) => {
-      const { node, select = true } = action.payload;
-      for (const n of state.nodes) n.selected = false;
-      const newNode: Node = { ...node, selected: select };
-      const i = state.nodes.findIndex((n) => n.id === node.id);
-      if (i !== -1) state.nodes[i] = newNode;
-      else state.nodes.push(newNode);
-    },
-    updateMixedEditorNode: (state, action: PayloadAction<{ nodeId: string; updates: Partial<Node> }>) => {
-      const { nodeId, updates } = action.payload;
-      const node = state.nodes.find((n) => n.id === nodeId);
-      if (!node) return;
-      const { data: updatesData, style: updatesStyle, ...rest } = updates;
-      Object.assign(node, rest);
-      if (updatesStyle !== undefined) {
-        node.style = { ...(node.style as object), ...(updatesStyle as object) };
-      }
-      if (updatesData !== undefined) {
-        const nodeData = node.data as Record<string, unknown>;
-        for (const [key, val] of Object.entries(updatesData as Record<string, unknown>)) {
-          if (key === 'pickState') {
-            if (val === null || val === undefined) delete nodeData.pickState;
-            else nodeData.pickState = { ...((nodeData.pickState ?? {}) as object), ...(val as object) };
-          } else {
-            nodeData[key] = val;
-          }
-        }
-      }
-    },
-    appendMixedEditorNodes: (state, action: PayloadAction<Node[]>) => {
-      state.nodes.push(...action.payload);
-    },
-    patchMixedEditorNodeData: (state, action: PayloadAction<{ nodeId: string; patch: ImageEditorNodeDataPatch }>) => {
-      const { nodeId, patch } = action.payload;
-      const node = state.nodes.find((n) => n.id === nodeId);
-      if (!node) return;
-      const nodeData = node.data as Record<string, unknown>;
-      for (const [key, val] of Object.entries(patch as Record<string, unknown>)) {
-        if (key === 'pickState') {
-          if (val === null || val === undefined) delete nodeData.pickState;
-          else nodeData.pickState = { ...((nodeData.pickState ?? {}) as object), ...(val as object) };
-        } else {
-          nodeData[key] = val;
-        }
-      }
-    },
-    removeMixedEditorNode: (state, action: PayloadAction<string>) => {
-      state.nodes ??= [];
-      state.nodes = state.nodes.filter((n) => n.id !== action.payload);
-    },
-    resetMixedEditorEdges: (state) => {
-      state.edges = [];
-    },
-    setMixedEditorEdges: (state, action: PayloadAction<Edge[]>) => {
-      state.edges = action.payload;
-    },
-    syncMixedEditorFromYjs: (
-      state,
-      action: PayloadAction<{
-        nodes?: Node[];
-        edges?: Edge[];
-        activeTool?: MixedEditorActiveTool;
-        expandViewportLocks?: Record<string, true>;
-      }>,
-    ) => {
-      const { nodes, edges, activeTool, expandViewportLocks } = action.payload;
-      if (nodes !== undefined) state.nodes = nodes;
-      if (edges !== undefined) state.edges = edges;
-      if (activeTool !== undefined) state.activeTool = activeTool;
-      if (expandViewportLocks !== undefined) state.expandViewportLocks = expandViewportLocks;
-    },
-    applyMixedEditorEdgeChanges: (state, action: PayloadAction<EdgeChange[]>) => {
-      state.edges ??= [];
-      state.edges = applyEdgeChanges(action.payload, state.edges);
-    },
-    addMixedEditorEdge: (state, action: PayloadAction<Connection>) => {
-      state.edges ??= [];
-      state.edges = addEdge({ ...action.payload, type: 'default' }, state.edges);
-    },
     setMixedEditorActiveTool: (state, action: PayloadAction<MixedEditorActiveTool>) => {
       state.activeTool = action.payload;
     },
@@ -206,20 +117,6 @@ const mixedEditorSlice = createSlice({
 });
 
 export const {
-  resetMixedEditor,
-  resetMixedEditorNodes,
-  setMixedEditorNodes,
-  applyMixedEditorNodeChanges,
-  addMixedEditorNode,
-  updateMixedEditorNode,
-  appendMixedEditorNodes,
-  patchMixedEditorNodeData,
-  removeMixedEditorNode,
-  resetMixedEditorEdges,
-  setMixedEditorEdges,
-  syncMixedEditorFromYjs,
-  applyMixedEditorEdgeChanges,
-  addMixedEditorEdge,
   setMixedEditorActiveTool,
   setMixedEditorExpandViewportLock,
   clearMixedEditorExpandLock,

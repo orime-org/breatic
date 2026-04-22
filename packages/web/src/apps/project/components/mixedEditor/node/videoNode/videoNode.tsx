@@ -5,7 +5,8 @@ import Loading from '@/components/loading';
 import { message } from '@/components/base/message';
 import { Icon } from '@/components/base/icon';
 import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
@@ -238,6 +239,7 @@ function shouldShowVideoFlowToolbars(params: {
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
   const { setCenter, getZoom } = useReactFlow();
+  const { nodes } = useMixedEditorData();
   const {
     createCutVideoResultNodesRight,
     createVideoPlaceholderNodeRight,
@@ -245,8 +247,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     removeNode,
     updateNode,
     updateNodeData,
-    nodes,
-  } = useMixedEditorStore();
+  } = useMixedEditorActions();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
   const nodeData = data as ImageFlowNodeData | undefined;

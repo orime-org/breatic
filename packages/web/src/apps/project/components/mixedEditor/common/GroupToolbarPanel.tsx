@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
 import Dropdown from '@/components/base/dropdown';
 import Divider from '@/components/base/divider';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import type { ImageFlowNodeData } from '../types';
 import { imageEditorImageNodeType } from '../types';
 
@@ -35,7 +35,7 @@ const selectedNodesSelector = (state: { nodes: Node[] }) => state.nodes.filter((
 const GroupToolbarPanel: React.FC = () => {
   const { t } = useTranslation();
   const { getNodesBounds, getNodes } = useReactFlow();
-  const { updateNode, setNodes } = useMixedEditorStore();
+  const { updateNode, setNodes } = useMixedEditorActions();
   const selectedNodes = useStore(selectedNodesSelector);
   const nodes = useStore((state) => state.nodes);
   const transform = useStore((state) => state.transform);
