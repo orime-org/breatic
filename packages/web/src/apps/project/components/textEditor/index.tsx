@@ -122,9 +122,19 @@ const TextEditorInner: React.FC<TextEditorInnerProps> = ({ nodeId, manager }) =>
     if (html == null) return;
     if (html === lastSyncedHtmlRef.current) return;
     lastSyncedHtmlRef.current = html;
-    updateMainCanvasNode(nodeId, {
-      data: { content: html, state: 'idle' },
-    });
+    // `history: 'skip'` is critical — the summary write-back is a derived
+    // action (fires automatically from every body change), not a user
+    // command. Without this the main canvas undo stack would collect one
+    // entry per debounced edit, and Ctrl+Z on the main canvas would
+    // silently roll content back and forth while the editor body stays
+    // put (the editor's own Y.XmlFragment lives in a different Y.Doc).
+    // The text editor has its own undo stack on `body` via the TipTap
+    // Collaboration extension — that's where Ctrl+Z should go.
+    updateMainCanvasNode(
+      nodeId,
+      { data: { content: html, state: 'idle' } },
+      { history: 'skip' },
+    );
   }, [nodeId, updateMainCanvasNode]);
 
   const scheduleSummaryWriteback = useCallback((html: string) => {
