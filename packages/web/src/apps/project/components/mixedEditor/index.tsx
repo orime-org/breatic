@@ -530,24 +530,35 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     closeContextMenu();
 
     if (agentCanvasPickEditingNodeId) {
-      if (node.type !== imageEditorImageNodeType) return;
       const sourceNode = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
       const sourceData = sourceNode?.data as Partial<ImageFlowNodeData> | undefined;
       const consumeFrom = sourceData?.pickState?.consumeFrom;
+      const isVideoErasePickMode = consumeFrom === 'videoErase';
+      const videoEraseMaskTool = sourceData?.pickState?.eraseMaskTool;
       const isMentionPickMode = consumeFrom === 'quickEditMention' || consumeFrom === 'chatRecordPanelMention';
+      if (isVideoErasePickMode) {
+        if (node.type !== imageEditorVideoNodeType || node.id !== agentCanvasPickEditingNodeId) return;
+        // Rectangle/circle erase creates pending items in drag-end logic.
+        // Guard here to avoid double pending entries (and duplicated "Identifying..." overlays).
+        if (videoEraseMaskTool && videoEraseMaskTool !== 'selection') return;
+      } else if (node.type !== imageEditorImageNodeType) {
+        return;
+      }
       if (isMentionPickMode) {
         if (node.id === agentCanvasPickEditingNodeId) return;
         const alreadyLinked = edges.some((edge) => edge.source === node.id && edge.target === agentCanvasPickEditingNodeId);
         if (alreadyLinked) return;
       }
       const targetEl = e.target as HTMLElement | null;
-      const hitImageViewport = Boolean(targetEl?.closest(`[data-agent-image-viewport="${node.id}"]`));
-      if (!hitImageViewport) return;
+      const hitViewport = isVideoErasePickMode
+        ? Boolean(targetEl?.closest(`[data-agent-video-viewport="${node.id}"]`))
+        : Boolean(targetEl?.closest(`[data-agent-image-viewport="${node.id}"]`));
+      if (!hitViewport) return;
       const d = node.data as ImageFlowNodeData | undefined;
       const legacy = (node.data as unknown as { src?: string } | undefined)?.src;
-      const imageSrc = String(d?.content ?? legacy ?? '');
-      if (!imageSrc) return;
-      const nameFromUrl = imageSrc.split('/').pop()?.split('?')[0] || 'image';
+      const mediaSrc = String(d?.content ?? legacy ?? '');
+      if (!mediaSrc) return;
+      const nameFromUrl = mediaSrc.split('/').pop()?.split('?')[0] || (isVideoErasePickMode ? 'video' : 'image');
       const overlayAnchor = getAgentImagePickOverlayAnchorFromClick(e, node.id);
       const composerFocused = Boolean(sourceData?.pickState?.composerFocused);
       if (!composerFocused) return;
@@ -557,7 +568,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
       const nextPending = {
         targetNodeId: node.id,
         placeholderId,
-        content: imageSrc,
+        content: mediaSrc,
         name: nameFromUrl,
         ...(overlayAnchor ? { overlayAnchor } : {}),
       };

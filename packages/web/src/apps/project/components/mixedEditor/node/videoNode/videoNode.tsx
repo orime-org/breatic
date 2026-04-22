@@ -16,6 +16,7 @@ import { videoStabilizationWithFfmpeg } from '@/utils/videoStabilizationWithFfmp
 import { videoCropWithFfmpeg } from '@/utils/videoCropWithFfmpeg';
 import { videoHdrConversionWithFfmpeg } from '@/utils/videoHdrConversionWithFfmpeg';
 import { videoSceneExtensionWithFfmpeg } from '@/utils/videoSceneExtensionWithFfmpeg';
+import { videoAudioDenoiseWithFfmpeg } from '@/utils/videoAudioDenoiseWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '../../types';
@@ -36,11 +37,14 @@ import HdrConversionBottomToolbar, { type HdrConversionPayload } from './hdrConv
 import CropOverlay, { type CropRect } from './crop/CropOverlay';
 import SceneExtensionBottomToolbar, { type SceneExtensionResolution } from './sceneExtension/SceneExtensionBottomToolbar';
 import SceneExtensionOverlay, { type SceneExtensionFrame } from './sceneExtension/SceneExtensionOverlay';
+import AudioDenoiseBottomToolbar from './audioDenoise/AudioDenoiseBottomToolbar';
 import TrackedBoxesOverlay from './erase/TrackedBoxesOverlay';
 import type { VideoEraseMaskTool } from './erase/EraseBottomToolbar';
 import type { EraseTrackingBox, EraseTrackingPhase, EraseTrackingSegment, EraseTrackingStatus } from './erase/EraseTrackingPanel';
 import { useVideoEraseInteractions } from './erase/useVideoEraseInteractions';
 import type { TimelineCutMarker } from './playback/PlaybackPanel';
+import LipSyncBottomToolbar, { type LipSyncFaceItem, type LipSyncPhase, type LipSyncVoiceState } from './lipSync/LipSyncBottomToolbar';
+import { detectHumanVoice } from './lipSync/detectHumanVoice';
 
 const videoFlowMinWidth = 120;
 const videoFlowMinHeight = 80;
@@ -59,6 +63,7 @@ const TRACKING_MAX_WINDOW_SEC = 3;
 const STABILIZATION_CROP_DEFAULT = 6;
 const STABILIZATION_CROP_MIN = 0;
 const STABILIZATION_CROP_MAX = 14;
+const LIP_SYNC_IDENTIFY_DELAY_MS = 1200;
 
 const resolveTrackingStatusAtTime = (
   segments: EraseTrackingSegment[],
@@ -78,6 +83,10 @@ const toTrackingBoxes = (boxes: ImageEditorPickResultBox[]): EraseTrackingBox[] 
     maskShape: box.maskShape,
     placeholderId: box.placeholderId,
   }));
+
+type LipSyncFace = LipSyncFaceItem & {
+  box: EraseTrackingBox;
+};
 
 const buildTrackingSegments = (
   durationSec: number,
@@ -271,6 +280,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     | 'crop'
     | 'hdrConversion'
     | 'sceneExtension'
+    | 'audioDenoise'
+    | 'lipSync'
     | null
   >(null);
   const [adjustPreviewValue, setAdjustPreviewValue] = useState<AdjustValue>(defaultAdjustValue);
@@ -284,7 +295,20 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const [isStabilizationSaving, setIsStabilizationSaving] = useState(false);
   const [isCropSaving, setIsCropSaving] = useState(false);
   const [isHdrSaving, setIsHdrSaving] = useState(false);
+  const [isAudioDenoiseSaving, setIsAudioDenoiseSaving] = useState(false);
+  const [lipSyncPhase, setLipSyncPhase] = useState<LipSyncPhase>('idle');
+  const [lipSyncFaces, setLipSyncFaces] = useState<LipSyncFace[]>([]);
+  const [selectedLipSyncFaceId, setSelectedLipSyncFaceId] = useState<string | null>(null);
+  const [lipSyncTrackingSegments, setLipSyncTrackingSegments] = useState<EraseTrackingSegment[]>([]);
+  const [lipSyncAudioSource, setLipSyncAudioSource] = useState<
+    | { type: 'upload'; name: string; file: File }
+    | null
+  >(null);
+  const [lipSyncVoiceState, setLipSyncVoiceState] = useState<LipSyncVoiceState>('idle');
+  const [lipSyncVoiceMessage, setLipSyncVoiceMessage] = useState('');
+  const [lipSyncAudioTrackSrc, setLipSyncAudioTrackSrc] = useState('');
   const [hdrProgressPct, setHdrProgressPct] = useState(0);
+  const [audioDenoiseIntensity, setAudioDenoiseIntensity] = useState(50);
   const [stabilizationCropPct, setStabilizationCropPct] = useState(STABILIZATION_CROP_DEFAULT);
   const [cropRect, setCropRect] = useState<CropRect>({
     x: 0,
@@ -303,6 +327,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const prevPlaybackTimeRef = useRef(playback.currentTime);
   const scheduledVideoErasePickIdsRef = useRef(new Set<string>());
   const pendingManualBoxRef = useRef(new Map<string, ImageEditorPickResultBox>());
+  const lipSyncIdentifyTimerRef = useRef<number | null>(null);
   const eraseEntryPickStateRef = useRef<ImageFlowNodeData['pickState'] | null>(null);
   const eraseUndoStackRef = useRef<ImageEditorPickResultBox[][]>([]);
   const eraseRedoStackRef = useRef<ImageEditorPickResultBox[][]>([]);
@@ -310,6 +335,33 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => () => {
+    if (lipSyncIdentifyTimerRef.current != null) {
+      window.clearTimeout(lipSyncIdentifyTimerRef.current);
+      lipSyncIdentifyTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (editingMode === 'lipSync') return;
+    if (lipSyncIdentifyTimerRef.current != null) {
+      window.clearTimeout(lipSyncIdentifyTimerRef.current);
+      lipSyncIdentifyTimerRef.current = null;
+    }
+  }, [editingMode]);
+
+  useEffect(() => {
+    if (!lipSyncAudioSource?.file) {
+      setLipSyncAudioTrackSrc('');
+      return;
+    }
+    const objectUrl = URL.createObjectURL(lipSyncAudioSource.file);
+    setLipSyncAudioTrackSrc(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [lipSyncAudioSource]);
 
   const updateEraseHistoryFlags = useCallback(() => {
     setCanEraseUndo(eraseUndoStackRef.current.length > 0);
@@ -394,11 +446,30 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     () => resolveTrackingStatusAtTime(trackingSegments, playback.currentTime),
     [trackingSegments, playback.currentTime],
   );
-  const eraseInteractionMode =
-    editingMode === 'stabilization' ||
-    editingMode === 'crop' ||
-    editingMode === 'hdrConversion' ||
-    editingMode === 'sceneExtension' ? null : editingMode;
+  const currentLipSyncTrackingStatus = useMemo(
+    () => resolveTrackingStatusAtTime(lipSyncTrackingSegments, playback.currentTime),
+    [lipSyncTrackingSegments, playback.currentTime],
+  );
+  const showLipSyncTrackingPending =
+    editingMode === 'lipSync' &&
+    lipSyncPhase === 'ready' &&
+    selectedLipSyncFaceId != null &&
+    lipSyncTrackingSegments.length === 0;
+  const showLipSyncLostOverlay =
+    editingMode === 'lipSync' &&
+    lipSyncPhase === 'ready' &&
+    currentLipSyncTrackingStatus === 'lost';
+  let eraseInteractionMode: 'cut' | 'speed' | 'erase' | 'extend' | 'animate' | 'adjust' | null = null;
+  if (
+    editingMode === 'cut' ||
+    editingMode === 'speed' ||
+    editingMode === 'erase' ||
+    editingMode === 'extend' ||
+    editingMode === 'animate' ||
+    editingMode === 'adjust'
+  ) {
+    eraseInteractionMode = editingMode;
+  }
   const { draftBox, clearEraseInteractionState, handleTrackedBoxMouseDown, handleTrackedBoxResizeHandleMouseDown, handleVideoViewportMouseDown } =
     useVideoEraseInteractions({
       id,
@@ -619,6 +690,103 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     focusCurrentNode(0.6);
   }, [currentHeight, currentWidth, editingMode, focusCurrentNode, videoContent]);
 
+  const handleAudioDenoiseOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'audioDenoise') return;
+    focusCurrentNode();
+    setAudioDenoiseIntensity(50);
+    setEditingMode('audioDenoise');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
+  const validateLipSyncAudioSource = useCallback(
+    async (input: { type: 'upload'; name: string; file: File }) => {
+      setLipSyncVoiceState('checking');
+      setLipSyncVoiceMessage('');
+      try {
+        const result = await detectHumanVoice({ type: 'file', file: input.file });
+        if (result.hasHumanVoice) {
+          setLipSyncVoiceState('valid');
+          setLipSyncVoiceMessage('');
+        } else {
+          setLipSyncVoiceState('invalid');
+          setLipSyncVoiceMessage(result.reason ?? 'No human voice detected');
+        }
+      } catch {
+        setLipSyncVoiceState('invalid');
+        setLipSyncVoiceMessage('Failed to analyze audio, please try another one');
+      }
+    },
+    [],
+  );
+
+  const startLipSyncFaceIdentification = useCallback(() => {
+    if (lipSyncIdentifyTimerRef.current != null) {
+      window.clearTimeout(lipSyncIdentifyTimerRef.current);
+      lipSyncIdentifyTimerRef.current = null;
+    }
+    setLipSyncPhase('identifying');
+    setLipSyncFaces([]);
+    setSelectedLipSyncFaceId(null);
+    setLipSyncTrackingSegments([]);
+    lipSyncIdentifyTimerRef.current = window.setTimeout(() => {
+      const detectedFaces: LipSyncFace[] = [
+        {
+          id: 'face_01',
+          label: 'face_01',
+          confidence: 0.96,
+          box: { cxPct: 36, cyPct: 34, wPct: 15, hPct: 24, placeholderId: 'lip-face-01' },
+        },
+        {
+          id: 'face_02',
+          label: 'face_02',
+          confidence: 0.72,
+          box: { cxPct: 67, cyPct: 33, wPct: 15, hPct: 24, placeholderId: 'lip-face-02' },
+        },
+      ];
+      setLipSyncFaces(detectedFaces);
+      setSelectedLipSyncFaceId(detectedFaces[0]?.id ?? null);
+      setLipSyncPhase('ready');
+      if ((playback.duration ?? 0) > 0) {
+        setLipSyncTrackingSegments(
+          buildTrackingSegments(playback.duration, playback.currentTime, [detectedFaces[0].box]),
+        );
+      }
+      lipSyncIdentifyTimerRef.current = null;
+    }, LIP_SYNC_IDENTIFY_DELAY_MS);
+  }, [playback.currentTime, playback.duration]);
+
+  const handleLipSyncOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'lipSync') return;
+    focusCurrentNode();
+    setLipSyncAudioSource(null);
+    setLipSyncVoiceState('idle');
+    setLipSyncVoiceMessage('');
+    setEditingMode('lipSync');
+    startLipSyncFaceIdentification();
+  }, [editingMode, focusCurrentNode, startLipSyncFaceIdentification, videoContent]);
+
+  const handleLipSyncFaceSelect = useCallback((faceId: string) => {
+    setSelectedLipSyncFaceId(faceId);
+    const targetFace = lipSyncFaces.find((item) => item.id === faceId);
+    if (!targetFace || (playback.duration ?? 0) <= 0) {
+      setLipSyncTrackingSegments([]);
+      return;
+    }
+    setLipSyncTrackingSegments(buildTrackingSegments(playback.duration, playback.currentTime, [targetFace.box]));
+  }, [lipSyncFaces, playback.currentTime, playback.duration]);
+
+  const handleLipSyncRedetect = useCallback(() => {
+    startLipSyncFaceIdentification();
+  }, [startLipSyncFaceIdentification]);
+
+  const handleLipSyncUploadAudio = useCallback(
+    (file: File) => {
+      const nextSource = { type: 'upload' as const, name: file.name, file };
+      setLipSyncAudioSource(nextSource);
+      void validateLipSyncAudioSource(nextSource);
+    },
+    [validateLipSyncAudioSource],
+  );
+
   const normalizeNodeSize = useCallback((size: { width: number; height: number }) => {
     return {
       width: Math.max(videoFlowMinWidth, Math.round(size.width)),
@@ -675,8 +843,12 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   }, [handleSceneExtensionOpen]);
 
   const handleAudioDenoise = useCallback((_nodeId: string) => {
-    message.warning('Audio Denoise coming soon');
-  }, []);
+    handleAudioDenoiseOpen();
+  }, [handleAudioDenoiseOpen]);
+
+  const handleLipSync = useCallback((_nodeId: string) => {
+    handleLipSyncOpen();
+  }, [handleLipSyncOpen]);
 
   const handleCutClose = useCallback(() => {
     if (editingMode !== 'cut') return;
@@ -743,6 +915,27 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode(null);
   }, [editingMode]);
 
+  const handleAudioDenoiseClose = useCallback(() => {
+    if (editingMode !== 'audioDenoise' || isAudioDenoiseSaving) return;
+    setEditingMode(null);
+  }, [editingMode, isAudioDenoiseSaving]);
+
+  const handleLipSyncClose = useCallback(() => {
+    if (editingMode !== 'lipSync') return;
+    if (lipSyncIdentifyTimerRef.current != null) {
+      window.clearTimeout(lipSyncIdentifyTimerRef.current);
+      lipSyncIdentifyTimerRef.current = null;
+    }
+    setLipSyncPhase('idle');
+    setLipSyncFaces([]);
+    setSelectedLipSyncFaceId(null);
+    setLipSyncTrackingSegments([]);
+    setLipSyncAudioSource(null);
+    setLipSyncVoiceState('idle');
+    setLipSyncVoiceMessage('');
+    setEditingMode(null);
+  }, [editingMode]);
+
   const handleEraseSend = useCallback((_payload: { maskTool: VideoEraseMaskTool }) => {
     message.warning('Erase coming soon');
   }, []);
@@ -754,6 +947,22 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAnimateSend = useCallback((_payload: { style: VideoAnimateStyleKey; prompt: string }) => {
     message.warning('Animate coming soon');
   }, []);
+
+  const handleLipSyncSend = useCallback(() => {
+    if (!selectedLipSyncFaceId) {
+      message.warning('Please select one face to continue');
+      return;
+    }
+    if (!lipSyncAudioSource) {
+      message.warning('Please select or upload an audio source');
+      return;
+    }
+    if (lipSyncVoiceState !== 'valid') {
+      message.warning('Selected audio does not contain clear human voice');
+      return;
+    }
+    message.warning('Lip Sync generation is coming soon');
+  }, [lipSyncAudioSource, lipSyncVoiceState, selectedLipSyncFaceId]);
 
   const handleStabilizationSend = useCallback(
     async (payload: { stabilization: number }) => {
@@ -875,6 +1084,30 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       sceneExtensionOrigin.y,
       videoContent,
     ],
+  );
+
+  const handleAudioDenoiseSend = useCallback(
+    async (payload: { intensity: number }) => {
+      if (!videoContent || isAudioDenoiseSaving) return;
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'audio-denoise', state: 'generating' });
+      if (!placeholderId) return;
+      setEditingMode(null);
+      setIsAudioDenoiseSaving(true);
+      try {
+        const nextSrc = await videoAudioDenoiseWithFfmpeg(videoContent, payload.intensity);
+        if (!nextSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        message.error('Could not export audio denoise result. Try again or use a different clip.');
+      } finally {
+        setIsAudioDenoiseSaving(false);
+      }
+    },
+    [createVideoPlaceholderNodeRight, id, isAudioDenoiseSaving, removeNode, resolveVideoResultNode, videoContent],
   );
 
   const handleCropDimensionChange = useCallback(
@@ -1161,6 +1394,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onAnimate={handleAnimateOpen}
           onAdjust={handleAdjustOpen}
           onStabilization={handleStabilizationOpen}
+          onLipSync={handleLipSync}
           onCrop={handleCropOpen}
           onHdrConversion={handleHdrConversion}
           onCutout={handleCutout}
@@ -1363,6 +1597,48 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onSave={handleHdrConversionSave}
         />
       </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'audioDenoise'} position={Position.Bottom} offset={12} align='center'>
+        <AudioDenoiseBottomToolbar
+          active={editingMode === 'audioDenoise'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          intensity={audioDenoiseIntensity}
+          onChange={setAudioDenoiseIntensity}
+          onClose={handleAudioDenoiseClose}
+          onSend={handleAudioDenoiseSend}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'lipSync'} position={Position.Bottom} offset={12} align='center'>
+        <LipSyncBottomToolbar
+          active={editingMode === 'lipSync'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          phase={lipSyncPhase}
+          faces={lipSyncFaces.map((face) => ({ id: face.id, label: face.label, confidence: face.confidence }))}
+          selectedFaceId={selectedLipSyncFaceId}
+          trackingSegments={lipSyncTrackingSegments}
+          audioTrackSrc={lipSyncAudioTrackSrc}
+          selectedAudioName={lipSyncAudioSource?.name}
+          voiceState={lipSyncVoiceState}
+          voiceMessage={lipSyncVoiceMessage}
+          onFaceSelect={handleLipSyncFaceSelect}
+          onRedetect={handleLipSyncRedetect}
+          onUploadAudio={handleLipSyncUploadAudio}
+          onClose={handleLipSyncClose}
+          onSend={handleLipSyncSend}
+          canSend={Boolean(selectedLipSyncFaceId && lipSyncVoiceState === 'valid' && lipSyncAudioSource)}
+        />
+      </FlowNodeToolbar>
       <div
         ref={nodeFrameRef}
         className='relative h-full w-full min-w-0'
@@ -1415,7 +1691,60 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                   }}
                 />
               ) : null}
+              {editingMode === 'lipSync' && (lipSyncPhase === 'identifying' || showLipSyncTrackingPending) ? (
+                <div className='pointer-events-none absolute inset-0 z-[7] flex items-center justify-center'>
+                  <div className='inline-flex h-[24px] items-center gap-1 rounded-full border border-white/70 bg-black/35 px-3 text-[11px] font-semibold text-white shadow-[0_2px_8px_rgba(0,0,0,0.25)]'>
+                    <span className='relative inline-flex h-3 w-3 shrink-0 animate-spin rounded-full border border-white/45 border-t-[#31C95B]' />
+                    <span>Tracking...</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
+            {editingMode === 'lipSync' && lipSyncPhase === 'ready' && !showLipSyncLostOverlay
+              ? lipSyncFaces.map((face) => {
+                const left = `${face.box.cxPct - face.box.wPct / 2}%`;
+                const top = `${face.box.cyPct - face.box.hPct / 2}%`;
+                const widthPct = `${face.box.wPct}%`;
+                const heightPct = `${face.box.hPct}%`;
+                const selectedFace = selectedLipSyncFaceId === face.id;
+                return (
+                  <button
+                    key={face.id}
+                    type='button'
+                    className={`absolute z-[7] overflow-visible border-2 border-dashed ${
+                      selectedFace
+                        ? 'border-[#7F88FF] bg-[rgba(127,136,255,0.18)]'
+                        : 'border-white/80 bg-black/20'
+                    }`}
+                    style={{ left, top, width: widthPct, height: heightPct }}
+                    onClick={() => handleLipSyncFaceSelect(face.id)}
+                  >
+                    <span
+                      className={`absolute left-0 -top-5 inline-flex items-center rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
+                        selectedFace ? 'bg-[#7F88FF] text-white' : 'bg-black/55 text-white'
+                      }`}
+                    >
+                      {face.label}_{Math.round(face.confidence * 100)}%
+                    </span>
+                  </button>
+                );
+              })
+              : null}
+            {showLipSyncLostOverlay ? (
+              <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
+                <button
+                  type='button'
+                  className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
+                  onClick={handleLipSyncRedetect}
+                >
+                  <span>Tracking Lost, click</span>
+                  <span className='inline-flex h-[18px] w-[18px] items-center justify-center rounded border border-white/55'>
+                    <Icon name='videoNode-erase-selection' width={14} height={14} color='#fff' />
+                  </span>
+                  <span>to reselect</span>
+                </button>
+              </div>
+            ) : null}
             {quickEditPickPendingListForThis.map((pending) => (
               <div
                 key={pending.placeholderId}
