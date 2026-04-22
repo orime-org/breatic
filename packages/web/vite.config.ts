@@ -148,6 +148,8 @@ export default defineConfig(({ command, mode }) => {
           target: 'http://localhost:3000',
           changeOrigin: true,
         },
+        // Yjs client connects to `/ws` (without trailing slash), so proxy key
+        // must also match `/ws` to avoid bypassing Vite proxy in dev.
         '/ws': {
           target: 'ws://localhost:1234',
           ws: true,
