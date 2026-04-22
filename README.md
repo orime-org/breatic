@@ -57,10 +57,12 @@ breatic/                           # Turborepo monorepo
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
 ├── agents/                        # SubAgent role definitions (*.md with frontmatter)
 ├── skills/                        # Built-in skill definitions (knowledge + scripts)
-├── docker-compose.yml             # Web (nginx) + API + Collab + Worker + PostgreSQL + Redis
-├── Dockerfile                     # Backend multi-stage (357MB)
-└── Dockerfile.web                 # Frontend multi-stage: Vite → nginx:alpine (73MB)
+├── docker-compose.yml             # Deployment stack — pulls pre-built images from GHCR
+├── Dockerfile                     # Backend image (API/Worker/Collab/Migrate shared, 357MB). Built by CI, published to ghcr.io/orime-org/breatic
+└── Dockerfile.web                 # Frontend image (Vite build → nginx:alpine, 73MB). Built by CI, published to ghcr.io/orime-org/breatic-web
 ```
+
+Dockerfiles are the single source of truth for image builds. CI runs them on every push; contributors and deployers don't need to invoke them in the default workflows but are free to audit or build locally for debugging.
 
 **4 containers in production**: Web (nginx, port 80) | API (Hono) | Collab (Hocuspocus) | Worker (BullMQ)
 
@@ -105,41 +107,54 @@ Built-in agents: `researcher` | `prompt_optimizer` | `analyst` | `planner`. SubA
 
 ## Quick Start
 
-### Prerequisites
+Deployers and developers follow two independent paths. Pick whichever matches what you want to do — the paths don't depend on each other.
 
-- Node.js 22+
-- [pnpm](https://pnpm.io/) 9+
-- Docker (for PostgreSQL + Redis)
+### I want to run Breatic (deployment)
 
-### Local Development
+Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code changes — just Docker.
 
 ```bash
-# Clone and install
+git clone https://github.com/orime-org/breatic_ai.git
+cd breatic_ai
+cp .env.docker .env
+# Edit .env: SESSION_SECRET_KEY, DATABASE_URL, Redis URLs, API keys
+docker compose up -d
+```
+
+Images default to `:latest` (= `main` branch). To pin a specific version or follow a staging branch, set `BREATIC_TAG` in `.env`:
+
+```bash
+# In .env:
+BREATIC_TAG=test_thinkai_cc   # track the test branch
+# or BREATIC_TAG=1.2.3         # pin a released version
+```
+
+See [docs/DEPLOY.md](./docs/DEPLOY.md) for Nginx/SSL/CI details and the image tag reference.
+
+### I want to contribute code (development)
+
+Runs API / Worker / Collab as native Node processes with hot-reload. Docker is only used for the PostgreSQL and Redis services — app code is read directly from the workspace.
+
+```bash
 git clone https://github.com/orime-org/breatic_ai.git
 cd breatic_ai
 pnpm install
 
-# Start PostgreSQL + Redis
-docker compose up -d postgres redis
+docker compose up -d postgres redis    # only infrastructure
+cp .env.dev .env                       # localhost URLs
+mv uploads.example uploads             # first-time only
+pnpm db:migrate                        # once, or after pulling new migrations
+pnpm dev                               # turbo starts API + Worker + Collab + Vite
+```
 
-# Configure environment
-cp .env.dev .env    # Local dev (localhost)
-# Or: cp .env.docker .env  # Docker deployment (container names)
+Vite dev server listens on `http://localhost:8000` and proxies `/api/*` / `/ws` / `/uploads/*` to the backend, mirroring what nginx does in production. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
 
-# Create uploads directory (for local AIGC file storage)
-mv uploads.example uploads
+Useful commands:
 
-# Start API server (port 3000) — DB migrations run automatically
-pnpm dev
-
-# Start Hocuspocus collab server (port 1234, separate terminal)
-pnpm dev:collab
-
-# Start BullMQ worker (separate terminal)
-pnpm dev:worker
-
-# Run tests
-pnpm test
+```bash
+pnpm test          # unit tests (mocked deps)
+pnpm typecheck     # tsc --noEmit across all packages
+pnpm lint          # ESLint
 ```
 
 ## Configuration

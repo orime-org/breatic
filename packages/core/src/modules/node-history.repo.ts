@@ -6,7 +6,7 @@
  * ordered by created_at desc.
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { nodeHistory } from "../db/schema.js";
 import type { NodeHistoryEntity } from "@breatic/shared";
@@ -89,10 +89,12 @@ export async function listByNode(
         eq(nodeHistory.projectId, projectId),
         eq(nodeHistory.nodeId, nodeId),
         eq(nodeHistory.status, opts.status),
+        isNull(nodeHistory.deletedAt),
       )
     : and(
         eq(nodeHistory.projectId, projectId),
         eq(nodeHistory.nodeId, nodeId),
+        isNull(nodeHistory.deletedAt),
       );
 
   const [rows, countResult] = await Promise.all([
@@ -115,12 +117,12 @@ export async function listByNode(
   };
 }
 
-/** Get a single history entry by ID. */
+/** Get a single history entry by ID (excludes soft-deleted). */
 export async function getById(id: string): Promise<NodeHistoryEntity | null> {
   const rows = await db
     .select()
     .from(nodeHistory)
-    .where(eq(nodeHistory.id, id))
+    .where(and(eq(nodeHistory.id, id), isNull(nodeHistory.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }

@@ -9,8 +9,12 @@ interface CustomAxiosRequestConfig extends AxiosRequestConfig {
   needGlobalLoading?: boolean;
 }
 
+// No baseURL — call sites already include the full `/api/v1/...` path, so
+// axios sends the request as-is. The browser resolves it against
+// `location.origin`, which means the same bundle works on any host
+// (localhost, staging, prod, preview deployments) as long as the frontend
+// and API share one reverse proxy (nginx in docker, Vite dev proxy locally).
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/',
   timeout: 180000,
 });
 

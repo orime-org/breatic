@@ -11,7 +11,24 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 
 export interface YjsManagerConfig {
   docId: string;
+  /**
+   * Session token used by Hocuspocus `onAuthenticate` to verify the
+   * user and enforce project ownership. Must be a real session token
+   * from the auth store — previously hardcoded to `'dev'`, which
+   * caused production reconnect loops (server rejected `dev`).
+   *
+   * Empty string means "unauthenticated"; callers should avoid
+   * constructing a manager in that case. If passed anyway, the
+   * auth failure handler will clear session + redirect to login.
+   */
+  token: string;
   wsUrl?: string;
+  /**
+   * Called when the server rejects the token (expired / invalid).
+   * Should clear client session state and redirect to /login.
+   * Without this, the provider would reconnect forever.
+   */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface YjsManager {
@@ -28,11 +45,24 @@ export interface YjsManager {
   destroy: () => void;
 }
 
+/**
+ * Resolve the WebSocket URL.
+ *
+ * Default: same-origin as the page, path `/ws` — nginx (docker) or the Vite
+ * dev proxy reverse-proxies `/ws` to the Collab server. This means one built
+ * bundle works on any host without a rebuild.
+ *
+ * Tests can inject an explicit `wsUrl`; production never needs to.
+ */
+function resolveWsUrl(explicit?: string): string {
+  if (explicit) return explicit;
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/ws`;
+}
+
 export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
-  const {
-    docId,
-    wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1234',
-  } = config;
+  const { docId, token, onAuthFailed } = config;
+  const wsUrl = resolveWsUrl(config.wsUrl);
 
   const doc = new Y.Doc();
 
@@ -40,8 +70,14 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
     url: wsUrl,
     name: docId,
     document: doc,
-    token: 'dev',
+    token,
     timeout: 10000,
+    onAuthenticationFailed: ({ reason }) => {
+      // Stop the infinite reconnect loop — the client cannot recover
+      // from an invalid token without new credentials.
+      provider.disconnect();
+      onAuthFailed?.(reason);
+    },
   });
 
   const awareness = provider.awareness!;
@@ -84,7 +120,11 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
         url: wsUrl,
         name: subdoc.guid,
         document: subdoc,
-        token: 'dev',
+        token,
+        onAuthenticationFailed: ({ reason }) => {
+          subdocProviders.get(subdoc.guid)?.disconnect();
+          onAuthFailed?.(reason);
+        },
       }));
     }
     return subdoc;

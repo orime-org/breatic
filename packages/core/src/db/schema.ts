@@ -189,7 +189,7 @@ export const nodeHistory = pgTable(
     nodeId: varchar("node_id", { length: 255 }).notNull(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "restrict" }),
 
     entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
@@ -203,6 +203,10 @@ export const nodeHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    // Soft-delete, stamped by deleteProject() cascade when the owning
+    // project is deleted. Required for the project-wide "soft delete
+    // only" rule (CLAUDE.md) now that deleteProject actually cascades.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("node_history_node_idx").on(
@@ -490,4 +494,9 @@ export const yjsDocuments = pgTable("yjs_documents", {
   name: text("name").primaryKey(),
   data: bytea("data").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  // Soft-delete support — aligns with the project-wide "soft delete only"
+  // rule (CLAUDE.md). Set by deleteProject() cascade when the owning
+  // project is deleted. Collab's persistence layer filters this out on
+  // fetch so deleted docs are invisible even if a stale client reconnects.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });

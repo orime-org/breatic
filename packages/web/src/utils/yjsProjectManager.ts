@@ -30,9 +30,13 @@ export const userOrigin = 'canvas-user';
 
 export interface YjsProjectManagerConfig {
   workflowId: string;
+  /** Session token for Hocuspocus auth. See YjsManagerConfig.token. */
+  token: string;
   wsUrl?: string;
   userId?: string;
   onSynced?: () => void;
+  /** Called when server rejects the session token; clear session + redirect. */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface YjsProjectManager {
@@ -62,12 +66,17 @@ export interface YjsProjectManager {
 }
 
 export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsProjectManager => {
-  const { workflowId, wsUrl, userId } = config;
+  const { workflowId, token, wsUrl, userId, onAuthFailed } = config;
 
   // Set per-user origin for UndoManager tracking
   _userOrigin = userId ? `canvas-user:${userId}` : 'canvas-user';
 
-  const baseManager = createYjsManager({ docId: `project-${workflowId}/canvas`, wsUrl });
+  const baseManager = createYjsManager({
+    docId: `project-${workflowId}/canvas`,
+    token,
+    wsUrl,
+    onAuthFailed,
+  });
   const doc = baseManager.doc;
 
   const canvasMap = doc.getMap('canvas');

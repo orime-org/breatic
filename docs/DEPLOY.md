@@ -104,15 +104,15 @@ Default values in `.env.dev` work out of the box:
 | `REDIS_URL` | `redis://localhost:6379/0` | Session, lock, rate-limit |
 | `REDIS_QUEUE_URL` | `redis://localhost:6379/1` | BullMQ task queue |
 | `REDIS_STREAM_URL` | `redis://localhost:6379/2` | Streams + Hocuspocus pub/sub |
-| `VITE_API_URL` | `http://localhost:3000` | API direct |
-| `VITE_WS_URL` | `ws://localhost:1234` | Collab direct |
-| `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS) |
+| `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS, only needed if you bypass the dev proxy) |
+
+Frontend API/WebSocket URLs are **not** in `.env` — they resolve automatically from `window.location` at runtime. Vite's dev proxy (configured in `packages/web/vite.config.ts`) forwards `/api/*` to `localhost:3000`, `/ws` to `localhost:1234`, and `/uploads/*` to `localhost:3000`, so the browser sees a single origin (`localhost:8000`) just like it would see a single origin in production (`your-domain.com` via nginx).
 
 ### Key Differences from Docker Deployment
 
 - App code runs via `tsx watch` — changes auto-reload in seconds.
 - Frontend uses Vite dev server with HMR (port 8000), not Nginx.
-- No Nginx reverse proxy — frontend connects to API/Collab directly (CORS required).
+- Vite's dev proxy plays the role Nginx plays in production — same `/api`, `/ws`, `/uploads` routes, same single-origin model.
 - Database/Redis URLs use `localhost` (not container names).
 
 ---
@@ -131,7 +131,7 @@ One command deploys everything. For open-source users and internal networks.
 ### Quick Start
 
 ```bash
-# 1. Clone
+# 1. Clone (you only need docker-compose.yml + .env.docker from here)
 git clone https://github.com/orime-org/breatic_ai.git
 cd breatic_ai
 
@@ -139,21 +139,80 @@ cd breatic_ai
 cp .env.docker .env
 # Edit .env — change these at minimum:
 #   SESSION_SECRET_KEY=<random-string-min-16-chars>
-#   VITE_API_URL=https://your-domain.com/api
-#   VITE_WS_URL=wss://your-domain.com/ws
-#   VITE_BASE_URL=https://your-domain.com
+#   DATABASE_URL / REDIS_URL / REDIS_QUEUE_URL / REDIS_STREAM_URL — real infra
+#   Stripe / OAuth / AIGC API keys as applicable
+# The frontend's API/WebSocket host is NOT configured in .env — it auto-detects
+# from window.location at runtime. Same bundle works on any domain.
 
 # 3. (Optional) Enable HTTPS — place cert files
 cp /path/to/your-cert.pem docker/certs/cert.pem
 cp /path/to/your-cert.key docker/certs/cert.key
 
-# 4. Build and start
-docker compose up -d --build
+# 4. Pull pre-built images and start
+docker compose pull
+docker compose up -d
 
 # 5. Verify
 curl http://localhost/api/health
 # → { "status": "ok", "services": { "db": "ok", "redis": "ok" } }
 ```
+
+You don't need Node, pnpm, or to build anything locally — `docker compose` pulls images from GHCR (`ghcr.io/orime-org/breatic` + `ghcr.io/orime-org/breatic-web`) that CI built and published.
+
+### Choosing an image version (`BREATIC_TAG`)
+
+Every service in `docker-compose.yml` references `${BREATIC_TAG:-latest}`. Set `BREATIC_TAG` in your `.env` to pick which version this deployment tracks. Leave it unset to follow `:latest`.
+
+| Value | What it tracks | Who uses it |
+|-------|----------------|-------------|
+| *(unset)* or `latest` | `main` branch, updated on every merge | Open-source users who want the latest stable |
+| `test_thinkai_cc` | `test_thinkai_cc` branch | The thinkai.cc staging deployment |
+| `1.2.3` | git tag `v1.2.3` | Production deployments pinning a specific release |
+| `1.2` | latest patch of the `1.2.x` line | Production deployments tracking a minor line |
+
+To upgrade (after CI publishes a new image):
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+The `--force-recreate` is important — without it, compose keeps using the old image even after pulling the new one.
+
+### GHCR package visibility (one-time setup)
+
+The first time CI publishes images, the packages are **private by default**. For open-source users to pull without authenticating, switch them to public once:
+
+1. Go to https://github.com/orgs/orime-org/packages
+2. Click the `breatic` package → Package settings → "Change visibility" → Public
+3. Repeat for `breatic-web`
+
+From then on, anyone can `docker pull ghcr.io/orime-org/breatic:latest` without a GitHub token.
+
+Deployments behind a firewall that want to keep images private: skip the visibility change, and have the deployment environment run `docker login ghcr.io` with a PAT (classic token, `read:packages` scope) before `docker compose pull`.
+
+### Using external PostgreSQL / Redis (managed services)
+
+The default `docker-compose.yml` includes `postgres` and `redis` services so a single `docker compose up -d` gives you a fully working stack. In production you'll usually want managed services (RDS / Neon / Supabase for PG, ElastiCache / Upstash / Aiven for Redis) for backups, failover, and independent scaling.
+
+To switch to external infra, edit `docker-compose.yml` before `docker compose up`:
+
+1. **Delete (or comment out) the `postgres` and `redis` service blocks** near the top of the file.
+2. **Delete (or comment out) the `depends_on` entries that reference them** in `migrate`, `api`, `collab`, and `worker`. Compose will error if a service depends on one that doesn't exist.
+3. **Point the URLs at your external hosts** in `.env`:
+
+   ```bash
+   DATABASE_URL=postgres://user:pass@your-rds-host:5432/breatic
+   REDIS_URL=redis://your-redis-host:6379/0
+   REDIS_QUEUE_URL=redis://your-redis-host:6379/1
+   REDIS_STREAM_URL=redis://your-redis-host:6379/2
+   ```
+
+4. `docker compose up -d` — only the 5 app containers (api / worker / collab / migrate / web) come up; there is no embedded PG/Redis running unused.
+
+This is the pattern Immich, Outline, Mattermost, and most other Compose-distributed OSS projects use. It's a one-time ~5-line edit, done once per deployment.
+
+> Do NOT keep the `postgres` / `redis` services running and point URLs at external hosts at the same time — compose would bind `:5432` and `:6379` on the host unnecessarily, risking conflicts with existing databases. The embedded services exist only for the all-in-one convenience path.
 
 ### HTTPS (SSL)
 
@@ -179,11 +238,8 @@ docker compose restart web
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SESSION_SECRET_KEY` | Session signing key (random string, min 16 chars) | `my-super-secret-key-2026` |
-| `VITE_API_URL` | API URL seen by browser | `https://your-domain.com/api` |
-| `VITE_WS_URL` | WebSocket URL seen by browser | `wss://your-domain.com/ws` |
-| `VITE_BASE_URL` | Frontend base URL | `https://your-domain.com` |
 
-> `VITE_*` variables are baked into the frontend at Docker build time. After changing them: `docker compose build web && docker compose up -d web`
+> The frontend has no `VITE_API_URL` / `VITE_WS_URL` / `VITE_BASE_URL` — API and WebSocket URLs resolve from `window.location` at runtime, so one bundle works on any host behind a single reverse proxy. See the [Canonical domain](#canonical-domain) section for why same-origin matters.
 
 #### Database & Redis (defaults work for Docker)
 
@@ -326,17 +382,18 @@ For running breatic.ai as a hosted service. Key differences from self-hosted:
 | Storage | S3 / Aliyun OSS + CDN (CloudFront / Cloudflare) | `STORAGE_PROVIDER=s3` or `aliyun_oss` |
 | Compute | Docker on VM / K8s / ECS | API + Collab + Worker containers |
 | Frontend | Nginx container or CDN (Cloudflare Pages / Vercel) | Static files + reverse proxy |
-| Domain | breatic.ai (prod), thinkai.cc (staging) | Cloudflare DNS + SSL |
+| Domain | breatic.ai (prod), thinkai.cc (staging) | Cloudflare DNS + SSL. Nginx 301-redirects apex and every non-`www.*` host to `www.<domain>` — see [Canonical domain](#canonical-domain) |
 | CI/CD | GitHub Actions | Build → Push to registry → Deploy |
 
 ### Environment Config
 
 ```bash
-# Production (breatic.ai)
+# Production (breatic.ai). The frontend bundle has no baked-in host —
+# it resolves /api/* and /ws against window.location, so the same built
+# image runs on breatic.ai, a staging domain, or a preview URL with zero
+# rebuild. All that matters is that the browser, API, and WebSocket share
+# one origin (nginx in the web container makes this true).
 ENV=prod
-VITE_API_URL=https://breatic.ai/api
-VITE_WS_URL=wss://breatic.ai/ws
-VITE_BASE_URL=https://breatic.ai
 DATABASE_URL=postgres://user:pass@rds-host:5432/breatic
 REDIS_URL=redis://redis-host:6379/0
 REDIS_QUEUE_URL=redis://redis-host:6379/1
@@ -344,11 +401,44 @@ REDIS_STREAM_URL=redis://redis-host:6379/2
 STORAGE_PROVIDER=s3
 PAYMENT_ENABLED=true
 
-# Staging (thinkai.cc)
+# Staging (thinkai.cc) — identical to prod apart from infra hosts
 ENV=staging
-VITE_API_URL=https://thinkai.cc/api
-VITE_WS_URL=wss://thinkai.cc/ws
-VITE_BASE_URL=https://thinkai.cc
+```
+
+### Canonical domain
+
+Nginx enforces a single origin per deployment. Any host that is not
+`www.<your-domain>` — including the bare apex `your-domain.com` and
+alternate subdomains — gets a 301 redirect to `https://www.<your-domain>$request_uri`.
+
+Why this matters in practice: browser `localStorage` is scoped per
+origin. If a user lands on `https://breatic.ai` and logs in, the session
+token only exists on that origin. Navigating to `https://www.breatic.ai`
+would look unauthenticated (different origin → empty `localStorage`),
+and the two tabs would silently disagree about auth state. Forcing one
+canonical host makes the session unambiguous.
+
+The same single-origin discipline is also what lets the frontend ship
+without any baked-in API host. Because browser, API, and WebSocket all
+resolve to `www.<your-domain>`, relative URLs in the frontend bundle
+just work — no `VITE_API_URL`, no rebuild per environment.
+
+#### If you edit `docker/nginx-ssl.conf`, do not drop `default_server`
+
+The apex-redirect server blocks (on both `:80` and `:443`) are marked
+`listen ... default_server` on purpose. `server_name _;` by itself is
+**not** a catch-all — it is just a non-matching placeholder name that
+never matches any `Host` header. Without an explicit `default_server`
+directive, nginx routes "no server_name matched" requests to the
+first `listen` block on that port, which would be the `www`-regex
+block. That path serves the SPA for apex hosts and silently breaks
+canonical enforcement (apex stays as apex, token split-brain returns).
+
+Concretely: the config must keep both of these directives intact.
+
+```nginx
+server { listen 80  default_server; server_name _; return 301 https://www.$host$request_uri; }
+server { listen 443 ssl default_server; server_name _; ...; return 301 https://www.$host$request_uri; }
 ```
 
 ### CI/CD Pipeline
@@ -408,18 +498,17 @@ Most AIGC features require external API keys. Check that the relevant `*_API_KEY
 
 ### Frontend can't connect to API/WebSocket
 
-`VITE_API_URL` and `VITE_WS_URL` are baked into the frontend at Docker build time. After changing:
+The frontend uses relative paths (`/api/*`, `/ws`) — the browser resolves them against `window.location`. If requests fail:
 
-```bash
-docker compose build web
-docker compose up -d web
-```
+1. **Check the URL the browser is actually on** (`location.origin` in DevTools console). All API calls go to that same origin.
+2. **Check nginx is reverse-proxying correctly** — `curl -sI https://www.your-domain.com/api/health` should return 200 from the API container via nginx.
+3. **Docker compose changes** — if you edited `docker-compose.yml` or `Dockerfile.web`, rebuild: `docker compose build web && docker compose up -d web`. You no longer need to rebuild when the domain changes, because the domain isn't baked in.
 
 ### CORS errors in browser
 
-Only relevant for **local development** (API on :3000, frontend on :8000 are different origins). Set `ALLOWED_ORIGINS=http://localhost:8000` in `.env`.
+Only relevant for **local development** if you bypass the Vite dev proxy (e.g. you point the frontend at `http://localhost:3000` directly instead of `/api`). Normally Vite's `server.proxy` makes the browser see a single origin (`localhost:8000`) and no CORS is needed.
 
-Docker deployment doesn't need CORS — Nginx proxies everything through one origin.
+Docker deployment also has no CORS — nginx reverse-proxies everything through one origin.
 
 ### SSL not working
 
@@ -427,6 +516,41 @@ Docker deployment doesn't need CORS — Nginx proxies everything through one ori
 2. Check entrypoint log: `docker compose logs web | head -3`
    - Should show: `[entrypoint] SSL certs found, enabling HTTPS`
 3. Ensure port 443 is not blocked by firewall
+
+### User says "I'm logged in but nothing works" — apex vs www split-brain
+
+Symptom: user lands on the apex domain (`https://breatic.ai`), logs in,
+then follows a link to `https://www.breatic.ai` (or vice versa) and is
+silently logged out, or WebSocket never connects.
+
+Cause: `localStorage` is scoped per origin. Two hosts = two separate
+session stores. Check which host the browser is actually on.
+
+Fix is already deployed — nginx 301-redirects everything that isn't
+`www.*` to the canonical `www.` host. If you're seeing this symptom,
+your nginx config or DNS is routing some traffic around the redirect.
+Verify:
+
+```bash
+curl -I https://breatic.ai            # expect 301 → https://www.breatic.ai/
+curl -I https://api.breatic.ai        # expect 301 → https://www.breatic.ai/
+```
+
+### Canvas deep link shows empty page / "add node" does nothing
+
+The `/project/<id>` route depends on a session token being present in
+Redux on first render. The token is hydrated from `localStorage.auth`
+at store-init time (`packages/web/src/store/modules/userCenter.ts`), so
+this should always work for a logged-in user.
+
+If you're seeing this after a deploy: check that the frontend build
+actually includes the fix (search the built bundle for
+`loadInitialAuthInfo`). If the bundle is stale, rebuild:
+
+```bash
+docker compose build web
+docker compose up -d web
+```
 
 ### Forgot password email not sending
 

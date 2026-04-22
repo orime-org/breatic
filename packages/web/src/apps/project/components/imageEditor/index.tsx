@@ -15,6 +15,9 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
+import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { removeToken } from '@/utils/token';
+import { useNavigate } from 'react-router-dom';
 import {
   resetImageEditor,
   resetImageEditorNodes,
@@ -824,10 +827,19 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     }
   };
 
+  const { authInfo: editorAuthInfo } = useUserCenterStore();
+  const editorNavigate = useNavigate();
+  const editorToken = editorAuthInfo?.state?.token ?? '';
   const { yjsUndo, yjsRedo, yjsCanUndo, yjsCanRedo, yjsEnabled, yjsLoading } = useYjsStore({
     id: nodeId,
-    mode: 'imageEditor',
-    enabled: !!nodeId,
+    token: editorToken,
+    enabled: !!nodeId && !!editorToken,
+    onAuthFailed: useCallback((reason: string) => {
+      // eslint-disable-next-line no-console
+      console.warn('[yjs:imageEditor] Authentication failed:', reason);
+      removeToken();
+      editorNavigate('/login', { replace: true });
+    }, [editorNavigate]),
   });
 
   useEffect(() => {

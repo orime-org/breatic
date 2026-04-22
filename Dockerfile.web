@@ -22,23 +22,17 @@ COPY locales/ locales/
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared
 
-# VITE_ env vars are baked in at build time.
-# Self-hosted: use your domain (e.g. https://www.example.com/api)
-# Local dev: http://localhost:3000 / ws://localhost:1234
-ARG VITE_API_URL=http://localhost:3000
-ARG VITE_WS_URL=ws://localhost:1234
-ARG VITE_BASE_URL=
+# Only non-URL build-time vars remain. API/WebSocket URLs are resolved
+# at runtime from window.location, so a single bundle works on any host
+# behind the same reverse proxy.
 ARG VITE_LOGIN_MODE=WithAccount
 ARG VITE_APP_VERSION=0.1.0
 
-ENV VITE_API_URL=${VITE_API_URL} \
-    VITE_WS_URL=${VITE_WS_URL} \
-    VITE_BASE_URL=${VITE_BASE_URL} \
-    VITE_LOGIN_MODE=${VITE_LOGIN_MODE} \
+ENV VITE_LOGIN_MODE=${VITE_LOGIN_MODE} \
     VITE_APP_VERSION=${VITE_APP_VERSION}
 
-# Override base to "/" for self-hosted (nginx serves at root)
-RUN cd packages/web && pnpm build -- --base=/
+# Vite config hardcodes base='/' — no CLI override needed
+RUN cd packages/web && pnpm build
 
 # ── Stage 2: Serve with nginx ───────────────────────────────────────
 FROM nginx:1.27-alpine

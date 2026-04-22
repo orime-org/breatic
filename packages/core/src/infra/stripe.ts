@@ -40,14 +40,16 @@ export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string,
 ): Stripe.Event {
-  if (!env.STRIPE_WEBHOOK_SECRET) {
+  // Defense-in-depth: env.ts already refuses to boot when PAYMENT_ENABLED=true
+  // with a blank/whitespace STRIPE_WEBHOOK_SECRET, but if this function is
+  // ever called with payments disabled or env validation bypassed, we still
+  // want a clear error instead of letting Stripe SDK fail with a confusing
+  // "signature is malformed" message.
+  const secret = env.STRIPE_WEBHOOK_SECRET.trim();
+  if (!secret) {
     throw new Error(
       "Stripe webhook verification requires STRIPE_WEBHOOK_SECRET.",
     );
   }
-  return getStripeClient().webhooks.constructEvent(
-    payload,
-    signature,
-    env.STRIPE_WEBHOOK_SECRET,
-  );
+  return getStripeClient().webhooks.constructEvent(payload, signature, secret);
 }
