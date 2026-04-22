@@ -176,7 +176,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
-| `config/pricing.yaml` | 积分套餐（5 tier，test+live Stripe ID） |
+| `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
 | `config/models/*.yaml` | AI 模型路由（46 文件，model-centric） |
 
 # 日志
@@ -210,7 +210,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 - **异常**：AppError(status, msg) → NotFound/Conflict/Validation/Forbidden/Unauthorized，Service 层抛，路由层 handler 处理
 - **SSE**：仅 Agent 聊天 + Text mini-tool，`data` 含 `userId` + `projectId`
 - **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`，5 分钟过期，30 次/分钟限速），前端直传
-- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等（CAS 原子状态转换）。Mini-tool 入队前预检余额（402）。`deductOnce()` 保证同 refKey 只扣一次
+- **支付(积分制,非订阅)**：Stripe Checkout 一次性购买积分包(`config/pricing.yaml` 5 档),**没有会员/订阅/功能分级**——所有用户享受同一套功能,只按实际用量扣积分。积分永不过期。Webhook 幂等(CAS 原子状态转换)。Mini-tool 入队前预检余额(402)。`deductOnce()` 保证同 refKey 只扣一次。用户对象上的 `membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码不要按 tier 做 feature gate**,只按积分余额判断
 
 # 禁止清单
 
@@ -271,16 +271,40 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 强成功标准让你能独立循环。弱标准（"让它能跑"）需要不断确认。
 
-## 5. 彻底解决，禁止补丁（MANDATORY）
+## 5. 彻底解决，禁止补丁（MANDATORY — 零容忍）
 
-**定位根因、提彻底方案；禁止头疼医头、脚疼医脚。**
+**定位根因、提彻底方案；禁止头疼医头、脚疼医脚。方案不彻底 = 违规。**
+
+### 硬性规则
 
 - **方案未经用户确认前，不动代码**
 - **方案不唯一时**（含治本/治标的取舍）：列每个选项的复杂度、回归面、架构影响，让用户选；不许自己拍板
 - **自己拿不准时**：必须问；不许猜、不许"先实现一版试试"
 - **架构有根本缺陷**：提架构变更，不在缺陷上打补丁
+- **已有同类系统的现成模式**（主 canvas / canvas Yjs / 主 canvas undo 等）：彻底方案必须对齐，不许新发明半套
 - 参考成熟产品（飞书、Google Docs 等）的做法
 
-动手前两条自检：
-1. 在解决根因，还是只压症状？后者 → 停下来重想
-2. 方案是唯一解，还是我在多个里挑了一个？后者 → 停下来问用户
+### 明令禁止的补丁词汇
+
+一旦出现以下任意一种,立即停手,重新设计:
+
+- "作为 compat shim / 兼容层 / 适配层"（保留老 API 绕过重构）
+- "作为 legacy mirror / 只读镜像"（旧数据源副本救老代码）
+- "作为 escape hatch / 全局 ref / 单例"（绕 Context 边界）
+- "临时/过渡/暂时/先这样/后续再改"（技术债登记，不是解决方案）
+- "为了不改 XX 个 callsite / 工作量考虑"（把工作量当借口换架构妥协）
+- "两条路径并存 / hybrid / 双写"（违反单一真相源）
+
+出现上面任意词汇后的方案 = **不彻底**,不许提交给用户,必须回到白板重想到彻底为止。
+
+### 动手前三条自检（全通过才写代码）
+
+1. 在解决**根因**，还是只压症状？后者 → 停下来重想
+2. 方案是**唯一解**，还是我在多个里挑了一个？后者 → 停下来问用户
+3. 方案里有**任何一处"暂时/兼容/补丁"**？有 → 该处就是下次要返工的地方,现在重做
+
+### 违规成本
+
+给出不彻底方案 → 用户耗费精力识别、拆穿、重提需求。
+**这是对用户时间的犯罪**，不是工程瑕疵。
+发现自己写了补丁 → 立即撤回、重做，**不许辩护、不许找理由、不许谈工作量**。

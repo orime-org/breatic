@@ -280,6 +280,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showToolbar}>
         <div className='rounded-[8px] pointer-events-auto' onMouseDown={(e) => e.stopPropagation()}>
           <TextNodeToolbar
+            nodeId={id}
             isUploading={isUploading}
             onUploadClick={handleToolbarUploadClick}
             onInfoClick={handleToolbarInfoClick}

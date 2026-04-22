@@ -79,9 +79,18 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   );
 
   // Acquire the node lock with taskId so only this task can release it.
+  // If the lock is already held, the task we just created becomes an orphan
+  // (never enqueued, never completed, forever pending in DB). Soft-delete
+  // it before throwing so listings don't show stuck "pending" tasks.
+  //
+  // A cleaner long-term design is "lock first, then create task", but that
+  // requires passing a client-generated taskId through taskService.create —
+  // a bigger refactor left for a follow-up. Rollback here is the minimal
+  // fix that closes the correctness gap.
   if (nodeId && projectId) {
     const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
     if (!acquired) {
+      await taskService.softDelete(task.id);
       throw new ConflictError(
         "Another user is currently handling this node. Try again after they finish.",
       );

@@ -145,3 +145,25 @@ if (env.LOGIN_MODE === "NoAccount" && env.ENV === "prod") {
     "This would disable all authentication. Refusing to start.",
   );
 }
+
+// Stripe secrets must be present (and non-whitespace) when payments are on.
+// Both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET default to "" in the
+// Zod schema so the app boots fine when PAYMENT_ENABLED=false. But if
+// payments are enabled and the secrets are empty or just spaces, webhook
+// signature verification would fail confusingly at runtime (Stripe SDK
+// would complain about an empty signing secret, not "you forgot to
+// configure it"). Fail fast at boot with a clear message instead.
+if (env.PAYMENT_ENABLED) {
+  if (!env.STRIPE_SECRET_KEY.trim()) {
+    throw new Error(
+      "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
+      "(non-empty, non-whitespace). Refusing to start.",
+    );
+  }
+  if (!env.STRIPE_WEBHOOK_SECRET.trim()) {
+    throw new Error(
+      "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
+      "(non-empty, non-whitespace). Refusing to start.",
+    );
+  }
+}

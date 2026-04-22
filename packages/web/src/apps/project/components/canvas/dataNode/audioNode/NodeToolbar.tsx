@@ -17,6 +17,7 @@ export interface AudioNodeToolbarProps {
 }
 
 const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
+  nodeId,
   isUploading = false,
   showRecordView,
   onRecordToggle,
@@ -29,7 +30,7 @@ const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
 
   const handleEditorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    openRightPanel('editor', undefined, undefined, true);
+    openRightPanel('editor', nodeId, undefined, true);
   };
   const handleRecordToggle = (e: React.MouseEvent) => {
     e.stopPropagation();

@@ -1,0 +1,747 @@
+/* ProseMirror surface and editor chrome */
+
+/* Slash menu decorator: positioning wrapper only */
+.breatic-editor-body .ProseMirror .breatic-slash-suggestion-decorator {
+  pointer-events: none;
+}
+
+/* Empty file/image block ([data-file-block]) */
+.breatic-editor-body .ProseMirror [data-file-block] .bn-file-block-content-wrapper {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  width: 100%;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button {
+  align-items: center;
+  background-color: rgb(242, 241, 238);
+  border-radius: 4px;
+  color: rgb(125, 121, 122);
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button:hover,
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode [data-file-block] .bn-add-file-button {
+  background-color: rgb(225, 225, 225);
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block] .bn-add-file-button-text {
+  font-size: 0.9rem;
+}
+
+/* Floating panel shell */
+.bn-panel.bn-mantine-panel {
+  width: 500px;
+  max-width: 100vw;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 8px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 8px 24px rgba(12, 12, 13, 0.12);
+}
+
+.breatic-editor-body .ProseMirror {
+  outline: none;
+  min-height: 300px;
+  /* 标题使用 rem/em 层级，保持字号缩放一致 */
+  font-size: 16px;
+  line-height: 1.5;
+  color: theme('colors.text-default-base');
+  word-break: break-word;
+}
+
+/* 块内标签不占纵向 margin/padding */
+.breatic-editor-body .ProseMirror p,
+.breatic-editor-body .ProseMirror h1,
+.breatic-editor-body .ProseMirror h2,
+.breatic-editor-body .ProseMirror h3,
+.breatic-editor-body .ProseMirror h4,
+.breatic-editor-body .ProseMirror h5,
+.breatic-editor-body .ProseMirror h6,
+.breatic-editor-body .ProseMirror li {
+  margin: 0;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror ul,
+.breatic-editor-body .ProseMirror ol {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+}
+
+.breatic-editor-body .ProseMirror ul li p,
+.breatic-editor-body .ProseMirror ol li p {
+  margin: 0;
+  padding: 0;
+}
+
+/* 标题字号阶梯 */
+.breatic-editor-body .ProseMirror h1,
+.breatic-editor-body .ProseMirror h2,
+.breatic-editor-body .ProseMirror h3,
+.breatic-editor-body .ProseMirror h4,
+.breatic-editor-body .ProseMirror h5,
+.breatic-editor-body .ProseMirror h6 {
+  line-height: 1.25;
+  font-weight: 700;
+  text-wrap: pretty;
+}
+
+.breatic-editor-body .ProseMirror h1 {
+  font-size: 3rem;
+}
+
+.breatic-editor-body .ProseMirror h2 {
+  font-size: 2rem;
+}
+
+.breatic-editor-body .ProseMirror h3 {
+  font-size: 1.3rem;
+}
+
+.breatic-editor-body .ProseMirror h4 {
+  font-size: 1rem;
+}
+
+.breatic-editor-body .ProseMirror h5 {
+  font-size: 0.9rem;
+}
+
+.breatic-editor-body .ProseMirror h6 {
+  font-size: 0.8rem;
+}
+
+.breatic-editor-body .ProseMirror code {
+  background-color: theme('colors.background-neutral-tertiary');
+  border-radius: 0.4rem;
+  color: theme('colors.text-default-base');
+  font-size: 0.85rem;
+  padding: 0.25em 0.3em;
+}
+
+.breatic-editor-body .ProseMirror pre {
+  background: theme('colors.background-neutral-secondary');
+  border-radius: 0.5rem;
+  color: theme('colors.text-default-base');
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.breatic-editor-body .ProseMirror pre code {
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-highlight-block {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 134, 199, 0.35);
+  background: rgba(79, 70, 229, 0.1);
+}
+
+.breatic-editor-body .ProseMirror .breatic-highlight-block[data-ai-placeholder='true'] {
+  margin: 0.25rem 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 2px;
+  border: none;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node {
+  position: relative;
+  margin: 1.5rem 0;
+  border-radius: 8px;
+  background-color: rgb(22 22 22);
+  color: rgb(255 255 255);
+  overflow: hidden;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node pre {
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  width: 100%;
+  tab-size: 2;
+  padding: 34px 16px 24px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: inherit;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node pre code {
+  display: block;
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-wrap {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 2;
+  margin: 0;
+  outline: none !important;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 112px;
+  user-select: none;
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  font-size: 0.8em;
+  color: rgb(255 255 255);
+  opacity: 0;
+  transition: opacity 0.3s;
+  transition-delay: 1s;
+  outline: none;
+  padding: 0;
+  line-height: 1;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger span {
+  pointer-events: none;
+}
+
+.breatic-editor-body .ProseMirror .breatic-code-block-node:hover .breatic-code-block-language-trigger,
+.breatic-editor-body .ProseMirror .breatic-code-block-language-trigger:focus {
+  opacity: 0.5;
+  transition-delay: 0.1s;
+}
+
+.breatic-code-block-language-menu {
+  width: 200px;
+  height: 400px;
+  overflow-y: auto;
+}
+
+.breatic-editor-body .ProseMirror blockquote {
+  border-left: 3px solid theme('colors.border-default-secondary');
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+}
+
+.breatic-editor-body .ProseMirror hr {
+  border: none;
+  border-top: 1px solid theme('colors.border-default-base');
+  margin: 2rem 0;
+}
+
+.breatic-editor-body .ProseMirror strong {
+  font-weight: 600;
+}
+
+.breatic-editor-body .ProseMirror em {
+  font-style: italic;
+}
+
+.breatic-editor-body .ProseMirror s {
+  text-decoration: line-through;
+}
+
+.breatic-editor-body .ProseMirror ::selection {
+  background: rgba(53, 200, 56, 0.18);
+}
+
+/* Bubble menu toolbar */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 8px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 1px 8px 1px rgba(12, 12, 13, 0.05);
+  padding: 4px 6px;
+  z-index: 90;
+}
+
+/* Placeholder — empty paragraph and empty highlight block */
+.breatic-editor-body .ProseMirror p.is-empty::before,
+.breatic-editor-body .ProseMirror .breatic-highlight-block.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: theme('colors.text-default-tertiary');
+  pointer-events: none;
+  height: 0;
+  opacity: 0.5;
+}
+
+/* Resizable image block */
+.breatic-editor-body .ProseMirror .breatic-image-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .breatic-video-resize-wrapper {
+  position: relative;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-visual-media {
+  border-radius: 4px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle {
+  width: 8px;
+  height: 30px;
+  background-color: #000;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle--left {
+  left: 4px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block .bn-resize-handle--right {
+  right: 4px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block:hover .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-video-block[data-resize-state='true'] .bn-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode .breatic-video-resize-wrapper {
+  border-radius: 4px;
+  outline: 4px solid rgb(100, 160, 255);
+  outline-offset: 2px;
+}
+
+.breatic-editor-body .ProseMirror .breatic-video-block.ProseMirror-selectednode {
+  background-color: transparent;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block {
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block,
+.breatic-editor-body .ProseMirror .breatic-audio-block * {
+  user-select: none;
+}
+
+.breatic-editor-body .ProseMirror .breatic-audio-block .bn-audio {
+  width: 100%;
+  max-width: 100%;
+  display: block;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .breatic-image-resize-wrapper {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  width: fit-content;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .bn-visual-media {
+  border-radius: 4px;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block .bn-resize-handle {
+  width: 8px;
+  height: 30px;
+  background-color: #000;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  pointer-events: auto;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block:hover .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-image-block.ProseMirror-selectednode .bn-resize-handle,
+.breatic-editor-body .ProseMirror .breatic-image-block[data-resize-state='true'] .bn-resize-handle {
+  opacity: 1;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-block.ProseMirror-selectednode .breatic-image-resize-wrapper {
+  border-radius: 4px;
+  outline: 4px solid rgb(100, 160, 255);
+  outline-offset: 2px;
+}
+
+/* Link mode when showPreview is false ([data-file-block]) */
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-block-content-wrapper {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.breatic-editor-body
+  .ProseMirror
+  [data-file-block].breatic-image-link-mode
+  .bn-file-block-content-wrapper:has(.bn-file-name-with-icon) {
+  width: 100%;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name-with-icon:hover,
+.breatic-editor-body
+  .ProseMirror
+  .ProseMirror-selectednode[data-file-block].breatic-image-link-mode
+  .bn-file-name-with-icon {
+  background-color: rgb(225, 225, 225);
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: theme('colors.text-default-tertiary');
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-icon svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name-with-icon {
+  border-radius: 4px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+}
+
+.breatic-editor-body .ProseMirror [data-file-block].breatic-image-link-mode .bn-file-name {
+  margin: 0;
+  font-size: 0.9rem;
+  color: theme('colors.text-default-secondary');
+  word-break: break-word;
+}
+
+.breatic-editor-body .ProseMirror .breatic-image-link-mode.ProseMirror-selectednode {
+  background-color: transparent;
+  outline: none;
+}
+
+.breatic-editor-body .ProseMirror img:not(.bn-visual-media) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  display: block;
+}
+
+/* Table wrapper padding for resize handles */
+.breatic-editor-body .ProseMirror .tableWrapper {
+  --bn-table-widget-size: 22px;
+  --bn-table-handle-size: calc(18px / 2);
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--bn-table-handle-size) var(--bn-table-widget-size) var(--bn-table-widget-size)
+    var(--bn-table-handle-size);
+  position: relative;
+  width: 100%;
+}
+
+/* Table row/column drag handles */
+.breatic-editor-wrapper .bn-table-handle {
+  align-items: center;
+  background-color: theme('colors.background-default-base');
+  border: 1px solid theme('colors.border-default-base');
+  border-radius: 6px;
+  box-shadow:
+    0px 1px 4px 0px rgba(12, 12, 13, 0.05),
+    0px 1px 8px 1px rgba(12, 12, 13, 0.05);
+  color: theme('colors.text-default-tertiary');
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  line-height: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+/* Row grip (left strip): 18×26 px; column grip (top strip): 26×18 px */
+.breatic-editor-wrapper .bn-table-handle-row {
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 26px;
+  min-height: 26px;
+  width: 18px;
+  min-width: 18px;
+}
+
+/* Column grip: wider hit box; icon rotates so dots read along the column axis. */
+.breatic-editor-wrapper .bn-table-handle-col {
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 18px;
+  min-height: 18px;
+  width: 26px;
+  min-width: 26px;
+}
+
+/* Icon: block + no negative margin on column so rotated “horizontal” dot rows stay visually centered. */
+.breatic-editor-wrapper .bn-table-handle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.breatic-editor-wrapper .bn-table-handle-row svg {
+  margin-inline: -4px;
+}
+
+.breatic-editor-wrapper .bn-table-handle-col svg {
+  margin-inline: 0;
+  transform: rotate(0.25turn);
+  transform-origin: center;
+}
+
+.breatic-editor-wrapper .bn-table-handle-not-draggable {
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-table-handle:hover {
+  background-color: theme('colors.background-default-base-hover');
+}
+
+/* Extend + row/column — no border (hit targets use table-adjacent strips in TS) */
+.breatic-editor-wrapper .bn-extend-button {
+  align-items: center;
+  background-color: theme('colors.background-neutral-secondary');
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  color: theme('colors.text-default-tertiary');
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  overflow: visible;
+  padding: 0;
+}
+
+.breatic-editor-wrapper .bn-extend-button:hover {
+  background-color: theme('colors.background-default-base-hover');
+}
+
+.breatic-editor-wrapper .bn-extend-button-add-remove-columns {
+  height: 100%;
+  width: 18px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-extend-button-add-remove-rows {
+  height: 18px;
+  width: 100%;
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.breatic-editor-wrapper .bn-table-handle-menu {
+  overflow: visible;
+}
+
+/*
+ * Table width: do not force 100% — inline width/minWidth from column metadata keeps layout stable;
+ * with auto width and wrapper overflow-x, extra columns scroll horizontally.
+ */
+.breatic-editor-body .ProseMirror .tableWrapper > table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: auto;
+  max-width: none;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.breatic-editor-body .ProseMirror th,
+.breatic-editor-body .ProseMirror td {
+  border: 1px solid theme('colors.border-default-base');
+  padding: 6px 10px;
+  vertical-align: top;
+  position: relative;
+}
+
+/* Header cells: no extra fill vs body cells */
+.breatic-editor-body .ProseMirror th {
+  background: transparent;
+  font-weight: 600;
+  text-align: left;
+}
+
+.breatic-editor-body .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* Column resize handle */
+.breatic-editor-body .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--color-brand-base, #3563E9);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Resize cursor on table cells */
+.breatic-editor-body .ProseMirror.resize-cursor,
+.breatic-editor-body .ProseMirror.resize-cursor * {
+  cursor: col-resize !important;
+}
+
+/* Highlighted text */
+.breatic-editor-body .ProseMirror mark {
+  background-color: rgba(255, 212, 0, 0.35);
+  border-radius: 2px;
+  padding: 0;
+  margin: 0;
+  display: inline;
+  line-height: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Links */
+.breatic-editor-body .ProseMirror a {
+  color: theme('colors.brand-base');
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Task list — checkbox items, no bullets, strikethrough when checked */
+.breatic-editor-body .ProseMirror ul.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin: 0;
+  padding: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > label {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding-top: 0.3em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > label input[type='checkbox'] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--color-brand-base, #3563e9);
+}
+
+/* tiptap inserts an empty <span> next to the input — hide it */
+.breatic-editor-body .ProseMirror ul.task-list li > label > span {
+  display: none;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.breatic-editor-body .ProseMirror ul.task-list li > div p {
+  margin: 0;
+  padding: 0;
+}
+
+/* Checked item: strikethrough + dimmed */
+.breatic-editor-body .ProseMirror ul.task-list li[data-checked='true'] > div {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Selected block highlight (NodeSelection) */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode {
+  background-color: rgba(53, 200, 56, 0.2);
+  border-radius: 4px;
+  outline: none;
+}
+
+/* Image selection: outline on inner wrapper instead of node fill */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-image-block {
+  background-color: transparent;
+}
+
+/* Media selection: keep native controls/outline, no node fill */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-video-block,
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode.breatic-audio-block {
+  background-color: transparent;
+}
+
+/* Some NodeView structures apply selection class on an outer wrapper. */
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode[data-breatic-video],
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode[data-breatic-audio],
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode:has([data-breatic-video]),
+.breatic-editor-body .ProseMirror .ProseMirror-selectednode:has([data-breatic-audio]) {
+  background-color: transparent !important;
+}

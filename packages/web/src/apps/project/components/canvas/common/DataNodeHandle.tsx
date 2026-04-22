@@ -262,7 +262,7 @@ const DataNodeHandle: React.FC<DataNodeHandleProps> = ({
                         {asset.label}
                       </span>
                       <span className='text-[10px] leading-3 text-text-default-tertiary truncate'>
-                        {getNodeSubtitle(asset.type)}测试
+                        {getNodeSubtitle(asset.type)}
                       </span>
                     </div>
                   </div>

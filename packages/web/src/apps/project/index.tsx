@@ -5,19 +5,21 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
+import { MixedEditorDataProvider, useMixedEditorData } from '@/contexts/MixedEditorDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
+import { useYjsNodeEditor } from '@/hooks/useYjsNodeEditor';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
-import ImageEditor from './components/imageEditor';
+import ImageEditor from './components/mixedEditor';
+import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
-import store from '@/store';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
-import type { ImageFlowNodeData } from './components/imageEditor/types';
+import type { ImageFlowNodeData } from './components/mixedEditor/types';
 
 /** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
 const builtInNodeTemplateData = [
@@ -67,17 +69,66 @@ const ProjectPage: React.FC = () => {
 
   return (
     <CanvasDataProvider manager={yjs.manager ?? null}>
-      <ProjectContent yjs={yjs} />
+      <ProjectContentShell yjs={yjs} />
     </CanvasDataProvider>
   );
 };
 
-/** Inner content — reads canvas data from CanvasDataProvider context. */
-const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs }) => {
+/**
+ * Inside the CanvasDataProvider but OUTSIDE the MixedEditorDataProvider
+ * — this shell reads the canvas node list to decide which host node
+ * (if any) the mixed editor panel is currently bound to, constructs
+ * the per-node Yjs editor manager for that node, and installs the
+ * MixedEditorDataProvider so the rest of the page (including the
+ * agent chat on the left) can read mixed editor state from context.
+ *
+ * Provider placement mirrors the main canvas: everything that might
+ * read mixed editor nodes lives below both providers, so there is no
+ * need for a parallel Redux slice or a module-level "active manager"
+ * escape hatch — a single source of truth flows through React context.
+ */
+const ProjectContentShell: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs }) => {
+  const { workflowId } = useCanvasUI();
+  const { nodes: canvasNodes } = useCanvasData();
+  const { rightPanel } = useCanvasUI();
+
+  const panelNode = rightPanel.nodeId ? canvasNodes.find((n) => n.id === rightPanel.nodeId) : undefined;
+  const panelNodeType = String(panelNode?.type ?? '');
+  const isMixedEditorNode =
+    panelNodeType === '1002' || panelNodeType === '1003' || panelNodeType === '1004';
+  const mixedEditorOpen = rightPanel.open && rightPanel.panelType === 'editor' && isMixedEditorNode;
+
+  // The mixed editor manager is per-node — exists only while the panel
+  // is open on a mixed-type node. Pass `undefined` (not empty string)
+  // so `useYjsNodeEditor`'s guard refuses to start the manager when
+  // the panel is closed, and so manager swaps cleanly to the new node
+  // when the user opens the panel on a different host.
+  const mixedEditorYjs = useYjsNodeEditor({
+    projectId: workflowId,
+    nodeId: mixedEditorOpen ? rightPanel.nodeId : undefined,
+    enabled: mixedEditorOpen,
+  });
+
+  return (
+    <MixedEditorDataProvider manager={mixedEditorYjs.manager}>
+      <ProjectContentBody yjs={yjs} panelNode={panelNode} />
+    </MixedEditorDataProvider>
+  );
+};
+
+/**
+ * The actual project content — inside both data providers, consumes
+ * canvas + mixed-editor data through their respective hooks.
+ */
+const ProjectContentBody: React.FC<{
+  yjs: ReturnType<typeof useYjsStore>;
+  panelNode: ReturnType<typeof useCanvasData>['nodes'][number] | undefined;
+}> = ({ yjs, panelNode }) => {
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
-  const { updateNode: updateImageEditorNode } = useImageEditorStore();
+  const { nodes: mixedNodes } = useMixedEditorData();
+  const { updateNode: updateMixedEditorNode } = useMixedEditorActions();
   const [workflowName, setWorkflowName] = useState<string>('');
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
@@ -97,18 +148,21 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   }, [nodes, updateNode]);
 
   const exitImageEditorPickMode = useCallback(() => {
-    const currentNodes = store.getState().imageEditor.nodes;
-    const hasPickMode = currentNodes.some(
+    // pickState for mixed-editor nodes lives in the provider's local
+    // overlay (UI-only, never in Yjs). `updateMixedEditorNode` with
+    // `data.pickState` is routed to `setNodeLocalData` by the actions
+    // hook — so this still correctly clears the overlay entry.
+    const hasPickMode = mixedNodes.some(
       (n) => (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true,
     );
     if (!hasPickMode) return;
-    for (const n of currentNodes) {
+    for (const n of mixedNodes) {
       const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
       if (ps?.fromCanvas || ps?.resultBoxes?.length) {
-        updateImageEditorNode(n.id, { data: { pickState: null } }, { history: 'skip' });
+        updateMixedEditorNode(n.id, { data: { pickState: null } }, { history: 'skip' });
       }
     }
-  }, [updateImageEditorNode]);
+  }, [mixedNodes, updateMixedEditorNode]);
 
   const handleToggleChatPanel = () => {
     setChatPanelVisible((prev) => !prev);
@@ -137,8 +191,10 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
     });
   };
 
-  const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
-  const isImageNode = String(panelNode?.type ?? '') === '1002';
+  const panelNodeType = String(panelNode?.type ?? '');
+  const isTextNode = panelNodeType === '1001';
+  const isMixedEditorNode = panelNodeType === '1002' || panelNodeType === '1003' || panelNodeType === '1004';
+  const isImageNode = panelNodeType === '1002';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
   const showChatSeparator = chatPanelVisible && (canvasPanelVisible || isRightEditorOpen);
   const showRightSeparator = isRightEditorOpen && canvasPanelVisible;
@@ -160,8 +216,8 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
       exitImageEditorPickMode();
       setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
     }
-    // exitCanvasPickMode / exitImageEditorPickMode read from store.getState() so they
-    // are stable and do not need to be listed as reactive dependencies here.
+    // exitCanvasPickMode / exitImageEditorPickMode read from the latest
+    // nodes snapshot via their memoised deps; no need to list them here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRightEditorOpen]);
 
@@ -294,7 +350,9 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
                       />
                     </button>
                   </Tooltip>
-                  {isImageNode && panelNode ? (
+                  {isTextNode && panelNode ? (
+                    <TextEditor nodeId={panelNode.id} />
+                  ) : isMixedEditorNode && panelNode ? (
                     <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : (
                     <ResizableLeftPanel />
