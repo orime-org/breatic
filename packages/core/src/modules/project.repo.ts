@@ -13,6 +13,7 @@ import {
   tasks,
   yjsDocuments,
 } from "../db/schema.js";
+import { cascadeDeleteConversations } from "./conversation.repo.js";
 import type { ProjectEntity } from "@breatic/shared";
 
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
@@ -195,19 +196,24 @@ export async function duplicateProject(
 }
 
 /**
- * Soft-delete a project and all records that belong to it.
+ * Soft-delete a project and every record that belongs to it.
  *
  * BUG-020 switched every child FK to `onDelete: restrict`, which means
- * Postgres now refuses to hard-delete a project while children reference
- * it. But soft-delete only set `deleted_at` on the project row itself —
- * children stayed with `deleted_at IS NULL` and continued to appear in
- * list queries. This function closes that gap by cascading the
- * `deletedAt` stamp inside a single transaction, so either the whole
- * project tree is marked deleted or none of it is.
+ * Postgres refuses to hard-delete a project while children reference
+ * it. Setting `deleted_at` on the project row alone left children with
+ * `deleted_at IS NULL` and they kept showing up in list queries —
+ * BUG-031 closed that gap for the project's direct children, and
+ * BUG-142 closes it again for the conversation's grandchildren
+ * (conversation_attachments / conversation_memories / memory_history_entries)
+ * by delegating to {@link cascadeDeleteConversations}.
  *
  * Every child UPDATE is guarded with `isNull(deletedAt)` so we never
  * overwrite a previously-stamped timestamp if the same project is
  * deleted twice.
+ *
+ * Reference-only memory entries (`user_memory_entries.source_conversation_id`,
+ * `project_memory_entries.source_conversation_id`) are NOT rewritten
+ * here — see the rationale in `cascadeDeleteConversations`.
  *
  * yjs_documents is special: it has no FK to `projects`, only a string
  * `name` key shaped like `project-{id}/canvas` or `project-{id}/node/{nodeId}`.
@@ -217,14 +223,23 @@ export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
 
+    // Gather the project's non-deleted conversations so the cascade
+    // helper can soft-delete their attachments/memories/history in the
+    // same transaction. Skipping this (like the original BUG-031 fix
+    // did) would leak conversation_attachments / conversation_memories /
+    // memory_history_entries as orphaned "deleted_at IS NULL" rows.
+    const convRows = await tx
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(
+        and(eq(conversations.projectId, id), isNull(conversations.deletedAt)),
+      );
+    const convIds = convRows.map((r) => r.id);
+    await cascadeDeleteConversations(tx, convIds, now);
+
     // Most child tables have no `updatedAt` column (only `deletedAt`);
     // only `projects` and `yjs_documents` carry `updatedAt`. Keep each
     // update set minimal so typecheck catches a schema drift.
-    await tx
-      .update(conversations)
-      .set({ deletedAt: now })
-      .where(and(eq(conversations.projectId, id), isNull(conversations.deletedAt)));
-
     await tx
       .update(nodeHistory)
       .set({ deletedAt: now })
