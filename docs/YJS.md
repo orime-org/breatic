@@ -555,7 +555,7 @@ subdocs, following the name pattern `project-{id}/node/{nodeId}`.
 | Node type | Editor content |
 |-----------|---------------|
 | Text | TipTap rich text (`Y.XmlFragment "body"`) |
-| Image | ReactFlow sub-canvas (`Y.Map "flow" { nodes, edges }`) |
+| Image | ReactFlow sub-canvas (`Y.Map "flow" { nodes }`) |
 | Audio | ReactFlow sub-canvas |
 | Video | ReactFlow sub-canvas |
 
@@ -569,9 +569,106 @@ Sub-canvas nodes do **not** have their own Launch Editor (no
 recursion). They use separate type codes from the main canvas
 (e.g. image layers, audio tracks). Sub-canvas type design is TBD.
 
-An "Apply to node" action on the sub-canvas writes the result back
-to the parent node's `content` field on the main canvas. If the
-parent node is in `handling` state, Apply is blocked with a warning.
+### 11.1 Mixed editor flow schema
+
+Mixed editor (image / video / audio Launch Editor) uses a flat Y.Map:
+
+```
+flow: Y.Map<nodeId, Y.Map>   ← flat, NO edges by design
+  each node Y.Map:
+    id:       string
+    type:     '2002' | '2003' | '2004' | 'group'
+    position: Y.Map { x, y }
+    style:    Y.Map { width, height }
+    zIndex:   number   (optional)
+    parentId: string   (optional — for group nesting)
+    extent:   unknown  (optional)
+    data:     Y.Map (ImageEditorNodeData)
+      name:       string
+      content:    string        ← URL or text body
+      state:      'idle'        ← always 'idle' in Yjs (see § 11.3)
+      runType?:   'parameter' | 'sensitive'
+      params?:    Y.Map
+      nodeRuntimeData?: per-node runtime config
+```
+
+Mixed editor has **no edges**. Cropping / variation / AI transform
+all produce sibling nodes, never directed links — the UX is "bag of
+tiles" not DAG.
+
+### 11.2 Handling lifecycle — the X pattern
+
+Mixed editor tasks come in two flavours:
+
+- **Type A (browser-local)** — `ffmpeg.wasm` crop / speed / adjust
+  / stabilization / etc. The Web Worker is tied to the originator's
+  browser tab.
+- **Type B (backend-served)** — AI mini-tools (inpaint, super-res,
+  lip sync). Execute server-side; survive the browser.
+
+For both, the mixed editor's Yjs flow **never carries a
+`state: 'handling'` node**. Loading tiles live in the originator's
+React context (`pendingTasks` map on `MixedEditorDataContext`) —
+local to this browser tab, invisible to collaborators. On
+completion, the action hook writes a single `state: 'idle'` node
+into Yjs under `userOrigin` → one undoable "I produced this tile"
+step lands in the undo stack.
+
+**Why no handling state in Yjs**: if the originator's browser dies
+mid-task, the Web Worker dies with it and the task result is lost.
+A persisted "handling" tile in Yjs would survive as a zombie
+placeholder that every collaborator has to clean up. The X pattern
+eliminates that failure mode by design — if the browser dies, Yjs
+has nothing to be stuck on.
+
+**Cost of the X pattern**: collaborators don't see a peer's
+in-flight loading tile. They see the finished tile appear
+atomically. This is acceptable because Type A tasks are typically
+seconds, the mixed editor is primarily single-user, and "true"
+collaborative visibility would require backend task orchestration
+(violating the nuts-and-bolts fully-frontend architecture).
+
+**Closing the editor panel with pending tasks**: the React cleanup
+terminates the Web Workers and any in-flight Type A tasks are lost.
+The UI intercepts the panel-close button and prompts the user to
+confirm. See `handleToggleEditorPanel` in `apps/project/index.tsx`.
+
+### 11.3 Undo / redo in the mixed editor
+
+`Y.UndoManager` scope: `flow` Y.Map, per-user `trackedOrigins`,
+500 ms `captureTimeout`, 50-entry cap. Mirrors the main canvas
+UndoManager knobs exactly.
+
+| Action | Origin | In undo stack? |
+|--------|--------|----------------|
+| Create completed tile (resolve handling) | `mixed-user:${userId}` | ✓ — one step |
+| Delete tile (user Delete key) | `mixed-user:${userId}` | ✓ |
+| Drag tile (position changes) | `mixed-user:${userId}` | ✓ — batched by 500 ms capture |
+| Add loading pending tile (`addHandlingNode`) | — | ✗ (not in Yjs at all) |
+| Content / params / runtime data writes | `noHistoryOrigin` | ✗ |
+
+**Handling guard**: `removeNode` / `onNodesChange(remove)` no-op
+when the target id is in `pendingTasks`. ReactFlow's Delete / Backspace
+on a loading tile is silently ignored — let the task finish or the
+user explicitly cancel via the close-panel dialog.
+
+### 11.4 Apply to the host node
+
+Every mixed editor tile carries an **Apply to Node** button. It
+writes the tile's `content` to the main-canvas **host node** — the
+one the editor was launched from. Target is fixed at editor-open
+time (`hostNodeId` on `MixedEditorDataContext`) and never changes,
+even if the user then clicks a different node on the main canvas.
+
+- Main canvas write uses `useCanvasActions().updateNode(hostNodeId,
+  { data: { content, … } })` — goes into the main canvas undo stack
+  (`userOrigin`). Ctrl+Z on the main canvas reverts to the previous
+  content.
+- Apply is purely frontend: no backend task, no mini-tool call, no
+  Redis Stream event. It's a direct Yjs write from the source tile
+  to the host node.
+- Repeat clicks are allowed (overwrite semantics); each click is a
+  new undo entry.
 
 ## 12. Awareness (future)
 

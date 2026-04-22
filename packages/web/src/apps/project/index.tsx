@@ -110,7 +110,10 @@ const ProjectContentShell: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = (
   });
 
   return (
-    <MixedEditorDataProvider manager={mixedEditorYjs.manager}>
+    <MixedEditorDataProvider
+      manager={mixedEditorYjs.manager}
+      hostNodeId={mixedEditorOpen ? rightPanel.nodeId : undefined}
+    >
       <ProjectContentBody yjs={yjs} panelNode={panelNode} />
     </MixedEditorDataProvider>
   );
@@ -127,7 +130,7 @@ const ProjectContentBody: React.FC<{
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
-  const { nodes: mixedNodes } = useMixedEditorData();
+  const { nodes: mixedNodes, hasPendingTasks, pendingTaskCount } = useMixedEditorData();
   const { updateNode: updateMixedEditorNode } = useMixedEditorActions();
   const [workflowName, setWorkflowName] = useState<string>('');
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
@@ -170,6 +173,16 @@ const ProjectContentBody: React.FC<{
 
   const handleToggleEditorPanel = () => {
     if (rightPanel.open) {
+      // If the mixed editor has in-flight browser-local tasks
+      // (ffmpeg.wasm etc — the X pattern), closing the panel
+      // unmounts the React tree, which terminates the Web Workers
+      // and loses the results. Warn the user first.
+      if (hasPendingTasks) {
+        const msg = pendingTaskCount === 1
+          ? 'A task is still running. Closing the editor will cancel it and the result will be lost. Continue?'
+          : `${pendingTaskCount} tasks are still running. Closing the editor will cancel them and the results will be lost. Continue?`;
+        if (!window.confirm(msg)) return;
+      }
       exitImageEditorPickMode();
       closeRightPanel();
       setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
