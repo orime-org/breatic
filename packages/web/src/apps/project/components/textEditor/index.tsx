@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Collaboration from '@tiptap/extension-collaboration';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
 import TextAlign from '@tiptap/extension-text-align';
@@ -32,8 +33,10 @@ import { BreaticAudio } from './extensions/BreaticAudioExtension';
 import { BreaticCodeBlock } from './extensions/breaticCodeBlockView';
 import { HighlightBlock } from './extensions/HighlightBlockExtension';
 import MediaFilePanel from './media/MediaFilePanel';
-import { useMixedEditorStore as useProjectStore } from '@/hooks/useMixedEditorStore';
-import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
+import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useCanvasActions } from '@/hooks/useCanvasActions';
+import { useYjsNodeEditor } from '@/hooks/useYjsNodeEditor';
+import type { YjsNodeEditorManager } from '@/utils/yjsNodeEditorManager';
 import type { TextEditorProps } from './types';
 import EditorMenus from './ui/EditorMenus';
 import BlockLineControl from './ui/BlockLineControl';
@@ -43,76 +46,106 @@ import TableOfContents from './toc/TableOfContents';
 import 'highlight.js/styles/github-dark.css';
 import '@/styles/editor.css';
 
+/**
+ * Debounce for the summary write-back to the main canvas node.
+ *
+ * 500ms balances two concerns:
+ *   - too short (~180ms used historically) means every keystroke
+ *     triggers a `nodesMap` `.set('content', …)` on the main canvas
+ *     Y.Doc — each collaborator on the project canvas then receives
+ *     the churn
+ *   - too long (~2s) means the node card preview and any LLM prompt
+ *     referencing the node lag visibly behind the editor
+ */
+const SUMMARY_WRITEBACK_DEBOUNCE_MS = 500;
+
+/**
+ * TextEditor entry — splits into `TextEditor` (auth + Yjs gate) and
+ * `TextEditorInner` (actual TipTap instance) so React hook order stays
+ * stable across the manager-ready transition.
+ */
 const TextEditor = ({ nodeId }: TextEditorProps) => {
-  const { nodes, updateNode } = useProjectStore();
-  const nodesRef = useRef(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+  const { workflowId } = useCanvasUI();
+  const { manager, loading } = useYjsNodeEditor({
+    projectId: workflowId,
+    nodeId,
+  });
 
-  const contentFromNode = useMemo(() => {
-    const n = nodes.find((x) => x.id === nodeId);
-    const d = n?.data as Partial<CanvasWorkflowNodeData> | undefined;
-    return typeof d?.content === 'string' ? d.content : '';
-  }, [nodes, nodeId]);
+  if (!manager) {
+    return loading ? (
+      <div className='flex h-full w-full items-center justify-center bg-background-default-secondary text-text-default-base'>
+        Loading…
+      </div>
+    ) : null;
+  }
 
-  const lastWrittenHtmlRef = useRef<string | null>(null);
-  const lastPersistedHtmlRef = useRef<string | null>(null);
-  const pendingSyncHtmlRef = useRef<string | null>(null);
-  const pendingSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isApplyingRemoteRef = useRef(false);
+  // key=docName guarantees a full remount when the user switches to a
+  // different text node — avoids the TipTap editor holding a reference
+  // to a destroyed Y.XmlFragment from the previous manager.
+  return <TextEditorInner key={manager.docName} nodeId={nodeId} manager={manager} />;
+};
 
-  const persistEditorHtml = useCallback((html: string) => {
-    if (isApplyingRemoteRef.current) return;
-    if (html === lastPersistedHtmlRef.current) return;
+interface TextEditorInnerProps {
+  nodeId: string;
+  manager: YjsNodeEditorManager;
+}
 
-    const cur = (nodesRef.current.find((x) => x.id === nodeId)?.data ?? {}) as Record<string, unknown>;
-    if (typeof cur.content === 'string' && cur.content === html) {
-      lastPersistedHtmlRef.current = html;
-      return;
-    }
+/**
+ * Inner TipTap host — only mounts when the Yjs node editor manager is
+ * ready. Owns three data flows:
+ *
+ *   1. TipTap ↔ Y.XmlFragment `body` via the `Collaboration` extension
+ *      (full CRDT, handles offline + multi-cursor).
+ *   2. `body` observe → debounced HTML summary write-back to the main
+ *      canvas node's `data.content`, so the card preview + LLM prompt
+ *      references stay fresh. Summary is derived; never read back.
+ *   3. Local UI state (AI menu, TOC) — unchanged from previous version.
+ */
+const TextEditorInner: React.FC<TextEditorInnerProps> = ({ nodeId, manager }) => {
+  const { updateNode: updateMainCanvasNode } = useCanvasActions();
 
-    updateNode(nodeId, {
-      data: {
-        ...cur,
-        name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
-        content: html,
-        state: 'idle',
-        nodeRuntimeData: {
-          ...((cur.nodeRuntimeData as Record<string, unknown>) ?? {}),
-          runType: 'parameter',
-        },
-      },
-    });
-    lastPersistedHtmlRef.current = html;
-  }, [nodeId, updateNode]);
+  const yBody = useMemo(() => manager.doc.getXmlFragment('body'), [manager]);
 
-  const flushPendingEditorSync = useCallback(() => {
-    if (pendingSyncTimerRef.current) {
-      clearTimeout(pendingSyncTimerRef.current);
-      pendingSyncTimerRef.current = null;
-    }
-    const html = pendingSyncHtmlRef.current;
+  // ── Summary write-back: debounced HTML → main canvas data.content ──
+  //
+  // `lastSyncedHtmlRef` dedupes echoes: when a remote collaborator edits,
+  // TipTap's onUpdate fires locally too, but if the resulting HTML
+  // matches what we last wrote we skip the re-set (Y.Map.set always
+  // creates an op, even for equal values).
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHtmlRef = useRef<string | null>(null);
+  const lastSyncedHtmlRef = useRef<string>('');
+
+  const flushSummary = useCallback(() => {
+    const html = pendingHtmlRef.current;
+    pendingHtmlRef.current = null;
     if (html == null) return;
-    pendingSyncHtmlRef.current = null;
-    persistEditorHtml(html);
-  }, [persistEditorHtml]);
+    if (html === lastSyncedHtmlRef.current) return;
+    lastSyncedHtmlRef.current = html;
+    updateMainCanvasNode(nodeId, {
+      data: { content: html, state: 'idle' },
+    });
+  }, [nodeId, updateMainCanvasNode]);
 
-  const scheduleEditorSync = useCallback((html: string) => {
-    pendingSyncHtmlRef.current = html;
-    if (pendingSyncTimerRef.current) clearTimeout(pendingSyncTimerRef.current);
-    pendingSyncTimerRef.current = setTimeout(() => {
-      pendingSyncTimerRef.current = null;
-      const nextHtml = pendingSyncHtmlRef.current;
-      if (nextHtml == null) return;
-      pendingSyncHtmlRef.current = null;
-      persistEditorHtml(nextHtml);
-    }, 180);
-  }, [persistEditorHtml]);
+  const scheduleSummaryWriteback = useCallback((html: string) => {
+    pendingHtmlRef.current = html;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null;
+      flushSummary();
+    }, SUMMARY_WRITEBACK_DEBOUNCE_MS);
+  }, [flushSummary]);
 
+  // ── TipTap editor ────────────────────────────────────────────
+  //
+  // `Collaboration` takes ownership of the document: we must NOT pass
+  // `content` (would fight the Y.XmlFragment) and must disable
+  // StarterKit's history (Collaboration provides its own). Everything
+  // else is unchanged from the previous TipTap configuration.
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ dropcursor: false, codeBlock: false }),
+      StarterKit.configure({ dropcursor: false, codeBlock: false, undoRedo: false }),
+      Collaboration.configure({ fragment: yBody }),
       BlockIndent,
       TaskList.configure({ HTMLAttributes: { class: 'task-list' } }),
       TaskItem.configure({ nested: true }),
@@ -165,7 +198,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
       HeadingFold,
       FormatBubbleSuppress,
     ],
-    content: contentFromNode || '',
     autofocus: false,
     editable: true,
     shouldRerenderOnTransaction: false,
@@ -189,23 +221,37 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
         },
       },
     },
-    onCreate: ({ editor: ed }) => {
-      const html = ed.getHTML();
-      lastWrittenHtmlRef.current = html;
-      lastPersistedHtmlRef.current = html;
-    },
-    onTransaction: ({ editor: ed, transaction }) => {
-      if (!transaction.docChanged) return;
-      const html = ed.getHTML();
-      lastWrittenHtmlRef.current = html;
-      if (isApplyingRemoteRef.current) return;
-      scheduleEditorSync(html);
+    onUpdate: ({ editor: ed }) => {
+      // Fires for both local edits and remote CRDT apply — we schedule
+      // unconditionally and let `lastSyncedHtmlRef` dedupe equal HTML.
+      scheduleSummaryWriteback(ed.getHTML());
     },
     onBlur: () => {
-      flushPendingEditorSync();
+      // Commit any in-flight summary before the user's attention leaves
+      // — keeps the node card preview current when they switch panels.
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+      flushSummary();
     },
-  });
+  }, [yBody]);
 
+  // ── Unmount cleanup: flush any pending summary write ─────────
+  //
+  // Without this, edits made in the last <500ms before the user closes
+  // the panel or switches nodes would be dropped.
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+      flushSummary();
+    };
+  }, [flushSummary]);
+
+  // ── AI menu state (unchanged from previous version) ──────────
   const [aiMenuOpen, setAIMenuOpen] = useState(false);
   const [aiAnchorPos, setAiAnchorPos] = useState<number | null>(null);
   const [aiInitialReplacement, setAiInitialReplacement] = useState<string | null>(null);
@@ -253,48 +299,6 @@ const TextEditor = ({ nodeId }: TextEditorProps) => {
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
   });
-
-  useEffect(() => {
-    if (!editor) return;
-    const incoming = contentFromNode;
-    if (incoming === lastWrittenHtmlRef.current) return;
-    const curHtml = editor.getHTML();
-    if (incoming === curHtml) {
-      lastWrittenHtmlRef.current = incoming;
-      lastPersistedHtmlRef.current = incoming;
-      return;
-    }
-
-    // Incoming remote content wins: cancel any pending local write based on stale html.
-    if (pendingSyncTimerRef.current) {
-      clearTimeout(pendingSyncTimerRef.current);
-      pendingSyncTimerRef.current = null;
-    }
-    pendingSyncHtmlRef.current = null;
-
-    isApplyingRemoteRef.current = true;
-    editor.commands.setContent(incoming, { emitUpdate: false });
-    const appliedHtml = editor.getHTML();
-    lastWrittenHtmlRef.current = appliedHtml;
-    lastPersistedHtmlRef.current = appliedHtml;
-    queueMicrotask(() => {
-      isApplyingRemoteRef.current = false;
-    });
-  }, [editor, contentFromNode]);
-
-  useEffect(() => {
-    if (!editor) return;
-    return () => {
-      if (!editor.isDestroyed) editor.destroy();
-    };
-  }, [editor]);
-
-  useEffect(() => () => {
-    if (pendingSyncTimerRef.current) {
-      clearTimeout(pendingSyncTimerRef.current);
-      pendingSyncTimerRef.current = null;
-    }
-  }, []);
 
   return (
     <>
