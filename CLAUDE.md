@@ -176,7 +176,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
-| `config/pricing.yaml` | 积分套餐（5 tier，test+live Stripe ID） |
+| `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
 | `config/models/*.yaml` | AI 模型路由（46 文件，model-centric） |
 
 # 日志
@@ -210,7 +210,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 - **异常**：AppError(status, msg) → NotFound/Conflict/Validation/Forbidden/Unauthorized，Service 层抛，路由层 handler 处理
 - **SSE**：仅 Agent 聊天 + Text mini-tool，`data` 含 `userId` + `projectId`
 - **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`，5 分钟过期，30 次/分钟限速），前端直传
-- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等（CAS 原子状态转换）。Mini-tool 入队前预检余额（402）。`deductOnce()` 保证同 refKey 只扣一次
+- **支付(积分制,非订阅)**：Stripe Checkout 一次性购买积分包(`config/pricing.yaml` 5 档),**没有会员/订阅/功能分级**——所有用户享受同一套功能,只按实际用量扣积分。积分永不过期。Webhook 幂等(CAS 原子状态转换)。Mini-tool 入队前预检余额(402)。`deductOnce()` 保证同 refKey 只扣一次。用户对象上的 `membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码不要按 tier 做 feature gate**,只按积分余额判断
 
 # 禁止清单
 

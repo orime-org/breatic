@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:74 个活跃条目(P0 × 7 + P1 × 35 + P2 × 31 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:113 个活跃条目(P0 × 12 + P1 × 54 + P2 × 46 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -20,10 +20,15 @@
 | BUG-049 | 🔴 HIGH | Worker HTTP 响应无大小限制 → OOM | `worker/src/providers/http.ts:76` | R3 | 45m | [→](audit/2026-04-17-round-3-found.md#bug-049) |
 | BUG-050 | 🔴 HIGH | Spawn 无深度限制 → 无限递归耗光积分 | `core/src/agent/tools/spawn.ts:105` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-050) |
 | BUG-051 | 🔴 HIGH | TextNode 同步路径 innerHTML 未 sanitize → 存储 XSS | `web/.../textNode/TextNodeContent.tsx:141` | R3 | 20m | [→](audit/2026-04-17-round-3-found.md#bug-051) |
-| BUG-079 | 🔴 HIGH | `deductOnce` 在生产零调用点 —— 3 条扣费路径仍非幂等 | `core/src/modules/credit.service.ts:164` + spawn/main-agent/text-tool | R4 | 1.5h | [→](audit/2026-04-21-round-4-found.md#bug-079) |
 | BUG-093 | 🔴 HIGH | imageEditor 把 nodeId 当 workflowId → authz 100% 拒绝 | `web/.../imageEditor/index.tsx:833` | R4 | 1h | [→](audit/2026-04-21-round-4-found.md#bug-093) |
+| BUG-112 | 🔴 HIGH | Agent 聊天 SSE 无 abort 处理 —— 客户端断线 LLM + 工具链仍跑到 maxStep 并扣积分 | `server/src/routes/chat.ts:79,145` + `server/src/agent/main-agent.ts:131` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-112) |
+| BUG-113 | 🔴 HIGH | `run_script` symlink 可穿透 + `.ts` 触发 npx tsx 供应链 + HOME env 继承 | `core/src/agent/tools/run-script.ts:54` | R5 | 1.5h | [→](audit/2026-04-22-round-5-found.md#bug-113) |
+| BUG-127 | 🔴 HIGH | `/skills/market?tags=` raw SQL injection(`sql.raw` + 单引号包裹未转义 user tags) | `core/src/modules/skill.repo.ts:112` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-127) |
+| BUG-128 | 🔴 HIGH | `POST /auth/forgot-password` Host Header Injection → 账户劫持 | `server/src/routes/auth.ts:197` + `core/src/modules/auth.service.ts:187` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-128) |
+| BUG-141 | 🔴 HIGH | `conversation.repo.ts` 9 查询 / 写操作不过滤 `deletedAt` → 软删对话仍可读写 | `core/src/modules/conversation.repo.ts:17,131,144,167,187,215,235` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-141) |
+| BUG-142 | 🔴 HIGH | `deleteProject()` 级联漏 5 张子表(BUG-031 补丁不完整) | `core/src/modules/project.repo.ts:216` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-142) |
 
-**P0 小计**:7 个活跃 · 预估 **~7.25 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:12 个活跃 · 预估 **~11.5 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -66,8 +71,27 @@
 | BUG-104 | 🟠 MED | SSL 证书 SAN 覆盖假设无校验,证书只含 www 时 apex 握手失败 | `docker/nginx-ssl.conf` + `DEPLOY.md` | R4 | 30m | [→](audit/2026-04-21-round-4-found.md#bug-104) |
 | BUG-105 | 🟠 MED | `:latest` = main rolling,无 release gate + 无健康回滚 | `docker-compose.yml` + `.env.docker:28` + `ci.yml` | R4 | 1h | [→](audit/2026-04-21-round-4-found.md#bug-105) |
 | BUG-107 | 🟠 MED | GHCR private-by-default,首次发版后开源用户 Quick Start 走不通 | `docs/DEPLOY.md` + CI 无 visibility 校验 | R4 | 30m | [→](audit/2026-04-21-round-4-found.md#bug-107) |
+| BUG-114 | 🔴 HIGH | Worker `runSkillAgent`(Path 4+5)无 scope 过滤 → canvas LLM 调用用 agent skills | `worker/src/handlers.ts:424` + `skills-loader.ts:144` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-114) |
+| BUG-115 | 🔴 HIGH | skills-loader `loadMetadata` silent fallback + 默认值最宽松(供应链攻击面) | `core/src/agent/skills-loader.ts:294` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-115) |
+| BUG-116 | 🟠 MED | `spawn` 无并发数量限制 + 单次无超时 → 一轮 agent 可并起 N 个 subagent 各 15 step | `core/src/agent/tools/spawn.ts:143` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-116) |
+| BUG-117 | 🟠 MED | Text mini-tool lock 无 fencing token,TTL > stream 时长导致丢锁 | `core/src/modules/text-tool.service.ts:89` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-117) |
+| BUG-118 | 🟠 MED | Memory Turn 压缩截断逻辑字节粒度不当,恶意构造可以爆 context | `core/src/modules/memory.service.ts:148` | R5 | 10m | [→](audit/2026-04-22-round-5-found.md#bug-118) |
+| BUG-119 | 🟠 MED | `extractPromptText` 正则链多条 ReDoS(BUG-042 systemic 扩大) | `core/src/agent/extract-prompt.ts:22` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-119) |
+| BUG-120 | 🟠 MED | `web_fetch` safeFetch DNS rebinding 窗口 + 不走 socket-level dispatcher | `core/src/agent/tools/safe-fetch.ts:161` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-120) |
+| BUG-121 | 🟠 MED | Worker `runSkillAgent` (Path 5) 拼接多 skill SKILL.md 为单 system prompt 超 context | `worker/src/handlers.ts:429` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-121) |
+| BUG-129 | 🟠 MED | `PUT /assets/local-upload/:key` 无 body size 限制 → 单请求可 OOM API | `server/src/routes/assets.ts:136` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-129) |
+| BUG-130 | 🟠 MED | `/assets/presign` 无 content_type 白名单 —— SVG / text/html 可接受 → 存储 XSS 风险 | `server/src/routes/assets.ts:38,65,97` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-130) |
+| BUG-131 | 🟠 MED | BUG-030 systemic 全貌 —— 所有 5 个 rate limit prefix 都走同一函数 100% 可绕过 | `server/src/routes/auth.ts:26` + `docker/breatic-locations.conf:18` | R5 | 15m(并入 BUG-030) | [→](audit/2026-04-22-round-5-found.md#bug-131) |
+| BUG-132 | 🟠 MED | Agent chat SSE / canvas / mini-tools / text-tools 等 8 个 endpoint 无 rate limit | `server/src/routes/chat.ts,canvas.ts,mini-tools.ts,text-tools.ts` | R5 | 2h | [→](audit/2026-04-22-round-5-found.md#bug-132) |
+| BUG-133 | 🟠 MED | Zod schema 大面积缺 max length 上限(chat / skill / text-tool / project 等)—— DoS 面 | `shared/src/schemas/api.ts` + `server/src/routes/schemas.ts` | R5 | 1.5h | [→](audit/2026-04-22-round-5-found.md#bug-133) |
+| BUG-134 | 🟠 MED | Session TTL 固定 30d,无 slide / rotation / device cap | `core/src/infra/session-store.ts:11` | R5 | 3h | [→](audit/2026-04-22-round-5-found.md#bug-134) |
+| BUG-143 | 🟠 MED | `softDeleteConversation()` 不级联附件 / 记忆 / 历史条目 → 对话软删数据泄漏 | `core/src/modules/conversation.repo.ts:84` + `conversation.service.ts:142` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-143) |
+| BUG-144 | 🟠 MED | FK onDelete 策略全面不一致 —— `users` / `projects` / `conversations` 硬删意外失败 + `set null` 使用不一致 | `core/src/db/schema.ts`(多处) | R5 | 30m 文档 / ADR(GDPR 单列 2h) | [→](audit/2026-04-22-round-5-found.md#bug-144) |
+| BUG-145 | 🟠 MED | 全 10 个 migration 文件无 `IF EXISTS`(BUG-082 systemic) | `core/src/db/migrations/0000~0009_*.sql` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-145) |
+| BUG-146 | 🟠 MED | `conversation_memories` / `conversationAttachments` 等多张表缺 `deletedAt` 列 | `core/src/db/schema.ts:203,249,335,376,420,471,493` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-146) |
+| BUG-147 | 🟠 MED | 多表无 DB 层 CHECK constraint 限制 `status` / `taskType` 等 enum 字段(membershipType 已由 PR #131 删除) | `core/src/db/schema.ts:166,210,255` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-147) |
 
-**P1 小计**:35 个 · 预估 **~14 小时**
+**P1 小计**:54 个 · 预估 **~30 小时**
 
 ---
 
@@ -77,7 +101,6 @@
 |---|--------|------|------|------|------|------|
 | BUG-042 | 🟡 LOW | `extractPromptText` ReDoS 风险 | `core/src/agent/extract-prompt.ts` | R2 | 5m | [→](audit/2026-04-15-round-2-found.md#bug-042-extractprompttext-redos-风险low) |
 | BUG-043 | 🟡 LOW | 错误日志泄露 stack trace | `server/src/middleware/error-handler.ts:21` | R2 | 10m | [→](audit/2026-04-15-round-2-found.md#bug-043-错误日志泄露-stack-tracelow) |
-| BUG-044 | 🟡 LOW | `schema.ts` cascade 注释过时 | `core/src/db/schema.ts` | R2 | 5m | [→](audit/2026-04-15-round-2-found.md#bug-044-schemats-注释过时low) |
 | BUG-066 | 🟠 MED | Worker 扣费失败仅 log,无恢复机制 | `worker/src/handlers.ts:221` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-066) |
 | BUG-067 | 🟠 MED | Spawn 注入无界 memory context → token 成本失控 | `core/src/agent/tools/spawn.ts:76` | R3 | 30m | [→](audit/2026-04-17-round-3-found.md#bug-067) |
 | BUG-068 | 🟠 MED | 空 toolset skill 静默完成(幻觉结果) | `worker/src/handlers.ts:417` | R3 | 15m | [→](audit/2026-04-17-round-3-found.md#bug-068) |
@@ -106,8 +129,24 @@
 | BUG-109 | 🟡 LOW | CI Node 24 runtime vs 生产 Node 22 漂移,缺 pre-flight | `.github/workflows/ci.yml:16` + `Dockerfile` | R4 | 20m | [→](audit/2026-04-21-round-4-found.md#bug-109) |
 | BUG-110 | 🟡 LOW | CI 无 `workflow_dispatch`,紧急回滚只能 push dummy commit | `.github/workflows/ci.yml:1-8` | R4 | 20m | [→](audit/2026-04-21-round-4-found.md#bug-110) |
 | BUG-111 | 🟡 LOW | `:test_thinkai_cc` tag 语义漂移(当 staging 但实为 branch HEAD 别名) | `.github/workflows/ci.yml:101` + `.env.docker` | R4 | 15m | [→](audit/2026-04-21-round-4-found.md#bug-111) |
+| BUG-122 | 🟡 LOW | MainAgent tool-call log 直接序列化 `part.input`(用户可控)→ conversation messages 体积爆炸 | `server/src/agent/main-agent.ts:156` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-122) |
+| BUG-123 | 🟡 LOW | `web_search` 直连 Brave API 无 SSRF 保护层(走 `fetch` 而非 `safeFetch`)+ API key 静态 | `core/src/agent/tools/web-search.ts:42` | R5 | 10m | [→](audit/2026-04-22-round-5-found.md#bug-123) |
+| BUG-124 | 🟡 LOW | `ask_user_question` SSE sentinel 在 Worker 路径返回字符串无人消费 | `worker/src/handlers.ts:442` + `core/src/agent/tools/ask-user.ts:39` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-124) |
+| BUG-125 | 🟡 LOW | `agent-loader.ts` 手写 frontmatter parser 不支持 YAML 多行 / 数组等标准语法 | `core/src/agent/agent-loader.ts:40` | R5 | 15m | [→](audit/2026-04-22-round-5-found.md#bug-125) |
+| BUG-126 | 🟡 LOW | `tryGetContext` 在 spawn 可能返回 undefined → subagent 扣费静默跳过 | `core/src/agent/tools/spawn.ts:75` | R5 | 15m | [→](audit/2026-04-22-round-5-found.md#bug-126) |
+| BUG-135 | 🟡 LOW | Stripe `success_url` / `cancel_url` 无白名单 —— checkout redirect 可被劫持到第三方 | `shared/src/schemas/api.ts:89` + `core/src/modules/payment.service.ts:53` | R5 | 15m | [→](audit/2026-04-22-round-5-found.md#bug-135) |
+| BUG-136 | 🟡 LOW | Hono app / nginx 都无 security HTTP headers(CSP / X-Frame-Options / nosniff / HSTS) | `server/src/app.ts` + `docker/breatic-locations.conf` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-136) |
+| BUG-137 | 🟡 LOW | `POST /assets/history` 接受任意 `content` URL → 可污染 node_history 引诱他人打开 | `server/src/routes/assets.ts:166` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-137) |
+| BUG-138 | 🟡 LOW | `listMarketSkills` service 层 limit / offset 参数位置交换 → 默认分页返 0 行 | `core/src/modules/skill.service.ts:138` | R5 | 5m | [→](audit/2026-04-22-round-5-found.md#bug-138) |
+| BUG-139 | 🟡 LOW | `AgentInput.tsx` setHtml / DOM write 未 sanitize(BUG-051 的前端侧点位) | `web/src/components/base/agent/AgentInput.tsx:164,216,753,762` | R5 | 10m | [→](audit/2026-04-22-round-5-found.md#bug-139) |
+| BUG-140 | 🟡 LOW | Google OAuth "pre-registration takeover" —— 攻击者先注册用受害者邮箱账户,受害者首次 Google 登录自动合并 | `core/src/modules/auth.service.ts:109` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-140) |
+| BUG-148 | 🟡 LOW | `NodeHistoryEntity` / `PaymentEntity` 类型缺 `deletedAt`(DB 有),运行时漂移 | `shared/src/types/entities.ts:108` | R5 | 10m | [→](audit/2026-04-22-round-5-found.md#bug-148) |
+| BUG-149 | 🟡 LOW | `credit_transactions.reference_id` / `tasks.arq_job_id` / `payments.stripe_*` 无 unique/index | `core/src/db/schema.ts:138,169,270,279,297` | R5 | 15m | [→](audit/2026-04-22-round-5-found.md#bug-149) |
+| BUG-150 | 🟡 LOW | 所有 list 查询用 OFFSET/LIMIT → 大 credit / tasks 列表慢,需要 cursor pagination | `core/src/modules/task.repo.ts` 等 | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-150) |
+| BUG-151 | 🟡 LOW | `drizzle` schema 无 `relations()` 声明 —— 关系查询无类型安全,N+1 风险 | `core/src/db/schema.ts`(整个文件无 relations call) | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-151) |
+| BUG-152 | 🟡 LOW | `client.ts` Drizzle singleton 无 logger 配置,慢查询 / 错误无可观测性 | `core/src/db/client.ts:19` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-152) |
 
-**P2 小计**:31 个 · 预估 **~9.5 小时**
+**P2 小计**:46 个 · 预估 **~15 小时**
 
 ---
 
@@ -125,11 +164,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 7(+1 不修) | ~7.25 h |
-| P1 | 35 | ~14 h |
-| P2 | 31 | ~9.5 h |
+| P0 | 12(+1 不修) | ~11.5 h |
+| P1 | 54 | ~30 h |
+| P2 | 46 | ~15 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **74**(含长期,+1 不修) | **~42.75 h** |
+| **总计** | **113**(含长期,+1 不修) | **~68.5 h** |
 
 ---
 
@@ -139,6 +178,7 @@
 - **Round 2**(2026-04-15):15 个 regression + 1 个测试质量 meta 发现。快照见 [`audit/2026-04-15-round-2-found.md`](audit/2026-04-15-round-2-found.md)。**状态**:已关 2 个(BUG-031 / BUG-033 · PR #126 · 2026-04-22),1 个标不修(BUG-034),其余未修复
 - **Round 3**(2026-04-17):33 个新发现(5 HIGH + 20+ MED + 少量 LOW)。快照见 [`audit/2026-04-17-round-3-found.md`](audit/2026-04-17-round-3-found.md)。**状态**:已关 5 个(BUG-046 / 047 / 048 / 052 / 053),其余未修复
 - **Round 4**(2026-04-21):33 个新发现(2 P0 + 1 P1 HIGH + 15 P1 MED + 15 P2 LOW)+ 核查 5 个声称修复(4 彻底 + 1 部分)。快照见 [`audit/2026-04-21-round-4-found.md`](audit/2026-04-21-round-4-found.md)。**状态**:未修复
+- **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:已关 1 个(BUG-079 · PR #128 · 2026-04-22),其余未修复
 
 ---
 
