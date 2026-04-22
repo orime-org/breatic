@@ -34,6 +34,8 @@ export type PlaybackPanelProps = {
    */
   timelineZoom?: number;
   onTimelineZoomChange?: (value: number) => void;
+  /** Hide filmstrip + waveform under the time ruler (video Adjust, etc.). */
+  hideFilmstripAndWaveform?: boolean;
 };
 
 const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
@@ -54,6 +56,7 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
   onPlaybackRateChange,
   timelineZoom: timelineZoomProp,
   onTimelineZoomChange,
+  hideFilmstripAndWaveform = false,
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [internalTimelineZoom, setInternalTimelineZoom] = useState(50);
@@ -142,6 +145,7 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
         onAddCutMarker={onAddCutMarker}
         onActivateCutMarker={onActivateCutMarker}
         onRemoveCutMarker={onRemoveCutMarker}
+        hideFilmstripAndWaveform={hideFilmstripAndWaveform}
       />
     </div>
   );

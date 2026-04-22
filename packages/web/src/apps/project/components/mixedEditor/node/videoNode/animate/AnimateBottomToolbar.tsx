@@ -36,6 +36,10 @@ export type AnimateBottomToolbarProps = {
 const iconBtnClass =
   'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 
+const animateLabelClass = 'nodrag nopan inline-flex h-8 shrink-0 items-center gap-1';
+
+const ANIMATE_CREDIT = 120;
+
 /** Temporary local preview image provided by design review (replace with real per-style assets later). */
 const animatePreviewTestImageSrc = '/video-node-animate-style-test.png';
 
@@ -119,17 +123,18 @@ const AnimateBottomToolbar: React.FC<AnimateBottomToolbarProps> = ({
           isPlaying={isPlaying}
           volume={volume}
           fullscreenTargetRef={fullscreenTargetRef}
+          hideFilmstripAndWaveform
         />
         <div
-          className='flex w-[520px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[8px] py-[6px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+          className='nodrag nopan pointer-events-auto flex h-[40px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[12px] py-[4px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <div className='inline-flex h-8 shrink-0 items-center gap-1 rounded-[6px] px-[8px] text-icon-base'>
+          <div className={animateLabelClass}>
             <Icon name='videoNode-animate' width={20} height={20} color='var(--color-icon-base)' />
-            <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>Animate</span>
+            <span className='whitespace-nowrap text-[14px] font-medium leading-none text-text-default-base'>Animate</span>
           </div>
-          <Divider type='vertical' className='mx-[2px] h-[18px] bg-[#D0D0D0]' />
+          <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
 
           <Dropdown
             trigger='click'
@@ -167,28 +172,25 @@ const AnimateBottomToolbar: React.FC<AnimateBottomToolbarProps> = ({
               </span>
             </button>
           </Dropdown>
-          <Divider type='vertical' className='mx-[2px] h-[18px] bg-[#D0D0D0]' />
-          <div className='ml-auto flex items-center gap-1'>
-            <div className='inline-flex items-center gap-1 text-[12px] font-semibold text-text-default-tertiary'>
-              <Icon name='imageEditor-nano-banana-credit-icon' width={16} height={16} />
-              <span>120</span>
-            </div>
-            <Tooltip title='Run Animate' placement='top' offset={4}>
-              <Button
-                type='primary'
-                size='medium'
-                shape='round'
-                className='!h-[28px] !w-[52px] !min-w-[52px] !py-[2px] !pl-[16px] !pr-[12px] !bg-[#2FB344] !border-[#2FB344] hover:!bg-[#28A13D] hover:!border-[#28A13D]'
-                icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
-                onClick={() => onSend?.({ style, prompt: styleLabelMap[style] })}
-                aria-label='Send animate'
-              />
-            </Tooltip>
-            <Divider type='vertical' className='mx-1 h-[18px] bg-[#D0D0D0]' />
-            <button type='button' className={iconBtnClass} onClick={onClose} aria-label='Close animate toolbar'>
-              <Icon name='imageEditor-multi-angle-close-icon' width={18} height={18} />
-            </button>
+          <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
+          <div className='nodrag nopan flex shrink-0 items-center gap-0.5 px-0.5 text-[13px] font-medium tabular-nums text-text-default-secondary'>
+            <Icon name='imageEditor-nano-banana-credit-icon' width={16} height={16} />
+            <span>{ANIMATE_CREDIT}</span>
           </div>
+          <Tooltip title='Run Animate' placement='top' offset={4}>
+            <Button
+              type='primary'
+              shape='round'
+              className='nodrag nopan !ml-1 !h-[28px] !bg-[#2FB344] !px-3 !text-[13px] !font-semibold !text-white hover:!bg-[#28A13D]'
+              icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+              onClick={() => onSend?.({ style, prompt: styleLabelMap[style] })}
+              aria-label='Send animate'
+            />
+          </Tooltip>
+          <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
+          <button type='button' className={iconBtnClass} onClick={onClose} aria-label='Close animate toolbar'>
+            <Icon name='imageEditor-multi-angle-close-icon' width={20} height={20} color='var(--color-icon-base)' />
+          </button>
         </div>
       </div>
     </div>

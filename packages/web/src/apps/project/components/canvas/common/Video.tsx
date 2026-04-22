@@ -47,6 +47,8 @@ export interface VideoRef {
   isPlaying: () => boolean;
   setVolume: (value: number) => void;
   toggleMute: () => void;
+  /** Underlying `<video>` for WebGL texture upload (e.g. color grading preview). */
+  getHtmlVideoElement: () => HTMLVideoElement | null;
 }
 
 const getVideoMime = (url: string) => {
@@ -214,6 +216,7 @@ const Video = forwardRef<VideoRef, VideoProps>(
           }
           emitPlayback();
         },
+        getHtmlVideoElement: () => videoRef.current,
       }),
       [clipEndTime, clipStartTime, emitPlayback],
     );

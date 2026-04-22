@@ -11,6 +11,9 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
 import { cutVideoWithFfmpeg } from '@/utils/videoCutWithFfmpeg';
 import { speedVideoWithFfmpeg } from '@/utils/videoSpeedWithFfmpeg';
+import { isAdjustValueNeutral, videoAdjustWithFfmpeg } from '@/utils/videoAdjustWithFfmpeg';
+import { videoStabilizationWithFfmpeg } from '@/utils/videoStabilizationWithFfmpeg';
+import { videoCropWithFfmpeg } from '@/utils/videoCropWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '../../types';
@@ -23,6 +26,11 @@ import SpeedBottomToolbar from './speed/SpeedBottomToolbar';
 import EraseBottomToolbar from './erase/EraseBottomToolbar';
 import ExtendBottomToolbar, { type VideoExtendDurationSec } from './extend/ExtendBottomToolbar';
 import AnimateBottomToolbar, { type VideoAnimateStyleKey } from './animate/AnimateBottomToolbar';
+import AdjustBottomToolbar, { type AdjustValue, defaultAdjustValue } from './adjust/AdjustBottomToolbar';
+import VideoAdjustWebGLCanvas from './adjust/VideoAdjustWebGLCanvas';
+import StabilizationBottomToolbar from './stabilization/StabilizationBottomToolbar';
+import CropBottomToolbar from './crop/CropBottomToolbar';
+import CropOverlay, { type CropRect } from './crop/CropOverlay';
 import TrackedBoxesOverlay from './erase/TrackedBoxesOverlay';
 import type { VideoEraseMaskTool } from './erase/EraseBottomToolbar';
 import type { EraseTrackingBox, EraseTrackingPhase, EraseTrackingSegment, EraseTrackingStatus } from './erase/EraseTrackingPanel';
@@ -43,6 +51,9 @@ const VIDEO_ERASE_FRAME_MATCH_TOLERANCE_SEC = 0.12;
 const TRACKING_TARGET_WINDOW_COUNT = 14;
 const TRACKING_MIN_WINDOW_SEC = 0.6;
 const TRACKING_MAX_WINDOW_SEC = 3;
+const STABILIZATION_CROP_DEFAULT = 6;
+const STABILIZATION_CROP_MIN = 0;
+const STABILIZATION_CROP_MAX = 14;
 
 const resolveTrackingStatusAtTime = (
   segments: EraseTrackingSegment[],
@@ -244,13 +255,26 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isPlaying: false,
     volume: 1,
   });
-  const [editingMode, setEditingMode] = useState<'cut' | 'speed' | 'erase' | 'extend' | 'animate' | null>(null);
+  const [editingMode, setEditingMode] = useState<
+    'cut' | 'speed' | 'erase' | 'extend' | 'animate' | 'adjust' | 'stabilization' | 'crop' | null
+  >(null);
+  const [adjustPreviewValue, setAdjustPreviewValue] = useState<AdjustValue>(defaultAdjustValue);
   const [eraseMaskTool, setEraseMaskTool] = useState<VideoEraseMaskTool>('selection');
   const [trackingSegments, setTrackingSegments] = useState<EraseTrackingSegment[]>([]);
   const [canEraseUndo, setCanEraseUndo] = useState(false);
   const [canEraseRedo, setCanEraseRedo] = useState(false);
   const [isCutSaving, setIsCutSaving] = useState(false);
   const [isSpeedSaving, setIsSpeedSaving] = useState(false);
+  const [isAdjustSaving, setIsAdjustSaving] = useState(false);
+  const [isStabilizationSaving, setIsStabilizationSaving] = useState(false);
+  const [isCropSaving, setIsCropSaving] = useState(false);
+  const [stabilizationCropPct, setStabilizationCropPct] = useState(STABILIZATION_CROP_DEFAULT);
+  const [cropRect, setCropRect] = useState<CropRect>({
+    x: 0,
+    y: 0,
+    w: currentWidth,
+    h: currentHeight,
+  });
   const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
   const nodesRef = useRef(nodes);
   const playbackTimeRef = useRef(playback.currentTime);
@@ -348,10 +372,11 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     () => resolveTrackingStatusAtTime(trackingSegments, playback.currentTime),
     [trackingSegments, playback.currentTime],
   );
+  const eraseInteractionMode = editingMode === 'stabilization' || editingMode === 'crop' ? null : editingMode;
   const { draftBox, clearEraseInteractionState, handleTrackedBoxMouseDown, handleTrackedBoxResizeHandleMouseDown, handleVideoViewportMouseDown } =
     useVideoEraseInteractions({
       id,
-      editingMode,
+      editingMode: eraseInteractionMode,
       eraseMaskTool,
       currentTrackingStatus,
       nodeFromStoreData: (nodeFromStore?.data as Partial<ImageFlowNodeData> | undefined),
@@ -521,12 +546,49 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode('animate');
   }, [editingMode, focusCurrentNode, videoContent]);
 
+  const handleAdjustOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'adjust') return;
+    focusCurrentNode();
+    setAdjustPreviewValue(defaultAdjustValue);
+    setEditingMode('adjust');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
+  const handleStabilizationOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'stabilization') return;
+    focusCurrentNode();
+    setStabilizationCropPct(STABILIZATION_CROP_DEFAULT);
+    setEditingMode('stabilization');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
+  const handleCropOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'crop') return;
+    focusCurrentNode();
+    setCropRect({ x: 0, y: 0, w: currentWidth, h: currentHeight });
+    setEditingMode('crop');
+  }, [currentHeight, currentWidth, editingMode, focusCurrentNode, videoContent]);
+
   const handleUpscale = useCallback((_nodeId: string, _target: VideoUpscaleTarget) => {
     message.warning('Upscale coming soon');
   }, []);
 
   const handleInterpolate = useCallback((_nodeId: string, _target: VideoInterpolateTarget) => {
     message.warning('Interpolate coming soon');
+  }, []);
+
+  const handleHdrConversion = useCallback((_nodeId: string) => {
+    message.warning('HDR Conversion coming soon');
+  }, []);
+
+  const handleCutout = useCallback((_nodeId: string) => {
+    message.warning('Cutout coming soon');
+  }, []);
+
+  const handleSceneExtension = useCallback((_nodeId: string) => {
+    message.warning('Scene Extension coming soon');
+  }, []);
+
+  const handleAudioDenoise = useCallback((_nodeId: string) => {
+    message.warning('Audio Denoise coming soon');
   }, []);
 
   const handleCutClose = useCallback(() => {
@@ -568,6 +630,21 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode(null);
   }, [editingMode]);
 
+  const handleAdjustClose = useCallback(() => {
+    if (editingMode !== 'adjust') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
+  const handleStabilizationClose = useCallback(() => {
+    if (editingMode !== 'stabilization') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
+  const handleCropClose = useCallback(() => {
+    if (editingMode !== 'crop') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
   const handleEraseSend = useCallback((_payload: { maskTool: VideoEraseMaskTool }) => {
     message.warning('Erase coming soon');
   }, []);
@@ -579,6 +656,130 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAnimateSend = useCallback((_payload: { style: VideoAnimateStyleKey; prompt: string }) => {
     message.warning('Animate coming soon');
   }, []);
+
+  const handleStabilizationSend = useCallback(
+    async (payload: { stabilization: number }) => {
+      if (!videoContent || isStabilizationSaving) return;
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'stabilization', state: 'generating' });
+      if (!placeholderId) return;
+      setEditingMode(null);
+      setIsStabilizationSaving(true);
+      try {
+        const nextSrc = payload.stabilization <= 0
+          ? videoContent
+          : await videoStabilizationWithFfmpeg(videoContent, payload.stabilization);
+        if (!nextSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        message.error('Could not export stabilization result. Try again or use a smaller clip.');
+      } finally {
+        setIsStabilizationSaving(false);
+      }
+    },
+    [
+      createVideoPlaceholderNodeRight,
+      id,
+      isStabilizationSaving,
+      removeNode,
+      resolveVideoResultNode,
+      videoContent,
+    ],
+  );
+
+  const handleCropDimensionChange = useCallback(
+    (w: number, h: number, keepCentered = false) => {
+      setCropRect((prev) => {
+        if (keepCentered) {
+          return {
+            x: Math.max(0, Math.round((currentWidth - w) / 2)),
+            y: Math.max(0, Math.round((currentHeight - h) / 2)),
+            w,
+            h,
+          };
+        }
+        const maxX = Math.max(0, currentWidth - w);
+        const maxY = Math.max(0, currentHeight - h);
+        return {
+          x: Math.min(maxX, Math.max(0, prev.x)),
+          y: Math.min(maxY, Math.max(0, prev.y)),
+          w,
+          h,
+        };
+      });
+    },
+    [currentHeight, currentWidth],
+  );
+
+  const handleCropSave = useCallback(async () => {
+    if (!videoContent || isCropSaving) return;
+    const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'crop', state: 'generating' });
+    if (!placeholderId) return;
+    setEditingMode(null);
+    setIsCropSaving(true);
+    try {
+      const nextSrc = await videoCropWithFfmpeg(videoContent, cropRect, {
+        width: currentWidth,
+        height: currentHeight,
+      });
+      if (!nextSrc) {
+        removeNode(placeholderId);
+        return;
+      }
+      resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+    } catch {
+      removeNode(placeholderId);
+      message.error('Could not export cropped video. Try again or use a smaller clip.');
+    } finally {
+      setIsCropSaving(false);
+    }
+  }, [
+    createVideoPlaceholderNodeRight,
+    cropRect,
+    currentHeight,
+    currentWidth,
+    id,
+    isCropSaving,
+    removeNode,
+    resolveVideoResultNode,
+    videoContent,
+  ]);
+
+  const handleAdjustSave = useCallback(
+    async (value: AdjustValue) => {
+      if (!videoContent || isAdjustSaving) return;
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'adjust', state: 'generating' });
+      if (!placeholderId) return;
+      setEditingMode(null);
+      setIsAdjustSaving(true);
+      try {
+        const nextSrc = isAdjustValueNeutral(value)
+          ? videoContent
+          : await videoAdjustWithFfmpeg(videoContent, value);
+        if (!nextSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        message.error('Could not export adjusted video. Try again or use a smaller clip.');
+      } finally {
+        setIsAdjustSaving(false);
+      }
+    },
+    [
+      createVideoPlaceholderNodeRight,
+      id,
+      isAdjustSaving,
+      removeNode,
+      resolveVideoResultNode,
+      videoContent,
+    ],
+  );
 
   const handleEraseMaskToolChange = useCallback((tool: VideoEraseMaskTool) => {
     setEraseMaskTool(tool);
@@ -699,6 +900,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onErase={handleEraseOpen}
           onExtend={handleExtendOpen}
           onAnimate={handleAnimateOpen}
+          onAdjust={handleAdjustOpen}
+          onStabilization={handleStabilizationOpen}
+          onCrop={handleCropOpen}
+          onHdrConversion={handleHdrConversion}
+          onCutout={handleCutout}
+          onSceneExtension={handleSceneExtension}
+          onAudioDenoise={handleAudioDenoise}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Bottom} offset={12} align='center'>
@@ -801,6 +1009,56 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onSend={handleAnimateSend}
         />
       </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'adjust'} position={Position.Bottom} offset={12} align='center'>
+        <AdjustBottomToolbar
+          active={editingMode === 'adjust'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          onClose={handleAdjustClose}
+          onChange={setAdjustPreviewValue}
+          onSave={handleAdjustSave}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'stabilization'} position={Position.Bottom} offset={12} align='center'>
+        <StabilizationBottomToolbar
+          active={editingMode === 'stabilization'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          stabilization={stabilizationCropPct}
+          onChange={setStabilizationCropPct}
+          onClose={handleStabilizationClose}
+          onSend={handleStabilizationSend}
+        />
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'crop'} position={Position.Bottom} offset={12} align='center'>
+        <CropBottomToolbar
+          active={editingMode === 'crop'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          width={cropRect.w}
+          height={cropRect.h}
+          containerWidth={currentWidth}
+          containerHeight={currentHeight}
+          onDimensionChange={handleCropDimensionChange}
+          onClose={handleCropClose}
+          onSave={handleCropSave}
+        />
+      </FlowNodeToolbar>
       <div
         ref={nodeFrameRef}
         className='relative h-full w-full min-w-0'
@@ -837,11 +1095,22 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                   src={videoContent}
                   showControlBar={false}
                   onPlaybackUpdate={syncPlaybackFromVideo ? handlePlaybackUpdate : undefined}
-                  className='h-full w-full !rounded-none'
+                  className={`h-full w-full !rounded-none${editingMode === 'adjust' ? ' opacity-0' : ''}`}
                 />
               ) : (
                 <Loading inline backgroundColor='#ffffff' width='100%' height='100%' />
               )}
+              {editingMode === 'adjust' && videoContent ? (
+                <VideoAdjustWebGLCanvas videoRef={videoRef} adjustValue={adjustPreviewValue} />
+              ) : null}
+              {editingMode === 'stabilization' && videoContent ? (
+                <div
+                  className='pointer-events-none absolute z-[6] border border-dashed border-[#7F88FF] bg-[rgba(127,136,255,0.14)]'
+                  style={{
+                    inset: `${Math.max(STABILIZATION_CROP_MIN, Math.min(STABILIZATION_CROP_MAX, stabilizationCropPct))}%`,
+                  }}
+                />
+              ) : null}
             </div>
             {quickEditPickPendingListForThis.map((pending) => (
               <div
@@ -862,6 +1131,14 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
               onBoxMouseDown={handleTrackedBoxMouseDown}
               onResizeHandleMouseDown={handleTrackedBoxResizeHandleMouseDown}
             />
+            {editingMode === 'crop' && (
+              <CropOverlay
+                containerWidth={currentWidth}
+                containerHeight={currentHeight}
+                value={cropRect}
+                onChange={setCropRect}
+              />
+            )}
             {trackingPhase === 'tracking' && currentTrackingStatus === 'lost' && (
               <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
                 <button

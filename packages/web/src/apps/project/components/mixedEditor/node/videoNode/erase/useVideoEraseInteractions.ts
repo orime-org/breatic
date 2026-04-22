@@ -83,7 +83,7 @@ const buildEraseBoxFromDrag = (params: {
 
 type UseVideoEraseInteractionsParams = {
   id: string;
-  editingMode: 'cut' | 'speed' | 'erase' | 'extend' | 'animate' | null;
+  editingMode: 'cut' | 'speed' | 'erase' | 'extend' | 'animate' | 'adjust' | null;
   eraseMaskTool: VideoEraseMaskTool;
   currentTrackingStatus: EraseTrackingStatus | null;
   nodeFromStoreData: Partial<ImageFlowNodeData> | undefined;

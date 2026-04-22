@@ -122,6 +122,7 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
           fullscreenTargetRef={fullscreenTargetRef}
           timelineZoom={timelineZoom}
           onTimelineZoomChange={setTimelineZoom}
+          hideFilmstripAndWaveform
         />
         <EraseTrackingPanel
           phase={trackingPhase}

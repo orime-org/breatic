@@ -29,8 +29,7 @@ const STATIC_TEST_RECENT_PROJECT: WorkspaceProject = {
 
 const STATIC_RECENT_PROJECTS_FOR_TEST = [STATIC_TEST_RECENT_PROJECT];
 
-const Workspace: React.FC = () => {
-  const { authInfo, authRequired, setAuthInfo } = useUserCenterStore();
+const Workspace: React.FC = () => { const { authInfo, authRequired, setAuthInfo } = useUserCenterStore();
 
   // Load auth from localStorage on mount.
   useEffect(() => {

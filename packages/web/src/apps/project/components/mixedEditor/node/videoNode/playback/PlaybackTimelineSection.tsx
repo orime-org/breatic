@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
 import { Icon } from '@/components/base/icon';
+import { cn } from '@/utils/classnames';
 import type { TimelineCutMarker } from './PlaybackPanel';
 
 const formatTickTime = (seconds: number) => {
@@ -42,6 +43,11 @@ export type PlaybackTimelineSectionProps = {
   onAddCutMarker?: (progressPct: number) => void;
   onActivateCutMarker?: (id: string) => void;
   onRemoveCutMarker?: (id: string) => void;
+  /**
+   * When true, hides the filmstrip (thumbnail) row and the waveform row; keeps the time ruler,
+   * tick labels, playhead, and ruler click-to-seek (e.g. video Adjust mode).
+   */
+  hideFilmstripAndWaveform?: boolean;
 };
 
 const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
@@ -56,6 +62,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
   onAddCutMarker,
   onActivateCutMarker,
   onRemoveCutMarker,
+  hideFilmstripAndWaveform = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const timelineOuterRef = useRef<HTMLDivElement | null>(null);
@@ -63,7 +70,8 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
   const cutLayerRef = useRef<HTMLDivElement | null>(null);
   const playheadDraggingRef = useRef(false);
   const [hoverCutProgressPct, setHoverCutProgressPct] = useState<number | null>(null);
-  const waveUrl = mediaSrc?.trim() ? mediaSrc : undefined;
+  const waveUrl =
+    hideFilmstripAndWaveform ? undefined : mediaSrc?.trim() ? mediaSrc : undefined;
   const [firstFrameUrl, setFirstFrameUrl] = useState<string>('');
   const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
   const zoomClamped = Math.min(100, Math.max(0, timelineZoom));
@@ -137,6 +145,10 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    if (hideFilmstripAndWaveform) {
+      setFirstFrameUrl('');
+      return;
+    }
     const src = mediaSrc?.trim();
     if (!src) {
       setFirstFrameUrl('');
@@ -179,7 +191,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
       video.removeAttribute('src');
       video.load();
     };
-  }, [mediaSrc]);
+  }, [hideFilmstripAndWaveform, mediaSrc]);
 
   const getProgressPctFromClientX = useCallback((clientX: number) => {
     const scroller = scrollRef.current;
@@ -347,7 +359,10 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
   return (
     <div
       ref={scrollRef}
-      className='overflow-x-scroll overflow-y-visible pb-1 pt-4 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]'
+      className={cn(
+        'overflow-x-scroll overflow-y-visible pb-1 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]',
+        hideFilmstripAndWaveform ? 'pt-2' : 'pt-4',
+      )}
     >
       <div ref={timelineOuterRef} className='relative min-w-full overflow-visible' style={{ width: `max(100%, ${timelineOuterMinWidthPx}px)` }}>
         <div
@@ -383,56 +398,62 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
               );
             })}
           </div>
-          <div className='relative mt-1 h-8 w-full'>
-            {timelineSegments.map((segment) => (
+          {hideFilmstripAndWaveform ? (
+            <div ref={waveformRef} className='hidden h-0 w-0 overflow-hidden' aria-hidden />
+          ) : (
+            <>
+              <div className='relative mt-1 h-8 w-full'>
+                {timelineSegments.map((segment) => (
+                  <div
+                    key={`thumb-${segment.key}`}
+                    className='absolute bottom-0 top-0 overflow-hidden rounded-[4px] bg-[#B0B0B0]'
+                    style={{
+                      left: `${segment.startPct}%`,
+                      width: `${segment.widthPct}%`,
+                      ...(firstFrameUrl
+                        ? {
+                          backgroundImage: `url(${firstFrameUrl})`,
+                          backgroundRepeat: 'repeat-x',
+                          backgroundSize: 'auto 100%',
+                          backgroundPosition: 'left center',
+                        }
+                        : undefined),
+                    }}
+                  />
+                ))}
+                {sortedCutMarkers.map((marker) => (
+                  <span
+                    key={`thumb-cut-${marker.id}`}
+                    className='pointer-events-none absolute bottom-0 top-0 z-[2] w-[2px] -translate-x-1/2 bg-[#E8E8E8]'
+                    style={{ left: `${marker.progressPct}%` }}
+                  />
+                ))}
+              </div>
               <div
-                key={`thumb-${segment.key}`}
-                className='absolute bottom-0 top-0 overflow-hidden rounded-[4px] bg-[#B0B0B0]'
-                style={{
-                  left: `${segment.startPct}%`,
-                  width: `${segment.widthPct}%`,
-                  ...(firstFrameUrl
-                    ? {
-                      backgroundImage: `url(${firstFrameUrl})`,
-                      backgroundRepeat: 'repeat-x',
-                      backgroundSize: 'auto 100%',
-                      backgroundPosition: 'left center',
-                    }
-                    : undefined),
-                }}
-              />
-            ))}
-            {sortedCutMarkers.map((marker) => (
-              <span
-                key={`thumb-cut-${marker.id}`}
-                className='pointer-events-none absolute bottom-0 top-0 z-[2] w-[2px] -translate-x-1/2 bg-[#E8E8E8]'
-                style={{ left: `${marker.progressPct}%` }}
-              />
-            ))}
-          </div>
-          <div
-            className='relative mt-1.5 h-[30px] w-full'
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {timelineSegments.map((segment) => (
-              <div
-                key={`wave-bg-${segment.key}`}
-                className='pointer-events-none absolute bottom-0 top-0 rounded-[4px] bg-background-neutral-secondary-hover'
-                style={{
-                  left: `${segment.startPct}%`,
-                  width: `${segment.widthPct}%`,
-                }}
-              />
-            ))}
-            <div ref={waveformRef} className='absolute inset-0 z-[1] h-full w-full px-1' />
-            {sortedCutMarkers.map((marker) => (
-              <span
-                key={`wave-cut-${marker.id}`}
-                className='pointer-events-none absolute bottom-0 top-0 z-[2] w-[2px] -translate-x-1/2 bg-[#E8E8E8]'
-                style={{ left: `${marker.progressPct}%` }}
-              />
-            ))}
-          </div>
+                className='relative mt-1.5 h-[30px] w-full'
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {timelineSegments.map((segment) => (
+                  <div
+                    key={`wave-bg-${segment.key}`}
+                    className='pointer-events-none absolute bottom-0 top-0 rounded-[4px] bg-background-neutral-secondary-hover'
+                    style={{
+                      left: `${segment.startPct}%`,
+                      width: `${segment.widthPct}%`,
+                    }}
+                  />
+                ))}
+                <div ref={waveformRef} className='absolute inset-0 z-[1] h-full w-full px-1' />
+                {sortedCutMarkers.map((marker) => (
+                  <span
+                    key={`wave-cut-${marker.id}`}
+                    className='pointer-events-none absolute bottom-0 top-0 z-[2] w-[2px] -translate-x-1/2 bg-[#E8E8E8]'
+                    style={{ left: `${marker.progressPct}%` }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {cutModeEnabled ? (

@@ -16,6 +16,13 @@ export type ToolbarProps = {
   onErase?: (nodeId: string) => void;
   onExtend?: (nodeId: string) => void;
   onAnimate?: (nodeId: string) => void;
+  onAdjust?: (nodeId: string) => void;
+  onStabilization?: (nodeId: string) => void;
+  onCrop?: (nodeId: string) => void;
+  onHdrConversion?: (nodeId: string) => void;
+  onCutout?: (nodeId: string) => void;
+  onSceneExtension?: (nodeId: string) => void;
+  onAudioDenoise?: (nodeId: string) => void;
 };
 
 const iconColor = 'var(--color-icon-base)';
@@ -76,7 +83,23 @@ type IconToolbarItem = { key: string; label: string; icon: string; w: number; h:
 const dividerClass = 'mx-[2px] h-[18px]';
 const moreMenuItemLabelClass = 'text-[13px] text-text-default-base';
 
-const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, onInterpolate, onErase, onExtend, onAnimate }) => {
+const Toolbar: React.FC<ToolbarProps> = ({
+  nodeId,
+  onCut,
+  onSpeed,
+  onUpscale,
+  onInterpolate,
+  onErase,
+  onExtend,
+  onAnimate,
+  onAdjust,
+  onStabilization,
+  onCrop,
+  onHdrConversion,
+  onCutout,
+  onSceneExtension,
+  onAudioDenoise,
+}) => {
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [interpolateOpen, setInterpolateOpen] = useState(false);
 
@@ -123,6 +146,51 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, on
         <div className='flex items-center gap-1 text-icon-base'>
           <Icon name='videoNode-lip-sync' width={16} height={14} color={iconColor} />
           <span className={moreMenuItemLabelClass}>Lip Sync</span>
+        </div>
+      ),
+    },
+    {
+      key: 'crop',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-crop' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Crop</span>
+        </div>
+      ),
+    },
+    {
+      key: 'hdr-conversion',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-hdr-conversion' width={16} height={14} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>HDR Conversion</span>
+        </div>
+      ),
+    },
+    {
+      key: 'cutout',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-cutout' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Cutout</span>
+        </div>
+      ),
+    },
+    {
+      key: 'scene-extension',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-scene-extension' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Scene Extension</span>
+        </div>
+      ),
+    },
+    {
+      key: 'audio-denoise',
+      label: (
+        <div className='flex items-center gap-1 text-icon-base'>
+          <Icon name='videoNode-audio-denoise' width={16} height={16} color={iconColor} />
+          <span className={moreMenuItemLabelClass}>Audio Denoise</span>
         </div>
       ),
     },
@@ -234,6 +302,13 @@ const Toolbar: React.FC<ToolbarProps> = ({ nodeId, onCut, onSpeed, onUpscale, on
         items={moreItems}
         onClick={(key) => {
           if (key === 'animate') onAnimate?.(nodeId);
+          if (key === 'adjust') onAdjust?.(nodeId);
+          if (key === 'stabilization') onStabilization?.(nodeId);
+          if (key === 'crop') onCrop?.(nodeId);
+          if (key === 'hdr-conversion') onHdrConversion?.(nodeId);
+          if (key === 'cutout') onCutout?.(nodeId);
+          if (key === 'scene-extension') onSceneExtension?.(nodeId);
+          if (key === 'audio-denoise') onAudioDenoise?.(nodeId);
         }}
         popupClassName='rounded-[8px] border border-border-default-base shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'
         itemClassName='min-h-8 px-2 py-1.5'

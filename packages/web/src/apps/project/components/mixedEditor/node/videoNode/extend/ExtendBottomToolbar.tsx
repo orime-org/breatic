@@ -22,8 +22,7 @@ export type ExtendBottomToolbarProps = {
   onSend?: (payload: { durationSec: VideoExtendDurationSec; prompt: string }) => void;
 };
 
-const iconBtnClass =
-  'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 
 const durationLabelMap: Record<VideoExtendDurationSec, string> = {
   5: '5s',
@@ -81,6 +80,7 @@ const ExtendBottomToolbar: React.FC<ExtendBottomToolbarProps> = ({
           isPlaying={isPlaying}
           volume={volume}
           fullscreenTargetRef={fullscreenTargetRef}
+          hideFilmstripAndWaveform
         />
         <div
           className='w-[430px] rounded-[8px] border border-[#DBDBDB] bg-background-default-base p-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'

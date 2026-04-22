@@ -84,6 +84,7 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
           fullscreenTargetRef={fullscreenTargetRef}
           playbackRate={playbackRate}
           onPlaybackRateChange={setPlaybackRate}
+          hideFilmstripAndWaveform
         />
         <div
           className='nodrag nopan pointer-events-auto flex h-[40px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[12px] py-[4px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
