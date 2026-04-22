@@ -2,10 +2,9 @@
  * Project-level Yjs hook — creates the manager, wires undo/redo,
  * and tracks awareness state.
  *
- * In the old architecture this hook also created a YjsStoreSync
- * bridge. That bridge is gone — Yjs→Redux sync is now handled by
- * `CanvasDataProvider` via `useCanvasYjsInternal`, and writes go
- * directly to Yjs via `useCanvasActions`.
+ * The manager waits for server sync before initializing nodesMap,
+ * edgesMap, and UndoManager. Undo/redo listeners are connected
+ * after sync completes via manager.onSynced.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -14,8 +13,16 @@ import { setCanvasYjsManager } from '@/utils/canvasYjsRef';
 
 export interface UseYjsStoreOptions {
   id: string;
+  /** Session token for Hocuspocus auth. When empty, the hook refuses to start Yjs. */
+  token: string;
   wsUrl?: string;
   enabled?: boolean;
+  /**
+   * Called when Hocuspocus rejects the token. Should clear localStorage
+   * auth + redirect to /login. The manager disconnects automatically
+   * to stop reconnect loops; this callback handles the UX side.
+   */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface UseYjsStoreResult {
@@ -37,7 +44,7 @@ export interface UseYjsStoreResult {
 }
 
 export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
-  const { id, wsUrl, enabled = true } = options;
+  const { id, token, wsUrl, enabled = true, onAuthFailed } = options;
 
   const [manager, setManager] = useState<YjsProjectManager | null>(null);
   const managerRef = useRef<YjsProjectManager | null>(null);
@@ -47,7 +54,12 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
   const [edgeSelections, setEdgeSelections] = useState<Map<string, { color: string }>>(new Map());
 
   useEffect(() => {
-    if (!enabled || !id) {
+    // Do not start Yjs when unauthenticated — there is no valid session
+    // token to pass to Hocuspocus. Starting without a token would trigger
+    // an infinite reconnect loop (server rejects empty token → close →
+    // client reconnects). Upstream should pass enabled=false or empty
+    // token before login completes.
+    if (!enabled || !id || !token) {
       managerRef.current = null;
       setManager(null);
       setCanUndo(false);
@@ -61,23 +73,37 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
 
     const mgr = createYjsProjectManager({
       workflowId: id,
+      token,
       wsUrl,
-      onSynced: () => setTimeout(() => setYjsLoading(false), 0),
+      onAuthFailed,
     });
 
     managerRef.current = mgr;
     setCanvasYjsManager(mgr);
     setManager(mgr);
 
-    const updateUndoRedoState = () => {
-      setCanUndo(mgr.canUndo());
-      setCanRedo(mgr.canRedo());
-    };
+    let undoCleanup: (() => void) | null = null;
 
-    const um = mgr.undoManager;
-    const onStackChange = () => updateUndoRedoState();
-    um.on('stack-item-added', onStackChange);
-    um.on('stack-item-popped', onStackChange);
+    // Wire undo/redo listeners AFTER sync (UndoManager created after sync)
+    const unsubSynced = mgr.onSynced(() => {
+      setYjsLoading(false);
+
+      const um = mgr.undoManager;
+      const updateUndoRedoState = () => {
+        setCanUndo(mgr.canUndo());
+        setCanRedo(mgr.canRedo());
+      };
+
+      const onStackChange = () => updateUndoRedoState();
+      um.on('stack-item-added', onStackChange);
+      um.on('stack-item-popped', onStackChange);
+      updateUndoRedoState();
+
+      undoCleanup = () => {
+        um.off('stack-item-added', onStackChange);
+        um.off('stack-item-popped', onStackChange);
+      };
+    });
 
     // Awareness — track other users' edge selections.
     const updateAwareness = () => {
@@ -93,11 +119,10 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
     };
     mgr.awareness.on('change', updateAwareness);
     updateAwareness();
-    updateUndoRedoState();
 
     return () => {
-      um.off('stack-item-added', onStackChange);
-      um.off('stack-item-popped', onStackChange);
+      unsubSynced();
+      if (undoCleanup) undoCleanup();
       mgr.awareness.off('change', updateAwareness);
       mgr.destroy();
       managerRef.current = null;
@@ -105,7 +130,9 @@ export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
       setManager(null);
       setYjsLoading(false);
     };
-  }, [id, wsUrl, enabled]);
+    // onAuthFailed intentionally omitted from deps — it should be stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, token, wsUrl, enabled]);
 
   const createSnapshot = useCallback(() => managerRef.current?.createSnapshot() || new Uint8Array(0), []);
   const restoreSnapshot = useCallback((binary: Uint8Array) => managerRef.current?.restoreSnapshot(binary), []);

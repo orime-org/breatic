@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import '@xyflow/react/dist/style.css';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/components/base/icon';
@@ -7,15 +7,17 @@ import Tooltip from '@/components/base/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useImageEditorStore } from '@/hooks/useImageEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
-import ImageEditor from './components/mixedEditor';
-import TextEditor from './components/textEditor';
+import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { removeToken } from '@/utils/token';
+import ImageEditor from './components/imageEditor';
+import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
 import store from '@/store';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
-import type { ImageFlowNodeData } from './components/mixedEditor/types';
+import type { ImageFlowNodeData } from './components/imageEditor/types';
 
 /** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
 const builtInNodeTemplateData = [
@@ -44,9 +46,23 @@ const ProjectPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
+  const { authInfo } = useUserCenterStore();
+  const navigate = useNavigate();
+  const sessionToken = authInfo?.state?.token ?? '';
+
   const yjs = useYjsStore({
     id: workflowId ?? '',
-    enabled: !!workflowId,
+    token: sessionToken,
+    enabled: !!workflowId && !!sessionToken,
+    onAuthFailed: useCallback((reason: string) => {
+      // Session expired or token rejected — clear client state and
+      // redirect to login. Without this, HocuspocusProvider would
+      // reconnect forever against an invalid token.
+      // eslint-disable-next-line no-console
+      console.warn('[yjs] Authentication failed:', reason);
+      removeToken();
+      navigate('/login', { replace: true });
+    }, [navigate]),
   });
 
   return (
@@ -61,7 +77,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
-  const { updateNode: updateImageEditorNode } = useMixedEditorStore();
+  const { updateNode: updateImageEditorNode } = useImageEditorStore();
   const [workflowName, setWorkflowName] = useState<string>('');
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
@@ -81,7 +97,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   }, [nodes, updateNode]);
 
   const exitImageEditorPickMode = useCallback(() => {
-    const currentNodes = store.getState().mixedEditor.nodes;
+    const currentNodes = store.getState().imageEditor.nodes;
     const hasPickMode = currentNodes.some(
       (n) => (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.fromCanvas === true,
     );
@@ -123,9 +139,6 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
 
   const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
   const isImageNode = String(panelNode?.type ?? '') === '1002';
-  const isVideoNode = String(panelNode?.type ?? '') === '1003';
-  const isAudioNode = String(panelNode?.type ?? '') === '1004';
-  const isTextNode = String(panelNode?.type ?? '') === '1001';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
   const showChatSeparator = chatPanelVisible && (canvasPanelVisible || isRightEditorOpen);
   const showRightSeparator = isRightEditorOpen && canvasPanelVisible;
@@ -281,11 +294,11 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
                       />
                     </button>
                   </Tooltip>
-                  {(isImageNode || isVideoNode || isAudioNode) && panelNode ? (
+                  {isImageNode && panelNode ? (
                     <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
-                  ) : isTextNode && rightPanel.nodeId ? (
-                    <TextEditor key={rightPanel.nodeId} nodeId={rightPanel.nodeId} />
-                  ) : null}
+                  ) : (
+                    <ResizableLeftPanel />
+                  )}
                   <div
                     id='chat-left-panel-portal'
                     className='absolute right-0 top-0 bottom-0 w-0 pointer-events-none'

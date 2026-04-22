@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-04-20
+
+- **CI: buildx + GitHub Actions cache** (#118): the docker job ran a bare `docker build` with no layer cache, so every run re-pulled `node:22-slim` from registry-1.docker.io and was vulnerable to any Docker Hub 5xx. Switched to `docker/build-push-action@v7` with `cache-from: type=gha` + `cache-to: type=gha,mode=max`. First successful build seeds the cache; subsequent builds skip the Docker Hub round-trip entirely. Typical CI time dropped from ~5-8 min to ~1-2 min
+- **CI: Node 24 action bumps** (#118): GitHub is removing Node 20 from runners on 2026-09-16. Bumped `actions/checkout@v4→v6`, `actions/setup-node@v4→v6`, `actions/cache@v4→v5`, `pnpm/action-setup@v4→v6` — all first Node 24 majors. Header comment on `.github/workflows/ci.yml` links the runner deprecation timeline for future reference
+- **nginx: canonical redirect was silently broken** (#117): PR #112 added `server_name _;` server blocks intending them as catch-all for apex hosts, but `_` is just a non-matching placeholder with no special semantics in nginx. Without the `default_server` directive, nginx falls back to the FIRST listener on the port — which was the `www`-regex block. Apex requests were being served by the www block (HTTPS apex returned 200 directly, HTTP apex 301'd to apex instead of www). Added `default_server` to both port-80 and port-443 apex blocks and reordered so the default appears first. Config comment now explains the gotcha
+- **CLAUDE.md #5 tightened**: 彻底解决/禁止补丁 条款精简为 5 条规则 + 2 条动手前自检。新增硬性要求：方案未经用户确认前不动代码；方案不唯一时必须列权衡请用户选，不许自己拍板；自己拿不准时必须问，不许猜
+
+## 2026-04-17
+
+- **Auth hydration at store init** (#115): `userCenter` reducer now reads `localStorage.auth` in `loadInitialAuthInfo()` at module-import time, replacing the `useEffect` in `Workspace`. Deep links like `/project/<id>` no longer bypass hydration — Redux has the session token on the very first render, which was blocking Yjs from connecting (empty token → `enabled=false` → `addNode` silent no-op)
+- **Canvas loading overlay removed** (#114): the project page already owns a top-level loading while `useYjsStore` syncs. The inner canvas-level overlay was redundant duplication
+- **Yjs WebSocket session token auth** (#113, BUG-046): replaced the hardcoded `token: 'dev'` in `yjsManager.ts` with an explicit required `token` parameter plumbed from the Redux auth slice. `HocuspocusProvider.onAuthenticationFailed` calls `provider.disconnect()` + user-supplied callback to break the close→reconnect loop when Hocuspocus rejects the token in prod (`NoAccount` mode is dev-only)
+- **Canonical domain (apex → www) + strict env** (#112): nginx serves only `www.*` and 301-redirects all other hosts, eliminating the localStorage split-brain between apex and `www`. Removed all silent fallbacks from `yjsManager.ts` and `request.ts` — missing `VITE_API_URL`/`VITE_WS_URL` now throws at startup so distributed deployments can't quietly misroute traffic
+- **VITE_API_URL drops `/api` suffix** (#111): axios prepends `/api/v1/` itself; including it in the env caused `/api/api/v1/*` double-prefix 404s. `.env.docker` and `DEPLOY.md` updated accordingly
+- **Frontend served from nginx root** (#110): removed the `/breatic/` Vite base path. Nginx already serves the SPA at `/`
+- **Fail-fast connectivity check** (#108): API/Worker/Collab call `checkInfraReady()` at boot and exit immediately if PG/Redis are unreachable, with a clear error — prevents silent hangs
+- **Independent migration service** (#107): `pnpm db:migrate` is now an explicit standalone step. Docker gets a dedicated `migrate` container that runs once and exits, decoupled from API/Worker startup. `dev` mode does not auto-migrate
+
 ## 2026-04-11
 
 - **Canvas Yjs-first architecture**: flipped frontend data flow from Redux-first (500ms debounce + whole-array replace) to Yjs-first (direct Y.Map writes → observe → Redux read cache). Deleted `yjsStoreSync.ts` + `yjsSliceSyncs.ts` bridge. New: `useCanvasYjs.ts` observe hook, `canvasYjsRef.ts` module-level manager ref (#53)

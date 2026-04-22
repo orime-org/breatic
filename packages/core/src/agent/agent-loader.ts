@@ -11,9 +11,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { logger } from "../logger.js";
+import { MONOREPO_ROOT } from "../config/env.js";
 
 /** Root directory for agent definitions. */
-const AGENTS_DIR = resolve(import.meta.dirname, "../../../../agents");
+const AGENTS_DIR = resolve(MONOREPO_ROOT, "agents");
 
 /** Parsed agent definition. */
 export interface AgentDefinition {

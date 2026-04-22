@@ -21,7 +21,7 @@ import { taskService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { getRedis } from "@breatic/core";
+import { getRedis, getStreamRedis } from "@breatic/core";
 import { acquireNodeLock } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { ConflictError, ValidationError } from "@breatic/core";
@@ -62,22 +62,11 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   }
 
   const redis = getRedis();
+  const streamRedis = getStreamRedis();
   const actor = {
     userId: user.id,
     username: user.email,
   };
-
-  // Acquire the node lock before creating the task so that a second
-  // concurrent request is rejected cleanly with a 409 and never
-  // enqueues a duplicate BullMQ job.
-  if (nodeId && projectId) {
-    const acquired = await acquireNodeLock(redis, projectId, nodeId, actor);
-    if (!acquired) {
-      throw new ConflictError(
-        "Another user is currently handling this node. Try again after they finish.",
-      );
-    }
-  }
 
   const task = await taskService.create(
     user.id,
@@ -88,6 +77,25 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.skill_name,
     body.source,
   );
+
+  // Acquire the node lock with taskId so only this task can release it.
+  // If the lock is already held, the task we just created becomes an orphan
+  // (never enqueued, never completed, forever pending in DB). Soft-delete
+  // it before throwing so listings don't show stuck "pending" tasks.
+  //
+  // A cleaner long-term design is "lock first, then create task", but that
+  // requires passing a client-generated taskId through taskService.create —
+  // a bigger refactor left for a follow-up. Rollback here is the minimal
+  // fix that closes the correctness gap.
+  if (nodeId && projectId) {
+    const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
+    if (!acquired) {
+      await taskService.softDelete(task.id);
+      throw new ConflictError(
+        "Another user is currently handling this node. Try again after they finish.",
+      );
+    }
+  }
 
   const job = await tasksQueue.add(
     "execute-task",
@@ -109,10 +117,11 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // Broadcast `handling` so every collaborator sees the node enter
   // its busy state immediately — before the Worker picks up the job.
   if (nodeId && projectId) {
-    await publishNodeEvent(redis, {
+    await publishNodeEvent(streamRedis, {
       type: "handling",
       projectId,
       nodeId,
+      taskId: task.id,
       actor,
     });
   }

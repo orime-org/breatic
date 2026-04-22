@@ -23,6 +23,7 @@ export default defineConfig(({ command, mode }) => {
     // Inject backend-only env vars into frontend (avoids duplicating VITE_ prefixed vars)
     define: {
       'import.meta.env.VITE_LOGIN_MODE': JSON.stringify(env.LOGIN_MODE || 'WithAccount'),
+      '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
     },
     plugins: [
       react(),
@@ -64,8 +65,9 @@ export default defineConfig(({ command, mode }) => {
         gzipSize: true,
       }),
     ],
-    // dev 用 / 方便本地访问；build 用 /breatic/ 供 nginx 部署
-    base: command === 'build' ? '/breatic/' : '/',
+    // 前端部署在 nginx 根路径（/）下，dev 和 build 统一。
+    // 如需挂在子路径，通过 VITE_PUBLIC_PATH 覆盖。
+    base: '/',
     root: path.resolve(__dirname, 'src'),
     publicDir: path.resolve(__dirname, 'public'),
     resolve: {
@@ -133,6 +135,25 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 8000,
       open: '/',
+      // Dev server runs on :8000, API on :3000, Collab on :1234 — different
+      // origins from the browser's perspective. Proxy /api, /uploads, /ws
+      // through Vite so frontend code can use relative URLs (same-origin)
+      // in dev just like it does in prod (where nginx does the same job).
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/uploads': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/ws': {
+          target: 'ws://localhost:1234',
+          ws: true,
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

@@ -18,9 +18,9 @@
  */
 
 import Redis from "ioredis";
-import pino from "pino";
+import { createLogger } from "./logger.js";
 
-const logger = pino({ name: "event-stream" });
+const logger = createLogger("event-stream");
 
 /** How long to block per XREAD call in milliseconds. */
 const BLOCK_MS = 5000;

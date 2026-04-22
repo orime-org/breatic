@@ -7,14 +7,27 @@
  */
 
 import { config } from "dotenv";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 
 /**
- * Monorepo root directory.
- * env.ts is at packages/server/src/config/ → 4 levels up = root.
- * This is the single source of truth for root path resolution.
+ * Find the monorepo root by walking up from the current file
+ * until we find `pnpm-workspace.yaml`. Works from both source
+ * (packages/core/src/config/) and compiled (packages/core/dist/).
  */
-export const MONOREPO_ROOT = resolve(import.meta.dirname, "../../../..");
+function findMonorepoRoot(): string {
+  let dir = import.meta.dirname;
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Fallback: process.cwd() (works in Docker where cwd = /app)
+  return process.cwd();
+}
+
+export const MONOREPO_ROOT = findMonorepoRoot();
 
 // Load .env from monorepo root (not packages/server/)
 config({ path: resolve(MONOREPO_ROOT, ".env") });
@@ -42,6 +55,8 @@ export const env = createEnv({
 
     // ── Redis ─────────────────────────────────────────
     REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
+    REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
+    REDIS_STREAM_URL: z.string().url().default("redis://localhost:6379/2"),
 
     // ── CORS ──────────────────────────────────────────
     ALLOWED_ORIGINS: z.string().default("http://localhost:3001"),
@@ -119,3 +134,36 @@ export const env = createEnv({
   runtimeEnv: process.env,
   emptyStringAsUndefined: false,
 });
+
+// ── Startup safety check ─────────────────────────────────────
+// NoAccount mode disables ALL authentication. It must never run
+// in production — a single misconfigured env var would expose
+// every user's data to anonymous access.
+if (env.LOGIN_MODE === "NoAccount" && env.ENV === "prod") {
+  throw new Error(
+    "FATAL: LOGIN_MODE=NoAccount is forbidden when ENV=prod. " +
+    "This would disable all authentication. Refusing to start.",
+  );
+}
+
+// Stripe secrets must be present (and non-whitespace) when payments are on.
+// Both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET default to "" in the
+// Zod schema so the app boots fine when PAYMENT_ENABLED=false. But if
+// payments are enabled and the secrets are empty or just spaces, webhook
+// signature verification would fail confusingly at runtime (Stripe SDK
+// would complain about an empty signing secret, not "you forgot to
+// configure it"). Fail fast at boot with a clear message instead.
+if (env.PAYMENT_ENABLED) {
+  if (!env.STRIPE_SECRET_KEY.trim()) {
+    throw new Error(
+      "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
+      "(non-empty, non-whitespace). Refusing to start.",
+    );
+  }
+  if (!env.STRIPE_WEBHOOK_SECRET.trim()) {
+    throw new Error(
+      "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
+      "(non-empty, non-whitespace). Refusing to start.",
+    );
+  }
+}

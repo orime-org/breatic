@@ -11,13 +11,13 @@ import { env } from "../config/env.js";
 import { getWorkerConfig } from "../config/worker.js";
 
 /**
- * Parse REDIS_URL into BullMQ-compatible connection options.
+ * Parse REDIS_QUEUE_URL into BullMQ-compatible connection options.
  *
  * BullMQ accepts a plain connection config object, avoiding ioredis
  * version mismatch issues.
  */
 function parseRedisUrl(): ConnectionOptions {
-  const url = new URL(env.REDIS_URL);
+  const url = new URL(env.REDIS_QUEUE_URL);
   return {
     host: url.hostname,
     port: Number(url.port) || 6379,

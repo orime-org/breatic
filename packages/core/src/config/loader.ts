@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MONOREPO_ROOT } from "./env.js";
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
@@ -36,7 +37,7 @@ let _cachedConfig: Readonly<AgentConfig> | null = null;
 export function getAgentConfig(configDir?: string): Readonly<AgentConfig> {
   if (_cachedConfig) return _cachedConfig;
 
-  const dir = configDir ?? resolve(import.meta.dirname, "../../../../config");
+  const dir = configDir ?? resolve(MONOREPO_ROOT, "config");
   const filePath = resolve(dir, "agent.yaml");
   const raw = readFileSync(filePath, "utf-8");
   const parsed = parse(raw) as unknown;

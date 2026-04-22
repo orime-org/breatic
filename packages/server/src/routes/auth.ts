@@ -17,6 +17,25 @@ import type { AuthVariables } from "../middleware/auth.js";
 import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { checkRateLimit, getRedis } from "@breatic/core";
+import type { MiddlewareHandler } from "hono";
+
+/** Rate limit middleware factory. */
+function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
+  return async (c, next) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const redis = getRedis();
+    const allowed = await checkRateLimit(redis, `${opts.prefix}:${ip}`, opts.max, opts.windowSeconds);
+    if (!allowed) {
+      return c.json(
+        { error: { code: 429, message: "Too many requests. Try again later." } },
+        429,
+        { "Retry-After": String(opts.windowSeconds) },
+      );
+    }
+    await next();
+  };
+}
 
 const auth = new Hono<{ Variables: AuthVariables }>();
 
@@ -41,7 +60,7 @@ function getGoogleClient(): OAuth2Client {
  * @returns `201` with `{ user, token }` on success
  * @throws `409` if email is already registered
  */
-auth.post("/register", zValidator("json", registerSchema), async (c) => {
+auth.post("/register", rateLimit({ prefix: "register", max: 3, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const user = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
@@ -55,7 +74,7 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
  * @returns `200` with `{ user, token }` on success
  * @throws `401` if credentials are invalid
  */
-auth.post("/login", zValidator("json", loginSchema), async (c) => {
+auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   return c.json({ data: { user, token } });
@@ -95,10 +114,10 @@ const googleAuthSchema = z.object({
  * @throws `401` if the credential is invalid, expired, or unverified
  * @throws `503` if Google OAuth is not configured on this server
  */
-auth.post("/google", zValidator("json", googleAuthSchema), async (c) => {
+auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
-    return c.json({ error: "Google OAuth is not configured on this server" }, 503);
+    return c.json({ error: { code: 503, message: "Google OAuth is not configured on this server" } }, 503);
   }
 
   const { credential } = c.req.valid("json");
@@ -113,26 +132,26 @@ auth.post("/google", zValidator("json", googleAuthSchema), async (c) => {
     payload = ticket.getPayload();
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "google_id_token_verification_failed");
-    return c.json({ error: "Invalid Google credential" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential" } }, 401);
   }
 
   if (!payload) {
-    return c.json({ error: "Invalid Google credential: empty payload" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: empty payload" } }, 401);
   }
 
   // `verifyIdToken` already enforces aud/iss/exp, but double-check iss
   // in case the library ever changes defaults. Google emits both forms.
   const VALID_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
   if (!payload.iss || !VALID_ISSUERS.has(payload.iss)) {
-    return c.json({ error: "Invalid Google credential: wrong issuer" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: wrong issuer" } }, 401);
   }
 
   if (!payload.sub || !payload.email) {
-    return c.json({ error: "Invalid Google credential: missing sub or email" }, 401);
+    return c.json({ error: { code: 401, message: "Invalid Google credential: missing sub or email" } }, 401);
   }
 
   if (payload.email_verified !== true) {
-    return c.json({ error: "Google account email is not verified" }, 401);
+    return c.json({ error: { code: 401, message: "Google account email is not verified" } }, 401);
   }
 
   const { user, token } = await authService.loginOrCreateGoogle(
@@ -162,5 +181,44 @@ auth.post("/logout", requireAuth, async (c) => {
   await authService.logout(token);
   return c.json({ message: "Logged out" });
 });
+
+// ── Password Reset ───────────────────────────────────────────────
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+auth.post(
+  "/forgot-password",
+  rateLimit({ prefix: "forgot", max: 3, windowSeconds: 3600 }),
+  zValidator("json", forgotPasswordSchema),
+  async (c) => {
+    const { email } = c.req.valid("json");
+    const resetBaseUrl = c.req.header("Origin")
+      ? `${c.req.header("Origin")}/reset-password`
+      : "http://localhost:8000/reset-password";
+
+    await authService.forgotPassword(email, resetBaseUrl);
+
+    // Always return success (don't reveal if email exists)
+    return c.json({ message: "If this email is registered, a reset link has been sent." });
+  },
+);
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+});
+
+auth.post(
+  "/reset-password",
+  rateLimit({ prefix: "reset", max: 5, windowSeconds: 3600 }),
+  zValidator("json", resetPasswordSchema),
+  async (c) => {
+    const { token, password } = c.req.valid("json");
+    await authService.resetPassword(token, password);
+    return c.json({ message: "Password reset successful. Please log in." });
+  },
+);
 
 export { auth as authRoute };

@@ -14,6 +14,14 @@
 
 import { vi } from "vitest";
 
+const mockPipeline = {
+  zremrangebyscore: () => mockPipeline,
+  zcard: () => mockPipeline,
+  zadd: () => mockPipeline,
+  expire: () => mockPipeline,
+  exec: () => Promise.resolve([[null, 0], [null, 0], [null, 1], [null, 1]]),
+};
+
 const mockRedis = {
   ping: () => Promise.resolve("PONG"),
   on: () => mockRedis,
@@ -25,6 +33,9 @@ const mockRedis = {
   del: () => Promise.resolve(1),
   sadd: () => Promise.resolve(1),
   smembers: () => Promise.resolve([]),
+  incr: () => Promise.resolve(1),
+  expire: () => Promise.resolve(1),
+  pipeline: () => mockPipeline,
 };
 
 /** Mock references — tests can override behavior per-test. */
@@ -67,6 +78,7 @@ export const mocks = {
     get: vi.fn(),
     markRunning: vi.fn(),
     markFailed: vi.fn(),
+    softDelete: vi.fn(),
   },
   nodeHistoryService: {
     listByNode: vi.fn(),
@@ -90,8 +102,24 @@ export const mocks = {
   userRepo: {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
   },
-  skillService: {},
-  creditService: { deduct: vi.fn() },
+  skillService: {
+    listBuiltin: vi.fn().mockReturnValue([
+      { name: "creative_research", description: "Research", scope: ["agent"] },
+    ]),
+    listUserSkills: vi.fn().mockResolvedValue([]),
+  },
+  textToolService: {
+    execute: vi.fn(),
+  },
+  creditService: {
+    deduct: vi.fn().mockResolvedValue(100),
+    deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
+    getBalance: vi.fn().mockResolvedValue(100),
+    add: vi.fn().mockResolvedValue(200),
+  },
+  // Infra hooks that tests need to override. Kept stable across runs so
+  // `beforeEach` can `.mockReset()` and re-program them.
+  acquireNodeLock: vi.fn().mockResolvedValue(true),
 };
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -111,14 +139,15 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     createQueue: () => ({ add: vi.fn().mockResolvedValue({ id: "job-1" }) }),
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
-    acquireNodeLock: vi.fn().mockResolvedValue(true),
+    checkRateLimit: vi.fn().mockResolvedValue(true),
+    acquireNodeLock: mocks.acquireNodeLock,
     releaseNodeLock: vi.fn(),
     publishNodeEvent: vi.fn(),
     getStorageAdapter: vi.fn(),
     setSession: vi.fn(),
     getSession: vi.fn(),
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com" },
+    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, LOGIN_MODE: "WithAccount" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Logger
@@ -135,6 +164,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     memoryService: mocks.memoryService,
     userRepo: mocks.userRepo,
     skillService: mocks.skillService,
+    textToolService: mocks.textToolService,
+    modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     creditService: mocks.creditService,
     // Agent
     getSkillRegistry: () => ({

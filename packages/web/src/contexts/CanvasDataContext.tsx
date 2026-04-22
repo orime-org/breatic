@@ -47,6 +47,12 @@ const TOAST_TTL = 5000;
 export interface CanvasDataContextValue {
   nodes: Node[];
   edges: Edge[];
+  /** O(1) node lookup by ID. */
+  nodesById: Map<string, Node>;
+  /** True while waiting for server sync to complete. */
+  loading: boolean;
+  /** Non-null if sync failed (timeout / auth error). */
+  syncError: string | null;
   toasts: CanvasToast[];
   dismissToast: (id: string) => void;
   /** Apply local-only node changes (select, dimensions) without Yjs. */
@@ -103,11 +109,13 @@ export function CanvasDataProvider({ manager, children }: CanvasDataProviderProp
   }, []);
 
   // ── Yjs → nodes/edges ──
-  const { nodes, edges, applyLocalNodeChanges } = useCanvasYjsInternal(manager, pushToast);
+  const { nodes, edges, loading, syncError, applyLocalNodeChanges } = useCanvasYjsInternal(manager, pushToast);
+
+  const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const value = useMemo<CanvasDataContextValue>(
-    () => ({ nodes, edges, toasts, dismissToast, applyLocalNodeChanges }),
-    [nodes, edges, toasts, dismissToast, applyLocalNodeChanges],
+    () => ({ nodes, edges, nodesById, loading, syncError, toasts, dismissToast, applyLocalNodeChanges }),
+    [nodes, edges, nodesById, loading, syncError, toasts, dismissToast, applyLocalNodeChanges],
   );
 
   return (

@@ -1,14 +1,15 @@
 /**
  * Project-level Yjs manager.
  *
- * Creates the canvas Y.Doc with the Map-of-Maps structure:
+ * Creates the canvas Y.Doc and waits for server sync before
+ * initializing nodesMap/edgesMap/UndoManager. This ensures we
+ * always work with the server's version of the data — no CRDT
+ * conflict, no zombie references, no race conditions.
  *
+ * Canvas structure (after sync):
  *   canvas: Y.Map
  *     ├── nodesMap: Y.Map<nodeId, Y.Map>
  *     └── edges:    Y.Map<edgeId, Y.Map>
- *
- * Provides undo/redo scoped to canvas topology (node create/delete,
- * position, edges). Prompt undo is handled separately by TipTap.
  */
 
 import * as Y from 'yjs';
@@ -17,26 +18,41 @@ import { createYjsManager, type YjsManager as BaseYjsManager } from './yjsManage
 /** Transactions with this origin are excluded from canvas UndoManager. */
 export const noHistoryOrigin = Symbol('no-history');
 
-/** Origin used for normal user operations (tracked by UndoManager). */
+/**
+ * Origin used for normal user operations (tracked by UndoManager).
+ * Per-user so collaborators can't undo each other's operations.
+ * Set via createYjsProjectManager config; defaults to 'canvas-user'.
+ */
+let _userOrigin = 'canvas-user';
+export function getUserOrigin(): string { return _userOrigin; }
+/** @deprecated Use getUserOrigin() — this is kept for backward compat. */
 export const userOrigin = 'canvas-user';
 
 export interface YjsProjectManagerConfig {
   workflowId: string;
+  /** Session token for Hocuspocus auth. See YjsManagerConfig.token. */
+  token: string;
   wsUrl?: string;
+  userId?: string;
   onSynced?: () => void;
-  onUpdate?: () => void;
+  /** Called when server rejects the session token; clear session + redirect. */
+  onAuthFailed?: (reason: string) => void;
 }
 
 export interface YjsProjectManager {
   doc: Y.Doc;
   canvasMap: Y.Map<unknown>;
-  /** Y.Map<nodeId, Y.Map> — each node is an independent Y.Map. */
+  /** Y.Map<nodeId, Y.Map> — available after sync. */
   nodesMap: Y.Map<unknown>;
-  /** Y.Map<edgeId, Y.Map> — each edge is an independent Y.Map. */
+  /** Y.Map<edgeId, Y.Map> — available after sync. */
   edgesMap: Y.Map<unknown>;
   imageEditorMap: Y.Map<unknown>;
   awareness: BaseYjsManager['awareness'];
   undoManager: Y.UndoManager;
+  /** True after server sync completes and nodesMap/edgesMap are initialized. */
+  synced: boolean;
+  /** Register a callback for when sync + initialization completes. */
+  onSynced: (cb: () => void) => () => void;
   getSubdoc: (subdocId: string) => Y.Doc;
   getSubdocAwareness: (subdocId: string) => BaseYjsManager['awareness'] | undefined;
   createSnapshot: () => Uint8Array;
@@ -50,55 +66,89 @@ export interface YjsProjectManager {
 }
 
 export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsProjectManager => {
-  const { workflowId, wsUrl } = config;
+  const { workflowId, token, wsUrl, userId, onAuthFailed } = config;
 
-  const baseManager = createYjsManager({ docId: `project-${workflowId}/canvas`, wsUrl });
+  // Set per-user origin for UndoManager tracking
+  _userOrigin = userId ? `canvas-user:${userId}` : 'canvas-user';
+
+  const baseManager = createYjsManager({
+    docId: `project-${workflowId}/canvas`,
+    token,
+    wsUrl,
+    onAuthFailed,
+  });
   const doc = baseManager.doc;
 
   const canvasMap = doc.getMap('canvas');
   const imageEditorMap = doc.getMap('imageEditor');
 
-  // nodesMap/edgesMap helper — gets or creates the Y.Map inside canvasMap.
-  // NOT called eagerly during init to avoid creating Y.Maps that conflict
-  // with the server state arriving via WebSocket sync.
-  function getOrCreateSubMap(key: string): Y.Map<unknown> {
-    let m = canvasMap.get(key);
-    if (!(m instanceof Y.Map)) {
-      m = new Y.Map();
-      canvasMap.set(key, m);
+  // nodesMap, edgesMap, and UndoManager are initialized AFTER sync.
+  // Before sync, these are null — consumers must check `synced` or
+  // use `onSynced` before accessing them.
+  let nodesMap: Y.Map<unknown> | null = null;
+  let edgesMap: Y.Map<unknown> | null = null;
+  let undoManager: Y.UndoManager | null = null;
+
+  const UNDO_STACK_MAX = 50;
+
+  function initAfterSync() {
+    // Get or create sub-maps. Safe to create here because sync is
+    // complete — no CRDT conflict will occur.
+    let nm = canvasMap.get('nodesMap');
+    if (!(nm instanceof Y.Map)) {
+      nm = new Y.Map();
+      canvasMap.set('nodesMap', nm);
     }
-    return m as Y.Map<unknown>;
+    nodesMap = nm as Y.Map<unknown>;
+
+    let em = canvasMap.get('edges');
+    if (!(em instanceof Y.Map)) {
+      em = new Y.Map();
+      canvasMap.set('edges', em);
+    }
+    edgesMap = em as Y.Map<unknown>;
+
+    // UndoManager scoped to nodesMap + edgesMap (precise scope).
+    undoManager = new Y.UndoManager(
+      [nodesMap, edgesMap],
+      {
+        trackedOrigins: new Set([_userOrigin]),
+        captureTimeout: 500,
+      },
+    );
+
+    undoManager.on('stack-item-added', () => {
+      while (undoManager!.undoStack.length > UNDO_STACK_MAX) {
+        undoManager!.undoStack.shift();
+      }
+    });
+
+    // Clear undo stack — don't let users undo the initial sync load.
+    undoManager.clear();
   }
 
-  const snapshotOrigin = Symbol('snapshot-origin');
+  // Sync tracking
+  let synced = false;
+  const syncCallbacks = new Set<() => void>();
 
-  // Canvas UndoManager — tracks topology changes (node create/delete,
-  // position, name, edges). Does NOT track:
-  // - Prompt edits (TipTap's own UndoManager on Y.XmlFragment)
-  // - Attachment/params changes (use noHistoryOrigin)
-  // - Collab/remote writes (remote origin, not in trackedOrigins)
-  //
-  // Only `userOrigin` is tracked — `null` is excluded to prevent
-  // TipTap's y-prosemirror writes from polluting the canvas undo stack.
-  const UNDO_STACK_MAX = 50;
-  // UndoManager scoped to canvasMap — tracks all nested changes
-  // (nodesMap + edgesMap) regardless of when they're created.
-  const undoManager = new Y.UndoManager(
-    [canvasMap],
-    {
-      trackedOrigins: new Set([userOrigin]),
-      captureTimeout: 500,
-    },
-  );
-
-  // Trim undo stack to prevent unbounded memory growth (1000+ nodes scenario).
-  undoManager.on('stack-item-added', () => {
-    while (undoManager.undoStack.length > UNDO_STACK_MAX) {
-      undoManager.undoStack.shift();
-    }
+  baseManager.onSynced(() => {
+    initAfterSync();
+    synced = true;
+    syncCallbacks.forEach((cb) => cb());
+    syncCallbacks.clear();
+    config.onSynced?.();
   });
 
-  let isSynced = false;
+  const onSynced = (cb: () => void): (() => void) => {
+    if (synced) {
+      cb();
+      return () => {};
+    }
+    syncCallbacks.add(cb);
+    return () => { syncCallbacks.delete(cb); };
+  };
+
+  const snapshotOrigin = Symbol('snapshot-origin');
 
   const restoreSnapshot = (binary: Uint8Array) => {
     const tempDoc = new Y.Doc();
@@ -111,62 +161,39 @@ export const createYjsProjectManager = (config: YjsProjectManagerConfig): YjsPro
   };
 
   const undo = (): boolean => {
-    if (undoManager.undoStack.length === 0) return false;
+    if (!undoManager || undoManager.undoStack.length === 0) return false;
     undoManager.undo();
     return true;
   };
 
   const redo = (): boolean => {
-    if (undoManager.redoStack.length === 0) return false;
+    if (!undoManager || undoManager.redoStack.length === 0) return false;
     undoManager.redo();
     return true;
   };
 
-  const canUndo = (): boolean => undoManager.undoStack.length > 0;
-  const canRedo = (): boolean => undoManager.redoStack.length > 0;
+  const canUndo = (): boolean => undoManager ? undoManager.undoStack.length > 0 : false;
+  const canRedo = (): boolean => undoManager ? undoManager.redoStack.length > 0 : false;
 
   const transactWithoutHistory = (fn: () => void) => {
     doc.transact(fn, noHistoryOrigin);
   };
 
-  const checkSync = () => {
-    if (!isSynced) {
-      isSynced = true;
-      if (undoManager.undoStack) undoManager.undoStack.length = 0;
-      if (undoManager.redoStack) undoManager.redoStack.length = 0;
-      baseManager.createSnapshot();
-    }
-  };
-
-  if (baseManager.indexeddbProvider.synced) {
-    checkSync();
-    config.onSynced?.();
-  } else {
-    baseManager.indexeddbProvider.on('synced', () => {
-      checkSync();
-      config.onSynced?.();
-    });
-  }
-
-  const handleUpdate = () => config.onUpdate?.();
-  doc.on('update', handleUpdate);
-
   const destroy = () => {
-    doc.off('update', handleUpdate);
     baseManager.destroy();
-    isSynced = false;
+    synced = false;
   };
 
   return {
     doc,
     canvasMap,
-    // Getter-based: always returns the fresh Y.Map from canvasMap,
-    // avoiding stale references before WebSocket sync completes.
-    get nodesMap() { return getOrCreateSubMap('nodesMap'); },
-    get edgesMap() { return getOrCreateSubMap('edges'); },
+    get nodesMap() { return nodesMap!; },
+    get edgesMap() { return edgesMap!; },
     imageEditorMap,
     awareness: baseManager.awareness,
-    undoManager,
+    get undoManager() { return undoManager!; },
+    get synced() { return synced; },
+    onSynced,
     getSubdoc: baseManager.getSubdoc,
     getSubdocAwareness: baseManager.getSubdocAwareness,
     createSnapshot: baseManager.createSnapshot,

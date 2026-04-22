@@ -76,6 +76,7 @@ export async function createUser(data: {
   email: string;
   hashedPassword?: string;
   googleId?: string;
+  username?: string;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -83,6 +84,7 @@ export async function createUser(data: {
       email: data.email,
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
+      username: data.username,
     })
     .returning();
   return toEntity(rows[0]!);
@@ -99,6 +101,17 @@ export async function updateUser(
     .where(eq(users.id, userId))
     .returning();
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Atomically deduct credits. Fails if insufficient balance.
+ *
+/** Update a user's hashed password. */
+export async function updatePassword(userId: string, hashedPassword: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ hashedPassword, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
 }
 
 /**
@@ -139,7 +152,7 @@ export async function getCredits(userId: string): Promise<number> {
   const rows = await db
     .select({ credits: users.credits })
     .from(users)
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return rows[0]?.credits ?? 0;
 }

@@ -96,6 +96,8 @@ export interface NodeHandlingEvent {
   type: "handling";
   projectId: string;
   nodeId: string;
+  /** Task ID that acquired the lock. */
+  taskId: string;
   actor: HandlingActor;
 }
 
@@ -104,6 +106,8 @@ export interface NodeCompletedEvent {
   type: "completed";
   projectId: string;
   nodeId: string;
+  /** Task ID that held the lock — used for verified release. */
+  taskId: string;
   content: string;
   cover_url?: string;
 }
@@ -113,6 +117,8 @@ export interface NodeFailedEvent {
   type: "failed";
   projectId: string;
   nodeId: string;
+  /** Task ID that held the lock — used for verified release. */
+  taskId: string;
 }
 
 /** Union of all node state events on the canvas event bus. */

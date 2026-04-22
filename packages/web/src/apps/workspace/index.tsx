@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { FloatButton } from '@/components/base/floatButton';
 import dayjs from 'dayjs';
 import WorkspaceSider from './components/WorkspaceSider';
@@ -7,57 +7,13 @@ import UserCenter from '@/apps/userCenter';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import LanguageMap from './components/LanguageMap';
 import RecentProjects, { RecentProjectsRef } from './components/RecentProjects';
-import type { WorkspaceProject } from './types';
 import Login from './components/login';
 import { Icon } from '@/components/base/icon';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
-import { AuthenticatedInfoType } from '@/store/modules/userCenter';
-import { setToken } from '@/utils/token';
 
-/** Local-only card for Recent projects UI testing (not from API). */
-const STATIC_TEST_RECENT_PROJECT: WorkspaceProject = {
-  id: 'local-test-recent-project',
-  userId: 'test',
-  name: '测试项目（静态）',
-  description: null,
-  canvasData: {},
-  thumbnailUrl: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
+const Workspace: React.FC = () => {
+  const { authInfo, authRequired } = useUserCenterStore();
 
-const STATIC_RECENT_PROJECTS_FOR_TEST = [STATIC_TEST_RECENT_PROJECT];
-
-const Workspace: React.FC = () => { const { authInfo, authRequired, setAuthInfo } = useUserCenterStore();
-
-  // Load auth from localStorage on mount.
-  useEffect(() => {
-    if (authRequired) {
-      // With-account mode: read auth from localStorage.
-      const raw = localStorage.getItem('auth');
-      if (raw) {
-        const authData = JSON.parse(raw) as AuthenticatedInfoType;
-        if (authData && authData.state) {
-          setAuthInfo(authData);
-        }
-      }
-    } else {
-      // No-account mode: set default authenticated state.
-      const defaultAuthInfo = {
-        state: {
-          isAuthenticated: true,
-          token: 'ThisIsATemporaryToken',
-        },
-      };
-      setAuthInfo(defaultAuthInfo);
-      // Persist token cache.
-      setToken({
-        ...defaultAuthInfo,
-        version: 0,
-      });
-    }
-  }, [authRequired, setAuthInfo]);
   const currentYear = dayjs().year();
   const recentProjectsRef = useRef<RecentProjectsRef>(null);
   const scrollbarRef = useRef<HTMLDivElement>(null);
@@ -106,7 +62,7 @@ const Workspace: React.FC = () => { const { authInfo, authRequired, setAuthInfo 
             <div className='flex-1 flex flex-col px-[50px] min-h-0'>
               <div ref={scrollbarRef} className='flex-1 overflow-auto min-h-0' onScroll={handleScroll}>
                 <UseCase />
-                <RecentProjects ref={recentProjectsRef} staticProjects={STATIC_RECENT_PROJECTS_FOR_TEST} />
+                <RecentProjects ref={recentProjectsRef} />
               </div>
               <FloatButton.BackTop
                 target={getScrollContainer}

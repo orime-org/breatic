@@ -14,24 +14,30 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-import pino from "pino";
+import { createLogger } from "./logger.js";
 import { createCollabServer } from "./server.js";
 import { startTaskListener } from "./task-listener.js";
 import { getCollabConfig } from "./config.js";
+import { checkCollabInfraReady } from "./connectivity-check.js";
 
-const logger = pino({ name: "collab" });
+const logger = createLogger("main");
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "postgres://breatic:breatic@localhost:5432/breatic";
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379/0";
+const REDIS_STREAM_URL = process.env["REDIS_STREAM_URL"] ?? "redis://localhost:6379/2";
 const ENV_PREFIX = process.env["ENV"] ?? "dev";
 
 async function main(): Promise<void> {
+  // Fail-fast: verify PG + Redis are reachable before starting the server.
+  await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
+
   const cfg = getCollabConfig();
 
   // Create and start Hocuspocus server
   const { server, hocuspocus } = await createCollabServer({
     databaseUrl: DATABASE_URL,
     redisUrl: REDIS_URL,
+    streamRedisUrl: REDIS_STREAM_URL,
     envPrefix: ENV_PREFIX,
   });
 
@@ -39,7 +45,9 @@ async function main(): Promise<void> {
   logger.info({ port: cfg.port }, "Hocuspocus collaboration server started");
 
   // Start task result listener (Worker → Yjs)
-  const stopListener = startTaskListener(hocuspocus, REDIS_URL, ENV_PREFIX);
+  // streamRedisUrl: consume Redis Streams (DB 2)
+  // redisUrl: release canvas locks (DB 0)
+  const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, REDIS_URL, ENV_PREFIX);
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {

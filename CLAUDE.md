@@ -4,18 +4,33 @@
 
 # 技术栈
 
-Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQL (postgres.js) | ioredis | BullMQ | Vercel AI SDK | Hocuspocus 3.4.4 | Zod | Vitest | pino
+Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQL (postgres.js) | ioredis | BullMQ | Vercel AI SDK | Hocuspocus 3.4.4 | Zod | Vitest | pino + pino-roll
 
 # 开发命令
 
 ```bash
-pnpm dev              # API (port 3000)
+# 本地开发（首次或拉取新 migration 后）
+docker compose up -d postgres redis
+cp .env.dev .env                       # 首次
+pnpm db:migrate                        # 首次或有新 migration 时
+
+pnpm dev              # turbo 启动所有服务（自动先 build shared/core）
 pnpm dev:collab       # Hocuspocus (port 1234)
 pnpm dev:worker       # BullMQ Worker
+
+# Docker 全量部署
+cp .env.docker .env        # 首次，改域名和密钥
+docker compose up -d       # migrate 容器先跑，再启动 6 个服务
+
+# 质量检查
 pnpm test             # 单元测试 (mock，无需外部依赖)
 pnpm typecheck        # tsc --noEmit
 pnpm lint             # ESLint
 ```
+
+> **启动行为**：服务（API/Worker/Collab）启动时先调 `checkInfraReady()` 验证 PG/Redis 可达，连不上**立即退出**并打印清晰错误（避免无声挂死）。Migration 是独立步骤（`pnpm db:migrate` 或 Docker 的 `migrate` 服务），**不绑在 dev 启动里**。
+>
+> `pnpm dev` 通过 turbo `dependsOn: ["^build"]` 自动先编译 shared → core，再启动 server/worker/collab（tsup --watch / tsc --watch）。
 
 # 目录结构
 
@@ -48,13 +63,15 @@ uploads/               # AIGC 生成文件本地存储（git-ignored）
 
 ```
 shared（零依赖）
+  ↑           ↑
+core        collab（只依赖 shared，不依赖 core）
   ↑
-core（所有业务逻辑）
-  ↑
-server / worker / collab / web
+server / worker / web
 ```
 
-**严格边界**：server 不 import worker，worker 不 import server。所有共享逻辑在 core。
+**严格边界**：server 不 import worker，worker 不 import server。所有共享业务逻辑在 core。collab 是独立进程，只依赖 shared 类型。
+
+**Package exports**：shared/core 导出 `./dist/index.js`（行业标准），本地开发和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`（向上查找 `pnpm-workspace.yaml`），不依赖 `import.meta.dirname` 相对层级。
 
 # 架构
 
@@ -152,13 +169,28 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 | 文件 | 用途 |
 |------|------|
-| `.env` | 密钥、DB/Redis 连接（Zod 校验，启动即检查） |
+| `.env` | 运行时配置（从 `.env.dev` 或 `.env.docker` 复制） |
+| `.env.dev` | 本地开发模板（localhost URLs） |
+| `.env.docker` | Docker 部署模板（容器名 URLs） |
 | `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、memory Turn 窗口（20）、Turn 压缩（3） |
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
 | `config/pricing.yaml` | 积分套餐（5 tier，test+live Stripe ID） |
 | `config/models/*.yaml` | AI 模型路由（46 文件，model-centric） |
+
+# 日志
+
+每个服务独立日志目录，pino-roll 每日轮转：
+
+| 服务 | 目录 | 初始化 |
+|------|------|--------|
+| API | `logs/api/` | 默认 `initLogger("api")` |
+| Worker | `logs/worker/` | 入口显式 `initLogger("worker")` |
+| Collab | `logs/collab/` | 独立 logger（不依赖 core） |
+| Nginx | `logs/nginx/` | logrotate，30 天保留 |
+
+每条日志双时间戳：`timestamp`（ISO 8601）+ `time`（epoch ms）。
 
 # 代码风格
 
@@ -168,14 +200,17 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 # 关键规范
 
-- **软删除（MANDATORY）**：所有数据库删除一律软删除，**禁止硬删除**。每张表用 `deleted_at: timestamp` 列标记；list 查询默认过滤 `deleted_at IS NULL`；service/repo 提供 `softDelete()` 方法而非 `delete()`；删除后文件/存储资源**永不清理**。例外：GDPR 删号、合规清理走单独管理流程，不在常规代码路径
-- **禁止 AI 作者署名（MANDATORY）**：commit 的 author / committer / `Co-Authored-By` / `Signed-off-by` 里**禁止**出现 Claude / Anthropic / GPT / Copilot / Cursor / ChatGPT / Codex 等 AI 工具名。强制手段：`.husky/commit-msg` 本地 hook + `.github/workflows/no-ai-attribution.yml` PR CI
-- **PostgreSQL**：Drizzle ORM，UUID 主键，JSONB，积分原子操作
-- **Redis**：Key 格式 `{env}:{service}:{entity}:{id}`，禁止无 TTL
+- **软删除（MANDATORY）**：所有数据库删除一律软删除，**禁止硬删除**。每张表用 `deleted_at: timestamp` 列标记；list 查询默认过滤 `deleted_at IS NULL`；所有 FK 约束为 `restrict`（硬删父记录会被数据库阻止）。例外：GDPR 删号走单独管理流程
+- **禁止 AI 作者署名（MANDATORY）**：commit 署名字段禁止 AI 工具名。强制手段：`.husky/commit-msg` + PR CI
+- **PostgreSQL**：Drizzle ORM，UUID 主键，JSONB，积分原子操作（`db.transaction()` 包裹扣费+记流水）
+- **Redis**：3 个逻辑 DB（`REDIS_URL` DB0 session/lock/rate-limit, `REDIS_QUEUE_URL` DB1 BullMQ, `REDIS_STREAM_URL` DB2 Streams+Hocuspocus pub/sub）。Key 格式 `{env}:{service}:{entity}:{id}`，禁止无 TTL。Stream MAXLEN ~ 10000
+- **Auth 安全**：登录 5 次/分钟、注册 3 次/小时、Google OAuth 10 次/分钟（Redis 滑窗限速）。NoAccount 模式仅 dev 环境可用（ENV=prod 时启动拒绝）
+- **XSS 防护**：所有 HTML 渲染走 DOMPurify `sanitizeRichText()`。粘贴内容、LLM 输出、prompt 预览均清洗
+- **Prompt 安全**：发给 AIGC 的 prompt 先经 `extractPromptText()` 去除 HTML/注释/不可见字符
 - **异常**：AppError(status, msg) → NotFound/Conflict/Validation/Forbidden/Unauthorized，Service 层抛，路由层 handler 处理
 - **SSE**：仅 Agent 聊天 + Text mini-tool，`data` 含 `userId` + `projectId`
-- **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`），前端直传。AIGC 结果从临时 CDN 下载到永久存储
-- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等
+- **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`，5 分钟过期，30 次/分钟限速），前端直传
+- **支付**：Stripe Checkout 积分购买，永不过期，Webhook 幂等（CAS 原子状态转换）。Mini-tool 入队前预检余额（402）。`deductOnce()` 保证同 refKey 只扣一次
 
 # 禁止清单
 
@@ -235,3 +270,17 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 ```
 
 强成功标准让你能独立循环。弱标准（"让它能跑"）需要不断确认。
+
+## 5. 彻底解决，禁止补丁（MANDATORY）
+
+**定位根因、提彻底方案；禁止头疼医头、脚疼医脚。**
+
+- **方案未经用户确认前，不动代码**
+- **方案不唯一时**（含治本/治标的取舍）：列每个选项的复杂度、回归面、架构影响，让用户选；不许自己拍板
+- **自己拿不准时**：必须问；不许猜、不许"先实现一版试试"
+- **架构有根本缺陷**：提架构变更，不在缺陷上打补丁
+- 参考成熟产品（飞书、Google Docs 等）的做法
+
+动手前两条自检：
+1. 在解决根因，还是只压症状？后者 → 停下来重想
+2. 方案是唯一解，还是我在多个里挑了一个？后者 → 停下来问用户

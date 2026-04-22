@@ -10,12 +10,10 @@
  */
 
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { db } from "./client.js";
 import { logger } from "../logger.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { MONOREPO_ROOT } from "../config/env.js";
 
 /**
  * Run all pending database migrations.
@@ -23,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @throws Error if any migration fails (prevents service from starting)
  */
 export async function runMigrations(): Promise<void> {
-  const migrationsFolder = resolve(__dirname, "migrations");
+  const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
   logger.info({ migrationsFolder }, "Running database migrations...");
 
   await migrate(db, { migrationsFolder });

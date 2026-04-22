@@ -15,7 +15,7 @@ import { MINI_TOOL_DEFAULTS } from "./mini-tool-defaults.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
-import { getRedis } from "@breatic/core";
+import { getRedis, getStreamRedis } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
@@ -23,6 +23,7 @@ import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { extractPromptText } from "@breatic/core";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -81,6 +82,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName } = job.data;
 
   const redis = getRedis();
+  const streamRedis = getStreamRedis();
   const nodeId = params.node_id as string | undefined;
 
   // ─── Re-entry guard ───────────────────────────────────────────────
@@ -110,7 +112,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, "Retry not allowed after provider returned a result");
+    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, "Retry not allowed after provider returned a result");
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -147,7 +149,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
-    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, errorMsg);
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
 
@@ -172,7 +174,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
-    await publishFailedEvent(redis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, errorMsg);
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -254,10 +256,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   }
 
   if (nodeId && projectId) {
-    await publishNodeEvent(redis, {
+    await publishNodeEvent(streamRedis, {
       type: "completed",
       projectId,
       nodeId,
+      taskId,
       content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
       cover_url: result.cover_url as string | undefined,
     });
@@ -299,10 +302,10 @@ async function recordFailureHistory(
 
 /** Publish a `failed` NodeEvent to the canvas-nodes stream. */
 async function publishFailedEvent(
-  redis: ReturnType<typeof getRedis>,
+  streamRedis: ReturnType<typeof getStreamRedis>,
   projectId: string | undefined,
   nodeId: string | undefined,
-  _taskId: string,
+  taskId: string,
   _userId: string,
   _model: string | undefined,
   _params: Record<string, unknown>,
@@ -310,7 +313,7 @@ async function publishFailedEvent(
 ): Promise<void> {
   if (!nodeId || !projectId) return;
   try {
-    await publishNodeEvent(redis, { type: "failed", projectId, nodeId });
+    await publishNodeEvent(streamRedis, { type: "failed", projectId, nodeId, taskId });
   } catch (err) {
     logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
   }
@@ -356,7 +359,7 @@ async function runUnderstand(
   const sourceType = params.source_type as string;
   const sourceUrl = params.source_url as string;
   const modelName = model ?? UNDERSTAND_DEFAULTS[sourceType] ?? "gemini-flash-vi";
-  const prompt = (params.prompt ?? `Analyze this ${sourceType}`) as string;
+  const prompt = extractPromptText(params.prompt) || `Analyze this ${sourceType}`;
 
   const cleanParams: Record<string, unknown> = {};
   if (sourceType === "image") cleanParams.images = [sourceUrl];
@@ -381,8 +384,8 @@ async function runAigcDirect(
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
-  // Extract prompt/text before validation (validateParams drops unknown fields)
-  const prompt = (params.prompt ?? params.text ?? "") as string;
+  // Extract prompt/text and strip HTML before sending to provider
+  const prompt = extractPromptText(params.prompt ?? params.text);
   const cleanParams = { ...params };
   delete cleanParams.prompt;
   delete cleanParams.text;

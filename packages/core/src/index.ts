@@ -21,10 +21,13 @@ export { getPricingTiers, findTierByName, findTierByPriceId } from "./config/pri
 export { getModelForTool, getPromptForTool } from "./config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
-export { getRedis, closeRedis } from "./infra/redis.js";
+export { getRedis, closeRedis, getQueueRedis, closeQueueRedis, getStreamRedis, closeStreamRedis } from "./infra/redis.js";
+export { checkRateLimit } from "./infra/rate-limiter.js";
+export { checkInfraReady } from "./infra/connectivity-check.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";
+export { sendMail } from "./infra/mailer.js";
 export { acquireNodeLock, releaseNodeLock } from "./infra/canvas-lock.js";
 export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "./infra/request-context.js";
@@ -58,10 +61,11 @@ export { listAvailableModels } from "./config/model-catalog.js";
 export type { SkillModelInfo } from "./config/model-catalog.js";
 export { loadAgents, getAgent, listAgents } from "./agent/agent-loader.js";
 export type { AgentDefinition } from "./agent/agent-loader.js";
+export { extractPromptText } from "./agent/extract-prompt.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { extractVideoCover } from "./video-cover.js";
-export { logger } from "./logger.js";
+export { logger, initLogger } from "./logger.js";
 export {
   AppError,
   NotFoundError,

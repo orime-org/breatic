@@ -10,20 +10,20 @@
 import { useCallback } from 'react';
 import * as Y from 'yjs';
 import { getCanvasYjsManager } from '@/utils/canvasYjsRef';
-import { userOrigin, noHistoryOrigin } from '@/utils/yjsProjectManager';
+import { getUserOrigin, noHistoryOrigin } from '@/utils/yjsProjectManager';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 
 type HistoryOptions = { history?: 'default' | 'skip' };
 
 function getOrigin(options?: HistoryOptions): string | symbol {
-  return options?.history === 'skip' ? noHistoryOrigin : userOrigin;
+  return options?.history === 'skip' ? noHistoryOrigin : getUserOrigin();
 }
 
 export function useCanvasActions() {
   const addNode = useCallback(
     (node: Node, options?: { select?: boolean } & HistoryOptions) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const origin = getOrigin(options);
       mgr.doc.transact(() => {
@@ -53,7 +53,7 @@ export function useCanvasActions() {
   const updateNode = useCallback(
     (nodeId: string, updates: Partial<Node>, options?: HistoryOptions) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
       if (!(nodeMap instanceof Y.Map)) return;
@@ -89,7 +89,7 @@ export function useCanvasActions() {
   const onNodesChange = useCallback(
     (changes: NodeChange[], options?: HistoryOptions) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const origin = getOrigin(options);
       mgr.doc.transact(() => {
@@ -126,7 +126,7 @@ export function useCanvasActions() {
   const setNodes = useCallback(
     (next: Node[], options?: HistoryOptions) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const origin = getOrigin(options);
       mgr.doc.transact(() => {
@@ -159,7 +159,7 @@ export function useCanvasActions() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       mgr.doc.transact(() => {
         for (const change of changes) {
@@ -167,7 +167,7 @@ export function useCanvasActions() {
             mgr.edgesMap.delete(change.id);
           }
         }
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );
@@ -175,7 +175,7 @@ export function useCanvasActions() {
   const onConnect = useCallback(
     (connection: Connection) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const edgeId = `e-${connection.source}-${connection.sourceHandle ?? ''}-${connection.target}-${connection.targetHandle ?? ''}`;
       mgr.doc.transact(() => {
@@ -186,7 +186,7 @@ export function useCanvasActions() {
         if (connection.sourceHandle) edgeMap.set('sourceHandle', connection.sourceHandle);
         if (connection.targetHandle) edgeMap.set('targetHandle', connection.targetHandle);
         mgr.edgesMap.set(edgeId, edgeMap);
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );
@@ -194,7 +194,7 @@ export function useCanvasActions() {
   const setEdges = useCallback(
     (next: Edge[]) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       mgr.doc.transact(() => {
         mgr.edgesMap.forEach((_val, key) => mgr.edgesMap.delete(key));
@@ -207,7 +207,7 @@ export function useCanvasActions() {
           if (edge.targetHandle) edgeMap.set('targetHandle', edge.targetHandle);
           mgr.edgesMap.set(edge.id, edgeMap);
         }
-      }, userOrigin);
+      }, getUserOrigin());
     },
     [],
   );
@@ -219,7 +219,7 @@ export function useCanvasActions() {
   const updateNodeParams = useCallback(
     (nodeId: string, params: Record<string, unknown>) => {
       const mgr = getCanvasYjsManager();
-      if (!mgr) return;
+      if (!mgr?.synced) return;
 
       const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
       if (!(nodeMap instanceof Y.Map)) return;

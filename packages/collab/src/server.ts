@@ -17,16 +17,19 @@ import { Throttle } from "@hocuspocus/extension-throttle";
 import IoRedis from "ioredis";
 import * as Y from "yjs";
 import { createAuthHook } from "./auth.js";
-import { createPersistenceExtension, ensureTable } from "./persistence.js";
+import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
-import pino from "pino";
+import { createLogger } from "./logger.js";
 
-const logger = pino({ name: "hocuspocus" });
+const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
   databaseUrl: string;
+  /** General Redis (DB 0) — session verification in auth hook. */
   redisUrl: string;
+  /** Stream Redis (DB 2) — Hocuspocus cross-instance pub/sub. */
+  streamRedisUrl: string;
   envPrefix: string;
 }
 
@@ -42,8 +45,6 @@ export interface CollabServerInfra {
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus }> {
   const cfg = getCollabConfig();
 
-  await ensureTable(infra.databaseUrl);
-
   const authRedis = new IoRedis(infra.redisUrl);
 
   // Build extensions list
@@ -51,10 +52,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const extensions: any[] = [
     createPersistenceExtension(infra.databaseUrl),
     new RedisExtension({
-      host: new URL(infra.redisUrl).hostname,
-      port: Number(new URL(infra.redisUrl).port) || 6379,
+      host: new URL(infra.streamRedisUrl).hostname,
+      port: Number(new URL(infra.streamRedisUrl).port) || 6379,
       options: {
-        db: Number(new URL(infra.redisUrl).pathname.slice(1)) || 0,
+        db: Number(new URL(infra.streamRedisUrl).pathname.slice(1)) || 0,
       },
       prefix: `${infra.envPrefix}:hocuspocus`,
     }),

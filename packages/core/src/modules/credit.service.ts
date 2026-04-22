@@ -8,13 +8,34 @@
 
 import * as userRepo from "./user.repo.js";
 import * as creditRepo from "./credit.repo.js";
+import { db } from "../db/client.js";
 import { env } from "../config/env.js";
+import { getRedis } from "../infra/redis.js";
 import { t } from "@breatic/shared";
-import { AppError } from "../errors.js";
+import { AppError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+
+/**
+ * refKey format contract: ASCII alphanumerics plus a small punctuation
+ * set (`_`, `:`, `.`, `-`), length 1-255. Matches the typical output of
+ * UUID generators, `${conversationId}-turn-${N}` composites, and
+ * `${taskId}:spawn:${idx}` patterns we'll use at call sites.
+ *
+ * Enforced at `deductOnce` entry so an empty/malformed key can never
+ * slip through and create a lock-key collision like `dev:bill::userId:`.
+ *
+ * Exported for unit testing — not intended as a public API.
+ */
+export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 
 /** Sentinel balance returned when payments are disabled. */
 const UNLIMITED_BALANCE = 999_999;
+
+/** Get user's current credit balance. Returns unlimited when payments disabled. */
+export async function getBalance(userId: string): Promise<number> {
+  if (!env.PAYMENT_ENABLED) return UNLIMITED_BALANCE;
+  return userRepo.getCredits(userId);
+}
 
 /**
  * Record usage and optionally deduct credits.
@@ -40,31 +61,47 @@ export async function deduct(
   let newBalance: number;
 
   if (env.PAYMENT_ENABLED) {
-    const success = await userRepo.deductCredits(userId, amount);
-    if (!success) {
-      const currentBalance = await userRepo.getCredits(userId);
-      throw new AppError(
-        402,
-        t("server.error.insufficient_credits", { required: amount, available: currentBalance }),
-      );
-    }
-    newBalance = await userRepo.getCredits(userId);
+    // Deduct + record in a single transaction so both succeed or both roll back.
+    newBalance = await db.transaction(async () => {
+      const success = await userRepo.deductCredits(userId, amount);
+      if (!success) {
+        const currentBalance = await userRepo.getCredits(userId);
+        throw new AppError(
+          402,
+          t("server.error.insufficient_credits", { required: amount, available: currentBalance }),
+        );
+      }
+      const balance = await userRepo.getCredits(userId);
+
+      await creditRepo.recordTransaction({
+        userId,
+        txType: "deduct",
+        amount: -amount,
+        balanceAfter: balance,
+        tokensUsed: options?.tokensUsed,
+        model: options?.model,
+        provider: options?.provider,
+        description: description ?? "",
+        referenceId,
+      });
+
+      return balance;
+    });
   } else {
     newBalance = UNLIMITED_BALANCE;
+    // Still record for audit trail (no deduction)
+    await creditRepo.recordTransaction({
+      userId,
+      txType: "deduct",
+      amount: -amount,
+      balanceAfter: newBalance,
+      tokensUsed: options?.tokensUsed,
+      model: options?.model,
+      provider: options?.provider,
+      description: description ?? "",
+      referenceId,
+    });
   }
-
-  // Always record the transaction (audit trail)
-  await creditRepo.recordTransaction({
-    userId,
-    txType: "deduct",
-    amount: -amount,
-    balanceAfter: newBalance,
-    tokensUsed: options?.tokensUsed,
-    model: options?.model,
-    provider: options?.provider,
-    description: description ?? "",
-    referenceId,
-  });
 
   logger.info(
     { userId, amount, tokens: options?.tokensUsed, model: options?.model, balance: newBalance, paymentEnabled: env.PAYMENT_ENABLED },
@@ -104,4 +141,54 @@ export async function add(
     "credits_added",
   );
   return newBalance;
+}
+
+/**
+ * Idempotent deduction — same refKey only deducts once **per user**.
+ *
+ * Uses Redis SETNX with 24h TTL. If the refKey was already used by this
+ * user, returns `{ deducted: false }`. Safe for network retries, stream
+ * replays, and concurrent calls.
+ *
+ * The lock key is scoped by userId (`${env}:bill:${userId}:${refKey}`),
+ * matching the industry-standard idempotency pattern used by Stripe,
+ * Square, AWS, and PayPal — different users with colliding refKeys
+ * never interfere. This is what prevents "user B reuses user A's
+ * refKey to skip their own charge": B's scoped key is independent
+ * of A's, so B's SETNX succeeds and B gets billed normally.
+ *
+ * @throws {ValidationError} if refKey doesn't match REFKEY_PATTERN.
+ *
+ * Use for non-task-level billing: text stream, agent turn, subagent spawn.
+ */
+export async function deductOnce(
+  userId: string,
+  refKey: string,
+  amount: number,
+  description: string,
+  options?: { tokensUsed?: number; model?: string; provider?: string },
+): Promise<{ deducted: boolean; creditsAfter?: number }> {
+  if (!REFKEY_PATTERN.test(refKey)) {
+    throw new ValidationError(
+      `deductOnce: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`,
+    );
+  }
+
+  const redis = getRedis();
+  const lockKey = `${env.ENV}:bill:${userId}:${refKey}`;
+
+  const acquired = await redis.set(lockKey, "1", "EX", 86400, "NX");
+  if (acquired !== "OK") {
+    logger.debug({ userId, refKey }, "deductOnce: already billed, skipping");
+    return { deducted: false };
+  }
+
+  try {
+    const creditsAfter = await deduct(userId, amount, description, refKey, options);
+    return { deducted: true, creditsAfter };
+  } catch (err) {
+    // Deduction failed — release lock so retry can attempt again
+    await redis.del(lockKey);
+    throw err;
+  }
 }

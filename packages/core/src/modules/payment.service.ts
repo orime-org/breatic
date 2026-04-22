@@ -91,12 +91,15 @@ export async function handleCheckoutCompleted(
     throw new NotFoundError(t("server.error.not_found"));
   }
 
-  if (payment.status === "completed") {
+  // CAS: only transition pending → completed. If another webhook
+  // already transitioned it, this returns false and we skip.
+  const updated = await paymentRepo.updatePaymentStatusCAS(
+    payment.id, "pending", "completed", paymentIntentId,
+  );
+  if (!updated) {
     logger.info({ stripeSessionId }, "Webhook replay — payment already completed");
     return;
   }
-
-  await paymentRepo.updatePaymentStatus(payment.id, "completed", paymentIntentId);
 
   const newBalance = await userRepo.addCredits(payment.userId, payment.creditsGranted);
 

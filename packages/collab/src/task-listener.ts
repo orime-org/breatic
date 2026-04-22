@@ -20,12 +20,12 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import Redis from "ioredis";
 import * as Y from "yjs";
-import pino from "pino";
 import type { NodeEvent } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
 import { canvasDocName } from "./schema.js";
+import { createLogger } from "./logger.js";
 
-const logger = pino({ name: "task-listener" });
+const logger = createLogger("task-listener");
 
 function canvasNodeStreamKey(envPrefix: string): string {
   return `${envPrefix}:stream:canvas-nodes`;
@@ -85,13 +85,20 @@ async function handleNodeEvent(
         return;
       }
 
-      const dataMap = nodeMap.get("data");
+      let dataMap = nodeMap.get("data");
       if (!(dataMap instanceof Y.Map)) {
+        // Legacy format: migrate plain value → Y.Map
         logger.warn(
           { docName, nodeId: event.nodeId, type: event.type },
-          "Node missing nested data Y.Map, skipping",
+          "Migrating legacy node data (plain → Y.Map)",
         );
-        return;
+        const oldData = (dataMap ?? {}) as Record<string, unknown>;
+        const newDataMap = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries(oldData)) {
+          newDataMap.set(k, v);
+        }
+        nodeMap.set("data", newDataMap);
+        dataMap = newDataMap;
       }
 
       if (event.type === "handling") {
@@ -109,9 +116,11 @@ async function handleNodeEvent(
         if (event.cover_url !== undefined) {
           dataMap.set("coverUrl", event.cover_url);
         }
+        dataMap.set("lastEventType", "completed");
         dataMap.delete("handlingBy");
       } else {
         // failed — content untouched
+        dataMap.set("lastEventType", "failed");
         dataMap.set("state", "idle");
         dataMap.delete("handlingBy");
       }
@@ -122,10 +131,27 @@ async function handleNodeEvent(
     await connection.disconnect();
   }
 
-  // Release the Redis node lock for completed/failed events.
+  // Release the Redis node lock — verified: only the task that holds
+  // the lock can release it (Lua CAS checks taskId).
   if (event.type === "completed" || event.type === "failed") {
     const key = nodeLockKey(envPrefix, event.projectId, event.nodeId);
-    await lockRedis.del(key);
+    const lockValue = await lockRedis.get(key);
+    if (lockValue) {
+      try {
+        const lock = JSON.parse(lockValue) as { taskId?: string };
+        if (lock.taskId === event.taskId) {
+          await lockRedis.del(key);
+        } else {
+          logger.warn(
+            { key, eventTaskId: event.taskId, lockTaskId: lock.taskId },
+            "Lock held by different task, refusing to release",
+          );
+        }
+      } catch {
+        // Corrupt lock value — delete it
+        await lockRedis.del(key);
+      }
+    }
   }
 
   logger.info(
@@ -138,24 +164,26 @@ async function handleNodeEvent(
  * Start listening for canvas node events on the Redis stream.
  *
  * @param hocuspocus - Running Hocuspocus server instance
- * @param redisUrl - Redis connection URL
+ * @param streamRedisUrl - Redis URL for Streams (DB 2)
+ * @param lockRedisUrl - Redis URL for canvas lock operations (DB 0)
  * @param envPrefix - Environment prefix for stream + last-id keys
  * @returns Cleanup function to stop listening
  */
 export function startTaskListener(
   hocuspocus: Hocuspocus,
-  redisUrl: string,
+  streamRedisUrl: string,
+  lockRedisUrl: string,
   envPrefix: string,
 ): () => Promise<void> {
   const streamKey = canvasNodeStreamKey(envPrefix);
   const lastIdKey = canvasNodeLastIdKey(envPrefix);
 
-  const lockRedis = new Redis(redisUrl);
+  const lockRedis = new Redis(lockRedisUrl);
 
   logger.info({ streamKey }, "Canvas node event listener starting");
 
   const stopStream = startStreamConsumer<NodeEvent>({
-    redisUrl,
+    redisUrl: streamRedisUrl,
     streamKey,
     lastIdKey,
     parse: (raw) => JSON.parse(raw) as NodeEvent,

@@ -1,3 +1,16 @@
+# docker-compose.yml — deployment stack.
+#
+# Default: pulls pre-built images from GHCR. `BREATIC_TAG` in .env picks
+# which tag to pull (defaults to `:latest` = main branch). Deployers
+# never build from source — that's CI's job.
+#
+# Developers contributing to breatic should use `pnpm dev` instead; this
+# compose file is not in the dev path. The only shared concern is the
+# postgres + redis pair below, which both dev and deploy can run via
+# `docker compose up -d postgres redis` (dev) or `up -d` (deploy).
+#
+# See docs/DEPLOY.md for the full deploy flow and BREATIC_TAG usage.
+
 services:
   # ── Infrastructure ─────────────────────────────
   postgres:
@@ -30,81 +43,75 @@ services:
 
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:-latest}
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/certs:/etc/nginx/certs:ro
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       - api
       - collab
     restart: unless-stopped
 
+  # ── Database Migration (runs once, then exits) ──
+  # Must run from packages/server so Node can resolve @breatic/core's
+  # transitive deps (drizzle-orm, postgres) via server's node_modules.
+  migrate:
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    working_dir: /app/packages/server
+    command: ["node", "-e", "import('@breatic/core').then(m => m.runMigrations()).then(() => process.exit(0))"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── Application ────────────────────────────────
   api:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
     ports:
       - "3000:3000"
     env_file: .env
-    environment:
-      - SERVICE_NAME=api
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
 
   collab:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/collab/dist/index.js"]
     ports:
       - "1234:1234"
     env_file: .env
-    environment:
-      - SERVICE_NAME=collab
     volumes:
       - ./logs:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
 
   worker:
-    build: .
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
-    environment:
-      - SERVICE_NAME=worker
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
-
-  # ── One-off: Database migration ────────────────
-  # NOTE: Migrations run automatically on API + Worker startup.
-  # This service is only needed for manual/standalone migration runs.
-  # Usage: docker compose run --rm migrate
-  migrate:
-    build: .
-    command: ["node", "-e", "import('./packages/core/dist/index.js').then(m => m.runMigrations())"]
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    profiles:
-      - tools
 
 volumes:
   pgdata:

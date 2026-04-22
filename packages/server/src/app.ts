@@ -7,8 +7,8 @@
  */
 
 import { Hono } from "hono";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loggerMiddleware } from "./middleware/logger.js";
@@ -55,13 +55,32 @@ export function createApp(): Hono {
 
   // ── Static file serving (local storage) ──────
   if (env.STORAGE_PROVIDER === "local") {
+    const UPLOADS_DIR = resolve(MONOREPO_ROOT, "uploads");
+
     app.get("/uploads/*", async (c) => {
-      const path = c.req.path; // e.g. /uploads/image/abc.png
-      const filePath = resolve(MONOREPO_ROOT, path.slice(1)); // remove leading /
+      const reqPath = c.req.path; // e.g. /uploads/image/abc.png
+      const relativePath = reqPath.slice("/uploads/".length);
+
+      // Resolve against uploads dir and verify containment
+      const normalized = resolve(UPLOADS_DIR, relativePath);
+      if (!normalized.startsWith(UPLOADS_DIR + sep)) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+
+      // Resolve symlinks and re-verify
+      let real: string;
+      try {
+        real = await realpath(normalized);
+      } catch {
+        return c.json({ error: "File not found" }, 404);
+      }
+      if (!real.startsWith(UPLOADS_DIR)) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
 
       try {
-        const data = await readFile(filePath);
-        const ext = filePath.split(".").pop() ?? "";
+        const data = await readFile(real);
+        const ext = real.split(".").pop() ?? "";
         const mimeTypes: Record<string, string> = {
           png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
           mp4: "video/mp4", mp3: "audio/mpeg", wav: "audio/wav",

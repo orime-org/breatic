@@ -30,7 +30,9 @@
 
 ### Frontend
 
-- [ ] 前端组件迁移：13 个组件从旧 API (projectApi/userCenterApi/workspaceApi) 迁移到新 API
+- [x] 前端组件迁移：27 组件从 useProjectStore 迁移到 useCanvasData/Actions/UI
+- [x] 安全加固：XSS 清洗（DOMPurify）、Auth 限速、FK restrict、锁 CAS 验证、presign 安全、prompt 提取
+- [x] 测试覆盖恢复：17 文件 65 测试（从 5 文件 21 测试）
 - [ ] 前后端联调：SSE 流式聊天跑通，AIGC 任务状态同步
 - [ ] 模型参数动态表单：根据 `GET /api/v1/models` 返回的 params 动态渲染 UI（模态模板 + tier 过滤）
 - [ ] 认证页面：登录 / 注册 / Google OAuth 对接后端 auth 路由
@@ -39,12 +41,19 @@
 ### DevOps
 
 - [x] Docker build 验证通过（CI + 本地）
-- [x] 日志系统：pino-roll daily rotation，per-service 子目录
+- [x] 日志系统：pino-roll daily rotation，per-service 子目录（api/worker/collab/nginx），双时间戳（ISO + epoch）
+- [x] Logger 改为 initLogger(serviceName) 模式，Worker 显式调用 initLogger("worker")
+- [x] Nginx 日志轮转：logrotate，30 天保留，日志写到 logs/nginx/
 - [x] Pre-commit hook：拦截 .env 和密钥文件
 - [x] Docker 镜像优化：pnpm deploy --filter，1.12GB → 357MB（-68%）
 - [x] DB auto-migrate：API + Worker 启动时自动运行 Drizzle migration
 - [x] Nginx 反向代理：前端容器 73MB，统一入口 port 80，SSE + WebSocket proxy
-- [x] VITE_API_URL / VITE_WS_URL：必须显式配置，支持自部署同域和 SaaS 分布式
+- [x] Nginx SSL auto-detect：entrypoint.sh 检测证书，自动选择 HTTP/HTTPS
+- [x] VITE_* build-arg：Docker build 时从 .env 传入前端环境变量
+- [x] Redis 拆分为 3 个逻辑 DB（REDIS_URL/REDIS_QUEUE_URL/REDIS_STREAM_URL）
+- [x] Package exports → dist/，turbo dev dependsOn ^build，消除 import.meta.dirname 脆弱性
+- [x] .env.dev + .env.docker 双模板，替代 .env.example
+- [x] 登录页完整修复：response parsing、用户信息显示、Google OAuth 头像同步、401 循环修复
 - [ ] CD pipeline：GitHub Actions → Docker build → 自动部署
 
 ---

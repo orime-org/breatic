@@ -37,7 +37,6 @@ import ConnectEndAnchorNode, {
 import CanvasCommentComposer from './common/CanvasCommentComposer';
 import CommentMarkerNode from './common/CommentMarkerNode';
 import CanvasRightOverlayPanel from './ui/CanvasRightOverlayPanel';
-import Loading from '@/components/loading';
 import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
@@ -902,11 +901,10 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
           onSend={handleCommentComposerSend}
         />
       )}
-      {yjs.yjsLoading && (
-        <div className='absolute inset-0 z-30'>
-          <Loading inline width='100%' height='100%' text='Loading...' />
-        </div>
-      )}
+      {/* Canvas-level Loading overlay removed intentionally: the global
+          Suspense fallback (router) already shows a loader during code-
+          split chunk load, and Yjs sync completes fast enough that a
+          second overlay just creates visual duplication and flicker. */}
     </div>
   );
 };
