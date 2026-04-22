@@ -5,6 +5,7 @@ import { Icon } from '@/components/base/icon';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 
 export interface TextNodeToolbarProps {
+  nodeId: string;
   /** Disable Upload while uploading. */
   isUploading?: boolean;
   onUploadClick?: () => void;
@@ -12,6 +13,7 @@ export interface TextNodeToolbarProps {
 }
 
 const TextNodeToolbar: React.FC<TextNodeToolbarProps> = ({
+  nodeId,
   isUploading = false,
   onUploadClick,
   onInfoClick,
@@ -21,7 +23,7 @@ const TextNodeToolbar: React.FC<TextNodeToolbarProps> = ({
 
   const handleEditorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    openRightPanel('editor', undefined, undefined, true);
+    openRightPanel('editor', nodeId, undefined, true);
   };
 
   const roundedClass = 'rounded-[8px]';

@@ -140,11 +140,11 @@ export default defineConfig(({ command, mode }) => {
       // through Vite so frontend code can use relative URLs (same-origin)
       // in dev just like it does in prod (where nginx does the same job).
       proxy: {
-        '/api': {
+        '/api/': {
           target: 'http://localhost:3000',
           changeOrigin: true,
         },
-        '/uploads': {
+        '/uploads/': {
           target: 'http://localhost:3000',
           changeOrigin: true,
         },
