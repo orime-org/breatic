@@ -16,8 +16,8 @@ import '@xyflow/react/dist/style.css';
 import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
-import { removeToken } from '@/utils/token';
-import { useNavigate } from 'react-router-dom';
+// import { removeToken } from '@/utils/token';
+// import { useNavigate } from 'react-router-dom';
 import {
   resetMixedEditor,
   resetMixedEditorNodes,
@@ -208,6 +208,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   const [blankPreviewPos, setBlankPreviewPos] = useState<{ x: number; y: number } | null>(null);
   const [stitchEditingNodeId, setStitchEditingNodeId] = useState<string | null>(null);
   const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
+  const [disableYjsAfterAuthFailed, setDisableYjsAfterAuthFailed] = useState(false);
   const dispatch = useDispatch();
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const { workflowId } = useCanvasUI();
@@ -918,17 +919,22 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   };
 
   const { authInfo: editorAuthInfo } = useUserCenterStore();
-  const editorNavigate = useNavigate();
+  // const editorNavigate = useNavigate();
   const editorToken = editorAuthInfo?.state?.token ?? '';
+  useEffect(() => {
+    setDisableYjsAfterAuthFailed(false);
+  }, [editorToken, nodeId]);
+
   const { yjsUndo, yjsRedo, yjsCanUndo, yjsCanRedo, yjsEnabled, yjsLoading } = useYjsStore({
     id: nodeId,
     token: editorToken,
-    enabled: !!nodeId && !!editorToken,
+    enabled: !!nodeId && !!editorToken && !disableYjsAfterAuthFailed,
     onAuthFailed: useCallback((reason: string) => {
       console.warn('[yjs:imageEditor] Authentication failed:', reason);
-      removeToken();
-      editorNavigate('/login', { replace: true });
-    }, [editorNavigate]),
+      setDisableYjsAfterAuthFailed(true);
+      // removeToken();
+      // editorNavigate('/login', { replace: true });
+    }, []),
   });
 
   useEffect(() => {
@@ -1198,7 +1204,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         </div>
       )}
 
-      {yjsLoading && (
+      {yjsLoading && !disableYjsAfterAuthFailed && (
         <div className='absolute inset-0 z-30'>
           <Loading inline width='100%' height='100%' text='Loading...' />
         </div>

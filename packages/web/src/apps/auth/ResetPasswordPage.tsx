@@ -50,18 +50,18 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background-default-base">
-        <div className="w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg text-center">
-          <h1 className="text-2xl font-bold text-text-default-base">
+      <div className='min-h-screen flex items-center justify-center bg-background-default-base'>
+        <div className='w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg text-center'>
+          <h1 className='text-2xl font-bold text-text-default-base'>
             {t('auth.resetSuccess', 'Password Reset')}
           </h1>
-          <p className="text-text-default-tertiary">
+          <p className='text-text-default-tertiary'>
             {t('auth.resetSuccessMessage', 'Your password has been reset. You can now sign in.')}
           </p>
           <button
-            type="button"
+            type='button'
             onClick={() => navigate('/login')}
-            className="w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition-colors"
+            className='w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition-colors'
           >
             {t('auth.goToLogin', 'Go to Sign In')}
           </button>
@@ -71,47 +71,47 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background-default-base">
-      <div className="w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg">
-        <h1 className="text-2xl font-bold text-text-default-base text-center">
+    <div className='min-h-screen flex items-center justify-center bg-background-default-base'>
+      <div className='w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg'>
+        <h1 className='text-2xl font-bold text-text-default-base text-center'>
           {t('auth.resetPassword', 'Reset Password')}
         </h1>
 
         {error && (
-          <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className='p-3 rounded-lg bg-red-50 text-red-600 text-sm'>{error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className='space-y-4'>
           <input
-            type="password"
+            type='password'
             placeholder={t('auth.newPassword', 'New password (min 8 characters)')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+            className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
           />
           <input
-            type="password"
+            type='password'
             placeholder={t('auth.confirmNewPassword', 'Confirm new password')}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+            className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
           />
           <button
-            type="submit"
+            type='submit'
             disabled={loading}
-            className="w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors"
+            className='w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors'
           >
             {loading ? '...' : t('auth.resetPassword', 'Reset Password')}
           </button>
         </form>
 
         <button
-          type="button"
+          type='button'
           onClick={() => navigate('/login')}
-          className="w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors"
+          className='w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors'
         >
           {t('auth.backToLogin', 'Back to Sign In')}
         </button>

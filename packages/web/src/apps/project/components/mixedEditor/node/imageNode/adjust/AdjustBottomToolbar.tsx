@@ -49,9 +49,9 @@ export const defaultAdjustValue: AdjustValue = {
   fade: 0,
 };
 
-const rowClass = 'space-y-1';
+const rowClass = 'space-y-2';
 const sliderClass = 'nodrag nopan !w-full';
-const twoColRowClass = 'space-y-1';
+const twoColRowClass = 'space-y-2';
 const temperatureTrackBackground = 'linear-gradient(to right, #1A00FF 0%, #FFF600 100%)';
 const tintTrackBackground = 'linear-gradient(to right, #FF00D0 0%, #00FF06 100%)';
 const hueTrackBackground = 'linear-gradient(to right, #FF0000 0%, #F6FF00 17%, #00F942 33%, #00D9FF 50%, #2600FF 67%, #FF00E5 83%, #FF0400 100%)';
@@ -169,8 +169,8 @@ const AdjustBottomToolbar: React.FC<AdjustBottomToolbarProps> = ({ active, onClo
               rows.push([section.items[i]!, section.items[i + 1] ?? null]);
             }
             return (
-              <div key={section.key} className='mb-3'>
-                <div className='mb-2 flex items-center gap-1.5 text-text-default-secondary'>
+              <div key={section.key} className='mb-4'>
+                <div className='mb-2.5 flex items-center gap-1.5 text-text-default-secondary'>
                   <Icon name={section.icon} width={section.iconWidth} height={section.iconHeight} />
                   <span className='text-[13px] font-semibold'>{section.title}</span>
                 </div>
@@ -182,7 +182,7 @@ const AdjustBottomToolbar: React.FC<AdjustBottomToolbarProps> = ({ active, onClo
                   return (
                     <>
                       <div className='grid grid-cols-[1fr_auto_1fr] items-start gap-3'>
-                        <div className='space-y-1.5'>
+                        <div className='space-y-3'>
                           {pairRows.map(([leftItem]) => (
                             <div key={leftItem.key} className={twoColRowClass}>
                               <div className='flex items-center justify-between'>
@@ -209,7 +209,7 @@ const AdjustBottomToolbar: React.FC<AdjustBottomToolbarProps> = ({ active, onClo
                           ))}
                         </div>
                         <div className='h-full w-px bg-border-default-base' />
-                        <div className='space-y-1.5'>
+                        <div className='space-y-3'>
                           {pairRows.map(([, rightItem]) => (
                             <div key={rightItem.key} className={twoColRowClass}>
                               <div className='flex items-center justify-between'>
@@ -237,7 +237,7 @@ const AdjustBottomToolbar: React.FC<AdjustBottomToolbarProps> = ({ active, onClo
                         </div>
                       </div>
                       {singleRow ? (
-                        <div className='mt-1.5'>
+                        <div className='mt-2.5'>
                           <div className={rowClass}>
                             <div className='flex items-center justify-between'>
                               <span className='text-[13px] text-text-default-base'>{singleRow.label}</span>
@@ -268,16 +268,16 @@ const AdjustBottomToolbar: React.FC<AdjustBottomToolbarProps> = ({ active, onClo
               </div>
             );
           })}
-          <div className='space-y-3'>
+          <div className='space-y-4'>
             {(['detail', 'effects'] as const).map((sectionKey) => {
               const section = sections.find((s) => s.key === sectionKey)!;
               return (
                 <div key={section.key}>
-                  <div className='mb-2 flex items-center gap-1.5 text-text-default-secondary'>
+                  <div className='mb-2.5 flex items-center gap-1.5 text-text-default-secondary'>
                     <Icon name={section.icon} width={section.iconWidth} height={section.iconHeight} />
                     <span className='text-[13px] font-semibold'>{section.title}</span>
                   </div>
-                  <div className='space-y-1.5'>
+                  <div className='space-y-3'>
                     {section.items.map((item) => (
                       <div key={item.key} className={rowClass}>
                         <div className='flex items-center justify-between'>

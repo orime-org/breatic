@@ -1,7 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-export type VideoCropRect = { x: number; y: number; w: number; h: number };
+export type VideoSceneExtensionFrame = { w: number; h: number; ox: number; oy: number };
 
 const ffmpegCoreBaseUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
 const ffmpegLoadTimeoutMs = 30000;
@@ -59,40 +59,40 @@ const ensureFfmpegLoaded = async (): Promise<FFmpeg> => {
   }
 };
 
-const toSourceCrop = (rect: VideoCropRect, containerWidth: number, containerHeight: number) => {
-  const cw = Math.max(1, containerWidth);
-  const ch = Math.max(1, containerHeight);
+const clampMinOne = (v: number) => Math.max(1, Math.round(v));
 
-  const xPct = rect.x / cw;
-  const yPct = rect.y / ch;
-  const wPct = rect.w / cw;
-  const hPct = rect.h / ch;
-
-  return { xPct, yPct, wPct, hPct };
-};
-
-export const videoCropWithFfmpeg = async (
+export const videoSceneExtensionWithFfmpeg = async (
   videoSrc: string,
-  rect: VideoCropRect,
-  container: { width: number; height: number },
+  options: { frame: VideoSceneExtensionFrame; container: { width: number; height: number } },
 ): Promise<string> => {
   if (!videoSrc) return '';
+
+  const cw = clampMinOne(options.container.width);
+  const ch = clampMinOne(options.container.height);
+  const fw = Math.max(cw, Math.round(options.frame.w));
+  const fh = Math.max(ch, Math.round(options.frame.h));
+  const ox = Math.min(0, Math.round(options.frame.ox));
+  const oy = Math.min(0, Math.round(options.frame.oy));
+
+  if (fw === cw && fh === ch && ox === 0 && oy === 0) return videoSrc;
+
+  const scaleW = fw / cw;
+  const scaleH = fh / ch;
+  const offsetXPct = -ox / cw;
+  const offsetYPct = -oy / ch;
+
+  const outWExpr = `trunc(max(iw\\,iw*${scaleW.toFixed(8)})/2)*2`;
+  const outHExpr = `trunc(max(ih\\,ih*${scaleH.toFixed(8)})/2)*2`;
+  const xExpr = `trunc(max(0\\,iw*${offsetXPct.toFixed(8)})/2)*2`;
+  const yExpr = `trunc(max(0\\,ih*${offsetYPct.toFixed(8)})/2)*2`;
+  const vf = `pad=${outWExpr}:${outHExpr}:${xExpr}:${yExpr}:black,setsar=1`;
 
   const ffmpeg = await ensureFfmpegLoaded();
   const response = await withTimeout(fetch(videoSrc), ffmpegFetchTimeoutMs, 'Fetching source video');
   if (!response.ok) throw new Error(`Failed to fetch source video: ${response.status}`);
   const inputBlob = await response.blob();
-  const inputName = `crop-input-${Date.now()}.mp4`;
-  const outputName = `crop-output-${Date.now()}.mp4`;
-
-  const pct = toSourceCrop(rect, container.width, container.height);
-  // Convert from node-space percentage to source-space pixels in ffmpeg expression.
-  const cropExpr = [
-    `x='trunc(iw*${pct.xPct.toFixed(8)}/2)*2'`,
-    `y='trunc(ih*${pct.yPct.toFixed(8)}/2)*2'`,
-    `w='trunc(iw*${pct.wPct.toFixed(8)}/2)*2'`,
-    `h='trunc(ih*${pct.hPct.toFixed(8)}/2)*2'`,
-  ].join(':');
+  const inputName = `scene-extension-input-${Date.now()}.mp4`;
+  const outputName = `scene-extension-output-${Date.now()}.mp4`;
 
   await ffmpeg.writeFile(inputName, await fetchFile(inputBlob));
   try {
@@ -102,9 +102,11 @@ export const videoCropWithFfmpeg = async (
           '-i',
           inputName,
           '-vf',
-          `crop=${cropExpr},setsar=1`,
+          vf,
           '-c:v',
           'libx264',
+          '-pix_fmt',
+          'yuv420p',
           '-preset',
           'veryfast',
           '-crf',
@@ -115,7 +117,7 @@ export const videoCropWithFfmpeg = async (
           outputName,
         ]),
         ffmpegExecTimeoutMs,
-        'Cropping video',
+        'Applying scene extension',
       );
     };
 
@@ -127,7 +129,10 @@ export const videoCropWithFfmpeg = async (
 
     const outputData = await ffmpeg.readFile(outputName);
     if (!(outputData instanceof Uint8Array)) {
-      throw new Error('ffmpeg returned invalid crop output data');
+      throw new Error('ffmpeg returned invalid scene extension output data');
+    }
+    if (outputData.byteLength < 1024) {
+      throw new Error('ffmpeg returned an unexpectedly small scene extension output');
     }
     const safeBuffer = new ArrayBuffer(outputData.byteLength);
     new Uint8Array(safeBuffer).set(outputData);
@@ -138,4 +143,3 @@ export const videoCropWithFfmpeg = async (
     await ffmpeg.deleteFile(outputName).catch(() => undefined);
   }
 };
-
