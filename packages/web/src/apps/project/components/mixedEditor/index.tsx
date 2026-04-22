@@ -34,6 +34,8 @@ import EmptyState from './ui/EmptyState';
 import RightToolbar from './ui/RightToolbar';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
 import ImageNode from './node/imageNode/ImageNode';
+import VideoNode from './node/videoNode/videoNode';
+import AudioNode from './node/audioNode';
 import GroupNode from './common/GroupNode';
 import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
 import {
@@ -52,8 +54,12 @@ import {
 import GroupToolbarPanel from './common/GroupToolbarPanel';
 import NodeContextMenu from './common/NodeContextMenu';
 import {
+  createEditorAudioNodeData,
   createEditorImageNodeData,
+  createEditorVideoNodeData,
+  imageEditorAudioNodeType,
   imageEditorImageNodeType,
+  imageEditorVideoNodeType,
   type ImageEditorRightSidePanelId,
   type ImageFlowNodeData,
 } from './types';
@@ -63,6 +69,53 @@ import type { MediaResourceListItem } from './ui/MediaResourceListPanel';
 /** Default tile size when placing a resource onto the image editor flow (see `ImageNode` defaults). */
 const imageEditorPlaceNodeWidth = 260;
 const imageEditorPlaceNodeHeight = 160;
+/** Match `useMixedEditorStore` defaults for pasted / side-panel audio tiles. */
+const audioEditorPlaceNodeWidth = 300;
+const audioEditorPlaceNodeHeight = 250;
+
+type EditorFlowMediaKind = 'image' | 'video' | 'audio';
+
+/** Side-panel filters, history node type, and centered-place defaults per canvas workflow kind. */
+function editorFlowKindConfig(kind: EditorFlowMediaKind) {
+  switch (kind) {
+    case 'video':
+      return {
+        historyNodeType: imageEditorVideoNodeType,
+        attachMediaType: 'video' as const,
+        emptyAddWarning: 'Nothing to add to the video editor',
+        placeWidth: imageEditorPlaceNodeWidth,
+        placeHeight: imageEditorPlaceNodeHeight,
+        flowPrefix: 'video-flow',
+        flowNodeType: imageEditorVideoNodeType,
+        defaultAssetName: 'video',
+        createNodeData: createEditorVideoNodeData,
+      };
+    case 'audio':
+      return {
+        historyNodeType: imageEditorAudioNodeType,
+        attachMediaType: 'audio' as const,
+        emptyAddWarning: 'Nothing to add to the audio editor',
+        placeWidth: audioEditorPlaceNodeWidth,
+        placeHeight: audioEditorPlaceNodeHeight,
+        flowPrefix: 'audio-flow',
+        flowNodeType: imageEditorAudioNodeType,
+        defaultAssetName: 'audio',
+        createNodeData: createEditorAudioNodeData,
+      };
+    default:
+      return {
+        historyNodeType: imageEditorImageNodeType,
+        attachMediaType: 'image' as const,
+        emptyAddWarning: 'Nothing to add to the image editor',
+        placeWidth: imageEditorPlaceNodeWidth,
+        placeHeight: imageEditorPlaceNodeHeight,
+        flowPrefix: 'image-flow',
+        flowNodeType: imageEditorImageNodeType,
+        defaultAssetName: 'image',
+        createNodeData: createEditorImageNodeData,
+      };
+  }
+}
 
 /**
  * Whether a side-panel row can become a `2002` image tile.
@@ -70,7 +123,7 @@ const imageEditorPlaceNodeHeight = 160;
  * @param item - Row from a side panel list (image-only)
  * @returns True when the editor can place this resource
  */
-function canPlaceMediaItemOnImageEditorFlow(item: MediaResourceListItem): boolean {
+function canPlaceMediaItemOnEditorFlow(_editorKind: 'image' | 'video' | 'audio', item: MediaResourceListItem): boolean {
   return Boolean(item.previewUrl?.trim());
 }
 
@@ -190,11 +243,26 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     onEdgesChange,
     updateNode,
     importImagesFromFiles,
+    importVideosFromFiles,
+    importAudiosFromFiles,
     favoriteAssets,
     toggleFavoriteAsset,
   } = useMixedEditorStore();
   const flowInteractionRootRef = useRef<HTMLDivElement>(null);
   const { getIntersectingNodes, getNodes, screenToFlowPosition, getZoom } = useReactFlow();
+
+  const projectCanvasWorkflowNodeType = useMemo(() => {
+    const canvasNode = projectNodes.find((n) => n.id === projectCanvasTargetNodeId);
+    return String(canvasNode?.type ?? '');
+  }, [projectNodes, projectCanvasTargetNodeId]);
+
+  const editorFlowMediaKind = useMemo((): 'image' | 'video' | 'audio' => {
+    if (projectCanvasWorkflowNodeType === '1003') return 'video';
+    if (projectCanvasWorkflowNodeType === '1004') return 'audio';
+    return 'image';
+  }, [projectCanvasWorkflowNodeType]);
+
+  const rightToolbarUploadAccept = editorFlowMediaKind === 'video' ? 'video/*' : editorFlowMediaKind === 'audio' ? 'audio/*' : 'image/*';
   const closeContextMenu = () => setContextMenu(null);
   /**
    * Match `canvas/index.tsx`: `panOnScroll` + `zoomOnPinch` (no `zoomOnScroll`).
@@ -251,25 +319,44 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [agentCanvasPickEditMode, exitAgentCanvasPickMode]);
 
-  const handleUpload = useCallback((file: File) => {
-    const el = flowInteractionRootRef.current;
-    if (!el) {
-      void importImagesFromFiles([file]);
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const viewportCenterFlow = screenToFlowPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    });
-    void importImagesFromFiles([file], { viewportCenterFlow });
-  }, [importImagesFromFiles, screenToFlowPosition]);
+  const handleUpload = useCallback(
+    (file: File) => {
+      const el = flowInteractionRootRef.current;
+      const runImport = () => {
+        if (editorFlowMediaKind === 'video') {
+          void importVideosFromFiles([file]);
+        } else if (editorFlowMediaKind === 'audio') {
+          void importAudiosFromFiles([file]);
+        } else {
+          void importImagesFromFiles([file]);
+        }
+      };
+      if (!el) {
+        runImport();
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const viewportCenterFlow = screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+      if (editorFlowMediaKind === 'video') {
+        void importVideosFromFiles([file], { viewportCenterFlow });
+      } else if (editorFlowMediaKind === 'audio') {
+        void importAudiosFromFiles([file], { viewportCenterFlow });
+      } else {
+        void importImagesFromFiles([file], { viewportCenterFlow });
+      }
+    },
+    [editorFlowMediaKind, importAudiosFromFiles, importImagesFromFiles, importVideosFromFiles, screenToFlowPosition],
+  );
 
   const imageEditorSidePanelItems = useMemo((): Partial<
     Record<ImageEditorRightSidePanelId, MediaResourceListItem[]>
   > => {
+    const flowCfg = editorFlowKindConfig(editorFlowMediaKind);
     const history: MediaResourceListItem[] = nodes
-      .filter((n) => n.type === imageEditorImageNodeType)
+      .filter((n) => n.type === flowCfg.historyNodeType)
       .map((n) => {
         const d = n.data as ImageFlowNodeData;
         return {
@@ -283,8 +370,8 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     const canvasData = canvasNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
     const rawAttach = canvasData?.attach;
     const canvasAttach = (Array.isArray(rawAttach) ? rawAttach : []) as AgentComposerUploadItem[];
-    const canvasImageAttach = canvasAttach.filter((u) => u.type === 'image');
-    const upstreamImages = projectCanvasUpstream.filter((u) => u.type === 'image');
+    const canvasTypedAttach = canvasAttach.filter((u) => u.type === flowCfg.attachMediaType);
+    const upstreamTyped = projectCanvasUpstream.filter((u) => u.type === flowCfg.attachMediaType);
 
     const assets: MediaResourceListItem[] = favoriteAssets.map((f) => ({
       id: f.id,
@@ -295,18 +382,19 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     return {
       history,
       assets,
-      attach: canvasImageAttach.map(canvasImageAttachToListItem),
-      link: upstreamImages.map(canvasUpstreamImageToListItem),
+      attach: canvasTypedAttach.map(canvasImageAttachToListItem),
+      link: upstreamTyped.map(canvasUpstreamImageToListItem),
     };
-  }, [nodes, projectCanvasTargetNodeId, projectNodes, projectCanvasUpstream, favoriteAssets]);
+  }, [editorFlowMediaKind, nodes, projectCanvasTargetNodeId, projectNodes, projectCanvasUpstream, favoriteAssets]);
 
   /**
    * Adds a new image tile on this image editor React Flow, centered like {@link handleUpload}.
    */
   const addMediaItemToImageEditorFlowAtCenter = useCallback(
     (item: MediaResourceListItem) => {
-      if (!canPlaceMediaItemOnImageEditorFlow(item)) {
-        message.warning('Nothing to add to the image editor');
+      const flowCfg = editorFlowKindConfig(editorFlowMediaKind);
+      if (!canPlaceMediaItemOnEditorFlow(editorFlowMediaKind, item)) {
+        message.warning(flowCfg.emptyAddWarning);
         return;
       }
       const content = item.previewUrl.trim();
@@ -322,23 +410,25 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         viewportCenterFlow = { x: 120, y: 80 };
       }
 
-      const w = imageEditorPlaceNodeWidth;
-      const h = imageEditorPlaceNodeHeight;
-      const newId = `image-flow-${nanoid(12)}`;
+      const w = flowCfg.placeWidth;
+      const h = flowCfg.placeHeight;
+      const newId = `${flowCfg.flowPrefix}-${nanoid(12)}`;
+      const displayName = item.name?.trim() || flowCfg.defaultAssetName;
+      const data = flowCfg.createNodeData(displayName, content);
       const newNode: Node = {
         id: newId,
-        type: imageEditorImageNodeType,
+        type: flowCfg.flowNodeType,
         position: {
           x: viewportCenterFlow.x - w / 2,
           y: viewportCenterFlow.y - h / 2,
         },
         selected: true,
         style: { width: w, height: h },
-        data: createEditorImageNodeData(item.name?.trim() || 'image', content),
+        data,
       };
       setNodes([...nodes.map((n) => ({ ...n, selected: false })), newNode]);
     },
-    [nodes, screenToFlowPosition, setNodes],
+    [editorFlowMediaKind, nodes, screenToFlowPosition, setNodes],
   );
 
   const handleSidePanelItemAdd = useCallback(
@@ -893,6 +983,8 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   const nodeTypes = useMemo<NodeTypes>(
     () => ({
       [imageEditorImageNodeType]: ImageNode,
+      [imageEditorVideoNodeType]: VideoNode,
+      [imageEditorAudioNodeType]: AudioNode,
       group: GroupNode,
       stitchPlaceholderNode: StitchPlaceholderNode,
       blankPlaceholderNode: BlankPlaceholderNode,
@@ -980,6 +1072,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
             activeTool={activeTool}
             onToolChange={setActiveTool}
             onUpload={handleUpload}
+            uploadAccept={rightToolbarUploadAccept}
             sidePanelItems={imageEditorSidePanelItems}
             onSidePanelItemAddClick={handleSidePanelItemAdd}
             onSidePanelItemDownloadClick={handleSidePanelItemDownload}

@@ -12,6 +12,7 @@ import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import ImageEditor from './components/mixedEditor';
+import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
@@ -58,7 +59,6 @@ const ProjectPage: React.FC = () => {
       // Session expired or token rejected — clear client state and
       // redirect to login. Without this, HocuspocusProvider would
       // reconnect forever against an invalid token.
-      // eslint-disable-next-line no-console
       console.warn('[yjs] Authentication failed:', reason);
       removeToken();
       navigate('/login', { replace: true });
@@ -138,7 +138,10 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
   };
 
   const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
-  const isImageNode = String(panelNode?.type ?? '') === '1002';
+  const panelNodeType = String(panelNode?.type ?? '');
+  const isTextNode = panelNodeType === '1001';
+  const isMixedEditorNode = panelNodeType === '1002' || panelNodeType === '1003' || panelNodeType === '1004';
+  const isImageNode = panelNodeType === '1002';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
   const showChatSeparator = chatPanelVisible && (canvasPanelVisible || isRightEditorOpen);
   const showRightSeparator = isRightEditorOpen && canvasPanelVisible;
@@ -294,7 +297,9 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
                       />
                     </button>
                   </Tooltip>
-                  {isImageNode && panelNode ? (
+                  {isTextNode && panelNode ? (
+                    <TextEditor nodeId={panelNode.id} />
+                  ) : isMixedEditorNode && panelNode ? (
                     <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : (
                     <ResizableLeftPanel />
