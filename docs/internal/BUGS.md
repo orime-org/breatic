@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:76 个活跃条目(P0 × 9 + P1 × 35 + P2 × 31 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:74 个活跃条目(P0 × 7 + P1 × 35 + P2 × 31 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -15,9 +15,7 @@
 | # | 严重度 | 标题 | 位置 | 发现 | 预估 | 详情 |
 |---|--------|------|------|------|------|------|
 | BUG-030 | 🔴 HIGH | Rate limiter X-Forwarded-For 绕过 | `core/src/infra/rate-limiter.ts` + `nginx.conf` | R2 | 45m | [→](audit/2026-04-15-round-2-found.md#bug-030-rate-limiter-可被-x-forwarded-for-绕过high) |
-| BUG-031 | 🔴 HIGH | deleteProject 不级联软删子记录 | `core/src/modules/project.repo.ts:190` | R2 | 1h | [→](audit/2026-04-15-round-2-found.md#bug-031-deleteproject-不级联软删子记录high) |
 | BUG-032 | 🔴 HIGH | Presigned URL 修复遗漏 3 子问题 | `server/src/routes/assets.ts` + `core/src/infra/storage/s3.ts` | R2 | 2.5h | [→](audit/2026-04-15-round-2-found.md#bug-032-presigned-url-修复只做了-47-子问题high) |
-| BUG-033 | 🔴 HIGH | Canvas task 创建顺序错(孤儿 task) | `server/src/routes/canvas.ts:80` | R2 | 15m | [→](audit/2026-04-15-round-2-found.md#bug-033-canvas-task-创建顺序错孤儿-taskhigh) |
 | ~~BUG-034~~ | ⚫ 不修 | Docker 端口暴露到公网(由防火墙处理) | `docker-compose.yml` | R2 | — | [→](audit/2026-04-15-round-2-found.md#bug-034-docker-compose-端口暴露到公网high) |
 | BUG-049 | 🔴 HIGH | Worker HTTP 响应无大小限制 → OOM | `worker/src/providers/http.ts:76` | R3 | 45m | [→](audit/2026-04-17-round-3-found.md#bug-049) |
 | BUG-050 | 🔴 HIGH | Spawn 无深度限制 → 无限递归耗光积分 | `core/src/agent/tools/spawn.ts:105` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-050) |
@@ -25,7 +23,7 @@
 | BUG-079 | 🔴 HIGH | `deductOnce` 在生产零调用点 —— 3 条扣费路径仍非幂等 | `core/src/modules/credit.service.ts:164` + spawn/main-agent/text-tool | R4 | 1.5h | [→](audit/2026-04-21-round-4-found.md#bug-079) |
 | BUG-093 | 🔴 HIGH | imageEditor 把 nodeId 当 workflowId → authz 100% 拒绝 | `web/.../imageEditor/index.tsx:833` | R4 | 1h | [→](audit/2026-04-21-round-4-found.md#bug-093) |
 
-**P0 小计**:9 个活跃 · 预估 **~8.5 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:7 个活跃 · 预估 **~7.25 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -127,18 +125,18 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 9(+1 不修) | ~8.5 h |
+| P0 | 7(+1 不修) | ~7.25 h |
 | P1 | 35 | ~14 h |
 | P2 | 31 | ~9.5 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **76**(含长期,+1 不修) | **~44 h** |
+| **总计** | **74**(含长期,+1 不修) | **~42.75 h** |
 
 ---
 
 ## 发现历史
 
 - **Round 1**(2026-04-10 ~ 04-15):29 个 bug 发现,**全部关闭**(PR #81-90)。详见 [`audit/2026-04-15-round-1-closed.md`](audit/2026-04-15-round-1-closed.md)
-- **Round 2**(2026-04-15):15 个 regression + 1 个测试质量 meta 发现。快照见 [`audit/2026-04-15-round-2-found.md`](audit/2026-04-15-round-2-found.md)。**状态**:未修复
+- **Round 2**(2026-04-15):15 个 regression + 1 个测试质量 meta 发现。快照见 [`audit/2026-04-15-round-2-found.md`](audit/2026-04-15-round-2-found.md)。**状态**:已关 2 个(BUG-031 / BUG-033 · PR #126 · 2026-04-22),1 个标不修(BUG-034),其余未修复
 - **Round 3**(2026-04-17):33 个新发现(5 HIGH + 20+ MED + 少量 LOW)。快照见 [`audit/2026-04-17-round-3-found.md`](audit/2026-04-17-round-3-found.md)。**状态**:已关 5 个(BUG-046 / 047 / 048 / 052 / 053),其余未修复
 - **Round 4**(2026-04-21):33 个新发现(2 P0 + 1 P1 HIGH + 15 P1 MED + 15 P2 LOW)+ 核查 5 个声称修复(4 彻底 + 1 部分)。快照见 [`audit/2026-04-21-round-4-found.md`](audit/2026-04-21-round-4-found.md)。**状态**:未修复
 
