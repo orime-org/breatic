@@ -8,12 +8,12 @@ const authRequired = import.meta.env.VITE_LOGIN_MODE === 'WithAccount';
 export interface UserInfoType {
   name: string;
   avatar: string;
-  planId: number;
-  planName: string;
-  free_credits: number,
-  membership_credits: number,
-  purchase_credits: number,
-  total_credits: number
+  // Breatic is credits-only — no subscription tiers. Keep the three credit
+  // buckets for display (free grant + purchased + computed total) but no
+  // plan/tier/membership fields.
+  free_credits: number;
+  purchase_credits: number;
+  total_credits: number;
   email?: string;
 }
 

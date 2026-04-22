@@ -18,8 +18,6 @@ export interface AuthVariables {
     username: string | null;
     avatarUrl: string | null;
     credits: number;
-    membershipType: string;
-    membershipExpiresAt: Date | null;
   };
 }
 
@@ -30,8 +28,6 @@ const DEV_USER = {
   username: "Dev User",
   avatarUrl: null,
   credits: 99999,
-  membershipType: "free" as const,
-  membershipExpiresAt: null,
 };
 
 /** Ensure the dev user row exists in the DB (NoAccount mode only, runs once). */
@@ -84,8 +80,6 @@ export const requireAuth: MiddlewareHandler<{
     username: user.username,
     avatarUrl: user.avatarUrl,
     credits: user.credits,
-    membershipType: user.membershipType,
-    membershipExpiresAt: user.membershipExpiresAt,
   });
   await next();
 };
