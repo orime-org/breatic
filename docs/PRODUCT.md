@@ -384,6 +384,47 @@ Backend does **not** create or position canvas nodes — that is entirely fronte
 
 The state machine is just `idle ↔ handling`. Failures revert to `idle` with unchanged content — failure details live in the `node_history` table, not on the Yjs node. See [YJS.md](./YJS.md) for the complete ownership table and NodeEvent flow.
 
+### 8.4 Billing Model — Credits Only, No Subscriptions
+
+Breatic is **credits-only, pay-as-you-go**. There is no subscription, no recurring membership, no feature-gated tier, no "Pro plan" that unlocks things a "Free plan" can't do. Users buy a pack of credits once, use them whenever, and buy another pack when they run out.
+
+#### How it works
+
+1. User signs up → account starts with a one-time free credit grant (configurable, currently 0 on production, non-zero in dev seed).
+2. User optionally buys a credit pack through Stripe Checkout (one-time payment, not a subscription).
+3. Every billable action (AIGC task, agent chat turn, text mini-tool, sub-agent spawn) deducts credits from the balance.
+4. When the balance hits 0, those actions return `402 Insufficient credits`. The user buys more credits to continue.
+
+**Credits never expire.** Once purchased they sit on the account until spent.
+
+#### Credit packs (`config/pricing.yaml`)
+
+Five purchase tiers with progressively better per-credit rates. **Tiers here mean "pack sizes", not "service levels".** Buying Ultimate gives you more credits cheaper, but the features you can access are identical to someone on the Starter pack — or someone who never bought anything and still has free-grant credits.
+
+| Pack name | Credits | USD price | Per-credit |
+|-----------|---------|-----------|------------|
+| Starter | 500 | $5 | $0.010 |
+| Creator | 2,200 | $20 | $0.009 |
+| Pro | 5,800 | $50 | $0.0086 |
+| Power | 12,500 | $100 | $0.008 |
+| Ultimate | 70,000 | $500 | $0.0071 |
+
+Each tier has test + live Stripe Price IDs resolved at runtime by `ENV` (dev/staging → test, prod → live).
+
+#### What we intentionally do NOT have
+
+| Pattern many SaaS use | Breatic choice |
+|----------------------|---------------|
+| Recurring subscription (monthly/annual) | ❌ Only one-off credit pack purchases |
+| "Free tier" vs "Pro tier" feature gating | ❌ Everyone has access to every feature; usage just costs credits |
+| Credit rollover / expiry policies | ❌ Credits never expire, nothing to roll over |
+| Fair-use caps, rate-limited tiers | ❌ Per-user rate limits are anti-abuse, not tier-differentiating |
+| Seat-based billing for teams | ❌ Each user has their own credit balance; collaborators on a project are billed per-user |
+
+#### Vestigial schema note
+
+The `users` table has `membership_type` (default `"free"`) and `membership_expires_at` columns from an earlier product direction. In the current code they're written by middleware and read only for UI label display ("Free" / "Pro") — no billing logic, feature gating, or access control depends on them. They're slated for removal in a schema cleanup pass; new code should NOT add feature gates keyed on `membershipType`. Ask "what's the user's credit balance?" not "what's the user's tier?".
+
 ---
 
 ## 9. API Endpoint Summary
