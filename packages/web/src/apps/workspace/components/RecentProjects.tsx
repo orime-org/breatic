@@ -39,7 +39,9 @@ type RecentProjectsProps = {
   staticProjects?: WorkspaceProject[];
 };
 
-const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ staticProjects = [] }, ref) => {
+const EMPTY_STATIC_PROJECTS: WorkspaceProject[] = [];
+
+const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ staticProjects = EMPTY_STATIC_PROJECTS }, ref) => {
   const { t } = useTranslation();
   const [projectList, setProjectList] = useState<WorkspaceProject[]>([]);
   const [delModalOpen, setDelModalOpen] = useState<{ open: boolean; item: WorkspaceProject | null }>({ open: false, item: null });

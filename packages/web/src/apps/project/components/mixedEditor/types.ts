@@ -8,17 +8,31 @@ export type ImageEditorImageNodeType = '2002';
 
 export const imageEditorImageNodeType = '2002' as const satisfies ImageEditorImageNodeType;
 
-/** Image editor flow image node `data` shape (flat fields, aligned with canvas). */
-export interface ImageEditorNodeData extends Record<string, unknown> {
-  name: string;
-  content: string;
-  state: 'idle' | 'generating';
+/** React Flow node `type` for video tiles inside the mixed editor. */
+export type ImageEditorVideoNodeType = '2003';
+
+export const imageEditorVideoNodeType = '2003' as const satisfies ImageEditorVideoNodeType;
+
+/** React Flow node `type` for audio tiles inside the mixed editor. */
+export type ImageEditorAudioNodeType = '2004';
+
+export const imageEditorAudioNodeType = '2004' as const satisfies ImageEditorAudioNodeType;
+
+/** Image editor node `data.nodeRuntimeData` (title lives on `data.name`, not here). */
+export interface ImageEditorNodeRuntimeData {
   /** JSON string (HTML) prompt payload. */
   prompt?: string;
   /** User-selected upstream resource reference (URL or id). */
   upstream?: string;
-  /** Generation parameters. */
-  params?: Record<string, unknown>;
+  parameter?: Record<string, unknown>;
+}
+
+/** Image editor flow image node `data` shape. */
+export interface ImageEditorNodeData extends Record<string, unknown> {
+  name: string;
+  content: string;
+  state: 'idle' | 'generating';
+  nodeRuntimeData: ImageEditorNodeRuntimeData;
   /**
    * Present only while canvas-pick mode is active for this node (e.g. Quick Edit).
    * Absent/null when pick mode is inactive.
@@ -35,11 +49,36 @@ export const createEditorImageNodeData = (name: string, content: string): ImageE
   name,
   content,
   state: 'idle',
+  nodeRuntimeData: {},
+});
+
+/**
+ * @param name - Display / file name
+ * @param content - Video URL or data URL
+ * @returns Default `data` for a new editor flow video tile
+ */
+export const createEditorVideoNodeData = (name: string, content: string): ImageEditorNodeData => ({
+  name,
+  content,
+  state: 'idle',
+  nodeRuntimeData: {},
+});
+
+/**
+ * @param name - Display / file name
+ * @param content - Audio URL or data URL
+ * @returns Default `data` for a new editor flow audio tile
+ */
+export const createEditorAudioNodeData = (name: string, content: string): ImageEditorNodeData => ({
+  name,
+  content,
+  state: 'idle',
+  nodeRuntimeData: {},
 });
 
 /** Partial patch merged into editor node `data`. */
 export type ImageEditorNodeDataPatch = Partial<
-  Pick<ImageEditorNodeData, 'name' | 'content' | 'state' | 'prompt' | 'upstream' | 'params'>
+  Pick<ImageEditorNodeData, 'name' | 'content' | 'state' | 'nodeRuntimeData'>
 >;
 
 /** Alias for image tiles in the editor flow (same as {@link ImageEditorNodeData}). */
@@ -60,13 +99,19 @@ export type ImageEditorPickConsumeFrom =
   | 'chatRecordPanel'
   | 'quickEditMention'
   | 'nodeComposerMention'
-  | 'chatRecordPanelMention';
+  | 'chatRecordPanelMention'
+  /** Video erase: canvas pick targets an image node for tracking (no composer chip pipeline). */
+  | 'videoErase';
 
 export interface ImageEditorPickResultBox {
   cxPct: number;
   cyPct: number;
   wPct: number;
   hPct: number;
+  /** Optional media timestamp anchor (seconds), used by video-frame-aligned overlays. */
+  frameTimeSec?: number;
+  /** Optional shape used by erase manual-box mode. */
+  maskShape?: 'rectangle' | 'circle';
   /** Same id as the composer placeholder / chip; used to drop the overlay when the chip is removed. */
   placeholderId?: string;
   /** Source composer node id that created this pick. */
@@ -81,6 +126,8 @@ export interface ImageEditorPickState {
   fromCanvas?: boolean;
   /** True when the associated composer input is focused and can accept inserts. */
   composerFocused?: boolean;
+  /** Active erase mask tool when consumeFrom === 'videoErase'. */
+  eraseMaskTool?: 'selection' | 'rectangle' | 'circle';
   /** @deprecated No longer written; “Apply to Node” updates main canvas image nodes instead. */
   inject?: { content: string; name: string; type: 'image' } | null;
   pending?: ImageEditorPickPending | null;

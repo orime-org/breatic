@@ -13,16 +13,16 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useImageEditorStore } from '@/hooks/useImageEditorStore';
+import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import { useNavigate } from 'react-router-dom';
 import {
-  resetImageEditor,
-  resetImageEditorNodes,
-  resetImageEditorEdges,
-} from '@/store/modules/imageEditor';
+  resetMixedEditor,
+  resetMixedEditorNodes,
+  resetMixedEditorEdges,
+} from '@/store/modules/mixedEditor';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
@@ -33,22 +33,22 @@ import Loading from '@/components/loading';
 import EmptyState from './ui/EmptyState';
 import RightToolbar from './ui/RightToolbar';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
-import ImageNode from './ImageNode/ImageNode';
+import ImageNode from './node/imageNode/ImageNode';
 import GroupNode from './common/GroupNode';
-import StitchPlaceholderNode from './stitch/StitchPlaceholderNode';
+import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
 import {
   StitchPlaceholderPanel,
   stitchPlaceholderDefaultCols,
   stitchPlaceholderDefaultHeight,
   stitchPlaceholderDefaultRows,
   stitchPlaceholderDefaultWidth,
-} from './stitch/StitchPlaceholderPanel';
-import BlankPlaceholderNode from './blank/BlankPlaceholderNode';
+} from './node/imageNode/stitch/StitchPlaceholderPanel';
+import BlankPlaceholderNode from './node/imageNode/blank/BlankPlaceholderNode';
 import {
   BlankPlaceholderPanel,
   blankPlaceholderDefaultHeight,
   blankPlaceholderDefaultWidth,
-} from './blank/BlankPlaceholderPanel';
+} from './node/imageNode/blank/BlankPlaceholderPanel';
 import GroupToolbarPanel from './common/GroupToolbarPanel';
 import NodeContextMenu from './common/NodeContextMenu';
 import {
@@ -169,13 +169,13 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   /** Clears local slice when there is no workflowId; with workflowId the main Yjs doc repopulates—no reset here. */
   useEffect(() => {
     if (workflowId) return;
-    dispatch(resetImageEditorNodes());
-    dispatch(resetImageEditorEdges());
-    dispatch(resetImageEditor());
+    dispatch(resetMixedEditorNodes());
+    dispatch(resetMixedEditorEdges());
+    dispatch(resetMixedEditor());
     return () => {
-      dispatch(resetImageEditorNodes());
-      dispatch(resetImageEditorEdges());
-      dispatch(resetImageEditor());
+      dispatch(resetMixedEditorNodes());
+      dispatch(resetMixedEditorEdges());
+      dispatch(resetMixedEditor());
     };
   }, [dispatch, workflowId]);
 
@@ -192,7 +192,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     importImagesFromFiles,
     favoriteAssets,
     toggleFavoriteAsset,
-  } = useImageEditorStore();
+  } = useMixedEditorStore();
   const flowInteractionRootRef = useRef<HTMLDivElement>(null);
   const { getIntersectingNodes, getNodes, screenToFlowPosition, getZoom } = useReactFlow();
   const closeContextMenu = () => setContextMenu(null);
@@ -835,7 +835,6 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     token: editorToken,
     enabled: !!nodeId && !!editorToken,
     onAuthFailed: useCallback((reason: string) => {
-      // eslint-disable-next-line no-console
       console.warn('[yjs:imageEditor] Authentication failed:', reason);
       removeToken();
       editorNavigate('/login', { replace: true });
