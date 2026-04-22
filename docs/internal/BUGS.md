@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:114 个活跃条目(P0 × 13 + P1 × 54 + P2 × 46 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:113 个活跃条目(P0 × 12 + P1 × 54 + P2 × 46 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -20,7 +20,6 @@
 | BUG-049 | 🔴 HIGH | Worker HTTP 响应无大小限制 → OOM | `worker/src/providers/http.ts:76` | R3 | 45m | [→](audit/2026-04-17-round-3-found.md#bug-049) |
 | BUG-050 | 🔴 HIGH | Spawn 无深度限制 → 无限递归耗光积分 | `core/src/agent/tools/spawn.ts:105` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-050) |
 | BUG-051 | 🔴 HIGH | TextNode 同步路径 innerHTML 未 sanitize → 存储 XSS | `web/.../textNode/TextNodeContent.tsx:141` | R3 | 20m | [→](audit/2026-04-17-round-3-found.md#bug-051) |
-| BUG-079 | 🔴 HIGH | `deductOnce` 在生产零调用点 —— 3 条扣费路径仍非幂等 | `core/src/modules/credit.service.ts:164` + spawn/main-agent/text-tool | R4 | 1.5h | [→](audit/2026-04-21-round-4-found.md#bug-079) |
 | BUG-093 | 🔴 HIGH | imageEditor 把 nodeId 当 workflowId → authz 100% 拒绝 | `web/.../imageEditor/index.tsx:833` | R4 | 1h | [→](audit/2026-04-21-round-4-found.md#bug-093) |
 | BUG-112 | 🔴 HIGH | Agent 聊天 SSE 无 abort 处理 —— 客户端断线 LLM + 工具链仍跑到 maxStep 并扣积分 | `server/src/routes/chat.ts:79,145` + `server/src/agent/main-agent.ts:131` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-112) |
 | BUG-113 | 🔴 HIGH | `run_script` symlink 可穿透 + `.ts` 触发 npx tsx 供应链 + HOME env 继承 | `core/src/agent/tools/run-script.ts:54` | R5 | 1.5h | [→](audit/2026-04-22-round-5-found.md#bug-113) |
@@ -29,7 +28,7 @@
 | BUG-141 | 🔴 HIGH | `conversation.repo.ts` 9 查询 / 写操作不过滤 `deletedAt` → 软删对话仍可读写 | `core/src/modules/conversation.repo.ts:17,131,144,167,187,215,235` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-141) |
 | BUG-142 | 🔴 HIGH | `deleteProject()` 级联漏 5 张子表(BUG-031 补丁不完整) | `core/src/modules/project.repo.ts:216` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-142) |
 
-**P0 小计**:13 个活跃 · 预估 **~13 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:12 个活跃 · 预估 **~11.5 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -165,11 +164,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 13(+1 不修) | ~13 h |
+| P0 | 12(+1 不修) | ~11.5 h |
 | P1 | 54 | ~30 h |
 | P2 | 46 | ~15 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **114**(含长期,+1 不修) | **~70 h** |
+| **总计** | **113**(含长期,+1 不修) | **~68.5 h** |
 
 ---
 
@@ -179,7 +178,7 @@
 - **Round 2**(2026-04-15):15 个 regression + 1 个测试质量 meta 发现。快照见 [`audit/2026-04-15-round-2-found.md`](audit/2026-04-15-round-2-found.md)。**状态**:已关 2 个(BUG-031 / BUG-033 · PR #126 · 2026-04-22),1 个标不修(BUG-034),其余未修复
 - **Round 3**(2026-04-17):33 个新发现(5 HIGH + 20+ MED + 少量 LOW)。快照见 [`audit/2026-04-17-round-3-found.md`](audit/2026-04-17-round-3-found.md)。**状态**:已关 5 个(BUG-046 / 047 / 048 / 052 / 053),其余未修复
 - **Round 4**(2026-04-21):33 个新发现(2 P0 + 1 P1 HIGH + 15 P1 MED + 15 P2 LOW)+ 核查 5 个声称修复(4 彻底 + 1 部分)。快照见 [`audit/2026-04-21-round-4-found.md`](audit/2026-04-21-round-4-found.md)。**状态**:未修复
-- **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:未修复
+- **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:已关 1 个(BUG-079 · PR #128 · 2026-04-22),其余未修复
 
 ---
 
