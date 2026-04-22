@@ -398,9 +398,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     editingMode === 'stabilization' ||
     editingMode === 'crop' ||
     editingMode === 'hdrConversion' ||
-    editingMode === 'sceneExtension'
-      ? null
-      : editingMode;
+    editingMode === 'sceneExtension' ? null : editingMode;
   const { draftBox, clearEraseInteractionState, handleTrackedBoxMouseDown, handleTrackedBoxResizeHandleMouseDown, handleVideoViewportMouseDown } =
     useVideoEraseInteractions({
       id,
