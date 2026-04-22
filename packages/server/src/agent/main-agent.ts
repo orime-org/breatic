@@ -46,12 +46,15 @@ export class MainAgent {
   async *chat(userMessage: string, resources?: string[]): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
 
-    // Save user message (turnIndex auto-computed by repo)
-    await conversationRepo.addMessage(conversationId, {
+    // Save user message. Capture the assigned turnIndex so billing can
+    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
+    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
+    const turnIndex = await conversationRepo.addMessage(conversationId, {
       role: "user",
       content: userMessage,
       ts: new Date().toISOString(),
     });
+    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
 
     // Build system prompt (memory already loaded in route layer)
     const system = buildSystemPrompt({ memoryContext });
@@ -89,12 +92,14 @@ export class MainAgent {
       return;
     }
 
-    // Save user command (turnIndex auto-computed)
-    await conversationRepo.addMessage(conversationId, {
+    // Save user command. Capture the assigned turnIndex for billing refKey,
+    // same reason as `chat()` above.
+    const turnIndex = await conversationRepo.addMessage(conversationId, {
       role: "user",
       content: `/skill ${skillName} ${userInput}`,
       ts: new Date().toISOString(),
     });
+    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
 
     // Build system prompt with skill context (memory from request context)
     const instructions = registry.loadSkillContent(skillName);
@@ -211,7 +216,11 @@ export class MainAgent {
     consolidateIfNeeded(userId, conversationId, projectId)
       .catch((err) => logger.warn({ err }, "Memory consolidation failed"));
 
-    // Deduct credits for MainAgent tokens only (SubAgents deduct their own via context)
+    // Deduct credits for MainAgent tokens only. SubAgents deduct their own
+    // via RequestStore.billing.spawnCount (see spawnTool). Using
+    // `deductOnce` with the turn-scoped refKey ensures this billing is
+    // idempotent: an SSE reconnect or handler re-entry on the same turn
+    // won't double-charge.
     let creditsUsed = 0;
     try {
       const usage = await result.usage;
@@ -219,11 +228,22 @@ export class MainAgent {
 
       if (mainTokens > 0) {
         creditsUsed = Math.ceil((mainTokens / 1000) * env.CREDIT_MULTIPLIER);
-        await creditService.deduct(userId, creditsUsed, "Agent chat", conversationId, {
-          tokensUsed: mainTokens,
-          model: agentCfg.default_model,
-          provider: resolveProvider(agentCfg.default_model),
-        });
+        const billingTurnIndex = this.ctx.billing?.turnIndex;
+        if (billingTurnIndex === undefined) {
+          // Should be set by chat()/handleSkillCommand() before we reach here.
+          throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
+        }
+        await creditService.deductOnce(
+          userId,
+          `turn:${conversationId}:${billingTurnIndex}`,
+          creditsUsed,
+          "Agent chat",
+          {
+            tokensUsed: mainTokens,
+            model: agentCfg.default_model,
+            provider: resolveProvider(agentCfg.default_model),
+          },
+        );
       }
     } catch {
       logger.warn({ userId, creditsUsed }, "Agent chat credit deduction failed");

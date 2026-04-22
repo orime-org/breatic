@@ -113,6 +113,7 @@ export async function* executeTextTool(
   tool: string,
   params: Record<string, unknown>,
   signal: AbortSignal,
+  idempotencyKey: string,
 ): AsyncGenerator<TextToolEvent> {
   // Concurrency lock
   const locked = await acquireLock(userId);
@@ -150,7 +151,7 @@ export async function* executeTextTool(
     totalTokens = usage?.totalTokens ?? 0;
 
     // Deduct credits based on token usage
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool);
+    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -163,8 +164,10 @@ export async function* executeTextTool(
       "Text tool completed",
     );
   } catch (err) {
-    // Deduct for consumed tokens even on error
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool);
+    // Deduct for consumed tokens even on error. Uses the same
+    // idempotencyKey as the success path so the catch branch can't
+    // double-charge if somehow both run for the same request.
+    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -183,9 +186,18 @@ export async function* executeTextTool(
  *
  * Uses a simple rate: 1 credit per 1000 tokens (configurable via CREDIT_MULTIPLIER).
  *
+ * Billed through `deductOnce` with the per-request idempotency key so a
+ * retry of the same HTTP request (same `Idempotency-Key` header) charges
+ * at most once.
+ *
  * @returns Credits actually deducted
  */
-async function deductForTokens(userId: string, tokens: number, tool: string): Promise<number> {
+async function deductForTokens(
+  userId: string,
+  tokens: number,
+  tool: string,
+  idempotencyKey: string,
+): Promise<number> {
   if (tokens === 0) return 0;
 
   // 1 credit = 1 US cent = ~1000 tokens at typical pricing
@@ -193,7 +205,12 @@ async function deductForTokens(userId: string, tokens: number, tool: string): Pr
   if (credits <= 0) return 0;
 
   try {
-    await creditService.deduct(userId, credits, `Text tool: ${tool}`, undefined);
+    await creditService.deductOnce(
+      userId,
+      `texttool:${idempotencyKey}`,
+      credits,
+      `Text tool: ${tool}`,
+    );
     return credits;
   } catch {
     // Don't fail the response if credit deduction fails (e.g. insufficient credits)

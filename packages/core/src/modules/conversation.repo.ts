@@ -111,12 +111,17 @@ export async function setProjectId(id: string, projectId: string): Promise<void>
  * - role="user" → previous turnIndex + 1 (new turn)
  * - role="assistant" or "tool" → same turnIndex as current turn
  *
+ * Returns the `turnIndex` assigned to the message — callers billing by
+ * turn (deductOnce with `turn:${conversationId}:${turnIndex}` refKey)
+ * need this stable number, and computing it again via a second DB roundtrip
+ * would race against concurrent appends.
+ *
  * Uses PostgreSQL `||` operator for atomic JSONB append.
  */
 export async function addMessage(
   id: string,
   message: Omit<MessageData, "turnIndex"> & { turnIndex?: number },
-): Promise<void> {
+): Promise<number> {
   let turnIndex: number;
 
   if (message.turnIndex !== undefined) {
@@ -134,6 +139,8 @@ export async function addMessage(
             updated_at = NOW()
         WHERE id = ${id}`,
   );
+
+  return turnIndex;
 }
 
 /** Get the last N messages from a conversation. */
