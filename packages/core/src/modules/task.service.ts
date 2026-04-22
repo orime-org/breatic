@@ -77,6 +77,19 @@ export async function setJobId(taskId: string, jobId: string): Promise<void> {
 }
 
 /**
+ * Soft-delete a task. Used by routes that create a task optimistically
+ * and then hit a conflict (e.g. node lock already held) — the task row
+ * exists in DB but must not appear in listings or get picked up by
+ * workers. Soft-delete sets `deletedAt`; list queries already filter
+ * `deletedAt IS NULL`.
+ *
+ * @param taskId - Task UUID
+ */
+export async function softDelete(taskId: string): Promise<void> {
+  await taskRepo.softDeleteTask(taskId);
+}
+
+/**
  * Mark a task as running and record the job ID.
  *
  * @param taskId - Task UUID

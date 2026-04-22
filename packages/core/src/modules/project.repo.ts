@@ -4,7 +4,15 @@
 
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { projects } from "../db/schema.js";
+import {
+  projects,
+  conversations,
+  nodeHistory,
+  projectMemories,
+  projectMemoryEntries,
+  tasks,
+  yjsDocuments,
+} from "../db/schema.js";
 import type { ProjectEntity } from "@breatic/shared";
 
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
@@ -186,10 +194,72 @@ export async function duplicateProject(
   });
 }
 
-/** Soft-delete a project by setting its `deleted_at` timestamp. */
+/**
+ * Soft-delete a project and all records that belong to it.
+ *
+ * BUG-020 switched every child FK to `onDelete: restrict`, which means
+ * Postgres now refuses to hard-delete a project while children reference
+ * it. But soft-delete only set `deleted_at` on the project row itself —
+ * children stayed with `deleted_at IS NULL` and continued to appear in
+ * list queries. This function closes that gap by cascading the
+ * `deletedAt` stamp inside a single transaction, so either the whole
+ * project tree is marked deleted or none of it is.
+ *
+ * Every child UPDATE is guarded with `isNull(deletedAt)` so we never
+ * overwrite a previously-stamped timestamp if the same project is
+ * deleted twice.
+ *
+ * yjs_documents is special: it has no FK to `projects`, only a string
+ * `name` key shaped like `project-{id}/canvas` or `project-{id}/node/{nodeId}`.
+ * We soft-delete every row whose name starts with the project prefix.
+ */
 export async function deleteProject(id: string): Promise<void> {
-  await db
-    .update(projects)
-    .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(projects.id, id));
+  await db.transaction(async (tx) => {
+    const now = new Date();
+
+    // Most child tables have no `updatedAt` column (only `deletedAt`);
+    // only `projects` and `yjs_documents` carry `updatedAt`. Keep each
+    // update set minimal so typecheck catches a schema drift.
+    await tx
+      .update(conversations)
+      .set({ deletedAt: now })
+      .where(and(eq(conversations.projectId, id), isNull(conversations.deletedAt)));
+
+    await tx
+      .update(nodeHistory)
+      .set({ deletedAt: now })
+      .where(and(eq(nodeHistory.projectId, id), isNull(nodeHistory.deletedAt)));
+
+    await tx
+      .update(tasks)
+      .set({ deletedAt: now })
+      .where(and(eq(tasks.projectId, id), isNull(tasks.deletedAt)));
+
+    await tx
+      .update(projectMemories)
+      .set({ deletedAt: now })
+      .where(and(eq(projectMemories.projectId, id), isNull(projectMemories.deletedAt)));
+
+    await tx
+      .update(projectMemoryEntries)
+      .set({ deletedAt: now })
+      .where(
+        and(eq(projectMemoryEntries.projectId, id), isNull(projectMemoryEntries.deletedAt)),
+      );
+
+    await tx
+      .update(yjsDocuments)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          sql`${yjsDocuments.name} LIKE ${`project-${id}/%`}`,
+          isNull(yjsDocuments.deletedAt),
+        ),
+      );
+
+    await tx
+      .update(projects)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(eq(projects.id, id));
+  });
 }
