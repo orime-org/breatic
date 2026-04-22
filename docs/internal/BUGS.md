@@ -89,7 +89,7 @@
 | BUG-144 | 🟠 MED | FK onDelete 策略全面不一致 —— `users` / `projects` / `conversations` 硬删意外失败 + `set null` 使用不一致 | `core/src/db/schema.ts`(多处) | R5 | 30m 文档 / ADR(GDPR 单列 2h) | [→](audit/2026-04-22-round-5-found.md#bug-144) |
 | BUG-145 | 🟠 MED | 全 10 个 migration 文件无 `IF EXISTS`(BUG-082 systemic) | `core/src/db/migrations/0000~0009_*.sql` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-145) |
 | BUG-146 | 🟠 MED | `conversation_memories` / `conversationAttachments` 等多张表缺 `deletedAt` 列 | `core/src/db/schema.ts:203,249,335,376,420,471,493` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-146) |
-| BUG-147 | 🟠 MED | `users` 表无 DB 层 CHECK constraint 限制 `membershipType` / `status` / `taskType` enum 字段 | `core/src/db/schema.ts:49,166,210,255` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-147) |
+| BUG-147 | 🟠 MED | 多表无 DB 层 CHECK constraint 限制 `status` / `taskType` 等 enum 字段(membershipType 已由 PR #131 删除) | `core/src/db/schema.ts:166,210,255` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-147) |
 
 **P1 小计**:54 个 · 预估 **~30 小时**
 
