@@ -15,8 +15,7 @@ type RelightBottomToolbarProps = {
   imageSrc?: string;
 };
 
-const iconBtnClass =
-  'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[10px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[10px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 
 const sliderClass = 'nodrag nopan !w-full';
 
@@ -156,7 +155,7 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
             </div>
           </div>
 
-          <div className='flex min-w-0 flex-1 flex-col justify-center gap-3 pr-1'>
+          <div className='flex min-w-0 flex-1 flex-col justify-center gap-6'>
             <div className='flex items-center justify-between gap-1'>
               <div className='flex items-center gap-1'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Rim Light</span>
@@ -169,8 +168,8 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
               <Switch checked={rimLight} onChange={setRimLight} className='nodrag nopan shrink-0' />
             </div>
 
-            <div>
-              <div className='mb-1 flex items-center justify-between'>
+            <div className='flex flex-col justify-between'>
+              <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Brightness</span>
                 <span className='text-[12px] font-semibold text-text-default-secondary'>{brightness}%</span>
               </div>
@@ -190,8 +189,8 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
               />
             </div>
 
-            <div>
-              <div className='mb-1 flex items-center justify-between'>
+            <div className='flex flex-col justify-between'>
+              <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Temperature</span>
                 <span className='text-[12px] font-semibold text-text-default-secondary'>{temperatureK}K</span>
               </div>

@@ -62,7 +62,7 @@ const clampCropPct = (cropPct: number) => Math.max(0, Math.min(14, cropPct));
 const buildCropFilter = (cropPct: number): string => {
   const p = clampCropPct(cropPct) / 100;
   // Keep equal-ratio crop with symmetric margins and even dimensions for x264.
-  return `crop=trunc(iw*(1-2*${p})/2)*2:trunc(ih*(1-2*${p})/2)*2:trunc(iw*${p}/2)*2:trunc(ih*${p}/2)*2`;
+  return `crop=trunc(iw*(1-2*${p})/2)*2:trunc(ih*(1-2*${p})/2)*2:trunc(iw*${p}/2)*2:trunc(ih*${p}/2)*2,setsar=1`;
 };
 
 export const videoStabilizationWithFfmpeg = async (videoSrc: string, cropPct: number): Promise<string> => {

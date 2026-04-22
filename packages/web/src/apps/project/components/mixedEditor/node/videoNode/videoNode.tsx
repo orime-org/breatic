@@ -14,6 +14,8 @@ import { speedVideoWithFfmpeg } from '@/utils/videoSpeedWithFfmpeg';
 import { isAdjustValueNeutral, videoAdjustWithFfmpeg } from '@/utils/videoAdjustWithFfmpeg';
 import { videoStabilizationWithFfmpeg } from '@/utils/videoStabilizationWithFfmpeg';
 import { videoCropWithFfmpeg } from '@/utils/videoCropWithFfmpeg';
+import { videoHdrConversionWithFfmpeg } from '@/utils/videoHdrConversionWithFfmpeg';
+import { videoSceneExtensionWithFfmpeg } from '@/utils/videoSceneExtensionWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '../../types';
@@ -30,7 +32,10 @@ import AdjustBottomToolbar, { type AdjustValue, defaultAdjustValue } from './adj
 import VideoAdjustWebGLCanvas from './adjust/VideoAdjustWebGLCanvas';
 import StabilizationBottomToolbar from './stabilization/StabilizationBottomToolbar';
 import CropBottomToolbar from './crop/CropBottomToolbar';
+import HdrConversionBottomToolbar, { type HdrConversionPayload } from './hdrConversion/HdrConversionBottomToolbar';
 import CropOverlay, { type CropRect } from './crop/CropOverlay';
+import SceneExtensionBottomToolbar, { type SceneExtensionResolution } from './sceneExtension/SceneExtensionBottomToolbar';
+import SceneExtensionOverlay, { type SceneExtensionFrame } from './sceneExtension/SceneExtensionOverlay';
 import TrackedBoxesOverlay from './erase/TrackedBoxesOverlay';
 import type { VideoEraseMaskTool } from './erase/EraseBottomToolbar';
 import type { EraseTrackingBox, EraseTrackingPhase, EraseTrackingSegment, EraseTrackingStatus } from './erase/EraseTrackingPanel';
@@ -223,7 +228,7 @@ function shouldShowVideoFlowToolbars(params: {
 }
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
-  const { setCenter } = useReactFlow();
+  const { setCenter, getZoom } = useReactFlow();
   const {
     createCutVideoResultNodesRight,
     createVideoPlaceholderNodeRight,
@@ -256,7 +261,17 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     volume: 1,
   });
   const [editingMode, setEditingMode] = useState<
-    'cut' | 'speed' | 'erase' | 'extend' | 'animate' | 'adjust' | 'stabilization' | 'crop' | null
+    | 'cut'
+    | 'speed'
+    | 'erase'
+    | 'extend'
+    | 'animate'
+    | 'adjust'
+    | 'stabilization'
+    | 'crop'
+    | 'hdrConversion'
+    | 'sceneExtension'
+    | null
   >(null);
   const [adjustPreviewValue, setAdjustPreviewValue] = useState<AdjustValue>(defaultAdjustValue);
   const [eraseMaskTool, setEraseMaskTool] = useState<VideoEraseMaskTool>('selection');
@@ -268,6 +283,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const [isAdjustSaving, setIsAdjustSaving] = useState(false);
   const [isStabilizationSaving, setIsStabilizationSaving] = useState(false);
   const [isCropSaving, setIsCropSaving] = useState(false);
+  const [isHdrSaving, setIsHdrSaving] = useState(false);
+  const [hdrProgressPct, setHdrProgressPct] = useState(0);
   const [stabilizationCropPct, setStabilizationCropPct] = useState(STABILIZATION_CROP_DEFAULT);
   const [cropRect, setCropRect] = useState<CropRect>({
     x: 0,
@@ -275,6 +292,11 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     w: currentWidth,
     h: currentHeight,
   });
+  const [sceneExtensionSize, setSceneExtensionSize] = useState<{ w: number; h: number }>({
+    w: currentWidth,
+    h: currentHeight,
+  });
+  const [sceneExtensionOrigin, setSceneExtensionOrigin] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
   const nodesRef = useRef(nodes);
   const playbackTimeRef = useRef(playback.currentTime);
@@ -372,7 +394,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     () => resolveTrackingStatusAtTime(trackingSegments, playback.currentTime),
     [trackingSegments, playback.currentTime],
   );
-  const eraseInteractionMode = editingMode === 'stabilization' || editingMode === 'crop' ? null : editingMode;
+  const eraseInteractionMode =
+    editingMode === 'stabilization' ||
+    editingMode === 'crop' ||
+    editingMode === 'hdrConversion' ||
+    editingMode === 'sceneExtension'
+      ? null
+      : editingMode;
   const { draftBox, clearEraseInteractionState, handleTrackedBoxMouseDown, handleTrackedBoxResizeHandleMouseDown, handleVideoViewportMouseDown } =
     useVideoEraseInteractions({
       id,
@@ -575,17 +603,78 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     message.warning('Interpolate coming soon');
   }, []);
 
-  const handleHdrConversion = useCallback((_nodeId: string) => {
-    message.warning('HDR Conversion coming soon');
+  const handleHdrConversion = useCallback(() => {
+    if (!videoContent || editingMode === 'hdrConversion') return;
+    focusCurrentNode();
+    setHdrProgressPct(0);
+    setEditingMode('hdrConversion');
+  }, [editingMode, focusCurrentNode, videoContent]);
+
+  const handleSceneExtensionOpen = useCallback(() => {
+    if (!videoContent || editingMode === 'sceneExtension') return;
+    const cw = Math.max(1, Math.round(currentWidth));
+    const ch = Math.max(1, Math.round(currentHeight));
+    const pad = 40;
+    setSceneExtensionSize({ w: cw + pad * 2, h: ch + pad * 2 });
+    setSceneExtensionOrigin({ x: -pad, y: -pad });
+    setEditingMode('sceneExtension');
+    focusCurrentNode(0.6);
+  }, [currentHeight, currentWidth, editingMode, focusCurrentNode, videoContent]);
+
+  const normalizeNodeSize = useCallback((size: { width: number; height: number }) => {
+    return {
+      width: Math.max(videoFlowMinWidth, Math.round(size.width)),
+      height: Math.max(videoFlowMinHeight, Math.round(size.height)),
+    };
   }, []);
+
+  const applyResultNodeSize = useCallback(
+    (nodeId: string, size: { width: number; height: number }) => {
+      const nextSize = normalizeNodeSize(size);
+      updateNode(
+        nodeId,
+        { style: { width: nextSize.width, height: nextSize.height } },
+        { history: 'skip' },
+      );
+    },
+    [normalizeNodeSize, updateNode],
+  );
+
+  const deriveResultNodeSize = useCallback(
+    async (
+      nextSrc: string,
+      fallback: { width: number; height: number },
+    ): Promise<{ width: number; height: number }> => {
+      try {
+        const resultMeta = await getVideoMetaFromUrl(nextSrc).catch(() => ({ width: undefined, height: undefined }));
+        const sourceMeta = await getVideoMetaFromUrl(videoContent).catch(() => ({ width: undefined, height: undefined }));
+        const sourceW = Number(sourceMeta.width ?? 0);
+        const sourceH = Number(sourceMeta.height ?? 0);
+        const resultW = Number(resultMeta.width ?? 0);
+        const resultH = Number(resultMeta.height ?? 0);
+        if (sourceW <= 0 || sourceH <= 0 || resultW <= 0 || resultH <= 0) {
+          return normalizeNodeSize(fallback);
+        }
+        const scaleX = currentWidth / sourceW;
+        const scaleY = currentHeight / sourceH;
+        return normalizeNodeSize({
+          width: resultW * scaleX,
+          height: resultH * scaleY,
+        });
+      } catch {
+        return normalizeNodeSize(fallback);
+      }
+    },
+    [currentHeight, currentWidth, normalizeNodeSize, videoContent],
+  );
 
   const handleCutout = useCallback((_nodeId: string) => {
     message.warning('Cutout coming soon');
   }, []);
 
   const handleSceneExtension = useCallback((_nodeId: string) => {
-    message.warning('Scene Extension coming soon');
-  }, []);
+    handleSceneExtensionOpen();
+  }, [handleSceneExtensionOpen]);
 
   const handleAudioDenoise = useCallback((_nodeId: string) => {
     message.warning('Audio Denoise coming soon');
@@ -645,6 +734,17 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setEditingMode(null);
   }, [editingMode]);
 
+  const handleHdrConversionClose = useCallback(() => {
+    if (editingMode !== 'hdrConversion' || isHdrSaving) return;
+    setEditingMode(null);
+    setHdrProgressPct(0);
+  }, [editingMode, isHdrSaving]);
+
+  const handleSceneExtensionClose = useCallback(() => {
+    if (editingMode !== 'sceneExtension') return;
+    setEditingMode(null);
+  }, [editingMode]);
+
   const handleEraseSend = useCallback((_payload: { maskTool: VideoEraseMaskTool }) => {
     message.warning('Erase coming soon');
   }, []);
@@ -662,6 +762,15 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       if (!videoContent || isStabilizationSaving) return;
       const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'stabilization', state: 'generating' });
       if (!placeholderId) return;
+      const ratio = Math.max(
+        0,
+        1 - (Math.max(STABILIZATION_CROP_MIN, Math.min(STABILIZATION_CROP_MAX, payload.stabilization)) * 2) / 100,
+      );
+      const expectedSize = normalizeNodeSize({
+        width: currentWidth * ratio,
+        height: currentHeight * ratio,
+      });
+      applyResultNodeSize(placeholderId, expectedSize);
       setEditingMode(null);
       setIsStabilizationSaving(true);
       try {
@@ -672,6 +781,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           removeNode(placeholderId);
           return;
         }
+        const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
+        applyResultNodeSize(placeholderId, nextNodeSize);
         resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
       } catch {
         removeNode(placeholderId);
@@ -686,6 +797,84 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       isStabilizationSaving,
       removeNode,
       resolveVideoResultNode,
+      applyResultNodeSize,
+      currentHeight,
+      currentWidth,
+      deriveResultNodeSize,
+      normalizeNodeSize,
+      videoContent,
+    ],
+  );
+
+  const handleSceneExtensionDimensionChange = useCallback(
+    (w: number, h: number, keepCentered = false) => {
+      const cw = Math.max(1, Math.round(currentWidth));
+      const ch = Math.max(1, Math.round(currentHeight));
+      const ow = Math.max(cw, Math.round(w));
+      const oh = Math.max(ch, Math.round(h));
+      if (keepCentered) {
+        setSceneExtensionOrigin({ x: (cw - ow) / 2, y: (ch - oh) / 2 });
+      }
+      setSceneExtensionSize({ w: ow, h: oh });
+    },
+    [currentHeight, currentWidth],
+  );
+
+  const handleSceneExtensionFrameChange = useCallback(
+    (next: SceneExtensionFrame) => {
+      const cw = Math.max(1, Math.round(currentWidth));
+      const ch = Math.max(1, Math.round(currentHeight));
+      setSceneExtensionSize({ w: Math.max(cw, next.w), h: Math.max(ch, next.h) });
+      setSceneExtensionOrigin({ x: next.ox, y: next.oy });
+    },
+    [currentHeight, currentWidth],
+  );
+
+  const handleSceneExtensionSend = useCallback(
+    async (payload: { width: number; height: number; resolution: SceneExtensionResolution; ratio: string }) => {
+      if (!videoContent) return;
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'scene-extension', state: 'generating' });
+      if (!placeholderId) return;
+
+      const frame = {
+        w: Math.max(1, Math.round(payload.width)),
+        h: Math.max(1, Math.round(payload.height)),
+        ox: sceneExtensionOrigin.x,
+        oy: sceneExtensionOrigin.y,
+      };
+      const expectedSize = normalizeNodeSize({ width: frame.w, height: frame.h });
+      applyResultNodeSize(placeholderId, expectedSize);
+      setEditingMode(null);
+
+      try {
+        const nextSrc = await videoSceneExtensionWithFfmpeg(videoContent, {
+          frame,
+          container: { width: currentWidth, height: currentHeight },
+        });
+        if (!nextSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
+        applyResultNodeSize(placeholderId, nextNodeSize);
+        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        message.error('Could not export scene extension result. Try again.');
+      }
+    },
+    [
+      applyResultNodeSize,
+      createVideoPlaceholderNodeRight,
+      currentHeight,
+      currentWidth,
+      deriveResultNodeSize,
+      id,
+      normalizeNodeSize,
+      removeNode,
+      resolveVideoResultNode,
+      sceneExtensionOrigin.x,
+      sceneExtensionOrigin.y,
       videoContent,
     ],
   );
@@ -718,6 +907,11 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     if (!videoContent || isCropSaving) return;
     const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'crop', state: 'generating' });
     if (!placeholderId) return;
+    const expectedSize = normalizeNodeSize({
+      width: cropRect.w,
+      height: cropRect.h,
+    });
+    applyResultNodeSize(placeholderId, expectedSize);
     setEditingMode(null);
     setIsCropSaving(true);
     try {
@@ -729,6 +923,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         removeNode(placeholderId);
         return;
       }
+      const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
+      applyResultNodeSize(placeholderId, nextNodeSize);
       resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
     } catch {
       removeNode(placeholderId);
@@ -745,8 +941,63 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     isCropSaving,
     removeNode,
     resolveVideoResultNode,
+    applyResultNodeSize,
+    deriveResultNodeSize,
+    normalizeNodeSize,
     videoContent,
   ]);
+
+  const handleHdrConversionSave = useCallback(
+    async (payload: HdrConversionPayload) => {
+      if (!videoContent || isHdrSaving) return;
+      if (payload.aiEnhance) {
+        message.warning('AI Enhance for HDR Conversion is coming soon');
+        return;
+      }
+      const placeholderId = createVideoPlaceholderNodeRight(id, {
+        nameSuffix: payload.aiEnhance ? 'hdr-ai' : 'hdr',
+        state: 'generating',
+      });
+      if (!placeholderId) return;
+      // Match Cut behavior: exit toolbar immediately after Save.
+      setEditingMode(null);
+      setIsHdrSaving(true);
+      setHdrProgressPct(payload.aiEnhance ? 8 : 70);
+      try {
+        const nextSrc = await videoHdrConversionWithFfmpeg(videoContent, {
+          preset: payload.preset,
+          intensity: payload.intensity,
+          aiEnhance: payload.aiEnhance,
+          onProgress: payload.aiEnhance
+            ? (progressPct) => setHdrProgressPct(progressPct)
+            : undefined,
+        });
+        if (!nextSrc) {
+          removeNode(placeholderId);
+          return;
+        }
+        const nextMeta = await getVideoMetaFromUrl(nextSrc);
+        if (!nextMeta.width || !nextMeta.height) {
+          throw new Error('HDR output is not decodable by browser');
+        }
+        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
+      } catch {
+        removeNode(placeholderId);
+        message.error('Could not export HDR conversion result. Try again or use a smaller clip.');
+      } finally {
+        setIsHdrSaving(false);
+        setHdrProgressPct(0);
+      }
+    },
+    [
+      createVideoPlaceholderNodeRight,
+      id,
+      isHdrSaving,
+      removeNode,
+      resolveVideoResultNode,
+      videoContent,
+    ],
+  );
 
   const handleAdjustSave = useCallback(
     async (value: AdjustValue) => {
@@ -887,6 +1138,16 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       });
     }
   };
+
+  const zoom = getZoom();
+  const sceneExtensionToolbarBottomOffset = useMemo(
+    () => 12 + Math.max(0, sceneExtensionOrigin.y + sceneExtensionSize.h - currentHeight) * zoom,
+    [currentHeight, sceneExtensionOrigin.y, sceneExtensionSize.h, zoom],
+  );
+  const sceneExtensionToolbarTranslateX = useMemo(
+    () => (sceneExtensionOrigin.x + sceneExtensionSize.w / 2 - currentWidth / 2) * zoom,
+    [currentWidth, sceneExtensionOrigin.x, sceneExtensionSize.w, zoom],
+  );
 
   return (
     <>
@@ -1059,6 +1320,51 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           onSave={handleCropSave}
         />
       </FlowNodeToolbar>
+      <FlowNodeToolbar
+        isVisible={editingMode === 'sceneExtension'}
+        position={Position.Bottom}
+        offset={sceneExtensionToolbarBottomOffset}
+        align='center'
+      >
+        <div
+          className='pointer-events-auto'
+          style={sceneExtensionToolbarTranslateX !== 0 ? { transform: `translateX(${sceneExtensionToolbarTranslateX}px)` } : undefined}
+        >
+          <SceneExtensionBottomToolbar
+            active={editingMode === 'sceneExtension'}
+            videoRef={videoRef}
+            mediaSrc={videoContent}
+            currentTime={playback.currentTime}
+            duration={playback.duration}
+            isPlaying={playback.isPlaying}
+            volume={playback.volume}
+            fullscreenTargetRef={nodeFrameRef}
+            width={sceneExtensionSize.w}
+            height={sceneExtensionSize.h}
+            containerWidth={currentWidth}
+            containerHeight={currentHeight}
+            onDimensionChange={handleSceneExtensionDimensionChange}
+            onClose={handleSceneExtensionClose}
+            onSend={handleSceneExtensionSend}
+          />
+        </div>
+      </FlowNodeToolbar>
+      <FlowNodeToolbar isVisible={editingMode === 'hdrConversion'} position={Position.Bottom} offset={12} align='center'>
+        <HdrConversionBottomToolbar
+          active={editingMode === 'hdrConversion'}
+          videoRef={videoRef}
+          mediaSrc={videoContent}
+          currentTime={playback.currentTime}
+          duration={playback.duration}
+          isPlaying={playback.isPlaying}
+          volume={playback.volume}
+          fullscreenTargetRef={nodeFrameRef}
+          processing={isHdrSaving}
+          progressPct={hdrProgressPct}
+          onClose={handleHdrConversionClose}
+          onSave={handleHdrConversionSave}
+        />
+      </FlowNodeToolbar>
       <div
         ref={nodeFrameRef}
         className='relative h-full w-full min-w-0'
@@ -1137,6 +1443,17 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                 containerHeight={currentHeight}
                 value={cropRect}
                 onChange={setCropRect}
+              />
+            )}
+            {editingMode === 'sceneExtension' && (
+              <SceneExtensionOverlay
+                containerWidth={currentWidth}
+                containerHeight={currentHeight}
+                outerWidth={sceneExtensionSize.w}
+                outerHeight={sceneExtensionSize.h}
+                originX={sceneExtensionOrigin.x}
+                originY={sceneExtensionOrigin.y}
+                onFrameChange={handleSceneExtensionFrameChange}
               />
             )}
             {trackingPhase === 'tracking' && currentTrackingStatus === 'lost' && (

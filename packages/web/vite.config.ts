@@ -141,17 +141,17 @@ export default defineConfig(({ command, mode }) => {
       // in dev just like it does in prod (where nginx does the same job).
       proxy: {
         '/api/': {
-          target: 'http://localhost:3000',
+          target: 'https://www.thinkai.cc',
           changeOrigin: true,
         },
         '/uploads/': {
-          target: 'http://localhost:3000',
+          target: 'https://www.thinkai.cc',
           changeOrigin: true,
         },
         // Yjs client connects to `/ws` (without trailing slash), so proxy key
         // must also match `/ws` to avoid bypassing Vite proxy in dev.
         '/ws': {
-          target: 'ws://localhost:1234',
+          target: 'wss://www.thinkai.cc',
           ws: true,
           changeOrigin: true,
         },

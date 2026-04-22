@@ -115,14 +115,14 @@ const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ activ
             />
           </div>
           {/* Right: sliders */}
-          <div className='flex-1 h-full flex flex-col justify-center'>
-            <div className='flex w-full items-center justify-between'>
+          <div className='flex h-full min-w-0 flex-1 flex-col justify-center gap-2'>
+            <div className='flex items-center justify-between gap-1'>
               <div className='text-[15px] font-semibold text-text-default-base'>Wide angle</div>
               <Switch checked={wideAngleEnabled} onChange={setWideAngleEnabled} />
             </div>
 
-            <div className='mt-2'>
-              <div className='flex items-center justify-between'>
+            <div className='flex flex-col justify-between'>
+              <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Rotate</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{rotate}</span>
               </div>
@@ -143,8 +143,8 @@ const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ activ
               />
             </div>
 
-            <div className='mt-2'>
-              <div className='flex items-center justify-between'>
+            <div className='flex flex-col justify-between'>
+              <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Tilt</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{tilt}</span>
               </div>
@@ -165,8 +165,8 @@ const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ activ
               />
             </div>
 
-            <div className='mt-2'>
-              <div className='flex items-center justify-between'>
+            <div className='flex flex-col justify-between'>
+              <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Scale</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{scaleLabel}</span>
               </div>

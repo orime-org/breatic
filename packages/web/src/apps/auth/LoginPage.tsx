@@ -124,18 +124,18 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background-default-base">
-      <div className="w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg">
+    <div className='min-h-screen flex items-center justify-center bg-background-default-base'>
+      <div className='w-full max-w-md p-8 space-y-6 bg-background-default-secondary rounded-xl shadow-lg'>
         {/* Logo */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-text-default-base">Breatic</h1>
-          <p className="text-sm text-text-default-tertiary mt-1">AI Creative Platform</p>
+        <div className='text-center'>
+          <h1 className='text-2xl font-bold text-text-default-base'>Breatic</h1>
+          <p className='text-sm text-text-default-tertiary mt-1'>AI Creative Platform</p>
         </div>
 
         {/* Tab switcher */}
-        <div className="flex border-b border-border-default-base">
+        <div className='flex border-b border-border-default-base'>
           <button
-            type="button"
+            type='button'
             onClick={() => switchTab('login')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === 'login'
@@ -146,7 +146,7 @@ export default function LoginPage() {
             {t('auth.login', 'Sign In')}
           </button>
           <button
-            type="button"
+            type='button'
             onClick={() => switchTab('register')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === 'register'
@@ -160,42 +160,42 @@ export default function LoginPage() {
 
         {/* Error / Success */}
         {error && (
-          <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className='p-3 rounded-lg bg-red-50 text-red-600 text-sm'>{error}</div>
         )}
         {success && (
-          <div className="p-3 rounded-lg bg-green-50 text-green-600 text-sm">{success}</div>
+          <div className='p-3 rounded-lg bg-green-50 text-green-600 text-sm'>{success}</div>
         )}
 
         {/* Login form */}
         {tab === 'login' && (
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          <form onSubmit={handleEmailLogin} className='space-y-4'>
             <input
-              type="email"
+              type='email'
               placeholder={t('auth.email', 'Email')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <input
-              type="password"
+              type='password'
               placeholder={t('auth.password', 'Password')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <button
-              type="submit"
+              type='submit'
               disabled={loading}
-              className="w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors"
+              className='w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors'
             >
               {loading ? '...' : t('auth.login', 'Sign In')}
             </button>
             <button
-              type="button"
+              type='button'
               onClick={() => switchTab('forgot')}
-              className="w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors"
+              className='w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors'
             >
               {t('auth.forgotPassword', 'Forgot password?')}
             </button>
@@ -204,36 +204,36 @@ export default function LoginPage() {
 
         {/* Register form */}
         {tab === 'register' && (
-          <form onSubmit={handleRegister} className="space-y-4">
+          <form onSubmit={handleRegister} className='space-y-4'>
             <input
-              type="email"
+              type='email'
               placeholder={t('auth.email', 'Email')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <input
-              type="password"
+              type='password'
               placeholder={t('auth.password', 'Password (min 8 characters)')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <input
-              type="password"
+              type='password'
               placeholder={t('auth.confirmPassword', 'Confirm password')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <button
-              type="submit"
+              type='submit'
               disabled={loading}
-              className="w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors"
+              className='w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors'
             >
               {loading ? '...' : t('auth.register', 'Sign Up')}
             </button>
@@ -242,29 +242,29 @@ export default function LoginPage() {
 
         {/* Forgot password form */}
         {tab === 'forgot' && (
-          <form onSubmit={handleForgotPassword} className="space-y-4">
-            <p className="text-sm text-text-default-tertiary">
+          <form onSubmit={handleForgotPassword} className='space-y-4'>
+            <p className='text-sm text-text-default-tertiary'>
               {t('auth.forgotDescription', 'Enter your email and we\'ll send you a reset link.')}
             </p>
             <input
-              type="email"
+              type='email'
               placeholder={t('auth.email', 'Email')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500"
+              className='w-full px-4 py-3 rounded-lg border border-border-default-base bg-background-default-base text-text-default-base placeholder:text-text-default-tertiary focus:outline-none focus:ring-2 focus:ring-green-500'
             />
             <button
-              type="submit"
+              type='submit'
               disabled={loading}
-              className="w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors"
+              className='w-full py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 disabled:opacity-50 transition-colors'
             >
               {loading ? '...' : t('auth.sendResetLink', 'Send Reset Link')}
             </button>
             <button
-              type="button"
+              type='button'
               onClick={() => switchTab('login')}
-              className="w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors"
+              className='w-full text-sm text-text-default-tertiary hover:text-green-500 transition-colors'
             >
               {t('auth.backToLogin', 'Back to Sign In')}
             </button>
@@ -274,18 +274,18 @@ export default function LoginPage() {
         {/* Google OAuth divider + button */}
         {tab !== 'forgot' && GOOGLE_CLIENT_ID && (
           <>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border-default-base" />
+            <div className='relative'>
+              <div className='absolute inset-0 flex items-center'>
+                <div className='w-full border-t border-border-default-base' />
               </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="px-2 bg-background-default-secondary text-text-default-tertiary">
+              <div className='relative flex justify-center text-xs'>
+                <span className='px-2 bg-background-default-secondary text-text-default-tertiary'>
                   {t('auth.or', 'or')}
                 </span>
               </div>
             </div>
             <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-              <div className="flex justify-center">
+              <div className='flex justify-center'>
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={() => setError('Google login failed')}
