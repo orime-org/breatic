@@ -3,28 +3,31 @@
  *
  * Messages are stored inline as a JSONB array (not a separate table).
  * Supports consolidation-aware message slicing for the memory system.
+ *
+ * Every read/write filters on `deleted_at IS NULL` — soft-deleted
+ * conversations are invisible to the rest of the app. Cascade deletion
+ * of owned children lives in {@link cascadeDeleteConversations}.
  */
 
-import { and, eq, desc, isNull, sql } from "drizzle-orm";
+import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { conversations } from "../db/schema.js";
+import {
+  conversations,
+  conversationAttachments,
+  conversationMemories,
+  memoryHistoryEntries,
+} from "../db/schema.js";
+import { NotFoundError } from "../errors.js";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**
- * Compute the current turn index from the last message in the JSONB array.
- * Returns 0 when there are no messages yet.
+ * Transaction handle type, inferred from {@link db.transaction}'s callback.
+ *
+ * Used by {@link cascadeDeleteConversations} so the helper can be reused
+ * across different transactions (single-conversation soft delete vs.
+ * project-scoped cascade) without the helper owning its own transaction.
  */
-async function getCurrentTurnIndex(id: string): Promise<number> {
-  const rows = await db
-    .select({ messages: conversations.messages })
-    .from(conversations)
-    .where(eq(conversations.id, id))
-    .limit(1);
-
-  const msgs = (rows[0]?.messages ?? []) as MessageData[];
-  if (msgs.length === 0) return 0;
-  return msgs[msgs.length - 1]!.turnIndex ?? 0;
-}
+export type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const MAX_HISTORY = 50;
 
@@ -80,28 +83,113 @@ export async function listConversations(
   return rows.map(toEntity);
 }
 
-/** Soft-delete a conversation — sets deleted_at, keeps record. */
-export async function softDeleteConversation(id: string): Promise<void> {
-  await db
+/**
+ * Cascade soft-delete: mark N conversations and their owned children as
+ * deleted inside the caller-provided transaction.
+ *
+ * Owned children (FK `onDelete: restrict`) that are cascaded:
+ *   - `conversation_attachments`
+ *   - `conversation_memories`
+ *   - `memory_history_entries`
+ *
+ * Reference-only children (FK `onDelete: set null`) are deliberately
+ * NOT touched — the row does not belong to the conversation:
+ *   - `user_memory_entries.source_conversation_id` belongs to the user
+ *   - `project_memory_entries.source_conversation_id` belongs to the project
+ * Both keep their link as a historical breadcrumb; list queries that
+ * join `conversations WHERE deleted_at IS NULL` filter deleted sources
+ * naturally.
+ *
+ * Every UPDATE is guarded with `isNull(deletedAt)` so re-running the
+ * cascade is idempotent and never overwrites an existing timestamp.
+ *
+ * Must be called inside a transaction — the caller owns the atomicity
+ * boundary so `deleteProject` can wrap both conversation and non-
+ * conversation children in one transaction.
+ *
+ * @param tx - Transaction handle from {@link db.transaction}
+ * @param convIds - Conversation UUIDs to cascade (safe with 0 entries)
+ * @param now - Timestamp to stamp on every affected row (defaults to `new Date()`)
+ */
+export async function cascadeDeleteConversations(
+  tx: DbTx,
+  convIds: readonly string[],
+  now: Date = new Date(),
+): Promise<void> {
+  if (convIds.length === 0) return;
+
+  const ids = [...convIds];
+
+  await tx
+    .update(conversationAttachments)
+    .set({ deletedAt: now })
+    .where(
+      and(
+        inArray(conversationAttachments.conversationId, ids),
+        isNull(conversationAttachments.deletedAt),
+      ),
+    );
+
+  await tx
+    .update(conversationMemories)
+    .set({ deletedAt: now })
+    .where(
+      and(
+        inArray(conversationMemories.conversationId, ids),
+        isNull(conversationMemories.deletedAt),
+      ),
+    );
+
+  await tx
+    .update(memoryHistoryEntries)
+    .set({ deletedAt: now })
+    .where(
+      and(
+        inArray(memoryHistoryEntries.conversationId, ids),
+        isNull(memoryHistoryEntries.deletedAt),
+      ),
+    );
+
+  await tx
     .update(conversations)
-    .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(conversations.id, id));
+    .set({ deletedAt: now, updatedAt: now })
+    .where(
+      and(
+        inArray(conversations.id, ids),
+        isNull(conversations.deletedAt),
+      ),
+    );
 }
 
-/** Update conversation title. */
+/**
+ * Soft-delete a conversation and its owned children atomically.
+ *
+ * Wraps {@link cascadeDeleteConversations} in a single-statement
+ * transaction. Safe to call on an already-deleted conversation (no-op).
+ */
+export async function softDeleteConversation(id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await cascadeDeleteConversations(tx, [id]);
+  });
+}
+
+/**
+ * Update conversation title. No-op when the conversation is soft-deleted
+ * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
+ */
 export async function updateTitle(id: string, title: string): Promise<void> {
   await db
     .update(conversations)
     .set({ title: title.slice(0, 200), updatedAt: new Date() })
-    .where(eq(conversations.id, id));
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
-/** Set the project_id on a conversation. */
+/** Set the project_id on a conversation. No-op if soft-deleted. */
 export async function setProjectId(id: string, projectId: string): Promise<void> {
   await db
     .update(conversations)
     .set({ projectId, updatedAt: new Date() })
-    .where(eq(conversations.id, id));
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
 /**
@@ -117,6 +205,11 @@ export async function setProjectId(id: string, projectId: string): Promise<void>
  * would race against concurrent appends.
  *
  * Uses PostgreSQL `||` operator for atomic JSONB append.
+ *
+ * @throws NotFoundError if the conversation does not exist or is soft-deleted.
+ *   This surfaces deletion-mid-stream cleanly to callers — `main-agent.ts`
+ *   relies on this to abort billing when the conversation was deleted
+ *   during a chat turn.
  */
 export async function addMessage(
   id: string,
@@ -127,28 +220,50 @@ export async function addMessage(
   if (message.turnIndex !== undefined) {
     turnIndex = message.turnIndex;
   } else {
-    const currentTurn = await getCurrentTurnIndex(id);
+    // SELECT with soft-delete guard so we both compute the next turn
+    // AND detect "conversation gone" in a single roundtrip. The filter
+    // matters when a user-owned conversation is soft-deleted mid-stream
+    // — without it we would bill a turn on an invisible conversation.
+    const rows = await db
+      .select({ messages: conversations.messages })
+      .from(conversations)
+      .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
+      .limit(1);
+    if (!rows[0]) {
+      throw new NotFoundError(`Conversation not found or deleted: ${id}`);
+    }
+    const msgs = (rows[0].messages ?? []) as MessageData[];
+    const currentTurn =
+      msgs.length > 0 ? msgs[msgs.length - 1]!.turnIndex ?? 0 : 0;
     turnIndex = message.role === "user" ? currentTurn + 1 : currentTurn;
   }
 
   const fullMessage: MessageData = { ...message, turnIndex };
 
-  await db.execute(
+  // RETURNING id + length check detects a conversation that vanished
+  // between the SELECT above and the UPDATE, or was soft-deleted when
+  // the caller supplied `message.turnIndex` directly (skipping the SELECT).
+  const result = await db.execute(
     sql`UPDATE conversations
         SET messages = COALESCE(messages, '[]'::jsonb) || ${JSON.stringify([fullMessage])}::jsonb,
             updated_at = NOW()
-        WHERE id = ${id}`,
+        WHERE id = ${id} AND deleted_at IS NULL
+        RETURNING id`,
   );
+
+  if ((result as unknown[]).length === 0) {
+    throw new NotFoundError(`Conversation not found or deleted: ${id}`);
+  }
 
   return turnIndex;
 }
 
-/** Get the last N messages from a conversation. */
+/** Get the last N messages from a conversation (empty array if deleted). */
 export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
   const rows = await db
     .select({ messages: conversations.messages })
     .from(conversations)
-    .where(eq(conversations.id, id))
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
     .limit(1);
 
   const msgs = (rows[0]?.messages ?? []) as MessageData[];
@@ -171,7 +286,7 @@ export async function getMessagesForLlm(
   const rows = await db
     .select({ messages: conversations.messages })
     .from(conversations)
-    .where(eq(conversations.id, id))
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
     .limit(1);
 
   const all = (rows[0]?.messages ?? []) as MessageData[];
@@ -191,7 +306,7 @@ export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
       lastConsolidatedTurn: conversations.lastConsolidatedTurn,
     })
     .from(conversations)
-    .where(eq(conversations.id, id))
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
     .limit(1);
 
   if (!rows[0]) return 0;
@@ -219,7 +334,7 @@ export async function getMessagesForConsolidation(
   const rows = await db
     .select({ messages: conversations.messages })
     .from(conversations)
-    .where(eq(conversations.id, id))
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
     .limit(1);
 
   const all = (rows[0]?.messages ?? []) as MessageData[];
@@ -234,10 +349,10 @@ export async function getMessagesForConsolidation(
   );
 }
 
-/** Update the consolidated turn index. */
+/** Update the consolidated turn index. No-op if soft-deleted. */
 export async function updateConsolidatedTurn(id: string, turn: number): Promise<void> {
   await db
     .update(conversations)
     .set({ lastConsolidatedTurn: turn, updatedAt: new Date() })
-    .where(eq(conversations.id, id));
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
