@@ -1078,7 +1078,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     <div
       ref={flowInteractionRootRef}
       className='relative h-full w-full overflow-hidden bg-background-default-secondary'
-      style={{ cursor: stitchEditMode || agentCanvasPickEditMode ? 'not-allowed' : 'default' }}
+      style={{ cursor: stitchEditMode ? 'not-allowed' : 'default' }}
       onMouseMoveCapture={handleMouseMoveCapture}
       onMouseLeave={handleMouseLeave}
       onMouseDownCapture={handleMouseDownCapture}
