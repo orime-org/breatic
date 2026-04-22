@@ -6,6 +6,7 @@
  * sees a打字机 effect and can abort mid-stream.
  */
 
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
@@ -36,6 +37,14 @@ textTools.post(
 
     const { tool, ...params } = body;
 
+    // Idempotency: the client may send `Idempotency-Key` (per RFC draft,
+    // matches what Stripe/Square expect). When set, a retry of the same
+    // request bills exactly once via deductOnce. When absent, we fall back
+    // to a server-generated UUID — each retry then becomes a separate
+    // logical charge, which is acceptable since text tools re-generate
+    // content on every call.
+    const idempotencyKey = c.req.header("Idempotency-Key") ?? randomUUID();
+
     // Set SSE headers
     c.header("Content-Type", "text/event-stream");
     c.header("Cache-Control", "no-cache");
@@ -55,6 +64,7 @@ textTools.post(
         tool,
         params as Record<string, unknown>,
         abortController.signal,
+        idempotencyKey,
       )) {
         if (event.type === "text_delta") {
           // Text deltas: plain text, no JSON wrapper

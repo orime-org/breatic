@@ -151,18 +151,38 @@ export const spawnTool = tool({
 
     const totalTokens = result.usage?.totalTokens ?? 0;
 
-    // Deduct credits directly (no text hack)
+    // Deduct credits idempotently. `deductOnce` uses a refKey scoped to
+    // (conversation, turn, spawn index). `spawnCount.value++` assigns a
+    // stable index per spawn invocation in this turn — if the same turn is
+    // somehow retried (e.g. worker re-execution), the Nth spawn's refKey
+    // matches and the charge is skipped on replay.
+    //
+    // `billing` is set by MainAgent at turn start. If missing, we're in a
+    // code path that bypassed MainAgent (a test harness, or a future entry
+    // point that hasn't wired billing); skip the charge rather than crash.
     if (reqCtx && totalTokens > 0) {
       try {
         const credits = Math.ceil((totalTokens / 1000) * env.CREDIT_MULTIPLIER);
-        await creditService.deduct(
-          reqCtx.userId,
-          credits,
-          `SubAgent:${agentName}`,
-          reqCtx.conversationId,
-          { tokensUsed: totalTokens, model: agentDef.model, provider: resolveProvider(agentDef.model) },
-        );
-        logger.info({ agent: agentName, tokens: totalTokens, credits }, "SubAgent credits deducted");
+        const billing = reqCtx.billing;
+        if (!billing) {
+          logger.warn(
+            { agent: agentName },
+            "Spawn: billing context missing, skipping deduction",
+          );
+        } else {
+          const spawnIdx = billing.spawnCount.value++;
+          await creditService.deductOnce(
+            reqCtx.userId,
+            `spawn:${reqCtx.conversationId}:${billing.turnIndex}:${spawnIdx}`,
+            credits,
+            `SubAgent:${agentName}`,
+            { tokensUsed: totalTokens, model: agentDef.model, provider: resolveProvider(agentDef.model) },
+          );
+          logger.info(
+            { agent: agentName, tokens: totalTokens, credits, spawnIdx },
+            "SubAgent credits deducted",
+          );
+        }
       } catch (err) {
         logger.warn({ err, agent: agentName }, "SubAgent credit deduction failed");
       }
