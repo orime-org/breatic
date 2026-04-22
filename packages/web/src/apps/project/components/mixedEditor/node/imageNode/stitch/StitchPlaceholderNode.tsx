@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { NodeToolbar as FlowNodeToolbar, Position, type NodeProps } from '@xyflow/react';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { message } from '@/components/base/message';
 import { createEditorImageNodeData, imageEditorImageNodeType } from '../../../types';
 import StitchBottomToolbar from './StitchBottomToolbar';
@@ -16,7 +16,7 @@ import {
 const stitchResultMinLoadingMs = 3000;
 
 const StitchPlaceholderNode: React.FC<NodeProps> = ({ id, data, selected, width, height }) => {
-  const { updateNode } = useMixedEditorStore();
+  const { updateNode } = useMixedEditorActions();
   const stitchData = (data ?? {}) as {
     rows?: number;
     cols?: number;

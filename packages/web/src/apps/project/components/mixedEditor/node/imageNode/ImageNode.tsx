@@ -13,7 +13,9 @@ import { nanoid } from 'nanoid';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/apps/project/components/canvas/common/NodeSkeleton';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import { useTranslation } from 'react-i18next';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
+import { useMixedEditorUI } from '@/hooks/useMixedEditorUI';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
@@ -400,8 +402,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
   const imageContent = nodeData.content ?? legacySrc ?? '';
   /** Pixel tools (inpaint, crop, …) only apply when the tile has image content. */
   const canUseRasterToolbars = Boolean(imageContent);
+  const { nodes } = useMixedEditorData();
   const {
-    nodes,
     updateNodeData,
     updateNode,
     setNodeDraggable,
@@ -409,8 +411,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
-    setExpandViewportLock,
-  } = useMixedEditorStore();
+  } = useMixedEditorActions();
+  const { setExpandViewportLock } = useMixedEditorUI();
   const {
     nodes: projectCanvasNodes,
   } = useCanvasData();

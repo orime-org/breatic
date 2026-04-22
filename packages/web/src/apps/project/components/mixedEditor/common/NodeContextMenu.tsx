@@ -12,7 +12,7 @@ import {
 } from '@floating-ui/react';
 import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import Divider from '@/components/base/divider';
 import { Icon } from '@/components/base/icon';
 
@@ -99,7 +99,7 @@ const NodeContextMenu: FC<NodeContextMenuProps> = ({
   }, [open, left, top, refs]);
 
   const { getNodes, getEdges, screenToFlowPosition } = useReactFlow();
-  const { onNodesChange, onEdgesChange, onConnect } = useMixedEditorStore();
+  const { onNodesChange, onEdgesChange, onConnect } = useMixedEditorActions();
 
   useEffect(() => {
     if (!open) return;
