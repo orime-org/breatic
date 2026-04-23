@@ -14,6 +14,36 @@ on:
 # for the Node 20 → 24 runner deprecation timeline that drove these bumps.
 
 jobs:
+  dev-proxy-guard:
+    name: Dev Proxy Guard
+    runs-on: ubuntu-latest
+
+    # Defense in depth with .husky/pre-commit: block PRs/pushes where
+    # packages/web/vite.config.ts routes /api, /uploads, or /ws to a
+    # deployed host (thinkai.cc / breatic.ai). Those proxy targets must
+    # stay on localhost so every developer's `pnpm dev` hits their own
+    # API/Collab. See BUG-2 post-mortem for the regression that motivated
+    # this check.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check vite.config.ts proxy targets
+        run: |
+          offenders=$(grep -nE 'target:[[:space:]]*["'\''].*(thinkai\.cc|breatic\.ai)' \
+            packages/web/vite.config.ts || true)
+          if [ -n "$offenders" ]; then
+            echo "::error file=packages/web/vite.config.ts::Dev proxy target must be localhost, not a deployed host"
+            echo "Offending lines:"
+            echo "$offenders"
+            echo
+            echo "Expected:"
+            echo "  /api/     → http://localhost:3000"
+            echo "  /uploads/ → http://localhost:3000"
+            echo "  /ws       → ws://localhost:1234"
+            exit 1
+          fi
+          echo "✅ vite.config.ts proxy targets are localhost-only"
+
   lint-typecheck-test:
     name: Lint + Typecheck + Test
     runs-on: ubuntu-latest
