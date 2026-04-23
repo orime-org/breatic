@@ -21,7 +21,6 @@ import {
 import { Modal } from '@/components/modals/Modal';
 import { Input } from '@/components/base/input';
 import WaveSurfer from 'wavesurfer.js';
-// @ts-expect-error - RecordPlugin typing issue; use ESM import directly.
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';

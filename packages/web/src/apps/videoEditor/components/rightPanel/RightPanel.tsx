@@ -22,7 +22,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
   const { t } = useTranslation();
 
   // 从 store 获取数据
-  const { clips, mediaItems, selectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId } = useVideoEditorStore();
 
   // 获取所有选中的 clips 和对应的 media 类型
   const selectedClips = selectedClipId.length > 0

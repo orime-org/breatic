@@ -45,7 +45,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
     redo,
     canUndo,
     canRedo,
-  } = useVideoEditorStore(nodeId);
+  } = useVideoEditorStore();
 
   const [currentTime, setCurrentTime] = useState(initialCurrentTime ?? 0);
   const [isPlaying, setIsPlaying] = useState(false);

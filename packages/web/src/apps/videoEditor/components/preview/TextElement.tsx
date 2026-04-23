@@ -17,7 +17,7 @@ const TextElement: React.FC<TextElementProps> = ({
   textRefs,
   nodeId,
 }) => {
-  const { selectedClipId: selectedClipIds, updateClip, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { selectedClipId: selectedClipIds, updateClip, setSelectedClipId } = useVideoEditorStore();
   const textElementRef = useRef<HTMLDivElement | null>(null);
 
   const textStyle = useMemo(() => {

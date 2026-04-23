@@ -41,8 +41,8 @@ const sliderBaseProps = {
   thumbColor: '#B3B3B3',
 } as const;
 
-const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = [] }) => {
-  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+const TextStylePanel: React.FC<TextStylePanelProps> = ({ fontConfig = [] }) => {
+  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const { t } = useTranslation();
   const [fontSelectorVisible, setFontSelectorVisible] = useState(false);
   const [availableFontWeights, setAvailableFontWeights] = useState<{ value: string; label: string }[]>([

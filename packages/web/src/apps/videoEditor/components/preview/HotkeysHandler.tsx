@@ -63,7 +63,7 @@ const HotkeysHandler: React.FC<HotkeysHandlerProps> = ({
   canUndo,
   canRedo,
 }) => {
-  const { clips, selectedClipId, setSelectedClipId, setClips } = useVideoEditorStore(nodeId);
+  const { clips, selectedClipId, setSelectedClipId, setClips } = useVideoEditorStore();
   const clipboardClipsRef = useRef<TimelineClip[]>([]);
 
   // 使用 ref 存储最新的值

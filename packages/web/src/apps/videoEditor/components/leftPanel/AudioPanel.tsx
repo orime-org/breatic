@@ -12,9 +12,9 @@ interface AudioPanelProps {
 /**
  * AudioPanel 组件 - 音频面板
  */
-const AudioPanel: React.FC<AudioPanelProps> = ({ nodeId, currentTime = 0 }) => {
+const AudioPanel: React.FC<AudioPanelProps> = ({ currentTime = 0 }) => {
   const { t } = useTranslation();
-  const { mediaItems, addClip } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip } = useVideoEditorStore();
 
   const audioItems = mediaItems.filter((item: MediaItem) => item.type === 'audio');
 
