@@ -25,7 +25,9 @@
  *         data:     Y.Map    (ImageEditorNodeData)
  *           name:        string
  *           content:     string
- *           state:       'idle' | 'handling' | 'generating'
+ *           state:       'idle' | 'handling'    (never 'localPending' —
+ *                                                 X pattern keeps that
+ *                                                 value local-only)
  *           runType?:    'parameter' | 'sensitive'
  *           handlingBy?: Y.Map { userId, username, heartbeatAt }
  *           nodeRuntimeData?: Y.Map (per-node runtime state)
