@@ -6,6 +6,7 @@ import TrackRow from './TrackRow';
 
 interface TimelineTracksProps {
   pixelsPerSecond: number;
+  currentTime: number;
   onClipResize: (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => void;
   onShowSnapLines: (lines: number[]) => void;
   hoverTrackIndex: number | null;
@@ -21,6 +22,7 @@ const TRACK_HEIGHT = 38;
 
 const TimelineTracks: React.FC<TimelineTracksProps> = ({
   pixelsPerSecond,
+  currentTime,
   onClipResize,
   onShowSnapLines,
   hoverTrackIndex,
@@ -90,6 +92,7 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
               <TrackRow
                 trackIndex={actualTrackIndex}
                 pixelsPerSecond={pixelsPerSecond}
+                currentTime={currentTime}
                 onClipResize={onClipResize}
                 onShowSnapLines={onShowSnapLines}
                 hoverTrackIndex={hoverTrackIndex}

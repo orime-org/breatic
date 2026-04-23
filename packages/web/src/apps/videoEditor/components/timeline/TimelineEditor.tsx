@@ -867,6 +867,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   <>
                     <TimelineTracks
                       pixelsPerSecond={pixelsPerSecond}
+                      currentTime={currentTime}
                       onClipResize={handleClipResize}
                       onShowSnapLines={setSnapLines}
                       hoverTrackIndex={hoverTrackIndex}

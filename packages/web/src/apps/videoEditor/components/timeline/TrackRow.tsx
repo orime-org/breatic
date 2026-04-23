@@ -7,6 +7,7 @@ import ClipItem from './ClipItem';
 interface TrackRowProps {
   trackIndex: number;
   pixelsPerSecond: number;
+  currentTime: number;
   onClipResize: (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => void;
   onShowSnapLines: (lines: number[]) => void;
   hoverTrackIndex: number | null;
@@ -18,6 +19,7 @@ interface TrackRowProps {
 const TrackRow: React.FC<TrackRowProps> = ({
   trackIndex,
   pixelsPerSecond,
+  currentTime,
   onClipResize,
   onShowSnapLines,
   hoverTrackIndex,
@@ -116,6 +118,7 @@ const TrackRow: React.FC<TrackRowProps> = ({
             media={media}
             isSelected={isSelected}
             pixelsPerSecond={pixelsPerSecond}
+            currentTime={currentTime}
             onResize={onClipResize}
             onShowSnapLines={onShowSnapLines}
             onSelectClip={(clipId: string) => setSelectedClipId([clipId])}
