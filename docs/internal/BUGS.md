@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:132 个活跃条目(P0 × 12 + P1 × 63 + P2 × 56 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:140 个活跃条目(P0 × 12 + P1 × 66 + P2 × 61 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -99,8 +99,11 @@
 | BUG-167 | 🟠 MED | `textEditor/ui/AIMenu.tsx` `insertContentAt(replacement)` 目前 mock,接真 LLM 即 XSS(Tiptap 把 string 作 HTML 解析) | `web/.../textEditor/ui/AIMenu.tsx:359,386,408` | R6 | 45m | [→](audit/2026-04-23-round-6-found.md#bug-167) |
 | BUG-168 | 🟠 MED | `resolveVideoResultNode` / `updateNodeData` 连续编辑同视频不 revoke 旧 blob URL → 潜在 GB 级泄漏 | `web/src/hooks/useMixedEditorStore.ts:608-618` | R6 | 20m | [→](audit/2026-04-23-round-6-found.md#bug-168) |
 | BUG-172 | 🟠 MED | `POST /mini-tools/text` 整体无 rate limit + `Idempotency-Key` 侧信道 oracle(BUG-132 systemic 扩大) | `server/src/routes/text-tools.ts:46` | R7 | 10m(并入 BUG-132) | [→](audit/2026-04-23-round-7-found.md#bug-172) |
+| BUG-177 | 🟠 MED | Video/Audio Exporter 是"假成功"占位 —— 进度 100% 返回 text/plain 假冒 MP4 / 空 WAV,UI 说谎 | `web/.../videoEditor/videoExporter.ts` + `audioExporter.ts` | R8 | 30m(标 WIP / disable UI / 抛明确错) | [→](audit/2026-04-23-round-8-found.md#bug-177) |
+| BUG-179 | 🟠 MED | `handleDragMove` 每 mousemove O(N) × 3 扫描 → 100 clips × 60Hz ≈ 36k ops/sec 浪费 | `web/.../videoEditor/timeline/...` | R8 | 1h(index-by-id / 缓存) | [→](audit/2026-04-23-round-8-found.md#bug-179) |
+| BUG-184 | 🟠 MED | Security header 全仓 systemic 缺失 —— Hono / nginx × 3 / index.html 三层零 CSP / HSTS / X-Frame-Options / nosniff(BUG-136 scope 升级 + 独立追踪) | `packages/server/src/app.ts` + `docker/*.conf` + `packages/web/index.html` | R8 | 2h(Hono secureHeaders + nginx add_header + CSP nonce) | [→](audit/2026-04-23-round-8-found.md#bug-184) |
 
-**P1 小计**:63 个 · 预估 **~39 小时**
+**P1 小计**:66 个 · 预估 **~42.5 小时**
 
 ---
 
@@ -164,8 +167,13 @@
 | BUG-174 | 🟡 LOW | mini-tools 的 `node_id` / `project_id` 无 UUID 校验(对比 canvas.ts nodeHistory 用 `.uuid()`,不一致) | `server/src/routes/schemas.ts:30,47-55` | R7 | 10m(并入 BUG-133) | [→](audit/2026-04-23-round-7-found.md#bug-174) |
 | BUG-175 | 🟡 LOW | collab `/node/.+` docName suffix 无字符/长度白名单 → authenticated 用户 self-DoS 自己项目(yjs_documents PK 膨胀) | `collab/src/auth.ts:44` + `core/src/db/schema.ts:491` | R7 | 30m | [→](audit/2026-04-23-round-7-found.md#bug-175) |
 | BUG-176 | 🟡 LOW | collab `parseProjectIdFromDocName` tolerant regex + 无 rate limit,高 QPS 下可探测 projectId(info) | `collab/src/auth.ts:44` + collab `onAuthenticate` 无内置限流 | R7 | 45m | [→](audit/2026-04-23-round-7-found.md#bug-176) |
+| BUG-178 | 🟡 LOW | `imageExporter` 尺寸 clamp 到 1920×1080 忽视 `_resolution` 参数但签名暴露(dead API) | `web/.../videoEditor/imageExporter.ts` | R8 | 10m | [→](audit/2026-04-23-round-8-found.md#bug-178) |
+| BUG-180 | 🟡 LOW | `setInterval(..., 33)` 播放计时 drift + 不用 `performance.now()` delta,长视频偏移 | `web/.../videoEditor/timeline/playback*` | R8 | 20m(换 rAF + delta) | [→](audit/2026-04-23-round-8-found.md#bug-180) |
+| BUG-181 | 🟡 LOW | `useMemo` 读 `containerRef.current?.clientWidth` 但 ref 不在 deps → 容器尺寸变化后 stale | `web/.../videoEditor/timeline/...` | R8 | 10m(ResizeObserver + state) | [→](audit/2026-04-23-round-8-found.md#bug-181) |
+| BUG-182 | 🟡 LOW | `TimelineScale.drawScale` 刻度数无上限,超长 timeline + 细粒度 zoom 画数万条线 | `web/.../videoEditor/timeline/TimelineScale*` | R8 | 15m(max ticks / LOD) | [→](audit/2026-04-23-round-8-found.md#bug-182) |
+| BUG-183 | 🟡 LOW | 生产代码大量 `console.log`(InfiniteCanvas clickHandler 每次点击都打印) | `web/.../videoEditor/canvas/InfiniteCanvas*` | R8 | 20m(扫仓 + 改 logger) | [→](audit/2026-04-23-round-8-found.md#bug-183) |
 
-**P2 小计**:56 个 · 预估 **~19.5 小时**
+**P2 小计**:61 个 · 预估 **~20.75 小时**
 
 ---
 
@@ -184,10 +192,10 @@
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
 | P0 | 12(+1 不修) | ~13.5 h |
-| P1 | 63 | ~39 h |
-| P2 | 56 | ~19.5 h |
+| P1 | 66 | ~42.5 h |
+| P2 | 61 | ~20.75 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **132**(含长期,+1 不修) | **~84 h** |
+| **总计** | **140**(含长期,+1 不修) | **~88.75 h** |
 
 ---
 
@@ -200,6 +208,7 @@
 - **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:已关 1 个(BUG-079 · PR #128 · 2026-04-22),其余未修复
 - **Round 6**(2026-04-23):19 个新发现(4 P0 + 1 P1 HIGH + 7 P1 MED + 7 P2 LOW)+ 关闭 BUG-093(imageEditor 文件删除,pattern 迁移到 BUG-164 追踪)。Agent J 超时,BUG-093 核查由主 session 完成。快照见 [`audit/2026-04-23-round-6-found.md`](audit/2026-04-23-round-6-found.md)。**状态**:已关 4 个(BUG-141/142 · PR #137 + BUG-163 · PR #138 + BUG-164 · PR #140,均 2026-04-23),其余未修复
 - **Round 7**(2026-04-23 slim):5 新发现(1 P0 + 1 P1 MED + 3 P2 LOW)+ 2 个 scope 扩大 note(BUG-132 / BUG-157)。单 agent 聚焦 rate limit / Zod / auth 覆盖 3 主题(补 Round 6 Agent J timeout 盲点),8 分钟完成不 timeout,验证"≤ 3 主题 / agent"规则。**P0 BUG-173 是主 session 从 agent 原判 MED 上调**(扣费绕过,与 BUG-079 同级)。快照见 [`audit/2026-04-23-round-7-found.md`](audit/2026-04-23-round-7-found.md)。**状态**:未修复
+- **Round 8**(2026-04-23 slim 夜):8 新发现(0 P0 + 3 P1 MED + 5 P2 LOW)。针对 PR #144 video editor workspace + exporters + TTS placeholder。单 agent 6.5 分钟完成。**关键正面观察**:BUG-070/071/165 memory leak pattern + BUG-153/154 blob/CDN pattern + BUG-093/164 useYjsStore 误用 pattern —— **全都没在新代码里复发**,dev 团队 defensive 习惯已建立。BUG-136 CSP systemic 从 LOW 升级独立 BUG-184(MED)。快照见 [`audit/2026-04-23-round-8-found.md`](audit/2026-04-23-round-8-found.md)。**状态**:未修复
 
 ---
 
