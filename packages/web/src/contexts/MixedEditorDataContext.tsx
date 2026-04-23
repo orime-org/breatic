@@ -21,7 +21,7 @@
  *   - **Type B (backend)** — AI mini-tools. Executed on the server
  *     Worker; survives the browser.
  *
- * For Type A we do NOT write `state: 'handling'` nodes to the Yjs
+ * For Type A we do NOT write `state: 'localPending'` nodes to the Yjs
  * flow. Instead the originator keeps a local `pendingTasks` entry
  * (ephemeral to this browser tab). On completion the action hook
  * materialises a single `state: 'idle'` node into Yjs — collaborators
@@ -69,7 +69,7 @@ export interface MixedEditorNodeLocalState {
  * A browser-local in-flight task (Type A).
  *
  * The full `node` payload is what ReactFlow renders while the task
- * runs; `state: 'handling'` (and any handler-specific runtime data
+ * runs; `state: 'localPending'` (and any handler-specific runtime data
  * like `nodeRuntimeData.parameter`) lives here. On resolution the
  * action hook merges this with a `patch` and writes a single final
  * node to Yjs.

@@ -1009,7 +1009,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleStabilizationSend = useCallback(
     async (payload: { stabilization: number }) => {
       if (!videoContent || isStabilizationSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'stabilization', state: 'generating' });
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'stabilization', state: 'localPending' });
       if (!placeholderId) return;
       const ratio = Math.max(
         0,
@@ -1082,7 +1082,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleSceneExtensionSend = useCallback(
     async (payload: { width: number; height: number; resolution: SceneExtensionResolution; ratio: string }) => {
       if (!videoContent) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'scene-extension', state: 'generating' });
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'scene-extension', state: 'localPending' });
       if (!placeholderId) return;
 
       const frame = {
@@ -1131,7 +1131,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAudioDenoiseSend = useCallback(
     async (payload: { intensity: number }) => {
       if (!videoContent || isAudioDenoiseSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'audio-denoise', state: 'generating' });
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'audio-denoise', state: 'localPending' });
       if (!placeholderId) return;
       setEditingMode(null);
       setIsAudioDenoiseSaving(true);
@@ -1178,7 +1178,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
 
   const handleCropSave = useCallback(async () => {
     if (!videoContent || isCropSaving) return;
-    const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'crop', state: 'generating' });
+    const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'crop', state: 'localPending' });
     if (!placeholderId) return;
     const expectedSize = normalizeNodeSize({
       width: cropRect.w,
@@ -1229,7 +1229,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       }
       const placeholderId = createVideoPlaceholderNodeRight(id, {
         nameSuffix: payload.aiEnhance ? 'hdr-ai' : 'hdr',
-        state: 'generating',
+        state: 'localPending',
       });
       if (!placeholderId) return;
       // Match Cut behavior: exit toolbar immediately after Save.
@@ -1275,7 +1275,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAdjustSave = useCallback(
     async (value: AdjustValue) => {
       if (!videoContent || isAdjustSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'adjust', state: 'generating' });
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'adjust', state: 'localPending' });
       if (!placeholderId) return;
       setEditingMode(null);
       setIsAdjustSaving(true);
@@ -1333,7 +1333,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleSpeedSave = useCallback(
     async (payload: { playbackRate: number }) => {
       if (!videoContent || isSpeedSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'speed', state: 'generating' });
+      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'speed', state: 'localPending' });
       if (!placeholderId) return;
       setEditingMode(null);
       setIsSpeedSaving(true);
