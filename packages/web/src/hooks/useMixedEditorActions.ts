@@ -1,5 +1,5 @@
 /**
- * Mixed editor write actions + handling lifecycle (X pattern).
+ * Mixed editor write actions + local-pending lifecycle (X pattern).
  *
  * Mirrors the main canvas' {@link useCanvasActions} pattern:
  *   - All writes go directly to Yjs (`doc.transact(fn, origin)`)
@@ -8,33 +8,40 @@
  *   - Undo manager is attached lazily after Hocuspocus syncs so the
  *     initial-state replay never lands in the stack
  *
- * ## Handling lifecycle (X pattern)
+ * ## State taxonomy (aligned with main canvas + X pattern extension)
+ *
+ *   - `'idle'`        — finalized node, ready.
+ *   - `'handling'`    — backend long-running job in flight (AIGC worker).
+ *                       Written to Yjs so all collaborators see it.
+ *                       Same semantics as main canvas `'handling'`.
+ *   - `'localPending'` — browser-local short task (ffmpeg.wasm /
+ *                       synchronous mini-tool API await). NEVER written
+ *                       to Yjs (X pattern).
+ *
+ * ## X pattern lifecycle (for `'localPending'` only)
  *
  * Type A tasks (browser-local `ffmpeg.wasm`) do NOT persist their
- * `state: 'handling'` tile to Yjs. Instead:
+ * `state: 'localPending'` tile to Yjs. Instead:
  *
- *   1. `addHandlingNode` registers a local pending entry in the
+ *   1. `addLocalPendingNode` registers a local pending entry in the
  *      context (tab-scoped). Only the originator sees the loading
  *      tile.
- *   2. `resolveHandlingNode` reads that entry, merges the completion
+ *   2. `resolveLocalPendingNode` reads that entry, merges the completion
  *      patch, and writes a SINGLE final (`state: 'idle'`) node to
  *      Yjs under `userOrigin` → one undoable "I created this tile"
  *      step lands in the undo stack.
- *   3. `failHandlingNode` just drops the local entry.
+ *   3. `failLocalPendingNode` just drops the local entry.
  *
- * Why not persist handling state to Yjs? If the browser tab closes
+ * Why not persist `'localPending'` to Yjs? If the browser tab closes
  * mid-task, the ffmpeg Web Worker dies with it. A Yjs-persisted
  * handling tile would survive as a stuck-forever zombie that every
  * collaborator has to look at and eventually force-clear. The X
  * pattern eliminates that failure mode entirely — if the browser
  * dies, Yjs has nothing to be stuck on.
  *
- * Type B tasks (backend mini-tools) can reuse the same primitives:
- * the mini-tool API call and response handling lives in the callsite
- * hooks (`createInpaintResultNodeRight` etc), and the final-write
- * step uses Yjs directly. There is no handling-state replication for
- * them either — the loading tile is rendered locally while the
- * caller `await`s the API response.
+ * Type B tasks (backend mini-tools) use `'handling'` in Yjs, and reuse
+ * the same primitives to render their own loading tile locally while
+ * `await`ing the API response.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -185,10 +192,11 @@ function getNodeDataMap(flow: Y.Map<unknown>, nodeId: string): Y.Map<unknown> | 
   return dataMap instanceof Y.Map ? (dataMap as Y.Map<unknown>) : null;
 }
 
-// X pattern: Yjs never holds `state: 'handling'` — the originator
-// keeps the pending tile locally, and Yjs only sees completed
-// `state: 'idle'` nodes. Legacy callers writing 'handling' directly
-// via updateNode/updateNodeData are a bug; tracked by `removeNode`'s
+// X pattern: Yjs never holds `state: 'localPending'` — the originator
+// keeps that pending tile locally, and Yjs only sees completed
+// `state: 'idle'` nodes (or `state: 'handling'` for backend-owned
+// jobs). Legacy callers writing 'localPending' directly via
+// updateNode/updateNodeData are a bug; tracked by `removeNode`'s
 // pending-task guard, not an implicit helper here.
 
 // ── Hook input/output ──────────────────────────────────────────
@@ -207,11 +215,11 @@ export interface UseMixedEditorActionsResult {
   onConnect: (connection: Connection) => void;
 
   // ── Handling lifecycle ──
-  addHandlingNode: (node: Node) => string;
-  resolveHandlingNode: (nodeId: string, patch: ImageEditorNodeDataPatch) => void;
-  failHandlingNode: (nodeId: string) => void;
+  addLocalPendingNode: (node: Node) => string;
+  resolveLocalPendingNode: (nodeId: string, patch: ImageEditorNodeDataPatch) => void;
+  failLocalPendingNode: (nodeId: string) => void;
   /** Remove a handling node whose heartbeat is stuck (called by the cleanup UI). */
-  forceRemoveStaleHandlingNode: (nodeId: string) => void;
+  forceRemoveStaleLocalPendingNode: (nodeId: string) => void;
 
   // ── High-level convenience ──
   onCropNode: (nodeId: string) => void;
@@ -238,12 +246,12 @@ export interface UseMixedEditorActionsResult {
   ) => void;
   createVideoPlaceholderNodeRight: (
     sourceNodeId: string,
-    options?: { nameSuffix?: string; state?: 'idle' | 'generating' },
+    options?: { nameSuffix?: string; state?: 'idle' | 'localPending' },
   ) => string | null;
   resolveVideoResultNode: (
     nodeId: string,
     nextVideoSrc: string,
-    options?: { state?: 'idle' | 'generating' },
+    options?: { state?: 'idle' | 'localPending' },
   ) => void;
   createVideoResultNodeRight: (sourceNodeId: string, nextVideoSrc: string, delayMs?: number) => void;
   createCutVideoResultNodesRight: (
@@ -567,15 +575,15 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
   // Browser-local tasks (ffmpeg.wasm + mini-tool await) keep their
   // "loading tile" in the DataContext's `pendingTasks` map. Nothing
   // lands in Yjs until the task completes, so a dead browser tab can
-  // never leave a stuck handling node for collaborators to clean up.
+  // never leave a stuck `'localPending'` node for collaborators.
 
-  const addHandlingNode = useCallback(
+  const addLocalPendingNode = useCallback(
     (node: Node): string => {
       const prepared: Node = {
         ...node,
         data: {
           ...(node.data ?? {}),
-          state: 'handling',
+          state: 'localPending',
         } as Node['data'],
       };
       addPendingTask(prepared);
@@ -584,7 +592,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [addPendingTask],
   );
 
-  const resolveHandlingNode = useCallback(
+  const resolveLocalPendingNode = useCallback(
     (nodeId: string, patch: ImageEditorNodeDataPatch) => {
       const pending = getPendingTask(nodeId);
       if (!pending) return;
@@ -622,7 +630,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [getPendingTask, removePendingTask, withFlow, userOrigin],
   );
 
-  const failHandlingNode = useCallback(
+  const failLocalPendingNode = useCallback(
     (nodeId: string) => {
       removePendingTask(nodeId);
       clearNodeLocalState(nodeId);
@@ -631,7 +639,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [removePendingTask, clearNodeLocalState, dispatch],
   );
 
-  const forceRemoveStaleHandlingNode = useCallback(
+  const forceRemoveStaleLocalPendingNode = useCallback(
     (nodeId: string) => {
       // X pattern: "stale" only makes sense for local pending tasks,
       // and dropping one is the same as failing it.
@@ -798,12 +806,12 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       };
 
       // Create as handling node (no undo); resolve on completion.
-      addHandlingNode(newNode);
+      addLocalPendingNode(newNode);
       window.setTimeout(() => {
-        resolveHandlingNode(nid, { content: nextImageSrc });
+        resolveLocalPendingNode(nid, { content: nextImageSrc });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const createInpaintResultNodesRight = useCallback(
@@ -845,7 +853,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           data: createEditorImageNodeData(`${name} (copy)`, ''),
           ...inheritParentFromSource,
         };
-        addHandlingNode(newNode);
+        addLocalPendingNode(newNode);
       } else {
         const groupPadding = 40;
         const spacingY = uploadGap;
@@ -885,17 +893,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
             data: createEditorImageNodeData(`${name} (copy ${childrenAbsolute.indexOf(child) + 1})`, ''),
           };
           resultIds.push(child.id);
-          addHandlingNode(childNode);
+          addLocalPendingNode(childNode);
         }
       }
 
       window.setTimeout(() => {
         for (const nid of resultIds) {
-          resolveHandlingNode(nid, { content: nextImageSrc });
+          resolveLocalPendingNode(nid, { content: nextImageSrc });
         }
       }, delayMs);
     },
-    [readAllNodesSnapshot, addHandlingNode, addNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addLocalPendingNode, addNode, resolveLocalPendingNode],
   );
 
   const createEnhanceResultNodesRight = useCallback(
@@ -932,7 +940,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         const only = sizedResults[0];
         const nid = `image-flow-${nanoid(12)}`;
         resultIds.push(nid);
-        addHandlingNode({
+        addLocalPendingNode({
           id: nid,
           type: imageEditorImageNodeType,
           position: { x: startX, y: startY },
@@ -966,7 +974,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           const cellRowOffset = item.row - minRow;
           const slotX = groupPadding + cellColOffset * (maxCellW + gridGapX);
           const slotY = groupPadding + cellRowOffset * (maxCellH + gridGapY);
-          addHandlingNode({
+          addLocalPendingNode({
             id: nid,
             type: imageEditorImageNodeType,
             parentId: groupId,
@@ -981,17 +989,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         resultIds.forEach((nid, index) => {
           const next = sizedResults[index];
           if (!next) return;
-          resolveHandlingNode(nid, { content: next.src });
+          resolveLocalPendingNode(nid, { content: next.src });
         });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addNode, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addNode, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const createVideoPlaceholderNodeRight = useCallback(
     (
       sourceNodeId: string,
-      options?: { nameSuffix?: string; state?: 'idle' | 'generating' },
+      options?: { nameSuffix?: string; state?: 'idle' | 'localPending' },
     ): string | null => {
       const allNodes = readAllNodesSnapshot();
       const source = allNodes.find((n) => n.id === sourceNodeId);
@@ -1006,7 +1014,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       const x = source.position.x + copyW + uploadGap;
       const y = source.position.y;
       const nameSuffix = options?.nameSuffix?.trim() ? options.nameSuffix.trim() : 'copy';
-      const state = options?.state ?? 'generating';
+      const state = options?.state ?? 'localPending';
 
       const node: Node<ImageFlowNodeData> = {
         id: nodeId,
@@ -1020,37 +1028,37 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         ...inheritParentFieldsFromNode(source),
       };
 
-      if (state === 'generating') {
-        addHandlingNode(node);
+      if (state === 'localPending') {
+        addLocalPendingNode(node);
       } else {
         addNode(node);
       }
       return nodeId;
     },
-    [readAllNodesSnapshot, addHandlingNode, addNode],
+    [readAllNodesSnapshot, addLocalPendingNode, addNode],
   );
 
   const resolveVideoResultNode = useCallback(
     (
       nodeId: string,
       nextVideoSrc: string,
-      options?: { state?: 'idle' | 'generating' },
+      options?: { state?: 'idle' | 'localPending' },
     ) => {
       if (!nodeId || !nextVideoSrc) return;
       const nextState = options?.state ?? 'idle';
       if (nextState === 'idle') {
-        resolveHandlingNode(nodeId, { content: nextVideoSrc });
+        resolveLocalPendingNode(nodeId, { content: nextVideoSrc });
       } else {
         updateNodeData(nodeId, { content: nextVideoSrc, state: nextState }, { history: 'skip' });
       }
     },
-    [resolveHandlingNode, updateNodeData],
+    [resolveLocalPendingNode, updateNodeData],
   );
 
   const createVideoResultNodeRight = useCallback(
     (sourceNodeId: string, nextVideoSrc: string, delayMs: number = 200) => {
       if (!nextVideoSrc) return;
-      const nodeId = createVideoPlaceholderNodeRight(sourceNodeId, { nameSuffix: 'speed', state: 'generating' });
+      const nodeId = createVideoPlaceholderNodeRight(sourceNodeId, { nameSuffix: 'speed', state: 'localPending' });
       if (!nodeId) return;
       window.setTimeout(() => {
         resolveVideoResultNode(nodeId, nextVideoSrc, { state: 'idle' });
@@ -1092,7 +1100,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         const onlySegment = normalizedSegments[0];
         const nodeId = `video-flow-${nanoid(12)}`;
         resultIds.push(nodeId);
-        addHandlingNode({
+        addLocalPendingNode({
           id: nodeId,
           type: imageEditorVideoNodeType,
           position: { x: startX, y: startY },
@@ -1132,7 +1140,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         normalizedSegments.forEach((segment, index) => {
           const nodeId = `video-flow-${nanoid(12)}`;
           resultIds.push(nodeId);
-          addHandlingNode({
+          addLocalPendingNode({
             id: nodeId,
             type: imageEditorVideoNodeType,
             parentId: groupId,
@@ -1161,11 +1169,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
             ? nextVideoSrc[index] ?? nextVideoSrc[nextVideoSrc.length - 1] ?? ''
             : nextVideoSrc;
           if (!nextSrc) return;
-          resolveHandlingNode(nodeId, { content: nextSrc });
+          resolveLocalPendingNode(nodeId, { content: nextSrc });
         });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addNode, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addNode, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const importImagesFromFiles = useCallback(
@@ -1417,10 +1425,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     onEdgesChange,
     onConnect,
 
-    addHandlingNode,
-    resolveHandlingNode,
-    failHandlingNode,
-    forceRemoveStaleHandlingNode,
+    addLocalPendingNode,
+    resolveLocalPendingNode,
+    failLocalPendingNode,
+    forceRemoveStaleLocalPendingNode,
 
     onCropNode,
     replaceNodeWithFile,
