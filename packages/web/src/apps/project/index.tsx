@@ -60,7 +60,6 @@ const ProjectPage: React.FC = () => {
       // Session expired or token rejected — clear client state and
       // redirect to login. Without this, HocuspocusProvider would
       // reconnect forever against an invalid token.
-      // eslint-disable-next-line no-console
       console.warn('[yjs] Authentication failed:', reason);
       removeToken();
       navigate('/login', { replace: true });
@@ -263,7 +262,12 @@ const ProjectContentBody: React.FC<{
                   />
                 </div>
               </Panel>
-              {showChatSeparator ? <Separator id='resize-chat-canvas' className='cursor-col-resize shrink-0' /> : null}
+              {showChatSeparator ? (
+                <Separator
+                  id='resize-chat-canvas'
+                  className='w-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-col-resize shrink-0 transition-colors focus-visible:outline-none'
+                />
+              ) : null}
             </>
           )}
           {canvasPanelVisible && (
@@ -326,7 +330,7 @@ const ProjectContentBody: React.FC<{
               {showRightSeparator ? (
                 <Separator
                   id='resize-canvas-right'
-                  className='cursor-col-resize shrink-0'
+                  className='w-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-col-resize shrink-0 transition-colors focus-visible:outline-none'
                   onMouseDownCapture={() => {
                     exitCanvasPickMode();
                     setSelectedWorkspaceRegion('rightEditor');

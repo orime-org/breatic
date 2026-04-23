@@ -1,4 +1,4 @@
-import { memo, forwardRef, useImperativeHandle, useRef, useMemo, useLayoutEffect } from 'react';
+import { memo, forwardRef, useImperativeHandle, useRef, useLayoutEffect, useState } from 'react';
 import Moveable, { OnDrag, OnDragEnd, OnResize, OnResizeEnd, OnScale, OnScaleEnd, OnRotate, OnRotateEnd } from 'react-moveable';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { MediaItem, TimelineClip } from '../../types';
@@ -42,18 +42,29 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     return { x: left, y: top };
   };
 
-  // 根据 clips 获取对应的 DOM 元素
-  const targets = useMemo(() => {
+  const [targets, setTargets] = useState<HTMLElement[]>([]);
+
+  // 根据 clips 获取对应的 DOM 元素。
+  // 这里在布局后再取一次，避免新增元素时首次渲染拿不到 DOM 导致“时间轴选中但画布无选中框”。
+  useLayoutEffect(() => {
     if (!clips || clips.length === 0) {
-      return [];
+      setTargets([]);
+      return;
     }
-    const result = clips
-      .map((clip) => {
-        const element = document.getElementById(`element-${clip.id}`);
-        return element as HTMLElement | null;
-      })
-      .filter((el): el is HTMLElement => el !== null);
-    return result;
+
+    const collectTargets = () => {
+      const nextTargets = clips
+        .map((clip) => document.getElementById(`element-${clip.id}`))
+        .filter((el): el is HTMLElement => el !== null);
+      setTargets(nextTargets);
+    };
+
+    collectTargets();
+    const rafId = window.requestAnimationFrame(collectTargets);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
   }, [clips]);
 
   // 暴露 getMoveable 方法给父组件
