@@ -147,8 +147,6 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
 
       // 如果是 Selecto 的框选操作，不处理点击事件
       if (isSelectoElement) {
-        // eslint-disable-next-line no-console
-        console.log('[InfiniteCanvas clickHandler] 检测到 Selecto 框选操作，忽略点击');
         return;
       }
 
@@ -162,21 +160,8 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
         target.closest('.moveable-rotation') ||
         target.closest('.moveable-control');
 
-      // eslint-disable-next-line no-console
-      console.log('[InfiniteCanvas clickHandler]', {
-        targetId: target.id,
-        targetTagName: target.tagName,
-        targetClassName: target.className,
-        closestElementId: closestElement?.id,
-        isElementOrControl: !!isElementOrControl,
-        isSelectoElement: !!isSelectoElement,
-        willCallOnClick: !isElementOrControl && !isSelectoElement,
-      });
-
       // 如果点击的不是元素或控制点，触发取消选中
       if (!isElementOrControl && !isSelectoElement) {
-        // eslint-disable-next-line no-console
-        console.log('[InfiniteCanvas clickHandler] 调用 onClick 清除选中');
         onClick();
       }
     };
