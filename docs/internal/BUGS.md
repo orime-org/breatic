@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:131 个活跃条目(P0 × 15 + P1 × 62 + P2 × 53 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:127 个活跃条目(P0 × 11 + P1 × 62 + P2 × 53 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -24,14 +24,10 @@
 | BUG-113 | 🔴 HIGH | `run_script` symlink 可穿透 + `.ts` 触发 npx tsx 供应链 + HOME env 继承 | `core/src/agent/tools/run-script.ts:54` | R5 | 1.5h | [→](audit/2026-04-22-round-5-found.md#bug-113) |
 | BUG-127 | 🔴 HIGH | `/skills/market?tags=` raw SQL injection(`sql.raw` + 单引号包裹未转义 user tags) | `core/src/modules/skill.repo.ts:112` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-127) |
 | BUG-128 | 🔴 HIGH | `POST /auth/forgot-password` Host Header Injection → 账户劫持 | `server/src/routes/auth.ts:197` + `core/src/modules/auth.service.ts:187` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-128) |
-| BUG-141 | 🔴 HIGH | `conversation.repo.ts` 9 查询 / 写操作不过滤 `deletedAt` → 软删对话仍可读写 | `core/src/modules/conversation.repo.ts:17,131,144,167,187,215,235` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-141) |
-| BUG-142 | 🔴 HIGH | `deleteProject()` 级联漏 5 张子表(BUG-031 补丁不完整) | `core/src/modules/project.repo.ts:216` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-142) |
 | BUG-153 | 🔴 HIGH | ffmpeg.wasm 核心从 `cdn.jsdelivr.net` 动态加载,无 SRI / CSP / fallback → CDN 污染即客户端 RCE | `web/src/utils/video{Adjust,Crop,Cut,Speed,Stabilization}WithFfmpeg.ts`(5 文件) | R6 | 3-4h | [→](audit/2026-04-23-round-6-found.md#bug-153) |
 | BUG-154 | 🔴 HIGH | ffmpeg 输出 `blob:` URL 直接写 `data.content`,刷新即失效 + 永不 revoke(违反 AIGC 持久化架构) | `web/src/hooks/useMixedEditorStore.ts:615` (`resolveVideoResultNode`) | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-154) |
-| BUG-163 | 🔴 HIGH | TextEditor 写入错误 Redux slice → 输入全部静默丢弃 + 永不同步 Yjs | `web/.../textEditor/index.tsx` + `hooks/useMixedEditorStore.ts` + `store/modules/mixedEditor.ts` | R6 | 1.5h | [→](audit/2026-04-23-round-6-found.md#bug-163) |
-| BUG-164 | 🔴 HIGH | mixedEditor `useYjsStore({id: nodeId})` → BUG-093 pattern 复发,authz 100% 拒绝(扩至多节点类型) | `web/.../mixedEditor/index.tsx:923` | R6 | 1h | [→](audit/2026-04-23-round-6-found.md#bug-164) |
 
-**P0 小计**:15 个活跃 · 预估 **~17 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:11 个活跃 · 预估 **~13 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -182,11 +178,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 15(+1 不修) | ~17 h |
+| P0 | 11(+1 不修) | ~13 h |
 | P1 | 62 | ~39 h |
 | P2 | 53 | ~18 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **131**(含长期,+1 不修) | **~86 h** |
+| **总计** | **127**(含长期,+1 不修) | **~82 h** |
 
 ---
 
@@ -197,7 +193,7 @@
 - **Round 3**(2026-04-17):33 个新发现(5 HIGH + 20+ MED + 少量 LOW)。快照见 [`audit/2026-04-17-round-3-found.md`](audit/2026-04-17-round-3-found.md)。**状态**:已关 5 个(BUG-046 / 047 / 048 / 052 / 053),其余未修复
 - **Round 4**(2026-04-21):33 个新发现(2 P0 + 1 P1 HIGH + 15 P1 MED + 15 P2 LOW)+ 核查 5 个声称修复(4 彻底 + 1 部分)。快照见 [`audit/2026-04-21-round-4-found.md`](audit/2026-04-21-round-4-found.md)。**状态**:未修复
 - **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:已关 1 个(BUG-079 · PR #128 · 2026-04-22),其余未修复
-- **Round 6**(2026-04-23):19 个新发现(4 P0 + 1 P1 HIGH + 7 P1 MED + 7 P2 LOW)+ 关闭 BUG-093(imageEditor 文件删除,pattern 迁移到 BUG-164 追踪)。Agent J 超时,BUG-093 核查由主 session 完成。快照见 [`audit/2026-04-23-round-6-found.md`](audit/2026-04-23-round-6-found.md)。**状态**:未修复
+- **Round 6**(2026-04-23):19 个新发现(4 P0 + 1 P1 HIGH + 7 P1 MED + 7 P2 LOW)+ 关闭 BUG-093(imageEditor 文件删除,pattern 迁移到 BUG-164 追踪)。Agent J 超时,BUG-093 核查由主 session 完成。快照见 [`audit/2026-04-23-round-6-found.md`](audit/2026-04-23-round-6-found.md)。**状态**:已关 4 个(BUG-141/142 · PR #137 + BUG-163 · PR #138 + BUG-164 · PR #140,均 2026-04-23),其余未修复
 
 ---
 
