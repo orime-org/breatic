@@ -9,7 +9,7 @@
 | Canvas | @xyflow/react v12 (ReactFlow) |
 | Collaboration | Yjs + @hocuspocus/provider (no offline — requires network for AIGC) |
 | State | Redux Toolkit + Zustand |
-| Image Editor | Fabric.js (@erase2d/fabric) + react-image-crop + Excalidraw |
+| Image Editor | Fabric.js (@erase2d/fabric) + Excalidraw |
 | Audio | WaveSurfer.js |
 | Video | Video.js + FFmpeg WASM |
 | 3D | Three.js + @react-three/fiber |
