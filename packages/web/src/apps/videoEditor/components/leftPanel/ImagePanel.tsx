@@ -15,10 +15,10 @@ interface ImagePanelProps {
 /**
  * ImagePanel 组件 - 图片面板
  */
-const ImagePanel: React.FC<ImagePanelProps> = ({ nodeId, currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
+const ImagePanel: React.FC<ImagePanelProps> = ({ currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
   const { t } = useTranslation();
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
-  const { mediaItems, addClip } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip } = useVideoEditorStore();
 
   const imageItems = mediaItems.filter((item: MediaItem) => item.type === 'image');
 
@@ -91,9 +91,11 @@ const ImagePanel: React.FC<ImagePanelProps> = ({ nodeId, currentTime = 0, canvas
                     onError={() => setLoadingStates((prev) => ({ ...prev, [item.id]: false }))}
                   />
                 </div>
-                <div className='px-2.5 py-1.5'>
-                  <Tooltip title={item.name || ''}>
-                    <p className='text-xs text-text-default-tertiary truncate'>{item.name || ''}</p>
+                <div className='px-2.5 py-1.5 min-w-0'>
+                  <Tooltip title={item.name || ''} asChild={false} triggerClassName='block w-full min-w-0'>
+                    <div className='w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-text-default-tertiary'>
+                      {item.name || ''}
+                    </div>
                   </Tooltip>
                 </div>
               </div>

@@ -27,7 +27,7 @@ const TrackRow: React.FC<TrackRowProps> = ({
   nodeId,
   parentScrollRef,
 }) => {
-  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore();
   const rowRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 

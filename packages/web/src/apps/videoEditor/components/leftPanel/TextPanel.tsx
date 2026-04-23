@@ -12,9 +12,9 @@ interface TextPanelProps {
 /**
  * TextPanel 组件 - 文字面板
  */
-const TextPanel: React.FC<TextPanelProps> = ({ nodeId, currentTime = 0 }) => {
+const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
   const { t } = useTranslation();
-  const { mediaItems, addClip, addMediaItem } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip, addMediaItem } = useVideoEditorStore();
 
   const textItems = mediaItems.filter((item: MediaItem) => item.type === 'text');
 

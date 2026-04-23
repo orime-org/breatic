@@ -104,7 +104,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     setClips,
     setSelectedClipId,
     selectedClipId,
-  } = useVideoEditorStore(nodeId);
+  } = useVideoEditorStore();
 
   const selectoRef = useRef<Selecto>(null);
 
