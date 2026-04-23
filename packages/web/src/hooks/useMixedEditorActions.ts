@@ -168,8 +168,10 @@ function buildNodeYMap(node: Node): Y.Map<unknown> {
   if (typeof style.height === 'number') styleMap.set('height', style.height);
   nodeMap.set('style', styleMap);
 
-  const zIndex = (node as Node & { zIndex?: number }).zIndex;
-  if (typeof zIndex === 'number') nodeMap.set('zIndex', zIndex);
+  // `zIndex` and `draggable` are UI-only (overlay) — per user stacking
+  // order / per-user editing-mode drag lock. Writing them to Yjs leaks
+  // single-tab UI state to every collaborator (and historically let an
+  // editing-mode exit path strand `draggable: false` forever).
   if (node.parentId) nodeMap.set('parentId', node.parentId);
   if (node.extent !== undefined) nodeMap.set('extent', node.extent as unknown);
 
@@ -207,7 +209,7 @@ export interface UseMixedEditorActionsResult {
   addNodes: (nodes: Node[], options?: HistoryOptions) => void;
   updateNode: (nodeId: string, updates: Partial<Node>, options?: HistoryOptions) => void;
   updateNodeData: (nodeId: string, patch: ImageEditorNodeDataPatch, options?: HistoryOptions) => void;
-  setNodeDraggable: (nodeId: string, draggable: boolean) => void;
+  setNodeDraggable: (nodeId: string, draggable: boolean | null) => void;
   removeNode: (nodeId: string) => void;
   setNodes: (nodes: Node[], options?: HistoryOptions) => void;
   onNodesChange: (changes: NodeChange[], options?: HistoryOptions) => void;
@@ -280,6 +282,9 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     manager,
     setNodeLocalData,
     clearNodeLocalState,
+    setNodeDraggable: setNodeDraggableOverlay,
+    setNodeZIndex: setNodeZIndexOverlay,
+    getMaxZIndex,
     addPendingTask,
     removePendingTask,
     getPendingTask,
@@ -444,11 +449,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           if (updates.extent !== undefined) {
             nodeMap.set('extent', updates.extent as unknown);
           }
-          if (updates.draggable !== undefined) {
-            nodeMap.set('draggable', updates.draggable);
-          }
-          // `selected` is UI-only — callers should drive it through
-          // `applyLocalNodeChanges` from `useMixedEditorData`.
+          // `selected`, `draggable`, `zIndex`, `measured` are UI-only —
+          // callers use the MixedEditorDataContext setters
+          // (`applyLocalNodeChanges`, `setNodeDraggable`, `setNodeZIndex`)
+          // so those writes never leak to collaborators.
         }, origin);
       });
     },
@@ -480,10 +484,15 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
   );
 
   const setNodeDraggable = useCallback(
-    (nodeId: string, draggable: boolean) => {
-      updateNode(nodeId, { draggable }, { history: 'skip' });
+    (nodeId: string, draggable: boolean | null) => {
+      // Delegates to the DataContext overlay — UI-only, never persisted
+      // to Yjs. Pass `null` to clear the overlay entry (restores
+      // ReactFlow default: draggable). See the comment above
+      // `buildNodeYMap`'s zIndex/draggable removal and
+      // `MixedEditorNodeLocalState` doc for the rationale.
+      setNodeDraggableOverlay(nodeId, draggable);
     },
-    [updateNode],
+    [setNodeDraggableOverlay],
   );
 
   const removeNode = useCallback(
@@ -1197,50 +1206,49 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
+      // zIndex is overlay-local (per-user stacking), not a Yjs field.
+      // Read the current ceiling from the DataContext (merged view), then
+      // push each new tile one higher locally without touching Yjs.
+      const maxZIndex = getMaxZIndex();
+      const zAssignments: Array<{ id: string; z: number }> = [];
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.reduce((h, item, i) => h + item.nodeSize.height + (i > 0 ? uploadGap : 0), 0);
         let y = center.y - totalH / 2;
-        for (const { file, src, nodeSize } of prepared) {
+        prepared.forEach(({ file, src, nodeSize }, i) => {
           const nid = `image-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorImageNodeType,
             position: { x: center.x - nodeSize.width / 2, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorImageNodeData(file.name, src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += nodeSize.height + uploadGap;
-        }
+        });
       } else {
         let y = getNextStackY(currentNodes);
-        for (const { file, src, nodeSize } of prepared) {
+        prepared.forEach(({ file, src, nodeSize }, i) => {
           const nid = `image-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorImageNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorImageNodeData(file.name, src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += nodeSize.height + uploadGap;
-        }
+        });
       }
 
       addNodes(created);
+      for (const { id: zId, z } of zAssignments) setNodeZIndexOverlay(zId, z);
     },
-    [readAllNodesSnapshot, addNodes],
+    [readAllNodesSnapshot, addNodes, getMaxZIndex, setNodeZIndexOverlay],
   );
 
   const importVideosFromFiles = useCallback(
@@ -1264,50 +1272,46 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
+      const maxZIndex = getMaxZIndex();
+      const zAssignments: Array<{ id: string; z: number }> = [];
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.reduce((h, item, i) => h + item.nodeSize.height + (i > 0 ? uploadGap : 0), 0);
         let y = center.y - totalH / 2;
-        for (const { file, src, nodeSize } of prepared) {
+        prepared.forEach(({ file, src, nodeSize }, i) => {
           const nid = `video-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorVideoNodeType,
             position: { x: center.x - nodeSize.width / 2, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorVideoNodeData(file.name || 'video', src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += nodeSize.height + uploadGap;
-        }
+        });
       } else {
         let y = getNextStackY(currentNodes);
-        for (const { file, src, nodeSize } of prepared) {
+        prepared.forEach(({ file, src, nodeSize }, i) => {
           const nid = `video-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorVideoNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorVideoNodeData(file.name || 'video', src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += nodeSize.height + uploadGap;
-        }
+        });
       }
 
       addNodes(created);
+      for (const { id: zId, z } of zAssignments) setNodeZIndexOverlay(zId, z);
     },
-    [readAllNodesSnapshot, addNodes],
+    [readAllNodesSnapshot, addNodes, getMaxZIndex, setNodeZIndexOverlay],
   );
 
   const importAudiosFromFiles = useCallback(
@@ -1329,50 +1333,46 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
+      const maxZIndex = getMaxZIndex();
+      const zAssignments: Array<{ id: string; z: number }> = [];
 
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.length * audioFlowDefaultHeight + Math.max(0, prepared.length - 1) * uploadGap;
         let y = center.y - totalH / 2;
-        for (const { file, src } of prepared) {
+        prepared.forEach(({ file, src }, i) => {
           const nid = `audio-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorAudioNodeType,
             position: { x: center.x - audioFlowDefaultWidth / 2, y },
-            zIndex: zIndexCursor,
             style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
             data: createEditorAudioNodeData(file.name || 'audio', src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += audioFlowDefaultHeight + uploadGap;
-        }
+        });
       } else {
         let y = getNextStackY(currentNodes);
-        for (const { file, src } of prepared) {
+        prepared.forEach(({ file, src }, i) => {
           const nid = `audio-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
             id: nid,
             type: imageEditorAudioNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
             data: createEditorAudioNodeData(file.name || 'audio', src),
           });
+          zAssignments.push({ id: nid, z: maxZIndex + i + 1 });
           y += audioFlowDefaultHeight + uploadGap;
-        }
+        });
       }
 
       addNodes(created);
+      for (const { id: zId, z } of zAssignments) setNodeZIndexOverlay(zId, z);
     },
-    [readAllNodesSnapshot, addNodes],
+    [readAllNodesSnapshot, addNodes, getMaxZIndex, setNodeZIndexOverlay],
   );
 
   // ── Apply to main canvas ─────────────────────────────────────
