@@ -10,6 +10,7 @@ import {
   useReactFlow,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -215,7 +216,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   // Data read — comes from MixedEditorDataProvider (installed in
   // apps/project/index.tsx at project level). Nodes live in the
   // per-node Yjs editor doc, observed into React state via context.
-  const { nodes, edges, loading: yjsLoading } = useMixedEditorData();
+  const { nodes, edges, loading: yjsLoading, applyLocalNodeChanges } = useMixedEditorData();
   const {
     setNodes,
     onNodesChange,
@@ -835,6 +836,33 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     }
   }, [edges, getNodes, onEdgesChange, onNodesChange]);
 
+  /**
+   * Route ReactFlow node changes into two buckets:
+   *   - `select` / `dimensions` → local overlay (UI-only, per-tab, not
+   *     shared via Yjs — matches canvas behaviour in `canvas/index.tsx`).
+   *   - `position` / `remove`   → Yjs writes (collaborative + undoable).
+   *
+   * Without this split, controlled-mode ReactFlow never echoes the
+   * `selected: true` flag back to our nodes array, so toolbar-visibility
+   * predicates that read `node.selected` stay permanently false.
+   */
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const localChanges: NodeChange[] = [];
+      const yjsChanges: NodeChange[] = [];
+      for (const c of changes) {
+        if (c.type === 'select' || c.type === 'dimensions') {
+          localChanges.push(c);
+        } else {
+          yjsChanges.push(c);
+        }
+      }
+      if (localChanges.length) applyLocalNodeChanges(localChanges);
+      if (yjsChanges.length) onNodesChange(yjsChanges);
+    },
+    [applyLocalNodeChanges, onNodesChange],
+  );
+
   useEffect(() => {
     if (activeTool !== 'crop') setGridPreviewPos(null);
     if (activeTool !== 'blank') setBlankPreviewPos(null);
@@ -1106,7 +1134,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         className='relative z-[1] origin-[0px_0px] backface-hidden antialiased'
         nodes={flowNodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onNodeDragStop={onNodeDragStop}
         onEdgesChange={onEdgesChange}
         onNodeContextMenu={handleNodeContextMenu}
