@@ -40,29 +40,12 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
 
   const moveableRef = useRef<{ getMoveable:() => any } | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const lastStableCanvasSizeRef = useRef({ width: 0, height: 0 });
   const isSelectingRef = useRef(false);
-
-  // 监听 selectedClipId 变化
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log('[PreviewCanvas] selectedClipId 变化', {
-      selectedClipId,
-      length: selectedClipId.length,
-      timestamp: new Date().toISOString(),
-    });
-  }, [selectedClipId]);
 
   // 处理框选开始 - 按照 moveable-master 案例实现
   const handleSelectStart = useCallback((e: any) => {
     const inputEvent = e.inputEvent;
-    // eslint-disable-next-line no-console
-    console.log('[handleSelectStart] 开始', {
-      hasInputEvent: !!inputEvent,
-      inputEvent: inputEvent ? {
-        type: inputEvent.type,
-        target: inputEvent.target?.id || inputEvent.target?.tagName,
-      } : null,
-    });
 
     if (!inputEvent) return;
 
@@ -80,17 +63,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
       return element && (element === target || element.contains(target));
     });
 
-    // eslint-disable-next-line no-console
-    console.log('[handleSelectStart] 检查 MoveableControl', {
-      isMoveableElement,
-      isSelectedElement,
-      targetId: target.id,
-      targetTagName: target.tagName,
-    });
-
     if (isMoveableElement || isSelectedElement) {
-      // eslint-disable-next-line no-console
-      console.log('[handleSelectStart] 阻止 Selecto 处理');
       e.stop();
       isSelectingRef.current = false;
       return;
@@ -117,18 +90,6 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
   const handleSelectEnd = useCallback((e: any) => {
     const { isDragStart, selected, inputEvent } = e;
 
-    // eslint-disable-next-line no-console
-    console.log('[handleSelectEnd] 开始', {
-      isDragStart,
-      selectedCount: selected?.length || 0,
-      selected: selected?.map((el: HTMLElement) => el.id),
-      inputEvent: inputEvent ? {
-        type: inputEvent.type,
-        target: inputEvent.target?.id || inputEvent.target?.tagName,
-      } : null,
-      currentSelectedClipId: selectedClipId,
-    });
-
     // 将选中的 DOM 元素转换为 clip IDs
     const selectedIds: string[] = [];
     if (selected && Array.isArray(selected)) {
@@ -142,9 +103,6 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
         }
       });
     }
-
-    // eslint-disable-next-line no-console
-    console.log('[handleSelectEnd] 转换后的 selectedIds', selectedIds);
 
     const moveable = moveableRef.current?.getMoveable();
 
@@ -166,38 +124,23 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
 
     // 标记框选结束
     isSelectingRef.current = false;
-  }, [setSelectedClipId, selectedClipId]);
+  }, [setSelectedClipId]);
 
   // 处理元素点击 - 支持 Shift 多选
   const handleElementClick = useCallback((e: React.MouseEvent, clipId: string) => {
-    // eslint-disable-next-line no-console
-    console.log('[handleElementClick] 开始', {
-      clipId,
-      shiftKey: e.shiftKey,
-      currentSelectedClipId: selectedClipId,
-      target: e.target,
-      currentTarget: e.currentTarget,
-    });
-
     // 点击时，如果按住 Shift 键则多选，否则单选
     if (e.shiftKey) {
       if (selectedClipId.includes(clipId)) {
         // 如果已选中，则取消选中
         const newIds = selectedClipId.filter((id) => id !== clipId);
-        // eslint-disable-next-line no-console
-        console.log('[handleElementClick] Shift取消选中', newIds);
         setSelectedClipId(newIds);
       } else {
         // 如果未选中，则添加到选中列表
         const newIds = [...selectedClipId, clipId];
-        // eslint-disable-next-line no-console
-        console.log('[handleElementClick] Shift添加选中', newIds);
         setSelectedClipId(newIds);
       }
     } else {
       // 单选
-      // eslint-disable-next-line no-console
-      console.log('[handleElementClick] 单选', [clipId]);
       setSelectedClipId([clipId]);
     }
   }, [selectedClipId, setSelectedClipId]);
@@ -293,10 +236,12 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
   }, [isFullscreen]);
 
   const getCanvasSize = () => {
-    // if (!isFullscreen && initialCanvasSize) {
-    //   return initialCanvasSize;
-    // }
     if (!containerSize.width || !containerSize.height) {
+      // ResizeObserver can briefly report 0x0 during layout recalculation.
+      // Keep using the last stable size to avoid scale(0) flicker.
+      if (lastStableCanvasSizeRef.current.width > 0 && lastStableCanvasSizeRef.current.height > 0) {
+        return lastStableCanvasSizeRef.current;
+      }
       return { width: 0, height: 0 };
     }
 
@@ -331,6 +276,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
     }
 
     const calculatedSize = { width: canvasWidth, height: canvasHeight };
+    lastStableCanvasSizeRef.current = calculatedSize;
 
     if (!isFullscreen) {
       if (!initialCanvasSize) {
@@ -475,10 +421,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
       if (videoElement.readyState >= 1) {
         const playPromise = videoElement.play();
         if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            // eslint-disable-next-line no-console
-            console.log('Video autoplay was prevented');
-          });
+          playPromise.catch(() => {});
         }
       }
     } else {
@@ -747,21 +690,11 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
           baseCanvasSize={baseCanvasSize}
           onTransformChange={handleTransformChange}
           onClick={() => {
-            // eslint-disable-next-line no-console
-            console.log('[InfiniteCanvas onClick] 被调用', {
-              isFullscreen,
-              currentSelectedClipId: selectedClipId,
-              isSelecting: isSelectingRef.current,
-            });
             // 如果正在框选或刚刚完成框选，不清除选中
             if (isSelectingRef.current) {
-              // eslint-disable-next-line no-console
-              console.log('[InfiniteCanvas onClick] 正在框选，忽略清除');
               return;
             }
             if (!isFullscreen) {
-              // eslint-disable-next-line no-console
-              console.log('[InfiniteCanvas onClick] 清除选中状态');
               setSelectedClipId([]);
             }
           }}
@@ -793,7 +726,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
                 transform: `scale(${canvasSize.width / baseCanvasSize.width})`,
                 transformOrigin: 'top left',
                 overflow: 'hidden',
-                visibility: isInitialCenterReady ? 'visible' : 'hidden',
+                visibility: isInitialCenterReady || isPlaying ? 'visible' : 'hidden',
               }}
             >
               {audioClipsForRender.map(({ clip, media }: { clip: TimelineClip; media: MediaItem }) => (
@@ -869,28 +802,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
           </div>
         </InfiniteCanvas>
         {/* 多选时渲染 MoveableControl，将所有选中的元素传给 target */}
-        {(() => {
-          const shouldRender = selectedClipId.length > 0 && !isFullscreen && containerRef.current;
-          const mappedClips = selectedClipId.map((id) => clips.find((c) => c.id === id)).filter(Boolean) as TimelineClip[];
-
-          // eslint-disable-next-line no-console
-          console.log('[PreviewCanvas] MoveableControl 渲染检查', {
-            selectedClipId,
-            selectedClipIdLength: selectedClipId.length,
-            isFullscreen,
-            hasContainer: !!containerRef.current,
-            shouldRender,
-            mappedClipsCount: mappedClips.length,
-            mappedClips: mappedClips.map((c) => c.id),
-            // 检查 DOM 元素是否存在
-            domElementsExist: selectedClipId.map((id) => {
-              const element = document.getElementById(`element-${id}`);
-              return { id, exists: !!element };
-            }),
-          });
-          return shouldRender;
-        })() &&
-          selectedClipId.length > 0 &&
+        {selectedClipId.length > 0 &&
           !isFullscreen &&
           containerRef.current &&
           createPortal(
