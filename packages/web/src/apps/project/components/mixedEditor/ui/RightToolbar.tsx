@@ -104,7 +104,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
     {
       id: 'video-audio-denoise',
       icon: 'project-video-right-audio-denoise-icon',
-      label: 'audio denoise',
+      label: 'textToSpeech',
       width: 22,
       height: 22,
     },
@@ -143,12 +143,19 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
     if (latest?.originFileObj) onUpload?.(latest.originFileObj);
   };
 
+  const openVideoEditorInNewPage = useCallback(() => {
+    const url = `${window.location.origin}/video_editor`;
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    return Boolean(opened);
+  }, []);
+
   const handleToolButtonClick = useCallback(
     (tool: ToolItem) => {
       if (tool.id === 'video-stabilization') {
         setToolbarSegment(null);
         setOpenSidePanel(null);
-        onVideoStabilizationClick?.();
+        const opened = openVideoEditorInNewPage();
+        if (!opened) onVideoStabilizationClick?.();
         return;
       }
 
@@ -197,7 +204,14 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
         else onToolChange('select');
       }
     },
-    [onToolChange, onUpstreamPanelOpen, onVideoAudioDenoiseClick, onVideoStabilizationClick, toolbarSegment],
+    [
+      onToolChange,
+      onUpstreamPanelOpen,
+      onVideoAudioDenoiseClick,
+      onVideoStabilizationClick,
+      openVideoEditorInNewPage,
+      toolbarSegment,
+    ],
   );
 
   const closeSidePanel = useCallback(() => {

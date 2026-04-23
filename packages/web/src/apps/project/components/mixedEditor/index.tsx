@@ -10,6 +10,7 @@ import {
   useReactFlow,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -28,6 +29,7 @@ import RightToolbar from './ui/RightToolbar';
 import UndoRedoToolbar from '../canvas/common/UndoRedoToolbar';
 import ImageNode from './node/imageNode/ImageNode';
 import VideoNode from './node/videoNode/videoNode';
+import TextToSpeechPlaceholderNode from './node/videoNode/textToSpeech/TextToSpeechPlaceholderNode';
 import AudioNode from './node/audioNode';
 import GroupNode from './common/GroupNode';
 import StitchPlaceholderNode from './node/imageNode/stitch/StitchPlaceholderNode';
@@ -44,6 +46,12 @@ import {
   blankPlaceholderDefaultHeight,
   blankPlaceholderDefaultWidth,
 } from './node/imageNode/blank/BlankPlaceholderPanel';
+import {
+  TextToSpeechPlaceholderPanel,
+  textToSpeechPlaceholderNodeStyle,
+  textToSpeechPlaceholderSizeForAction,
+  type VideoQuickActionPlacementType,
+} from './node/videoNode/textToSpeech/TextToSpeechPlaceholderPanel';
 import GroupToolbarPanel from './common/GroupToolbarPanel';
 import NodeContextMenu from './common/NodeContextMenu';
 import {
@@ -136,7 +144,7 @@ function canvasUpstreamImageToListItem(item: UpstreamExternalFileItem): MediaRes
   };
 }
 
-type ImageEditorInnerProps = {
+type MixedEditorInnerProps = {
   nodeId: string;
   hotkeysDisabled?: boolean;
 };
@@ -186,7 +194,7 @@ const getAgentImagePickOverlayAnchorFromClick = (
   return undefined;
 };
 
-const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisabled = false }) => {
+const MixedEditorInner: React.FC<MixedEditorInnerProps> = ({ nodeId, hotkeysDisabled = false }) => {
   const hotkeysDisabledRef = useRef(hotkeysDisabled);
   hotkeysDisabledRef.current = hotkeysDisabled;
   const [contextMenu, setContextMenu] = useState<{
@@ -199,6 +207,8 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   const [minimapOpen, setMinimapOpen] = useState(false);
   const [gridPreviewPos, setGridPreviewPos] = useState<{ x: number; y: number } | null>(null);
   const [blankPreviewPos, setBlankPreviewPos] = useState<{ x: number; y: number } | null>(null);
+  const [videoQuickActionPreviewPos, setVideoQuickActionPreviewPos] = useState<{ x: number; y: number } | null>(null);
+  const [pendingVideoQuickAction, setPendingVideoQuickAction] = useState<VideoQuickActionPlacementType | null>(null);
   const [stitchEditingNodeId, setStitchEditingNodeId] = useState<string | null>(null);
   const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
   const dispatch = useDispatch();
@@ -215,7 +225,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   // Data read — comes from MixedEditorDataProvider (installed in
   // apps/project/index.tsx at project level). Nodes live in the
   // per-node Yjs editor doc, observed into React state via context.
-  const { nodes, edges, loading: yjsLoading } = useMixedEditorData();
+  const { nodes, edges, loading: yjsLoading, applyLocalNodeChanges } = useMixedEditorData();
   const {
     setNodes,
     onNodesChange,
@@ -260,6 +270,17 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
    */
   const flowWheelPanAndPinchEnabled = !expandViewportLocked;
   const previewZoom = getZoom();
+  /** Flow-space size + screen-space outer box so the ghost matches a placed node (uniform `scale(zoom)` like React Flow). */
+  const videoQuickActionTtsPreviewDims = useMemo(() => {
+    if (!pendingVideoQuickAction) return null;
+    const s = textToSpeechPlaceholderSizeForAction(pendingVideoQuickAction);
+    return {
+      flowW: s.width,
+      flowH: s.height,
+      outerW: s.width * previewZoom,
+      outerH: s.height * previewZoom,
+    };
+  }, [pendingVideoQuickAction, previewZoom]);
   const activeStitchNode = useMemo(
     () => (stitchEditingNodeId ? nodes.find((n) => n.id === stitchEditingNodeId && n.type === 'stitchPlaceholderNode') ?? null : null),
     [nodes, stitchEditingNodeId],
@@ -490,11 +511,15 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     } else if (activeTool === 'blank') {
       setBlankPreviewPos({ x: e.clientX, y: e.clientY });
     }
+    if (pendingVideoQuickAction) {
+      setVideoQuickActionPreviewPos({ x: e.clientX, y: e.clientY });
+    }
   };
 
   const handleMouseLeave = () => {
     if (activeTool === 'crop') setGridPreviewPos(null);
     if (activeTool === 'blank') setBlankPreviewPos(null);
+    if (pendingVideoQuickAction) setVideoQuickActionPreviewPos(null);
   };
 
   const handleMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -515,8 +540,28 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   };
 
   const handleNodeClick = (e: React.MouseEvent, node: Node) => {
-    console.warn('[ImageEditor] node click', { id: node.id, type: node.type, data: node.data });
+    console.warn('[MixedEditor] node click', { id: node.id, type: node.type, data: node.data });
     closeContextMenu();
+
+    if (pendingVideoQuickAction) {
+      const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const { width: placeW, height: placeH } = textToSpeechPlaceholderSizeForAction(pendingVideoQuickAction);
+      const textToSpeechNode: Node = {
+        id: `tts-flow-${nanoid(12)}`,
+        type: 'textToSpeechPlaceholderNode',
+        position: {
+          x: p.x - placeW / 2,
+          y: p.y - placeH / 2,
+        },
+        selected: true,
+        style: textToSpeechPlaceholderNodeStyle(pendingVideoQuickAction),
+        data: { action: pendingVideoQuickAction },
+      };
+      onNodesChange([{ type: 'add', item: textToSpeechNode }]);
+      setPendingVideoQuickAction(null);
+      setVideoQuickActionPreviewPos(null);
+      return;
+    }
 
     if (agentCanvasPickEditingNodeId) {
       const sourceNode = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
@@ -606,9 +651,11 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
 
   const handlePaneContextMenu = (e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
-    if (activeTool === 'crop' || activeTool === 'blank') {
+    if (activeTool === 'crop' || activeTool === 'blank' || pendingVideoQuickAction) {
       setGridPreviewPos(null);
       setBlankPreviewPos(null);
+      setVideoQuickActionPreviewPos(null);
+      setPendingVideoQuickAction(null);
       setActiveTool('select');
       closeContextMenu();
       return;
@@ -624,6 +671,25 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
 
   const handlePaneClick = (e: MouseEvent | React.MouseEvent) => {
     closeContextMenu();
+    if (pendingVideoQuickAction) {
+      const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const { width: placeW, height: placeH } = textToSpeechPlaceholderSizeForAction(pendingVideoQuickAction);
+      const textToSpeechNode: Node = {
+        id: `tts-flow-${nanoid(12)}`,
+        type: 'textToSpeechPlaceholderNode',
+        position: {
+          x: p.x - placeW / 2,
+          y: p.y - placeH / 2,
+        },
+        selected: true,
+        style: textToSpeechPlaceholderNodeStyle(pendingVideoQuickAction),
+        data: { action: pendingVideoQuickAction },
+      };
+      onNodesChange([{ type: 'add', item: textToSpeechNode }]);
+      setPendingVideoQuickAction(null);
+      setVideoQuickActionPreviewPos(null);
+      return;
+    }
     const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
     if (activeTool === 'crop') {
       const gridNode: Node = {
@@ -638,7 +704,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         data: { rows: stitchPlaceholderDefaultRows, cols: stitchPlaceholderDefaultCols },
       };
       onNodesChange([{ type: 'add', item: gridNode }]);
-      console.warn('[ImageEditor] placed stitch placeholder node', gridNode);
+      console.warn('[MixedEditor] placed stitch placeholder node', gridNode);
       setGridPreviewPos(null);
       setActiveTool('select');
       return;
@@ -656,7 +722,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         data: {},
       };
       onNodesChange([{ type: 'add', item: blankNode }]);
-      console.warn('[ImageEditor] placed blank placeholder node', blankNode);
+      console.warn('[MixedEditor] placed blank placeholder node', blankNode);
       setBlankPreviewPos(null);
       setActiveTool('select');
     }
@@ -835,10 +901,50 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     }
   }, [edges, getNodes, onEdgesChange, onNodesChange]);
 
+  /**
+   * Route ReactFlow node changes into two buckets:
+   *   - `select` / `dimensions` → local overlay (UI-only, per-tab, not
+   *     shared via Yjs — matches canvas behaviour in `canvas/index.tsx`).
+   *   - `position` / `remove`   → Yjs writes (collaborative + undoable).
+   *
+   * Without this split, controlled-mode ReactFlow never echoes the
+   * `selected: true` flag back to our nodes array, so toolbar-visibility
+   * predicates that read `node.selected` stay permanently false.
+   */
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const localChanges: NodeChange[] = [];
+      const yjsChanges: NodeChange[] = [];
+      for (const c of changes) {
+        if (c.type === 'select' || c.type === 'dimensions') {
+          localChanges.push(c);
+        } else {
+          yjsChanges.push(c);
+        }
+      }
+      if (localChanges.length) applyLocalNodeChanges(localChanges);
+      if (yjsChanges.length) onNodesChange(yjsChanges);
+    },
+    [applyLocalNodeChanges, onNodesChange],
+  );
+
   useEffect(() => {
     if (activeTool !== 'crop') setGridPreviewPos(null);
     if (activeTool !== 'blank') setBlankPreviewPos(null);
   }, [activeTool]);
+
+  useEffect(() => {
+    if (pendingVideoQuickAction) return;
+    setVideoQuickActionPreviewPos(null);
+  }, [pendingVideoQuickAction]);
+
+  const handleVideoQuickActionToolbarClick = useCallback(
+    (action: VideoQuickActionPlacementType) => {
+      setActiveTool('select');
+      setPendingVideoQuickAction(action);
+    },
+    [setActiveTool],
+  );
 
   useEffect(() => {
     const selectedStitchNode = nodes.find((n) => n.type === 'stitchPlaceholderNode' && n.selected);
@@ -976,6 +1082,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
     () => ({
       [imageEditorImageNodeType]: ImageNode,
       [imageEditorVideoNodeType]: VideoNode,
+      textToSpeechPlaceholderNode: TextToSpeechPlaceholderNode,
       [imageEditorAudioNodeType]: AudioNode,
       group: GroupNode,
       stitchPlaceholderNode: StitchPlaceholderNode,
@@ -1065,6 +1172,8 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
             onToolChange={setActiveTool}
             onUpload={handleUpload}
             uploadAccept={rightToolbarUploadAccept}
+            onVideoStabilizationClick={() => handleVideoQuickActionToolbarClick('stabilization')}
+            onVideoAudioDenoiseClick={() => handleVideoQuickActionToolbarClick('audioDenoise')}
             sidePanelItems={imageEditorSidePanelItems}
             onSidePanelItemAddClick={handleSidePanelItemAdd}
             onSidePanelItemDownloadClick={handleSidePanelItemDownload}
@@ -1106,7 +1215,7 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
         className='relative z-[1] origin-[0px_0px] backface-hidden antialiased'
         nodes={flowNodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onNodeDragStop={onNodeDragStop}
         onEdgesChange={onEdgesChange}
         onNodeContextMenu={handleNodeContextMenu}
@@ -1189,6 +1298,30 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
           <BlankPlaceholderPanel />
         </div>
       )}
+      {pendingVideoQuickAction && videoQuickActionPreviewPos && videoQuickActionTtsPreviewDims && (
+        <div
+          className='pointer-events-none fixed z-20'
+          style={{
+            left: videoQuickActionPreviewPos.x,
+            top: videoQuickActionPreviewPos.y,
+            width: videoQuickActionTtsPreviewDims.outerW,
+            height: videoQuickActionTtsPreviewDims.outerH,
+            transform: 'translate(-50%, -50%)',
+            opacity: 0.86,
+          }}
+        >
+          <div
+            style={{
+              width: videoQuickActionTtsPreviewDims.flowW,
+              height: videoQuickActionTtsPreviewDims.flowH,
+              transform: `scale(${previewZoom})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            <TextToSpeechPlaceholderPanel action={pendingVideoQuickAction} />
+          </div>
+        </div>
+      )}
 
       {yjsLoading && (
         <div className='absolute inset-0 z-30'>
@@ -1201,15 +1334,15 @@ const ImageEditorInner: React.FC<ImageEditorInnerProps> = ({ nodeId, hotkeysDisa
   );
 };
 
-export type ImageEditorProps = {
+export type MixedEditorProps = {
   nodeId: string;
   hotkeysDisabled?: boolean;
 };
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ nodeId, hotkeysDisabled }) => (
+const MixedEditor: React.FC<MixedEditorProps> = ({ nodeId, hotkeysDisabled }) => (
   <ReactFlowProvider>
-    <ImageEditorInner nodeId={nodeId} hotkeysDisabled={hotkeysDisabled} />
+    <MixedEditorInner nodeId={nodeId} hotkeysDisabled={hotkeysDisabled} />
   </ReactFlowProvider>
 );
 
-export default ImageEditor;
+export default MixedEditor;

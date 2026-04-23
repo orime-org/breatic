@@ -139,19 +139,24 @@ export default defineConfig(({ command, mode }) => {
       // origins from the browser's perspective. Proxy /api, /uploads, /ws
       // through Vite so frontend code can use relative URLs (same-origin)
       // in dev just like it does in prod (where nginx does the same job).
+      // Dev proxy MUST target the local services spun up by `pnpm dev` /
+      // `pnpm dev:collab` / `pnpm db:migrate` — never a remote deployment.
+      // Pointing these at thinkai.cc / breatic.ai silently routes every
+      // developer's traffic to shared infra and makes local code changes
+      // untestable (see BUG-2 post-mortem).
       proxy: {
         '/api/': {
-          target: 'https://www.thinkai.cc',
+          target: 'http://localhost:3000',
           changeOrigin: true,
         },
         '/uploads/': {
-          target: 'https://www.thinkai.cc',
+          target: 'http://localhost:3000',
           changeOrigin: true,
         },
         // Yjs client connects to `/ws` (without trailing slash), so proxy key
         // must also match `/ws` to avoid bypassing Vite proxy in dev.
         '/ws': {
-          target: 'wss://www.thinkai.cc',
+          target: 'ws://localhost:1234',
           ws: true,
           changeOrigin: true,
         },
