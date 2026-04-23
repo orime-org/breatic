@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:140 个活跃条目(P0 × 12 + P1 × 66 + P2 × 61 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:141 个活跃条目(P0 × 13 + P1 × 66 + P2 × 61 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -27,8 +27,9 @@
 | BUG-153 | 🔴 HIGH | ffmpeg.wasm 核心从 `cdn.jsdelivr.net` 动态加载,无 SRI / CSP / fallback → CDN 污染即客户端 RCE | `web/src/utils/video{Adjust,Crop,Cut,Speed,Stabilization}WithFfmpeg.ts`(5 文件) | R6 | 3-4h | [→](audit/2026-04-23-round-6-found.md#bug-153) |
 | BUG-154 | 🔴 HIGH | ffmpeg 输出 `blob:` URL 直接写 `data.content`,刷新即失效 + 永不 revoke(违反 AIGC 持久化架构) | `web/src/hooks/useMixedEditorStore.ts:615` (`resolveVideoResultNode`) | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-154) |
 | BUG-173 | 🔴 HIGH | `POST /mini-tools/text` `Idempotency-Key` 含非 REFKEY_PATTERN 字符时 **`catch {}` 静默吞错 → 用户拿完整 AI + 0 扣费**(扣费绕过,等价 BUG-079 级) | `core/src/modules/text-tool.service.ts:215` (`catch {}`) + `server/src/routes/text-tools.ts:46` | R7 | 20m | [→](audit/2026-04-23-round-7-found.md#bug-173) |
+| BUG-185 | 🔴 HIGH | `AiChatRecordPanel` 2 处 stale `store.getState().mixedEditor.nodes` → TypeError(PR #150 漏修残留,PR #140 Yjs-first rewrite 第 4 处 post-merge regression) | `web/.../agent/AiChatRecordPanel.tsx:588,863` | R8+ | 15m(按 PR #150 pattern:`nodesRef = useRef(nodes)` + callback 读 ref;或从 `useMixedEditorData()` context 读) | — post-R8 grep |
 
-**P0 小计**:12 个活跃 · 预估 **~13.5 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:13 个活跃 · 预估 **~13.75 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -191,11 +192,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 12(+1 不修) | ~13.5 h |
+| P0 | 13(+1 不修) | ~13.75 h |
 | P1 | 66 | ~42.5 h |
 | P2 | 61 | ~20.75 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **140**(含长期,+1 不修) | **~88.75 h** |
+| **总计** | **141**(含长期,+1 不修) | **~89 h** |
 
 ---
 
@@ -209,6 +210,7 @@
 - **Round 6**(2026-04-23):19 个新发现(4 P0 + 1 P1 HIGH + 7 P1 MED + 7 P2 LOW)+ 关闭 BUG-093(imageEditor 文件删除,pattern 迁移到 BUG-164 追踪)。Agent J 超时,BUG-093 核查由主 session 完成。快照见 [`audit/2026-04-23-round-6-found.md`](audit/2026-04-23-round-6-found.md)。**状态**:已关 4 个(BUG-141/142 · PR #137 + BUG-163 · PR #138 + BUG-164 · PR #140,均 2026-04-23),其余未修复
 - **Round 7**(2026-04-23 slim):5 新发现(1 P0 + 1 P1 MED + 3 P2 LOW)+ 2 个 scope 扩大 note(BUG-132 / BUG-157)。单 agent 聚焦 rate limit / Zod / auth 覆盖 3 主题(补 Round 6 Agent J timeout 盲点),8 分钟完成不 timeout,验证"≤ 3 主题 / agent"规则。**P0 BUG-173 是主 session 从 agent 原判 MED 上调**(扣费绕过,与 BUG-079 同级)。快照见 [`audit/2026-04-23-round-7-found.md`](audit/2026-04-23-round-7-found.md)。**状态**:未修复
 - **Round 8**(2026-04-23 slim 夜):8 新发现(0 P0 + 3 P1 MED + 5 P2 LOW)。针对 PR #144 video editor workspace + exporters + TTS placeholder。单 agent 6.5 分钟完成。**关键正面观察**:BUG-070/071/165 memory leak pattern + BUG-153/154 blob/CDN pattern + BUG-093/164 useYjsStore 误用 pattern —— **全都没在新代码里复发**,dev 团队 defensive 习惯已建立。BUG-136 CSP systemic 从 LOW 升级独立 BUG-184(MED)。快照见 [`audit/2026-04-23-round-8-found.md`](audit/2026-04-23-round-8-found.md)。**状态**:未修复
+- **Round 8 后 grep**(2026-04-23):PR #150 merge 后,主 session 主动 grep `store.getState().mixedEditor\|useMixedEditorStore` 发现 `AiChatRecordPanel.tsx` 2 处漏修 stale Redux read → **BUG-185**(P0)。追踪 PR #140 Yjs-first rewrite 的第 4 个 post-merge regression(前 3 个由 PR #149/#150 修)。**教训**:Redux slice 删除后,代码审计应**全仓 grep 所有 `store.getState().<slice>` 引用**,单文件/视觉审不充分
 
 ---
 
