@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# Block .env files from being committed
+if git diff --cached --name-only | grep -qE '\.env$|\.env\.local$'; then
+  echo "❌ .env files cannot be committed. They contain secrets."
+  echo "   Use .env.example for sharing configuration templates."
+  exit 1
+fi
+
+# Block files with common secret patterns
+if git diff --cached --name-only | grep -qE '\.pem$|\.key$|id_rsa'; then
+  echo "❌ Secret/key files cannot be committed."
+  exit 1
+fi
+
+# Guard: dev-server proxy target must be localhost, never a deployed host.
+# Motivation: a previous commit silently redirected /api, /uploads, /ws to
+# wss://www.thinkai.cc inside `packages/web/vite.config.ts`, which routed
+# every developer's local traffic to shared infra and made local code
+# untestable (BUG-2 post-mortem). Match `target:` lines that reference
+# thinkai.cc or breatic.ai — those two domains are deployments, never valid
+# local proxy targets.
+if git diff --cached --name-only | grep -q 'vite\.config\.ts$'; then
+  offenders=$(git diff --cached -U0 -- '*vite.config.ts' |
+    grep -E '^\+[[:space:]]*target:[[:space:]]*["'\''].*(thinkai\.cc|breatic\.ai)' || true)
+  if [ -n "$offenders" ]; then
+    echo "❌ vite.config.ts: dev proxy target must be localhost (see CLAUDE.md)."
+    echo "   Found remote deployment host in a staged proxy target line:"
+    echo "$offenders" | sed 's/^/     /'
+    echo
+    echo "   Correct values:"
+    echo "     /api/     → http://localhost:3000"
+    echo "     /uploads/ → http://localhost:3000"
+    echo "     /ws       → ws://localhost:1234"
+    exit 1
+  fi
+fi
