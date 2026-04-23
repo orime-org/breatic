@@ -22,7 +22,6 @@ import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
 import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { imageEditorImageNodeType } from '@/apps/project/components/mixedEditor/types';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '@/apps/project/components/mixedEditor/types';
-import store from '@/store';
 import { Icon } from '@/components/base/icon';
 import ProjectHeader from './ProjectHeader';
 import UserCenter from '@/apps/userCenter';
@@ -119,6 +118,12 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       onConnect: onImageEditorConnect,
     } = useMixedEditorActions();
     const nodesRef = useRef(nodes);
+    // Mirror image-editor nodes onto a ref so async callbacks (surface-
+    // removed handler, pick-recognize setTimeout) can read the latest
+    // snapshot without racing stale closures or pulling the reactive
+    // `imageEditorNodes` into every callback's dep list. Matches the
+    // nodesRef pattern above for main-canvas nodes.
+    const imageEditorNodesRef = useRef(imageEditorNodes);
     /** Active node id from the right panel or current selection; empty string shows an empty thread. */
     const selectedNode = nodes.find((n) => n.selected);
     const [activeNodeId, setActiveNodeId] = useState<string>('');
@@ -193,6 +198,10 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     useEffect(() => {
       nodesRef.current = nodes;
     }, [nodes]);
+
+    useEffect(() => {
+      imageEditorNodesRef.current = imageEditorNodes;
+    }, [imageEditorNodes]);
 
     useEffect(() => {
       const next = rightPanel.nodeId ?? selectedNode?.id ?? '';
@@ -585,7 +594,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
         inputRef.current?.appendCanvasPickRecognizingPlaceholder(placeholderId);
 
         window.setTimeout(() => {
-          const currentNodes = store.getState().mixedEditor.nodes as typeof imageEditorNodes;
+          const currentNodes = imageEditorNodesRef.current;
           const source = currentNodes.find((n) => n.id === imageEditorPickSourceNodeId);
           const sourcePs = (source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
           const currentList = sourcePs?.pendingList ?? [];
@@ -860,7 +869,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
 
     const handleCanvasPickSurfaceRemoved = useCallback(
       (detail: AgentCanvasPickSurfaceRemovalDetail) => {
-        const imageEditorNodesForRemoval = store.getState().mixedEditor.nodes;
+        const imageEditorNodesForRemoval = imageEditorNodesRef.current;
 
         if (detail.surface === 'recognizing') {
           for (const n of nodes) {
