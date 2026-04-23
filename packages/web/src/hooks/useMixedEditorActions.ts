@@ -1,5 +1,5 @@
 /**
- * Mixed editor write actions + handling lifecycle + heartbeat.
+ * Mixed editor write actions + handling lifecycle (X pattern).
  *
  * Mirrors the main canvas' {@link useCanvasActions} pattern:
  *   - All writes go directly to Yjs (`doc.transact(fn, origin)`)
@@ -8,20 +8,33 @@
  *   - Undo manager is attached lazily after Hocuspocus syncs so the
  *     initial-state replay never lands in the stack
  *
- * Extra responsibilities unique to the mixed editor:
- *   - **Handling lifecycle** — loading nodes are created via
- *     `noHistoryOrigin` so Ctrl+Z never ends up deleting a node with
- *     a live task; their "finalization" (loading → final) lands in
- *     the stack as a single undoable step
- *   - **Heartbeat** — handling nodes carry a 30 s heartbeat updated
- *     on `data.handlingBy.heartbeatAt`. Peers treat a node stale
- *     when the heartbeat is older than 90 s (see PR-2 Phase E UI).
- *     The heartbeat tick itself uses `noHistoryOrigin`.
+ * ## Handling lifecycle (X pattern)
  *
- * The hook requires a {@link YjsNodeEditorManager} — caller plumbs it
- * in from `useYjsNodeEditor`. Unlike the main canvas we do not read
- * from the global ref here because the mixed editor is per-node and
- * swapping nodes must rebuild the undo manager scope cleanly.
+ * Type A tasks (browser-local `ffmpeg.wasm`) do NOT persist their
+ * `state: 'handling'` tile to Yjs. Instead:
+ *
+ *   1. `addHandlingNode` registers a local pending entry in the
+ *      context (tab-scoped). Only the originator sees the loading
+ *      tile.
+ *   2. `resolveHandlingNode` reads that entry, merges the completion
+ *      patch, and writes a SINGLE final (`state: 'idle'`) node to
+ *      Yjs under `userOrigin` → one undoable "I created this tile"
+ *      step lands in the undo stack.
+ *   3. `failHandlingNode` just drops the local entry.
+ *
+ * Why not persist handling state to Yjs? If the browser tab closes
+ * mid-task, the ffmpeg Web Worker dies with it. A Yjs-persisted
+ * handling tile would survive as a stuck-forever zombie that every
+ * collaborator has to look at and eventually force-clear. The X
+ * pattern eliminates that failure mode entirely — if the browser
+ * dies, Yjs has nothing to be stuck on.
+ *
+ * Type B tasks (backend mini-tools) can reuse the same primitives:
+ * the mini-tool API call and response handling lives in the callsite
+ * hooks (`createInpaintResultNodeRight` etc), and the final-write
+ * step uses Yjs directly. There is no handling-state replication for
+ * them either — the loading tile is rendered locally while the
+ * caller `await`s the API response.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -70,7 +83,6 @@ type HistoryOptions = { history?: 'default' | 'skip' };
 // ── Constants ──────────────────────────────────────────────────
 
 const UNDO_STACK_MAX = 50;
-const HEARTBEAT_INTERVAL_MS = 30_000;
 
 const imageFlowDefaultWidth = 260;
 const imageFlowDefaultHeight = 160;
@@ -173,12 +185,11 @@ function getNodeDataMap(flow: Y.Map<unknown>, nodeId: string): Y.Map<unknown> | 
   return dataMap instanceof Y.Map ? (dataMap as Y.Map<unknown>) : null;
 }
 
-function isHandlingState(state: unknown): boolean {
-  // Accept both the canonical 'handling' and the legacy 'generating' the
-  // video sub-flow produced historically — treat as synonyms until
-  // callers are migrated.
-  return state === 'handling' || state === 'generating';
-}
+// X pattern: Yjs never holds `state: 'handling'` — the originator
+// keeps the pending tile locally, and Yjs only sees completed
+// `state: 'idle'` nodes. Legacy callers writing 'handling' directly
+// via updateNode/updateNodeData are a bug; tracked by `removeNode`'s
+// pending-task guard, not an implicit helper here.
 
 // ── Hook input/output ──────────────────────────────────────────
 
@@ -257,10 +268,16 @@ export interface UseMixedEditorActionsResult {
 
 export function useMixedEditorActions(): UseMixedEditorActionsResult {
   const dispatch = useDispatch();
-  const { manager, setNodeLocalData, clearNodeLocalState } = useMixedEditorDataInternal();
+  const {
+    manager,
+    setNodeLocalData,
+    clearNodeLocalState,
+    addPendingTask,
+    removePendingTask,
+    getPendingTask,
+  } = useMixedEditorDataInternal();
   const userInfo = useSelector((s: RootState) => s.userCenter.userInfo);
   const userId = (userInfo as { id?: string } | undefined)?.id ?? '';
-  const username = (userInfo as { name?: string } | undefined)?.name ?? '';
 
   const userOrigin = userOriginFor(userId);
 
@@ -270,65 +287,9 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
-  // Heartbeat timers keyed by nodeId. Each tick rewrites
-  // `handlingBy.heartbeatAt` under noHistoryOrigin so it never pollutes
-  // the undo stack.
-  const heartbeatsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-
-  const stopHeartbeat = useCallback((nodeId: string) => {
-    const interval = heartbeatsRef.current.get(nodeId);
-    if (interval) {
-      clearInterval(interval);
-      heartbeatsRef.current.delete(nodeId);
-    }
-  }, []);
-
-  const startHeartbeat = useCallback(
-    (nodeId: string) => {
-      if (!manager) return;
-      if (heartbeatsRef.current.has(nodeId)) return;
-
-      const tick = () => {
-        const flow = manager.doc.getMap('flow') as Y.Map<unknown>;
-        const nodeMap = flow.get(nodeId);
-        if (!(nodeMap instanceof Y.Map)) {
-          stopHeartbeat(nodeId);
-          return;
-        }
-        const dataMap = nodeMap.get('data');
-        if (!(dataMap instanceof Y.Map)) {
-          stopHeartbeat(nodeId);
-          return;
-        }
-        if (!isHandlingState(dataMap.get('state'))) {
-          stopHeartbeat(nodeId);
-          return;
-        }
-        manager.doc.transact(() => {
-          let handlingBy = dataMap.get('handlingBy');
-          if (!(handlingBy instanceof Y.Map)) {
-            handlingBy = new Y.Map();
-            (handlingBy as Y.Map<unknown>).set('userId', userId);
-            (handlingBy as Y.Map<unknown>).set('username', username);
-            dataMap.set('handlingBy', handlingBy);
-          }
-          (handlingBy as Y.Map<unknown>).set('heartbeatAt', Date.now());
-        }, noHistoryOrigin);
-      };
-      tick(); // initial beat
-      const interval = setInterval(tick, HEARTBEAT_INTERVAL_MS);
-      heartbeatsRef.current.set(nodeId, interval);
-    },
-    [manager, stopHeartbeat, userId, username],
-  );
-
-  // Clean up all heartbeats when the manager changes or the hook unmounts.
-  useEffect(() => {
-    return () => {
-      heartbeatsRef.current.forEach((interval) => clearInterval(interval));
-      heartbeatsRef.current.clear();
-    };
-  }, [manager]);
+  // X pattern: handling tiles live in the context's local pendingTasks
+  // map. No heartbeats, no Yjs "handling" state, no cross-tab replication.
+  // The action hook reaches that state through the Data Context.
 
   // Attach UndoManager after sync; per-user trackedOrigins filter out
   // remote + noHistoryOrigin ops. 500 ms captureTimeout merges
@@ -519,26 +480,24 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
 
   const removeNode = useCallback(
     (nodeId: string) => {
+      // Handling guard (X pattern): if this node is a pending local
+      // task, refuse to delete — let the task finish or be explicitly
+      // cancelled. The in-flight ffmpeg Web Worker doesn't know about
+      // the node's existence, so "silently delete the UI tile" would
+      // strand its output when it lands.
+      if (getPendingTask(nodeId)) return;
+
       withFlow((flow, doc) => {
         const nodeMap = flow.get(nodeId);
         if (!(nodeMap instanceof Y.Map)) return;
-        const dataMap = nodeMap.get('data');
-        if (dataMap instanceof Y.Map && isHandlingState(dataMap.get('state'))) {
-          // Handling guard: never delete a node with a live task. Peers
-          // (and the originator via undo, though the initial creation
-          // was non-tracked anyway) must use forceRemoveStaleHandlingNode
-          // through the stuck-cleanup UI instead.
-          return;
-        }
         doc.transact(() => {
           flow.delete(nodeId);
         }, userOrigin);
       });
-      stopHeartbeat(nodeId);
       clearNodeLocalState(nodeId);
       dispatch(clearMixedEditorExpandLock(nodeId));
     },
-    [withFlow, userOrigin, dispatch, stopHeartbeat, clearNodeLocalState],
+    [withFlow, userOrigin, dispatch, clearNodeLocalState, getPendingTask],
   );
 
   const setNodes = useCallback(
@@ -572,13 +531,12 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
               (pos as Y.Map<unknown>).set('x', change.position.x);
               (pos as Y.Map<unknown>).set('y', change.position.y);
             } else if (change.type === 'remove') {
+              // Handling guard at the ReactFlow boundary too —
+              // pending tiles are local and not in Yjs, and Delete/
+              // backspace hitting one should be a no-op.
+              if (getPendingTask(change.id)) continue;
               const nodeMap = flow.get(change.id);
               if (!(nodeMap instanceof Y.Map)) continue;
-              const dataMap = nodeMap.get('data');
-              if (dataMap instanceof Y.Map && isHandlingState(dataMap.get('state'))) {
-                // Handling guard at the ReactFlow boundary too.
-                continue;
-              }
               flow.delete(change.id);
               dispatch(clearMixedEditorExpandLock(change.id));
             }
@@ -587,7 +545,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         }, origin);
       });
     },
-    [withFlow, userOrigin, dispatch],
+    [withFlow, userOrigin, dispatch, getPendingTask],
   );
 
   // Mixed editor has no edges — these two are retained for API parity
@@ -600,121 +558,84 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     /* intentionally empty */
   }, []);
 
-  // ── Handling lifecycle ────────────────────────────────────────
+  // ── Handling lifecycle (X pattern — local only) ───────────────
+  //
+  // Browser-local tasks (ffmpeg.wasm + mini-tool await) keep their
+  // "loading tile" in the DataContext's `pendingTasks` map. Nothing
+  // lands in Yjs until the task completes, so a dead browser tab can
+  // never leave a stuck handling node for collaborators to clean up.
 
   const addHandlingNode = useCallback(
     (node: Node): string => {
-      // Loading nodes always bypass the undo stack — the user's
-      // "intent to produce" materialises as a single undoable step
-      // only after the task succeeds (see resolveHandlingNode).
-      withFlow((flow, doc) => {
-        doc.transact(() => {
-          const prepared: Node = {
-            ...node,
-            data: {
-              ...(node.data ?? {}),
-              state: 'handling',
-            } as Node['data'],
-          };
-          flow.set(node.id, buildNodeYMap(prepared));
-        }, noHistoryOrigin);
-      });
-      startHeartbeat(node.id);
+      const prepared: Node = {
+        ...node,
+        data: {
+          ...(node.data ?? {}),
+          state: 'handling',
+        } as Node['data'],
+      };
+      addPendingTask(prepared);
       return node.id;
     },
-    [withFlow, startHeartbeat],
+    [addPendingTask],
   );
 
   const resolveHandlingNode = useCallback(
     (nodeId: string, patch: ImageEditorNodeDataPatch) => {
+      const pending = getPendingTask(nodeId);
+      if (!pending) return;
+
+      // Merge: pending node's own data (minus state/handlingBy) + patch
+      // + state='idle'.
+      const pendingData = (pending.node.data ?? {}) as Record<string, unknown>;
+      const finalData: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(pendingData)) {
+        if (k === 'state') continue;
+        if (k === 'handlingBy') continue;
+        finalData[k] = v;
+      }
+      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        if (k === 'pickState') continue;
+        finalData[k] = v;
+      }
+      finalData.state = 'idle';
+
+      const finalNode: Node = {
+        ...pending.node,
+        data: finalData,
+      };
+
+      // Drop the local pending entry BEFORE writing to Yjs so that
+      // the context's merge (yjsNodes + pendingTasks) doesn't briefly
+      // render the node twice.
+      removePendingTask(nodeId);
       withFlow((flow, doc) => {
-        const nodeMap = flow.get(nodeId);
-        if (!(nodeMap instanceof Y.Map)) return;
-
-        // Snapshot current node shape for the "final" replacement.
-        const currentType = nodeMap.get('type') as string | undefined;
-        const currentPos = nodeMap.get('position') as Y.Map<unknown> | undefined;
-        const currentStyle = nodeMap.get('style') as Y.Map<unknown> | undefined;
-        const currentData = nodeMap.get('data') as Y.Map<unknown> | undefined;
-        const currentParent = nodeMap.get('parentId') as string | undefined;
-        const currentExtent = nodeMap.get('extent');
-        const currentZIndex = nodeMap.get('zIndex') as number | undefined;
-
-        const finalData: Record<string, unknown> = {};
-        if (currentData) {
-          currentData.forEach((v, k) => {
-            if (k === 'handlingBy') return;
-            if (k === 'state') return;
-            finalData[k] = v;
-          });
-        }
-        // Apply the patch
-        for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
-          if (k === 'pickState') continue;
-          finalData[k] = v;
-        }
-        finalData.state = 'idle';
-
-        const finalNode: Node = {
-          id: nodeId,
-          type: currentType ?? '2002',
-          position: {
-            x: currentPos instanceof Y.Map ? (currentPos.get('x') as number) ?? 0 : 0,
-            y: currentPos instanceof Y.Map ? (currentPos.get('y') as number) ?? 0 : 0,
-          },
-          style: currentStyle instanceof Y.Map
-            ? {
-                width: currentStyle.get('width') as number | undefined,
-                height: currentStyle.get('height') as number | undefined,
-              }
-            : undefined,
-          data: finalData,
-        };
-        if (typeof currentZIndex === 'number') {
-          (finalNode as Node & { zIndex?: number }).zIndex = currentZIndex;
-        }
-        if (typeof currentParent === 'string') finalNode.parentId = currentParent;
-        if (currentExtent !== undefined) finalNode.extent = currentExtent as Node['extent'];
-
-        // Delete loading + add final in one transact under userOrigin →
-        // one combined undo step. Undo will remove the (now-final)
-        // node; redo will restore it with the resolved content.
         doc.transact(() => {
-          flow.delete(nodeId);
           flow.set(nodeId, buildNodeYMap(finalNode));
         }, userOrigin);
       });
-      stopHeartbeat(nodeId);
     },
-    [withFlow, userOrigin, stopHeartbeat],
+    [getPendingTask, removePendingTask, withFlow, userOrigin],
   );
 
   const failHandlingNode = useCallback(
     (nodeId: string) => {
-      withFlow((flow, doc) => {
-        doc.transact(() => {
-          flow.delete(nodeId);
-        }, noHistoryOrigin);
-      });
-      stopHeartbeat(nodeId);
+      removePendingTask(nodeId);
       clearNodeLocalState(nodeId);
       dispatch(clearMixedEditorExpandLock(nodeId));
     },
-    [withFlow, stopHeartbeat, dispatch, clearNodeLocalState],
+    [removePendingTask, clearNodeLocalState, dispatch],
   );
 
   const forceRemoveStaleHandlingNode = useCallback(
     (nodeId: string) => {
-      withFlow((flow, doc) => {
-        doc.transact(() => {
-          flow.delete(nodeId);
-        }, noHistoryOrigin);
-      });
-      stopHeartbeat(nodeId);
+      // X pattern: "stale" only makes sense for local pending tasks,
+      // and dropping one is the same as failing it.
+      removePendingTask(nodeId);
       clearNodeLocalState(nodeId);
       dispatch(clearMixedEditorExpandLock(nodeId));
     },
-    [withFlow, stopHeartbeat, dispatch, clearNodeLocalState],
+    [removePendingTask, clearNodeLocalState, dispatch],
   );
 
   // ── Undo / redo ──────────────────────────────────────────────
