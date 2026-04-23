@@ -1037,6 +1037,22 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
   }, [addProjectCanvasNode, height, imageContent, nodeData, projectCanvasNodes, width]);
 
   /**
+   * NodeResizer drag handler — persist new size to the Yjs `style.{width,height}`.
+   *
+   * Fired on every resize frame AND on release (matches canvas TextNode).
+   * Each frame of a single drag merges into one undo entry via the
+   * UndoManager's 500ms captureTimeout. Without this callback the resize
+   * visual updates the DOM but never lands in Yjs, so the node snaps
+   * back on the next render.
+   */
+  const handleResize = useCallback(
+    (_: unknown, params: { width: number; height: number }) => {
+      updateNode(id, { style: { width: params.width, height: params.height } });
+    },
+    [id, updateNode],
+  );
+
+  /**
    * Apply the tile's content back to the main-canvas host node that
    * opened this editor (never to a sibling host). Target is fixed
    * from `hostNodeId` on the Data Context — it was set at mount and
@@ -1240,6 +1256,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
           keepAspectRatio
           minWidth={imageFlowMinWidth}
           minHeight={imageFlowMinHeight}
+          onResize={handleResize}
+          onResizeEnd={handleResize}
         />
         <div className='relative h-full w-full overflow-hidden bg-white shadow-sm' data-agent-image-viewport={id}>
           {!showContent && !isEditing ? (

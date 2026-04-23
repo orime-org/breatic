@@ -1,11 +1,16 @@
 import React, { memo } from 'react';
-import { NodeResizer, type NodeProps } from '@xyflow/react';
+import { type NodeProps } from '@xyflow/react';
 import Loading from '@/components/loading';
 import AudioNodePlayer from '@/apps/project/components/canvas/dataNode/audioNode/AudioNodePlayer';
 import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageFlowNodeData } from '../../types';
 
+// Audio is a 1-D asset (duration + waveform). No user-controlled 2-D
+// resize surface — unlike image/video tiles, resizing the bounding box
+// would have no meaningful product semantics. The `Default`/`Min`
+// constants below are used only as container sizing fallbacks for the
+// fixed-size tile.
 const audioFlowDefaultWidth = 300;
 const audioFlowDefaultHeight = 250;
 const audioFlowMinWidth = 180;
@@ -28,12 +33,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, data, selected, width, height }) =
       <div className='absolute -translate-y-full left-0 right-0 -top-0 overflow-hidden'>
         <NodeHeader title={title} resolutionText={resolutionText} editable onTitleChange={(value) => updateNodeData(id, { name: value })} />
       </div>
-      <NodeResizer
-        isVisible={selected}
-        keepAspectRatio
-        minWidth={audioFlowMinWidth}
-        minHeight={audioFlowMinHeight}
-      />
       <div
         className='relative flex h-full min-h-0 flex-col bg-background-default-base outline outline-2 pointer-events-auto'
         style={{ outlineColor: selected ? 'var(--color-border-utilities-selected)' : 'transparent' }}
