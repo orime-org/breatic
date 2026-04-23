@@ -142,10 +142,11 @@ export interface MixedEditorDataContextValue {
    */
   setNodeDraggable: (nodeId: string, draggable: boolean | null) => void;
   /**
-   * Set per-node `zIndex` locally. Each client maintains its own
-   * stacking order; z changes never replicate to collaborators.
+   * Set per-node `zIndex` locally, or clear the overlay entry with
+   * `null`. Each client maintains its own stacking order; z changes
+   * never replicate to collaborators.
    */
-  setNodeZIndex: (nodeId: string, zIndex: number) => void;
+  setNodeZIndex: (nodeId: string, zIndex: number | null) => void;
   /**
    * Current maximum `zIndex` across merged nodes (Yjs base + pending +
    * overlay), or `0` if no node has one. Used by new-node paths to
@@ -282,9 +283,21 @@ export function MixedEditorDataProvider({
     });
   }, []);
 
-  const setNodeZIndex = useCallback((nodeId: string, zIndex: number) => {
+  const setNodeZIndex = useCallback((nodeId: string, zIndex: number | null) => {
     setOverlay((prev) => {
       const existing = prev.get(nodeId);
+      if (zIndex == null) {
+        if (existing?.zIndex === undefined) return prev;
+        const next = new Map(prev);
+        const { zIndex: _drop, ...rest } = existing ?? {};
+        void _drop;
+        if (Object.keys(rest).length === 0) {
+          next.delete(nodeId);
+        } else {
+          next.set(nodeId, rest);
+        }
+        return next;
+      }
       if (existing?.zIndex === zIndex) return prev;
       const next = new Map(prev);
       next.set(nodeId, { ...existing, zIndex });

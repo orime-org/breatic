@@ -402,11 +402,10 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
   const imageContent = nodeData.content ?? legacySrc ?? '';
   /** Pixel tools (inpaint, crop, …) only apply when the tile has image content. */
   const canUseRasterToolbars = Boolean(imageContent);
-  const { nodes, hostNodeId } = useMixedEditorData();
+  const { nodes, hostNodeId, setNodeDraggable } = useMixedEditorData();
   const {
     updateNodeData,
     updateNode,
-    setNodeDraggable,
     replaceNodeWithFile,
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
