@@ -4,7 +4,8 @@ import { Button } from '@/components/base/button';
 import { Icon } from '@/components/base/icon';
 import Divider from '@/components/base/divider';
 import Tooltip from '@/components/base/tooltip';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import type { ImageEditorPickState, ImageFlowNodeData } from '../../../types';
 import PlaybackPanel from '../playback/PlaybackPanel';
 import EraseTrackingPanel, { type EraseTrackingPhase, type EraseTrackingSegment } from './EraseTrackingPanel';
@@ -64,7 +65,8 @@ const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
   onClose,
   onSend,
 }) => {
-  const { updateNode, onNodesChange, nodes } = useMixedEditorStore();
+  const { nodes } = useMixedEditorData();
+  const { updateNode, onNodesChange } = useMixedEditorActions();
   const [timelineZoom, setTimelineZoom] = useState(50);
 
   /** Enter video erase pick mode (selection/circle/rectangle all share the same pick context). */

@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef, useImperativeHandle, forwardRef, us
 import { useTranslation } from 'react-i18next';
 import { message } from '@/components/base/message';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import type { ApiResponse } from '@breatic/shared';
 import type { WorkspaceProject } from '../types';
 import { projectsApi } from '@/apis';
 import { Icon } from '@/components/base/icon';
@@ -16,14 +15,6 @@ export interface RecentProjectsRef {
 }
 
 const PAGE_SIZE = 40;
-
-/** Axios still types `request()` as `AxiosResponse<Body>` while the interceptor returns `Body`; normalize to `Body.data`. */
-function unwrapPayload<T>(body: unknown): T | undefined {
-  if (body && typeof body === 'object' && 'data' in body) {
-    return (body as ApiResponse<T>).data;
-  }
-  return undefined;
-}
 
 /** Format an ISO timestamp as a short localized string for the card footer. */
 function formatUpdateTime(value: string | Date): string {
@@ -63,7 +54,11 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
     try {
       const offset = isInit ? 0 : offsetRef.current;
       const res = await projectsApi.list({ limit: PAGE_SIZE, offset });
-      const records = unwrapPayload<WorkspaceProject[]>(res.data) ?? [];
+      // `res.data` is already the response payload because `request.ts`'s
+      // interceptor returns `response.data` (unwrapping the Axios envelope
+      // at runtime). A second unwrap step here returns undefined for
+      // arrays / primitive-shaped payloads and silently blanks the list.
+      const records = res.data ?? [];
 
       if (isInit) {
         setProjectList([...staticProjects, ...records]);
@@ -136,7 +131,7 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
   const copyProject = async (item: WorkspaceProject) => {
     try {
       const res = await projectsApi.duplicate(item.id);
-      const created = unwrapPayload<WorkspaceProject>(res.data);
+      const created = res.data;
       if (!created) {
         message.error(t('workspace.copy_failed'));
         return;
@@ -160,7 +155,7 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
 
     try {
       const res = await projectsApi.update(item.id, { name: trimmed });
-      const updated = unwrapPayload<WorkspaceProject>(res.data);
+      const updated = res.data;
       if (updated) {
         setProjectList((prev) => prev.map((p) => (p.id === item.id ? updated : p)));
       }
@@ -234,7 +229,7 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
 
     try {
       const res = await projectsApi.create({ name: trimmed });
-      const created = unwrapPayload<WorkspaceProject>(res.data);
+      const created = res.data;
       if (!created) {
         message.error(t('workspace.create_failed'));
         return;

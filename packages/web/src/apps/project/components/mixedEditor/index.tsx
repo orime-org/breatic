@@ -13,16 +13,9 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
-import { useYjsStore } from '@/hooks/useYjsProjectStore';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
-// import { removeToken } from '@/utils/token';
-// import { useNavigate } from 'react-router-dom';
-import {
-  resetMixedEditor,
-  resetMixedEditorNodes,
-  resetMixedEditorEdges,
-} from '@/store/modules/mixedEditor';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
+import { useMixedEditorUI } from '@/hooks/useMixedEditorUI';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
@@ -76,7 +69,7 @@ import type { MediaResourceListItem } from './ui/MediaResourceListPanel';
 /** Default tile size when placing a resource onto the image editor flow (see `ImageNode` defaults). */
 const imageEditorPlaceNodeWidth = 260;
 const imageEditorPlaceNodeHeight = 160;
-/** Match `useMixedEditorStore` defaults for pasted / side-panel audio tiles. */
+/** Match `useMixedEditorActions` defaults for pasted / side-panel audio tiles. */
 const audioEditorPlaceNodeWidth = 300;
 const audioEditorPlaceNodeHeight = 250;
 
@@ -217,7 +210,6 @@ const MixedEditorInner: React.FC<MixedEditorInnerProps> = ({ nodeId, hotkeysDisa
   const [pendingVideoQuickAction, setPendingVideoQuickAction] = useState<VideoQuickActionPlacementType | null>(null);
   const [stitchEditingNodeId, setStitchEditingNodeId] = useState<string | null>(null);
   const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
-  const [disableYjsAfterAuthFailed, setDisableYjsAfterAuthFailed] = useState(false);
   const dispatch = useDispatch();
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
   const { workflowId } = useCanvasUI();
@@ -229,35 +221,32 @@ const MixedEditorInner: React.FC<MixedEditorInnerProps> = ({ nodeId, hotkeysDisa
     projectCanvasTargetNodeId,
   );
 
-  /** Clears local slice when there is no workflowId; with workflowId the main Yjs doc repopulates—no reset here. */
-  useEffect(() => {
-    if (workflowId) return;
-    dispatch(resetMixedEditorNodes());
-    dispatch(resetMixedEditorEdges());
-    dispatch(resetMixedEditor());
-    return () => {
-      dispatch(resetMixedEditorNodes());
-      dispatch(resetMixedEditorEdges());
-      dispatch(resetMixedEditor());
-    };
-  }, [dispatch, workflowId]);
-
+  // Data read — comes from MixedEditorDataProvider (installed in
+  // apps/project/index.tsx at project level). Nodes live in the
+  // per-node Yjs editor doc, observed into React state via context.
+  const { nodes, edges, loading: yjsLoading } = useMixedEditorData();
   const {
-    nodes,
-    edges,
     setNodes,
-    activeTool,
-    expandViewportLocked,
-    setActiveTool,
     onNodesChange,
     onEdgesChange,
     updateNode,
     importImagesFromFiles,
     importVideosFromFiles,
     importAudiosFromFiles,
+    undo: yjsUndo,
+    redo: yjsRedo,
+    canUndo: yjsCanUndo,
+    canRedo: yjsCanRedo,
+  } = useMixedEditorActions();
+  const {
+    activeTool,
+    setActiveTool,
+    expandViewportLocked,
     favoriteAssets,
     toggleFavoriteAsset,
-  } = useMixedEditorStore();
+  } = useMixedEditorUI();
+  /** `true` when this editor's Yjs doc has completed its initial sync. */
+  const yjsEnabled = !yjsLoading;
   const flowInteractionRootRef = useRef<HTMLDivElement>(null);
   const { getIntersectingNodes, getNodes, screenToFlowPosition, getZoom } = useReactFlow();
 
@@ -1007,24 +996,10 @@ const MixedEditorInner: React.FC<MixedEditorInnerProps> = ({ nodeId, hotkeysDisa
     }
   };
 
-  const { authInfo: editorAuthInfo } = useUserCenterStore();
-  // const editorNavigate = useNavigate();
-  const editorToken = editorAuthInfo?.state?.token ?? '';
-  useEffect(() => {
-    setDisableYjsAfterAuthFailed(false);
-  }, [editorToken, nodeId]);
-
-  const { yjsUndo, yjsRedo, yjsCanUndo, yjsCanRedo, yjsEnabled, yjsLoading } = useYjsStore({
-    id: nodeId,
-    token: editorToken,
-    enabled: !!nodeId && !!editorToken && !disableYjsAfterAuthFailed,
-    onAuthFailed: useCallback((reason: string) => {
-      console.warn('[yjs:imageEditor] Authentication failed:', reason);
-      setDisableYjsAfterAuthFailed(true);
-      // removeToken();
-      // editorNavigate('/login', { replace: true });
-    }, []),
-  });
+  // Yjs connection, auth, and undo/redo are owned by the
+  // MixedEditorDataProvider installed in apps/project/index.tsx —
+  // destructured above via useMixedEditorData / useMixedEditorActions.
+  // Nothing else to wire here.
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -1320,7 +1295,7 @@ const MixedEditorInner: React.FC<MixedEditorInnerProps> = ({ nodeId, hotkeysDisa
         </div>
       )}
 
-      {yjsLoading && !disableYjsAfterAuthFailed && (
+      {yjsLoading && (
         <div className='absolute inset-0 z-30'>
           <Loading inline width='100%' height='100%' text='Loading...' />
         </div>

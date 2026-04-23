@@ -13,7 +13,9 @@ import { nanoid } from 'nanoid';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/apps/project/components/canvas/common/NodeSkeleton';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import { useTranslation } from 'react-i18next';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
+import { useMixedEditorUI } from '@/hooks/useMixedEditorUI';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
@@ -400,8 +402,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
   const imageContent = nodeData.content ?? legacySrc ?? '';
   /** Pixel tools (inpaint, crop, …) only apply when the tile has image content. */
   const canUseRasterToolbars = Boolean(imageContent);
+  const { nodes, hostNodeId } = useMixedEditorData();
   const {
-    nodes,
     updateNodeData,
     updateNode,
     setNodeDraggable,
@@ -409,8 +411,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
-    setExpandViewportLock,
-  } = useMixedEditorStore();
+  } = useMixedEditorActions();
+  const { setExpandViewportLock } = useMixedEditorUI();
   const {
     nodes: projectCanvasNodes,
   } = useCanvasData();
@@ -418,11 +420,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     updateNode: updateProjectCanvasNode,
     addNode: addProjectCanvasNode,
   } = useCanvasActions();
-  const hasProjectCanvasImageSelection = useMemo(
-    () =>
-      projectCanvasNodes.some((n) => n.selected && n.type === canvasWorkflowImageNodeType),
-    [projectCanvasNodes],
-  );
   const quickEditPickPendingListForThis = nodes.reduce<
     NonNullable<NonNullable<ImageFlowNodeData['pickState']>['pending']>[]
   >((acc, n) => {
@@ -1043,23 +1040,28 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     })();
   }, [addProjectCanvasNode, height, imageContent, nodeData, projectCanvasNodes, width]);
 
+  /**
+   * Apply the tile's content back to the main-canvas host node that
+   * opened this editor (never to a sibling host). Target is fixed
+   * from `hostNodeId` on the Data Context — it was set at mount and
+   * cannot be hijacked by whatever the user happened to select on
+   * the main canvas after the editor opened.
+   *
+   * Repeated clicks are allowed (overwrite-latest semantics); each
+   * click creates one undo entry on the main canvas stack.
+   */
   const handleAddToNodeClick = () => {
-    if (!imageContent || !hasProjectCanvasImageSelection) return;
-    const targets = projectCanvasNodes.filter(
-      (n) => n.selected && n.type === canvasWorkflowImageNodeType,
-    );
+    if (!imageContent || !hostNodeId) return;
     const sourceName = getTrimmedImageFlowNodeName(nodeData);
-    for (const target of targets) {
-      updateProjectCanvasNode(target.id, {
-        data: {
-          content: imageContent,
-          name: sourceName,
-          state: 'idle',
-          nodeSelectedResultData: null,
-          pickState: null,
-        } as Partial<CanvasWorkflowNodeData>,
-      });
-    }
+    updateProjectCanvasNode(hostNodeId, {
+      data: {
+        content: imageContent,
+        name: sourceName,
+        state: 'idle',
+        nodeSelectedResultData: null,
+        pickState: null,
+      } as Partial<CanvasWorkflowNodeData>,
+    });
   };
 
   /** Expand frame may exceed the measured node height; NodeToolbar offset is in screen pixels so canvas zoom must be factored in */
@@ -1104,7 +1106,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
           onAddToNodeClick={handleAddToNodeClick}
           onCreateNewNodeClick={handleCreateNewCanvasImageNode}
           imageSrc={imageContent}
-          disableAddToNode={!imageContent || !hasProjectCanvasImageSelection}
+          disableAddToNode={!imageContent || !hostNodeId}
           disableCreateNewNode={!imageContent}
           disableDownload={!imageContent}
         />

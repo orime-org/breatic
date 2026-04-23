@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { NodeResizer, type NodeProps, useStore } from '@xyflow/react';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 
 const defaultGroupBackgroundColor = 'rgba(12, 12, 13, 0.1)';
 const defaultGroupBgRgba = 'rgba(34, 41, 51, 0.8)';
@@ -30,7 +30,7 @@ const toRgba08 = (color: string): string => {
 };
 
 const GroupNode: React.FC<NodeProps> = ({ id, selected, data }) => {
-  const { updateNode } = useMixedEditorStore();
+  const { updateNode } = useMixedEditorActions();
   const node = useStore((state) => state.nodes.find((n) => n.id === id));
   const rawBg = (data?.backgroundColor as string) || defaultGroupBackgroundColor;
   const backgroundColor = toRgba08(rawBg);

@@ -5,7 +5,8 @@ import Loading from '@/components/loading';
 import { message } from '@/components/base/message';
 import { Icon } from '@/components/base/icon';
 import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
@@ -243,6 +244,7 @@ function shouldShowVideoFlowToolbars(params: {
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
   const { setCenter, getZoom } = useReactFlow();
+  const { nodes, hostNodeId } = useMixedEditorData();
   const {
     createCutVideoResultNodesRight,
     createVideoPlaceholderNodeRight,
@@ -250,8 +252,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     removeNode,
     updateNode,
     updateNodeData,
-    nodes,
-  } = useMixedEditorStore();
+  } = useMixedEditorActions();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
   const nodeData = data as ImageFlowNodeData | undefined;
@@ -594,11 +595,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const selectedVideoCount = useMemo(
     () => nodes.filter((n: Node) => n.selected && n.type === imageEditorVideoNodeType).length,
     [nodes],
-  );
-
-  const hasProjectCanvasVideoSelection = useMemo(
-    () => projectCanvasNodes.some((n) => n.selected && n.type === canvasWorkflowVideoNodeType),
-    [projectCanvasNodes],
   );
 
   const showToolbars = shouldShowVideoFlowToolbars({
@@ -1397,23 +1393,25 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     })();
   }, [addProjectCanvasNode, currentHeight, currentWidth, nodeData, projectCanvasNodes, title, videoContent]);
 
+  /**
+   * Apply this tile's video content back to the main-canvas host
+   * node that opened the editor. Target is fixed from `hostNodeId`
+   * on the Data Context — never any other main-canvas node, even if
+   * the user selected a different one on the main canvas after the
+   * editor opened.
+   */
   const handleAddToNodeClick = () => {
-    if (!videoContent || !hasProjectCanvasVideoSelection) return;
-    const targets = projectCanvasNodes.filter(
-      (n) => n.selected && n.type === canvasWorkflowVideoNodeType,
-    );
+    if (!videoContent || !hostNodeId) return;
     const sourceName = getTrimmedVideoFlowNodeName(nodeData ?? { name: title, content: '', state: 'idle', nodeRuntimeData: {} });
-    for (const target of targets) {
-      updateProjectCanvasNode(target.id, {
-        data: {
-          content: videoContent,
-          name: sourceName,
-          state: 'idle',
-          nodeSelectedResultData: null,
-          pickState: null,
-        } as Partial<CanvasWorkflowNodeData>,
-      });
-    }
+    updateProjectCanvasNode(hostNodeId, {
+      data: {
+        content: videoContent,
+        name: sourceName,
+        state: 'idle',
+        nodeSelectedResultData: null,
+        pickState: null,
+      } as Partial<CanvasWorkflowNodeData>,
+    });
   };
 
   const zoom = getZoom();
@@ -1463,7 +1461,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
             videoSrc={videoContent}
             onAddToNodeClick={handleAddToNodeClick}
             onCreateNewNodeClick={handleCreateNewCanvasVideoNode}
-            disableAddToNode={!videoContent || !hasProjectCanvasVideoSelection}
+            disableAddToNode={!videoContent || !hostNodeId}
             disableCreateNewNode={!videoContent}
             disableDownload={!videoContent}
           />

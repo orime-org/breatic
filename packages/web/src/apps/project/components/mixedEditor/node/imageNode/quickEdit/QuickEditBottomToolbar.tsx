@@ -12,7 +12,8 @@ import AgentComposerTabs, {
   type AgentComposerUpstreamItem,
   type AgentComposerUploadItem,
 } from '@/components/base/agent/AgentComposerTabs';
-import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
+import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
+import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import type { ImageFlowNodeData } from '../../../types';
 import type { ImageEditorPickResultBox, ImageEditorPickState } from '../../../types';
 import store from '@/store';
@@ -72,7 +73,8 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
   onComposerLayoutClick,
   topSlot,
 }) => {
-  const { nodes, edges, updateNode, onNodesChange, onEdgesChange, onConnect } = useMixedEditorStore();
+  const { nodes, edges } = useMixedEditorData();
+  const { updateNode, onNodesChange, onEdgesChange, onConnect } = useMixedEditorActions();
   const inputRef = useRef<AgentComposerInputHandle>(null);
   const [inputEmpty, setInputEmpty] = useState(true);
   const processedPickIdsRef = useRef(new Set<string>());
