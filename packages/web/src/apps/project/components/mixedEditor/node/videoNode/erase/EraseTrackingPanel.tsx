@@ -20,11 +20,10 @@ export type EraseTrackingSegment = {
 };
 
 /** Match `PlaybackTimelineSection` so erase confidence strip shares the same horizontal scale as the waveform. */
-const PLAYHEAD_EDGE_INSET_PX = 6;
 const TIMELINE_ZOOM_MIN_PX_PER_SEC = 4;
 const TIMELINE_ZOOM_MAX_PX_PER_SEC = 32;
-const LOST_PATTERN_ICON_SIZE_PX = 14;
-const LOST_PATTERN_ICON_GAP_PX = 4;
+const LOST_PATTERN_ICON_SIZE_PX = 12;
+const LOST_PATTERN_ICON_GAP_PX = 3;
 
 const timelineScrollbarClass = 'overflow-x-auto overflow-y-visible pb-0.5 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]';
 
@@ -45,6 +44,11 @@ const legendItems: Array<{ key: EraseTrackingStatus; dotClass: string; label: st
   { key: 'unclear', dotClass: 'bg-[#E8A317]', label: 'Unclear Tracking', barClass: 'bg-[#E8A317]' },
   { key: 'lost', dotClass: 'bg-[#E5484D]', label: 'Tracking Lost', barClass: 'bg-[#E5484D]' },
 ];
+const statusColorMap: Record<EraseTrackingStatus, string> = {
+  confirm: '#2FB344',
+  unclear: '#E8A317',
+  lost: '#E5484D',
+};
 
 const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
   phase = 'idle',
@@ -133,39 +137,61 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
     if (!showTrackingBar) return 0;
     return Math.max(660, Math.ceil(safeDuration * pixelsPerSecond));
   }, [pixelsPerSecond, safeDuration, showTrackingBar]);
-  const timelineOuterMinWidthPx = showTrackingBar ? timelineWidthPx + PLAYHEAD_EDGE_INSET_PX * 2 : 0;
+  const timelineOuterMinWidthPx = showTrackingBar ? timelineWidthPx : 0;
 
-  let statusText = 'Select an element for tracking';
-  if (phase === 'tracking') {
-    if (!showTrackingBar) {
-      statusText = 'Tracking...';
-    } else if (currentStatus === 'lost') {
-      statusText = 'Tracking Lost';
-    } else if (currentStatus === 'unclear') {
-      statusText = '';
-    } else {
-      statusText = '';
-    }
+  let trackingStatusText = 'Select an element for tracking';
+  if (phase === 'tracking' && !showTrackingBar) {
+    trackingStatusText = 'Tracking...';
+  } else if (showTrackingBar && currentStatus === 'lost') {
+    trackingStatusText = 'Tracking Lost';
+  } else if (showTrackingBar) {
+    trackingStatusText = '';
   }
+  const neutralStatusText = trackingStatusText === 'Select an element for tracking' || trackingStatusText === 'Tracking...';
 
-  const renderSegmentThumbRow = () =>
-    normalizedSegments.map((segment, idx) => {
-      const left = safeDuration > 0 ? Math.min(100, Math.max(0, (segment.startSec / safeDuration) * 100)) : 0;
-      const right = safeDuration > 0 ? Math.min(100, Math.max(0, (segment.endSec / safeDuration) * 100)) : 0;
-      const width = Math.max(0, right - left);
-      const item = legendItems.find((l) => l.key === segment.status);
-      const segmentWidthPx = (timelineWidthPx * width) / 100;
-      const lostTileUnitPx = LOST_PATTERN_ICON_SIZE_PX + LOST_PATTERN_ICON_GAP_PX;
-      const lostTileCount = Math.max(1, Math.ceil(segmentWidthPx / lostTileUnitPx) + 2);
+  const trackingStrip = useMemo(() => {
+    if (!showTrackingBar) return null;
+    return normalizedSegments.map((segment, idx) => {
+      const safeStart = Math.min(safeDuration, Math.max(0, segment.startSec));
+      const safeEnd = Math.min(safeDuration, Math.max(0, segment.endSec));
+      if (safeEnd <= safeStart) return null;
+      const leftPct = (safeStart / safeDuration) * 100;
+      const widthPct = ((safeEnd - safeStart) / safeDuration) * 100;
       return (
         <div
-          key={`thumb-segment-${idx}-${segment.status}-${segment.startSec}-${segment.endSec}`}
+          key={`${segment.status}-${segment.startSec}-${segment.endSec}-${idx}`}
+          className='absolute top-0 h-full'
+          style={{
+            left: `${leftPct}%`,
+            width: `${widthPct}%`,
+            backgroundColor: statusColorMap[segment.status],
+          }}
+        />
+      );
+    });
+  }, [normalizedSegments, safeDuration, showTrackingBar]);
+
+  const trackingThumbStrip = useMemo(() => {
+    if (!showTrackingBar) return null;
+    return normalizedSegments.map((segment, idx) => {
+      const safeStart = Math.min(safeDuration, Math.max(0, segment.startSec));
+      const safeEnd = Math.min(safeDuration, Math.max(0, segment.endSec));
+      if (safeEnd <= safeStart) return null;
+      const leftPct = (safeStart / safeDuration) * 100;
+      const widthPct = ((safeEnd - safeStart) / safeDuration) * 100;
+      const segmentWidthPx = (timelineWidthPx * widthPct) / 100;
+      const lostTileUnitPx = LOST_PATTERN_ICON_SIZE_PX + LOST_PATTERN_ICON_GAP_PX;
+      const lostTileCount = Math.max(1, Math.ceil(segmentWidthPx / lostTileUnitPx));
+
+      return (
+        <div
+          key={`thumb-${segment.status}-${segment.startSec}-${segment.endSec}-${idx}`}
           className='absolute inset-y-0 overflow-hidden rounded-[2px]'
-          style={{ left: `${left}%`, width: `${width}%` }}
+          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
         >
           {segment.status === 'lost' ? (
             <div className='relative h-full w-full bg-[#EC221F]/50'>
-              <div className='absolute inset-0 flex flex-nowrap items-center gap-1 overflow-hidden px-1 opacity-90 whitespace-nowrap leading-none'>
+              <div className='absolute inset-0 flex flex-nowrap items-center gap-[3px] overflow-hidden px-1 whitespace-nowrap'>
                 {Array.from({ length: lostTileCount }).map((_, iconIdx) => (
                   <Icon
                     key={`lost-tile-${idx}-${iconIdx}`}
@@ -181,7 +207,7 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
           ) : (
             <>
               <div
-                className='h-full w-full rounded-[2px] bg-[#A5A5A5] opacity-95'
+                className='h-full w-full bg-[#A5A5A5]'
                 style={
                   firstFrameUrl
                     ? {
@@ -192,52 +218,16 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
                     : undefined
                 }
               />
-              <div className={cn('absolute inset-0 rounded-[2px] opacity-[0.24]', item?.barClass ?? 'bg-[#2FB344]')} />
+              <div
+                className='absolute inset-0 opacity-[0.24]'
+                style={{ backgroundColor: statusColorMap[segment.status] }}
+              />
             </>
           )}
         </div>
       );
     });
-
-  const renderSegmentStatusRow = () =>
-    normalizedSegments.map((segment, idx) => {
-      const left = safeDuration > 0 ? Math.min(100, Math.max(0, (segment.startSec / safeDuration) * 100)) : 0;
-      const right = safeDuration > 0 ? Math.min(100, Math.max(0, (segment.endSec / safeDuration) * 100)) : 0;
-      const width = Math.max(0, right - left);
-      const item = legendItems.find((l) => l.key === segment.status);
-      return (
-        <div
-          key={`status-${segment.status}-${idx}-${segment.startSec}-${segment.endSec}`}
-          className={cn('absolute top-0 h-full', item?.barClass ?? 'bg-[#2FB344]')}
-          style={{ left: `${left}%`, width: `${width}%` }}
-        />
-      );
-    });
-
-  const trackInner = (
-    <div
-      className='relative flex min-h-0 w-full flex-col gap-[2px]'
-      style={{
-        marginLeft: showTrackingBar ? PLAYHEAD_EDGE_INSET_PX : 0,
-        marginRight: showTrackingBar ? PLAYHEAD_EDGE_INSET_PX : 0,
-        width: showTrackingBar ? `calc(100% - ${PLAYHEAD_EDGE_INSET_PX * 2}px)` : '100%',
-      }}
-    >
-      <div className='relative h-[28px] w-full shrink-0 overflow-hidden rounded-[2px] bg-background-default-secondary' aria-hidden>
-        {showTrackingBar ? <div className='relative h-full w-full'>{renderSegmentThumbRow()}</div> : (
-          <div className='h-full w-full bg-background-default-secondary' />
-        )}
-      </div>
-      <div className='relative h-[12px] w-full shrink-0 overflow-hidden rounded-full bg-background-default-secondary' role='status'>
-        {showTrackingBar && renderSegmentStatusRow()}
-        {statusText ? (
-          <div className='absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none text-text-default-tertiary'>
-            {statusText}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
+  }, [firstFrameUrl, normalizedSegments, safeDuration, showTrackingBar, timelineWidthPx]);
 
   return (
     <div
@@ -249,16 +239,46 @@ const EraseTrackingPanel: React.FC<EraseTrackingPanelProps> = ({
       onPointerDown={(e) => e.stopPropagation()}
     >
       {showTrackingBar ? (
-        <div ref={scrollRef} className={cn('mx-[2px] mt-[2px] min-w-0', timelineScrollbarClass)}>
+        <div ref={scrollRef} className={timelineScrollbarClass}>
           <div
             className='relative min-w-full overflow-visible'
             style={{ width: `max(100%, ${timelineOuterMinWidthPx}px)` }}
           >
-            {trackInner}
+            <div className='relative flex min-h-0 w-full flex-col gap-1'>
+              <div className='relative h-[26px] overflow-hidden rounded-[2px] bg-[#E9E9E9]'>
+                {trackingThumbStrip}
+              </div>
+              <div className='relative mb-1 h-[10px] overflow-hidden rounded-full bg-[#E9E9E9]'>
+                {trackingStrip}
+                {trackingStatusText ? (
+                  <div className={cn(
+                    'absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none',
+                    neutralStatusText ? 'text-text-default-tertiary' : 'text-white',
+                  )}>
+                    {trackingStatusText}
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       ) : (
-        <div className='mx-[2px] mt-[2px] min-w-0'>{trackInner}</div>
+        <div className='min-w-0'>
+          <div className='relative h-[26px] overflow-hidden rounded-[2px] bg-[#E9E9E9]'>
+            {trackingThumbStrip}
+          </div>
+          <div className='relative mt-1 h-[10px] overflow-hidden rounded-full bg-[#E9E9E9]'>
+            {trackingStrip}
+            {trackingStatusText ? (
+              <div className={cn(
+                'absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none',
+                neutralStatusText ? 'text-text-default-tertiary' : 'text-white',
+              )}>
+                {trackingStatusText}
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
       <div className='flex flex-wrap items-center gap-x-5 gap-y-2 bg-white p-2 text-[12px] leading-none'>
         <span className='font-semibold text-text-default-base'>Tracking Confidence:</span>

@@ -360,7 +360,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
     <div
       ref={scrollRef}
       className={cn(
-        'overflow-x-scroll overflow-y-visible pb-1 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]',
+        'cursor-default overflow-x-scroll overflow-y-visible pb-1 [scrollbar-width:auto] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:h-[8px] [&::-webkit-scrollbar]:cursor-default [&::-webkit-scrollbar-thumb]:cursor-default [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-[#BFBFBF] [&::-webkit-scrollbar-track]:rounded-[8px] [&::-webkit-scrollbar-track]:bg-[#E6E6E6]',
         hideFilmstripAndWaveform ? 'pt-2' : 'pt-4',
       )}
     >

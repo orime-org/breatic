@@ -118,7 +118,7 @@ const PlaybackPanel: React.FC<PlaybackPanelProps> = ({
   return (
     <div
       ref={rootRef}
-      className='breatic-video-playback-panel nodrag pointer-events-auto box-border flex w-[680px] shrink-0 flex-col rounded-[8px] border border-border-default-base bg-[#E8E8E8] p-[6px] shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)] [&_a]:cursor-default [&_a]:!text-text-default-secondary [&_a]:no-underline'
+      className='breatic-video-playback-panel nodrag pointer-events-auto box-border flex w-[680px] shrink-0 cursor-default flex-col rounded-[8px] border border-border-default-base bg-[#E8E8E8] p-[6px] shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)] [&_a]:cursor-default [&_a]:!text-text-default-secondary [&_a]:no-underline [&_button]:cursor-pointer [&_[role="slider"]]:cursor-e-resize'
       onMouseDown={(e) => e.stopPropagation()}
     >
       <PlaybackToolbar

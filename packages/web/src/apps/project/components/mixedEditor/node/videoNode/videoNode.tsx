@@ -239,7 +239,7 @@ function shouldShowVideoFlowToolbars(params: {
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
   const { setCenter, getZoom } = useReactFlow();
-  const { nodes } = useMixedEditorData();
+  const { nodes, hostNodeId } = useMixedEditorData();
   const {
     createCutVideoResultNodesRight,
     createVideoPlaceholderNodeRight,
@@ -579,11 +579,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const selectedVideoCount = useMemo(
     () => nodes.filter((n: Node) => n.selected && n.type === imageEditorVideoNodeType).length,
     [nodes],
-  );
-
-  const hasProjectCanvasVideoSelection = useMemo(
-    () => projectCanvasNodes.some((n) => n.selected && n.type === canvasWorkflowVideoNodeType),
-    [projectCanvasNodes],
   );
 
   const showToolbars = shouldShowVideoFlowToolbars({
@@ -1352,23 +1347,25 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     })();
   }, [addProjectCanvasNode, currentHeight, currentWidth, nodeData, projectCanvasNodes, title, videoContent]);
 
+  /**
+   * Apply this tile's video content back to the main-canvas host
+   * node that opened the editor. Target is fixed from `hostNodeId`
+   * on the Data Context — never any other main-canvas node, even if
+   * the user selected a different one on the main canvas after the
+   * editor opened.
+   */
   const handleAddToNodeClick = () => {
-    if (!videoContent || !hasProjectCanvasVideoSelection) return;
-    const targets = projectCanvasNodes.filter(
-      (n) => n.selected && n.type === canvasWorkflowVideoNodeType,
-    );
+    if (!videoContent || !hostNodeId) return;
     const sourceName = getTrimmedVideoFlowNodeName(nodeData ?? { name: title, content: '', state: 'idle', nodeRuntimeData: {} });
-    for (const target of targets) {
-      updateProjectCanvasNode(target.id, {
-        data: {
-          content: videoContent,
-          name: sourceName,
-          state: 'idle',
-          nodeSelectedResultData: null,
-          pickState: null,
-        } as Partial<CanvasWorkflowNodeData>,
-      });
-    }
+    updateProjectCanvasNode(hostNodeId, {
+      data: {
+        content: videoContent,
+        name: sourceName,
+        state: 'idle',
+        nodeSelectedResultData: null,
+        pickState: null,
+      } as Partial<CanvasWorkflowNodeData>,
+    });
   };
 
   const zoom = getZoom();
@@ -1418,7 +1415,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
             videoSrc={videoContent}
             onAddToNodeClick={handleAddToNodeClick}
             onCreateNewNodeClick={handleCreateNewCanvasVideoNode}
-            disableAddToNode={!videoContent || !hasProjectCanvasVideoSelection}
+            disableAddToNode={!videoContent || !hostNodeId}
             disableCreateNewNode={!videoContent}
             disableDownload={!videoContent}
           />
@@ -1721,7 +1718,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                     onClick={() => handleLipSyncFaceSelect(face.id)}
                   >
                     <span
-                      className={`absolute left-0 -top-5 inline-flex items-center rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
+                      className={`absolute left-1/2 top-full z-[1] mt-1 inline-flex -translate-x-1/2 items-center whitespace-nowrap rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
                         selectedFace ? 'bg-[#7F88FF] text-white' : 'bg-black/55 text-white'
                       }`}
                     >

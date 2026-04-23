@@ -27,7 +27,8 @@ type QuickEditBottomToolbarProps = {
   topSlot?: React.ReactNode;
 };
 
-const trailingSquareBtnClass = 'flex h-7 w-7 shrink-0 cursor-pointer select-none items-center justify-center rounded-[4px] border border-[var(--color-border-default-base)] bg-background-default-base text-[var(--color-icon-base)] transition-colors hover:bg-[var(--color-background-default-base-hover)] disabled:cursor-not-allowed disabled:opacity-50';
+const trailingSquareBtnClass =
+  'flex h-10 w-10 shrink-0 cursor-pointer select-none items-center justify-center rounded-[6px] border border-[var(--color-border-default-base)] bg-background-default-base text-[var(--color-icon-base)] transition-colors hover:bg-[var(--color-background-default-base-hover)] disabled:cursor-not-allowed disabled:opacity-50';
 const disabledLeftSlotClass = 'inline-flex h-[40px] items-center gap-1.5 rounded-full border border-[#C8C8C8] px-4 text-[12px] font-semibold !text-text-disabled-base cursor-not-allowed bg-[var(--color-background-default-base)]';
 const defaultRecognizedLabel = '山脉';
 
