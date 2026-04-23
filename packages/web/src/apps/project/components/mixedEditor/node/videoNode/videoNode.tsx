@@ -1424,6 +1424,19 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     [currentWidth, sceneExtensionOrigin.x, sceneExtensionSize.w, zoom],
   );
 
+  /**
+   * NodeResizer drag handler — persist new size to Yjs `style.{width,height}`.
+   * Fired on every resize frame AND on release (matches canvas TextNode and
+   * ImageNode). Without this callback the resize visual updates the DOM but
+   * never lands in Yjs, so the node snaps back on the next render.
+   */
+  const handleResize = useCallback(
+    (_: unknown, params: { width: number; height: number }) => {
+      updateNode(id, { style: { width: params.width, height: params.height } });
+    },
+    [id, updateNode],
+  );
+
   return (
     <>
       <FlowNodeToolbar isVisible={showToolbars} position={Position.Top} offset={50} align='center'>
@@ -1701,6 +1714,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
           keepAspectRatio
           minWidth={videoFlowMinWidth}
           minHeight={videoFlowMinHeight}
+          onResize={handleResize}
+          onResizeEnd={handleResize}
         />
         <div
           className='relative flex h-full min-h-0 flex-col bg-background-default-base outline outline-2 pointer-events-auto'
