@@ -446,8 +446,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     h: imageFlowDefaultHeight,
   });
   const [expandOrigin, setExpandOrigin] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const prevDraggableRef = useRef<boolean | undefined>(undefined);
-  const prevEditingModeRef = useRef<EditingMode>(null);
   const [inpaintCanvas, setInpaintCanvas] = useState<Canvas | null>(null);
   const [adjustValue, setAdjustValue] = useState<AdjustValue>(defaultAdjustValue);
   const [enhanceGridSlice, setEnhanceGridSlice] = useState<{ rows: number; cols: number }>(enhanceDefaultGridSlice);
@@ -616,21 +614,20 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     setEditingMode('multiAngle');
   };
 
-  // Editing modes (crop / inpaint / enhance etc.) must be exited via their own exit button; clicking empty space to deselect does not close them
+  // Editing modes (crop / inpaint / enhance etc.) must be exited via
+  // their own exit button; clicking empty space to deselect does not
+  // close them. While in an editing mode we lock this user's drag on
+  // this tile (so pointer gestures route to the mode's overlay, not to
+  // moving the tile). The lock is LOCAL (overlay-only) — collaborators
+  // keep their default drag behavior. Exiting clears the overlay entry
+  // (= ReactFlow default: draggable), so there's no "saved draggable
+  // value" to strand if something goes wrong mid-flight.
   useEffect(() => {
-    const wasEditing = prevEditingModeRef.current !== null;
-    const isNowEditing = editingMode !== null;
-    prevEditingModeRef.current = editingMode;
-
-    if (!isNowEditing && wasEditing) {
-      setNodeDraggable(id, prevDraggableRef.current ?? true);
-      prevDraggableRef.current = undefined;
-    } else if (isNowEditing && !wasEditing) {
-      // Read draggable only once when entering edit mode to avoid adding it to deps and causing extra setNodes calls
-      prevDraggableRef.current = nodeFromStore?.draggable;
+    if (editingMode !== null) {
       setNodeDraggable(id, false);
+      return () => setNodeDraggable(id, null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setNodeDraggable is a stable ref; draggable is only read on the frame when entering edit mode
+    return undefined;
   }, [id, setNodeDraggable, editingMode]);
 
   const exitEditing = () => {

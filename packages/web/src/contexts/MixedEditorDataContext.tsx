@@ -57,10 +57,24 @@ import type { Node, Edge, NodeChange } from '@xyflow/react';
 import type { YjsNodeEditorManager } from '@/utils/yjsNodeEditorManager';
 import { useMixedEditorYjsInternal } from '@/hooks/useMixedEditorYjsInternal';
 
-/** Per-node UI-only overlay merged on top of the Yjs-authoritative node. */
+/**
+ * Per-node UI-only overlay merged on top of the Yjs-authoritative node.
+ *
+ * Each field here is DELIBERATELY not in Yjs:
+ *   - `selected` — one user's focus, not a collaborative cursor.
+ *   - `measured` — ReactFlow's DOM measurement, reflects local viewport.
+ *   - `draggable` — temporary lock while THIS user is in an editing
+ *     mode (Relight / Crop / Inpaint overlay). Letting it escape to
+ *     Yjs would lock the node for every collaborator.
+ *   - `zIndex` — each user is free to bring their own focused tile to
+ *     the top; layer order is not a collaborative contract.
+ *   - `dataOverlay` — any UI-only `data.*` key (e.g. `pickState`).
+ */
 export interface MixedEditorNodeLocalState {
   selected?: boolean;
   measured?: { width: number; height: number };
+  draggable?: boolean;
+  zIndex?: number;
   /** Anything under `data.*` that should NOT replicate via Yjs (pickState, other ephemeral UI). */
   dataOverlay?: Record<string, unknown>;
 }
@@ -121,6 +135,23 @@ export interface MixedEditorDataContextValue {
   setNodeLocalData: (nodeId: string, patch: Record<string, unknown>) => void;
   /** Drop an entire node's overlay (used on node deletion). */
   clearNodeLocalState: (nodeId: string) => void;
+  /**
+   * Toggle per-node `draggable` locally. Consumed by ReactFlow via the
+   * overlay merge. `null`/`undefined` clears the overlay (ReactFlow
+   * default: draggable).
+   */
+  setNodeDraggable: (nodeId: string, draggable: boolean | null) => void;
+  /**
+   * Set per-node `zIndex` locally. Each client maintains its own
+   * stacking order; z changes never replicate to collaborators.
+   */
+  setNodeZIndex: (nodeId: string, zIndex: number) => void;
+  /**
+   * Current maximum `zIndex` across merged nodes (Yjs base + pending +
+   * overlay), or `0` if no node has one. Used by new-node paths to
+   * compute `maxZ + 1` locally without reaching into Yjs.
+   */
+  getMaxZIndex: () => number;
 
   // ── Pending tasks (X pattern for Type A) ──
   /** Register a browser-local pending task — shows a loading tile locally only. */
@@ -228,6 +259,39 @@ export function MixedEditorDataProvider({
     });
   }, []);
 
+  const setNodeDraggable = useCallback((nodeId: string, draggable: boolean | null) => {
+    setOverlay((prev) => {
+      const existing = prev.get(nodeId);
+      const currentDraggable = existing?.draggable;
+      if (draggable == null) {
+        if (currentDraggable === undefined) return prev;
+        const next = new Map(prev);
+        const { draggable: _drop, ...rest } = existing ?? {};
+        void _drop;
+        if (Object.keys(rest).length === 0) {
+          next.delete(nodeId);
+        } else {
+          next.set(nodeId, rest);
+        }
+        return next;
+      }
+      if (currentDraggable === draggable) return prev;
+      const next = new Map(prev);
+      next.set(nodeId, { ...existing, draggable });
+      return next;
+    });
+  }, []);
+
+  const setNodeZIndex = useCallback((nodeId: string, zIndex: number) => {
+    setOverlay((prev) => {
+      const existing = prev.get(nodeId);
+      if (existing?.zIndex === zIndex) return prev;
+      const next = new Map(prev);
+      next.set(nodeId, { ...existing, zIndex });
+      return next;
+    });
+  }, []);
+
   const addPendingTask = useCallback((node: Node) => {
     setPendingTasks((prev) => {
       const next = new Map(prev);
@@ -260,37 +324,43 @@ export function MixedEditorDataProvider({
   const nodes = useMemo(() => {
     const yjsIds = new Set(yjsNodes.map((n) => n.id));
     const result: Node[] = [];
-    for (const n of yjsNodes) {
-      const o = overlay.get(n.id);
-      if (!o) {
-        result.push(n);
-        continue;
-      }
-      const merged: Node = { ...n };
+    const applyOverlay = (base: Node, o: MixedEditorNodeLocalState | undefined): Node => {
+      if (!o) return base;
+      const merged: Node = { ...base };
       if (o.selected != null) merged.selected = o.selected;
       if (o.measured) merged.measured = o.measured;
+      if (o.draggable != null) merged.draggable = o.draggable;
+      if (o.zIndex != null) (merged as Node & { zIndex?: number }).zIndex = o.zIndex;
       if (o.dataOverlay) {
-        merged.data = { ...(n.data ?? {}), ...o.dataOverlay };
+        merged.data = { ...(base.data ?? {}), ...o.dataOverlay };
       }
-      result.push(merged);
+      return merged;
+    };
+    for (const n of yjsNodes) {
+      result.push(applyOverlay(n, overlay.get(n.id)));
     }
     pendingTasks.forEach((entry) => {
       if (yjsIds.has(entry.node.id)) return; // Yjs wins if both present
-      const o = overlay.get(entry.node.id);
-      if (!o) {
-        result.push(entry.node);
-        return;
-      }
-      const merged: Node = { ...entry.node };
-      if (o.selected != null) merged.selected = o.selected;
-      if (o.measured) merged.measured = o.measured;
-      if (o.dataOverlay) {
-        merged.data = { ...(entry.node.data ?? {}), ...o.dataOverlay };
-      }
-      result.push(merged);
+      result.push(applyOverlay(entry.node, overlay.get(entry.node.id)));
     });
     return result;
   }, [yjsNodes, pendingTasks, overlay]);
+
+  // Mirror `nodes` so async callers (action hook's new-node paths)
+  // can snapshot latest merged state without waiting for a re-render.
+  const nodesRef = useRef<Node[]>(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  const getMaxZIndex = useCallback((): number => {
+    let max = 0;
+    for (const n of nodesRef.current) {
+      const z = (n as Node & { zIndex?: number }).zIndex;
+      if (typeof z === 'number' && z > max) max = z;
+    }
+    return max;
+  }, []);
 
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -320,6 +390,9 @@ export function MixedEditorDataProvider({
       applyLocalNodeChanges,
       setNodeLocalData,
       clearNodeLocalState,
+      setNodeDraggable,
+      setNodeZIndex,
+      getMaxZIndex,
       addPendingTask,
       removePendingTask,
       getPendingTask,
@@ -338,6 +411,9 @@ export function MixedEditorDataProvider({
       applyLocalNodeChanges,
       setNodeLocalData,
       clearNodeLocalState,
+      setNodeDraggable,
+      setNodeZIndex,
+      getMaxZIndex,
       addPendingTask,
       removePendingTask,
       getPendingTask,
