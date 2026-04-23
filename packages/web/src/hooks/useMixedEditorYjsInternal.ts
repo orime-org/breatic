@@ -19,13 +19,14 @@
  *         type:     '2002' | '2003' | '2004' | 'group'
  *         position: Y.Map { x, y }
  *         style:    Y.Map { width, height }
- *         zIndex:   number   (optional)
  *         parentId: string   (optional — for group nesting)
  *         extent:   unknown  (optional — ReactFlow extent)
  *         data:     Y.Map    (ImageEditorNodeData)
  *           name:        string
  *           content:     string
- *           state:       'idle' | 'handling' | 'generating'
+ *           state:       'idle' | 'handling'    (never 'localPending' —
+ *                                                 X pattern keeps that
+ *                                                 value local-only)
  *           runType?:    'parameter' | 'sensitive'
  *           handlingBy?: Y.Map { userId, username, heartbeatAt }
  *           nodeRuntimeData?: Y.Map (per-node runtime state)
@@ -63,10 +64,8 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
   const style = nodeMap.get('style') as Y.Map<unknown> | undefined;
   const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
   const type = (nodeMap.get('type') as string) ?? '2002';
-  const zIndex = nodeMap.get('zIndex') as number | undefined;
   const parentId = nodeMap.get('parentId') as string | undefined;
   const extent = nodeMap.get('extent') as Node['extent'] | undefined;
-  const draggable = nodeMap.get('draggable') as boolean | undefined;
 
   const node: Node = {
     id,
@@ -88,12 +87,10 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
       node.style = styleObj;
     }
   }
-  if (typeof zIndex === 'number') {
-    (node as Node & { zIndex?: number }).zIndex = zIndex;
-  }
+  // `zIndex` and `draggable` are overlay-only — NOT read from Yjs here.
+  // Callers see them via MixedEditorDataContext's merge layer.
   if (typeof parentId === 'string') node.parentId = parentId;
   if (extent !== undefined) node.extent = extent;
-  if (typeof draggable === 'boolean') node.draggable = draggable;
 
   return node;
 }

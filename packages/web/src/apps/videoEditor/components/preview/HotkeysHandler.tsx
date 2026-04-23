@@ -204,6 +204,7 @@ const HotkeysHandler: React.FC<HotkeysHandlerProps> = ({
       const state = stateRef.current;
       if (state.selectedClipId.length === 0) return;
 
+      const deletedClips = state.clips.filter((c) => state.selectedClipId.includes(c.id));
       // 批量删除：直接过滤掉所有要删除的 clips
       const remainingClips = state.clips.filter((c) => !state.selectedClipId.includes(c.id));
       state.setClips(remainingClips);
@@ -224,8 +225,24 @@ const HotkeysHandler: React.FC<HotkeysHandlerProps> = ({
         }
       }
 
-      // 清空选中状态
-      state.setSelectedClipId([]);
+      // 自动选中一个“最近”的剩余片段，保持连续编辑体验
+      if (remainingClips.length === 0) {
+        state.setSelectedClipId([]);
+      } else {
+        const anchorTime =
+          deletedClips.length > 0
+            ? Math.min(...deletedClips.map((c) => c.start))
+            : state.currentTime;
+        const nextClip = [...remainingClips]
+          .sort((a, b) => {
+            const distA = Math.abs(a.start - anchorTime);
+            const distB = Math.abs(b.start - anchorTime);
+            if (distA !== distB) return distA - distB;
+            if (a.trackIndex !== b.trackIndex) return a.trackIndex - b.trackIndex;
+            return a.start - b.start;
+          })[0];
+        state.setSelectedClipId(nextClip ? [nextClip.id] : []);
+      }
     });
 
     // Ctrl+Z / Cmd+Z：撤销

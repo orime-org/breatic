@@ -263,6 +263,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   const handleDeleteClip = () => {
     if (selectedClipId.length === 0) return;
 
+    const deletedClips = clips.filter((c: TimelineClip) => selectedClipId.includes(c.id));
     // 批量删除：直接过滤掉所有要删除的 clips
     const remainingClips = clips.filter((c: TimelineClip) => !selectedClipId.includes(c.id));
 
@@ -285,8 +286,24 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       }
     }
 
-    // 从选中列表中移除已删除的 clips，清空选中状态
-    setSelectedClipId([]);
+    // 删除后自动选中一个最近的剩余片段，保持操作连续性
+    if (remainingClips.length === 0) {
+      setSelectedClipId([]);
+    } else {
+      const anchorTime =
+        deletedClips.length > 0
+          ? Math.min(...deletedClips.map((c) => c.start))
+          : currentTime;
+      const nextClip = [...remainingClips]
+        .sort((a, b) => {
+          const distA = Math.abs(a.start - anchorTime);
+          const distB = Math.abs(b.start - anchorTime);
+          if (distA !== distB) return distA - distB;
+          if (a.trackIndex !== b.trackIndex) return a.trackIndex - b.trackIndex;
+          return a.start - b.start;
+        })[0];
+      setSelectedClipId(nextClip ? [nextClip.id] : []);
+    }
   };
 
   const handleUndo = () => {

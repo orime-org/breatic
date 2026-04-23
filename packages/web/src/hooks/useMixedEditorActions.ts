@@ -1,5 +1,5 @@
 /**
- * Mixed editor write actions + handling lifecycle (X pattern).
+ * Mixed editor write actions + local-pending lifecycle (X pattern).
  *
  * Mirrors the main canvas' {@link useCanvasActions} pattern:
  *   - All writes go directly to Yjs (`doc.transact(fn, origin)`)
@@ -8,33 +8,40 @@
  *   - Undo manager is attached lazily after Hocuspocus syncs so the
  *     initial-state replay never lands in the stack
  *
- * ## Handling lifecycle (X pattern)
+ * ## State taxonomy (aligned with main canvas + X pattern extension)
+ *
+ *   - `'idle'`        — finalized node, ready.
+ *   - `'handling'`    — backend long-running job in flight (AIGC worker).
+ *                       Written to Yjs so all collaborators see it.
+ *                       Same semantics as main canvas `'handling'`.
+ *   - `'localPending'` — browser-local short task (ffmpeg.wasm /
+ *                       synchronous mini-tool API await). NEVER written
+ *                       to Yjs (X pattern).
+ *
+ * ## X pattern lifecycle (for `'localPending'` only)
  *
  * Type A tasks (browser-local `ffmpeg.wasm`) do NOT persist their
- * `state: 'handling'` tile to Yjs. Instead:
+ * `state: 'localPending'` tile to Yjs. Instead:
  *
- *   1. `addHandlingNode` registers a local pending entry in the
+ *   1. `addLocalPendingNode` registers a local pending entry in the
  *      context (tab-scoped). Only the originator sees the loading
  *      tile.
- *   2. `resolveHandlingNode` reads that entry, merges the completion
+ *   2. `resolveLocalPendingNode` reads that entry, merges the completion
  *      patch, and writes a SINGLE final (`state: 'idle'`) node to
  *      Yjs under `userOrigin` → one undoable "I created this tile"
  *      step lands in the undo stack.
- *   3. `failHandlingNode` just drops the local entry.
+ *   3. `failLocalPendingNode` just drops the local entry.
  *
- * Why not persist handling state to Yjs? If the browser tab closes
+ * Why not persist `'localPending'` to Yjs? If the browser tab closes
  * mid-task, the ffmpeg Web Worker dies with it. A Yjs-persisted
  * handling tile would survive as a stuck-forever zombie that every
  * collaborator has to look at and eventually force-clear. The X
  * pattern eliminates that failure mode entirely — if the browser
  * dies, Yjs has nothing to be stuck on.
  *
- * Type B tasks (backend mini-tools) can reuse the same primitives:
- * the mini-tool API call and response handling lives in the callsite
- * hooks (`createInpaintResultNodeRight` etc), and the final-write
- * step uses Yjs directly. There is no handling-state replication for
- * them either — the loading tile is rendered locally while the
- * caller `await`s the API response.
+ * Type B tasks (backend mini-tools) use `'handling'` in Yjs, and reuse
+ * the same primitives to render their own loading tile locally while
+ * `await`ing the API response.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -161,8 +168,10 @@ function buildNodeYMap(node: Node): Y.Map<unknown> {
   if (typeof style.height === 'number') styleMap.set('height', style.height);
   nodeMap.set('style', styleMap);
 
-  const zIndex = (node as Node & { zIndex?: number }).zIndex;
-  if (typeof zIndex === 'number') nodeMap.set('zIndex', zIndex);
+  // `zIndex` and `draggable` are UI-only (overlay) — per user stacking
+  // order / per-user editing-mode drag lock. Writing them to Yjs leaks
+  // single-tab UI state to every collaborator (and historically let an
+  // editing-mode exit path strand `draggable: false` forever).
   if (node.parentId) nodeMap.set('parentId', node.parentId);
   if (node.extent !== undefined) nodeMap.set('extent', node.extent as unknown);
 
@@ -185,10 +194,11 @@ function getNodeDataMap(flow: Y.Map<unknown>, nodeId: string): Y.Map<unknown> | 
   return dataMap instanceof Y.Map ? (dataMap as Y.Map<unknown>) : null;
 }
 
-// X pattern: Yjs never holds `state: 'handling'` — the originator
-// keeps the pending tile locally, and Yjs only sees completed
-// `state: 'idle'` nodes. Legacy callers writing 'handling' directly
-// via updateNode/updateNodeData are a bug; tracked by `removeNode`'s
+// X pattern: Yjs never holds `state: 'localPending'` — the originator
+// keeps that pending tile locally, and Yjs only sees completed
+// `state: 'idle'` nodes (or `state: 'handling'` for backend-owned
+// jobs). Legacy callers writing 'localPending' directly via
+// updateNode/updateNodeData are a bug; tracked by `removeNode`'s
 // pending-task guard, not an implicit helper here.
 
 // ── Hook input/output ──────────────────────────────────────────
@@ -199,7 +209,6 @@ export interface UseMixedEditorActionsResult {
   addNodes: (nodes: Node[], options?: HistoryOptions) => void;
   updateNode: (nodeId: string, updates: Partial<Node>, options?: HistoryOptions) => void;
   updateNodeData: (nodeId: string, patch: ImageEditorNodeDataPatch, options?: HistoryOptions) => void;
-  setNodeDraggable: (nodeId: string, draggable: boolean) => void;
   removeNode: (nodeId: string) => void;
   setNodes: (nodes: Node[], options?: HistoryOptions) => void;
   onNodesChange: (changes: NodeChange[], options?: HistoryOptions) => void;
@@ -207,11 +216,11 @@ export interface UseMixedEditorActionsResult {
   onConnect: (connection: Connection) => void;
 
   // ── Handling lifecycle ──
-  addHandlingNode: (node: Node) => string;
-  resolveHandlingNode: (nodeId: string, patch: ImageEditorNodeDataPatch) => void;
-  failHandlingNode: (nodeId: string) => void;
+  addLocalPendingNode: (node: Node) => string;
+  resolveLocalPendingNode: (nodeId: string, patch: ImageEditorNodeDataPatch) => void;
+  failLocalPendingNode: (nodeId: string) => void;
   /** Remove a handling node whose heartbeat is stuck (called by the cleanup UI). */
-  forceRemoveStaleHandlingNode: (nodeId: string) => void;
+  forceRemoveStaleLocalPendingNode: (nodeId: string) => void;
 
   // ── High-level convenience ──
   onCropNode: (nodeId: string) => void;
@@ -238,12 +247,12 @@ export interface UseMixedEditorActionsResult {
   ) => void;
   createVideoPlaceholderNodeRight: (
     sourceNodeId: string,
-    options?: { nameSuffix?: string; state?: 'idle' | 'generating' },
+    options?: { nameSuffix?: string; state?: 'idle' | 'localPending' },
   ) => string | null;
   resolveVideoResultNode: (
     nodeId: string,
     nextVideoSrc: string,
-    options?: { state?: 'idle' | 'generating' },
+    options?: { state?: 'idle' | 'localPending' },
   ) => void;
   createVideoResultNodeRight: (sourceNodeId: string, nextVideoSrc: string, delayMs?: number) => void;
   createCutVideoResultNodesRight: (
@@ -272,6 +281,8 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     manager,
     setNodeLocalData,
     clearNodeLocalState,
+    setNodeZIndex: setNodeZIndexOverlay,
+    getMaxZIndex,
     addPendingTask,
     removePendingTask,
     getPendingTask,
@@ -356,6 +367,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [manager],
   );
 
+  // New-node primitives: the single point where "a node just arrived"
+  // gets reified. zIndex assignment is centralized here so every caller
+  // (uploads, mini-tool results, placeholders, group creation, duplicate,
+  // …) gets the "new on top in THIS user's stacking" semantics without
+  // needing to remember to call `setNodeZIndex` themselves.
   const addNode = useCallback(
     (node: Node, options?: HistoryOptions & { select?: boolean }) => {
       const origin = options?.history === 'skip' ? noHistoryOrigin : userOrigin;
@@ -364,8 +380,9 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           flow.set(node.id, buildNodeYMap(node));
         }, origin);
       });
+      setNodeZIndexOverlay(node.id, getMaxZIndex() + 1);
     },
-    [withFlow, userOrigin],
+    [withFlow, userOrigin, getMaxZIndex, setNodeZIndexOverlay],
   );
 
   const addNodes = useCallback(
@@ -376,8 +393,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           for (const node of nodes) flow.set(node.id, buildNodeYMap(node));
         }, origin);
       });
+      // Preserve caller's input order as the layer order (earlier = lower).
+      const base = getMaxZIndex();
+      nodes.forEach((n, i) => setNodeZIndexOverlay(n.id, base + i + 1));
     },
-    [withFlow, userOrigin],
+    [withFlow, userOrigin, getMaxZIndex, setNodeZIndexOverlay],
   );
 
   const updateNode = useCallback(
@@ -436,11 +456,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           if (updates.extent !== undefined) {
             nodeMap.set('extent', updates.extent as unknown);
           }
-          if (updates.draggable !== undefined) {
-            nodeMap.set('draggable', updates.draggable);
-          }
-          // `selected` is UI-only — callers should drive it through
-          // `applyLocalNodeChanges` from `useMixedEditorData`.
+          // `selected`, `draggable`, `zIndex`, `measured` are UI-only —
+          // callers use the MixedEditorDataContext setters
+          // (`applyLocalNodeChanges`, `setNodeDraggable`, `setNodeZIndex`)
+          // so those writes never leak to collaborators.
         }, origin);
       });
     },
@@ -471,12 +490,6 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [withFlow, userOrigin, setNodeLocalData],
   );
 
-  const setNodeDraggable = useCallback(
-    (nodeId: string, draggable: boolean) => {
-      updateNode(nodeId, { draggable }, { history: 'skip' });
-    },
-    [updateNode],
-  );
 
   const removeNode = useCallback(
     (nodeId: string) => {
@@ -567,24 +580,30 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
   // Browser-local tasks (ffmpeg.wasm + mini-tool await) keep their
   // "loading tile" in the DataContext's `pendingTasks` map. Nothing
   // lands in Yjs until the task completes, so a dead browser tab can
-  // never leave a stuck handling node for collaborators to clean up.
+  // never leave a stuck `'localPending'` node for collaborators.
 
-  const addHandlingNode = useCallback(
+  const addLocalPendingNode = useCallback(
     (node: Node): string => {
       const prepared: Node = {
         ...node,
         data: {
           ...(node.data ?? {}),
-          state: 'handling',
+          state: 'localPending',
         } as Node['data'],
       };
       addPendingTask(prepared);
+      // Same "new on top in author's stacking" semantics as addNode.
+      // When this tile later resolves via resolveLocalPendingNode, the
+      // Yjs write goes through addNode (well, flow.set + buildNodeYMap)
+      // but the overlay entry remains, so the final idle node keeps its
+      // stacking position — no flicker on resolve.
+      setNodeZIndexOverlay(node.id, getMaxZIndex() + 1);
       return node.id;
     },
-    [addPendingTask],
+    [addPendingTask, getMaxZIndex, setNodeZIndexOverlay],
   );
 
-  const resolveHandlingNode = useCallback(
+  const resolveLocalPendingNode = useCallback(
     (nodeId: string, patch: ImageEditorNodeDataPatch) => {
       const pending = getPendingTask(nodeId);
       if (!pending) return;
@@ -622,7 +641,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [getPendingTask, removePendingTask, withFlow, userOrigin],
   );
 
-  const failHandlingNode = useCallback(
+  const failLocalPendingNode = useCallback(
     (nodeId: string) => {
       removePendingTask(nodeId);
       clearNodeLocalState(nodeId);
@@ -631,7 +650,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [removePendingTask, clearNodeLocalState, dispatch],
   );
 
-  const forceRemoveStaleHandlingNode = useCallback(
+  const forceRemoveStaleLocalPendingNode = useCallback(
     (nodeId: string) => {
       // X pattern: "stale" only makes sense for local pending tasks,
       // and dropping one is the same as failing it.
@@ -798,12 +817,12 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       };
 
       // Create as handling node (no undo); resolve on completion.
-      addHandlingNode(newNode);
+      addLocalPendingNode(newNode);
       window.setTimeout(() => {
-        resolveHandlingNode(nid, { content: nextImageSrc });
+        resolveLocalPendingNode(nid, { content: nextImageSrc });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const createInpaintResultNodesRight = useCallback(
@@ -845,7 +864,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           data: createEditorImageNodeData(`${name} (copy)`, ''),
           ...inheritParentFromSource,
         };
-        addHandlingNode(newNode);
+        addLocalPendingNode(newNode);
       } else {
         const groupPadding = 40;
         const spacingY = uploadGap;
@@ -885,17 +904,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
             data: createEditorImageNodeData(`${name} (copy ${childrenAbsolute.indexOf(child) + 1})`, ''),
           };
           resultIds.push(child.id);
-          addHandlingNode(childNode);
+          addLocalPendingNode(childNode);
         }
       }
 
       window.setTimeout(() => {
         for (const nid of resultIds) {
-          resolveHandlingNode(nid, { content: nextImageSrc });
+          resolveLocalPendingNode(nid, { content: nextImageSrc });
         }
       }, delayMs);
     },
-    [readAllNodesSnapshot, addHandlingNode, addNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addLocalPendingNode, addNode, resolveLocalPendingNode],
   );
 
   const createEnhanceResultNodesRight = useCallback(
@@ -932,7 +951,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         const only = sizedResults[0];
         const nid = `image-flow-${nanoid(12)}`;
         resultIds.push(nid);
-        addHandlingNode({
+        addLocalPendingNode({
           id: nid,
           type: imageEditorImageNodeType,
           position: { x: startX, y: startY },
@@ -966,7 +985,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
           const cellRowOffset = item.row - minRow;
           const slotX = groupPadding + cellColOffset * (maxCellW + gridGapX);
           const slotY = groupPadding + cellRowOffset * (maxCellH + gridGapY);
-          addHandlingNode({
+          addLocalPendingNode({
             id: nid,
             type: imageEditorImageNodeType,
             parentId: groupId,
@@ -981,17 +1000,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         resultIds.forEach((nid, index) => {
           const next = sizedResults[index];
           if (!next) return;
-          resolveHandlingNode(nid, { content: next.src });
+          resolveLocalPendingNode(nid, { content: next.src });
         });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addNode, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addNode, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const createVideoPlaceholderNodeRight = useCallback(
     (
       sourceNodeId: string,
-      options?: { nameSuffix?: string; state?: 'idle' | 'generating' },
+      options?: { nameSuffix?: string; state?: 'idle' | 'localPending' },
     ): string | null => {
       const allNodes = readAllNodesSnapshot();
       const source = allNodes.find((n) => n.id === sourceNodeId);
@@ -1006,7 +1025,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       const x = source.position.x + copyW + uploadGap;
       const y = source.position.y;
       const nameSuffix = options?.nameSuffix?.trim() ? options.nameSuffix.trim() : 'copy';
-      const state = options?.state ?? 'generating';
+      const state = options?.state ?? 'localPending';
 
       const node: Node<ImageFlowNodeData> = {
         id: nodeId,
@@ -1020,37 +1039,37 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         ...inheritParentFieldsFromNode(source),
       };
 
-      if (state === 'generating') {
-        addHandlingNode(node);
+      if (state === 'localPending') {
+        addLocalPendingNode(node);
       } else {
         addNode(node);
       }
       return nodeId;
     },
-    [readAllNodesSnapshot, addHandlingNode, addNode],
+    [readAllNodesSnapshot, addLocalPendingNode, addNode],
   );
 
   const resolveVideoResultNode = useCallback(
     (
       nodeId: string,
       nextVideoSrc: string,
-      options?: { state?: 'idle' | 'generating' },
+      options?: { state?: 'idle' | 'localPending' },
     ) => {
       if (!nodeId || !nextVideoSrc) return;
       const nextState = options?.state ?? 'idle';
       if (nextState === 'idle') {
-        resolveHandlingNode(nodeId, { content: nextVideoSrc });
+        resolveLocalPendingNode(nodeId, { content: nextVideoSrc });
       } else {
         updateNodeData(nodeId, { content: nextVideoSrc, state: nextState }, { history: 'skip' });
       }
     },
-    [resolveHandlingNode, updateNodeData],
+    [resolveLocalPendingNode, updateNodeData],
   );
 
   const createVideoResultNodeRight = useCallback(
     (sourceNodeId: string, nextVideoSrc: string, delayMs: number = 200) => {
       if (!nextVideoSrc) return;
-      const nodeId = createVideoPlaceholderNodeRight(sourceNodeId, { nameSuffix: 'speed', state: 'generating' });
+      const nodeId = createVideoPlaceholderNodeRight(sourceNodeId, { nameSuffix: 'speed', state: 'localPending' });
       if (!nodeId) return;
       window.setTimeout(() => {
         resolveVideoResultNode(nodeId, nextVideoSrc, { state: 'idle' });
@@ -1092,7 +1111,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         const onlySegment = normalizedSegments[0];
         const nodeId = `video-flow-${nanoid(12)}`;
         resultIds.push(nodeId);
-        addHandlingNode({
+        addLocalPendingNode({
           id: nodeId,
           type: imageEditorVideoNodeType,
           position: { x: startX, y: startY },
@@ -1132,7 +1151,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         normalizedSegments.forEach((segment, index) => {
           const nodeId = `video-flow-${nanoid(12)}`;
           resultIds.push(nodeId);
-          addHandlingNode({
+          addLocalPendingNode({
             id: nodeId,
             type: imageEditorVideoNodeType,
             parentId: groupId,
@@ -1161,11 +1180,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
             ? nextVideoSrc[index] ?? nextVideoSrc[nextVideoSrc.length - 1] ?? ''
             : nextVideoSrc;
           if (!nextSrc) return;
-          resolveHandlingNode(nodeId, { content: nextSrc });
+          resolveLocalPendingNode(nodeId, { content: nextSrc });
         });
       }, delayMs);
     },
-    [readAllNodesSnapshot, addNode, addHandlingNode, resolveHandlingNode],
+    [readAllNodesSnapshot, addNode, addLocalPendingNode, resolveLocalPendingNode],
   );
 
   const importImagesFromFiles = useCallback(
@@ -1189,25 +1208,16 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
-
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.reduce((h, item, i) => h + item.nodeSize.height + (i > 0 ? uploadGap : 0), 0);
         let y = center.y - totalH / 2;
         for (const { file, src, nodeSize } of prepared) {
-          const nid = `image-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `image-flow-${nanoid(12)}`,
             type: imageEditorImageNodeType,
             position: { x: center.x - nodeSize.width / 2, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorImageNodeData(file.name, src),
           });
@@ -1216,13 +1226,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       } else {
         let y = getNextStackY(currentNodes);
         for (const { file, src, nodeSize } of prepared) {
-          const nid = `image-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `image-flow-${nanoid(12)}`,
             type: imageEditorImageNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorImageNodeData(file.name, src),
           });
@@ -1230,6 +1237,8 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         }
       }
 
+      // addNodes centralizes zIndex assignment (caller input order =
+      // layer order, earlier = lower).
       addNodes(created);
     },
     [readAllNodesSnapshot, addNodes],
@@ -1256,25 +1265,16 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
-
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.reduce((h, item, i) => h + item.nodeSize.height + (i > 0 ? uploadGap : 0), 0);
         let y = center.y - totalH / 2;
         for (const { file, src, nodeSize } of prepared) {
-          const nid = `video-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `video-flow-${nanoid(12)}`,
             type: imageEditorVideoNodeType,
             position: { x: center.x - nodeSize.width / 2, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorVideoNodeData(file.name || 'video', src),
           });
@@ -1283,13 +1283,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       } else {
         let y = getNextStackY(currentNodes);
         for (const { file, src, nodeSize } of prepared) {
-          const nid = `video-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `video-flow-${nanoid(12)}`,
             type: imageEditorVideoNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: nodeSize.width, height: nodeSize.height },
             data: createEditorVideoNodeData(file.name || 'video', src),
           });
@@ -1321,25 +1318,16 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       }
 
       const currentNodes = readAllNodesSnapshot();
-      const maxZIndex = currentNodes.reduce((max, n) => {
-        const z = (n as Node & { zIndex?: number }).zIndex ?? 0;
-        return Math.max(max, z);
-      }, 0);
-      let zIndexCursor = maxZIndex;
-
       const created: Node<ImageFlowNodeData>[] = [];
       const center = options?.viewportCenterFlow;
       if (center) {
         const totalH = prepared.length * audioFlowDefaultHeight + Math.max(0, prepared.length - 1) * uploadGap;
         let y = center.y - totalH / 2;
         for (const { file, src } of prepared) {
-          const nid = `audio-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `audio-flow-${nanoid(12)}`,
             type: imageEditorAudioNodeType,
             position: { x: center.x - audioFlowDefaultWidth / 2, y },
-            zIndex: zIndexCursor,
             style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
             data: createEditorAudioNodeData(file.name || 'audio', src),
           });
@@ -1348,13 +1336,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       } else {
         let y = getNextStackY(currentNodes);
         for (const { file, src } of prepared) {
-          const nid = `audio-flow-${nanoid(12)}`;
-          zIndexCursor += 1;
           created.push({
-            id: nid,
+            id: `audio-flow-${nanoid(12)}`,
             type: imageEditorAudioNodeType,
             position: { x: 120, y },
-            zIndex: zIndexCursor,
             style: { width: audioFlowDefaultWidth, height: audioFlowDefaultHeight },
             data: createEditorAudioNodeData(file.name || 'audio', src),
           });
@@ -1410,17 +1395,16 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     addNodes,
     updateNode,
     updateNodeData,
-    setNodeDraggable,
     removeNode,
     setNodes,
     onNodesChange,
     onEdgesChange,
     onConnect,
 
-    addHandlingNode,
-    resolveHandlingNode,
-    failHandlingNode,
-    forceRemoveStaleHandlingNode,
+    addLocalPendingNode,
+    resolveLocalPendingNode,
+    failLocalPendingNode,
+    forceRemoveStaleLocalPendingNode,
 
     onCropNode,
     replaceNodeWithFile,

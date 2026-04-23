@@ -27,11 +27,24 @@ export interface ImageEditorNodeRuntimeData {
   parameter?: Record<string, unknown>;
 }
 
-/** Image editor flow image node `data` shape. */
+/**
+ * Image editor flow image node `data` shape.
+ *
+ * `state` taxonomy (aligned with main canvas `CanvasNodeState` for `idle` +
+ * `handling`; mixed editor adds a third value for the X pattern):
+ *   - `'idle'`        — finalized node, ready.
+ *   - `'handling'`    — backend long-running job in flight (AIGC worker).
+ *                       Lives in Yjs so every collaborator sees the progress.
+ *                       Same semantics as main canvas `'handling'`.
+ *   - `'localPending'` — browser-local short task (ffmpeg.wasm / mini-tool
+ *                       API await). Stored ONLY in the originator's
+ *                       `pendingTasks` map, never in Yjs (X pattern —
+ *                       prevents zombie tiles when the tab dies).
+ */
 export interface ImageEditorNodeData extends Record<string, unknown> {
   name: string;
   content: string;
-  state: 'idle' | 'generating';
+  state: 'idle' | 'handling' | 'localPending';
   nodeRuntimeData: ImageEditorNodeRuntimeData;
   /**
    * Present only while canvas-pick mode is active for this node (e.g. Quick Edit).

@@ -79,9 +79,13 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
     if (isPlaying) {
       const interval = setInterval(() => {
         setCurrentTime((prev) => {
+          if (actualDuration <= 0) {
+            setIsPlaying(false);
+            return 0;
+          }
           const nextTime = prev + 0.033;
           const playheadWidthTime = 2 / (scale * 50);
-          const maxTime = actualDuration - playheadWidthTime;
+          const maxTime = Math.max(0, actualDuration - playheadWidthTime);
           if (nextTime >= maxTime) {
             setIsPlaying(false);
             return maxTime;
@@ -199,7 +203,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
             </div>
           </Panel>
 
-          <Separator className='h-1 bg-gray-300 hover:bg-blue-400 cursor-row-resize shrink-0' />
+          <Separator className='h-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-row-resize shrink-0 transition-colors focus-visible:outline-none' />
 
           <Panel defaultSize={30} minSize={20} className='flex flex-col'>
             <PlaybackControls
