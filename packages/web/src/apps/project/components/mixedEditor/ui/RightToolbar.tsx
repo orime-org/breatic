@@ -104,7 +104,7 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
     {
       id: 'video-audio-denoise',
       icon: 'project-video-right-audio-denoise-icon',
-      label: 'audio denoise',
+      label: 'textToSpeech',
       width: 22,
       height: 22,
     },

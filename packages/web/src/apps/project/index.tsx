@@ -11,7 +11,7 @@ import { useMixedEditorStore } from '@/hooks/useMixedEditorStore';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
-import ImageEditor from './components/mixedEditor';
+import MixedEditor from './components/mixedEditor';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
@@ -300,7 +300,7 @@ const ProjectContent: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs
                   {isTextNode && panelNode ? (
                     <TextEditor nodeId={panelNode.id} />
                   ) : isMixedEditorNode && panelNode ? (
-                    <ImageEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
+                    <MixedEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : (
                     <ResizableLeftPanel />
                   )}

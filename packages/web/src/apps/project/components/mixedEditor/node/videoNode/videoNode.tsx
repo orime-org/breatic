@@ -65,6 +65,11 @@ const STABILIZATION_CROP_MIN = 0;
 const STABILIZATION_CROP_MAX = 14;
 const LIP_SYNC_IDENTIFY_DELAY_MS = 1200;
 
+type VideoQuickActionRequest = {
+  action: 'stabilization' | 'audioDenoise';
+  requestId: string;
+};
+
 const resolveTrackingStatusAtTime = (
   segments: EraseTrackingSegment[],
   currentTimeSec: number,
@@ -250,6 +255,16 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
   const nodeData = data as ImageFlowNodeData | undefined;
+  const quickActionRequest = useMemo<VideoQuickActionRequest | null>(() => {
+    const raw = (nodeData?.nodeRuntimeData?.parameter as Record<string, unknown> | undefined)?.videoQuickActionRequest;
+    if (!raw || typeof raw !== 'object') return null;
+    const action = (raw as { action?: unknown }).action;
+    const requestId = (raw as { requestId?: unknown }).requestId;
+    if ((action !== 'stabilization' && action !== 'audioDenoise') || typeof requestId !== 'string' || !requestId) {
+      return null;
+    }
+    return { action, requestId };
+  }, [nodeData?.nodeRuntimeData?.parameter]);
   const pickResultBoxes = useMemo(
     () => (nodeData?.pickState?.resultBoxes ?? []) as ImageEditorPickResultBox[],
     [nodeData?.pickState?.resultBoxes],
@@ -328,6 +343,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const scheduledVideoErasePickIdsRef = useRef(new Set<string>());
   const pendingManualBoxRef = useRef(new Map<string, ImageEditorPickResultBox>());
   const lipSyncIdentifyTimerRef = useRef<number | null>(null);
+  const handledQuickActionRequestIdRef = useRef<string | null>(null);
   const eraseEntryPickStateRef = useRef<ImageFlowNodeData['pickState'] | null>(null);
   const eraseUndoStackRef = useRef<ImageEditorPickResultBox[][]>([]);
   const eraseRedoStackRef = useRef<ImageEditorPickResultBox[][]>([]);
@@ -696,6 +712,36 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     setAudioDenoiseIntensity(50);
     setEditingMode('audioDenoise');
   }, [editingMode, focusCurrentNode, videoContent]);
+
+  useEffect(() => {
+    if (!quickActionRequest) return;
+    if (handledQuickActionRequestIdRef.current === quickActionRequest.requestId) return;
+    handledQuickActionRequestIdRef.current = quickActionRequest.requestId;
+
+    if (quickActionRequest.action === 'stabilization') {
+      handleStabilizationOpen();
+    } else {
+      handleAudioDenoiseOpen();
+    }
+
+    const runtimeData = nodeData?.nodeRuntimeData ?? {};
+    const parameter = (runtimeData.parameter ?? {}) as Record<string, unknown>;
+    if (!('videoQuickActionRequest' in parameter)) return;
+    const restParameter = { ...parameter };
+    delete restParameter.videoQuickActionRequest;
+    updateNode(
+      id,
+      {
+        data: {
+          nodeRuntimeData: {
+            ...runtimeData,
+            parameter: restParameter,
+          },
+        },
+      },
+      { history: 'skip' },
+    );
+  }, [handleAudioDenoiseOpen, handleStabilizationOpen, id, nodeData?.nodeRuntimeData, quickActionRequest, updateNode]);
 
   const validateLipSyncAudioSource = useCallback(
     async (input: { type: 'upload'; name: string; file: File }) => {
