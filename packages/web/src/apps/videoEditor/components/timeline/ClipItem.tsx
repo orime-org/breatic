@@ -1,5 +1,6 @@
 import React, { useState, useRef, memo, useEffect } from 'react';
 import { useDraggable } from '@dnd-kit/core';
+import { useWavesurfer } from '@wavesurfer/react';
 import { TimelineClip } from '../../types';
 import { Icon } from '@/components/base/icon';
 
@@ -8,6 +9,7 @@ interface ClipItemProps {
   media?: { id: string; type?: string; name?: string; thumbnail?: string; url?: string; text?: string };
   isSelected: boolean;
   pixelsPerSecond: number;
+  currentTime: number;
   onResize: (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => void;
   onShowSnapLines: (lines: number[]) => void;
   onSelectClip: (clipId: string) => void;
@@ -20,6 +22,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
   media,
   isSelected,
   pixelsPerSecond,
+  currentTime,
   onResize,
   onShowSnapLines,
   onSelectClip,
@@ -30,6 +33,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [resizeEdge, setResizeEdge] = useState<'left' | 'right' | null>(null);
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
+  const audioWaveformRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef<{
     startX: number;
     originalStart: number;
@@ -43,6 +47,30 @@ const ClipItem: React.FC<ClipItemProps> = ({
     data: { clip },
     disabled: isResizing,
   });
+  const audioWaveUrl = media?.type === 'audio' ? media.url?.trim() : undefined;
+  const clipDuration = Math.max(0, clip.end - clip.start);
+  const clipPlayedProgress =
+    clipDuration > 0 ? Math.min(1, Math.max(0, (currentTime - clip.start) / clipDuration)) : 0;
+  const { wavesurfer: audioWaveSurfer } = useWavesurfer({
+    container: audioWaveformRef,
+    url: audioWaveUrl,
+    waveColor: '#FFFFFF',
+    progressColor: 'rgba(255, 255, 255, 0.35)',
+    cursorColor: 'transparent',
+    barWidth: 2,
+    barRadius: 0,
+    barGap: 2,
+    height: 56,
+    normalize: true,
+    backend: 'WebAudio',
+    mediaControls: false,
+    interact: false,
+  });
+
+  useEffect(() => {
+    if (!audioWaveSurfer) return;
+    audioWaveSurfer.seekTo(clipPlayedProgress);
+  }, [audioWaveSurfer, clipPlayedProgress]);
 
   // 使用 useEffect 管理调整大小事件监听器
   useEffect(() => {
@@ -196,7 +224,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
       return '#77C562';
     }
     if (media?.type === 'audio') {
-      return '#CD9541';
+      return '#7C83F6';
     }
     if (backgroundUrl) {
       return 'transparent';
@@ -276,6 +304,16 @@ const ClipItem: React.FC<ClipItemProps> = ({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
+      {media?.type === 'audio' ? (
+        <div className='absolute inset-x-0 top-[2px] bottom-0 overflow-hidden rounded-[4px] bg-[#7C83F6] pointer-events-none'>
+          <div
+            ref={audioWaveformRef}
+            className='w-full'
+            style={{ height: '200%', clipPath: 'inset(0 0 50% 0)' }}
+          />
+        </div>
+      ) : null}
+
       {/* 左侧调整手柄 */}
       {isSelected && (
         <div
