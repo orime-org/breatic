@@ -123,11 +123,14 @@
 权限：`0755`
 
 职责（按顺序）：
+
 1. `git fetch origin test_thinkai_cc && git reset --hard`
 2. `docker compose pull`（拉最新镜像）
-3. `docker compose up -d`（只重建 image 变化的服务）
+3. `docker compose up -d --force-recreate --no-deps api collab worker web`（强制重建 app 容器）
 4. `docker image prune -f`（清理 dangling layers）
 5. `sleep 10 && curl /api/health`（自检，失败 exit 1）
+
+**关于 `--force-recreate --no-deps`**：docker compose 默认只看 image tag 不看 digest，同 tag 不同 digest 场景下不会触发容器替换。必须 `--force-recreate` 强制重建；`--no-deps` 避免连带重启 pg/redis（参见"历史踩坑记录 #9"）。
 
 **不带自检检查的话，ffmpeg 启动慢会误判"成功"**——所以健康检查必须保留。
 
@@ -534,6 +537,59 @@ free -h
 **根因**：前端代码内部就有 `/api/v1/` 前缀，`VITE_API_URL` 不该再带 `/api`。
 
 **解决**：PR #111 修正了 `.env.docker` 模板。**前端现已迁移到相对 URL**（PR #120），从根本消除此类 VITE 变量拼接问题。
+
+### 9. 新镜像推到 GHCR 但服务器上容器没替换
+
+**现象**：
+- 主仓库合了修复 PR，CI 成功 + 推镜像到 GHCR
+- 服务器上 cron 也确实跑了 `auto-deploy.sh` + `docker compose pull`（`Pulled` 字样输出）
+- 但浏览器访问时 bundle 还是老版本——`docker inspect` 看运行中的容器 image digest 也是老的
+- 只有手动跑 `docker compose up -d --force-recreate` 才切换到新镜像
+
+**根因**：`docker compose up -d`（不带 `--force-recreate`）**只看 image reference（tag 名）判断是否需要重建容器**。tag 一直是 `:test_thinkai_cc` 没变，即使它指向的 digest 变了，compose 也认为"image 没变"，不重建容器。
+
+- `pull` 拉回了新镜像（digest 变了），但 Docker 的 image 缓存里**同时保留新旧两个 digest**
+- 现有容器 reference 的是旧 digest 对应的 image 对象
+- `up -d` 只看 tag 名，没检测到变化 → 静默跳过
+
+这是 docker compose 在"**同 tag 滚动部署**"场景的默认行为陷阱。镜像仓库发布模式（我们现在的 CD 架构）下是高频问题。
+
+**解决**：`/opt/breatic/deploy.sh` 里的 `docker compose up -d` 必须改成：
+
+```bash
+docker compose up -d --force-recreate --no-deps api collab worker web
+```
+
+- `--force-recreate`：强制重建容器（不看 digest 也重建）
+- `--no-deps`：不连带启动 postgres/redis 依赖（它们本来就跑着，不用重启）
+- 显式列出 app 服务：避免重建 pg/redis 数据库（有持久卷但重启仍有几秒中断）
+
+**修复后一键部署命令**（当怀疑 cron 部署失效时手动触发）：
+
+```bash
+sudo -u deploy /opt/breatic/deploy.sh
+# 看日志
+tail /opt/breatic/logs/auto-deploy.log
+# 验证 digest 变了
+docker inspect breatic-web-1 --format '{{.Image}}'
+```
+
+**遇到同样症状时的快速排查**：
+
+```bash
+# 1. GHCR 上的最新 digest（对比远端）
+docker buildx imagetools inspect ghcr.io/orime-org/breatic-web:test_thinkai_cc --format '{{.Manifest.Digest}}' 2>/dev/null
+
+# 2. 本地 image 缓存里的 tag → digest 映射
+docker image inspect ghcr.io/orime-org/breatic-web:test_thinkai_cc --format '{{.Id}}' 2>/dev/null
+
+# 3. 运行中容器使用的 image id
+docker inspect breatic-web-1 --format '{{.Image}}'
+
+# 如果 1 == 2 == 3，说明部署正确
+# 如果 1 == 2 != 3，说明 pull 到了但 up 没重建——命中本 bug
+# 如果 1 != 2，说明本地没 pull 到最新——auto-deploy.sh 的 pull 或 cron 本身出问题
+```
 
 ---
 
