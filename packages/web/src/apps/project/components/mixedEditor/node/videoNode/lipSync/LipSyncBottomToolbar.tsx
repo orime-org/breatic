@@ -131,12 +131,17 @@ const LipSyncBottomToolbar: React.FC<LipSyncBottomToolbarProps> = ({
     return activeSegment?.status ?? normalizedSegments[normalizedSegments.length - 1]?.status ?? null;
   }, [currentTime, normalizedSegments, safeDuration, showTrackingBar]);
 
-  let trackingStatusText = '';
+  let trackingStatusText = 'Select an element for tracking';
   if (phase === 'identifying') {
     trackingStatusText = 'Tracking...';
   } else if (showTrackingBar && currentStatus === 'lost') {
     trackingStatusText = 'Tracking Lost';
+  } else if (showTrackingBar) {
+    trackingStatusText = '';
   }
+  const isTrackingLoading = phase === 'identifying';
+  const neutralStatusText = trackingStatusText === 'Select an element for tracking' || trackingStatusText === 'Tracking...';
+  const shouldShowTrackingSection = !isTrackingLoading;
 
   useEffect(() => {
     let cancelled = false;
@@ -362,7 +367,7 @@ const LipSyncBottomToolbar: React.FC<LipSyncBottomToolbarProps> = ({
             </button>
           </div>
 
-          <div className='p-1'>
+          <div className={shouldShowTrackingSection ? undefined : 'hidden'}>
             {showTrackingBar ? (
               <div className={timelineScrollbarClass}>
                 <div
@@ -373,12 +378,12 @@ const LipSyncBottomToolbar: React.FC<LipSyncBottomToolbarProps> = ({
                     className='relative flex min-h-0 w-full flex-col gap-1'
                   >
                     <div className='relative h-[26px] overflow-hidden rounded-[2px] bg-[#E9E9E9]'>
-                      {trackingThumbStrip}
+                      {isTrackingLoading ? null : trackingThumbStrip}
                     </div>
-                    <div className='relative h-[10px] overflow-hidden rounded-full bg-[#E9E9E9]'>
-                      {trackingStrip}
+                    <div className='relative h-[10px] overflow-hidden rounded-full bg-[#E9E9E9] mb-1'>
+                      {isTrackingLoading ? null : trackingStrip}
                       {trackingStatusText ? (
-                        <div className='absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none text-white'>
+                        <div className={`absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none ${neutralStatusText ? 'text-text-default-tertiary' : 'text-white'}`}>
                           {trackingStatusText}
                         </div>
                       ) : null}
@@ -389,12 +394,12 @@ const LipSyncBottomToolbar: React.FC<LipSyncBottomToolbarProps> = ({
             ) : (
               <>
                 <div className='relative h-[26px] overflow-hidden rounded-[2px] bg-[#E9E9E9]'>
-                  {trackingThumbStrip}
+                  {isTrackingLoading ? null : trackingThumbStrip}
                 </div>
                 <div className='relative mt-1 h-[10px] overflow-hidden rounded-full bg-[#E9E9E9]'>
-                  {trackingStrip}
+                  {isTrackingLoading ? null : trackingStrip}
                   {trackingStatusText ? (
-                    <div className='absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none text-white'>
+                    <div className={`absolute inset-0 flex items-center justify-center px-2 text-center text-[10px] leading-none ${neutralStatusText ? 'text-text-default-tertiary' : 'text-white'}`}>
                       {trackingStatusText}
                     </div>
                   ) : null}
@@ -420,7 +425,7 @@ const LipSyncBottomToolbar: React.FC<LipSyncBottomToolbarProps> = ({
               <div className='mt-2'>
                 <div className={timelineScrollbarClass}>
                   <div
-                    className='relative min-w-full overflow-visible'
+                    className='relative min-w-full overflow-visible mb-1'
                     style={{ width: `max(100%, ${timelineOuterMinWidthPx || 660}px)` }}
                   >
                     <div className='relative h-[24px] w-full overflow-hidden rounded-[4px] bg-[#A5A6F6]'>

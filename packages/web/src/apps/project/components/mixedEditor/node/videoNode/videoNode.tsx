@@ -1721,7 +1721,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                     onClick={() => handleLipSyncFaceSelect(face.id)}
                   >
                     <span
-                      className={`absolute left-0 -top-5 inline-flex items-center rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
+                      className={`absolute left-1/2 top-full z-[1] mt-1 inline-flex -translate-x-1/2 items-center whitespace-nowrap rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
                         selectedFace ? 'bg-[#7F88FF] text-white' : 'bg-black/55 text-white'
                       }`}
                     >
