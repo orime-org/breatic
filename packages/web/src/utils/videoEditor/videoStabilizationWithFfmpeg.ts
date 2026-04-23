@@ -1,8 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-export type VideoCropRect = { x: number; y: number; w: number; h: number };
-
 const ffmpegCoreBaseUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
 const ffmpegLoadTimeoutMs = 30000;
 const ffmpegFetchTimeoutMs = 30000;
@@ -59,40 +57,26 @@ const ensureFfmpegLoaded = async (): Promise<FFmpeg> => {
   }
 };
 
-const toSourceCrop = (rect: VideoCropRect, containerWidth: number, containerHeight: number) => {
-  const cw = Math.max(1, containerWidth);
-  const ch = Math.max(1, containerHeight);
+const clampCropPct = (cropPct: number) => Math.max(0, Math.min(14, cropPct));
 
-  const xPct = rect.x / cw;
-  const yPct = rect.y / ch;
-  const wPct = rect.w / cw;
-  const hPct = rect.h / ch;
-
-  return { xPct, yPct, wPct, hPct };
+const buildCropFilter = (cropPct: number): string => {
+  const p = clampCropPct(cropPct) / 100;
+  // Keep equal-ratio crop with symmetric margins and even dimensions for x264.
+  return `crop=trunc(iw*(1-2*${p})/2)*2:trunc(ih*(1-2*${p})/2)*2:trunc(iw*${p}/2)*2:trunc(ih*${p}/2)*2,setsar=1`;
 };
 
-export const videoCropWithFfmpeg = async (
-  videoSrc: string,
-  rect: VideoCropRect,
-  container: { width: number; height: number },
-): Promise<string> => {
+export const videoStabilizationWithFfmpeg = async (videoSrc: string, cropPct: number): Promise<string> => {
+  const normalizedCrop = clampCropPct(cropPct);
   if (!videoSrc) return '';
+  if (normalizedCrop <= 0) return videoSrc;
 
   const ffmpeg = await ensureFfmpegLoaded();
   const response = await withTimeout(fetch(videoSrc), ffmpegFetchTimeoutMs, 'Fetching source video');
   if (!response.ok) throw new Error(`Failed to fetch source video: ${response.status}`);
   const inputBlob = await response.blob();
-  const inputName = `crop-input-${Date.now()}.mp4`;
-  const outputName = `crop-output-${Date.now()}.mp4`;
-
-  const pct = toSourceCrop(rect, container.width, container.height);
-  // Convert from node-space percentage to source-space pixels in ffmpeg expression.
-  const cropExpr = [
-    `x='trunc(iw*${pct.xPct.toFixed(8)}/2)*2'`,
-    `y='trunc(ih*${pct.yPct.toFixed(8)}/2)*2'`,
-    `w='trunc(iw*${pct.wPct.toFixed(8)}/2)*2'`,
-    `h='trunc(ih*${pct.hPct.toFixed(8)}/2)*2'`,
-  ].join(':');
+  const inputName = `stabilization-input-${Date.now()}.mp4`;
+  const outputName = `stabilization-output-${Date.now()}.mp4`;
+  const vf = buildCropFilter(normalizedCrop);
 
   await ffmpeg.writeFile(inputName, await fetchFile(inputBlob));
   try {
@@ -102,7 +86,7 @@ export const videoCropWithFfmpeg = async (
           '-i',
           inputName,
           '-vf',
-          `crop=${cropExpr},setsar=1`,
+          vf,
           '-c:v',
           'libx264',
           '-preset',
@@ -115,7 +99,7 @@ export const videoCropWithFfmpeg = async (
           outputName,
         ]),
         ffmpegExecTimeoutMs,
-        'Cropping video',
+        'Applying stabilization crop',
       );
     };
 
@@ -127,7 +111,7 @@ export const videoCropWithFfmpeg = async (
 
     const outputData = await ffmpeg.readFile(outputName);
     if (!(outputData instanceof Uint8Array)) {
-      throw new Error('ffmpeg returned invalid crop output data');
+      throw new Error('ffmpeg returned invalid stabilization output data');
     }
     const safeBuffer = new ArrayBuffer(outputData.byteLength);
     new Uint8Array(safeBuffer).set(outputData);
@@ -138,4 +122,3 @@ export const videoCropWithFfmpeg = async (
     await ffmpeg.deleteFile(outputName).catch(() => undefined);
   }
 };
-

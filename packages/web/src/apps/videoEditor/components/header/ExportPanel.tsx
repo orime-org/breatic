@@ -26,13 +26,7 @@ interface ExportPanelProps {
 }
 
 /**
- * ExportPanel 组件 - 导出配置面板
- *
- * 集中管理所有导出相关的UI配置选项，包括：
- * - 视频导出（MP4/MOV）：支持分辨率、帧率、码率、编解码器等配置
- * - 图片导出（PNG/JPG）：支持分辨率配置
- * - 音频导出（MP3/WAV/AAC/FLAC/AIFF/OGG）：支持码率、采样率等配置
- *
+ * Export panel for video editor output settings.
  */
 const ExportPanel: React.FC<ExportPanelProps> = ({
   canvasRatio = '16:9',
@@ -47,7 +41,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   const workflowId = projectId || '';
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 保存导出结果到节点
+  // Save export result to node data.
   const saveExportResult = (resourceUrl: string, assetType: 'image' | 'audio' | 'video', blob: Blob) => {
     if (standalone || !nodeId) return;
 
@@ -57,7 +51,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existingExportResults = (currentData.exportResults as any[]) || [];
 
-    // 创建导出结果对象
+    // Build export result payload.
     const exportResult = {
       id: `export-${Date.now()}-${nanoid(9)}`,
       type: assetType, // 'image' | 'audio' | 'video'
@@ -68,10 +62,10 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       mimeType: blob.type,
     };
 
-    // 添加到数组开头（最新的在前面）
+    // Keep newest result at the front.
     const updatedExportResults = [exportResult, ...existingExportResults];
 
-    // 更新节点数据
+    // Update node data.
     if (!nodeId) return;
     updateNode(nodeId, {
       data: {
@@ -79,16 +73,16 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       },
     });
 
-    // 打印数据格式
+    // Debug export result payload.
     // eslint-disable-next-line no-console
-    console.log('📦 导出结果已保存到节点:', {
+    console.log('📦 Export result saved to node:', {
       nodeId,
       exportResult,
       allExportResults: updatedExportResults,
     });
   };
 
-  // 提取视频第一帧并上传到 OSS
+  // Extract first video frame and upload to OSS.
   const uploadVideoThumbnail = async (videoUrl: string): Promise<string | undefined> => {
     if (standalone) return undefined;
     try {
@@ -100,7 +94,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       const blob = dataURLtoBlob(thumbnailBase64);
       const thumbnailFile = new File([blob], `thumbnail-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
-      // 获取 OSS STS 凭证
+      // Fetch OSS STS credentials.
       const thumbnailStsResponse = await getOssStsApi({ asset_type: 'image' });
       const {
         access_key_id: thumb_access_key_id,
@@ -110,7 +104,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         upload_file_name: thumb_upload_file_name,
       } = thumbnailStsResponse.data;
 
-      // 初始化 OSS 客户端（支持自动刷新 token）
+      // Init OSS client with token refresh.
       const thumbnailClient = createOssClient(
         {
           access_key_id: thumb_access_key_id,
@@ -122,7 +116,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         'image'
       );
 
-      // 上传缩略图到 OSS
+      // Upload thumbnail to OSS.
       await thumbnailClient.put(thumb_upload_file_name, thumbnailFile, {
         meta: {
           temp: 'demo',
@@ -135,7 +129,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         },
       });
 
-      // 上报上传成功，获取资源 URL
+      // Notify backend and get resource URL.
       const thumbnailSuccessResponse = await uploadFileSuccessApi({
         source_type: 'exported',
         upload_file_name: thumb_upload_file_name,
@@ -148,12 +142,12 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         return thumbnailSuccessResponse.data.resource_url;
       }
     } catch (error) {
-      console.error('提取视频第一帧失败:', error);
+      console.error('Failed to extract first video frame:', error);
     }
     return undefined;
   };
 
-  // 上传导出的文件到服务器
+  // Upload exported file.
   const uploadExportedFile = async (blob: Blob, assetType: 'image' | 'audio' | 'video'): Promise<string | null> => {
     if (standalone) {
       const url = URL.createObjectURL(blob);
@@ -162,13 +156,13 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     }
 
     if (!workflowId) {
-      message.warning('工作流ID不存在，无法上传');
+      message.warning('Workflow ID is missing, upload skipped');
       return null;
     }
 
     setIsUploading(true);
     try {
-      // 1. 获取 OSS STS 凭证和文件名
+      // 1) Fetch OSS STS credentials and upload key.
       const stsResponse = await getOssStsApi({ asset_type: assetType });
       const {
         access_key_id,
@@ -178,7 +172,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         upload_file_name,
       } = stsResponse.data;
 
-      // 2. 初始化 OSS 客户端（支持自动刷新 token）
+      // 2) Init OSS client with token refresh.
       const client = createOssClient(
         {
           access_key_id,
@@ -190,10 +184,10 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         assetType
       );
 
-      // 3. 将 Blob 转换为 File
+      // 3) Convert Blob to File.
       const file = new File([blob], `export.${exportedFormat.toLowerCase()}`, { type: blob.type });
 
-      // 4. 上传文件到 OSS
+      // 4) Upload file to OSS.
       const options = {
         meta: {
           temp: 'demo',
@@ -208,7 +202,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
 
       await client.put(upload_file_name, file, options);
 
-      // 5. 上报上传成功，获取资源 URL
+      // 5) Notify backend and get resource URL.
       const successResponse = await uploadFileSuccessApi({
         source_type: 'exported',
         upload_file_name: upload_file_name,
@@ -217,7 +211,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       });
 
       if (!successResponse?.data?.resource_url) {
-        message.warning('获取资源 URL 失败');
+        message.warning('Failed to get resource URL');
         return null;
       }
 
@@ -225,20 +219,20 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       // eslint-disable-next-line no-console
       console.log(resourceUrl,'resourceUrl');
 
-      // 保存导出结果到节点
+      // Save export result to node data.
       saveExportResult(resourceUrl, assetType, blob);
 
       return resourceUrl;
     } catch (error) {
-      console.error('上传失败:', error);
-      message.error('文件上传失败');
+      console.error('Upload failed:', error);
+      message.error('File upload failed');
       return null;
     } finally {
       setIsUploading(false);
     }
   };
 
-  // 根据画布比例获取虚拟坐标系统的基准尺寸
+  // Base canvas size by ratio.
   const getBaseCanvasSize = (ratio: string): { width: number; height: number } => {
     switch (ratio) {
       case '16:9':
@@ -252,7 +246,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     }
   };
 
-  // 导出配置状态
+  // Export config state.
   const [exportConfig, setExportConfig] = useState({
     type: 'VIDEO',
     videoFormat: 'MP4',
@@ -270,7 +264,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     audioExportSampleRate: 44100,
   });
 
-  // 导出状态
+  // Export runtime state.
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportComplete, setExportComplete] = useState(false);
@@ -278,7 +272,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   const [exportedFormat, setExportedFormat] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
 
-  // 根据画布比例生成对应的分辨率选项
+  // Resolution options by ratio.
   const getResolutionOptions = () => {
     switch (canvasRatio) {
       case '16:9':
@@ -312,7 +306,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     return [];
   };
 
-  // 导出图片
+  // Export image.
   const exportAsImage = async () => {
     try {
       const signal = abortControllerRef.current?.signal;
@@ -357,13 +351,13 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
-      console.error('导出图片错误:', error);
+      console.error('Image export failed:', error);
       setIsExporting(false);
-      message.error(`导出图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      message.error(`Image export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
-  // 导出视频
+  // Export video.
   const exportAsVideo = async () => {
     try {
       const signal = abortControllerRef.current?.signal;
@@ -423,13 +417,13 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
-      console.error('导出视频错误:', error);
+      console.error('Video export failed:', error);
       setIsExporting(false);
-      message.error(`导出视频失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      message.error(`Video export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
-  // 导出音频
+  // Export audio.
   const exportAsAudio = async () => {
     try {
       const signal = abortControllerRef.current?.signal;
@@ -474,20 +468,20 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
-      console.error('导出音频错误:', error);
+      console.error('Audio export failed:', error);
       setIsExporting(false);
-      message.error(`导出音频失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      message.error(`Audio export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
-  // 处理导出按钮点击
+  // Handle export button click.
   const handleExport = async () => {
     if (clips.length === 0) {
-      message.warning('没有内容可导出');
+      message.warning('No content to export');
       return;
     }
 
-    // 创建新的 AbortController
+    // Create new AbortController for this run.
     abortControllerRef.current = new AbortController();
 
     setIsExporting(true);
@@ -508,17 +502,17 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // 导出已被用户取消，不需要额外处理
+        // User canceled export.
         return;
       }
-      console.warn('导出失败:', error);
+      console.warn('Export failed:', error);
       setIsExporting(false);
     } finally {
       abortControllerRef.current = null;
     }
   };
 
-  // 处理下载
+  // Download exported blob.
   const handleDownload = () => {
     if (exportedBlob) {
       const url = URL.createObjectURL(exportedBlob);
@@ -533,7 +527,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   };
 
 
-  // 处理取消导出
+  // Cancel export.
   const handleCancelExport = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -551,7 +545,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         {t('export.title')}
       </div>
 
-      {/* 导出类型选择 */}
+      {/* Export type */}
       <div className='mb-3'>
         <label className='block mb-1 text-xs text-text-default-tertiary'>
           {t('export.exportType')}
@@ -569,7 +563,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         />
       </div>
 
-      {/* 视频格式选择 */}
+      {/* Video format */}
       {exportConfig.type === 'VIDEO' && (
         <div className='mb-3'>
           <label className='block mb-1 text-xs text-text-default-tertiary'>
@@ -588,7 +582,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         </div>
       )}
 
-      {/* 图片格式选择 */}
+      {/* Image format */}
       {exportConfig.type === 'IMAGE' && (
         <>
           <div className='mb-3'>
@@ -607,7 +601,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 图片分辨率 */}
+          {/* Image resolution */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.resolution')}
@@ -623,10 +617,10 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         </>
       )}
 
-      {/* 视频配置选项 */}
+      {/* Video settings */}
       {exportConfig.type === 'VIDEO' && (
         <>
-          {/* 分辨率 */}
+          {/* Resolution */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.resolution')}
@@ -640,7 +634,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 帧率 */}
+          {/* Frame rate */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.frameRate')}
@@ -662,7 +656,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 视频码率 */}
+          {/* Video bitrate */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.bitrate')}
@@ -693,7 +687,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 自定义码率 */}
+          {/* Custom bitrate */}
           {exportConfig.bitrate === 'custom' && (
             <>
               <div className='mb-3'>
@@ -734,7 +728,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             </>
           )}
 
-          {/* 视频编码 */}
+          {/* Video codec */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.codec')}
@@ -755,7 +749,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 音频采样率 */}
+          {/* Audio sample rate */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.audioSampleRate')}
@@ -772,7 +766,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 音频质量 */}
+          {/* Audio quality */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.audioQuality')}
@@ -796,10 +790,10 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         </>
       )}
 
-      {/* 音频格式配置选项 */}
+      {/* Audio settings */}
       {exportConfig.type === 'AUDIO' && (
         <>
-          {/* 音频格式 */}
+          {/* Audio format */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.audioFormat')}
@@ -820,7 +814,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 音频比特率 */}
+          {/* Audio bitrate */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.audioBitrate')}
@@ -838,7 +832,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
             />
           </div>
 
-          {/* 音频采样率 */}
+          {/* Audio sample rate */}
           <div className='mb-3'>
             <label className='block mb-1 text-xs text-text-default-tertiary'>
               {t('export.sampleRate')}
@@ -857,7 +851,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         </>
       )}
 
-      {/* 导出按钮 */}
+      {/* Export button */}
       <Button
         type='primary'
         bordered={false}
@@ -868,7 +862,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
         {t('common.export')}
       </Button>
 
-      {/* 导出进度弹窗 */}
+      {/* Export progress modal */}
       <ExportSettingsModal
         isExporting={isExporting}
         exportProgress={exportProgress}
