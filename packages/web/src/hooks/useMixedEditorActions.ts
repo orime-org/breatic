@@ -540,7 +540,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
               flow.delete(change.id);
               dispatch(clearMixedEditorExpandLock(change.id));
             }
-            // 'select', 'dimensions', 'reset' — handled by local overlay
+            // `select` / `dimensions` / `reset` are UI-only and MUST NOT
+            // land in Yjs. Callers are expected to split them out and
+            // pass them to `applyLocalNodeChanges` from
+            // MixedEditorDataContext before reaching this function —
+            // see `handleNodesChange` in `mixedEditor/index.tsx`.
           }
         }, origin);
       });
