@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:113 个活跃条目(P0 × 12 + P1 × 54 + P2 × 46 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:132 个活跃条目(P0 × 12 + P1 × 63 + P2 × 56 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic_ai` 主 clone 进行。
 
@@ -20,15 +20,15 @@
 | BUG-049 | 🔴 HIGH | Worker HTTP 响应无大小限制 → OOM | `worker/src/providers/http.ts:76` | R3 | 45m | [→](audit/2026-04-17-round-3-found.md#bug-049) |
 | BUG-050 | 🔴 HIGH | Spawn 无深度限制 → 无限递归耗光积分 | `core/src/agent/tools/spawn.ts:105` | R3 | 1h | [→](audit/2026-04-17-round-3-found.md#bug-050) |
 | BUG-051 | 🔴 HIGH | TextNode 同步路径 innerHTML 未 sanitize → 存储 XSS | `web/.../textNode/TextNodeContent.tsx:141` | R3 | 20m | [→](audit/2026-04-17-round-3-found.md#bug-051) |
-| BUG-093 | 🔴 HIGH | imageEditor 把 nodeId 当 workflowId → authz 100% 拒绝 | `web/.../imageEditor/index.tsx:833` | R4 | 1h | [→](audit/2026-04-21-round-4-found.md#bug-093) |
 | BUG-112 | 🔴 HIGH | Agent 聊天 SSE 无 abort 处理 —— 客户端断线 LLM + 工具链仍跑到 maxStep 并扣积分 | `server/src/routes/chat.ts:79,145` + `server/src/agent/main-agent.ts:131` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-112) |
 | BUG-113 | 🔴 HIGH | `run_script` symlink 可穿透 + `.ts` 触发 npx tsx 供应链 + HOME env 继承 | `core/src/agent/tools/run-script.ts:54` | R5 | 1.5h | [→](audit/2026-04-22-round-5-found.md#bug-113) |
 | BUG-127 | 🔴 HIGH | `/skills/market?tags=` raw SQL injection(`sql.raw` + 单引号包裹未转义 user tags) | `core/src/modules/skill.repo.ts:112` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-127) |
 | BUG-128 | 🔴 HIGH | `POST /auth/forgot-password` Host Header Injection → 账户劫持 | `server/src/routes/auth.ts:197` + `core/src/modules/auth.service.ts:187` | R5 | 20m | [→](audit/2026-04-22-round-5-found.md#bug-128) |
-| BUG-141 | 🔴 HIGH | `conversation.repo.ts` 9 查询 / 写操作不过滤 `deletedAt` → 软删对话仍可读写 | `core/src/modules/conversation.repo.ts:17,131,144,167,187,215,235` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-141) |
-| BUG-142 | 🔴 HIGH | `deleteProject()` 级联漏 5 张子表(BUG-031 补丁不完整) | `core/src/modules/project.repo.ts:216` | R5 | 1h | [→](audit/2026-04-22-round-5-found.md#bug-142) |
+| BUG-153 | 🔴 HIGH | ffmpeg.wasm 核心从 `cdn.jsdelivr.net` 动态加载,无 SRI / CSP / fallback → CDN 污染即客户端 RCE | `web/src/utils/video{Adjust,Crop,Cut,Speed,Stabilization}WithFfmpeg.ts`(5 文件) | R6 | 3-4h | [→](audit/2026-04-23-round-6-found.md#bug-153) |
+| BUG-154 | 🔴 HIGH | ffmpeg 输出 `blob:` URL 直接写 `data.content`,刷新即失效 + 永不 revoke(违反 AIGC 持久化架构) | `web/src/hooks/useMixedEditorStore.ts:615` (`resolveVideoResultNode`) | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-154) |
+| BUG-173 | 🔴 HIGH | `POST /mini-tools/text` `Idempotency-Key` 含非 REFKEY_PATTERN 字符时 **`catch {}` 静默吞错 → 用户拿完整 AI + 0 扣费**(扣费绕过,等价 BUG-079 级) | `core/src/modules/text-tool.service.ts:215` (`catch {}`) + `server/src/routes/text-tools.ts:46` | R7 | 20m | [→](audit/2026-04-23-round-7-found.md#bug-173) |
 
-**P0 小计**:12 个活跃 · 预估 **~11.5 小时**(BUG-034 不计入,已标不修)
+**P0 小计**:12 个活跃 · 预估 **~13.5 小时**(BUG-034 不计入,已标不修)
 
 ---
 
@@ -90,8 +90,17 @@
 | BUG-145 | 🟠 MED | 全 10 个 migration 文件无 `IF EXISTS`(BUG-082 systemic) | `core/src/db/migrations/0000~0009_*.sql` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-145) |
 | BUG-146 | 🟠 MED | `conversation_memories` / `conversationAttachments` 等多张表缺 `deletedAt` 列 | `core/src/db/schema.ts:203,249,335,376,420,471,493` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-146) |
 | BUG-147 | 🟠 MED | 多表无 DB 层 CHECK constraint 限制 `status` / `taskType` 等 enum 字段(membershipType 已由 PR #131 删除) | `core/src/db/schema.ts:166,210,255` | R5 | 45m | [→](audit/2026-04-22-round-5-found.md#bug-147) |
+| BUG-155 | 🟠 MED | `video-cover.ts` 服务端 ffmpeg `-i <videoUrl>` 无 `-protocol_whitelist` → SSRF / 本地文件读取 | `core/src/video-cover.ts:29-41` | R6 | 2h | [→](audit/2026-04-23-round-6-found.md#bug-155) |
+| BUG-156 | 🟠 MED | `PUT /assets/local-upload` 无大小限制 + 无 rate limit + 信任客户端 contentType(BUG-129 systemic 扩大) | `server/src/routes/assets.ts:136-162` | R6 | 2h | [→](audit/2026-04-23-round-6-found.md#bug-156) |
+| BUG-157 | 🟠 MED | `mini-tools/video` 的 `video: z.string()` 接任意字符串(SSRF + file:// + data:)(BUG-133 systemic 扩大) | `server/src/routes/schemas.ts:48-51` | R6 | 1.5h | [→](audit/2026-04-23-round-6-found.md#bug-157) |
+| BUG-158 | 🟠 MED | 5 个 ffmpeg util 重复 boilerplate + `@ffmpeg/core` deps 声明但未使用 + 无 init mutex | `web/package.json:13-15` + 5 个 `*WithFfmpeg.ts` | R6 | 3h | [→](audit/2026-04-23-round-6-found.md#bug-158) |
+| BUG-159 | 🟠 MED | 6 处裸 `catch {}` 静默吞错误(违反 CLAUDE.md 禁止清单) | `web/.../mixedEditor/node/videoNode/videoNode.tsx:676,733,767,800,823,847` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-159) |
+| BUG-165 | 🔴 HIGH | `canvas/common/Video.tsx` videojs player 从不 dispose(BUG-070/071 systemic 放大) | `web/.../canvas/common/Video.tsx:224-319` | R6 | 45m | [→](audit/2026-04-23-round-6-found.md#bug-165) |
+| BUG-167 | 🟠 MED | `textEditor/ui/AIMenu.tsx` `insertContentAt(replacement)` 目前 mock,接真 LLM 即 XSS(Tiptap 把 string 作 HTML 解析) | `web/.../textEditor/ui/AIMenu.tsx:359,386,408` | R6 | 45m | [→](audit/2026-04-23-round-6-found.md#bug-167) |
+| BUG-168 | 🟠 MED | `resolveVideoResultNode` / `updateNodeData` 连续编辑同视频不 revoke 旧 blob URL → 潜在 GB 级泄漏 | `web/src/hooks/useMixedEditorStore.ts:608-618` | R6 | 20m | [→](audit/2026-04-23-round-6-found.md#bug-168) |
+| BUG-172 | 🟠 MED | `POST /mini-tools/text` 整体无 rate limit + `Idempotency-Key` 侧信道 oracle(BUG-132 systemic 扩大) | `server/src/routes/text-tools.ts:46` | R7 | 10m(并入 BUG-132) | [→](audit/2026-04-23-round-7-found.md#bug-172) |
 
-**P1 小计**:54 个 · 预估 **~30 小时**
+**P1 小计**:63 个 · 预估 **~39 小时**
 
 ---
 
@@ -145,8 +154,18 @@
 | BUG-150 | 🟡 LOW | 所有 list 查询用 OFFSET/LIMIT → 大 credit / tasks 列表慢,需要 cursor pagination | `core/src/modules/task.repo.ts` 等 | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-150) |
 | BUG-151 | 🟡 LOW | `drizzle` schema 无 `relations()` 声明 —— 关系查询无类型安全,N+1 风险 | `core/src/db/schema.ts`(整个文件无 relations call) | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-151) |
 | BUG-152 | 🟡 LOW | `client.ts` Drizzle singleton 无 logger 配置,慢查询 / 错误无可观测性 | `core/src/db/client.ts:19` | R5 | 30m | [→](audit/2026-04-22-round-5-found.md#bug-152) |
+| BUG-160 | 🟡 LOW | ffmpeg.wasm 客户端无 AbortController,长视频切工具/关面板仍跑完(BUG-112 systemic) | 5 个 `*WithFfmpeg.ts` | R6 | 15m | [→](audit/2026-04-23-round-6-found.md#bug-160) |
+| BUG-161 | 🟡 LOW | ffmpeg cut 用 `-ss <t> -i <file>`(input seek)精度差,某些格式输出错位 I-frame | `web/src/utils/videoCutWithFfmpeg.ts:109-123` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-161) |
+| BUG-162 | 🟡 LOW | adjust WebGL 预览 vs ffmpeg 再压缩色彩管线不一致(`colorchannelmixer` 与 WebGL uniforms 对不上) | `web/src/utils/videoAdjustWithFfmpeg.ts:107-114` + adjust uniforms | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-162) |
+| BUG-166 | 🟡 LOW | `PlaybackTimelineSection.tsx` + `EraseTrackingPanel.tsx` 隐藏 video 元素 `loadeddata {once:true}` unmount 前未触发时 listener 未清 | `web/.../mixedEditor/node/videoNode/playback/PlaybackTimelineSection.tsx:158-194` + EraseTrackingPanel | R6 | 15m | [→](audit/2026-04-23-round-6-found.md#bug-166) |
+| BUG-169 | 🟡 LOW | 新增 `@tiptap/extension-collaboration` / `y-tiptap` 依赖装了但零引用(2.x vs 3.x 版本还不一致) | `web/package.json`(diff `a91e2cb`) | R6 | 10m | [→](audit/2026-04-23-round-6-found.md#bug-169) |
+| BUG-170 | 🟡 LOW | `90d8451` workspace API stabilize = band-aid(imageEditor→mixedEditor 漏改 + RecentProjects refetch 循环) | `web/vite.config.ts` + `web/.../workspace/components/RecentProjects.tsx` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-170) |
+| BUG-171 | 🟡 LOW | `yjsProjectManager._userOrigin` per-user 非 per-tab(BUG-040 regression 面扩大) | `web/src/utils/yjsProjectManager.ts:72` | R6 | 15m(并入 BUG-040 修) | [→](audit/2026-04-23-round-6-found.md#bug-171) |
+| BUG-174 | 🟡 LOW | mini-tools 的 `node_id` / `project_id` 无 UUID 校验(对比 canvas.ts nodeHistory 用 `.uuid()`,不一致) | `server/src/routes/schemas.ts:30,47-55` | R7 | 10m(并入 BUG-133) | [→](audit/2026-04-23-round-7-found.md#bug-174) |
+| BUG-175 | 🟡 LOW | collab `/node/.+` docName suffix 无字符/长度白名单 → authenticated 用户 self-DoS 自己项目(yjs_documents PK 膨胀) | `collab/src/auth.ts:44` + `core/src/db/schema.ts:491` | R7 | 30m | [→](audit/2026-04-23-round-7-found.md#bug-175) |
+| BUG-176 | 🟡 LOW | collab `parseProjectIdFromDocName` tolerant regex + 无 rate limit,高 QPS 下可探测 projectId(info) | `collab/src/auth.ts:44` + collab `onAuthenticate` 无内置限流 | R7 | 45m | [→](audit/2026-04-23-round-7-found.md#bug-176) |
 
-**P2 小计**:46 个 · 预估 **~15 小时**
+**P2 小计**:56 个 · 预估 **~19.5 小时**
 
 ---
 
@@ -164,11 +183,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 12(+1 不修) | ~11.5 h |
-| P1 | 54 | ~30 h |
-| P2 | 46 | ~15 h |
+| P0 | 12(+1 不修) | ~13.5 h |
+| P1 | 63 | ~39 h |
+| P2 | 56 | ~19.5 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **113**(含长期,+1 不修) | **~68.5 h** |
+| **总计** | **132**(含长期,+1 不修) | **~84 h** |
 
 ---
 
@@ -179,6 +198,8 @@
 - **Round 3**(2026-04-17):33 个新发现(5 HIGH + 20+ MED + 少量 LOW)。快照见 [`audit/2026-04-17-round-3-found.md`](audit/2026-04-17-round-3-found.md)。**状态**:已关 5 个(BUG-046 / 047 / 048 / 052 / 053),其余未修复
 - **Round 4**(2026-04-21):33 个新发现(2 P0 + 1 P1 HIGH + 15 P1 MED + 15 P2 LOW)+ 核查 5 个声称修复(4 彻底 + 1 部分)。快照见 [`audit/2026-04-21-round-4-found.md`](audit/2026-04-21-round-4-found.md)。**状态**:未修复
 - **Round 5**(2026-04-22):41 个新发现(6 P0 + 2 P1 HIGH + 17 P1 MED + 16 P2 LOW)+ 发现 BUG-031 补丁不完整(转 BUG-142 追踪)+ 关闭 BUG-044(注释已同步)。快照见 [`audit/2026-04-22-round-5-found.md`](audit/2026-04-22-round-5-found.md)。**状态**:已关 1 个(BUG-079 · PR #128 · 2026-04-22),其余未修复
+- **Round 6**(2026-04-23):19 个新发现(4 P0 + 1 P1 HIGH + 7 P1 MED + 7 P2 LOW)+ 关闭 BUG-093(imageEditor 文件删除,pattern 迁移到 BUG-164 追踪)。Agent J 超时,BUG-093 核查由主 session 完成。快照见 [`audit/2026-04-23-round-6-found.md`](audit/2026-04-23-round-6-found.md)。**状态**:已关 4 个(BUG-141/142 · PR #137 + BUG-163 · PR #138 + BUG-164 · PR #140,均 2026-04-23),其余未修复
+- **Round 7**(2026-04-23 slim):5 新发现(1 P0 + 1 P1 MED + 3 P2 LOW)+ 2 个 scope 扩大 note(BUG-132 / BUG-157)。单 agent 聚焦 rate limit / Zod / auth 覆盖 3 主题(补 Round 6 Agent J timeout 盲点),8 分钟完成不 timeout,验证"≤ 3 主题 / agent"规则。**P0 BUG-173 是主 session 从 agent 原判 MED 上调**(扣费绕过,与 BUG-079 同级)。快照见 [`audit/2026-04-23-round-7-found.md`](audit/2026-04-23-round-7-found.md)。**状态**:未修复
 
 ---
 
