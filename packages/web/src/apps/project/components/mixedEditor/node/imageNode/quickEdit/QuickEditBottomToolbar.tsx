@@ -16,7 +16,6 @@ import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
 import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import type { ImageFlowNodeData } from '../../../types';
 import type { ImageEditorPickResultBox, ImageEditorPickState } from '../../../types';
-import store from '@/store';
 
 type QuickEditBottomToolbarProps = {
   nodeId: string;
@@ -74,6 +73,15 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
   topSlot,
 }) => {
   const { nodes, edges } = useMixedEditorData();
+  // Async callbacks (surface-removed handler, pick-recognize setTimeout) run
+  // outside the React render cycle and must see the latest nodes, not the
+  // value captured when the callback was created. Mirror `nodes` onto a ref
+  // in render so async code can read `nodesRef.current` without us having to
+  // add `nodes` to every useCallback's dep list (which would churn the
+  // AgentComposerInput prop and re-subscribe its event listeners on every
+  // tile edit).
+  const nodesRef = useRef<Node[]>(nodes);
+  nodesRef.current = nodes;
   const { updateNode, onNodesChange, onEdgesChange, onConnect } = useMixedEditorActions();
   const inputRef = useRef<AgentComposerInputHandle>(null);
   const [inputEmpty, setInputEmpty] = useState(true);
@@ -226,7 +234,7 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
 
   const handleCanvasPickSurfaceRemoved = useCallback(
     (detail: AgentCanvasPickSurfaceRemovalDetail) => {
-      const nodesForRemoval = store.getState().mixedEditor.nodes;
+      const nodesForRemoval = nodesRef.current;
       if (detail.surface === 'recognizing') {
         for (const n of nodesForRemoval) {
           const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
@@ -336,7 +344,7 @@ const QuickEditBottomToolbar: React.FC<QuickEditBottomToolbarProps> = ({
       inputRef.current?.appendCanvasPickRecognizingPlaceholder(placeholderId);
 
       window.setTimeout(() => {
-        const currentNodes = store.getState().mixedEditor.nodes;
+        const currentNodes = nodesRef.current;
         const source = currentNodes.find((n) => n.id === nodeId);
         const sourcePs = (source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
         const currentList = sourcePs?.pendingList ?? [];
