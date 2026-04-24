@@ -45,6 +45,7 @@ import GridSliceOverlay from './gridSlice/GridSliceOverlay';
 import ImageInpaintCanvas from './inpaint/ImageInpaintCanvas';
 import { Image } from '@/components/base/image';
 import Loading from '@/components/loading';
+import { message } from '@/components/base/message';
 import { Canvas, classRegistry, filters, FabricImage } from 'fabric';
 import type { T2DPipelineState, TWebGLUniformLocationMap } from 'fabric';
 import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
@@ -410,6 +411,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodeRight,
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
+    triggerBackendMiniTool,
   } = useMixedEditorActions();
   const { setExpandViewportLock } = useMixedEditorUI();
   const {
@@ -721,8 +723,17 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     }
   };
 
-  const generateCroppedImage = useCallback(
-    async (src: string, rect: CropRect): Promise<{ src: string; width: number; height: number } | null> => {
+  /**
+   * Convert a crop rect drawn in display space (the tile's rendered
+   * pixels, pre-`object-cover` scaling) into source-pixel space that
+   * the backend Sharp handler can extract directly. Keeps the
+   * display↔source math on the client — Sharp only does `extract`.
+   *
+   * Returns `null` when the source image has no detectable natural
+   * size (typical transient state before the <img> element loads).
+   */
+  const computeSourceCropRect = useCallback(
+    async (src: string, rect: CropRect): Promise<{ x: number; y: number; w: number; h: number } | null> => {
       const image = new window.Image();
       image.crossOrigin = 'anonymous';
       image.src = src;
@@ -736,7 +747,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
       const naturalH = image.naturalHeight;
       if (!naturalW || !naturalH) return null;
 
-      // Match the node display: Image uses object-cover
+      // Mirror the tile's `object-cover` transform: the source is
+      // scaled up until one dimension fills the tile, then centered.
       const scale = Math.max(width / naturalW, height / naturalH);
       const drawnW = naturalW * scale;
       const drawnH = naturalH * scale;
@@ -750,19 +762,11 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
       const sw = Math.max(1, sRight - sx);
       const sh = Math.max(1, sBottom - sy);
 
-      const outputCanvas = document.createElement('canvas');
-      outputCanvas.width = Math.max(1, Math.round(sw));
-      outputCanvas.height = Math.max(1, Math.round(sh));
-      const ctx = outputCanvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outputCanvas.width, outputCanvas.height);
-      const outW = outputCanvas.width;
-      const outH = outputCanvas.height;
       return {
-        src: outputCanvas.toDataURL('image/png'),
-        width: outW,
-        height: outH,
+        x: Math.round(sx),
+        y: Math.round(sy),
+        w: Math.max(1, Math.round(sw)),
+        h: Math.max(1, Math.round(sh)),
       };
     },
     [height, width],
@@ -773,15 +777,44 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     const currentSrc = imageContent;
     exitEditing();
     if (!currentSrc) return;
-
-    try {
-      const cropped = await generateCroppedImage(currentSrc, currentRect);
-      if (cropped) {
-        createInpaintResultNodeRight(id, cropped.src, 3000, { width: cropped.width, height: cropped.height });
-      }
-    } catch {
-      // ignore crop failure; keep current behavior without breaking edit flow
+    // Image mini-tools require an already-persisted URL — a blob: or
+    // data: src means the asset hasn't been uploaded yet, in which case
+    // we refuse rather than send an unresolvable URL to the Worker.
+    if (!/^https?:\/\//i.test(currentSrc)) {
+      message.error('Source image must be a persistent URL before cropping');
+      return;
     }
+
+    let sourceRect: { x: number; y: number; w: number; h: number } | null = null;
+    try {
+      sourceRect = await computeSourceCropRect(currentSrc, currentRect);
+    } catch {
+      message.error('Could not read source image for crop');
+      return;
+    }
+    if (!sourceRect) {
+      message.error('Source image has no dimensions');
+      return;
+    }
+
+    // Worker's Sharp handler does the actual pixel extract. The
+    // placeholder tile enters `state:'handling'` in Yjs immediately
+    // and flips to `'idle'` with the result URL once the Worker
+    // publishes its completion event.
+    await triggerBackendMiniTool({
+      sourceNodeId: id,
+      category: 'image',
+      toolName: 'crop',
+      nameSuffix: 'crop',
+      expectedSize: { width: sourceRect.w, height: sourceRect.h },
+      params: {
+        image: currentSrc,
+        x: sourceRect.x,
+        y: sourceRect.y,
+        w: sourceRect.w,
+        h: sourceRect.h,
+      },
+    });
   };
 
   const handleMultiAngleClose = () => exitEditing();
@@ -1281,6 +1314,20 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
               className='h-full w-full'
               imgClassName='block h-full w-full object-cover'
             />
+          ) : nodeData.errorInfo ? (
+            /* Mini-tool failed — content cleared by the Collab
+             * consumer (nodeEditor failure contract). User sees the
+             * reason inline and deletes the tile manually. Mirrors the
+             * pattern in videoNode. */
+            <div
+              role='alert'
+              className='flex h-full w-full items-center justify-center bg-[rgba(255,74,74,0.08)] px-4 text-center text-[12px] leading-5 text-[rgba(214,40,40,0.9)]'
+              title={nodeData.errorInfo}
+            >
+              <span className='line-clamp-3 break-words'>
+                Failed: {nodeData.errorInfo}
+              </span>
+            </div>
           ) : (
             <Loading inline backgroundColor='#ffffff' width='100%' height='100%' />
           )}
