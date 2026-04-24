@@ -30,15 +30,15 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
   const sliderClass = 'nodrag nopan !w-full';
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 从 store 获取 clips 来计算时长
+  // store get clips calculate
   const { clips } = useVideoEditorStore();
 
-  // 计算总时长
+  // calculate
   const duration = clips.length > 0 ? Math.max(...clips.map((c: { end: number }) => c.end)) : 0;
 
-  // 处理播放/暂停：如果播放已结束，从头开始播放
+  // handleplayback/ ：ifplayback end， startplayback
   const handlePlayPause = () => {
-    // 如果播放已结束（当前时间接近或等于总时长），从头开始播放
+    // ifplayback end（ time ）， startplayback
     if (currentTime >= duration - 0.1) {
       onTimeChange(0);
       onPlayPause();
@@ -47,7 +47,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
     }
   };
 
-  // 处理关闭全屏：先退出浏览器全屏，然后关闭组件
+  // handleclosefullscreen： fullscreen， closecomponent
   const handleClose = async () => {
     if (document.fullscreenElement) {
       try {
@@ -61,10 +61,10 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
     }
   };
 
-  // 请求全屏的函数
+  // fullscreen
   const requestFullscreen = useCallback(async (el: HTMLDivElement) => {
     try {
-      // 检查是否支持全屏 API
+      // check supportfullscreen API
       if (el.requestFullscreen) {
         await el.requestFullscreen();
       } else if ('webkitRequestFullscreen' in el && typeof (el as HTMLElement & { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen === 'function') {
@@ -79,7 +79,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
       }
     } catch (error: unknown) {
       console.error('进入全屏失败:', error);
-      // 如果是权限错误，不关闭弹窗，只记录错误
+      // if ， close ，
       if (error instanceof Error && error.name === 'NotAllowedError') {
         console.warn('全屏请求被拒绝，可能需要用户交互');
       } else {
@@ -88,23 +88,23 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
     }
   }, [onClose]);
 
-  // 处理全屏请求
+  // handlefullscreen
   useEffect(() => {
     if (!visible || !containerRef.current || document.fullscreenElement) return;
 
     const el = containerRef.current;
     if (!el) return;
 
-    // 确保元素已连接到 DOM
+    // ensure DOM
     if (!el.isConnected) {
       return;
     }
 
-    // 直接尝试请求全屏
+    // fullscreen
     requestFullscreen(el);
   }, [visible, onClose, requestFullscreen]);
 
-  // 监听全屏状态变化
+  // listenfullscreen
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && visible) {
@@ -117,7 +117,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
     };
   }, [visible, onClose]);
 
-  // 计算当前时间格式 - 支持帧显示（假设30fps）
+  // calculate time - supportframedisplay（ 30fps）
   const formatTime = (seconds: number) => {
     const totalFrames = Math.floor(seconds * 30);
     const hours = Math.floor(seconds / 3600);
@@ -128,7 +128,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
   };
 
-  // 当不可见时，不渲染组件
+  // ， component
   if (!visible) {
     return null;
   }
@@ -139,7 +139,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
       className='fullscreen-preview-container fixed inset-0 z-[2500] flex flex-col w-full h-full overflow-hidden bg-[#262626] group'
     >
       <div className='relative w-full h-full overflow-hidden'>
-        {/* PreviewCanvas - 占满整个屏幕，全屏模式 */}
+        {/* PreviewCanvas - ，fullscreen */}
         <div className='absolute inset-0 w-full h-full z-0'>
           <PreviewCanvas
             nodeId={nodeId}
@@ -151,10 +151,10 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
           />
         </div>
 
-        {/* 底部播放控制栏 - hover 时显示 */}
+        {/* bottomplaybackcontrol - hover display */}
         <div className='fullscreen-controls-bar absolute bottom-0 left-0 right-0 z-[10000] flex justify-center px-8 pb-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
           <div className='flex items-center gap-4 px-6 rounded-lg bg-black/60 border border-gray-500 max-w-[960px] w-full h-[50px]'>
-            {/* 播放/暂停按钮 */}
+            {/* playback/ button */}
             <div
               className='flex items-center justify-center flex-shrink-0 cursor-pointer hover:scale-110'
               onClick={handlePlayPause}
@@ -166,7 +166,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
               )}
             </div>
 
-            {/* 时间显示 */}
+            {/* timedisplay */}
             <div className='flex items-center flex-shrink-0 gap-2 font-mono text-white text-sm'>
               <span className='text-[#2073B1]'>
                 {formatTime(currentTime)}
@@ -175,7 +175,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
               <span className='text-white'>{formatTime(duration)}</span>
             </div>
 
-            {/* 进度条 */}
+            {/* comment */}
             <div className='flex-1 pl-4'>
               <Slider
                 min={0}
@@ -193,7 +193,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
               />
             </div>
             <div className='w-px h-4 bg-white/40 shrink-0 self-center' aria-hidden />
-            {/* 退出全屏按钮 */}
+            {/* fullscreenbutton */}
             <div
               className='flex items-center justify-center flex-shrink-0 cursor-pointer hover:scale-110'
               onClick={handleClose}

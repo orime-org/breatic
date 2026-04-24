@@ -12,6 +12,14 @@ interface VideoStylePanelProps {
   nodeId?: string;
 }
 
+interface CropData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  unit: 'px';
+}
+
 const sliderClass = 'nodrag nopan !w-full';
 const sliderBaseProps = {
   activeColor: '#5A5A5A',
@@ -27,7 +35,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
-  // 获取所有选中的 clips（相同类型的）
+  // getallselected clips（same type ）
   const selectedClips = selectedClipId.length > 0
     ? selectedClipId.map((id) => clips.find((c: { id: string }) => c.id === id)).filter(Boolean) as typeof clips
     : [];
@@ -43,9 +51,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
     return null;
   }
 
-  // 批量更新所有选中的 clips
+  // batchupdateallselected clips
   const updateMediaStyle = (updates: Partial<typeof selectedClip.mediaStyle>) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const newMediaStyle = { ...(clip.mediaStyle || {}), ...updates };
@@ -57,7 +65,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   };
 
   const updateVolume = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, volume: value };
@@ -68,7 +76,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   };
 
   const updateOpacity = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, opacity: value };
@@ -79,7 +87,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   };
 
   const updateSpeed = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, speed: value };
@@ -89,22 +97,258 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
     batchUpdateClips(updatedClips);
   };
 
+  const handleClosePanel = () => {
+    setSelectedClipId([]);
+  };
+
+  const handleOpenCropModal = () => {
+    setCropModalVisible(true);
+  };
+
+  const handleCloseCropModal = () => {
+    setCropModalVisible(false);
+  };
+
+  const handleInputEnterBlur = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateVolume(Math.max(0, Math.min(100, val)));
+    }
+  };
+
+  const handleVolumeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val));
+    updateVolume(finalValue);
+  };
+
+  const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateOpacity(Math.max(0, Math.min(100, val)));
+    }
+  };
+
+  const handleOpacityBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val));
+    updateOpacity(finalValue);
+  };
+
+  const handleSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateSpeed(Math.max(0.25, Math.min(4, val)));
+    }
+  };
+
+  const handleSpeedBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 1 : Math.max(0.25, Math.min(4, val));
+    updateSpeed(finalValue);
+  };
+
+  const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ brightness: Math.max(0, Math.min(200, val)) });
+    }
+  };
+
+  const handleBrightnessBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(200, val));
+    updateMediaStyle({ brightness: finalValue });
+  };
+
+  const handleBrightnessSlider = (value: number) => {
+    updateMediaStyle({ brightness: value });
+  };
+
+  const handleBlurChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ blur: Math.max(0, Math.min(100, val)) });
+    }
+  };
+
+  const handleBlurBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+    updateMediaStyle({ blur: finalValue });
+  };
+
+  const handleBlurSlider = (value: number) => {
+    updateMediaStyle({ blur: value });
+  };
+
+  const handleBorderRadiusChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ borderRadius: Math.max(0, Math.min(100, val)) });
+    }
+  };
+
+  const handleBorderRadiusBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+    updateMediaStyle({ borderRadius: finalValue });
+  };
+
+  const handleBorderRadiusSlider = (value: number) => {
+    updateMediaStyle({ borderRadius: value });
+  };
+
+  const handleOutlineColorChange = (color: string) => {
+    updateMediaStyle({ outlineColor: color });
+  };
+
+  const handleOutlineWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ outlineWidth: Math.max(0, val) });
+    }
+  };
+
+  const handleOutlineWidthBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : Math.max(0, val);
+    updateMediaStyle({ outlineWidth: finalValue });
+  };
+
+  const handleShadowColorChange = (color: string) => {
+    updateMediaStyle({ shadowColor: color });
+  };
+
+  const handleShadowOffsetXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ shadowOffsetX: val });
+    }
+  };
+
+  const handleShadowOffsetXBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : val;
+    updateMediaStyle({ shadowOffsetX: finalValue });
+  };
+
+  const handleShadowOffsetYChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ shadowOffsetY: val });
+    }
+  };
+
+  const handleShadowOffsetYBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : val;
+    updateMediaStyle({ shadowOffsetY: finalValue });
+  };
+
+  const handleShadowBlurChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      updateMediaStyle({ shadowBlur: Math.max(0, val) });
+    }
+  };
+
+  const handleShadowBlurBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    const finalValue = isNaN(val) ? 0 : Math.max(0, val);
+    updateMediaStyle({ shadowBlur: finalValue });
+  };
+
+  const handleCropApply = (_croppedUrl: string | null, cropData: CropData) => {
+    // videocrop：container ， cropregion
+    const currentWidth = selectedClip.width;
+    const currentHeight = selectedClip.height;
+
+    // calculatecropregion
+    const cropRatio = cropData.width / cropData.height;
+
+    let newWidth;
+    let newHeight;
+
+    if (currentWidth && currentHeight) {
+      // container：keep ， cropregion ratio
+      const currentArea = currentWidth * currentHeight;
+      newHeight = Math.sqrt(currentArea / cropRatio);
+      newWidth = newHeight * cropRatio;
+    } else {
+      // first timecrop： MediaElement default calculatelogic
+      const canvasElement = document.getElementById('preview-canvas-bg');
+      let canvasWidth = 1920;
+      let canvasHeight = 1080;
+
+      if (canvasElement) {
+        canvasWidth = parseFloat(canvasElement.getAttribute('data-width') || '1920');
+        canvasHeight = parseFloat(canvasElement.getAttribute('data-height') || '1080');
+      }
+
+      const maxWidth = canvasWidth * 0.5;
+      const maxHeight = canvasHeight * 0.5;
+      const mediaWidth = mediaItem?.width || cropData.width;
+      const mediaHeight = mediaItem?.height || cropData.height;
+      const mediaRatio = mediaWidth / mediaHeight;
+
+      // calculatevideo crop defaultdisplay
+      let originalDisplayWidth: number;
+      let originalDisplayHeight: number;
+      if (mediaWidth > maxWidth || mediaHeight > maxHeight) {
+        // original canvas50%，need toscale
+        if (mediaRatio > maxWidth / maxHeight) {
+          originalDisplayWidth = maxWidth;
+          originalDisplayHeight = maxWidth / mediaRatio;
+        } else {
+          originalDisplayHeight = maxHeight;
+          originalDisplayWidth = maxHeight * mediaRatio;
+        }
+      } else {
+        // original canvas50%，useoriginal
+        originalDisplayWidth = mediaWidth;
+        originalDisplayHeight = mediaHeight;
+      }
+
+      // calculatecropratio（cropregion originalvideo ratio）
+      const cropWidthRatio = cropData.width / mediaWidth;
+      const cropHeightRatio = cropData.height / mediaHeight;
+
+      // crop container = defaultdisplay × cropratio
+      newWidth = originalDisplayWidth * cropWidthRatio;
+      newHeight = originalDisplayHeight * cropHeightRatio;
+    }
+
+    // CSS crop coordinate， croppedUrl（ imagecropkeepconsistent）
+    updateClip(selectedClip.id, {
+      cropArea: cropData,
+      width: newWidth,
+      height: newHeight,
+    });
+  };
+
   return (
     <>
-      <div className='flex items-center justify-between mb-4'>
+      <div className='flex items-center justify-between'>
         <div className='font-semibold text-xs text-text-default-secondary'>
           {t('toolbar.video') || 'Video'}
         </div>
-        <button onClick={() => setSelectedClipId([])} className='text-gray-400 hover:text-gray-600'>
+        <button onClick={handleClosePanel} className='text-gray-400 hover:text-gray-600'>
           <Icon name='videoEditor-close-icon' width={12} height={12} />
         </button>
       </div>
       <div className='space-y-4'>
-        {/* 裁剪按钮 */}
+        {/* cropbutton */}
         <div className='flex items-center py-3 border-b border-border-default-base'>
           <div
             className='p-1.5 rounded outline outline-1 outline-offset-[-1px] outline-border-default-base inline-flex justify-start items-center gap-3 cursor-pointer'
-            onClick={() => setCropModalVisible(true)}
+            onClick={handleOpenCropModal}
           >
             <Icon
               name='videoEditor-crop-icon'
@@ -128,22 +372,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.volume ?? 100)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateVolume(Math.max(0, Math.min(100, val)));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val));
-                    updateVolume(finalValue);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleVolumeChange}
+                  onBlur={handleVolumeBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
@@ -165,22 +396,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.opacity ?? 100)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateOpacity(Math.max(0, Math.min(100, val)));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val));
-                    updateOpacity(finalValue);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleOpacityChange}
+                  onBlur={handleOpacityBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
@@ -202,22 +420,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.speed ?? 1)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateSpeed(Math.max(0.25, Math.min(4, val)));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 1 : Math.max(0.25, Math.min(4, val));
-                    updateSpeed(finalValue);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleSpeedChange}
+                  onBlur={handleSpeedBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
@@ -249,29 +454,16 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.mediaStyle?.brightness ?? 100)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ brightness: Math.max(0, Math.min(200, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(200, val));
-                    updateMediaStyle({ brightness: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleBrightnessChange}
+                  onBlur={handleBrightnessBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
                   <Slider
                     className={sliderClass}
                     value={selectedClip.mediaStyle?.brightness ?? 100}
-                    onChange={(value) => updateMediaStyle({ brightness: value })}
+                    onChange={handleBrightnessSlider}
                     min={0}
                     max={200}
                     {...sliderBaseProps}
@@ -286,29 +478,16 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.mediaStyle?.blur ?? 0)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ blur: Math.max(0, Math.min(100, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
-                    updateMediaStyle({ blur: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleBlurChange}
+                  onBlur={handleBlurBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
                   <Slider
                     className={sliderClass}
                     value={selectedClip.mediaStyle?.blur ?? 0}
-                    onChange={(value) => updateMediaStyle({ blur: value })}
+                    onChange={handleBlurSlider}
                     min={0}
                     max={100}
                     {...sliderBaseProps}
@@ -323,29 +502,16 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='flex items-center gap-2 w-[130px]'>
                 <Input
                   value={String(selectedClip.mediaStyle?.borderRadius ?? 0)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ borderRadius: Math.max(0, Math.min(100, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
-                    updateMediaStyle({ borderRadius: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
+                  onChange={handleBorderRadiusChange}
+                  onBlur={handleBorderRadiusBlur}
+                  onKeyDown={handleInputEnterBlur}
                   className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
                 />
                 <div className='flex-1 pr-2.5'>
                   <Slider
                     className={sliderClass}
                     value={selectedClip.mediaStyle?.borderRadius ?? 0}
-                    onChange={(value) => updateMediaStyle({ borderRadius: value })}
+                    onChange={handleBorderRadiusSlider}
                     min={0}
                     max={100}
                     {...sliderBaseProps}
@@ -369,7 +535,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='w-[130px]'>
                 <ColorPicker
                   value={selectedClip.mediaStyle?.outlineColor || '#000000'}
-                  onChange={(color) => updateMediaStyle({ outlineColor: color })}
+                  onChange={handleOutlineColorChange}
                   size='small'
                   showText
                   className='w-full justify-start px-[7px] h-[26px]'
@@ -383,22 +549,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <Input
                 inputType='number'
                 value={String(selectedClip.mediaStyle?.outlineWidth ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ outlineWidth: Math.max(0, val) });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : Math.max(0, val);
-                  updateMediaStyle({ outlineWidth: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
+                onChange={handleOutlineWidthChange}
+                onBlur={handleOutlineWidthBlur}
+                onKeyDown={handleInputEnterBlur}
                 className='w-[130px]'
                 size='small'
               />
@@ -419,7 +572,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <div className='w-[130px]'>
                 <ColorPicker
                   value={selectedClip.mediaStyle?.shadowColor || '#000000'}
-                  onChange={(color) => updateMediaStyle({ shadowColor: color })}
+                  onChange={handleShadowColorChange}
                   size='small'
                   showText
                   className='w-full justify-start px-[7px] h-[26px]'
@@ -433,22 +586,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <Input
                 inputType='number'
                 value={String(selectedClip.mediaStyle?.shadowOffsetX ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowOffsetX: val });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : val;
-                  updateMediaStyle({ shadowOffsetX: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
+                onChange={handleShadowOffsetXChange}
+                onBlur={handleShadowOffsetXBlur}
+                onKeyDown={handleInputEnterBlur}
                 className='w-[130px]'
                 size='small'
               />
@@ -460,22 +600,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <Input
                 inputType='number'
                 value={String(selectedClip.mediaStyle?.shadowOffsetY ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowOffsetY: val });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : val;
-                  updateMediaStyle({ shadowOffsetY: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
+                onChange={handleShadowOffsetYChange}
+                onBlur={handleShadowOffsetYBlur}
+                onKeyDown={handleInputEnterBlur}
                 className='w-[130px]'
                 size='small'
               />
@@ -487,22 +614,9 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
               <Input
                 inputType='number'
                 value={String(selectedClip.mediaStyle?.shadowBlur ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowBlur: Math.max(0, val) });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : Math.max(0, val);
-                  updateMediaStyle({ shadowBlur: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
+                onChange={handleShadowBlurChange}
+                onBlur={handleShadowBlurBlur}
+                onKeyDown={handleInputEnterBlur}
                 className='w-[130px]'
                 size='small'
               />
@@ -510,8 +624,7 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
           </div>
         </div>
       </div>
-
-      {/* 裁剪模态框 */}
+      {/* crop */}
       <CropModal
         visible={cropModalVisible}
         mediaUrl={mediaItem.url || ''}
@@ -520,82 +633,8 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
         mediaWidth={mediaItem.width}
         mediaHeight={mediaItem.height}
         existingCrop={selectedClip.cropArea}
-        onClose={() => setCropModalVisible(false)}
-        onApply={(
-          _croppedUrl: string | null,
-          cropData: {
-            x: number;
-            y: number;
-            width: number;
-            height: number;
-            unit: 'px';
-          }
-        ) => {
-          // 视频裁剪：容器尺寸要合理，且宽高比匹配裁剪区域
-          const currentWidth = selectedClip.width;
-          const currentHeight = selectedClip.height;
-
-          // 计算裁剪区域的宽高比
-          const cropRatio = cropData.width / cropData.height;
-
-          let newWidth, newHeight;
-
-          if (currentWidth && currentHeight) {
-            // 已有容器：保持面积相近，但调整宽高比为裁剪区域的比例
-            const currentArea = currentWidth * currentHeight;
-            newHeight = Math.sqrt(currentArea / cropRatio);
-            newWidth = newHeight * cropRatio;
-          } else {
-            // 首次裁剪：模拟 MediaElement 的默认尺寸计算逻辑
-            const canvasElement = document.getElementById('preview-canvas-bg');
-            let canvasWidth = 1920;
-            let canvasHeight = 1080;
-
-            if (canvasElement) {
-              canvasWidth = parseFloat(canvasElement.getAttribute('data-width') || '1920');
-              canvasHeight = parseFloat(canvasElement.getAttribute('data-height') || '1080');
-            }
-
-            const maxWidth = canvasWidth * 0.5;
-            const maxHeight = canvasHeight * 0.5;
-            const mediaWidth = mediaItem?.width || cropData.width;
-            const mediaHeight = mediaItem?.height || cropData.height;
-            const mediaRatio = mediaWidth / mediaHeight;
-
-            // 计算视频未裁剪时的默认显示尺寸
-            let originalDisplayWidth: number;
-            let originalDisplayHeight: number;
-            if (mediaWidth > maxWidth || mediaHeight > maxHeight) {
-              // 原始尺寸超过画布50%，需要缩放
-              if (mediaRatio > maxWidth / maxHeight) {
-                originalDisplayWidth = maxWidth;
-                originalDisplayHeight = maxWidth / mediaRatio;
-              } else {
-                originalDisplayHeight = maxHeight;
-                originalDisplayWidth = maxHeight * mediaRatio;
-              }
-            } else {
-              // 原始尺寸小于画布50%，使用原始尺寸
-              originalDisplayWidth = mediaWidth;
-              originalDisplayHeight = mediaHeight;
-            }
-
-            // 计算裁剪比例（裁剪区域占原始视频的比例）
-            const cropWidthRatio = cropData.width / mediaWidth;
-            const cropHeightRatio = cropData.height / mediaHeight;
-
-            // 裁剪后的容器 = 默认显示尺寸 × 裁剪比例
-            newWidth = originalDisplayWidth * cropWidthRatio;
-            newHeight = originalDisplayHeight * cropHeightRatio;
-          }
-
-          // CSS 裁剪只保存坐标，不保存 croppedUrl（与图片裁剪保持一致）
-          updateClip(selectedClip.id, {
-            cropArea: cropData,
-            width: newWidth,
-            height: newHeight,
-          });
-        }}
+        onClose={handleCloseCropModal}
+        onApply={handleCropApply}
       />
     </>
   );

@@ -22,7 +22,7 @@ const PlaybackCursor: React.FC<PlaybackCursorProps> = ({
   getScrollLeft,
   reactflowScale = 1.0,
 }) => {
-  // 从 store 获取 clips
+  // store get clips
   const { clips } = useVideoEditorStore();
   const [isDragging, setIsDragging] = useState(false);
   const dragStateRef = useRef<{
@@ -33,7 +33,7 @@ const PlaybackCursor: React.FC<PlaybackCursorProps> = ({
 
   const playheadLeft = currentTime * pixelsPerSecond + 20 - scrollLeft;
 
-  // 使用 useEffect 管理拖拽事件监听器
+  // use useEffect drag listen
   useEffect(() => {
     if (!isDragging || !dragStateRef.current) return;
 

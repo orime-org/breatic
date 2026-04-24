@@ -10,7 +10,7 @@ interface TextPanelProps {
 }
 
 /**
- * TextPanel 组件 - 文字面板
+ * TextPanel component - textpanel
  */
 const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
   const { t } = useTranslation();
@@ -18,9 +18,9 @@ const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
 
   const textItems = mediaItems.filter((item: MediaItem) => item.type === 'text');
 
-  // 计算文字宽度
+  // calculatetextwidth
   const calculateTextWidth = (text: string, fontSize: number): number => {
-    // 创建一个临时的 DOM 元素来测量宽度
+    // create DOM width
     const tempSpan = document.createElement('span');
     tempSpan.style.position = 'absolute';
     tempSpan.style.visibility = 'hidden';
@@ -33,15 +33,15 @@ const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
     const width = tempSpan.offsetWidth;
     document.body.removeChild(tempSpan);
 
-    // 设置最小和最大宽度
-    const minWidth = fontSize * 2; // 最小宽度为字体大小的2倍
-    const maxWidth = 1920 * 0.8; // 最大宽度为画布宽度的80%
-    return Math.max(minWidth, Math.min(width + 40, maxWidth)); // 添加40px的padding
+    // set width
+    const minWidth = fontSize * 2; // width font 2
+    const maxWidth = 1920 * 0.8; // width canvaswidth 80%
+    return Math.max(minWidth, Math.min(width + 40, maxWidth)); // 40px padding
   };
 
-  // 计算文字高度
+  // calculatetextheight
   const calculateTextHeight = (text: string, width: number, fontSize: number): number => {
-    // 创建一个临时的 DOM 元素来测量高度
+    // create DOM height
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
     tempDiv.style.visibility = 'hidden';
@@ -66,7 +66,7 @@ const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
   const handleTextAdd = (text: string) => {
     let existingTextMedia = mediaItems.find((item: MediaItem) => item.type === 'text');
 
-    // 如果没有找到 text mediaItem，创建一个新的
+    // ifno text mediaItem，create
     if (!existingTextMedia) {
       const newTextMedia: MediaItem = {
         id: `text-media-${Date.now()}`,
@@ -85,9 +85,9 @@ const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
     const canvasHeight = 1080;
     const fontSize = 48;
 
-    // 计算文字宽度（自适应）
+    // calculatetextwidth（ ）
     const calculatedWidth = calculateTextWidth(text, fontSize);
-    // 计算文字高度
+    // calculatetextheight
     const calculatedHeight = calculateTextHeight(text, calculatedWidth, fontSize);
 
     const clip: TimelineClip = {
@@ -110,7 +110,7 @@ const TextPanel: React.FC<TextPanelProps> = ({ currentTime = 0 }) => {
       },
     };
 
-    // 使用 addClip，会自动选中新添加的素材
+    // use addClip， automaticallyselected asset
     addClip(clip);
   };
 

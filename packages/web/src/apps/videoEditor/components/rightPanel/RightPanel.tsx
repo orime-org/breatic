@@ -13,42 +13,38 @@ interface RightPanelProps {
   fontConfig?: any[];
 }
 
-/**
- * RightPanel 组件 - 右侧属性面板
- *
- * 使用静态数据，样式和原来完全一致
- */
+/* * * RightPanel component - right panel * * use ，style consistent */
 const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
   const { t } = useTranslation();
 
-  // 从 store 获取数据
+  // store get
   const { clips, mediaItems, selectedClipId } = useVideoEditorStore();
 
-  // 获取所有选中的 clips 和对应的 media 类型
+  // getallselected clips corresponding media
   const selectedClips = selectedClipId.length > 0
     ? selectedClipId.map((id) => clips.find((c) => c.id === id)).filter(Boolean) as typeof clips
     : [];
 
-  // 获取所有选中 clips 对应的 media 类型
+  // getallselected clips corresponding media
   const selectedMediaTypes = selectedClips.map((clip) => {
     const media = mediaItems.find((item) => item.id === clip.mediaId);
     if (media?.type) {
       return media.type;
     }
-    // 如果没有找到 media 或没有 type，检查是否是文字（通过 text 属性判断）
+    // ifno media no type，check text（ text ）
     if (clip.text) {
       return 'text';
     }
     return null;
   }).filter((type): type is NonNullable<typeof type> => type !== null);
 
-  // 检查所有选中的元素是否都是相同类型
+  // checkallselected same type
   const allSameType = selectedMediaTypes.length > 0 && selectedMediaTypes.every((type) => type === selectedMediaTypes[0]);
 
-  // 根据 selectedClipId 找到 selectedClip（使用第一个选中的）
+  // based on selectedClipId selectedClip（use selected ）
   const selectedClip = selectedClips[0] || null;
 
-  // 获取当前选中素材的媒体信息
+  // get selectedasset
   const selectedMedia = ((): MediaItem | null => {
     if (!selectedClip) return null;
     let media = mediaItems.find((item) => item.id === selectedClip.mediaId) || null;
@@ -64,9 +60,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
     return media;
   })();
 
-  // 根据素材类型渲染不同的内容
+  // based onasset
   const renderContent = () => {
-    // 如果没有选中任何元素
+    // ifnoselected
     if (selectedClips.length === 0) {
       return (
         <div className='py-8 text-center text-gray-400'>
@@ -78,7 +74,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
       );
     }
 
-    // 如果多选但类型不一致，显示提示
+    // ifmulti-select consistent，display
     if (selectedClips.length > 1 && !allSameType) {
       return (
         <div className='py-8 text-center text-gray-400'>
@@ -101,7 +97,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
       );
     }
 
-    // 根据素材类型渲染对应的面板
+    // based onasset corresponding panel
     const mediaType = selectedMedia.type;
 
     switch (mediaType) {
@@ -128,6 +124,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ nodeId, fontConfig = [] }) => {
       data-nopan='true'
       data-nodrag='true'
       data-nowheel='true'
+      data-right-panel-root='true'
     >
       <div className='p-2.5'>{renderContent()}</div>
     </div>

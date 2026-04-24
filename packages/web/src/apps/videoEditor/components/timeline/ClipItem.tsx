@@ -13,7 +13,7 @@ interface ClipItemProps {
   onResize: (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => void;
   onShowSnapLines: (lines: number[]) => void;
   onSelectClip: (clipId: string) => void;
-  allClips: TimelineClip[]; // 用于吸附计算
+  allClips: TimelineClip[]; // used for calculate
   nodeId?: string;
 }
 
@@ -41,7 +41,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     edge: 'left' | 'right';
   } | null>(null);
 
-  // Hook 必须在条件检查之前调用
+  // Hook check
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: clip.id,
     data: { clip },
@@ -72,7 +72,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     audioWaveSurfer.seekTo(clipPlayedProgress);
   }, [audioWaveSurfer, clipPlayedProgress]);
 
-  // 使用 useEffect 管理调整大小事件监听器
+  // use useEffect listen
   useEffect(() => {
     if (!isResizing || !resizeStateRef.current) return;
 
@@ -86,7 +86,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
       if (edge === 'left') {
         const rawStart = Math.max(0, Math.min(originalStart + deltaTime, originalEnd - 0.1));
 
-        // 收集吸附点
+        // comment
         const snapPoints: number[] = [];
         allClips.forEach((otherClip: TimelineClip) => {
           if (otherClip.id !== clip.id) {
@@ -96,7 +96,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
         });
         snapPoints.push(0);
 
-        // 吸附逻辑
+        // logic
         const snapThreshold = 0.1;
         let snappedStart = rawStart;
         let minDistance = Infinity;
@@ -121,7 +121,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
       } else {
         const rawEnd = Math.max(originalStart + 0.1, originalEnd + deltaTime);
 
-        // 收集吸附点
+        // comment
         const snapPoints: number[] = [];
         allClips.forEach((otherClip: TimelineClip) => {
           if (otherClip.id !== clip.id) {
@@ -130,7 +130,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
           }
         });
 
-        // 吸附逻辑
+        // logic
         const snapThreshold = 0.1;
         let snappedEnd = rawEnd;
         let minDistance = Infinity;
@@ -171,7 +171,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     };
   }, [isResizing, clip.id, pixelsPerSecond, allClips, onResize, onShowSnapLines]);
 
-  // 处理左边缘调整大小
+  // handleleft
   const handleLeftResize = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -185,7 +185,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     setResizeEdge('left');
   };
 
-  // 处理右边缘调整大小
+  // handleright
   const handleRightResize = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -199,9 +199,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     setResizeEdge('right');
   };
 
-  /**
-   * 获取缩略图或背景图URL
-   */
+  /* * * get URL */
   const getBackgroundUrl = (): string | null => {
     if (media?.type === 'video') {
       return media.thumbnail || null;
@@ -210,15 +208,13 @@ const ClipItem: React.FC<ClipItemProps> = ({
       return media.url || null;
     }
     if (media?.type === 'audio') {
-      // 音频类型使用背景颜色，不需要背景图片
+      // audio use color， need to image
       return null;
     }
     return null;
   };
 
-  /**
-   * 获取背景颜色
-   */
+  /* * * get color */
   const getBackgroundColor = (backgroundUrl: string | null): string => {
     if (media?.type === 'text') {
       return '#77C562';
@@ -232,9 +228,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     return '#77C562';
   };
 
-  /**
-   * 获取背景大小
-   */
+  /* * * get */
   const getBackgroundSize = (): string => {
     if (media?.type === 'video' || media?.type === 'image') {
       return 'auto 100%';
@@ -245,9 +239,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
     return 'auto';
   };
 
-  /**
-   * 获取动态样式
-   */
+  /* * * get style */
   const getDynamicStyle = (): React.CSSProperties => {
     const backgroundUrl = getBackgroundUrl();
     const backgroundColor = getBackgroundColor(backgroundUrl);
@@ -266,7 +258,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
 
   const dynamicStyle = getDynamicStyle();
 
-  // Tailwind 类名
+  // Tailwind
   const className = `absolute h-7 top-0 bg-repeat-x bg-left-center rounded border flex items-end overflow-hidden select-none ${
     isSelected
       ? 'border-2 border-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]'
@@ -314,7 +306,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
         </div>
       ) : null}
 
-      {/* 左侧调整手柄 */}
+      {/* left */}
       {isSelected && (
         <div
           onMouseDown={handleLeftResize}
@@ -329,7 +321,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
         </div>
       )}
 
-      {/* 右侧调整手柄 */}
+      {/* right */}
       {isSelected && (
         <div
           onMouseDown={handleRightResize}
@@ -344,7 +336,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
         </div>
       )}
 
-      {/* 文本或素材名称 */}
+      {/* text asset */}
       {media?.type === 'text' || clip.type === 'text' || clip.text !== undefined ? (
         <div className='absolute top-0 left-0 flex items-center justify-start px-3 gap-1.5 w-full h-full text-white text-xs font-semibold overflow-hidden'>
           <Icon
