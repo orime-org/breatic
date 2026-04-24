@@ -57,6 +57,11 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     relight: { kind: "provider", model: "ic-light-v2" },
     "multi-angle": { kind: "provider", model: "qwen-multi-angle" },
     edit: { kind: "provider", model: "nano-banana-2-edit" },
+    // Sharp-based local handler — pure crop, no AIGC. Validates the
+    // library-agnostic claim: same runLocalHandler framework as
+    // video/crop (FFmpeg CLI), but the handler uses a Node library
+    // (Sharp + libvips) internally. See handlers/local/image/crop.ts.
+    crop: { kind: "local", handler: "image/crop" },
   },
   video: {
     upscale: { kind: "provider", model: "video-upscale-pro" },

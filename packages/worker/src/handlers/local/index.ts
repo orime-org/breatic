@@ -22,6 +22,7 @@
 
 import { createJobTempDir, cleanupJobTempDir } from "./runtime/tempdir.js";
 import videoCrop from "./video/crop.js";
+import imageCrop from "./image/crop.js";
 
 /**
  * Common shape returned by every local handler — matches the subset
@@ -69,6 +70,7 @@ export type LocalHandlerFn = (
  */
 const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {
   "video/crop": videoCrop,
+  "image/crop": imageCrop,
 };
 
 export interface RunLocalHandlerParams {

@@ -8,14 +8,16 @@
  *
  * Params contract:
  *
- *   sourceUrl: string      — http(s) URL to a video in permanent storage
+ *   video: string          — http(s) URL to a video in permanent storage
+ *                            (field name matches the rest of the video
+ *                            mini-tool family)
  *   x, y, w, h: number     — crop rectangle in source pixels (FFmpeg convention:
  *                            x/y is top-left, w/h is box size)
  *
  * Rounding: FFmpeg `crop` rejects odd widths/heights for many codecs.
  * We clamp each to an even integer via `Math.max(2, Math.floor(v / 2) * 2)`
- * which matches what `videoCropWithFfmpeg.ts` does on the frontend
- * today, so the behaviour after migration is identical.
+ * which matches what the pre-migration front-end code did, so behaviour
+ * is identical.
  */
 
 import { join } from "node:path";
@@ -25,7 +27,7 @@ import { uploadTempFileToStorage } from "../runtime/upload.js";
 import { spawnCollected } from "../runtime/spawn.js";
 
 interface CropParams {
-  sourceUrl: string;
+  video: string;
   x: number;
   y: number;
   w: number;
@@ -33,14 +35,14 @@ interface CropParams {
 }
 
 function parseParams(raw: Record<string, unknown>): CropParams {
-  const sourceUrl = raw.sourceUrl;
+  const video = raw.video;
   const x = raw.x;
   const y = raw.y;
   const w = raw.w;
   const h = raw.h;
 
-  if (typeof sourceUrl !== "string" || !/^https?:\/\//.test(sourceUrl)) {
-    throw new Error("video/crop: `sourceUrl` must be an http(s) URL");
+  if (typeof video !== "string" || !/^https?:\/\//.test(video)) {
+    throw new Error("video/crop: `video` must be an http(s) URL");
   }
   if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") {
     throw new Error("video/crop: `x`, `y`, `w`, `h` must be numbers");
@@ -51,7 +53,7 @@ function parseParams(raw: Record<string, unknown>): CropParams {
   if (w <= 0 || h <= 0) {
     throw new Error("video/crop: `w` and `h` must be positive");
   }
-  return { sourceUrl, x, y, w, h };
+  return { video, x, y, w, h };
 }
 
 /** Clamp to even integer (FFmpeg encoder friendliness). */
@@ -60,13 +62,13 @@ function evenInt(value: number): number {
 }
 
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
-  const { sourceUrl, x, y, w, h } = parseParams(rawParams);
+  const { video, x, y, w, h } = parseParams(rawParams);
   const cropW = evenInt(w);
   const cropH = evenInt(h);
   const cropX = Math.max(0, Math.floor(x));
   const cropY = Math.max(0, Math.floor(y));
 
-  const inputPath = await downloadToTempDir(sourceUrl, ctx.tempDir, { suffix: ".mp4" });
+  const inputPath = await downloadToTempDir(video, ctx.tempDir, { suffix: ".mp4" });
   const outputPath = join(ctx.tempDir, "out.mp4");
 
   await spawnCollected("ffmpeg", [

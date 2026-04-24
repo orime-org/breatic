@@ -241,7 +241,12 @@ export interface UseMixedEditorActionsResult {
     nameSuffix: string;
     /** Explicit placeholder size; defaults to source node's size. */
     expectedSize?: { width: number; height: number };
-    /** Tool-specific params forwarded to Worker (sourceUrl + operation fields). */
+    /**
+     * Tool-specific params forwarded to the Worker. Must include the
+     * source URL field matching that modality's schema convention
+     * (image family: `image`; video family: `video`; audio family:
+     * `audio`), plus any operation-specific fields.
+     */
     params: Record<string, unknown>;
   }) => Promise<string | null>;
 

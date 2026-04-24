@@ -1203,7 +1203,9 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         nameSuffix: 'crop',
         expectedSize,
         params: {
-          sourceUrl: videoContent,
+          // Field name matches the video mini-tool family convention
+          // (see server/routes/schemas.ts videoToolSchema).
+          video: videoContent,
           x: cropRect.x,
           y: cropRect.y,
           w: cropRect.w,
