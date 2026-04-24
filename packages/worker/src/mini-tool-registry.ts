@@ -79,6 +79,12 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     cut: { kind: "local", handler: "video/cut" },
     adjust: { kind: "local", handler: "video/adjust" },
     "audio-denoise": { kind: "local", handler: "video/audio-denoise" },
+    // Visual-parity shims for legacy front-end behaviour — none of
+    // these are real AIGC; they mirror the ffmpeg.wasm implementations
+    // so migrating to Worker-local execution is visually identical.
+    stabilization: { kind: "local", handler: "video/stabilization" },
+    "scene-extension": { kind: "local", handler: "video/scene-extension" },
+    "hdr-conversion": { kind: "local", handler: "video/hdr-conversion" },
   },
   audio: {
     sfx: { kind: "provider", model: "elevenlabs-sfx-v2" },

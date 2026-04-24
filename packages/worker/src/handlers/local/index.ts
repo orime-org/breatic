@@ -26,6 +26,9 @@ import videoSpeed from "./video/speed.js";
 import videoCut from "./video/cut.js";
 import videoAdjust from "./video/adjust.js";
 import videoAudioDenoise from "./video/audioDenoise.js";
+import videoStabilization from "./video/stabilization.js";
+import videoSceneExtension from "./video/sceneExtension.js";
+import videoHdrConversion from "./video/hdrConversion.js";
 import imageCrop from "./image/crop.js";
 import imageFlipRotate from "./image/flipRotate.js";
 import imageAdjust from "./image/adjust.js";
@@ -80,6 +83,9 @@ const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {
   "video/cut": videoCut,
   "video/adjust": videoAdjust,
   "video/audio-denoise": videoAudioDenoise,
+  "video/stabilization": videoStabilization,
+  "video/scene-extension": videoSceneExtension,
+  "video/hdr-conversion": videoHdrConversion,
   "image/crop": imageCrop,
   "image/flipRotate": imageFlipRotate,
   "image/adjust": imageAdjust,
