@@ -75,3 +75,11 @@ export type { Locale } from "./i18n/index.js";
 
 export { canvasDocName, nodeEditorDocName, parseDocName } from "./yjs-doc-names.js";
 export type { ParsedDocName } from "./yjs-doc-names.js";
+
+export {
+  defaultAdjustValue,
+  isAdjustValueNeutral,
+  parseAdjustValue,
+  buildAdjustVideoFilter,
+} from "./adjust-value.js";
+export type { AdjustValue } from "./adjust-value.js";

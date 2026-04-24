@@ -57,11 +57,13 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     relight: { kind: "provider", model: "ic-light-v2" },
     "multi-angle": { kind: "provider", model: "qwen-multi-angle" },
     edit: { kind: "provider", model: "nano-banana-2-edit" },
-    // Sharp-based local handler — pure crop, no AIGC. Validates the
-    // library-agnostic claim: same runLocalHandler framework as
-    // video/crop (FFmpeg CLI), but the handler uses a Node library
-    // (Sharp + libvips) internally. See handlers/local/image/crop.ts.
+    // Sharp-based local handlers — no AIGC, Worker in-process.
+    // `manual-adjust` is the slider-driven `AdjustValue` adjust,
+    // distinct from the existing `adjust: topaz-adjust` which is
+    // Topaz's AI auto-enhance (no user sliders).
     crop: { kind: "local", handler: "image/crop" },
+    flipRotate: { kind: "local", handler: "image/flipRotate" },
+    "manual-adjust": { kind: "local", handler: "image/adjust" },
   },
   video: {
     upscale: { kind: "provider", model: "video-upscale-pro" },
@@ -71,9 +73,12 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     motion: { kind: "provider", model: "kling-v3-pro-motion" },
     animate: { kind: "provider", model: "wan-2.2-animate" },
     "talking-head": { kind: "provider", model: "omnihuman-1.5" },
-    // First local (non-vendor) mini-tool. FFmpeg-based; runs on the
-    // Worker. See `handlers/local/video/crop.ts` for the implementation.
+    // FFmpeg-based local handlers — no AIGC, Worker in-process.
     crop: { kind: "local", handler: "video/crop" },
+    speed: { kind: "local", handler: "video/speed" },
+    cut: { kind: "local", handler: "video/cut" },
+    adjust: { kind: "local", handler: "video/adjust" },
+    "audio-denoise": { kind: "local", handler: "video/audio-denoise" },
   },
   audio: {
     sfx: { kind: "provider", model: "elevenlabs-sfx-v2" },
