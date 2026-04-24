@@ -91,10 +91,20 @@ export interface CanvasNodeFields {
 
 // ── Event bus payloads ─────────────────────────────────────────────
 
+/**
+ * `docName` identifies the target Yjs document unambiguously:
+ *   - `"project-{projectId}/canvas"` — main canvas (CanvasNodeFields above)
+ *   - `"project-{projectId}/node/{hostNodeId}"` — mixed editor flow
+ *     (the `nodeId` on the event is then the sub-node inside that flow)
+ *
+ * See `packages/collab/src/schema.ts` for the canonical builders
+ * (`canvasDocName`, `nodeEditorDocName`) and parser (`parseDocName`).
+ */
+
 /** Node enters handling state (generation or upload started). */
 export interface NodeHandlingEvent {
   type: "handling";
-  projectId: string;
+  docName: string;
   nodeId: string;
   /** Task ID that acquired the lock. */
   taskId: string;
@@ -104,7 +114,7 @@ export interface NodeHandlingEvent {
 /** Node handling finishes successfully. */
 export interface NodeCompletedEvent {
   type: "completed";
-  projectId: string;
+  docName: string;
   nodeId: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
@@ -115,11 +125,11 @@ export interface NodeCompletedEvent {
 /** Node handling fails — content stays unchanged. */
 export interface NodeFailedEvent {
   type: "failed";
-  projectId: string;
+  docName: string;
   nodeId: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
 }
 
-/** Union of all node state events on the canvas event bus. */
+/** Union of all node state events on the task-events bus. */
 export type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
