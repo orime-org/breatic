@@ -41,16 +41,29 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   imageToolBase.extend({ tool: z.literal("relight"), light_source: z.string().default("none"), brightness: z.number().default(50), light_temperature: z.number().default(5600), rim_light: z.boolean().default(false), prompt: z.string().optional() }),
   imageToolBase.extend({ tool: z.literal("multi-angle"), horizontal_angle: z.number().default(0), vertical_angle: z.number().default(0), distance: z.number().default(1) }),
   imageToolBase.extend({ tool: z.literal("edit"), prompt: z.string() }),
-  // Local (Worker-side Sharp) mini-tool. Source URL arrives on the
-  // base-inherited `image` field; `host_node_id` identifies the
-  // mixed-editor container so the Worker routes its NodeEvent to the
-  // right doc.
+  // ── Local (Worker-side Sharp) mini-tools ──
+  // Source URL arrives on the base-inherited `image` field; Worker
+  // builds NodeEvent.docName as `project-{id}/node/{host_node_id}`
+  // for mixed-editor requests, else falls back to the canvas doc.
   imageToolBase.extend({
     tool: z.literal("crop"),
     x: z.number(),
     y: z.number(),
     w: z.number().positive(),
     h: z.number().positive(),
+    host_node_id: z.string().optional(),
+  }),
+  imageToolBase.extend({
+    tool: z.literal("flipRotate"),
+    op: z.enum(["rotate90", "rotateMinus90", "flipHorizontal", "flipVertical"]),
+    host_node_id: z.string().optional(),
+  }),
+  // `manual-adjust` carries the shared AdjustValue (15 sliders).
+  // Named distinctly from `adjust: topaz-adjust` above (AI
+  // auto-enhance) to prevent dispatch-table collision.
+  imageToolBase.extend({
+    tool: z.literal("manual-adjust"),
+    value: z.record(z.string(), z.number()).optional(),
     host_node_id: z.string().optional(),
   }),
 ]);
@@ -80,6 +93,45 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     y: z.number(),
     w: z.number().positive(),
     h: z.number().positive(),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("speed"),
+    video: z.string().url(),
+    rate: z.number().positive(),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("cut"),
+    video: z.string().url(),
+    segments: z
+      .array(
+        z.object({
+          start: z.number().min(0),
+          end: z.number().positive(),
+        }),
+      )
+      .min(1),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("adjust"),
+    video: z.string().url(),
+    value: z.record(z.string(), z.number()).optional(),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("audio-denoise"),
+    video: z.string().url(),
+    intensity: z.number().min(0).max(100),
     node_id: z.string().optional(),
     project_id: z.string().optional(),
     host_node_id: z.string().optional(),

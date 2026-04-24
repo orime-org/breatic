@@ -22,7 +22,13 @@
 
 import { createJobTempDir, cleanupJobTempDir } from "./runtime/tempdir.js";
 import videoCrop from "./video/crop.js";
+import videoSpeed from "./video/speed.js";
+import videoCut from "./video/cut.js";
+import videoAdjust from "./video/adjust.js";
+import videoAudioDenoise from "./video/audioDenoise.js";
 import imageCrop from "./image/crop.js";
+import imageFlipRotate from "./image/flipRotate.js";
+import imageAdjust from "./image/adjust.js";
 
 /**
  * Common shape returned by every local handler — matches the subset
@@ -70,7 +76,13 @@ export type LocalHandlerFn = (
  */
 const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {
   "video/crop": videoCrop,
+  "video/speed": videoSpeed,
+  "video/cut": videoCut,
+  "video/adjust": videoAdjust,
+  "video/audio-denoise": videoAudioDenoise,
   "image/crop": imageCrop,
+  "image/flipRotate": imageFlipRotate,
+  "image/adjust": imageAdjust,
 };
 
 export interface RunLocalHandlerParams {
