@@ -42,7 +42,7 @@ const sliderBaseProps = {
 } as const;
 
 const TextStylePanel: React.FC<TextStylePanelProps> = ({ fontConfig = [] }) => {
-  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
+  const { clips, selectedClipId, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const { t } = useTranslation();
   const [fontSelectorVisible, setFontSelectorVisible] = useState(false);
   const [availableFontWeights, setAvailableFontWeights] = useState<{ value: string; label: string }[]>([
