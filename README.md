@@ -230,7 +230,7 @@ See [docs/ROADMAP.md](./docs/ROADMAP.md) for the full development roadmap.
 
 Breatic takes security seriously. Found a vulnerability? Please report
 it privately — see [SECURITY.md](./SECURITY.md) for our disclosure
-policy and reporting channel (`contact@breatic.ai`).
+policy and reporting channel (`security@breatic.ai`).
 
 Do **not** open public GitHub issues for security vulnerabilities.
 
