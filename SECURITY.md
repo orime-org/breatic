@@ -147,10 +147,10 @@ thank you.
 
 Breatic has undergone multiple rounds of **independent security audits**
 as part of our pre-launch engineering discipline. Identified issues
-are continuously tracked, triaged, and resolved — **77+ findings as
-of April 2026**, with the count growing as new reviews and reports
-come in. We believe transparent security practices are a hallmark of
-a trustworthy AI platform.
+are [continuously tracked in the open](./docs/internal/BUGS.md) —
+**77+ findings as of April 2026**, with the count growing as new
+reviews and reports come in. We believe transparent security
+practices are a hallmark of a trustworthy AI platform.
 
 ---
 
