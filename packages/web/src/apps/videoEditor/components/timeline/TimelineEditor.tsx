@@ -797,7 +797,97 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         }
       }}
     >
-      {/* top region：playback */} <div className='h-2.5 bg-background-default-base shrink-0 relative' /> {/* timetick - top */} <div ref={scaleRef} className='sticky top-0 w-full h-8 bg-background-default-base shrink-0 cursor-pointer overflow-hidden' onClick={(e) => { e.stopPropagation(); const scaleRect = scaleRef.current?.getBoundingClientRect(); if (!scaleRect) return; const relativeX = (e.clientX - scaleRect.left) / reactflowScale; const clickX = relativeX + scaleScrollLeft - 20; const maxClipEnd = clips.length > 0 ? Math.max(...clips.map((c: TimelineClip) => c.end)) : 0; const playheadWidthTime = 2 / pixelsPerSecond; const maxClickTime = maxClipEnd - playheadWidthTime; const clickTime = Math.max(0, Math.min(clickX / pixelsPerSecond, maxClickTime)); handleTimeChange(clickTime); }} > <div style={{ transform: `translateX(-${scaleScrollLeft}px)` }}> <TimelineScale scale={timeScaleValue} scaleSplitCount={5} scaleWidth={fixedScaleWidth} startLeft={20} width={scaleContainerWidth} height={32} nodeId={nodeId} displayDuration={displayDuration} /> </div> </div> {/* track region */} <div className='bg-background-default-base flex-1 overflow-y-auto'> <div ref={scrollbarRef} className='flex-1 h-full overflow-auto' onScroll={handleScroll}> <div ref={containerRef} className='h-full' onClick={handleTrackContainerClick} > <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragMove={handleDragMove} modifiers={[snapModifier]} collisionDetection={closestCenter} > <div className='relative pt-2.5 overflow-visible h-full' style={{ minWidth: `${scaleContainerWidth}px` }} onClick={handleContainerClick} > {/* top region（used for top） */} {trackData.trackCount > 0 && ( <TopDropZone onClick={handleContainerClick} /> )} {/* track - display asset track */} {trackData.trackCount === 0 ? ( <div className='text-center p-10 text-gray-400 text-sm'> {t('timeline.addMediaPrompt') || ' time '} </div> ) : ( <> <TimelineTracks pixelsPerSecond={pixelsPerSecond} currentTime={currentTime} onClipResize={handleClipResize} onShowSnapLines={setSnapLines} hoverTrackIndex={hoverTrackIndex} isHoverAboveFirstTrack={isHoverAboveFirstTrack} draggingClipId={draggingClipId} nodeId={nodeId} parentRef={scrollbarRef} parentScrollRef={scrollbarRef} /> </> )} </div> </DndContext> </div> </div> </div> {/* line（ line） */}
+      {/* top region：playback */}
+      <div className='h-2.5 bg-background-default-base shrink-0 relative' />
+
+      {/* timetick - top */}
+      <div
+        ref={scaleRef}
+        className='sticky top-0 w-full h-8 bg-background-default-base shrink-0 cursor-pointer overflow-hidden'
+        onClick={(e) => {
+          e.stopPropagation();
+          const scaleRect = scaleRef.current?.getBoundingClientRect();
+          if (!scaleRect) return;
+
+          const relativeX = (e.clientX - scaleRect.left) / reactflowScale;
+          const clickX = relativeX + scaleScrollLeft - 20;
+          const maxClipEnd = clips.length > 0 ? Math.max(...clips.map((c: TimelineClip) => c.end)) : 0;
+          const playheadWidthTime = 2 / pixelsPerSecond;
+          const maxClickTime = maxClipEnd - playheadWidthTime;
+          const clickTime = Math.max(0, Math.min(clickX / pixelsPerSecond, maxClickTime));
+          handleTimeChange(clickTime);
+        }}
+      >
+        <div style={{ transform: `translateX(-${scaleScrollLeft}px)` }}>
+          <TimelineScale
+            scale={timeScaleValue}
+            scaleSplitCount={5}
+            scaleWidth={fixedScaleWidth}
+            startLeft={20}
+            width={scaleContainerWidth}
+            height={32}
+            displayDuration={displayDuration}
+          />
+        </div>
+      </div>
+
+      {/* track region */}
+      <div className='bg-background-default-base flex-1 overflow-y-auto'>
+        <div
+          ref={scrollbarRef}
+          className='flex-1 h-full overflow-auto'
+          onScroll={handleScroll}
+        >
+          <div
+            ref={containerRef}
+            className='h-full'
+            onClick={handleTrackContainerClick}
+          >
+            <DndContext
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragMove={handleDragMove}
+              modifiers={[snapModifier]}
+              collisionDetection={closestCenter}
+            >
+              <div
+                className='relative pt-2.5 overflow-visible h-full'
+                style={{ minWidth: `${scaleContainerWidth}px` }}
+                onClick={handleContainerClick}
+              >
+                {/* top region（used for top） */}
+                {trackData.trackCount > 0 && (
+                  <TopDropZone onClick={handleContainerClick} />
+                )}
+
+                {/* track - display asset track */}
+                {trackData.trackCount === 0 ? (
+                  <div className='text-center p-10 text-gray-400 text-sm'>
+                    {t('timeline.addMediaPrompt') || ' time '}
+                  </div>
+                ) : (
+                  <>
+                    <TimelineTracks
+                      pixelsPerSecond={pixelsPerSecond}
+                      currentTime={currentTime}
+                      onClipResize={handleClipResize}
+                      onShowSnapLines={setSnapLines}
+                      hoverTrackIndex={hoverTrackIndex}
+                      isHoverAboveFirstTrack={isHoverAboveFirstTrack}
+                      draggingClipId={draggingClipId}
+                      nodeId={nodeId}
+                      parentRef={scrollbarRef}
+                      parentScrollRef={scrollbarRef}
+                    />
+                  </>
+                )}
+              </div>
+            </DndContext>
+          </div>
+        </div>
+      </div>
+
+      {/* line（ line） */}
       {snapLines.map((snapTime) => (
         <div
           key={`snap-${snapTime}`}
@@ -818,7 +908,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             scrollLeft={scaleScrollLeft}
             getScrollLeft={getScrollLeft}
             reactflowScale={reactflowScale}
-            nodeId={nodeId}
           />
         </div>
       )}
