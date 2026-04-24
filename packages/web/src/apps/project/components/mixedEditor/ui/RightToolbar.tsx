@@ -257,8 +257,10 @@ const RightToolbar: React.FC<RightToolbarProps> = ({
   const sidePanelOnItemFavoriteClickProp = favoriteControlsEnabled && onSidePanelItemFavoriteClick ? handlePanelItemFavoriteClick : undefined;
 
   return (
-    <div className='pointer-events-auto relative flex h-full min-h-0 shrink-0 items-center'>
-      <div className='flex flex-col items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
+    // Outer column must stay `pointer-events-none`: a full-height `pointer-events-auto` strip
+    // here sits above ReactFlow (z-10 vs z-[1]) and blocks bottom-right controls (e.g. undo/redo).
+    <div className='pointer-events-none relative flex h-full min-h-0 shrink-0 items-center'>
+      <div className='pointer-events-auto flex flex-col items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
         <Upload accept={uploadAccept} showUploadList={false} fileList={[]} onChange={handleUploadChange}>
           <Tooltip title='upload' placement='right' offset={4}>
             <button
