@@ -15,6 +15,8 @@ export interface RecentProjectsRef {
 }
 
 const PAGE_SIZE = 40;
+const INITIAL_SKELETON_COUNT = 8;
+const LOAD_MORE_SKELETON_COUNT = 4;
 
 /** Format an ISO timestamp as a short localized string for the card footer. */
 function formatUpdateTime(value: string | Date): string {
@@ -82,14 +84,13 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
   }, [staticProjects]);
 
   const getSkeletonCount = () => {
-    // On the initial load we have no idea how many rows are coming,
-    // so show a full page's worth of shimmer cards. Subsequent pages
-    // only need to fill the gap between what we have and the next
-    // page boundary.
+    // Avoid rendering a full page (40) of skeleton cards at once,
+    // which makes the layout jump to an unusually tall height.
+    // Keep loading placeholders compact to preserve page stability.
     if (isInitRef.current) {
-      return PAGE_SIZE;
+      return INITIAL_SKELETON_COUNT;
     }
-    return PAGE_SIZE;
+    return LOAD_MORE_SKELETON_COUNT;
   };
 
   useImperativeHandle(
