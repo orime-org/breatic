@@ -33,7 +33,7 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
   parentScrollRef,
 }) => {
   // 从 store 获取状态
-  const { clips } = useVideoEditorStore(nodeId);
+  const { clips } = useVideoEditorStore();
 
   // 按轨道索引分组 clips 并获取所有有素材的轨道索引
   const usedTrackIndexes = useMemo(() => {

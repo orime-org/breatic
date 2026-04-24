@@ -31,7 +31,7 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 从 store 获取 clips 来计算时长
-  const { clips } = useVideoEditorStore(nodeId);
+  const { clips } = useVideoEditorStore();
 
   // 计算总时长
   const duration = clips.length > 0 ? Math.max(...clips.map((c: { end: number }) => c.end)) : 0;

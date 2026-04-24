@@ -21,9 +21,9 @@ const sliderBaseProps = {
   thumbColor: '#B3B3B3',
 } as const;
 
-const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
+const AudioStylePanel: React.FC<AudioStylePanelProps> = () => {
   const { t } = useTranslation();
-  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const initializedRef = useRef<Set<string>>(new Set());
 
   // 获取所有选中的 clips（相同类型的）

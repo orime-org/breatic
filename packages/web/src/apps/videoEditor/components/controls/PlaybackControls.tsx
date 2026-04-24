@@ -30,7 +30,6 @@ const sliderClass = 'nodrag nopan !w-full';
  *
  */
 const PlaybackControls: React.FC<PlaybackControlsProps> = ({
-  nodeId,
   currentTime,
   isPlaying,
   scale,
@@ -54,7 +53,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     setClips,
     batchUpdateClips,
     setSelectedClipId,
-  } = useVideoEditorStore(nodeId);
+  } = useVideoEditorStore();
 
   // 计算实际时长
   const actualDuration = clips.length === 0 ? 0 : Math.max(...clips.map((c: TimelineClip) => c.end));

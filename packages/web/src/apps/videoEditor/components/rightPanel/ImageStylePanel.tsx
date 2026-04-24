@@ -22,9 +22,9 @@ const sliderBaseProps = {
   thumbColor: '#B3B3B3',
 } as const;
 
-const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
+const ImageStylePanel: React.FC<ImageStylePanelProps> = () => {
   const { t } = useTranslation();
-  const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
   // 获取所有选中的 clips（相同类型的）

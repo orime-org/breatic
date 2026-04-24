@@ -30,7 +30,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
   container,
 }, ref) => {
   const moveableRef = useRef<Moveable>(null);
-  const { updateClip } = useVideoEditorStore(nodeId);
+  const { updateClip } = useVideoEditorStore();
   const dragDeltaRef = useRef<Record<string, { x: number; y: number }>>({});
   const dragStartRef = useRef<Record<string, { x: number; y: number }>>({});
   const resizeStateRef = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});

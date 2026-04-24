@@ -32,7 +32,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
   isFullscreen = false,
 }, ref) => {
   // 从 store 获取数据
-  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const selectoRef = useRef<Selecto>(null);

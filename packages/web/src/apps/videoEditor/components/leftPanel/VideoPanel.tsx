@@ -15,10 +15,10 @@ interface VideoPanelProps {
 /**
  * VideoPanel 组件 - 视频面板
  */
-const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
+const VideoPanel: React.FC<VideoPanelProps> = ({ currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
   const { t } = useTranslation();
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
-  const { mediaItems, addClip } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip } = useVideoEditorStore();
 
   const videoItems = mediaItems.filter((item: MediaItem) => item.type === 'video');
 
@@ -106,9 +106,11 @@ const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvas
                     </div>
                   )}
                 </div>
-                <div className='px-2.5 py-1.5'>
-                  <Tooltip title={item.name || ''}>
-                    <p className='text-xs text-text-default-tertiary truncate'>{item.name || ''}</p>
+                <div className='px-2.5 py-1.5 min-w-0'>
+                  <Tooltip title={item.name || ''} asChild={false} triggerClassName='block w-full min-w-0'>
+                    <div className='w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-text-default-tertiary'>
+                      {item.name || ''}
+                    </div>
                   </Tooltip>
                 </div>
               </div>

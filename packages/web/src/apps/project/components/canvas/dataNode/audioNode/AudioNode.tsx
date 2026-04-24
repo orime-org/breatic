@@ -21,7 +21,7 @@ import {
 import { Modal } from '@/components/modals/Modal';
 import { Input } from '@/components/base/input';
 import WaveSurfer from 'wavesurfer.js';
-import RecordPlugin from 'wavesurfer.js/plugins/record';
+import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';

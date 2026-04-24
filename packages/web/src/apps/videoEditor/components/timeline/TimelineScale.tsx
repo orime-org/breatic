@@ -16,7 +16,6 @@ interface TimelineScaleProps {
   height?: number;
   /** 显示的时长（如果没有素材时，应该使用容器对应的时长） */
   displayDuration?: number;
-  nodeId?: string;
 }
 
 function formatTime(seconds: number): string {
@@ -101,10 +100,9 @@ const TimelineScale: React.FC<TimelineScaleProps> = ({
   width,
   height = 32,
   displayDuration: propDisplayDuration,
-  nodeId,
 }) => {
   // 从 store 获取 clips 并计算 duration
-  const { clips } = useVideoEditorStore(nodeId);
+  const { clips } = useVideoEditorStore();
   // 使用传入的 displayDuration 或 clips 的时长，确保至少显示容器宽度对应的时长
   const duration = useMemo(() => {
     const clipsDuration = clips.length === 0 ? 0 : Math.max(...clips.map((c) => c.end));
