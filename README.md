@@ -226,6 +226,28 @@ pnpm docs
 
 See [docs/ROADMAP.md](./docs/ROADMAP.md) for the full development roadmap.
 
+## Security
+
+Breatic takes security seriously. Found a vulnerability? Please report
+it privately — see [SECURITY.md](./SECURITY.md) for our disclosure
+policy and reporting channel (`contact@breatic.ai`).
+
+Do **not** open public GitHub issues for security vulnerabilities.
+
 ## License
 
-Proprietary. All rights reserved. See [LICENSE](./LICENSE).
+Breatic is released under the **Breatic Open Source License v1.0** —
+a source-available license based on Apache 2.0, with additional
+conditions:
+
+- No public-facing deployment without authorization (paid or free)
+- Brand and copyright must be preserved across all components
+- License revisions apply only prospectively — past contributions
+  remain under the version in effect at commit time
+
+See [LICENSE](./LICENSE) (English, legally binding) or
+[LICENSE.zh.md](./LICENSE.zh.md) (中文译本,仅供参考).
+
+Commercial licensing: [licensing@orime.ai](mailto:licensing@orime.ai).
+
+© 2026 Orime, Inc.
