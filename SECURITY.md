@@ -10,7 +10,7 @@
 **Please report security issues privately.** Do **not** open a public
 GitHub issue, pull request, or discussion for vulnerabilities.
 
-**Contact:** [**contact@breatic.ai**](mailto:contact@breatic.ai)
+**Contact:** [**security@breatic.ai**](mailto:security@breatic.ai)
 
 When possible, include:
 
@@ -170,7 +170,7 @@ than vulnerabilities:
 - **Generated content that violates policy** — content moderation
   issue, report via support channels, not here
 
-When in doubt, err on the side of reporting via `contact@breatic.ai`
+When in doubt, err on the side of reporting via `security@breatic.ai`
 — we'd rather triage a false positive than miss a real issue.
 
 ---
@@ -178,7 +178,7 @@ When in doubt, err on the side of reporting via `contact@breatic.ai`
 ## Questions
 
 For any questions about this policy or how to report, email
-[contact@breatic.ai](mailto:contact@breatic.ai).
+[security@breatic.ai](mailto:security@breatic.ai).
 
 Thank you for helping keep Breatic and its users safe.
 
