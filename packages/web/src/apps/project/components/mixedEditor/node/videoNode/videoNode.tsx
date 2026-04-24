@@ -14,7 +14,6 @@ import { cutVideoWithFfmpeg } from '@/utils/videoEditor/videoCutWithFfmpeg';
 import { speedVideoWithFfmpeg } from '@/utils/videoEditor/videoSpeedWithFfmpeg';
 import { isAdjustValueNeutral, videoAdjustWithFfmpeg } from '@/utils/videoEditor/videoAdjustWithFfmpeg';
 import { videoStabilizationWithFfmpeg } from '@/utils/videoEditor/videoStabilizationWithFfmpeg';
-import { videoCropWithFfmpeg } from '@/utils/videoEditor/videoCropWithFfmpeg';
 import { videoHdrConversionWithFfmpeg } from '@/utils/videoEditor/videoHdrConversionWithFfmpeg';
 import { videoSceneExtensionWithFfmpeg } from '@/utils/videoEditor/videoSceneExtensionWithFfmpeg';
 import { videoAudioDenoiseWithFfmpeg } from '@/utils/videoEditor/videoAudioDenoiseWithFfmpeg';
@@ -252,6 +251,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     removeNode,
     updateNode,
     updateNodeData,
+    triggerBackendMiniTool,
   } = useMixedEditorActions();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
@@ -1178,46 +1178,52 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
 
   const handleCropSave = useCallback(async () => {
     if (!videoContent || isCropSaving) return;
-    const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'crop', state: 'localPending' });
-    if (!placeholderId) return;
+    // Mixed-editor tiles must reference content already in OSS/S3 — the
+    // Worker downloads the source server-side. A blob: / data: URL
+    // indicates the source hasn't been persisted yet; refuse rather
+    // than silently send a URL the Worker can't resolve.
+    if (!/^https?:\/\//i.test(videoContent)) {
+      message.error('Source video must be a persistent URL before cropping');
+      return;
+    }
+
     const expectedSize = normalizeNodeSize({
       width: cropRect.w,
       height: cropRect.h,
     });
-    applyResultNodeSize(placeholderId, expectedSize);
     setEditingMode(null);
     setIsCropSaving(true);
     try {
-      const nextSrc = await videoCropWithFfmpeg(videoContent, cropRect, {
-        width: currentWidth,
-        height: currentHeight,
+      // Worker side expects crop box in *source* pixels. cropRect already
+      // lives in the same coordinate space as the source video stream.
+      await triggerBackendMiniTool({
+        sourceNodeId: id,
+        category: 'video',
+        toolName: 'crop',
+        nameSuffix: 'crop',
+        expectedSize,
+        params: {
+          sourceUrl: videoContent,
+          x: cropRect.x,
+          y: cropRect.y,
+          w: cropRect.w,
+          h: cropRect.h,
+        },
       });
-      if (!nextSrc) {
-        removeNode(placeholderId);
-        return;
-      }
-      const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
-      applyResultNodeSize(placeholderId, nextNodeSize);
-      resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-    } catch {
-      removeNode(placeholderId);
-      message.error('Could not export cropped video. Try again or use a smaller clip.');
+      // The placeholder is already in Yjs; Worker's completed event
+      // (via task-events stream → Collab) will flip it to state:'idle'
+      // + populate content. Final size refinement happens in the Yjs
+      // observer, so no more local work here.
     } finally {
       setIsCropSaving(false);
     }
   }, [
-    createVideoPlaceholderNodeRight,
-    cropRect,
-    currentHeight,
-    currentWidth,
-    id,
-    isCropSaving,
-    removeNode,
-    resolveVideoResultNode,
-    applyResultNodeSize,
-    deriveResultNodeSize,
-    normalizeNodeSize,
     videoContent,
+    isCropSaving,
+    cropRect,
+    id,
+    normalizeNodeSize,
+    triggerBackendMiniTool,
   ]);
 
   const handleHdrConversionSave = useCallback(
@@ -1736,6 +1742,20 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
                   onPlaybackUpdate={syncPlaybackFromVideo ? handlePlaybackUpdate : undefined}
                   className={`h-full w-full !rounded-none${editingMode === 'adjust' ? ' opacity-0' : ''}`}
                 />
+              ) : nodeData?.errorInfo ? (
+                /* Task failed — node.state already flipped back to 'idle'
+                 * but content/coverUrl are intentionally cleared so the
+                 * user knows this tile has no result. Shows the short
+                 * reason inline; no retry UI (user deletes manually). */
+                <div
+                  role='alert'
+                  className='flex h-full w-full items-center justify-center bg-[rgba(255,74,74,0.08)] px-4 text-center text-[12px] leading-5 text-[rgba(214,40,40,0.9)]'
+                  title={nodeData.errorInfo}
+                >
+                  <span className='line-clamp-3 break-words'>
+                    Failed: {nodeData.errorInfo}
+                  </span>
+                </div>
               ) : (
                 <Loading inline backgroundColor='#ffffff' width='100%' height='100%' />
               )}

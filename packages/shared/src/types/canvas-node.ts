@@ -86,6 +86,20 @@ export interface CanvasNodeFields {
     attachments: AttachRef[];
     /** Generation parameters — Y.Map<string, unknown> at runtime. */
     params: Record<string, unknown>;
+    /**
+     * Last failure message. Set when a task fails (POST-side rejection or
+     * Worker-side throw); cleared automatically by the Collab consumer
+     * when the next `handling` or `completed` event lands on the node.
+     *
+     * Semantics differ by doc kind (enforced in the Collab consumer):
+     *   - Canvas: failure preserves prior `content` / `coverUrl` so the
+     *     user never loses their last successful result.
+     *   - Mixed editor flow: failure clears `content` + `coverUrl`
+     *     because the node IS the task's output — a failed mini-tool
+     *     placeholder has no valid content to retain, and there is no
+     *     retry UX for mixed-editor tiles (user deletes the node).
+     */
+    errorInfo?: string;
   };
 }
 
@@ -122,13 +136,30 @@ export interface NodeCompletedEvent {
   cover_url?: string;
 }
 
-/** Node handling fails — content stays unchanged. */
+/**
+ * Node handling fails.
+ *
+ * Behavior on the target node's `data` is doc-kind dependent (the
+ * Collab consumer routes by `parseDocName(docName)`):
+ *   - Canvas: `content` / `coverUrl` preserved (user's prior result
+ *     stays visible); `errorInfo` set; `state` → `'idle'`.
+ *   - Mixed editor flow: `content` + `coverUrl` cleared; `errorInfo`
+ *     set; `state` → `'idle'`. The node becomes an explicit "failed
+ *     placeholder" that the user must delete manually (no retry UI).
+ */
 export interface NodeFailedEvent {
   type: "failed";
   docName: string;
   nodeId: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
+  /**
+   * Human-readable failure reason. Written into
+   * `node.data.errorInfo` by the Collab consumer. Optional for
+   * backwards compatibility — events without this field land as
+   * `errorInfo: ''`.
+   */
+  errorMessage?: string;
 }
 
 /** Union of all node state events on the task-events bus. */

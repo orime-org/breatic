@@ -51,6 +51,18 @@ export interface ImageEditorNodeData extends Record<string, unknown> {
    * Absent/null when pick mode is inactive.
    */
   pickState?: ImageEditorPickState | null;
+  /**
+   * Last failure message. Set when a mini-tool task fails (POST
+   * rejection or Worker-side throw); cleared automatically when the
+   * next `handling` / `completed` event arrives on the node.
+   *
+   * Mixed-editor semantics: failure also clears `content` + (any)
+   * `coverUrl` because the node IS the task's output — no retry UI,
+   * user must delete the node manually.
+   */
+  errorInfo?: string;
+  /** Video first-frame cover URL (present for video result tiles). */
+  coverUrl?: string;
 }
 
 /**
@@ -91,7 +103,7 @@ export const createEditorAudioNodeData = (name: string, content: string): ImageE
 
 /** Partial patch merged into editor node `data`. */
 export type ImageEditorNodeDataPatch = Partial<
-  Pick<ImageEditorNodeData, 'name' | 'content' | 'state' | 'nodeRuntimeData'>
+  Pick<ImageEditorNodeData, 'name' | 'content' | 'state' | 'nodeRuntimeData' | 'errorInfo' | 'coverUrl'>
 >;
 
 /** Alias for image tiles in the editor flow (same as {@link ImageEditorNodeData}). */
