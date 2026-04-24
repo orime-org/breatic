@@ -1,28 +1,16 @@
 /**
- * Yjs document name conventions for the canvas Collab service.
+ * Yjs document naming helpers for the Collab service.
  *
- * The canonical data shapes for canvas node data and the Redis
- * event bus live in `@breatic/shared`. This module only owns the
- * document naming helpers that are specific to the Collab service.
+ * The canonical definitions live in `@breatic/shared`
+ * (`yjs-doc-names.ts`) so Worker and Web import them from the same
+ * place. This module re-exports them under the original names so
+ * existing Collab-internal imports don't churn.
  */
 
-/**
- * Canvas document name convention.
- *
- * @param projectId - Project UUID
- * @returns Document name for the canvas (e.g. `"project-abc123/canvas"`)
- */
-export function canvasDocName(projectId: string): string {
-  return `project-${projectId}/canvas`;
-}
+export {
+  canvasDocName,
+  nodeEditorDocName,
+  parseDocName,
+} from "@breatic/shared";
 
-/**
- * Node editor document name convention.
- *
- * @param projectId - Project UUID
- * @param nodeId - Node ID
- * @returns Document name for a node's editor (e.g. `"project-abc123/node/xyz"`)
- */
-export function nodeEditorDocName(projectId: string, nodeId: string): string {
-  return `project-${projectId}/node/${nodeId}`;
-}
+export type { ParsedDocName } from "@breatic/shared";

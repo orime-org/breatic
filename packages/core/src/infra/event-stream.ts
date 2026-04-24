@@ -1,15 +1,21 @@
 /**
- * Redis Streams publisher for the canvas node event bus.
+ * Redis Streams publisher for the task event bus.
  *
  * Replaces the previous Redis Pub/Sub mechanism with a durable
  * stream. Messages survive Collab restarts — the consumer resumes
  * from the last processed stream id after reconnect.
  *
  * Current stream:
- *   `${env}:stream:canvas-nodes` — handling / completed / failed
+ *   `${env}:stream:task-events` — handling / completed / failed
  *   events published by the API (on task creation / upload lock)
  *   and by the Worker (on task completion / failure). Consumed by
- *   the Collab service to update canvas Yjs documents.
+ *   the Collab service and routed to the target Yjs document
+ *   (main canvas or mixed editor) by the event's `docName` field.
+ *
+ * Renamed from `${env}:stream:canvas-nodes` when node-editor
+ * documents joined as additional write targets — the name now
+ * reflects the actual payload scope (task lifecycle events, not
+ * canvas-only node events).
  *
  * The low-level `publishToStream` remains generic so future event
  * types can reuse the same transport without adding new helpers.
@@ -20,9 +26,9 @@ import type { NodeEvent } from "@breatic/shared";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 
-/** Stream key for canvas node state events. */
-export function canvasNodeStreamKey(): string {
-  return `${env.ENV}:stream:canvas-nodes`;
+/** Stream key for task lifecycle events. */
+export function taskEventsStreamKey(): string {
+  return `${env.ENV}:stream:task-events`;
 }
 
 /**
@@ -68,7 +74,7 @@ export async function publishNodeEvent(
 ): Promise<void> {
   await publishToStream(
     redis,
-    canvasNodeStreamKey(),
+    taskEventsStreamKey(),
     event as unknown as Record<string, unknown>,
   );
 }

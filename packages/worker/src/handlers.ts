@@ -11,7 +11,8 @@
 
 import type { Job } from "bullmq";
 import { generateText, stepCountIs } from "ai";
-import { MINI_TOOL_DEFAULTS } from "./mini-tool-defaults.js";
+import { resolveMiniToolEntry } from "./mini-tool-registry.js";
+import { runLocalHandler } from "./handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
@@ -21,6 +22,7 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
+import { canvasDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -127,7 +129,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   try {
     if (source === "mini_tool" && toolName) {
-      [providerResult, creditsUsed] = await runMiniTool(toolName, taskType, params);
+      [providerResult, creditsUsed] = await runMiniTool(toolName, taskType, params, job.id ?? "");
     } else if (taskType === "understand") {
       [providerResult, creditsUsed] = await runUnderstand(model, params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
@@ -256,9 +258,13 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   }
 
   if (nodeId && projectId) {
+    // Worker currently targets main-canvas nodes only. When mixed-editor
+    // flow nodes become Worker-driven (T3 phase 2+), the job payload
+    // will carry `docName` directly and this helper call becomes
+    // unnecessary — the Worker will just forward `job.data.docName`.
     await publishNodeEvent(streamRedis, {
       type: "completed",
-      projectId,
+      docName: canvasDocName(projectId),
       nodeId,
       taskId,
       content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
@@ -300,7 +306,7 @@ async function recordFailureHistory(
   }
 }
 
-/** Publish a `failed` NodeEvent to the canvas-nodes stream. */
+/** Publish a `failed` NodeEvent to the task-events stream. */
 async function publishFailedEvent(
   streamRedis: ReturnType<typeof getStreamRedis>,
   projectId: string | undefined,
@@ -313,7 +319,12 @@ async function publishFailedEvent(
 ): Promise<void> {
   if (!nodeId || !projectId) return;
   try {
-    await publishNodeEvent(streamRedis, { type: "failed", projectId, nodeId, taskId });
+    await publishNodeEvent(streamRedis, {
+      type: "failed",
+      docName: canvasDocName(projectId),
+      nodeId,
+      taskId,
+    });
   } catch (err) {
     logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
   }
@@ -325,18 +336,28 @@ async function runMiniTool(
   toolName: string,
   taskType: string,
   params: Record<string, unknown>,
+  jobId: string,
 ): Promise<[Record<string, unknown>, number]> {
-  const defaults = MINI_TOOL_DEFAULTS[taskType];
-  if (!defaults) throw new Error(`No mini-tool defaults for task type '${taskType}'`);
+  const entry = resolveMiniToolEntry(taskType, toolName);
 
-  const defaultModel = defaults[toolName];
-  if (!defaultModel) throw new Error(`Unknown mini-tool '${toolName}' for '${taskType}'`);
-
-  const modelName = (params.model as string) || defaultModel;
+  // Strip workflow-meta fields that are for infra (not for the
+  // provider/handler to see). Model override survives so users can
+  // pick a non-default vendor model; it's stripped again inside the
+  // provider branch before validation.
   const cleanParams = { ...params };
-  delete cleanParams.model;
   delete cleanParams.node_id;
   delete cleanParams.project_id;
+
+  if (entry.kind === "local") {
+    const result = await runLocalHandler(entry.handler, taskType, toolName, cleanParams, jobId);
+    const cost = result.cost ?? 0;
+    const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+    return [result as unknown as Record<string, unknown>, credits];
+  }
+
+  // kind === "provider"
+  const modelName = (cleanParams.model as string) || entry.model;
+  delete cleanParams.model;
 
   const provider = await importProvider(taskType);
   const [, validated] = provider.validateParams(modelName, cleanParams);

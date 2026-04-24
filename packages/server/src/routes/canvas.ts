@@ -25,6 +25,7 @@ import { getRedis, getStreamRedis } from "@breatic/core";
 import { acquireNodeLock } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { ConflictError, ValidationError } from "@breatic/core";
+import { canvasDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -119,7 +120,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   if (nodeId && projectId) {
     await publishNodeEvent(streamRedis, {
       type: "handling",
-      projectId,
+      docName: canvasDocName(projectId),
       nodeId,
       taskId: task.id,
       actor,
