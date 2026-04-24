@@ -79,7 +79,7 @@ async function handleNodeEvent(
     await connection.transact((doc) => {
       const dataMap = resolveNodeDataMap(doc, parsed, event);
       if (!dataMap) return;
-      applyEventToDataMap(dataMap, event);
+      applyEventToDataMap(dataMap, event, parsed);
       updated = true;
     });
   } finally {
@@ -196,13 +196,33 @@ function ensureDataMap(nodeMap: Y.Map<unknown>, event: NodeEvent): Y.Map<unknown
 }
 
 /**
- * Apply the event's state transition to a node's `data` Y.Map. Same
- * shape for canvas and mixed editor — both use the `state` /
- * `handlingBy` / `content` / `coverUrl` / `lastEventType` contract.
+ * Apply the event's state transition to a node's `data` Y.Map.
+ *
+ * Fields always touched:
+ *   - `state`: 'handling' / 'idle'
+ *   - `handlingBy`: created on handling, deleted on completed/failed
+ *   - `errorInfo`: cleared on handling/completed, set on failed
+ *   - `lastEventType`: set on completed/failed
+ *
+ * Doc-kind-specific behaviour:
+ *   - Canvas `failed`: `content` / `coverUrl` preserved — canvas nodes
+ *     are user-created entities, failing an AIGC run must not wipe
+ *     the user's prior successful output.
+ *   - `nodeEditor` (mixed editor) `failed`: `content` / `coverUrl`
+ *     cleared — mixed-editor tiles ARE mini-tool outputs, so a failed
+ *     run has no valid content to retain. The node becomes an explicit
+ *     "failed placeholder" that the user deletes manually (no retry UX).
  */
-function applyEventToDataMap(dataMap: Y.Map<unknown>, event: NodeEvent): void {
+function applyEventToDataMap(
+  dataMap: Y.Map<unknown>,
+  event: NodeEvent,
+  parsed: ParsedDocName,
+): void {
   if (event.type === "handling") {
     dataMap.set("state", "handling");
+    // Re-triggering a node should wipe stale failure info so the UI
+    // doesn't keep showing an old error while the new run is pending.
+    dataMap.delete("errorInfo");
     let handlingBy = dataMap.get("handlingBy");
     if (!(handlingBy instanceof Y.Map)) {
       handlingBy = new Y.Map();
@@ -218,11 +238,22 @@ function applyEventToDataMap(dataMap: Y.Map<unknown>, event: NodeEvent): void {
     }
     dataMap.set("lastEventType", "completed");
     dataMap.delete("handlingBy");
+    // Success clears any lingering error from a prior failed run.
+    dataMap.delete("errorInfo");
   } else {
-    // failed — content untouched
+    // failed
     dataMap.set("lastEventType", "failed");
     dataMap.set("state", "idle");
     dataMap.delete("handlingBy");
+    dataMap.set("errorInfo", event.errorMessage ?? "");
+
+    if (parsed.kind === "nodeEditor") {
+      // Mixed-editor tile is the task's output — clear it on failure.
+      dataMap.set("content", "");
+      dataMap.delete("coverUrl");
+    }
+    // parsed.kind === "canvas": leave content/coverUrl untouched so
+    // the user's prior result stays visible.
   }
 }
 

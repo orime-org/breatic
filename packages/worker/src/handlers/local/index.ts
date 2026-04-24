@@ -21,6 +21,7 @@
  */
 
 import { createJobTempDir, cleanupJobTempDir } from "./runtime/tempdir.js";
+import videoCrop from "./video/crop.js";
 
 /**
  * Common shape returned by every local handler — matches the subset
@@ -46,6 +47,10 @@ export interface LocalHandlerContext {
   jobId: string;
   taskType: string;
   toolName: string;
+  /** Task owner — used as the storage key prefix (permanent URL scoping). */
+  userId: string;
+  /** Project ID — used inside the storage key (defaults to "default"). */
+  projectId: string | undefined;
 }
 
 export type LocalHandlerFn = (
@@ -56,42 +61,55 @@ export type LocalHandlerFn = (
 /**
  * Handler registry keyed by `"<category>/<operation>"`.
  *
- * Empty in phase 1 — handlers come online in phase 2 (video/crop first).
+ * Adding a new handler:
+ *   1. Create `./<category>/<operation>.ts` with a default export
+ *      matching `LocalHandlerFn`.
+ *   2. Add the import + register the key below.
+ *   3. Add `{ kind: 'local', handler: '<key>' }` to MINI_TOOL_REGISTRY.
  */
-const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {};
+const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {
+  "video/crop": videoCrop,
+};
+
+export interface RunLocalHandlerParams {
+  handler: string;
+  taskType: string;
+  toolName: string;
+  params: Record<string, unknown>;
+  jobId: string;
+  userId: string;
+  projectId: string | undefined;
+}
 
 /**
  * Run a local handler by its registry `handler` path.
  *
- * @param handler - `"<category>/<operation>"` path registered in
- *   `LOCAL_HANDLERS`
- * @param taskType - `taskType` from the job (image/video/audio/...)
- * @param toolName - `toolName` from the job (crop/speed/...)
- * @param params - Job params (source URL + operation-specific fields)
- * @param jobId - BullMQ job id (for temp dir naming)
  * @returns Result matching `LocalHandlerResult`
  * @throws `Error` if `handler` is not registered, or if the handler
  *   implementation throws
  */
 export async function runLocalHandler(
-  handler: string,
-  taskType: string,
-  toolName: string,
-  params: Record<string, unknown>,
-  jobId: string,
+  opts: RunLocalHandlerParams,
 ): Promise<LocalHandlerResult> {
-  const fn = LOCAL_HANDLERS[handler];
+  const fn = LOCAL_HANDLERS[opts.handler];
   if (!fn) {
     throw new Error(
-      `Local handler '${handler}' is not implemented (phase 1 scaffold ` +
-        `— no handlers registered yet). Register in LOCAL_HANDLERS and ` +
-        `MINI_TOOL_REGISTRY to enable.`,
+      `Local handler '${opts.handler}' is not implemented. Register in ` +
+        `LOCAL_HANDLERS (packages/worker/src/handlers/local/index.ts) and ` +
+        `in MINI_TOOL_REGISTRY to enable.`,
     );
   }
 
-  const tempDir = await createJobTempDir(jobId);
+  const tempDir = await createJobTempDir(opts.jobId);
   try {
-    return await fn(params, { tempDir, jobId, taskType, toolName });
+    return await fn(opts.params, {
+      tempDir,
+      jobId: opts.jobId,
+      taskType: opts.taskType,
+      toolName: opts.toolName,
+      userId: opts.userId,
+      projectId: opts.projectId,
+    });
   } finally {
     await cleanupJobTempDir(tempDir);
   }

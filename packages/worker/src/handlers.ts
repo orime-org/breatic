@@ -22,7 +22,27 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
-import { canvasDocName } from "@breatic/shared";
+import { canvasDocName, nodeEditorDocName } from "@breatic/shared";
+
+/**
+ * Build the target docName for a NodeEvent.
+ *
+ * Mini-tool jobs triggered from a mixed-editor (node-editor) doc
+ * carry `host_node_id` in their params. When present, the event must
+ * target the per-node editor doc so the Collab consumer routes to the
+ * mixed-editor flow schema. Otherwise the event targets the main
+ * canvas doc — unchanged pre-T3 behaviour.
+ */
+function resolveEventDocName(
+  projectId: string,
+  params: Record<string, unknown>,
+): string {
+  const hostNodeId = params.host_node_id;
+  if (typeof hostNodeId === "string" && hostNodeId.length > 0) {
+    return nodeEditorDocName(projectId, hostNodeId);
+  }
+  return canvasDocName(projectId);
+}
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -129,7 +149,14 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   try {
     if (source === "mini_tool" && toolName) {
-      [providerResult, creditsUsed] = await runMiniTool(toolName, taskType, params, job.id ?? "");
+      [providerResult, creditsUsed] = await runMiniTool({
+        toolName,
+        taskType,
+        params,
+        jobId: job.id ?? "",
+        userId,
+        projectId,
+      });
     } else if (taskType === "understand") {
       [providerResult, creditsUsed] = await runUnderstand(model, params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
@@ -258,13 +285,9 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   }
 
   if (nodeId && projectId) {
-    // Worker currently targets main-canvas nodes only. When mixed-editor
-    // flow nodes become Worker-driven (T3 phase 2+), the job payload
-    // will carry `docName` directly and this helper call becomes
-    // unnecessary — the Worker will just forward `job.data.docName`.
     await publishNodeEvent(streamRedis, {
       type: "completed",
-      docName: canvasDocName(projectId),
+      docName: resolveEventDocName(projectId, params),
       nodeId,
       taskId,
       content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
@@ -314,16 +337,17 @@ async function publishFailedEvent(
   taskId: string,
   _userId: string,
   _model: string | undefined,
-  _params: Record<string, unknown>,
-  _errorMessage: string,
+  params: Record<string, unknown>,
+  errorMessage: string,
 ): Promise<void> {
   if (!nodeId || !projectId) return;
   try {
     await publishNodeEvent(streamRedis, {
       type: "failed",
-      docName: canvasDocName(projectId),
+      docName: resolveEventDocName(projectId, params),
       nodeId,
       taskId,
+      errorMessage,
     });
   } catch (err) {
     logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
@@ -332,12 +356,19 @@ async function publishFailedEvent(
 
 // ── Execution Path Helpers ───────────────────────────────────────────
 
+interface RunMiniToolOpts {
+  toolName: string;
+  taskType: string;
+  params: Record<string, unknown>;
+  jobId: string;
+  userId: string;
+  projectId: string | undefined;
+}
+
 async function runMiniTool(
-  toolName: string,
-  taskType: string,
-  params: Record<string, unknown>,
-  jobId: string,
+  opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
+  const { toolName, taskType, params, jobId, userId, projectId } = opts;
   const entry = resolveMiniToolEntry(taskType, toolName);
 
   // Strip workflow-meta fields that are for infra (not for the
@@ -349,7 +380,15 @@ async function runMiniTool(
   delete cleanParams.project_id;
 
   if (entry.kind === "local") {
-    const result = await runLocalHandler(entry.handler, taskType, toolName, cleanParams, jobId);
+    const result = await runLocalHandler({
+      handler: entry.handler,
+      taskType,
+      toolName,
+      params: cleanParams,
+      jobId,
+      userId,
+      projectId,
+    });
     const cost = result.cost ?? 0;
     const credits = cost * 100 * env.CREDIT_MULTIPLIER;
     return [result as unknown as Record<string, unknown>, credits];
