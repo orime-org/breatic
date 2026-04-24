@@ -8,9 +8,7 @@ interface ToolbarProps {
   onPanelChange: (panelId: string) => void;
 }
 
-/**
- * Toolbar 组件 - 左侧工具栏
- */
+/* * * Toolbar component - left */
 const Toolbar: React.FC<ToolbarProps> = ({ activePanel, onPanelChange }) => {
   const { t } = useTranslation();
 

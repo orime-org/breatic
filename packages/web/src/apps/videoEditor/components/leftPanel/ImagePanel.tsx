@@ -13,7 +13,7 @@ interface ImagePanelProps {
 }
 
 /**
- * ImagePanel 组件 - 图片面板
+ * ImagePanel component - imagepanel
  */
 const ImagePanel: React.FC<ImagePanelProps> = ({ currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
   const { t } = useTranslation();
@@ -38,15 +38,15 @@ const ImagePanel: React.FC<ImagePanelProps> = ({ currentTime = 0, canvasRatio = 
       const mediaRatio = item.width / item.height;
       const canvasRatioValue = CANVAS_WIDTH / CANVAS_HEIGHT;
 
-      // 填充满画布，保持宽高比不变形
-      // 如果媒体更宽（宽高比更大），则宽度填充满画布，高度按比例缩放
-      // 如果媒体更高（宽高比更小），则高度填充满画布，宽度按比例缩放
+      // canvas，keep
+      // if （ ）， width canvas，height ratioscale
+      // if （ ）， height canvas，width ratioscale
       if (mediaRatio > canvasRatioValue) {
-        // 媒体更宽，宽度填充满画布
+        // ，width canvas
         clip.width = CANVAS_WIDTH;
         clip.height = CANVAS_WIDTH / mediaRatio;
       } else {
-        // 媒体更高，高度填充满画布
+        // ，height canvas
         clip.height = CANVAS_HEIGHT;
         clip.width = CANVAS_HEIGHT * mediaRatio;
       }
@@ -54,7 +54,7 @@ const ImagePanel: React.FC<ImagePanelProps> = ({ currentTime = 0, canvasRatio = 
       clip.y = (CANVAS_HEIGHT - clip.height) / 2;
     }
 
-    // 使用 addClip，会自动选中新添加的素材
+    // use addClip， automaticallyselected asset
     addClip(clip);
   };
 

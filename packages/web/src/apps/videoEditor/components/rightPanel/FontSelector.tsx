@@ -4,24 +4,23 @@ import FontFaceObserver from 'fontfaceobserver';
 import Input from '@/components/base/input';
 import { Icon } from '@/components/base/icon';
 
-// 字体子项接口（字体变体）
+// fontchild itemsinterface（fontvariant）
 interface FontChild {
-  family: string; // 完整字体家族名，如 "Microsoft YaHei Light"
-  displayName: string; // 显示名称，如 "Light", "Bold"
-  url: string; // 字体文件路径
+  family: string; // fontfamily ， "Microsoft YaHei Light"
+  displayName: string; // display ， "Light", "Bold"
+  url: string; // font path
 }
 
-// 字体家族接口
+// fontfamilyinterface
 interface FontFamily {
-  family: string; // 字体家族名，如 "Microsoft YaHei"
-  displayName: string; // 显示名称，如 "微软雅黑" 或 "楷体"
-  url?: string; // 单字体文件路径（无子项时使用）
-  children: FontChild[]; // 子项列表（字体变体）
+  family: string; // fontfamily ， "Microsoft YaHei"
+  displayName: string; // display ， " " " "
+  url?: string; // font path（ child items use）
+  children: FontChild[]; // child itemslist（fontvariant）
 }
 
 interface FontSelectorProps {
   visible: boolean;
-  position: { x: number; y: number };
   currentFont: string;
   onFontSelect: (font: string) => void;
   onClose: () => void;
@@ -32,7 +31,6 @@ interface FontSelectorProps {
 
 const FontSelector: React.FC<FontSelectorProps> = ({
   visible,
-  position: _position,
   currentFont,
   onFontSelect,
   onClose,
@@ -45,7 +43,7 @@ const FontSelector: React.FC<FontSelectorProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const isInitializedRef = useRef(false);
 
-  // 字体管理器逻辑（使用传入的 fontConfig）
+  // font logic（use fontConfig）
   const initializeFonts = useCallback(async () => {
     if (isInitializedRef.current || fontConfig.length === 0) {
       return;
@@ -54,7 +52,7 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     try {
       const fonts: FontFamily[] = fontConfig;
 
-      // 生成 @font-face 规则
+      // @font-face rule
       const rules: string[] = [];
       const fontObservers: Promise<void>[] = [];
 
@@ -86,13 +84,13 @@ const FontSelector: React.FC<FontSelectorProps> = ({
         }
       });
 
-      // 注入样式
+      // injectstyle
       const styleElement = document.createElement('style');
       styleElement.id = 'dynamic-fonts';
       styleElement.textContent = rules.join('\n\n');
       document.head.appendChild(styleElement);
 
-      // 等待字体加载
+      // waitfontload
       await Promise.all(fontObservers);
 
       setFontFamilies(fonts);
@@ -102,13 +100,13 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     }
   }, [fontConfig]);
 
-  // 获取字体的子项列表
+  // getfont child itemslist
   const getFontChildren = (family: string): FontChild[] => {
     const font = fontFamilies.find(f => f.family === family);
     return font?.children || [];
   };
 
-  // 获取字体的显示名称
+  // getfont display
   const getFontFamilyName = (family: string): string => {
     const font = fontFamilies.find(f => f.family === family);
     if (!font) return family;
@@ -118,7 +116,7 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     return font.children[0].family;
   };
 
-  // 初始化字体列表（组件挂载时加载）
+  // initializefontlist（component load）
   useEffect(() => {
     initializeFonts();
   }, [initializeFonts]);
@@ -134,7 +132,7 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     );
   }, [searchTerm, fontFamilies]);
 
-  // 点击外部关闭面板
+  // click outsideclosepanel
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
@@ -150,12 +148,12 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     };
   }, [visible, onClose]);
 
-  // 处理字体选择
+  // handlefont
   const handleFontClick = (fontFamily: FontFamily) => {
-    // 传递基础字体名（如 "Microsoft YaHei"）
+    // font （ "Microsoft YaHei"）
     onFontSelect(fontFamily.family);
 
-    // 通知子项信息
+    // child items
     if (onFontWeightsDetected) {
       const children = getFontChildren(fontFamily.family);
       const childNames = children.map((c) => c.displayName);
@@ -165,14 +163,14 @@ const FontSelector: React.FC<FontSelectorProps> = ({
     onClose();
   };
 
-  // 处理鼠标进入
+  // handle
   const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>, isSelected: boolean) => {
     if (!isSelected) {
       e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
     }
   };
 
-  // 处理鼠标离开
+  // handle
   const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>, isSelected: boolean) => {
     if (!isSelected) {
       e.currentTarget.style.backgroundColor = 'transparent';
@@ -184,38 +182,9 @@ const FontSelector: React.FC<FontSelectorProps> = ({
   return (
     <div
       ref={panelRef}
-      className='fixed z-50 right-[230px] top-[56px] w-[220px] h-[490px] overflow-hidden bg-[#333333] rounded-md border border-gray-600 shadow-lg'
+      className='fixed z-50 right-[250px] top-[65px] w-[220px] h-[490px] overflow-hidden bg-[#333333] rounded-md border border-gray-600 shadow-lg'
     >
-      {/* 标题栏 */}
-      <div className='flex items-center justify-between px-3 py-2 border-b border-gray-700'>
-        <h3 className='text-xs font-semibold text-white'>
-          {t('fontSelector.title') || '选择字体'}
-        </h3>
-        <button
-          onClick={onClose}
-          className='text-gray-400 hover:text-white'
-        >
-          <Icon name='videoEditor-close-icon' width={12} height={12} />
-        </button>
-      </div>
-
-      {/* 搜索框 */}
-      <div className='px-3 py-1'>
-        <div className='relative'>
-          <Icon name='videoEditor-search-icon' width={14} height={14} className='absolute left-0 top-1/2 -translate-y-1/2 text-white/60' />
-          <Input
-            inputType='text'
-            placeholder={t('fontSelector.searchPlaceholder') || '搜索字体...'}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            type='borderless'
-            size='small'
-            className='w-full py-2 pl-6 text-xs text-white placeholder-gray-400 bg-transparent focus:outline-none'
-          />
-        </div>
-      </div>
-
-      {/* 字体列表 */}
+      {/* title bar */} <div className='flex items-center justify-between px-3 py-2 border-b border-gray-700'> <h3 className='text-xs font-semibold text-white'> {t('fontSelector.title') || ' font'} </h3> <button onClick={onClose} className='text-gray-400 hover:text-white' > <Icon name='videoEditor-close-icon' width={12} height={12} /> </button> </div> {/* search box */} <div className='px-3 py-1'> <div className='relative'> <Icon name='videoEditor-search-icon' width={14} height={14} className='absolute left-0 top-1/2 -translate-y-1/2 text-white/60' /> <Input inputType='text' placeholder={t('fontSelector.searchPlaceholder') || ' ...'} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} type='borderless' size='small' className='w-full py-2 pl-6 text-xs text-white placeholder-gray-400 bg-transparent focus:outline-none' /> </div> </div> {/* fontlist */}
       <div className='h-[370px] overflow-auto'>
         {filteredFonts.length === 0 ? (
           <div className='px-3 py-4 text-xs text-center text-gray-400'>
@@ -223,7 +192,7 @@ const FontSelector: React.FC<FontSelectorProps> = ({
           </div>
         ) : (
           filteredFonts.map((fontFamily, index) => {
-            // 检查 currentFont 是否匹配基础 family 或任何子项的 family
+            // check currentFont family child items family
             const isSelected =
               currentFont === fontFamily.family ||
               (fontFamily.children && fontFamily.children.some(child => child.family === currentFont));

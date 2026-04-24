@@ -2,19 +2,15 @@ import React, { useRef, useEffect, useMemo, memo } from 'react';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 
 interface TimelineScaleProps {
-  /** 单个刻度标记范畴(>0)，例如 5 表示每 5 秒一个主刻度 */
+  /* * tick (>0)， 5 5 sec tick */
   scale: number;
-  /** 单个刻度细分单元数（>0整数），例如 5 表示主刻度之间有 5 个次刻度 */
+  /* * tick （>0 ）， 5 tick 5 tick */
   scaleSplitCount: number;
-  /** 单个刻度的显示宽度（>0, 单位：px） */
+  /* * tick displaywidth（>0, ：px） */
   scaleWidth: number;
-  /** 刻度开始距离左侧的距离（>=0, 单位：px） */
+  /* * tickstartoffsetleft offset（>=0, ：px） */
   startLeft: number;
-  /** 容器宽度 */
-  width: number;
-  /** 容器高度 */
-  height?: number;
-  /** 显示的时长（如果没有素材时，应该使用容器对应的时长） */
+  /* * containerwidth */ width: number; /** containerheight */ height?: number; /** display （ifnoasset ， usecontainercorresponding ） */
   displayDuration?: number;
 }
 
@@ -46,26 +42,26 @@ function drawScale(
 ) {
   const { scale, scaleSplitCount, scaleWidth, startLeft, duration, height } = options;
 
-  // 计算每个细分单元的时间间隔
+  // calculate time
   const subScaleTime = scale / scaleSplitCount;
-  // 计算每个细分单元的像素宽度
+  // calculate width
   const subScaleWidth = scaleWidth / scaleSplitCount;
 
-  // 主刻度样式
+  // tickstyle
   const majorTextColor = '#9ca3af';
   const majorTextSize = 11;
 
-  // 次刻度样式
+  // tickstyle
   const minorTickHeight = 8;
   const minorTickColor = '#d1d5db';
-  const minorTickBottomOffset = 12; // 次刻度线距离底部的偏移
+  const minorTickBottomOffset = 12; // ticklineoffsetbottom offset
 
-  // 设置字体
+  // setfont
   ctx.font = `${majorTextSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // 计算需要绘制的刻度数量
+  // calculateneed to tick
   const totalSubScales = Math.ceil(duration / subScaleTime);
 
   for (let i = 0; i <= totalSubScales; i++) {
@@ -76,12 +72,12 @@ function drawScale(
     const isMajorTick = i % scaleSplitCount === 0;
 
     if (isMajorTick) {
-      // 绘制主刻度标签
+      // tick
       ctx.fillStyle = majorTextColor;
       const label = formatTime(currentTime);
       ctx.fillText(label, x, height / 2);
     } else {
-      // 绘制次刻度线（从底部往上，留一点间距）
+      // tickline（ bottom up， ）
       ctx.strokeStyle = minorTickColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -101,12 +97,12 @@ const TimelineScale: React.FC<TimelineScaleProps> = ({
   height = 32,
   displayDuration: propDisplayDuration,
 }) => {
-  // 从 store 获取 clips 并计算 duration
+  // store get clips calculate duration
   const { clips } = useVideoEditorStore();
-  // 使用传入的 displayDuration 或 clips 的时长，确保至少显示容器宽度对应的时长
+  // use displayDuration clips ，ensureat leastdisplaycontainerwidthcorresponding
   const duration = useMemo(() => {
     const clipsDuration = clips.length === 0 ? 0 : Math.max(...clips.map((c) => c.end));
-    return Math.max(clipsDuration, propDisplayDuration || 0, 5); // 至少显示5秒
+    return Math.max(clipsDuration, propDisplayDuration || 0, 5); // at leastdisplay5sec
   }, [clips, propDisplayDuration]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,16 +114,16 @@ const TimelineScale: React.FC<TimelineScaleProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 设置 canvas 实际尺寸（考虑设备像素比）
+    // set canvas actual （ ）
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    // 清空画布
+    // canvas
     ctx.clearRect(0, 0, width, height);
 
-    // 绘制刻度
+    // tick
     drawScale(ctx, {
       scale,
       scaleSplitCount,
