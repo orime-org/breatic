@@ -136,6 +136,48 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     project_id: z.string().optional(),
     host_node_id: z.string().optional(),
   }),
+  // Visual-parity local handlers (not real AIGC). Match the legacy
+  // ffmpeg.wasm surface one-to-one so migrating the front-end is a
+  // field-for-field swap.
+  z.object({
+    tool: z.literal("stabilization"),
+    video: z.string().url(),
+    // Symmetric crop percentage per edge. Front-end clamps to [0, 14]
+    // in both the UI slider and the ffmpeg util — same bounds here.
+    cropPct: z.number().min(0).max(14),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("scene-extension"),
+    video: z.string().url(),
+    // Outer frame the source should fit into; ox/oy non-positive (the
+    // worker re-clamps to mirror the front-end normalisation).
+    frame: z.object({
+      w: z.number(),
+      h: z.number(),
+      ox: z.number(),
+      oy: z.number(),
+    }),
+    container: z.object({
+      width: z.number().positive(),
+      height: z.number().positive(),
+    }),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
+  z.object({
+    tool: z.literal("hdr-conversion"),
+    video: z.string().url(),
+    preset: z.enum(["hdr10", "hlg", "dolby-vision"]),
+    intensity: z.number().min(0).max(100),
+    aiEnhance: z.boolean(),
+    node_id: z.string().optional(),
+    project_id: z.string().optional(),
+    host_node_id: z.string().optional(),
+  }),
 ]);
 
 // Mini-Tools: Audio
