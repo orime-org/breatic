@@ -66,6 +66,9 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     motion: { kind: "provider", model: "kling-v3-pro-motion" },
     animate: { kind: "provider", model: "wan-2.2-animate" },
     "talking-head": { kind: "provider", model: "omnihuman-1.5" },
+    // First local (non-vendor) mini-tool. FFmpeg-based; runs on the
+    // Worker. See `handlers/local/video/crop.ts` for the implementation.
+    crop: { kind: "local", handler: "video/crop" },
   },
   audio: {
     sfx: { kind: "provider", model: "elevenlabs-sfx-v2" },
