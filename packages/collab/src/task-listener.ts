@@ -44,13 +44,12 @@ function nodeLockKey(envPrefix: string, projectId: string, nodeId: string): stri
 }
 
 /**
- * Apply a single NodeEvent to the target Yjs document.
+ * Apply a NodeEvent to the target Yjs document — unified multi-node.
  *
- * Routes by `event.docName`:
- *   - canvas docs walk `canvas.nodesMap.get(nodeId).data`
- *   - nodeEditor docs walk `flow.get(nodeId).data`
- *
- * Idempotent — safe to retry on stream redelivery.
+ * The event carries all N target nodes (N ≥ 1) and gets applied in a
+ * single `connection.transact` so every node transition is atomic from
+ * the collaborator's perspective. Idempotent — safe to retry on stream
+ * redelivery.
  */
 async function handleNodeEvent(
   hocuspocus: Hocuspocus,
@@ -61,8 +60,17 @@ async function handleNodeEvent(
   const parsed = parseDocName(event.docName);
   if (!parsed) {
     logger.warn(
-      { docName: event.docName, nodeId: event.nodeId, type: event.type },
+      { docName: event.docName, type: event.type },
       "Unknown docName pattern, skipping",
+    );
+    return;
+  }
+
+  const targets = collectTargetNodeIds(event);
+  if (targets.length === 0) {
+    logger.warn(
+      { docName: event.docName, type: event.type, taskId: event.taskId },
+      "Event has no target nodeIds, skipping",
     );
     return;
   }
@@ -74,26 +82,27 @@ async function handleNodeEvent(
     },
   });
 
-  let updated = false;
+  let updatedCount = 0;
   try {
     await connection.transact((doc) => {
-      const dataMap = resolveNodeDataMap(doc, parsed, event);
-      if (!dataMap) return;
-      applyEventToDataMap(dataMap, event, parsed);
-      updated = true;
+      for (const nodeId of targets) {
+        const dataMap = resolveNodeDataMap(doc, parsed, event, nodeId);
+        if (!dataMap) continue;
+        applyEventToDataMap(dataMap, event, parsed, nodeId);
+        updatedCount++;
+      }
     });
   } finally {
     await connection.disconnect();
   }
 
-  // Release the Redis node lock — verified: only the task that holds
-  // the lock can release it (Lua CAS checks taskId). Locks are
-  // per-project scoped, so we use the parsed `projectId` rather than
-  // the raw docName.
+  // Release the Redis node lock for each affected node. Only the task
+  // that holds the lock can release it (Lua CAS checks taskId).
   if (event.type === "completed" || event.type === "failed") {
-    const key = nodeLockKey(envPrefix, parsed.projectId, event.nodeId);
-    const lockValue = await lockRedis.get(key);
-    if (lockValue) {
+    for (const nodeId of targets) {
+      const key = nodeLockKey(envPrefix, parsed.projectId, nodeId);
+      const lockValue = await lockRedis.get(key);
+      if (!lockValue) continue;
       try {
         const lock = JSON.parse(lockValue) as { taskId?: string };
         if (lock.taskId === event.taskId) {
@@ -105,16 +114,22 @@ async function handleNodeEvent(
           );
         }
       } catch {
-        // Corrupt lock value — delete it
         await lockRedis.del(key);
       }
     }
   }
 
   logger.info(
-    { docName: event.docName, nodeId: event.nodeId, type: event.type, updated },
+    { docName: event.docName, type: event.type, taskId: event.taskId, targets: targets.length, updated: updatedCount },
     "Task event handled",
   );
+}
+
+function collectTargetNodeIds(event: NodeEvent): string[] {
+  if (event.type === "handling") return event.nodeIds;
+  if (event.type === "failed") return event.nodeIds;
+  // completed
+  return event.outputs.map((o) => o.nodeId);
 }
 
 /**
@@ -127,26 +142,27 @@ function resolveNodeDataMap(
   doc: Y.Doc,
   parsed: ParsedDocName,
   event: NodeEvent,
+  nodeId: string,
 ): Y.Map<unknown> | null {
   if (parsed.kind === "canvas") {
     const canvasMap = doc.getMap("canvas");
     const nodesMap = canvasMap.get("nodesMap");
     if (!(nodesMap instanceof Y.Map)) {
       logger.warn(
-        { docName: event.docName, nodeId: event.nodeId, type: event.type },
+        { docName: event.docName, nodeId, type: event.type },
         "canvas.nodesMap is not a Y.Map, skipping",
       );
       return null;
     }
-    const nodeMap = nodesMap.get(event.nodeId);
+    const nodeMap = nodesMap.get(nodeId);
     if (!(nodeMap instanceof Y.Map)) {
       logger.warn(
-        { docName: event.docName, nodeId: event.nodeId, type: event.type },
+        { docName: event.docName, nodeId, type: event.type },
         "Canvas node not found in nodesMap, skipping",
       );
       return null;
     }
-    return ensureDataMap(nodeMap, event);
+    return ensureDataMap(nodeMap, event, nodeId);
   }
 
   // parsed.kind === "nodeEditor" — mixed editor (image/video/audio)
@@ -155,20 +171,20 @@ function resolveNodeDataMap(
   const flow = doc.getMap("flow");
   if (!(flow instanceof Y.Map)) {
     logger.warn(
-      { docName: event.docName, nodeId: event.nodeId, type: event.type },
+      { docName: event.docName, nodeId, type: event.type },
       "flow is not a Y.Map, skipping",
     );
     return null;
   }
-  const nodeMap = flow.get(event.nodeId);
+  const nodeMap = flow.get(nodeId);
   if (!(nodeMap instanceof Y.Map)) {
     logger.warn(
-      { docName: event.docName, nodeId: event.nodeId, type: event.type },
+      { docName: event.docName, nodeId, type: event.type },
       "Mixed editor node not found in flow, skipping",
     );
     return null;
   }
-  return ensureDataMap(nodeMap, event);
+  return ensureDataMap(nodeMap, event, nodeId);
 }
 
 /**
@@ -178,12 +194,12 @@ function resolveNodeDataMap(
  * instead of a Y.Map. We silently migrate when first touched so the
  * downstream mutation always operates on a Y.Map.
  */
-function ensureDataMap(nodeMap: Y.Map<unknown>, event: NodeEvent): Y.Map<unknown> {
+function ensureDataMap(nodeMap: Y.Map<unknown>, event: NodeEvent, nodeId: string): Y.Map<unknown> {
   const existing = nodeMap.get("data");
   if (existing instanceof Y.Map) return existing as Y.Map<unknown>;
 
   logger.warn(
-    { docName: event.docName, nodeId: event.nodeId, type: event.type },
+    { docName: event.docName, nodeId, type: event.type },
     "Migrating legacy node data (plain → Y.Map)",
   );
   const oldData = (existing ?? {}) as Record<string, unknown>;
@@ -217,6 +233,7 @@ function applyEventToDataMap(
   dataMap: Y.Map<unknown>,
   event: NodeEvent,
   parsed: ParsedDocName,
+  nodeId: string,
 ): void {
   if (event.type === "handling") {
     dataMap.set("state", "handling");
@@ -231,17 +248,19 @@ function applyEventToDataMap(
     (handlingBy as Y.Map<unknown>).set("userId", event.actor.userId);
     (handlingBy as Y.Map<unknown>).set("username", event.actor.username);
   } else if (event.type === "completed") {
+    const output = event.outputs.find((o) => o.nodeId === nodeId);
+    if (!output) return;
     dataMap.set("state", "idle");
-    dataMap.set("content", event.content);
-    if (event.cover_url !== undefined) {
-      dataMap.set("coverUrl", event.cover_url);
+    dataMap.set("content", output.content);
+    if (output.cover_url !== undefined) {
+      dataMap.set("coverUrl", output.cover_url);
     }
     dataMap.set("lastEventType", "completed");
     dataMap.delete("handlingBy");
     // Success clears any lingering error from a prior failed run.
     dataMap.delete("errorInfo");
   } else {
-    // failed
+    // failed (all-or-nothing: every nodeId in event.nodeIds fails together)
     dataMap.set("lastEventType", "failed");
     dataMap.set("state", "idle");
     dataMap.delete("handlingBy");

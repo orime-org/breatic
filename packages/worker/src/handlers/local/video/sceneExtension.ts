@@ -137,7 +137,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
 
   if (fw === cw && fh === ch && ox === 0 && oy === 0) {
     // Degenerate case — frame matches container. Skip the re-encode.
-    return { url: video, cost: 0 };
+    return { outputs: [{ url: video }], cost: 0 };
   }
 
   const inputPath = await downloadToTempDir(video, ctx.tempDir, { suffix: ".mp4" });
@@ -168,7 +168,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     contentType: "video/mp4",
   });
 
-  return { url, cost: 0 };
+  return { outputs: [{ url }], cost: 0 };
 };
 
 export default handler;

@@ -115,32 +115,58 @@ export interface CanvasNodeFields {
  * (`canvasDocName`, `nodeEditorDocName`) and parser (`parseDocName`).
  */
 
-/** Node enters handling state (generation or upload started). */
+/**
+ * Task-level event schema (unified multi-output):
+ *
+ * Every task — whether it produces 1 output or N — emits a single
+ * event per state transition. Consumers iterate the `nodeIds` /
+ * `outputs` array; N=1 tasks are a degenerate case of the same
+ * shape. This is the outcome of the T3 phase5 refactor:
+ * there is no "single-output fast path" — one schema, one code path.
+ *
+ * Examples:
+ *   - `image.crop` — 1 input image → 1 output → `nodeIds: [x]`
+ *   - `video.cut` — 1 input video + N segments → N outputs →
+ *     `nodeIds: [x1,x2,...]` at handling,
+ *     `outputs: [{nodeId:x1, content:...}, ...]` at completion
+ */
+
+/** All N nodes for the task enter handling simultaneously. */
 export interface NodeHandlingEvent {
   type: "handling";
   docName: string;
-  nodeId: string;
   /** Task ID that acquired the lock. */
   taskId: string;
   actor: HandlingActor;
-}
-
-/** Node handling finishes successfully. */
-export interface NodeCompletedEvent {
-  type: "completed";
-  docName: string;
-  nodeId: string;
-  /** Task ID that held the lock — used for verified release. */
-  taskId: string;
-  content: string;
-  cover_url?: string;
+  /** The set of nodes this task updates on completion (N ≥ 1). */
+  nodeIds: string[];
 }
 
 /**
- * Node handling fails.
+ * Task completed. Exactly one output per node in `nodeIds`; the
+ * consumer matches them by index-parallel iteration.
+ */
+export interface NodeCompletedEvent {
+  type: "completed";
+  docName: string;
+  /** Task ID that held the lock — used for verified release. */
+  taskId: string;
+  /** One entry per affected node (N ≥ 1). */
+  outputs: Array<{
+    nodeId: string;
+    content: string;
+    cover_url?: string;
+  }>;
+}
+
+/**
+ * Task failed. All N nodes enter the failed state together (all-or-
+ * nothing); partial success is expressed via completed + failed on
+ * overlapping subsets if a handler ever needs that (not currently
+ * used).
  *
- * Behavior on the target node's `data` is doc-kind dependent (the
- * Collab consumer routes by `parseDocName(docName)`):
+ * Behavior on each node's `data` is doc-kind dependent (the Collab
+ * consumer routes by `parseDocName(docName)`):
  *   - Canvas: `content` / `coverUrl` preserved (user's prior result
  *     stays visible); `errorInfo` set; `state` → `'idle'`.
  *   - Mixed editor flow: `content` + `coverUrl` cleared; `errorInfo`
@@ -150,14 +176,14 @@ export interface NodeCompletedEvent {
 export interface NodeFailedEvent {
   type: "failed";
   docName: string;
-  nodeId: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
+  /** All nodes affected by this failure (N ≥ 1). */
+  nodeIds: string[];
   /**
-   * Human-readable failure reason. Written into
-   * `node.data.errorInfo` by the Collab consumer. Optional for
-   * backwards compatibility — events without this field land as
-   * `errorInfo: ''`.
+   * Human-readable failure reason. Written into each node's
+   * `data.errorInfo` by the Collab consumer. Optional — events
+   * without this field land as `errorInfo: ''`.
    */
   errorMessage?: string;
 }
