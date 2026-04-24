@@ -7,16 +7,13 @@ import aspectRatioIconMap from '@/apps/project/constants/aspectRatioIconMap';
 import ExportPanel from './ExportPanel';
 import RatioMenu from './RatioMenu';
 
-/**
- * TopBar 组件 - 顶部工具栏
- */
 interface TopBarProps {
   canvasRatio: string;
   onRatioChange: (ratio: string) => void;
   currentTime?: number;
   nodeId?: string;
   projectId?: string;
-  /** Skip OSS / workflow persistence; export ends as local download only. */
+  // Skip OSS / workflow persistence; export is local download only.
   exportStandalone?: boolean;
 }
 
@@ -32,30 +29,26 @@ const TopBar: React.FC<TopBarProps> = ({
   const [ratioPopoverVisible, setRatioPopoverVisible] = useState(false);
   const [exportPopoverVisible, setExportPopoverVisible] = useState(false);
 
-  // 根据选中的比例获取对应的图标
   const ratioIcon = aspectRatioIconMap[canvasRatio] || aspectRatioIconMap['16:9'];
 
-  // 处理比例变更
   const handleRatioChange = (ratio: string) => {
     onRatioChange(ratio);
     setRatioPopoverVisible(false);
   };
 
-  // 渲染比例菜单内容
   const renderRatioMenuContent = () => {
     return <RatioMenu onRatioChange={handleRatioChange} selectedRatio={canvasRatio} />;
   };
 
   return (
     <div className='relative p-3 bg-background-default-base border-b border-border-default-base inline-flex justify-between items-center'>
-      {/* 应用标题 - 居中显示 */}
       <div className='text-text-default-tertiary absolute left-1/2 -translate-x-1/2 text-sm text-zinc-500'>
         {t('common.appTitle')}
       </div>
 
-      {/* 右侧功能按钮区域 */}
+      {/* Right action area */}
       <div className='flex items-center gap-2.5 ml-auto'>
-        {/* 画布尺寸调整 */}
+        {/* Canvas ratio selector */}
         <CustomPopover
           htmlContent={renderRatioMenuContent()}
           trigger='click'
@@ -73,7 +66,7 @@ const TopBar: React.FC<TopBarProps> = ({
           }
         />
 
-        {/* 导出功能 */}
+        {/* Export */}
         <CustomPopover
           htmlContent={
             <ExportPanel

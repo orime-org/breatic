@@ -140,16 +140,42 @@ const CropModal: React.FC<CropModalProps> = ({
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cropStageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
 
   const handleAfterClose = useCallback(() => {
     setImageLoaded(false);
     setCropRect(null);
+    setDisplaySize(null);
     dragRef.current = null;
     setIsDragging(false);
   }, []);
+
+  const updateDisplaySize = useCallback(() => {
+    const stage = cropStageRef.current;
+    const img = imgRef.current;
+    if (!stage || !img) return;
+
+    const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
+    const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
+    if (!sourceWidth || !sourceHeight) return;
+
+    const stageStyle = window.getComputedStyle(stage);
+    const paddingX = parseFloat(stageStyle.paddingLeft || '0') + parseFloat(stageStyle.paddingRight || '0');
+    const paddingY = parseFloat(stageStyle.paddingTop || '0') + parseFloat(stageStyle.paddingBottom || '0');
+    const availableWidth = Math.max(0, stage.clientWidth - paddingX);
+    const availableHeight = Math.max(0, stage.clientHeight - paddingY);
+    if (!availableWidth || !availableHeight) return;
+
+    const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight, 1);
+    setDisplaySize({
+      width: Math.max(1, Math.round(sourceWidth * scale)),
+      height: Math.max(1, Math.round(sourceHeight * scale)),
+    });
+  }, [mediaType, mediaWidth, mediaHeight]);
 
   const initializeCrop = useCallback(() => {
     const img = imgRef.current;
@@ -161,8 +187,8 @@ const CropModal: React.FC<CropModalProps> = ({
     const imgHeight = img.height;
 
     if (existingCrop) {
-      // 对于视频，existingCrop 是基于视频实际尺寸的
-      // 需要转换到显示尺寸（缩略图尺寸）
+      // video，existingCrop videoactual
+      // need to display （ ）
       const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
       const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
 
@@ -263,15 +289,15 @@ const CropModal: React.FC<CropModalProps> = ({
 
     const img = imgRef.current;
 
-    // 对于视频，使用传入的 mediaWidth/mediaHeight（视频实际尺寸）
-    // 对于图片，使用图片的 naturalWidth/naturalHeight
+    // video，use mediaWidth/mediaHeight（videoactual ）
+    // image，useimage naturalWidth/naturalHeight
     const targetWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
     const targetHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
 
     const scaleX = targetWidth / img.width;
     const scaleY = targetHeight / img.height;
 
-    // 转换到原始尺寸坐标（基于视频实际尺寸或图片原始尺寸）
+    // original coordinate（ videoactual imageoriginal ）
     const originalCrop = {
       x: cropRect.x * scaleX,
       y: cropRect.y * scaleY,
@@ -301,19 +327,30 @@ const CropModal: React.FC<CropModalProps> = ({
   useEffect(() => {
     if (!visible || !imageLoaded) return;
 
-    const img = imgRef.current;
-    if (!img) return;
+    const stage = cropStageRef.current;
+    if (!stage) return;
 
     const resizeObserver = new ResizeObserver(() => {
+      updateDisplaySize();
       initializeCrop();
     });
 
-    resizeObserver.observe(img);
+    resizeObserver.observe(stage);
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [visible, imageLoaded, initializeCrop]);
+  }, [visible, imageLoaded, initializeCrop, updateDisplaySize]);
+
+  useEffect(() => {
+    if (!visible || !imageLoaded) return;
+    updateDisplaySize();
+  }, [visible, imageLoaded, mediaUrl, mediaType, mediaWidth, mediaHeight, updateDisplaySize]);
+
+  useEffect(() => {
+    if (!visible || !imageLoaded || !displaySize) return;
+    initializeCrop();
+  }, [displaySize, visible, imageLoaded, initializeCrop]);
 
   const startMove = (e: React.MouseEvent) => {
     if (!cropRect) return;
@@ -352,9 +389,9 @@ const CropModal: React.FC<CropModalProps> = ({
     >
       <div className='relative h-[600px]'>
         <div className='flex flex-col h-full mt-[30px]'>
-          {/* 裁剪区域 */}
-          <div className='relative flex items-center justify-center flex-1 p-8 overflow-auto '>
-            {/* Loading 动画 */}
+          {/* cropregion */}
+          <div ref={cropStageRef} className='relative flex items-center justify-center flex-1 p-8 overflow-hidden'>
+            {/* Loading */}
             {displayUrl && !imageLoaded && (
               <div className='absolute inset-0 flex items-center justify-center bg-[#1a1a1a] z-10'>
                 <Icon name='videoEditor-loading-spinner' width={32} height={32} className='animate-spin' />
@@ -376,13 +413,13 @@ const CropModal: React.FC<CropModalProps> = ({
                       initializeCrop();
                     }}
                     onError={() => {
-                      setImageLoaded(true); // 失败也要隐藏加载动画
+                      setImageLoaded(true); // failed hideload
                     }}
                     style={{
+                      width: displaySize ? `${displaySize.width}px` : 'auto',
+                      height: displaySize ? `${displaySize.height}px` : 'auto',
                       maxWidth: '100%',
-                      maxHeight: '450px',
-                      width: 'auto',
-                      height: 'auto',
+                      maxHeight: '100%',
                       objectFit: 'contain',
                       display: 'block',
                     }}
@@ -437,7 +474,7 @@ const CropModal: React.FC<CropModalProps> = ({
               </div>
             )}
           </div>
-          {/* 底部按钮 */}
+          {/* bottombutton */}
           <div className='flex justify-end gap-3 p-4 '>
             <Button type='default' onClick={handleReset}>{t('cropModal.reset')}</Button>
             <Button
