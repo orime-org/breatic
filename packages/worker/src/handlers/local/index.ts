@@ -31,22 +31,36 @@ import videoSceneExtension from "./video/sceneExtension.js";
 import videoHdrConversion from "./video/hdrConversion.js";
 
 /**
- * Common shape returned by every local handler — matches the subset
- * of the vendor `provider.generateAsync` result that `runMiniTool` and
- * downstream persist/record logic consume.
+ * Per-output payload. One entry per resulting node.
+ *
+ * Single-output handlers return exactly one entry; multi-output
+ * handlers (e.g. `video/cut`) return N. Callers always iterate —
+ * there is no "fast path" for N=1.
  */
-export interface LocalHandlerResult {
+export interface LocalHandlerOutput {
   /** Result URL (already uploaded to permanent storage by the handler). */
   url: string;
   /** Optional cover URL (video first-frame etc.). */
   cover_url?: string;
+  /** Free-form additional fields — forwarded to provider_result. */
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * Common shape returned by every local handler. Post T3 phase5:
+ * unified multi-output. One handler may produce N outputs; the
+ * `outputs.length` must match the `node_ids.length` the task was
+ * enqueued with.
+ */
+export interface LocalHandlerResult {
+  /** One entry per output node (N ≥ 1). */
+  outputs: LocalHandlerOutput[];
   /**
    * Cost unit (see `credits = cost * 100 * CREDIT_MULTIPLIER` in
    * `runMiniTool`). Local handlers that are free to users return 0.
+   * Applied once per task, not per output.
    */
   cost?: number;
-  /** Free-form additional fields — passed through to provider_result. */
-  [key: string]: unknown;
 }
 
 export interface LocalHandlerContext {

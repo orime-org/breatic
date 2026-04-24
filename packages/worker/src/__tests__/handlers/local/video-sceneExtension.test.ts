@@ -114,7 +114,7 @@ describe("video/scene-extension", () => {
       },
       makeCtx("/tmp"),
     );
-    expect(result.url).toBe("http://example.com/src.mp4");
+    expect(result.outputs[0]?.url).toBe("http://example.com/src.mp4");
     expect(storage.listUploaded()).toHaveLength(0);
   });
 

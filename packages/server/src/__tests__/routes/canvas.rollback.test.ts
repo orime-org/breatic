@@ -51,7 +51,7 @@ describe("Canvas task creation — lock conflict rollback (BUG-033)", () => {
         task_type: "image",
         project_id: "proj-1",
         model: "test-model",
-        params: { node_id: "node-1" },
+        params: { node_ids: ["node-1"] },
       }),
     });
 
@@ -73,7 +73,7 @@ describe("Canvas task creation — lock conflict rollback (BUG-033)", () => {
         task_type: "image",
         project_id: "proj-1",
         model: "test-model",
-        params: { node_id: "node-1" },
+        params: { node_ids: ["node-1"] },
       }),
     });
 
