@@ -57,13 +57,16 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     relight: { kind: "provider", model: "ic-light-v2" },
     "multi-angle": { kind: "provider", model: "qwen-multi-angle" },
     edit: { kind: "provider", model: "nano-banana-2-edit" },
-    // Sharp-based local handlers — no AIGC, Worker in-process.
-    // `manual-adjust` is the slider-driven `AdjustValue` adjust,
-    // distinct from the existing `adjust: topaz-adjust` which is
-    // Topaz's AI auto-enhance (no user sliders).
-    crop: { kind: "local", handler: "image/crop" },
-    flipRotate: { kind: "local", handler: "image/flipRotate" },
-    "manual-adjust": { kind: "local", handler: "image/adjust" },
+    // Graffiti = user draws coloured strokes on the source image,
+    // frontend burns them in and synthesises a prompt like
+    // "red strokes mean X, green strokes mean Y", then calls here.
+    // Same model as `edit`; distinct tool name so billing /
+    // analytics / future model-swap remain clean.
+    graffiti: { kind: "provider", model: "nano-banana-2-edit" },
+    // Image local handlers intentionally absent: crop / flipRotate /
+    // manual-adjust are sub-100ms Canvas operations and belong in
+    // the browser (see feedback_frontend_backend_boundary). Video's
+    // FFmpeg handlers below are genuinely second-level, so they stay.
   },
   video: {
     upscale: { kind: "provider", model: "video-upscale-pro" },

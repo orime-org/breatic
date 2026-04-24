@@ -41,31 +41,22 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   imageToolBase.extend({ tool: z.literal("relight"), light_source: z.string().default("none"), brightness: z.number().default(50), light_temperature: z.number().default(5600), rim_light: z.boolean().default(false), prompt: z.string().optional() }),
   imageToolBase.extend({ tool: z.literal("multi-angle"), horizontal_angle: z.number().default(0), vertical_angle: z.number().default(0), distance: z.number().default(1) }),
   imageToolBase.extend({ tool: z.literal("edit"), prompt: z.string() }),
-  // ── Local (Worker-side Sharp) mini-tools ──
-  // Source URL arrives on the base-inherited `image` field; Worker
-  // builds NodeEvent.docName as `project-{id}/node/{host_node_id}`
-  // for mixed-editor requests, else falls back to the canvas doc.
+  // Graffiti = frontend burns coloured strokes into the source and
+  // builds a prompt ("red: X, green: Y") before POSTing here. On the
+  // wire it's just `edit` with a different tool name — the rename is
+  // intentional so billing / analytics / future model swap can target
+  // "graffiti" without touching `edit` callers.
   imageToolBase.extend({
-    tool: z.literal("crop"),
-    x: z.number(),
-    y: z.number(),
-    w: z.number().positive(),
-    h: z.number().positive(),
+    tool: z.literal("graffiti"),
+    prompt: z.string(),
     host_node_id: z.string().optional(),
   }),
-  imageToolBase.extend({
-    tool: z.literal("flipRotate"),
-    op: z.enum(["rotate90", "rotateMinus90", "flipHorizontal", "flipVertical"]),
-    host_node_id: z.string().optional(),
-  }),
-  // `manual-adjust` carries the shared AdjustValue (15 sliders).
-  // Named distinctly from `adjust: topaz-adjust` above (AI
-  // auto-enhance) to prevent dispatch-table collision.
-  imageToolBase.extend({
-    tool: z.literal("manual-adjust"),
-    value: z.record(z.string(), z.number()).optional(),
-    host_node_id: z.string().optional(),
-  }),
+  // NOTE: `crop`, `flipRotate`, `manual-adjust` deliberately removed
+  // in t3-phase4c. These are sub-100ms Canvas operations; the round
+  // trip to the Worker made them feel laggy without providing any
+  // server-side benefit. They now live entirely in the frontend (Yjs
+  // node creation → Canvas processing → presigned upload → content
+  // write-back). See feedback_frontend_backend_boundary memory.
 ]);
 
 // Mini-Tools: Video
