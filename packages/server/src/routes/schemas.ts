@@ -41,6 +41,18 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   imageToolBase.extend({ tool: z.literal("relight"), light_source: z.string().default("none"), brightness: z.number().default(50), light_temperature: z.number().default(5600), rim_light: z.boolean().default(false), prompt: z.string().optional() }),
   imageToolBase.extend({ tool: z.literal("multi-angle"), horizontal_angle: z.number().default(0), vertical_angle: z.number().default(0), distance: z.number().default(1) }),
   imageToolBase.extend({ tool: z.literal("edit"), prompt: z.string() }),
+  // Local (Worker-side Sharp) mini-tool. Source URL arrives on the
+  // base-inherited `image` field; `host_node_id` identifies the
+  // mixed-editor container so the Worker routes its NodeEvent to the
+  // right doc.
+  imageToolBase.extend({
+    tool: z.literal("crop"),
+    x: z.number(),
+    y: z.number(),
+    w: z.number().positive(),
+    h: z.number().positive(),
+    host_node_id: z.string().optional(),
+  }),
 ]);
 
 // Mini-Tools: Video
@@ -59,7 +71,11 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
   // Omit for main-canvas invocations.
   z.object({
     tool: z.literal("crop"),
-    sourceUrl: z.string().url(),
+    // Source URL field name mirrors the rest of the video family
+    // (`upscale` / `interpolate` / etc. all use `video`). The image
+    // family's `crop` uses `image` for the same reason — local and
+    // provider handlers inside one modality share field names.
+    video: z.string().url(),
     x: z.number(),
     y: z.number(),
     w: z.number().positive(),
