@@ -150,6 +150,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     const isText = media?.type === 'text';
     const isCornerDirection = direction[0] !== 0 && direction[1] !== 0;
     const isHorizontalDirection = direction[0] !== 0 && direction[1] === 0;
+    const isVerticalDirection = direction[0] === 0 && direction[1] !== 0;
     const [deltaX, deltaY] = drag.beforeTranslate;
     if (!resizeStartRef.current[clipId]) {
       resizeStartRef.current[clipId] = getElementCanvasPosition(target as HTMLElement);
@@ -161,16 +162,19 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     element.style.left = `${nextX}px`;
     element.style.top = `${nextY}px`;
 
-    if (isText && isCornerDirection) {
+    if (isText && (isCornerDirection || isVerticalDirection)) {
       const start = textResizeStartRef.current[clipId] || {
         fontSize: clip.textStyle?.fontSize ?? 48,
         width: clip.width ?? element.offsetWidth,
         height: clip.height ?? element.offsetHeight,
       };
       textResizeStartRef.current[clipId] = start;
-      const scale = clamp(getWidthScale(start.width, width), 0.2, 8);
+      const scale = isVerticalDirection
+        ? clamp(getWidthScale(start.height, height), 0.2, 8)
+        : clamp(getWidthScale(start.width, width), 0.2, 8);
       const nextFontSize = clamp(Math.round(start.fontSize * scale), MIN_TEXT_FONT_SIZE, MAX_TEXT_FONT_SIZE);
       textPreviewFontSizeRef.current[clipId] = nextFontSize;
+      const nextWidth = isVerticalDirection ? Math.max(1, Math.round(start.width * scale)) : width;
 
       const textContent = element.querySelector<HTMLElement>('[data-text-content="true"]');
       if (textContent) {
@@ -181,11 +185,11 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
         element.style.height = `${height}px`;
       }
 
-      element.style.width = `${width}px`;
+      element.style.width = `${nextWidth}px`;
       resizeStateRef.current[clipId] = {
         x: deltaX,
         y: deltaY,
-        width,
+        width: nextWidth,
         height: element.offsetHeight,
       };
       return;
@@ -367,7 +371,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
   const firstClip = clips[0];
   const controlClassName = firstClip && isTextElement(firstClip) ? 'moveable-control-text' : 'moveable-control-media';
   const isSingleTextSelection = clips.length === 1 && !!firstClip && isTextElement(firstClip);
-  const textRenderDirections: Array<'nw' | 'ne' | 'sw' | 'se' | 'e' | 'w'> = ['nw', 'ne', 'sw', 'se', 'e', 'w'];
+  const textRenderDirections: Array<'n' | 's' | 'nw' | 'ne' | 'sw' | 'se' | 'e' | 'w'> = ['n', 's', 'nw', 'ne', 'sw', 'se', 'e', 'w'];
 
   // image video， ratioscale； text， ratio
   const shouldKeepRatio = firstClip ? isMediaElement(firstClip) : false;

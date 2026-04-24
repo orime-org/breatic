@@ -87,7 +87,6 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     });
   }, [disabled, onTransformChange]);
 
-
   // handlescale （ scale）， canvas startscale
   const handlePinch = useCallback(() => {
     if (!viewerRef.current || !baseCanvasSize) {
@@ -102,29 +101,18 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
       return;
     }
 
-    // getcanvas
-    const canvasElement = document.getElementById('preview-canvas');
-    if (!canvasElement) {
-      handleScroll();
-      return;
-    }
-
-    // getcanvas coordinate
-    const canvasRect = canvasElement.getBoundingClientRect();
-    const canvasCenterX = canvasRect.left + canvasRect.width / 2;
-    const canvasCenterY = canvasRect.top + canvasRect.height / 2;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const centerX = wrapperRect.left + wrapperRect.width / 2;
+    const centerY = wrapperRect.top + wrapperRect.height / 2;
 
     // get scale
     const currentZoom = viewer.getZoom();
-
-    // use setZoom clientX clientY ， canvas scale
     viewer.setZoom(currentZoom, {
-      clientX: canvasCenterX,
-      clientY: canvasCenterY,
+      clientX: centerX,
+      clientY: centerY,
     });
-
     handleScroll();
-  }, [handleScroll, baseCanvasSize]);
+  }, [baseCanvasSize, handleScroll]);
 
   // handle - containerup listen
   useEffect(() => {
@@ -198,37 +186,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
 
       if (newZoom === currentZoom) return;
 
-      // getcanvas
-      const canvasElement = document.getElementById('preview-canvas');
-      if (!canvasElement || !baseCanvasSize) {
-        // ifnocanvas，use scale
-        const rect = container.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        const scrollLeft = viewer.getScrollLeft();
-        const scrollTop = viewer.getScrollTop();
-
-        viewer.setZoom(newZoom);
-        const zoomRatio = newZoom / currentZoom;
-        const newScrollLeft = mouseX - (mouseX - scrollLeft) * zoomRatio;
-        const newScrollTop = mouseY - (mouseY - scrollTop) * zoomRatio;
-        viewer.scrollTo(newScrollLeft, newScrollTop);
-        handleScroll();
-        return;
-      }
-
-      // getcanvas coordinate
-      const canvasRect = canvasElement.getBoundingClientRect();
-      const canvasCenterX = canvasRect.left + canvasRect.width / 2;
-      const canvasCenterY = canvasRect.top + canvasRect.height / 2;
-
-      // use setZoom clientX clientY ， canvas scale
+      if (!baseCanvasSize) return;
       viewer.setZoom(newZoom, {
-        clientX: canvasCenterX,
-        clientY: canvasCenterY,
+        clientX: e.clientX,
+        clientY: e.clientY,
       });
-
-      // update transform
       handleScroll();
     };
 
@@ -238,7 +200,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     return () => {
       container.removeEventListener('wheel', wheelHandler, { capture: true });
     };
-  }, [disabled, minScale, maxScale, handleScroll, baseCanvasSize]);
+  }, [disabled, minScale, maxScale, baseCanvasSize, handleScroll]);
 
   if (disabled) {
     // fullscreen ： use InfiniteViewer，

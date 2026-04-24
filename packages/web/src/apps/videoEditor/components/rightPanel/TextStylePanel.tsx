@@ -7,6 +7,7 @@ import { Button } from '@/components/base/button';
 import { useTranslation } from 'react-i18next';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { Icon } from '@/components/base/icon';
+import { RiAlignCenter, RiAlignLeft, RiAlignRight } from 'react-icons/ri';
 import FontSelector from './FontSelector';
 import FontFaceObserver from 'fontfaceobserver';
 
@@ -374,6 +375,8 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ fontConfig = [] }) => {
     updateTextStyle({ textAlign: String(value) });
   };
 
+  const currentTextAlign = selectedClip.textStyle?.textAlign || 'center';
+
   // handle Case
   const handleTextTransformChange = (value: string | number) => {
     updateTextStyle({ textTransform: String(value) });
@@ -555,17 +558,47 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ fontConfig = [] }) => {
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.align') || 'Align'}
           </div>
-          <Select
-            value={selectedClip.textStyle?.textAlign || 'center'}
-            onChange={handleTextAlignChange}
-            className='w-[130px]'
-            size='small'
-            options={[
-              { value: 'left', label: t('textStyle.alignLeft') || 'Left' },
-              { value: 'center', label: t('textStyle.alignCenter') || 'Center' },
-              { value: 'right', label: t('textStyle.alignRight') || 'Right' },
-            ]}
-          />
+          <div className='flex gap-2 w-[130px]'>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'left'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('left')}
+            >
+              <RiAlignLeft
+                size={14}
+                color={currentTextAlign === 'left' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'center'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('center')}
+            >
+              <RiAlignCenter
+                size={14}
+                color={currentTextAlign === 'center' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'right'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('right')}
+            >
+              <RiAlignRight
+                size={14}
+                color={currentTextAlign === 'right' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+          </div>
         </div>
 
         {/* decoration */}
