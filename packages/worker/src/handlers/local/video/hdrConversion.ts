@@ -131,7 +131,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     contentType: "video/mp4",
   });
 
-  return { url, cost: 0 };
+  return { outputs: [{ url }], cost: 0 };
 };
 
 export default handler;

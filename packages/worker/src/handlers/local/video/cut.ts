@@ -1,21 +1,24 @@
 /**
- * Video cut handler — FFmpeg-based segment extraction + concat.
+ * Video cut handler — FFmpeg-based segment extraction (N outputs).
  *
  * Accepts an ordered list of `{ start, end }` time ranges (seconds)
- * and outputs a single MP4 with just those segments stitched in
- * order. One segment is a simple trim; multiple segments use
- * FFmpeg's `concat` demuxer via an intermediate segment list.
+ * and outputs **one MP4 per segment**. The dispatcher binds each
+ * output to a distinct Yjs node, so the user sees N independent
+ * result tiles (typically wrapped in a ReactFlow group on the
+ * client side).
  *
- * Segment boundaries are validated to be ascending within each range
- * and non-negative — overlapping ranges are rejected (callers should
- * merge or de-dup beforehand). Out-of-bounds ends (past source
- * duration) are permitted: FFmpeg clamps them silently.
+ * Post T3 phase5 refactor: no concat semantics. If a caller needs a
+ * single merged video, that is a different operation (`video.merge`
+ * or similar), not this handler.
+ *
+ * Segment boundaries are validated ascending + non-negative.
+ * Out-of-bounds ends (past source duration) are permitted: FFmpeg
+ * clamps them silently.
  *
  * Output: H.264 yuv420p + AAC.
  */
 
 import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
 import type { LocalHandlerFn, LocalHandlerResult } from "../index.js";
 import { downloadToTempDir } from "../runtime/download.js";
 import { uploadTempFileToStorage } from "../runtime/upload.js";
@@ -85,6 +88,7 @@ async function extractSegment(
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
     "-b:a", "128k",
+    "-movflags", "+faststart",
     outPath,
   ]);
 }
@@ -93,48 +97,23 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
   const { video, segments } = parseParams(rawParams);
 
   const inputPath = await downloadToTempDir(video, ctx.tempDir, { suffix: ".mp4" });
-  const outputPath = join(ctx.tempDir, "out.mp4");
 
-  if (segments.length === 1) {
-    await extractSegment(inputPath, outputPath, segments[0]!);
-  } else {
-    // Multi-segment: extract each piece then concat-demux. Concat
-    // demuxer needs a plain text manifest listing each segment's path.
-    const segmentPaths: string[] = [];
-    for (let i = 0; i < segments.length; i++) {
-      const p = join(ctx.tempDir, `seg-${i}.mp4`);
-      await extractSegment(inputPath, p, segments[i]!);
-      segmentPaths.push(p);
-    }
-    const listPath = join(ctx.tempDir, "segments.txt");
-    await writeFile(
-      listPath,
-      segmentPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
-      "utf8",
-    );
-    await spawnCollected("ffmpeg", [
-      "-hide_banner",
-      "-loglevel", "error",
-      "-y",
-      "-f", "concat",
-      "-safe", "0",
-      "-i", listPath,
-      "-c", "copy",
-      "-movflags", "+faststart",
-      outputPath,
-    ]);
+  const outputs: { url: string }[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const segPath = join(ctx.tempDir, `seg-${i}.mp4`);
+    await extractSegment(inputPath, segPath, segments[i]!);
+    const url = await uploadTempFileToStorage({
+      path: segPath,
+      userId: ctx.userId,
+      projectId: ctx.projectId,
+      taskType: ctx.taskType,
+      ext: ".mp4",
+      contentType: "video/mp4",
+    });
+    outputs.push({ url });
   }
 
-  const url = await uploadTempFileToStorage({
-    path: outputPath,
-    userId: ctx.userId,
-    projectId: ctx.projectId,
-    taskType: ctx.taskType,
-    ext: ".mp4",
-    contentType: "video/mp4",
-  });
-
-  return { url, cost: 0 };
+  return { outputs, cost: 0 };
 };
 
 export default handler;

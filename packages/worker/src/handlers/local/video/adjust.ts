@@ -40,7 +40,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
   const { video, value } = parseParams(rawParams);
 
   if (isAdjustValueNeutral(value)) {
-    return { url: video, cost: 0 };
+    return { outputs: [{ url: video }], cost: 0 };
   }
 
   const inputPath = await downloadToTempDir(video, ctx.tempDir, { suffix: ".mp4" });
@@ -71,7 +71,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     contentType: "video/mp4",
   });
 
-  return { url, cost: 0 };
+  return { outputs: [{ url }], cost: 0 };
 };
 
 export default handler;

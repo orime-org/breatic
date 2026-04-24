@@ -98,14 +98,14 @@ describe("video/cut", () => {
     }
   }, 20_000);
 
-  it("multi-segment concat produces sum of segment lengths", async () => {
+  it("multi-segment produces N independent outputs with expected durations", async () => {
     const { dir, cleanup } = createTestTempDir();
     try {
       const inPath = join(dir, "src.mp4");
       await makeTestMp4(inPath, { duration: 2.0, width: 160, height: 90 });
       storage.registerSource("http://example.com/src.mp4", readFileSync(inPath));
 
-      await cutHandler(
+      const result = await cutHandler(
         {
           video: "http://example.com/src.mp4",
           segments: [
@@ -116,14 +116,19 @@ describe("video/cut", () => {
         makeCtx(dir),
       );
 
-      const outPath = join(dir, "got.mp4");
-      expect(storage.listUploaded()).toHaveLength(1);
-      writeFileSync(outPath, storage.listUploaded()[0]!.buffer);
-      const dur = await probeDuration(outPath);
-      // Expected ≈ 0.6 + 0.4 = 1.0; generous tolerance for keyframe
-      // alignment at short segments.
-      expect(dur).toBeGreaterThan(0.7);
-      expect(dur).toBeLessThan(1.3);
+      // Post-refactor: each segment becomes an independent output.
+      expect(result.outputs).toHaveLength(2);
+      expect(storage.listUploaded()).toHaveLength(2);
+
+      const uploaded = storage.listUploaded();
+      const expected = [0.6, 0.4]; // segment durations
+      for (let i = 0; i < uploaded.length; i++) {
+        const outPath = join(dir, `got-${i}.mp4`);
+        writeFileSync(outPath, uploaded[i]!.buffer);
+        const dur = await probeDuration(outPath);
+        expect(dur).toBeGreaterThan(expected[i]! - 0.3);
+        expect(dur).toBeLessThan(expected[i]! + 0.3);
+      }
     } finally {
       cleanup();
     }
