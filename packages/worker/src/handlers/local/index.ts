@@ -29,9 +29,6 @@ import videoAudioDenoise from "./video/audioDenoise.js";
 import videoStabilization from "./video/stabilization.js";
 import videoSceneExtension from "./video/sceneExtension.js";
 import videoHdrConversion from "./video/hdrConversion.js";
-import imageCrop from "./image/crop.js";
-import imageFlipRotate from "./image/flipRotate.js";
-import imageAdjust from "./image/adjust.js";
 
 /**
  * Common shape returned by every local handler — matches the subset
@@ -86,9 +83,10 @@ const LOCAL_HANDLERS: Readonly<Record<string, LocalHandlerFn>> = {
   "video/stabilization": videoStabilization,
   "video/scene-extension": videoSceneExtension,
   "video/hdr-conversion": videoHdrConversion,
-  "image/crop": imageCrop,
-  "image/flipRotate": imageFlipRotate,
-  "image/adjust": imageAdjust,
+  // Image local handlers removed (t3-phase4c pivot): image crop /
+  // flipRotate / manual-adjust are sub-100ms Canvas operations — they
+  // belong on the client. Video ops stay here (seconds-level FFmpeg
+  // pipelines are the canonical "server-side heavy" case).
 };
 
 export interface RunLocalHandlerParams {
