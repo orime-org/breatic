@@ -1197,11 +1197,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       // Worker side expects crop box in *source* pixels. cropRect already
       // lives in the same coordinate space as the source video stream.
       await triggerBackendMiniTool({
-        sourceNodeId: id,
         category: 'video',
         toolName: 'crop',
-        nameSuffix: 'crop',
-        expectedSize,
+        placeholders: [{
+          sourceNodeId: id,
+          nameSuffix: 'crop',
+          expectedSize,
+        }],
         params: {
           // Field name matches the video mini-tool family convention
           // (see server/routes/schemas.ts videoToolSchema).
