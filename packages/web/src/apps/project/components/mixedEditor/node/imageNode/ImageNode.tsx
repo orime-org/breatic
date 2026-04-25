@@ -584,17 +584,31 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     async (op: FlipRotateBitmapOp) => {
       const src = imageContent;
       if (!src) return;
-      const { dataUrl } = await bitmapTransformToPngDataUrl(src, op);
-      if (swapsNodeDimensions(op)) {
-        updateNode(id, {
-          data: { content: dataUrl },
-          style: { width: height, height: width },
+      // Bitmap transform → PNG Blob → presigned URL upload → write
+      // permanent URL into Yjs. Storing the data URL directly (the
+      // previous behaviour) bloats the Yjs doc by hundreds of KB per
+      // flip and slows every Hocuspocus replay from then on.
+      try {
+        const { dataUrl } = await bitmapTransformToPngDataUrl(src, op);
+        const blob = await (await fetch(dataUrl)).blob();
+        const url = await uploadBlobToStorage(blob, {
+          filename: 'flipRotate.png',
+          projectId: projectId ?? '',
         });
-      } else {
-        updateNodeData(id, { content: dataUrl });
+        if (swapsNodeDimensions(op)) {
+          updateNode(id, {
+            data: { content: url },
+            style: { width: height, height: width },
+          });
+        } else {
+          updateNodeData(id, { content: url });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Flip / rotate failed';
+        message.error(msg);
       }
     },
-    [height, id, imageContent, updateNode, updateNodeData, width],
+    [height, id, imageContent, projectId, updateNode, updateNodeData, width],
   );
 
   /** Center when the aspect ratio changes; when resizing via input, keep current position and only clamp if out of bounds */
