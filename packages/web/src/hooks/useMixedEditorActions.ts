@@ -195,6 +195,35 @@ function getNodeDataMap(flow: Y.Map<unknown>, nodeId: string): Y.Map<unknown> | 
   return dataMap instanceof Y.Map ? (dataMap as Y.Map<unknown>) : null;
 }
 
+/**
+ * "Handling-busy" — node itself is in `state:'handling'` OR (if it's a
+ * group) any descendant is. Used by `removeNode` / `onNodesChange` to
+ * enforce the product rule: handling nodes cannot be deleted.
+ */
+function isFlowNodeBusy(flow: Y.Map<unknown>, nodeId: string): boolean {
+  const nodeMap = flow.get(nodeId);
+  if (!(nodeMap instanceof Y.Map)) return false;
+
+  const dataMap = nodeMap.get('data');
+  if (dataMap instanceof Y.Map && dataMap.get('state') === 'handling') {
+    return true;
+  }
+
+  if (nodeMap.get('type') !== 'group') return false;
+
+  // Group: refuse if any direct child is busy. Recursive — nested
+  // groups propagate their busy state up.
+  let busy = false;
+  flow.forEach((childMap, childId) => {
+    if (busy) return;
+    if (childId === nodeId) return;
+    if (!(childMap instanceof Y.Map)) return;
+    if (childMap.get('parentId') !== nodeId) return;
+    if (isFlowNodeBusy(flow, childId)) busy = true;
+  });
+  return busy;
+}
+
 // X pattern: Yjs never holds `state: 'localPending'` — the originator
 // keeps that pending tile locally, and Yjs only sees completed
 // `state: 'idle'` nodes (or `state: 'handling'` for backend-owned
@@ -224,31 +253,89 @@ export interface UseMixedEditorActionsResult {
   forceRemoveStaleLocalPendingNode: (nodeId: string) => void;
 
   /**
-   * Trigger a backend-executed mini-tool and show a result placeholder
-   * immediately. Writes a `state:'handling'` node to Yjs (collaborators
-   * see it instantly), fires the POST, and on POST failure flips the
-   * node to `state:'idle'` with `errorInfo`, `content:''`, `coverUrl:''`
-   * so the user can manually delete it (no retry UX on mixed editor).
-   * Worker completion flows back through the `task-events` stream +
-   * Collab — no `await` on the result URL here.
+   * Promote a local-pending node into a Yjs `handling` node keeping
+   * the same id. Used by the "frontend-compose + backend AIGC" flow
+   * (e.g. `image.graffiti`) where the user first sees a local spinner
+   * during compose/upload, then — once the composed artifact is ready
+   * — the node transitions to a Yjs-shared handling state while the
+   * backend works.
    *
-   * @returns Created placeholder node id, or null if the source is gone.
+   * Contract: `nodeId` must be a live localPending entry; otherwise
+   * this is a no-op. The write is atomic under `userOrigin` so undo
+   * reverts the transition.
+   */
+  promoteLocalPendingToHandling: (
+    nodeId: string,
+    patch: ImageEditorNodeDataPatch,
+  ) => void;
+
+  /**
+   * Create a ReactFlow group + N child nodes in a single atomic
+   * `setNodes` — semantically equivalent to the main canvas'
+   * `GroupToolbarPanel.handleGroup`, but with pre-supplied children
+   * and a per-child state directive (N of them enter either
+   * `localPending` for pure-frontend work or `handling` for backend
+   * multi-output tasks like `video.cut`).
+   *
+   * Children are stamped with `parentId = groupId` and have their
+   * `position` treated as GROUP-LOCAL coordinates.
+   *
+   * @returns The created group id + the child ids, in input order.
+   */
+  createGroupWithChildren: (opts: {
+    groupNode: Node;
+    children: Node[];
+    childState: 'localPending' | 'handling';
+  }) => { groupId: string; childIds: string[] };
+
+  /**
+   * Trigger a backend-executed mini-tool for N placeholder nodes.
+   *
+   * Every placeholder is written to Yjs as a `state:'handling'` node
+   * (collaborators see it instantly), then the POST is fired with
+   * `node_ids: [...]` so the Worker knows which nodes to update when
+   * the task completes. On POST failure every placeholder flips to
+   * `state:'idle'` + `errorInfo` + cleared `content` / `coverUrl`
+   * (mixed-editor failure contract — no retry, user deletes manually).
+   *
+   * Worker completion flows back through the `task-events` Redis
+   * stream → Collab task-listener → Yjs observer. The client doesn't
+   * `await` the result URL here.
+   *
+   * @returns Array of created placeholder node ids (length matches
+   *   `opts.placeholders`), or `null` if any source is missing.
    */
   triggerBackendMiniTool: (opts: {
-    sourceNodeId: string;
     category: 'image' | 'video' | 'audio';
     toolName: string;
-    nameSuffix: string;
-    /** Explicit placeholder size; defaults to source node's size. */
-    expectedSize?: { width: number; height: number };
+    placeholders: Array<{
+      sourceNodeId: string;
+      nameSuffix: string;
+      /** Explicit placeholder size; defaults to source node's size. */
+      expectedSize?: { width: number; height: number };
+      /** Optional parent group id (used by `video.cut` / multi-output tools). */
+      parentId?: string;
+      /** Explicit position override (group-local if `parentId` set). */
+      positionOverride?: { x: number; y: number };
+      /**
+       * Reuse an existing Yjs node instead of creating a new one. Used
+       * by multi-output flows (e.g. `video.cut`) where the caller has
+       * already laid out a group + N handling children via
+       * `createGroupWithChildren`. When set, the placeholder fields
+       * (`expectedSize` / `parentId` / `positionOverride`) are
+       * ignored — the existing node is taken as-is.
+       */
+      existingNodeId?: string;
+    }>;
     /**
      * Tool-specific params forwarded to the Worker. Must include the
      * source URL field matching that modality's schema convention
      * (image family: `image`; video family: `video`; audio family:
-     * `audio`), plus any operation-specific fields.
+     * `audio`), plus any operation-specific fields. `node_ids` is
+     * injected automatically from the placeholders.
      */
     params: Record<string, unknown>;
-  }) => Promise<string | null>;
+  }) => Promise<string[] | null>;
 
   // ── High-level convenience ──
   onCropNode: (nodeId: string) => void;
@@ -537,6 +624,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       withFlow((flow, doc) => {
         const nodeMap = flow.get(nodeId);
         if (!(nodeMap instanceof Y.Map)) return;
+        // Handling guard (Yjs side): refuse to delete a node that's in
+        // `state:'handling'` itself, or — if it's a group — has any
+        // descendant in handling. Mirrors the "handling cannot be
+        // deleted" product rule. Surface a toast so the user knows why
+        // their delete was a no-op.
+        if (isFlowNodeBusy(flow, nodeId)) {
+          message.warning(
+            'This node is still processing. Please wait for it to finish before deleting.',
+          );
+          return;
+        }
         doc.transact(() => {
           flow.delete(nodeId);
         }, userOrigin);
@@ -584,6 +682,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
               if (getPendingTask(change.id)) continue;
               const nodeMap = flow.get(change.id);
               if (!(nodeMap instanceof Y.Map)) continue;
+              // Handling-busy guard: same rule as `removeNode`. Silent
+              // continue here (vs the explicit toast in `removeNode`)
+              // because batched ReactFlow remove changes can include
+              // many nodes and we don't want to spam.
+              if (isFlowNodeBusy(flow, change.id)) continue;
               flow.delete(change.id);
               dispatch(clearMixedEditorExpandLock(change.id));
             }
@@ -693,6 +796,88 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       dispatch(clearMixedEditorExpandLock(nodeId));
     },
     [removePendingTask, clearNodeLocalState, dispatch],
+  );
+
+  const promoteLocalPendingToHandling = useCallback(
+    (nodeId: string, patch: ImageEditorNodeDataPatch) => {
+      const pending = getPendingTask(nodeId);
+      if (!pending) return;
+
+      // Merge pending data + patch, force state='handling'.
+      // Drop stale errorInfo from any prior failure so collaborators
+      // don't briefly see the old message when the node becomes Yjs-
+      // visible.
+      const pendingData = (pending.node.data ?? {}) as Record<string, unknown>;
+      const finalData: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(pendingData)) {
+        if (k === 'state') continue;
+        if (k === 'errorInfo') continue;
+        finalData[k] = v;
+      }
+      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        if (k === 'pickState') continue;
+        finalData[k] = v;
+      }
+      finalData.state = 'handling';
+
+      const finalNode: Node = {
+        ...pending.node,
+        data: finalData,
+      };
+
+      // Move from local pendingTasks → Yjs in one atomic step. After
+      // this point, every collaborator sees the node in `handling`
+      // state and `handlingBy` identifies the originator.
+      removePendingTask(nodeId);
+      withFlow((flow, doc) => {
+        doc.transact(() => {
+          flow.set(nodeId, buildNodeYMap(finalNode));
+        }, userOrigin);
+      });
+    },
+    [getPendingTask, removePendingTask, withFlow, userOrigin],
+  );
+
+  const createGroupWithChildren = useCallback(
+    (opts: {
+      groupNode: Node;
+      children: Node[];
+      childState: 'localPending' | 'handling';
+    }): { groupId: string; childIds: string[] } => {
+      const { groupNode, children, childState } = opts;
+      const groupId = groupNode.id;
+      const childIds = children.map((c) => c.id);
+
+      if (childState === 'localPending') {
+        // gridSlice pattern: group enters Yjs (collaborators see an
+        // empty container immediately); children stay local until they
+        // finish Canvas work + upload, then land in Yjs one-by-one via
+        // resolveLocalPendingNode.
+        addNode(groupNode);
+        for (const child of children) {
+          addLocalPendingNode({
+            ...child,
+            parentId: groupId,
+          });
+        }
+      } else {
+        // video.cut pattern: group + N handling children all atomic
+        // in Yjs so the Worker can address them via node_ids and
+        // every collaborator sees the full group + spinners together.
+        const withParent = children.map((c) => ({
+          ...c,
+          parentId: groupId,
+          data: {
+            ...((c.data ?? {}) as Record<string, unknown>),
+            state: 'handling' as const,
+          },
+        }));
+        addNodes([groupNode, ...withParent]);
+      }
+
+      return { groupId, childIds };
+    },
+    [addNode, addNodes, addLocalPendingNode],
   );
 
   // ── Undo / redo ──────────────────────────────────────────────
@@ -1133,63 +1318,90 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
    */
   const triggerBackendMiniTool = useCallback(
     async (opts: {
-      sourceNodeId: string;
       category: 'image' | 'video' | 'audio';
       toolName: string;
-      nameSuffix: string;
-      expectedSize?: { width: number; height: number };
+      placeholders: Array<{
+        sourceNodeId: string;
+        nameSuffix: string;
+        expectedSize?: { width: number; height: number };
+        parentId?: string;
+        positionOverride?: { x: number; y: number };
+        existingNodeId?: string;
+      }>;
       params: Record<string, unknown>;
-    }): Promise<string | null> => {
-      const { sourceNodeId, category, toolName, nameSuffix, expectedSize, params: toolParams } = opts;
+    }): Promise<string[] | null> => {
+      const { category, toolName, placeholders, params: toolParams } = opts;
+      if (placeholders.length === 0) return null;
 
       const allNodes = readAllNodesSnapshot();
-      const source = allNodes.find((n) => n.id === sourceNodeId);
-      if (!source) return null;
-
-      const sourceData = (source.data ?? {}) as ImageFlowNodeData;
-      const sourceName = typeof sourceData.name === 'string' && sourceData.name.trim()
-        ? sourceData.name.trim()
-        : category;
-      const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
-      const sizeW = expectedSize?.width ?? sourceStyle.width ?? imageFlowDefaultWidth;
-      const sizeH = expectedSize?.height ?? sourceStyle.height ?? imageFlowDefaultHeight;
 
       const idPrefix = category === 'video' ? 'video-flow' : category === 'audio' ? 'audio-flow' : 'image-flow';
       const nodeType = category === 'video' ? imageEditorVideoNodeType
         : category === 'audio' ? imageEditorAudioNodeType
         : imageEditorImageNodeType;
-      const newNodeId = `${idPrefix}-${nanoid(12)}`;
-      const newX = source.position.x + sizeW + uploadGap;
-      const newY = source.position.y;
 
-      const seedData = category === 'video'
-        ? createEditorVideoNodeData(`${sourceName} (${nameSuffix})`, '')
-        : category === 'audio'
-          ? createEditorAudioNodeData(`${sourceName} (${nameSuffix})`, '')
-          : createEditorImageNodeData(`${sourceName} (${nameSuffix})`, '');
+      const newNodeIds: string[] = [];
+      const newNodes: Node<ImageFlowNodeData>[] = [];
 
-      const placeholder: Node<ImageFlowNodeData> = {
-        id: newNodeId,
-        type: nodeType,
-        position: { x: newX, y: newY },
-        style: { width: sizeW, height: sizeH },
-        data: {
-          ...seedData,
-          state: 'handling',
-        },
-        ...inheritParentFieldsFromNode(source),
-      };
+      for (const p of placeholders) {
+        // Multi-output flows (cut) supply pre-created Yjs nodes via
+        // `existingNodeId` and we just register them. No source lookup,
+        // no new placeholder.
+        if (p.existingNodeId) {
+          newNodeIds.push(p.existingNodeId);
+          continue;
+        }
 
-      // Write to Yjs — collaborators see the handling tile appear
-      // immediately. Uses userOrigin so the creation is undoable by the
-      // triggerer; conflict with a concurrent Ctrl+Z is resolved by the
-      // existing handling-guard (see PR #156).
-      addNode(placeholder);
+        const source = allNodes.find((n) => n.id === p.sourceNodeId);
+        if (!source) return null;
+
+        const sourceData = (source.data ?? {}) as ImageFlowNodeData;
+        const sourceName = typeof sourceData.name === 'string' && sourceData.name.trim()
+          ? sourceData.name.trim()
+          : category;
+        const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
+        const sizeW = p.expectedSize?.width ?? sourceStyle.width ?? imageFlowDefaultWidth;
+        const sizeH = p.expectedSize?.height ?? sourceStyle.height ?? imageFlowDefaultHeight;
+
+        const newNodeId = `${idPrefix}-${nanoid(12)}`;
+        newNodeIds.push(newNodeId);
+
+        const position = p.positionOverride ?? {
+          x: source.position.x + sizeW + uploadGap,
+          y: source.position.y,
+        };
+
+        const seedData = category === 'video'
+          ? createEditorVideoNodeData(`${sourceName} (${p.nameSuffix})`, '')
+          : category === 'audio'
+            ? createEditorAudioNodeData(`${sourceName} (${p.nameSuffix})`, '')
+            : createEditorImageNodeData(`${sourceName} (${p.nameSuffix})`, '');
+
+        const placeholder: Node<ImageFlowNodeData> = {
+          id: newNodeId,
+          type: nodeType,
+          position,
+          style: { width: sizeW, height: sizeH },
+          data: {
+            ...seedData,
+            state: 'handling',
+          },
+          ...(p.parentId
+            ? { parentId: p.parentId }
+            : inheritParentFieldsFromNode(source)),
+        };
+        newNodes.push(placeholder);
+      }
+
+      // One atomic Yjs write — every collaborator sees all freshly
+      // created placeholders appear together. (No-op when every entry
+      // was an `existingNodeId`.) Uses userOrigin so undoable.
+      if (newNodes.length > 0) addNodes(newNodes);
 
       const body = {
         tool: toolName,
         project_id: projectId ?? undefined,
-        node_id: newNodeId,
+        node_ids: newNodeIds,
         host_node_id: hostNodeId ?? undefined,
         ...toolParams,
       };
@@ -1202,29 +1414,31 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         } else {
           await miniToolsApi.executeImage(body);
         }
-        return newNodeId;
+        return newNodeIds;
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : typeof err === 'string' ? err : 'Mini-tool request failed';
-        // Mixed-editor failure contract: clear content/coverUrl,
-        // surface errorInfo. `history: 'skip'` keeps the undo stack
-        // clean so the user's next Ctrl+Z does not revive the handling
-        // placeholder (which would be confusing).
-        updateNodeData(
-          newNodeId,
-          {
-            state: 'idle',
-            content: '',
-            coverUrl: '',
-            errorInfo: errorMessage,
-          },
-          { history: 'skip' },
-        );
+        // Mixed-editor failure contract for every placeholder: clear
+        // content/coverUrl, surface errorInfo. `history: 'skip'` keeps
+        // the undo stack clean so the user's next Ctrl+Z does not
+        // revive the handling placeholders (which would be confusing).
+        for (const nid of newNodeIds) {
+          updateNodeData(
+            nid,
+            {
+              state: 'idle',
+              content: '',
+              coverUrl: '',
+              errorInfo: errorMessage,
+            },
+            { history: 'skip' },
+          );
+        }
         message.error(errorMessage);
-        return newNodeId;
+        return newNodeIds;
       }
     },
-    [readAllNodesSnapshot, addNode, updateNodeData, projectId, hostNodeId],
+    [readAllNodesSnapshot, addNodes, updateNodeData, projectId, hostNodeId],
   );
 
   const createCutVideoResultNodesRight = useCallback(
@@ -1554,6 +1768,8 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     resolveLocalPendingNode,
     failLocalPendingNode,
     forceRemoveStaleLocalPendingNode,
+    promoteLocalPendingToHandling,
+    createGroupWithChildren,
 
     onCropNode,
     replaceNodeWithFile,
