@@ -797,16 +797,17 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
       return;
     }
 
-    // Worker's Sharp handler does the actual pixel extract. The
-    // placeholder tile enters `state:'handling'` in Yjs immediately
-    // and flips to `'idle'` with the result URL once the Worker
-    // publishes its completion event.
+    // NOTE: phase4c撤了后端 image.crop。这条调用会 422 — 留在此处,
+    // 等阶段4 image 前端补齐时改成纯前端 Canvas crop + presigned
+    // 上传 + resolveLocalPendingNode。
     await triggerBackendMiniTool({
-      sourceNodeId: id,
       category: 'image',
       toolName: 'crop',
-      nameSuffix: 'crop',
-      expectedSize: { width: sourceRect.w, height: sourceRect.h },
+      placeholders: [{
+        sourceNodeId: id,
+        nameSuffix: 'crop',
+        expectedSize: { width: sourceRect.w, height: sourceRect.h },
+      }],
       params: {
         image: currentSrc,
         x: sourceRect.x,
