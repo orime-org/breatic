@@ -10,13 +10,6 @@ import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
-import { cutVideoWithFfmpeg } from '@/utils/videoEditor/videoCutWithFfmpeg';
-import { speedVideoWithFfmpeg } from '@/utils/videoEditor/videoSpeedWithFfmpeg';
-import { isAdjustValueNeutral, videoAdjustWithFfmpeg } from '@/utils/videoEditor/videoAdjustWithFfmpeg';
-import { videoStabilizationWithFfmpeg } from '@/utils/videoEditor/videoStabilizationWithFfmpeg';
-import { videoHdrConversionWithFfmpeg } from '@/utils/videoEditor/videoHdrConversionWithFfmpeg';
-import { videoSceneExtensionWithFfmpeg } from '@/utils/videoEditor/videoSceneExtensionWithFfmpeg';
-import { videoAudioDenoiseWithFfmpeg } from '@/utils/videoEditor/videoAudioDenoiseWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '../../types';
@@ -1246,9 +1239,12 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAdjustSave = useCallback(
     async (value: AdjustValue) => {
       if (!videoContent || isAdjustSaving) return;
-      // Neutral adjust = no-op; backend would short-circuit, but skip
-      // the round trip + new node creation entirely from the client.
-      if (isAdjustValueNeutral(value)) {
+      // Neutral adjust = all sliders at 0 = no-op; backend would
+      // short-circuit, but skip the round trip + new node creation
+      // entirely from the client. Inline check avoids depending on
+      // the soon-to-be-deleted ffmpeg util.
+      const isNeutral = (Object.values(value) as number[]).every((v) => v === 0);
+      if (isNeutral) {
         setEditingMode(null);
         return;
       }
