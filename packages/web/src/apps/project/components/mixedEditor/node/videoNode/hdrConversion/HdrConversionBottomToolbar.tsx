@@ -6,8 +6,10 @@ import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
 import Switch from '@/components/base/switch';
 import { Icon } from '@/components/base/icon';
 import Divider from '@/components/base/divider';
-import type { HdrOutputPreset } from '@/utils/videoEditor/videoHdrConversionWithFfmpeg';
 import PlaybackPanel from '../playback/PlaybackPanel';
+
+/** Output preset selector for HDR conversion (mirrors backend videoToolSchema). */
+export type HdrOutputPreset = 'hdr10' | 'hlg' | 'dolby-vision';
 
 export type HdrConversionPayload = {
   preset: HdrOutputPreset;
