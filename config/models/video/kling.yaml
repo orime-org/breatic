@@ -1,0 +1,205 @@
+# Kling Video Models (KwaiVGI) — O3, V3 Motion
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2v, i2v, ref, edit, motion
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+#   provider.priority    — lower number = tried first
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   generation_time      — max generation time in seconds (worst case)
+
+
+models:
+  # ── O3 Pro ──────────────────────────────────────────────────────────────
+
+  - name: "kling-o3-pro"
+    display_name: "Kling O3 Pro"
+    mode: "t2v"
+    tier: recommended
+    description: "Latest Kling flagship, best quality"
+    guide: "Top-tier text-to-video. Supports multi-shot scenes, element consistency, and AI sound generation. Duration 3-15s. Choose for highest quality video generation."
+    cost_per_call: 56
+    generation_time: 120
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16", "1:1"]
+        default: "16:9"
+      duration:
+        description: "Video length in seconds"
+        min: 3
+        max: 15
+        default: 5
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: false
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: klingai
+        model_id: "kling-v3"
+        extra_params: { mode: "pro" }
+        priority: 1
+      - name: wavespeed
+        model_id: "kwaivgi/kling-video-o3-pro/text-to-video"
+        priority: 2
+
+  - name: "kling-o3-pro-i2v"
+    display_name: "Kling O3 Pro I2V"
+    mode: "i2v"
+    tier: recommended
+    description: "Kling O3 image-to-video"
+    guide: "Animate an image into a video using Kling O3 Pro. Supports end frame guidance and AI sound. Duration 3-15s."
+    cost_per_call: 56
+    generation_time: 120
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      image:
+        description: "First frame image URL"
+        default: null
+      end_image:
+        description: "End frame image URL"
+        default: null
+      duration:
+        description: "Video length in seconds"
+        min: 3
+        max: 15
+        default: 5
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: false
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: klingai
+        model_id: "kling-v3"
+        extra_params: { mode: "pro" }
+        priority: 1
+      - name: wavespeed
+        model_id: "kwaivgi/kling-video-o3-pro/image-to-video"
+        priority: 2
+
+  # ── O3 Pro Reference ───────────────────────────────────────────────────
+
+  - name: "kling-o3-pro-ref"
+    display_name: "Kling O3 Pro Ref"
+    mode: "ref"
+    tier: recommended
+    description: "Kling O3 reference-to-video"
+    guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-9 reference images."
+    cost_per_call: 56
+    generation_time: 120
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      images:
+        description: "Reference image URLs (1-9)"
+        type: "list"
+        max_items: 9
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16", "1:1"]
+        default: "16:9"
+      duration:
+        description: "Video length in seconds"
+        min: 3
+        max: 15
+        default: 5
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: false
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: klingai
+        model_id: "kling-v3"
+        extra_params: { mode: "pro" }
+        priority: 1
+      - name: wavespeed
+        model_id: "kwaivgi/kling-video-o3-pro/reference-to-video"
+        priority: 2
+
+  # ── O3 Pro Edit ────────────────────────────────────────────────────────
+
+  - name: "kling-o3-pro-edit"
+    display_name: "Kling O3 Pro Edit"
+    mode: "edit"
+    tier: recommended
+    description: "Kling O3 video editing"
+    guide: "Edit an existing video using Kling O3 Pro. Modify content, add elements, or change style. Input video max 10s."
+    cost_per_call: 84
+    generation_time: 180
+    params:
+      prompt:
+        description: "Edit instruction"
+        default: null
+      video:
+        description: "Source video URL (required)"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: klingai
+        model_id: "kling-v3"
+        extra_params: { mode: "pro" }
+        priority: 1
+      - name: wavespeed
+        model_id: "kwaivgi/kling-video-o3-pro/video-edit"
+        priority: 2
+
+  # ── V3 Pro Motion ──────────────────────────────────────────────────────
+
+  - name: "kling-v3-pro-motion"
+    display_name: "Kling V3 Pro Motion"
+    mode: "motion"
+    tier: recommended
+    description: "Kling V3 motion control"
+    guide: "Motion control using Kling V3 Pro. Drive character movement with a reference video or image. Duration 3-30s."
+    cost_per_call: 84
+    generation_time: 180
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      image:
+        description: "Character source image URL"
+        default: null
+      duration:
+        description: "Video length in seconds"
+        min: 3
+        max: 30
+        default: 5
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: klingai
+        model_id: "kling-v3.0-pro"
+        priority: 1
+      - name: wavespeed
+        model_id: "kwaivgi/kling-v3.0-pro/motion-control"
+        priority: 2
+
+

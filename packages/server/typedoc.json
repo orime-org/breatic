@@ -1,0 +1,13 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts", "src/app.ts"],
+  "entryPointStrategy": "expand",
+  "out": "../../api-reference/server",
+  "exclude": ["**/node_modules/**", "**/__tests__/**", "**/dist/**"],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "plugin": [],
+  "readme": "none",
+  "name": "@breatic/server API",
+  "tsconfig": "./tsconfig.json"
+}

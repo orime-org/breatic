@@ -1,0 +1,136 @@
+// @ts-expect-error -- Node.js built-in, not covered by web tsconfig
+import { dirname } from 'path';
+// @ts-expect-error -- Node.js built-in, not covered by web tsconfig
+import { fileURLToPath } from 'url';
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+import pluginReact from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export default [
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  pluginReact.configs.flat.recommended,
+  {
+    files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.es2021,
+      },
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        tsconfigRootDir: __dirname,
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+    },
+    settings: {
+      react: {
+        version: 'detect',
+      },
+    },
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      // React rules
+      'react/prop-types': 'off',
+      'react/display-name': 'off',
+      'react/no-string-refs': 'off',
+      'react/jsx-no-comment-textnodes': 'off',
+      'react/no-unescaped-entities': 'off',
+      'react/react-in-jsx-scope': 'off', // React 17+ 不再需要导入 React
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+
+      // Code style
+      indent: ['error', 2, { SwitchCase: 1, ignoredNodes: ['TemplateLiteral'] }],
+      quotes: ['error', 'single'],
+      'jsx-quotes': ['error', 'prefer-single'],
+      semi: ['error', 'always'],
+      'no-trailing-spaces': 'warn',
+      'no-multiple-empty-lines': ['warn', { max: 2 }],
+      'no-multi-spaces': 'error',
+      'no-irregular-whitespace': 'error',
+      'max-len': [
+        'error',
+        {
+          code: 300,
+          ignoreUrls: true,
+          ignoreStrings: true,
+          ignoreTemplateLiterals: true,
+          ignoreRegExpLiterals: true,
+        },
+      ],
+
+      // Variables
+      'no-unused-vars': 'off', // 使用 TypeScript ESLint 的规则代替
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn', // 警告使用 any 类型
+      'no-undef-init': 'off',
+      'no-undefined': 'off',
+      'no-use-before-define': 'off',
+
+      // Best practices
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-eval': 'warn',
+      'no-caller': 'error',
+      'no-else-return': 'error',
+      'no-extend-native': 'error',
+      'no-extra-bind': 'error',
+      'no-floating-decimal': 'error',
+      'no-implied-eval': 'error',
+      'no-labels': 'error',
+      'no-with': 'error',
+      'no-loop-func': 'off',
+      'no-native-reassign': 'error',
+      'no-redeclare': 'error',
+      'no-unused-expressions': 'off',
+      'no-unneeded-ternary': 'error',
+      'no-unreachable': 'error',
+      'no-lonely-if': 'error',
+      'no-inner-declarations': ['error', 'functions'],
+      'func-call-spacing': ['error', 'never'],
+      'no-case-declarations': 'off',
+
+      // Spacing
+      'array-bracket-spacing': ['error', 'never'],
+      'arrow-body-style': 'off',
+      'key-spacing': [
+        'error',
+        {
+          beforeColon: false,
+          afterColon: true,
+        },
+      ],
+      'space-in-parens': ['error', 'never'],
+
+      // Duplicates
+      'no-dupe-keys': 'error',
+      'no-dupe-args': 'error',
+      'no-duplicate-case': 'error',
+
+      // Other
+      curly: 'off',
+      'linebreak-style': ['off', 'unix'],
+    },
+  },
+  {
+    files: ['**/*.cjs', '**/*.config.cjs', '**/*.config.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'script',
+      },
+    },
+  },
+];

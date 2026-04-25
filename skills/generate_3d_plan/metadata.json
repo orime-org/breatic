@@ -1,0 +1,20 @@
+{
+  "name": "generate_3d_plan",
+  "description": "Generate a task plan for 3D model creation. Use when the user asks to create, generate, or convert to a 3D model.",
+  "tools": [],
+  "output_type": "task_plan",
+  "category": "3d",
+  "keywords": [
+    "3d",
+    "3d model",
+    "mesh",
+    "GLB",
+    "OBJ",
+    "three-dimensional",
+    "text-to-3d",
+    "image-to-3d"
+  ],
+  "scope": [
+    "agent"
+  ]
+}

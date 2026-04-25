@@ -1,0 +1,38 @@
+# ElevenLabs Audio Model Family — Music & Sound Effects
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2m (text-to-music) | sfx (sound effects)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "elevenlabs-sfx-v2"
+    display_name: "ElevenLabs SFX V2"
+    mode: "sfx"
+    tier: recommended
+    description: "Text-to-sound-effects, 0.5-22s"
+    guide: "Generate sound effects from text descriptions. Supports looping mode for seamless ambient audio. Duration 0.5-22 seconds. Best for Foley, UI sounds, ambient backgrounds, and short audio clips."
+    cost_per_call: 5
+    generation_time: 30
+    params:
+      prompt:
+        description: "Sound effect description"
+        default: null
+      duration_seconds:
+        description: "Audio length in seconds (0.5-22)"
+        default: null
+      prompt_influence:
+        description: "How closely to follow prompt (0-1)"
+        default: 0.3
+      loop:
+        description: "Enable seamless looping"
+        default: false
+    providers:
+      - name: elevenlabs
+        model_id: "eleven_text_to_sound_v2"
+        priority: 1
+      - name: fal
+        model_id: "fal-ai/elevenlabs/sound-effects/v2"
+        priority: 2

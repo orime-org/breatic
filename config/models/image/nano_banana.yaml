@@ -1,0 +1,186 @@
+# Nano Banana Image Models (Google Gemini) — Pro, 2
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2i, i2i
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.max_items      — max number of items for list-type params (used by frontend + validation)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+#   provider.priority    — lower number = tried first
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   generation_time      — max generation time in seconds (worst case)
+
+models:
+  # -- Nano Banana Pro (t2i) -----------------------------------------------------
+
+  - name: "nano-banana-pro"
+    display_name: "Nano Banana Pro"
+    mode: "t2i"
+    tier: recommended
+    description: "Flagship quality, 4K, lens control"
+    guide: "Best quality and prompt adherence. Excels at photorealism, text rendering (multilingual), and complex multi-element prompts. Uses reasoning to decompose complex scenes. Supports style reference images (up to 14) for consistent style generation. Slowest and most expensive, but highest fidelity. Choose for professional/print production or text-heavy images."
+    cost_per_call: 7
+    generation_time: 50
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k", "4k"]
+        default: "1k"
+      style_images:
+        description: "Style reference image URLs"
+        type: "list"
+        max_items: 14
+        default: null
+      camera:
+        description: "Camera body style simulation"
+        values: ["ARRI Alexa 35", "ARRI Alexa Mini", "Arricam LT", "RED V-Raptor", "Sony Venice", "Panavision DXL2", "Sony A7 IV", "Canon EOS R5", "Hasselblad X2D", "Leica M6", "Fujifilm X100V", "GoPro Hero", "iPhone"]
+        default: "Canon EOS R5"
+      lens:
+        description: "Lens model simulation"
+        values: ["Cooke S4/i", "Cooke Panchro", "Zeiss Master Prime", "Zeiss Supreme Prime", "Panavision Primo", "Panavision Anamorphic", "Canon K35", "Leica Summilux"]
+        default: "Zeiss Master Prime"
+      focal_length:
+        description: "Focal length in mm"
+        values: [14, 24, 35, 50, 85, 100, 135, 200]
+        default: 50
+      aperture:
+        description: "Aperture f-stop"
+        values: ["f/1.4", "f/2", "f/2.8", "f/4", "f/5.6", "f/8", "f/11", "f/16"]
+        default: "f/2.8"
+    providers:
+      - name: google
+        model_id: "gemini-3-pro-image-preview"
+        token_price: 0.00012
+        priority: 1
+      - name: wavespeed
+        model_id: "google/nano-banana-pro/text-to-image"
+        priority: 2
+
+  # -- Nano Banana 2 (t2i) -------------------------------------------------------
+
+  - name: "nano-banana-2"
+    display_name: "Nano Banana 2"
+    mode: "t2i"
+    tier: optional
+    description: "Fast high-quality, recommended default"
+    guide: "Best all-round default. Pro-level quality at Flash speed (~3-5s). Web search grounding for real-world subjects (landmarks, people, events). Supports style reference images (up to 14) for consistent style generation. Good text rendering, 14 aspect ratios, up to 4K. Recommended for most use cases."
+    cost_per_call: 4.5
+    generation_time: 25
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["0.5k", "1k", "2k", "4k"]
+        default: "1k"
+      style_images:
+        description: "Style reference image URLs"
+        type: "list"
+        max_items: 14
+        default: null
+      enable_web_search:
+        description: "Enable web search for better results"
+        values: [true, false]
+        default: false
+      camera:
+        description: "Camera body style simulation"
+        values: ["ARRI Alexa 35", "ARRI Alexa Mini", "Arricam LT", "RED V-Raptor", "Sony Venice", "Panavision DXL2", "Sony A7 IV", "Canon EOS R5", "Hasselblad X2D", "Leica M6", "Fujifilm X100V", "GoPro Hero", "iPhone"]
+        default: "Canon EOS R5"
+      lens:
+        description: "Lens model simulation"
+        values: ["Cooke S4/i", "Cooke Panchro", "Zeiss Master Prime", "Zeiss Supreme Prime", "Panavision Primo", "Panavision Anamorphic", "Canon K35", "Leica Summilux"]
+        default: "Zeiss Master Prime"
+      focal_length:
+        description: "Focal length in mm"
+        values: [14, 24, 35, 50, 85, 100, 135, 200]
+        default: 50
+      aperture:
+        description: "Aperture f-stop"
+        values: ["f/1.4", "f/2", "f/2.8", "f/4", "f/5.6", "f/8", "f/11", "f/16"]
+        default: "f/2.8"
+    providers:
+      - name: google
+        model_id: "gemini-3.1-flash-image-preview"
+        token_price: 0.00006
+        priority: 1
+      - name: wavespeed
+        model_id: "google/nano-banana-2/text-to-image"
+        priority: 2
+
+  # -- Nano Banana Pro Edit (i2i) -------------------------------------------------
+
+  - name: "nano-banana-pro-edit"
+    display_name: "Nano Banana Pro Edit"
+    mode: ["i2i", "edit"]
+    tier: recommended
+    description: "Flagship editor, 14-image ref"
+    guide: "Most capable editor. Best at inpainting, text overlay editing, and complex multi-constraint edits. Supports up to 14 reference images. Uses reasoning for precise editing. Choose for professional editing requiring highest quality."
+    cost_per_call: 7
+    generation_time: 50
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k", "4k"]
+        default: "1k"
+      images:
+        description: "Input image URLs for editing"
+        type: "list"
+        max_items: 14
+        default: null
+    providers:
+      - name: google
+        model_id: "gemini-3-pro-image-preview"
+        token_price: 0.00012
+        priority: 1
+      - name: wavespeed
+        model_id: "google/nano-banana-pro/edit"
+        priority: 2
+
+  # -- Nano Banana 2 Edit (i2i) ---------------------------------------------------
+
+  - name: "nano-banana-2-edit"
+    display_name: "Nano Banana 2 Edit"
+    mode: ["i2i", "edit"]
+    tier: optional
+    description: "Fast editor, web search enhanced"
+    guide: "Fast, high-quality editing. Good for most editing tasks: object add/remove, style transfer, background changes. Supports web search and up to 14 reference images. Recommended default for image editing."
+    cost_per_call: 4.5
+    generation_time: 25
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["0.5k", "1k", "2k", "4k"]
+        default: "1k"
+      enable_web_search:
+        description: "Enable web search for better results"
+        values: [true, false]
+        default: false
+      images:
+        description: "Input image URLs for editing"
+        type: "list"
+        max_items: 14
+        default: null
+    providers:
+      - name: google
+        model_id: "gemini-3.1-flash-image-preview"
+        token_price: 0.00006
+        priority: 1
+      - name: wavespeed
+        model_id: "google/nano-banana-2/edit"
+        priority: 2
+
