@@ -3,7 +3,7 @@
  *
  * Each canvas node that exposes a "Launch Editor" UI (text node / image
  * / audio / video / 3d) backs that editor with a dedicated Y.Doc whose
- * name follows the {@link https://github.com/orime-org/breatic_ai/blob/main/docs/YJS.md | YJS.md § 11}
+ * name follows the {@link https://github.com/orime-org/breatic/blob/main/docs/YJS.md | YJS.md § 11}
  * spec:
  *
  *     "project-{projectId}/node/{nodeId}"

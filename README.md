@@ -114,8 +114,8 @@ Deployers and developers follow two independent paths. Pick whichever matches wh
 Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code changes — just Docker.
 
 ```bash
-git clone https://github.com/orime-org/breatic_ai.git
-cd breatic_ai
+git clone https://github.com/orime-org/breatic.git
+cd breatic
 cp .env.docker .env
 # Edit .env: SESSION_SECRET_KEY, DATABASE_URL, Redis URLs, API keys
 docker compose up -d
@@ -136,8 +136,8 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md) for Nginx/SSL/CI details and the image ta
 Runs API / Worker / Collab as native Node processes with hot-reload. Docker is only used for the PostgreSQL and Redis services — app code is read directly from the workspace.
 
 ```bash
-git clone https://github.com/orime-org/breatic_ai.git
-cd breatic_ai
+git clone https://github.com/orime-org/breatic.git
+cd breatic
 pnpm install
 
 docker compose up -d postgres redis    # only infrastructure

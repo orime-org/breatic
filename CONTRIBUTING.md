@@ -207,7 +207,7 @@ All three must pass before merging.
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/orime-org/breatic_ai/issues) with
+Use [GitHub Issues](https://github.com/orime-org/breatic/issues) with
 a clear title, reproduction steps, and environment info. For security
 issues, email the maintainers privately instead of opening a public issue.
 

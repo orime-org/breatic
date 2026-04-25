@@ -21,7 +21,7 @@ When possible, include:
   anonymous)
 
 If you would prefer GitHub's built-in private disclosure channel,
-please use [**Private Vulnerability Reporting**](https://github.com/orime-org/breatic_ai/security/advisories/new)
+please use [**Private Vulnerability Reporting**](https://github.com/orime-org/breatic/security/advisories/new)
 on this repository.
 
 ---
@@ -58,7 +58,7 @@ receive security fixes.
 
 ### ✅ In scope
 
-- Source code in this repository (`orime-org/breatic_ai`)
+- Source code in this repository (`orime-org/breatic`)
 - Default configurations shipped with Breatic (Docker, deployment
   scripts, default settings)
 - Security issues arising from Breatic's documented architecture,
