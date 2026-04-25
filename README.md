@@ -12,7 +12,7 @@ The AI-native operating system for content creators — a unified workspace wher
 - [docs/FRONTEND.md](./docs/FRONTEND.md) — Frontend architecture (React, ReactFlow, Yjs, state management)
 - [docs/YJS.md](./docs/YJS.md) — Yjs document structure spec (canvas + node editor docs, state machine, event flow, concurrency)
 - [docs/WORKTREE.md](./docs/WORKTREE.md) — Optional parallel worktree workflow for multi-session development
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guide, commit conventions, AI authorship policy
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guide, commit conventions, commit author policy
 
 ## Tech Stack
 
