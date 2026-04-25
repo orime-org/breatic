@@ -1,0 +1,219 @@
+# VEO Video Models (Google) — 3.1, 3.1 Lite
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2v, i2v, extend
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+#   provider.priority    — lower number = tried first
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   generation_time      — max generation time in seconds (worst case)
+
+
+models:
+  # -- VEO 3.1 -----------------------------------------------------------------
+
+  - name: "veo-3.1"
+    display_name: "VEO 3.1"
+    mode: "t2v"
+    tier: recommended
+    description: "Google's latest, built-in audio"
+    guide: "Google's latest text-to-video with built-in audio generation. Duration 4-8s, up to 1080p. Excellent for realistic scenes with synchronized sound."
+    cost_per_call: 100
+    generation_time: 180
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16"]
+        default: "16:9"
+      resolution:
+        description: "Output resolution"
+        values: ["720p", "1080p"]
+        default: "720p"
+      duration:
+        description: "Video length in seconds"
+        values: [4, 6, 8]
+        default: 8
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: true
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: google
+        model_id: "veo-3.1"
+        priority: 1
+      - name: wavespeed
+        model_id: "google/veo3.1/text-to-video"
+        priority: 2
+
+  - name: "veo-3.1-i2v"
+    display_name: "VEO 3.1 I2V"
+    mode: "i2v"
+    tier: recommended
+    description: "VEO 3.1 image-to-video"
+    guide: "Animate an image into a video using Google VEO 3.1. Supports audio generation and negative prompts. Duration 4-8s, up to 1080p."
+    cost_per_call: 100
+    generation_time: 180
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      image:
+        description: "First frame image URL"
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16"]
+        default: "16:9"
+      resolution:
+        description: "Output resolution"
+        values: ["720p", "1080p"]
+        default: "720p"
+      duration:
+        description: "Video length in seconds"
+        values: [4, 6, 8]
+        default: 8
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: true
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: google
+        model_id: "veo-3.1"
+        priority: 1
+      - name: wavespeed
+        model_id: "google/veo3.1/image-to-video"
+        priority: 2
+
+  # -- VEO 3.1 Extend ----------------------------------------------------------
+
+  - name: "veo-3.1-extend"
+    display_name: "VEO 3.1 Extend"
+    mode: "extend"
+    tier: recommended
+    description: "VEO 3.1 video extension"
+    guide: "Extend an existing video using Google VEO 3.1. Continue the scene with consistent style. Up to 1080p."
+    cost_per_call: 100
+    generation_time: 180
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      video:
+        description: "Source video URL (required)"
+        default: null
+      resolution:
+        description: "Output resolution"
+        values: ["720p", "1080p"]
+        default: "720p"
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: google
+        model_id: "veo-3.1"
+        priority: 1
+      - name: wavespeed
+        model_id: "google/veo3.1-fast/video-extend"
+        priority: 2
+
+  # -- VEO 3.1 Fast ------------------------------------------------------------
+
+  - name: "veo-3.1-fast"
+    display_name: "VEO 3.1 Fast"
+    mode: "t2v"
+    tier: recommended
+    description: "VEO 3.1 fast variant"
+    guide: "Google VEO 3.1 Fast text-to-video. Same quality at faster generation. Duration 4-8s, up to 1080p."
+    cost_per_call: 80
+    generation_time: 120
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16"]
+        default: "16:9"
+      resolution:
+        description: "Output resolution"
+        values: ["720p", "1080p"]
+        default: "720p"
+      duration:
+        description: "Video length in seconds"
+        values: [4, 6, 8]
+        default: 8
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: true
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "google/veo3.1-fast/text-to-video"
+        priority: 1
+
+  # -- VEO 3.1 Lite (NEW — cheapest Google video) ------------------------------
+
+  - name: "veo-3.1-lite"
+    display_name: "VEO 3.1 Lite"
+    mode: "t2v"
+    tier: optional
+    description: "Cheapest Google video, budget tier"
+    guide: "Google's most affordable video model. Lower quality than VEO 3.1 but significantly cheaper. Good for drafts, iterations, and cost-sensitive projects. Duration 4-8s."
+    cost_per_call: 30
+    generation_time: 90
+    params:
+      prompt:
+        description: "Scene description"
+        default: null
+      aspect_ratio:
+        description: "Output aspect ratio"
+        values: ["16:9", "9:16"]
+        default: "16:9"
+      resolution:
+        description: "Output resolution"
+        values: ["720p"]
+        default: "720p"
+      duration:
+        description: "Video length in seconds"
+        values: [4, 6, 8]
+        default: 8
+      generate_audio:
+        description: "Generate audio track"
+        values: [true, false]
+        default: true
+      negative_prompt:
+        description: "Elements to avoid"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "google/veo3.1-lite/text-to-video"
+        priority: 1

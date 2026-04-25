@@ -1,0 +1,182 @@
+# Midjourney Image Models — V7, Niji V7
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2i, i2i
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+#   provider.priority    — lower number = tried first
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   generation_time      — max generation time in seconds (worst case)
+
+models:
+  # -- Midjourney V7 (t2i) -------------------------------------------------------
+
+  - name: "midjourney-v7"
+    display_name: "Midjourney V7"
+    mode: "t2i"
+    tier: recommended
+    description: "Top aesthetics, artistic imagery"
+    guide: "Highest aesthetic quality among all models. Exceptional at artistic, cinematic, and editorial imagery. Strong compositional awareness, 40% fewer anatomical errors. Weak at text rendering. Supports style reference (sref) and personalization. Choose for marketing visuals, concept art, and images where aesthetic beauty is paramount."
+    cost_per_call: 10
+    generation_time: 60
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k"]
+        default: "2k"
+      stylize:
+        description: "Artistic style strength (0-1000)"
+        default: 100
+      chaos:
+        description: "Variation between 4 images (0-100)"
+        default: 0
+      weird:
+        description: "Surreal experimental level (0-3000)"
+        default: 0
+      sref:
+        description: "Style reference image URL"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "midjourney/text-to-image"
+        priority: 1
+
+  # -- Midjourney Niji V7 (t2i) --------------------------------------------------
+
+  - name: "midjourney-niji-v7"
+    display_name: "Midjourney Niji V7"
+    mode: "t2i"
+    tier: recommended
+    description: "Anime and illustration specialist"
+    guide: "Best model for anime, manga, and Eastern-style illustration. Exceptional eye/pupil rendering, precise line work, and flat aesthetic control. Optimized for anime character design, manga panels, light novel illustrations, and game art. Supports style reference cross-compatible with V7."
+    cost_per_call: 10
+    generation_time: 60
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k"]
+        default: "2k"
+      stylize:
+        description: "Artistic style strength (0-1000)"
+        default: 100
+      chaos:
+        description: "Variation between 4 images (0-100)"
+        default: 0
+      weird:
+        description: "Surreal experimental level (0-3000)"
+        default: 0
+      sref:
+        description: "Style reference image URL"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "midjourney/niji/text-to-image"
+        priority: 1
+
+  # -- Midjourney V7 Img2Img (i2i) -----------------------------------------------
+
+  - name: "midjourney-v7-img2img"
+    display_name: "Midjourney V7 Img2Img"
+    mode: "i2i"
+    tier: optional
+    description: "Artistic img2img, best aesthetics"
+    guide: "Image-to-image transformation with Midjourney's top-tier aesthetics. Uses source image + text prompt to generate new images. Image weight (iw) controls reference influence: 0=text-driven, 1=balanced, 3=max adherence. Supports style reference (sref). Choose for artistic reimagination of existing images."
+    cost_per_call: 10
+    generation_time: 60
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k"]
+        default: "2k"
+      image:
+        description: "Source image URL (required)"
+        default: null
+      iw:
+        description: "Image weight, reference influence (0-3)"
+        type: "float"
+        default: 1
+      stylize:
+        description: "Artistic style strength (0-1000)"
+        default: 100
+      chaos:
+        description: "Variation between 4 images (0-100)"
+        default: 0
+      weird:
+        description: "Surreal experimental level (0-3000)"
+        default: 0
+      sref:
+        description: "Style reference image URL"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "midjourney/image-to-image"
+        priority: 1
+
+  # -- Midjourney Niji V7 Img2Img (i2i) ------------------------------------------
+
+  - name: "midjourney-niji-v7-img2img"
+    display_name: "Midjourney Niji V7 Img2Img"
+    mode: "i2i"
+    tier: optional
+    description: "Anime img2img, style transfer"
+    guide: "Anime-specialized image-to-image. Transform photos or sketches into anime/manga/illustration style. Image weight (iw) controls reference influence. Best for converting real photos to anime, refining sketches, or anime style transfer. Supports style reference (sref)."
+    cost_per_call: 10
+    generation_time: 60
+    params:
+      aspect_ratio:
+        description: "Aspect ratio of the output image"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
+        default: "1:1"
+      resolution:
+        description: "Output resolution"
+        values: ["1k", "2k"]
+        default: "2k"
+      image:
+        description: "Source image URL (required)"
+        default: null
+      iw:
+        description: "Image weight, reference influence (0-3)"
+        type: "float"
+        default: 1
+      stylize:
+        description: "Artistic style strength (0-1000)"
+        default: 100
+      chaos:
+        description: "Variation between 4 images (0-100)"
+        default: 0
+      weird:
+        description: "Surreal experimental level (0-3000)"
+        default: 0
+      sref:
+        description: "Style reference image URL"
+        default: null
+      seed:
+        description: "Random seed for reproducibility"
+        default: -1
+    providers:
+      - name: wavespeed
+        model_id: "midjourney/niji/image-to-image"
+        priority: 1

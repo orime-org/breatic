@@ -10,13 +10,6 @@ import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
-import { cutVideoWithFfmpeg } from '@/utils/videoEditor/videoCutWithFfmpeg';
-import { speedVideoWithFfmpeg } from '@/utils/videoEditor/videoSpeedWithFfmpeg';
-import { isAdjustValueNeutral, videoAdjustWithFfmpeg } from '@/utils/videoEditor/videoAdjustWithFfmpeg';
-import { videoStabilizationWithFfmpeg } from '@/utils/videoEditor/videoStabilizationWithFfmpeg';
-import { videoHdrConversionWithFfmpeg } from '@/utils/videoEditor/videoHdrConversionWithFfmpeg';
-import { videoSceneExtensionWithFfmpeg } from '@/utils/videoEditor/videoSceneExtensionWithFfmpeg';
-import { videoAudioDenoiseWithFfmpeg } from '@/utils/videoEditor/videoAudioDenoiseWithFfmpeg';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import NodeHeader from '../../common/NodeHeader';
 import type { ImageEditorPickResultBox, ImageFlowNodeData } from '../../types';
@@ -242,7 +235,7 @@ function shouldShowVideoFlowToolbars(params: {
 }
 
 const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, height }) => {
-  const { setCenter, getZoom } = useReactFlow();
+  const { setCenter, getZoom, getNode } = useReactFlow();
   const { nodes, hostNodeId } = useMixedEditorData();
   const {
     createCutVideoResultNodesRight,
@@ -252,6 +245,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
     updateNode,
     updateNodeData,
     triggerBackendMiniTool,
+    createGroupWithChildren,
   } = useMixedEditorActions();
   const { nodes: projectCanvasNodes } = useCanvasData();
   const { updateNode: updateProjectCanvasNode, addNode: addProjectCanvasNode } = useCanvasActions();
@@ -1009,8 +1003,12 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleStabilizationSend = useCallback(
     async (payload: { stabilization: number }) => {
       if (!videoContent || isStabilizationSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'stabilization', state: 'localPending' });
-      if (!placeholderId) return;
+      // cropPct=0 short-circuit: backend returns the source URL anyway,
+      // skip the round-trip + new node creation entirely.
+      if (payload.stabilization <= 0) {
+        setEditingMode(null);
+        return;
+      }
       const ratio = Math.max(
         0,
         1 - (Math.max(STABILIZATION_CROP_MIN, Math.min(STABILIZATION_CROP_MAX, payload.stabilization)) * 2) / 100,
@@ -1019,38 +1017,26 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         width: currentWidth * ratio,
         height: currentHeight * ratio,
       });
-      applyResultNodeSize(placeholderId, expectedSize);
       setEditingMode(null);
       setIsStabilizationSaving(true);
       try {
-        const nextSrc = payload.stabilization <= 0
-          ? videoContent
-          : await videoStabilizationWithFfmpeg(videoContent, payload.stabilization);
-        if (!nextSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
-        applyResultNodeSize(placeholderId, nextNodeSize);
-        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        message.error('Could not export stabilization result. Try again or use a smaller clip.');
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'stabilization',
+          placeholders: [{ sourceNodeId: id, nameSuffix: 'stabilization', expectedSize }],
+          params: { video: videoContent, cropPct: payload.stabilization },
+        });
       } finally {
         setIsStabilizationSaving(false);
       }
     },
     [
-      createVideoPlaceholderNodeRight,
-      id,
-      isStabilizationSaving,
-      removeNode,
-      resolveVideoResultNode,
-      applyResultNodeSize,
       currentHeight,
       currentWidth,
-      deriveResultNodeSize,
+      id,
+      isStabilizationSaving,
       normalizeNodeSize,
+      triggerBackendMiniTool,
       videoContent,
     ],
   );
@@ -1082,9 +1068,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleSceneExtensionSend = useCallback(
     async (payload: { width: number; height: number; resolution: SceneExtensionResolution; ratio: string }) => {
       if (!videoContent) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'scene-extension', state: 'localPending' });
-      if (!placeholderId) return;
-
       const frame = {
         w: Math.max(1, Math.round(payload.width)),
         h: Math.max(1, Math.round(payload.height)),
@@ -1092,38 +1075,26 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         oy: sceneExtensionOrigin.y,
       };
       const expectedSize = normalizeNodeSize({ width: frame.w, height: frame.h });
-      applyResultNodeSize(placeholderId, expectedSize);
       setEditingMode(null);
-
-      try {
-        const nextSrc = await videoSceneExtensionWithFfmpeg(videoContent, {
+      await triggerBackendMiniTool({
+        category: 'video',
+        toolName: 'scene-extension',
+        placeholders: [{ sourceNodeId: id, nameSuffix: 'scene-extension', expectedSize }],
+        params: {
+          video: videoContent,
           frame,
           container: { width: currentWidth, height: currentHeight },
-        });
-        if (!nextSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        const nextNodeSize = await deriveResultNodeSize(nextSrc, expectedSize);
-        applyResultNodeSize(placeholderId, nextNodeSize);
-        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        message.error('Could not export scene extension result. Try again.');
-      }
+        },
+      });
     },
     [
-      applyResultNodeSize,
-      createVideoPlaceholderNodeRight,
       currentHeight,
       currentWidth,
-      deriveResultNodeSize,
       id,
       normalizeNodeSize,
-      removeNode,
-      resolveVideoResultNode,
       sceneExtensionOrigin.x,
       sceneExtensionOrigin.y,
+      triggerBackendMiniTool,
       videoContent,
     ],
   );
@@ -1131,25 +1102,26 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleAudioDenoiseSend = useCallback(
     async (payload: { intensity: number }) => {
       if (!videoContent || isAudioDenoiseSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'audio-denoise', state: 'localPending' });
-      if (!placeholderId) return;
+      // intensity<1 short-circuit: backend returns the source URL,
+      // skip the round-trip + new node creation entirely.
+      if (payload.intensity < 1) {
+        setEditingMode(null);
+        return;
+      }
       setEditingMode(null);
       setIsAudioDenoiseSaving(true);
       try {
-        const nextSrc = await videoAudioDenoiseWithFfmpeg(videoContent, payload.intensity);
-        if (!nextSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        message.error('Could not export audio denoise result. Try again or use a different clip.');
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'audio-denoise',
+          placeholders: [{ sourceNodeId: id, nameSuffix: 'audio-denoise' }],
+          params: { video: videoContent, intensity: payload.intensity },
+        });
       } finally {
         setIsAudioDenoiseSaving(false);
       }
     },
-    [createVideoPlaceholderNodeRight, id, isAudioDenoiseSaving, removeNode, resolveVideoResultNode, videoContent],
+    [id, isAudioDenoiseSaving, triggerBackendMiniTool, videoContent],
   );
 
   const handleCropDimensionChange = useCallback(
@@ -1197,11 +1169,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
       // Worker side expects crop box in *source* pixels. cropRect already
       // lives in the same coordinate space as the source video stream.
       await triggerBackendMiniTool({
-        sourceNodeId: id,
         category: 'video',
         toolName: 'crop',
-        nameSuffix: 'crop',
-        expectedSize,
+        placeholders: [{
+          sourceNodeId: id,
+          nameSuffix: 'crop',
+          expectedSize,
+        }],
         params: {
           // Field name matches the video mini-tool family convention
           // (see server/routes/schemas.ts videoToolSchema).
@@ -1235,82 +1209,59 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
         message.warning('AI Enhance for HDR Conversion is coming soon');
         return;
       }
-      const placeholderId = createVideoPlaceholderNodeRight(id, {
-        nameSuffix: payload.aiEnhance ? 'hdr-ai' : 'hdr',
-        state: 'localPending',
-      });
-      if (!placeholderId) return;
       // Match Cut behavior: exit toolbar immediately after Save.
       setEditingMode(null);
       setIsHdrSaving(true);
-      setHdrProgressPct(payload.aiEnhance ? 8 : 70);
+      // Backend doesn't stream progress; the spinner on the placeholder
+      // node is the only feedback. Keep `hdrProgressPct` as a binary
+      // "saving / not saving" indicator.
+      setHdrProgressPct(70);
       try {
-        const nextSrc = await videoHdrConversionWithFfmpeg(videoContent, {
-          preset: payload.preset,
-          intensity: payload.intensity,
-          aiEnhance: payload.aiEnhance,
-          onProgress: payload.aiEnhance
-            ? (progressPct) => setHdrProgressPct(progressPct)
-            : undefined,
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'hdr-conversion',
+          placeholders: [{ sourceNodeId: id, nameSuffix: payload.aiEnhance ? 'hdr-ai' : 'hdr' }],
+          params: {
+            video: videoContent,
+            preset: payload.preset,
+            intensity: payload.intensity,
+            aiEnhance: payload.aiEnhance,
+          },
         });
-        if (!nextSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        const nextMeta = await getVideoMetaFromUrl(nextSrc);
-        if (!nextMeta.width || !nextMeta.height) {
-          throw new Error('HDR output is not decodable by browser');
-        }
-        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        message.error('Could not export HDR conversion result. Try again or use a smaller clip.');
       } finally {
         setIsHdrSaving(false);
         setHdrProgressPct(0);
       }
     },
-    [
-      createVideoPlaceholderNodeRight,
-      id,
-      isHdrSaving,
-      removeNode,
-      resolveVideoResultNode,
-      videoContent,
-    ],
+    [id, isHdrSaving, triggerBackendMiniTool, videoContent],
   );
 
   const handleAdjustSave = useCallback(
     async (value: AdjustValue) => {
       if (!videoContent || isAdjustSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'adjust', state: 'localPending' });
-      if (!placeholderId) return;
+      // Neutral adjust = all sliders at 0 = no-op; backend would
+      // short-circuit, but skip the round trip + new node creation
+      // entirely from the client. Inline check avoids depending on
+      // the soon-to-be-deleted ffmpeg util.
+      const isNeutral = (Object.values(value) as number[]).every((v) => v === 0);
+      if (isNeutral) {
+        setEditingMode(null);
+        return;
+      }
       setEditingMode(null);
       setIsAdjustSaving(true);
       try {
-        const nextSrc = isAdjustValueNeutral(value)
-          ? videoContent
-          : await videoAdjustWithFfmpeg(videoContent, value);
-        if (!nextSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        resolveVideoResultNode(placeholderId, nextSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        message.error('Could not export adjusted video. Try again or use a smaller clip.');
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'adjust',
+          placeholders: [{ sourceNodeId: id, nameSuffix: 'adjust' }],
+          params: { video: videoContent, value },
+        });
       } finally {
         setIsAdjustSaving(false);
       }
     },
-    [
-      createVideoPlaceholderNodeRight,
-      id,
-      isAdjustSaving,
-      removeNode,
-      resolveVideoResultNode,
-      videoContent,
-    ],
+    [id, isAdjustSaving, triggerBackendMiniTool, videoContent],
   );
 
   const handleEraseMaskToolChange = useCallback((tool: VideoEraseMaskTool) => {
@@ -1323,43 +1274,116 @@ const VideoNode: React.FC<NodeProps> = ({ id, data, selected, dragging, width, h
   const handleCutSave = useCallback(
     async (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => {
       if (!videoContent || isCutSaving) return;
+      const N = payload.segments.length;
+      if (N === 0) return;
+      const sourceNode = getNode(id);
+      if (!sourceNode) return;
+
+      setEditingMode(null);
       setIsCutSaving(true);
       try {
-        const clipSources = await cutVideoWithFfmpeg(videoContent, payload.segments);
-        if (clipSources.length === 0) return;
-        createCutVideoResultNodesRight(id, payload, clipSources, 200);
-        setEditingMode(null);
-      } catch {
-        return;
+        // Lay out: group container to the right of the source node,
+        // children tiled horizontally inside the container at the
+        // source's display size. Group-local coordinates only.
+        const cellWidth = Math.max(180, currentWidth);
+        const cellHeight = Math.max(120, currentHeight);
+        const innerGap = 16;
+        const groupPadding = 40;
+        const totalChildrenW = N * cellWidth + (N - 1) * innerGap;
+        const groupWidth = totalChildrenW + groupPadding * 2;
+        const groupHeight = cellHeight + groupPadding * 2;
+
+        const sourceWidth = (sourceNode.style?.width as number | undefined) ?? currentWidth;
+        const groupX = sourceNode.position.x + sourceWidth + 30;
+        const groupY = sourceNode.position.y;
+        const groupId = `group-${nanoid(8)}`;
+
+        const groupNode: Node = {
+          id: groupId,
+          type: 'group',
+          position: { x: groupX, y: groupY },
+          style: { width: groupWidth, height: groupHeight, border: 0, boxShadow: 'none' },
+          data: { collapsed: false, backgroundColor: 'rgba(12, 12, 13, 0.1)' },
+        };
+
+        const sourceName = (sourceNode.data as ImageFlowNodeData | undefined)?.name ?? 'video';
+        const children: Node<ImageFlowNodeData>[] = payload.segments.map((seg, i) => ({
+          id: `video-flow-${nanoid(12)}`,
+          type: imageEditorVideoNodeType,
+          position: { x: groupPadding + i * (cellWidth + innerGap), y: groupPadding },
+          style: { width: cellWidth, height: cellHeight },
+          data: {
+            name: `${sourceName} (cut ${i + 1}/${N})`,
+            content: '',
+            state: 'handling',
+            nodeRuntimeData: {
+              parameter: {
+                cutMarkers: payload.cutMarkers,
+                segmentIndex: i,
+                segment: seg,
+              },
+            },
+          },
+        }));
+
+        // Atomic write: group + N handling children appear together for
+        // every collaborator. Children inherit `parentId = groupId`
+        // inside `createGroupWithChildren`.
+        const { childIds } = createGroupWithChildren({
+          groupNode,
+          children,
+          childState: 'handling',
+        });
+
+        // Hand the existing handling children straight to the backend
+        // — `existingNodeId` skips placeholder creation, just wires the
+        // POST + failure handling to the already-laid-out tiles.
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'cut',
+          placeholders: childIds.map((nodeId, i) => ({
+            sourceNodeId: id,
+            nameSuffix: `cut-${i + 1}`,
+            existingNodeId: nodeId,
+          })),
+          params: {
+            video: videoContent,
+            segments: payload.segments,
+          },
+        });
       } finally {
         setIsCutSaving(false);
       }
     },
-    [createCutVideoResultNodesRight, id, isCutSaving, videoContent],
+    [
+      currentHeight,
+      currentWidth,
+      createGroupWithChildren,
+      getNode,
+      id,
+      isCutSaving,
+      triggerBackendMiniTool,
+      videoContent,
+    ],
   );
 
   const handleSpeedSave = useCallback(
     async (payload: { playbackRate: number }) => {
       if (!videoContent || isSpeedSaving) return;
-      const placeholderId = createVideoPlaceholderNodeRight(id, { nameSuffix: 'speed', state: 'localPending' });
-      if (!placeholderId) return;
       setEditingMode(null);
       setIsSpeedSaving(true);
       try {
-        const speedSrc = await speedVideoWithFfmpeg(videoContent, payload.playbackRate);
-        if (!speedSrc) {
-          removeNode(placeholderId);
-          return;
-        }
-        resolveVideoResultNode(placeholderId, speedSrc, { state: 'idle' });
-      } catch {
-        removeNode(placeholderId);
-        return;
+        await triggerBackendMiniTool({
+          category: 'video',
+          toolName: 'speed',
+          placeholders: [{ sourceNodeId: id, nameSuffix: 'speed' }],
+          params: { video: videoContent, rate: payload.playbackRate },
+        });
       } finally {
         setIsSpeedSaving(false);
       }
     },
-    [createVideoPlaceholderNodeRight, id, isSpeedSaving, removeNode, resolveVideoResultNode, videoContent],
+    [id, isSpeedSaving, triggerBackendMiniTool, videoContent],
   );
 
   const handleCreateNewCanvasVideoNode = useCallback(() => {

@@ -1,0 +1,40 @@
+# F5 TTS Model Family — Zero-Shot Voice Cloning
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — voice_clone
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "f5-tts"
+    display_name: "F5 TTS"
+    mode: "voice_clone"
+    tier: recommended
+    description: "Zero-shot cloning, single sample"
+    guide: "Zero-shot voice cloning from a single audio sample — no fine-tuning needed. Supports multilingual voice transfer. Provide reference audio URL and optionally its transcript for better quality. Choose for instant voice cloning."
+    cost_per_call: 5
+    generation_time: 30
+    languages:
+      - English
+      - Chinese
+      - Japanese
+      - Korean
+      - French
+      - German
+      - Spanish
+    # Voice cloning — no preset voices, user provides reference audio.
+    voices: []
+    params:
+      text:
+        description: "Text to speak in cloned voice"
+        default: null
+      ref_audio_url:
+        description: "Reference audio URL for cloning"
+        default: null
+      ref_text:
+        description: "Transcript of reference audio"
+        default: null
+    providers:
+      - name: fal
+        model_id: "fal-ai/f5-tts"
+        priority: 1

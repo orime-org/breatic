@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# Block AI authorship attribution in commit messages.
+#
+# Only the author/co-author identity matters — mentioning AI assistance
+# in the commit description is fine. Under US copyright law, AI-generated
+# content cannot hold copyright, so listing AI as an author on an
+# open-source project creates licensing ambiguity.
+#
+# Enforced in CI via .github/workflows/no-ai-attribution.yml as the
+# server-side safety net.
+
+COMMIT_MSG_FILE="$1"
+
+# Only check Co-Authored-By / Signed-off-by trailers at the start of a line.
+# These are the only lines that declare authorship; description text can
+# freely mention Claude Code, Copilot, or any other AI tool.
+if grep -qiE '^(Co-Authored-By|Signed-off-by):.*(Claude|Anthropic|GPT|Copilot|Cursor|ChatGPT|Codex|noreply@(anthropic|openai)\.com)' "$COMMIT_MSG_FILE"; then
+  echo "❌ AI author/co-author trailer not allowed."
+  echo ""
+  echo "   Under US copyright law, AI-generated content cannot hold"
+  echo "   copyright. Remove the Co-Authored-By trailer that lists an AI"
+  echo "   as an author."
+  echo ""
+  echo "   Describing AI assistance in the commit body is fine —"
+  echo "   only author/co-author identity is restricted."
+  exit 1
+fi

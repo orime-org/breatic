@@ -1,6 +1,7 @@
 import React, { memo, useState, useEffect } from 'react';
 import { Panel, useReactFlow, useStore, type Node } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
+import { nanoid } from 'nanoid';
 import { Icon } from '@/components/base/icon';
 import Dropdown from '@/components/base/dropdown';
 import Divider from '@/components/base/divider';
@@ -10,6 +11,7 @@ import { imageEditorImageNodeType } from '../types';
 
 const toolbarGap = 20;
 const toolbarHeight = 40;
+const groupPadding = 40;
 const defaultGroupBackgroundColor = 'rgba(12, 12, 13, 0.1)';
 
 const transparentCheckerStyle: React.CSSProperties = {
@@ -41,19 +43,23 @@ const GroupToolbarPanel: React.FC = () => {
   const transform = useStore((state) => state.transform);
 
   const n = selectedNodes.length;
+  const canGroup = n >= 2 && selectedNodes.every((node) => node.type !== 'group');
   let group: Node | null = null;
   if (n === 1 && selectedNodes[0].type === 'group') {
     group = selectedNodes[0];
   }
 
   const selection = group
-    ? { show: true, isGroup: true, collapsed: (group.data as { collapsed?: boolean })?.collapsed === true }
-    : { show: false, isGroup: false, collapsed: false };
+    ? { show: true, isGroup: true, canGroup: false, collapsed: (group.data as { collapsed?: boolean })?.collapsed === true }
+    : canGroup
+      ? { show: true, isGroup: false, canGroup: true, collapsed: false }
+      : { show: false, isGroup: false, canGroup: false, collapsed: false };
 
   let position: { left: number; top: number } | null = null;
-  if (selection.show && group) {
+  if (selection.show) {
     try {
-      const bounds = getNodesBounds([group]);
+      const targets = selection.isGroup && group ? [group] : selectedNodes;
+      const bounds = getNodesBounds(targets);
       const x = transform[0] ?? 0;
       const y = transform[1] ?? 0;
       const zoom = transform[2] ?? 1;
@@ -76,6 +82,44 @@ const GroupToolbarPanel: React.FC = () => {
   }, [selectedGroupBg]);
 
   const isLocked = selection.isGroup && group ? (group.data as { locked?: boolean })?.locked === true : false;
+
+  const handleGroup = () => {
+    if (!selection.canGroup || selectedNodes.length < 2) return;
+    const allNodes = getNodes();
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    const bounds = getNodesBounds(selectedNodes);
+    const groupId = `group-${nanoid(8)}`;
+
+    const containerLeft = bounds.x - groupPadding;
+    const containerTop = bounds.y - groupPadding;
+    const containerWidth = bounds.width + groupPadding * 2;
+    const containerHeight = bounds.height + groupPadding * 2;
+
+    const groupNode: Node = {
+      id: groupId,
+      type: 'group',
+      position: { x: containerLeft, y: containerTop },
+      style: { width: containerWidth, height: containerHeight, border: 0, boxShadow: 'none' },
+      data: { collapsed: false, backgroundColor: displayBgColor },
+      selected: true,
+    };
+
+    // Children's positions become group-local (relative to container origin).
+    const childNodes = selectedNodes.map((n) => ({
+      ...n,
+      parentId: groupId,
+      position: { x: n.position.x - containerLeft, y: n.position.y - containerTop },
+      selected: false,
+    }));
+
+    const restNodes = allNodes
+      .filter((n) => !selectedIds.has(n.id))
+      .map((n) => ({ ...n, selected: false }));
+
+    // Single atomic setNodes — Yjs transact + UndoManager records this
+    // as one undoable step (parity with main canvas GroupToolbarPanel).
+    setNodes([groupNode, ...childNodes, ...restNodes]);
+  };
 
   const handleUngroup = () => {
     if (!group || group.type !== 'group' || isLocked) return;
@@ -100,8 +144,48 @@ const GroupToolbarPanel: React.FC = () => {
     setNodes(nextNodes);
   };
 
-  if (!selection.show || !position || !group) return null;
+  if (!selection.show || !position) return null;
 
+  // Multi-select (≥2 non-group nodes): only the Group button.
+  if (selection.canGroup) {
+    return (
+      <Panel
+        position='top-left'
+        style={{
+          left: position.left,
+          top: position.top,
+          display: 'inline-block',
+          transform: 'translateX(-50%)',
+          margin: 0,
+        }}
+      >
+        <div
+          className='flex items-center gap-[2px] h-[40px] min-h-[40px] p-[6px] bg-background-default-base rounded-[8px] shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)] pointer-events-auto'
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type='button'
+            className='cursor-pointer h-7 px-2 flex items-center gap-1.5 rounded-[4px] hover:bg-background-default-base-hover'
+            title={t('project.toolbar.group', 'Group')}
+            onClick={handleGroup}
+          >
+            <Icon name='project-group-icon' width={16} height={16} color='var(--color-icon-secondary)' />
+            <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
+              {t('project.toolbar.group', 'Group')}
+            </span>
+          </button>
+        </div>
+      </Panel>
+    );
+  }
+
+  // From here on we know it's a single-group selection.
+  if (!group) return null;
+
+  // Hide the panel while any image child is still loading content
+  // (legacy guard kept for parity — handling-busy itself is enforced
+  // upstream in `removeNode` / `onNodesChange` via `isFlowNodeBusy`).
   const hasLoadingImageChildInGroup = nodes.some((n) => {
     if (n.parentId !== group.id || n.type !== imageEditorImageNodeType) return false;
     const d = n.data as ImageFlowNodeData;

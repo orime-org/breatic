@@ -1,0 +1,21 @@
+{
+  "name": "vision_analyze",
+  "description": "Analyze images, videos, or audio using multimodal AI. Triggered from Canvas node action button.",
+  "tools": [],
+  "output_type": "inline",
+  "category": "understand",
+  "keywords": [
+    "describe",
+    "analyze",
+    "understand",
+    "reverse prompt",
+    "OCR",
+    "caption",
+    "transcribe"
+  ],
+  "disable_model_invocation": true,
+  "scope": [
+    "agent",
+    "canvas"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "brainstorm",
+  "description": "Help the user brainstorm creative ideas, develop concepts, and organize their creative thinking.",
+  "tools": [],
+  "output_type": "inline",
+  "category": "creative",
+  "keywords": [
+    "brainstorm",
+    "idea",
+    "concept",
+    "creative",
+    "think",
+    "story",
+    "narrative",
+    "project",
+    "plan"
+  ],
+  "scope": ["agent"]
+}

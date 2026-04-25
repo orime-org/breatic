@@ -1,0 +1,19 @@
+{
+  "name": "prompt_engineer",
+  "description": "Help the user craft, optimize, and refine AIGC prompts for image, video, audio, music, TTS, and 3D generation.",
+  "tools": [],
+  "output_type": "inline",
+  "category": "creative",
+  "keywords": [
+    "prompt",
+    "optimize",
+    "write",
+    "improve",
+    "craft",
+    "refine",
+    "describe",
+    "generation",
+    "aigc"
+  ],
+  "scope": ["agent"]
+}

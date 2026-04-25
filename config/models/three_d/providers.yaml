@@ -1,0 +1,8 @@
+# 3D Provider Connection Config
+# Each provider defines: base_url, api_key_env, timeout, max_concurrency
+
+wavespeed:
+  base_url: "https://api.wavespeed.ai/api/v3"
+  api_key_env: WAVESPEED_API_KEY
+  timeout: 600
+  max_concurrency: 50

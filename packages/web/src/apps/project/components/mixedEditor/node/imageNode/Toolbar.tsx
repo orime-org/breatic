@@ -19,6 +19,7 @@ export type ToolbarProps = {
   onGridSlice: (id: string) => void;
   onFlipRotate: (id: string) => void;
   onGraffiti: (id: string) => void;
+  onRemoveBg: (id: string) => void;
 };
 
 const Toolbar: React.FC<ToolbarProps> = ({
@@ -36,6 +37,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onGridSlice,
   onFlipRotate,
   onGraffiti,
+  onRemoveBg,
 }) => {
   const actionItems = [
     { icon: 'project-excalidraw-top-quick-edit-icon', label: 'Quick Edit', width: 18, height: 18, key: 'quick-edit' },
@@ -134,6 +136,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
             onClick={() => {
               if (item.key === 'quick-edit') onQuickEdit(nodeId);
               if (item.key === 'inpaint') onInpaint(nodeId);
+              if (item.key === 'remove-bg') onRemoveBg(nodeId);
               if (item.key === 'enhance') onEnhance(nodeId);
               if (item.key === 'multi-angle') onMultiAngle(nodeId);
             }}

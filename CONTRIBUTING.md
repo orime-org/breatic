@@ -22,90 +22,59 @@ Redis, etc.) and [README.md](./README.md) for architecture overview.
 
 ---
 
-## ⚠️ AI Authorship Policy (MANDATORY)
+## Commit author / trailer policy
 
-Breatic is an open-source project. Under current **US copyright law**
-(see the [U.S. Copyright Office report on AI, Part 2 (2025)](https://www.copyright.gov/ai/Copyright-and-Artificial-Intelligence-Part-2-Copyrightability-Report.pdf)),
-purely AI-generated content is not copyrightable. Listing an AI tool as
-the author or co-author of a commit creates **licensing ambiguity** —
-the Breatic Open Source License (like any license) depends on
-identifiable human authors being able to grant rights. An "AI
-contributor" cannot grant anything.
+### Using tools to write code is fine
 
-### What is NOT allowed
+Using AI / autocomplete / refactor tooling while you write, review, or
+refactor a change is allowed. Once you review, adapt, and take
+responsibility for the change, the output is *your* contribution. You
+are encouraged to describe such assistance in PR descriptions or commit
+bodies if it helps reviewers understand the change.
 
-The following fields **must never reference an AI tool** (Claude,
-Anthropic, ChatGPT, GPT, OpenAI, Copilot, Cursor, Codex, etc.):
+### What is restricted
+
+The authorship *identity* of the commit must be a human. Automated
+tooling cannot grant copyright, so listing it in any of the fields
+below creates licensing ambiguity — the Breatic Open Source License
+depends on identifiable human authors being able to grant rights.
+
+Don't put automated tooling in:
 
 - `Author:` — the primary author of a commit
 - `Committer:` — who committed the change
 - `Co-Authored-By:` — trailer line in the commit message
 - `Signed-off-by:` — trailer line in the commit message
 
-Concretely, **never** let this end up in your commit message:
+A common reverse example to avoid (do **not** let trailers like this
+end up in your commit message):
 
+```text
+Co-Authored-By: <tool name> <noreply@example.com>
+Signed-off-by: <tool name> <...>
 ```
-Co-Authored-By: Claude <noreply@anthropic.com>
-Co-Authored-By: Codex <codex@openai.com>
-Signed-off-by: GitHub Copilot <...>
-```
-
-### What IS allowed
-
-- **Describing AI assistance in the commit body or PR description.**
-  Saying "used Claude to draft the initial regex" or "Copilot-assisted
-  refactor" is perfectly fine. We only restrict authorship *identity*,
-  not transparency about tooling.
-- Using any AI tool to help you write, review, or refactor code. The
-  output becomes *your* contribution once you review, adapt, and take
-  responsibility for it.
-
-### Why the distinction matters
-
-Copyright attaches to authored work. A human who reviews, edits, and
-commits code is the author — they made creative choices and assume
-legal responsibility. The AI tool is an instrument, like a compiler or
-an IDE. You wouldn't list `tsc` as a co-author; don't list Claude either.
 
 ### Enforcement
 
-Two layers prevent violations:
+Two layers reject violations:
 
-1. **Client-side hook** — `.husky/commit-msg` blocks any commit whose
-   message contains an AI-attributed `Co-Authored-By:` or `Signed-off-by:`
-   trailer. The hook is activated automatically by `pnpm install` (via
-   `prepare` script setting `core.hooksPath=.husky`).
-2. **Server-side CI** — `.github/workflows/no-ai-attribution.yml` runs
-   on every PR targeting `main`. It scans both the commit trailers *and*
-   the Git author name/email of every commit in the PR range. Failing
-   this check blocks the merge.
+- `.husky/commit-msg` blocks offending trailers locally (activated by
+  `pnpm install` via the `prepare` script).
+- `.github/workflows/no-ai-attribution.yml` runs on every PR targeting
+  `main` and scans commit trailers and the Git author name/email of
+  every commit in the range. Failing this check blocks the merge.
 
-If CI rejects your PR for this reason, you need to rewrite the offending
-commits:
+If CI rejects your PR, rewrite the offending commits:
 
 ```bash
-# For a trailer issue
-git rebase -i <base-sha>
-# Mark the commit as 'reword', remove the Co-Authored-By line, save
-
-# For an author issue
-git rebase -i <base-sha>
-# Mark the commit as 'edit'
+# Trailer issue
+git rebase -i <base-sha>   # mark commit as 'reword', remove the trailer
+# Author issue
+git rebase -i <base-sha>   # mark commit as 'edit'
 git commit --amend --author="Your Name <you@example.com>"
 git rebase --continue
-
 git push --force-with-lease
 ```
-
-### Tool-specific notes
-
-If you use a tool that auto-inserts AI attribution:
-
-- **Claude Code**: Configure it to skip the trailer. In `~/.claude/settings.json`,
-  ensure co-author attribution is disabled.
-- **GitHub Copilot**: Copilot doesn't add trailers by default. Safe.
-- **Cursor**: Check your commit template settings.
-- **Any other tool**: Inspect the commit message template before pushing.
 
 ---
 
@@ -190,7 +159,7 @@ All three must pass before merging.
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/orime-org/breatic_ai/issues) with
+Use [GitHub Issues](https://github.com/orime-org/breatic/issues) with
 a clear title, reproduction steps, and environment info. For security
 issues, email the maintainers privately instead of opening a public issue.
 

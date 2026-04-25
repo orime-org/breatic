@@ -1,0 +1,4 @@
+# Text Mini-Tool Configuration
+# Model used for all 10 text tools (polish, expand, summarize, translate,
+# rewrite, continue, generate, character, storyboard, script).
+model: google/gemini-2.5-flash

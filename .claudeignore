@@ -1,0 +1,27 @@
+# Sensitive data
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Build artifacts
+dist/
+
+# Turborepo cache
+.turbo/
+
+# AIGC uploads (binary media)
+uploads/
+
+# Service logs
+logs/
+*.log
+
+# IDE config
+.idea/
+.cursor/
+.vscode/
+
+# OS files
+.DS_Store

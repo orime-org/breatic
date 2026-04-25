@@ -10,6 +10,9 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/store';
+import { uploadBlobToStorage } from '@/utils/uploadBlobToStorage';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/apps/project/components/canvas/common/NodeSkeleton';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +23,7 @@ import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
 import type { ImageEditorPickResultBox } from '../../types';
+import { imageEditorImageNodeType, createEditorImageNodeData } from '../../types';
 import Toolbar from './Toolbar';
 import BottomToolbar from './BottomToolbar';
 import NodeHeader from '../../common/NodeHeader';
@@ -394,7 +398,7 @@ const buildAdjustFabricFilters = (value: AdjustValue): unknown[] => {
 
 /** Image flow node: top toolbar + bottom toolbar + resizable image card */
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
-  const { setCenter } = useReactFlow();
+  const { setCenter, getNode } = useReactFlow();
   const { zoom } = useViewport();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodeData = data as ImageFlowNodeData;
@@ -412,7 +416,11 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
     triggerBackendMiniTool,
+    addLocalPendingNode,
+    resolveLocalPendingNode,
+    failLocalPendingNode,
   } = useMixedEditorActions();
+  const projectId = useSelector((s: RootState) => s.canvas.workflowId);
   const { setExpandViewportLock } = useMixedEditorUI();
   const {
     nodes: projectCanvasNodes,
@@ -576,17 +584,31 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     async (op: FlipRotateBitmapOp) => {
       const src = imageContent;
       if (!src) return;
-      const { dataUrl } = await bitmapTransformToPngDataUrl(src, op);
-      if (swapsNodeDimensions(op)) {
-        updateNode(id, {
-          data: { content: dataUrl },
-          style: { width: height, height: width },
+      // Bitmap transform → PNG Blob → presigned URL upload → write
+      // permanent URL into Yjs. Storing the data URL directly (the
+      // previous behaviour) bloats the Yjs doc by hundreds of KB per
+      // flip and slows every Hocuspocus replay from then on.
+      try {
+        const { dataUrl } = await bitmapTransformToPngDataUrl(src, op);
+        const blob = await (await fetch(dataUrl)).blob();
+        const url = await uploadBlobToStorage(blob, {
+          filename: 'flipRotate.png',
+          projectId: projectId ?? '',
         });
-      } else {
-        updateNodeData(id, { content: dataUrl });
+        if (swapsNodeDimensions(op)) {
+          updateNode(id, {
+            data: { content: url },
+            style: { width: height, height: width },
+          });
+        } else {
+          updateNodeData(id, { content: url });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Flip / rotate failed';
+        message.error(msg);
       }
     },
-    [height, id, imageContent, updateNode, updateNodeData, width],
+    [height, id, imageContent, projectId, updateNode, updateNodeData, width],
   );
 
   /** Center when the aspect ratio changes; when resizing via input, keep current position and only clamp if out of bounds */
@@ -714,12 +736,23 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     try {
       const expanded = await generateExpandedImage(currentSrc, frame);
       if (expanded) {
-        createInpaintResultNodeRight(id, expanded.src, 3000, { width: expanded.width, height: expanded.height });
+        // Upload the Canvas-produced PNG before writing to Yjs so the
+        // doc carries a permanent URL, not an inline data URL. Replaces
+        // the legacy 3000ms artificial wait — the upload itself is the
+        // observable latency now.
+        const blob = await (await fetch(expanded.src)).blob();
+        const url = await uploadBlobToStorage(blob, {
+          filename: 'expand.png',
+          projectId: projectId ?? '',
+        });
+        createInpaintResultNodeRight(id, url, 0, { width: expanded.width, height: expanded.height });
         return;
       }
-      createInpaintResultNodeRight(id, currentSrc, 3000, { width: frame.w, height: frame.h });
-    } catch {
-      createInpaintResultNodeRight(id, currentSrc, 3000, { width: frame.w, height: frame.h });
+      createInpaintResultNodeRight(id, currentSrc, 0, { width: frame.w, height: frame.h });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Expand failed';
+      message.error(msg);
+      createInpaintResultNodeRight(id, currentSrc, 0, { width: frame.w, height: frame.h });
     }
   };
 
@@ -777,9 +810,9 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     const currentSrc = imageContent;
     exitEditing();
     if (!currentSrc) return;
-    // Image mini-tools require an already-persisted URL — a blob: or
-    // data: src means the asset hasn't been uploaded yet, in which case
-    // we refuse rather than send an unresolvable URL to the Worker.
+    // Need a persisted (http) URL so Image() with crossOrigin='anonymous'
+    // can decode it onto a canvas without tainting. blob: / data: are
+    // too narrow a slice of cases to handle here.
     if (!/^https?:\/\//i.test(currentSrc)) {
       message.error('Source image must be a persistent URL before cropping');
       return;
@@ -797,24 +830,65 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
       return;
     }
 
-    // Worker's Sharp handler does the actual pixel extract. The
-    // placeholder tile enters `state:'handling'` in Yjs immediately
-    // and flips to `'idle'` with the result URL once the Worker
-    // publishes its completion event.
-    await triggerBackendMiniTool({
-      sourceNodeId: id,
-      category: 'image',
-      toolName: 'crop',
-      nameSuffix: 'crop',
-      expectedSize: { width: sourceRect.w, height: sourceRect.h },
-      params: {
-        image: currentSrc,
-        x: sourceRect.x,
-        y: sourceRect.y,
-        w: sourceRect.w,
-        h: sourceRect.h,
+    const sourceNode = getNode(id);
+    if (!sourceNode) return;
+
+    // X pattern: build the result placeholder locally, run Canvas
+    // crop + presigned upload, then resolve to Yjs (state:'idle').
+    // Failure drops the local entry → no zombie tile in Yjs for the
+    // collaborators (they never saw it).
+    const newNodeId = `image-flow-${nanoid(12)}`;
+    const sourceWidth = (sourceNode.style?.width as number | undefined) ?? width;
+    const sourceName = (sourceNode.data as ImageFlowNodeData | undefined)?.name ?? 'image';
+    const placeholder: Node<ImageFlowNodeData> = {
+      id: newNodeId,
+      type: imageEditorImageNodeType,
+      position: {
+        x: sourceNode.position.x + sourceWidth + 30,
+        y: sourceNode.position.y,
       },
-    });
+      style: { width: sourceRect.w, height: sourceRect.h },
+      data: createEditorImageNodeData(`${sourceName} (crop)`, ''),
+    };
+    const placeholderId = addLocalPendingNode(placeholder);
+
+    try {
+      // Canvas crop → PNG Blob.
+      const image = new window.Image();
+      image.crossOrigin = 'anonymous';
+      image.src = currentSrc;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('crop source load failed'));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceRect.w;
+      canvas.height = sourceRect.h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+      ctx.drawImage(
+        image,
+        sourceRect.x, sourceRect.y, sourceRect.w, sourceRect.h,
+        0, 0, sourceRect.w, sourceRect.h,
+      );
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))),
+          'image/png',
+        );
+      });
+
+      const url = await uploadBlobToStorage(blob, {
+        filename: 'crop.png',
+        projectId: projectId ?? '',
+      });
+
+      resolveLocalPendingNode(placeholderId, { content: url });
+    } catch (err) {
+      failLocalPendingNode(placeholderId);
+      const msg = err instanceof Error ? err.message : 'Crop failed';
+      message.error(`Crop failed: ${msg}`);
+    }
   };
 
   const handleMultiAngleClose = () => exitEditing();
@@ -871,16 +945,31 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     setAdjustValue(value);
     handleAdjustClose();
     if (!imageContent) return;
+    // Neutral = identity. Just clone the source URL into a new tile,
+    // no Canvas, no upload, no fake delay.
     if (isNeutralAdjustValue(value)) {
-      createInpaintResultNodeRight(id, imageContent, 3000);
+      createInpaintResultNodeRight(id, imageContent, 0);
       return;
     }
 
     try {
       const nextImageSrc = await generateAdjustedImage(imageContent, value);
-      createInpaintResultNodeRight(id, nextImageSrc ?? imageContent, 3000);
-    } catch {
-      createInpaintResultNodeRight(id, imageContent, 3000);
+      if (!nextImageSrc) {
+        createInpaintResultNodeRight(id, imageContent, 0);
+        return;
+      }
+      // Upload the fabric output before persisting — same rationale
+      // as handleExpandSend: keep data URLs out of Yjs.
+      const blob = await (await fetch(nextImageSrc)).blob();
+      const url = await uploadBlobToStorage(blob, {
+        filename: 'adjust.png',
+        projectId: projectId ?? '',
+      });
+      createInpaintResultNodeRight(id, url, 0);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Adjust failed';
+      message.error(msg);
+      createInpaintResultNodeRight(id, imageContent, 0);
     }
   };
 
@@ -1001,14 +1090,51 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     }
   };
 
-  const handleUpscaleSend = async (_payload: {
+  const handleRemoveBg = async () => {
+    if (!imageContent) return;
+    if (!/^https?:\/\//i.test(imageContent)) {
+      message.error('Source image must be a persistent URL before cutout');
+      return;
+    }
+    await triggerBackendMiniTool({
+      category: 'image',
+      toolName: 'remove-bg',
+      placeholders: [{ sourceNodeId: id, nameSuffix: 'cutout' }],
+      params: { image: imageContent },
+    });
+  };
+
+  const handleUpscaleSend = async (payload: {
     resolution: '2k' | '4k' | '8k';
     promptEnabled: boolean;
     prompt: string;
   }) => {
     handleUpscaleClose();
     if (!imageContent) return;
-    createInpaintResultNodeRight(id, imageContent, 3000);
+    if (!/^https?:\/\//i.test(imageContent)) {
+      message.error('Source image must be a persistent URL before upscale');
+      return;
+    }
+    // Backend imageToolSchema picks `upscale-creative` when a prompt
+    // drives the result, otherwise plain `upscale`. Fields match
+    // schemas.ts variants 1:1.
+    const toolName = payload.promptEnabled ? 'upscale-creative' : 'upscale';
+    const params: Record<string, unknown> = {
+      image: imageContent,
+      output_resolution: payload.resolution,
+      source_width: width,
+      source_height: height,
+    };
+    if (payload.promptEnabled) {
+      params.prompt = payload.prompt;
+      params.creativity = 3;
+    }
+    await triggerBackendMiniTool({
+      category: 'image',
+      toolName,
+      placeholders: [{ sourceNodeId: id, nameSuffix: 'upscale' }],
+      params,
+    });
   };
 
   const handleQuickEditClose = () => exitEditing();
@@ -1144,6 +1270,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
           onGridSlice={(_nid) => handleGridSliceOpen()}
           onFlipRotate={(_nid) => handleFlipRotateOpen()}
           onGraffiti={(_nid) => handleGraffitiFocus()}
+          onRemoveBg={(_nid) => handleRemoveBg()}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showStandardToolbars} position={Position.Bottom} offset={12} align='center'>

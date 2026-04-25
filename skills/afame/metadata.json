@@ -1,0 +1,18 @@
+{
+  "name": "creative-illustration",
+  "description": "Generate diverse creative illustrations via OpenAI Images API. Create book illustrations, editorial art, children's book art, concept illustrations, and artistic scenes.",
+  "tools": ["run_script"],
+  "output_type": "canvas",
+  "category": "image",
+  "keywords": [
+    "illustration",
+    "art",
+    "book-illustration",
+    "editorial-art",
+    "children-book",
+    "concept-art",
+    "creative",
+    "visual-design"
+  ],
+  "scope": ["agent"]
+}
