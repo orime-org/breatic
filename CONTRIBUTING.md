@@ -24,19 +24,45 @@ Redis, etc.) and [README.md](./README.md) for architecture overview.
 
 ## Commit author / trailer policy
 
-Commit `Author:`, `Committer:`, `Co-Authored-By:`, and `Signed-off-by:`
-fields must identify human contributors only. Automated tooling cannot
-grant copyright; listing such tooling in these fields creates licensing
-ambiguity, since the Breatic Open Source License depends on identifiable
-human authors being able to grant rights.
+### Using tools to write code is fine
 
-Enforcement is automatic:
+Using AI / autocomplete / refactor tooling while you write, review, or
+refactor a change is allowed. Once you review, adapt, and take
+responsibility for the change, the output is *your* contribution. You
+are encouraged to describe such assistance in PR descriptions or commit
+bodies if it helps reviewers understand the change.
 
-- `.husky/commit-msg` rejects offending trailers locally (activated by
+### What is restricted
+
+The authorship *identity* of the commit must be a human. Automated
+tooling cannot grant copyright, so listing it in any of the fields
+below creates licensing ambiguity — the Breatic Open Source License
+depends on identifiable human authors being able to grant rights.
+
+Don't put automated tooling in:
+
+- `Author:` — the primary author of a commit
+- `Committer:` — who committed the change
+- `Co-Authored-By:` — trailer line in the commit message
+- `Signed-off-by:` — trailer line in the commit message
+
+A common reverse example to avoid (do **not** let trailers like this
+end up in your commit message):
+
+```text
+Co-Authored-By: <tool name> <noreply@example.com>
+Signed-off-by: <tool name> <...>
+```
+
+### Enforcement
+
+Two layers reject violations:
+
+- `.husky/commit-msg` blocks offending trailers locally (activated by
   `pnpm install` via the `prepare` script).
 - `.github/workflows/no-ai-attribution.yml` runs on every PR targeting
-  `main` and scans both commit trailers and the Git author name/email
-  of every commit in the range. A failing check blocks the merge.
+  `main` and scans commit trailers and the Git author name/email of
+  every commit in the range. Failing this check blocks the merge.
 
 If CI rejects your PR, rewrite the offending commits:
 
@@ -49,9 +75,6 @@ git commit --amend --author="Your Name <you@example.com>"
 git rebase --continue
 git push --force-with-lease
 ```
-
-Discussing tooling assistance in PR descriptions or commit bodies is
-fine — only the authorship *identity* fields are restricted.
 
 ---
 
