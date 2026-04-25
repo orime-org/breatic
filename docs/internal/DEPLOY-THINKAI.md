@@ -28,7 +28,7 @@
 └────────────────────┬─────────────────────────────────────────┘
                      ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                    GitHub (orime-org/breatic_ai)             │
+│                    GitHub (orime-org/breatic)                │
 │                                                              │
 │   test_thinkai_cc 分支收到 push                              │
 └────────────────────┬─────────────────────────────────────────┘
@@ -214,7 +214,7 @@ sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
 ```bash
 sudo mkdir -p /opt/breatic
 sudo chown deploy:deploy /opt/breatic
-sudo -u deploy git clone -b test_thinkai_cc https://github.com/orime-org/breatic_ai.git /opt/breatic
+sudo -u deploy git clone -b test_thinkai_cc https://github.com/orime-org/breatic.git /opt/breatic
 sudo -u deploy git config --global --add safe.directory /opt/breatic
 ```
 
@@ -403,7 +403,7 @@ curl http://localhost:3000/api/health
 
 ```bash
 # 1. CI 是否完成 + 镜像推上了 GHCR？
-# 浏览器看 https://github.com/orime-org/breatic_ai/actions
+# 浏览器看 https://github.com/orime-org/breatic/actions
 
 # 2. 服务器 cron 是否在跑？
 sudo grep auto-deploy /var/log/syslog | tail -5
