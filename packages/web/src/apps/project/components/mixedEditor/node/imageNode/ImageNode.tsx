@@ -736,12 +736,23 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     try {
       const expanded = await generateExpandedImage(currentSrc, frame);
       if (expanded) {
-        createInpaintResultNodeRight(id, expanded.src, 3000, { width: expanded.width, height: expanded.height });
+        // Upload the Canvas-produced PNG before writing to Yjs so the
+        // doc carries a permanent URL, not an inline data URL. Replaces
+        // the legacy 3000ms artificial wait — the upload itself is the
+        // observable latency now.
+        const blob = await (await fetch(expanded.src)).blob();
+        const url = await uploadBlobToStorage(blob, {
+          filename: 'expand.png',
+          projectId: projectId ?? '',
+        });
+        createInpaintResultNodeRight(id, url, 0, { width: expanded.width, height: expanded.height });
         return;
       }
-      createInpaintResultNodeRight(id, currentSrc, 3000, { width: frame.w, height: frame.h });
-    } catch {
-      createInpaintResultNodeRight(id, currentSrc, 3000, { width: frame.w, height: frame.h });
+      createInpaintResultNodeRight(id, currentSrc, 0, { width: frame.w, height: frame.h });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Expand failed';
+      message.error(msg);
+      createInpaintResultNodeRight(id, currentSrc, 0, { width: frame.w, height: frame.h });
     }
   };
 
@@ -934,16 +945,31 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     setAdjustValue(value);
     handleAdjustClose();
     if (!imageContent) return;
+    // Neutral = identity. Just clone the source URL into a new tile,
+    // no Canvas, no upload, no fake delay.
     if (isNeutralAdjustValue(value)) {
-      createInpaintResultNodeRight(id, imageContent, 3000);
+      createInpaintResultNodeRight(id, imageContent, 0);
       return;
     }
 
     try {
       const nextImageSrc = await generateAdjustedImage(imageContent, value);
-      createInpaintResultNodeRight(id, nextImageSrc ?? imageContent, 3000);
-    } catch {
-      createInpaintResultNodeRight(id, imageContent, 3000);
+      if (!nextImageSrc) {
+        createInpaintResultNodeRight(id, imageContent, 0);
+        return;
+      }
+      // Upload the fabric output before persisting — same rationale
+      // as handleExpandSend: keep data URLs out of Yjs.
+      const blob = await (await fetch(nextImageSrc)).blob();
+      const url = await uploadBlobToStorage(blob, {
+        filename: 'adjust.png',
+        projectId: projectId ?? '',
+      });
+      createInpaintResultNodeRight(id, url, 0);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Adjust failed';
+      message.error(msg);
+      createInpaintResultNodeRight(id, imageContent, 0);
     }
   };
 
