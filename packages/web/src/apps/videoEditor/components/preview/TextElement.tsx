@@ -1,4 +1,5 @@
-import React, { useRef, useMemo, memo } from 'react';
+import React, { useRef, useMemo, memo, useState, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { TimelineClip } from '../../types';
 
@@ -15,10 +16,17 @@ const TextElement: React.FC<TextElementProps> = ({
   opacity,
   isEditingRef,
   textRefs,
-  nodeId,
 }) => {
-  const { selectedClipId: selectedClipIds, updateClip, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { selectedClipId: selectedClipIds, updateClip, setSelectedClipId } = useVideoEditorStore();
   const textElementRef = useRef<HTMLDivElement | null>(null);
+  const isSelected = selectedClipIds.includes(clip.id);
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  useEffect(() => {
+    if (!isSelected) {
+      setIsEditMode(false);
+    }
+  }, [isSelected]);
 
   const textStyle = useMemo(() => {
     const style = clip.textStyle || {};
@@ -63,12 +71,12 @@ const TextElement: React.FC<TextElementProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // 如果元素已经选中，阻止事件传播，让 Moveable 处理
+    // if selected，prevent ， Moveable handle
     if (selectedClipIds.includes(clip.id) && textElementRef.current) {
       e.stopPropagation();
     }
-    // 如果元素未选中，不阻止事件，让外层的 onClick 处理选中
-    // 但是不要阻止 click 事件，让它可以冒泡到外层 div
+    // if selected， prevent ， onClick handleselected
+    // prevent click ， bubbling div
   };
 
   const calculateHeight = (target: HTMLDivElement): number => {
@@ -104,6 +112,7 @@ const TextElement: React.FC<TextElementProps> = ({
 
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
     isEditingRef.current?.delete(clip.id);
+    setIsEditMode(false);
 
     const target = e.currentTarget as HTMLDivElement;
     const newHeight = calculateHeight(target);
@@ -123,6 +132,9 @@ const TextElement: React.FC<TextElementProps> = ({
     if (selectedClipIds.includes(clip.id)) {
       e.stopPropagation();
       const target = e.currentTarget as HTMLDivElement;
+      flushSync(() => {
+        setIsEditMode(true);
+      });
       target.focus();
       const range = document.createRange();
       range.selectNodeContents(target);
@@ -133,20 +145,20 @@ const TextElement: React.FC<TextElementProps> = ({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // 直接在这里处理选中，因为 contentEditable 可能会阻止事件冒泡到外层 div
-    e.stopPropagation(); // 阻止事件传播到 InfiniteCanvas，避免清除选中
-    // 支持 Shift 多选
+    // handleselected， contentEditable prevent bubbling div
+    e.stopPropagation(); // prevent InfiniteCanvas，avoidclearselected
+    // support Shift multi-select
     if (e.shiftKey) {
       if (selectedClipIds.includes(clip.id)) {
-        // 如果已选中，则取消选中
+        // if selected， selected
         const newIds = selectedClipIds.filter((id) => id !== clip.id);
         setSelectedClipId(newIds);
       } else {
-        // 如果未选中，则添加到选中列表
+        // if selected， selectedlist
         setSelectedClipId([...selectedClipIds, clip.id]);
       }
     } else {
-      // 单选
+      // single select
       setSelectedClipId([clip.id]);
     }
   };
@@ -155,16 +167,18 @@ const TextElement: React.FC<TextElementProps> = ({
     isEditingRef.current?.add(clip.id);
   };
 
-  const isEditable = selectedClipIds.includes(clip.id);
-  const userSelect = isEditable ? 'text' : 'none';
+  const canEdit = isSelected && isEditMode;
+  const userSelect = canEdit ? 'text' : 'none';
+  const cursorClass = canEdit ? 'cursor-text' : isSelected ? 'cursor-move' : 'cursor-default';
 
   return (
     <div className='w-full h-full table'>
       <div className='table-cell align-middle'>
         <div
           ref={handleRef}
-          contentEditable={isEditable}
-          className='outline-none pointer-events-auto cursor-text nodrag whitespace-pre-wrap break-words min-w-[50px] w-full box-border'
+          contentEditable={canEdit}
+          data-text-content='true'
+          className={`outline-none pointer-events-auto ${cursorClass} nodrag whitespace-pre-wrap break-words min-w-[50px] w-full box-border`}
           style={{
             userSelect,
             ...textStyle,

@@ -7,22 +7,23 @@ import { Button } from '@/components/base/button';
 import { useTranslation } from 'react-i18next';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { Icon } from '@/components/base/icon';
+import { RiAlignCenter, RiAlignLeft, RiAlignRight } from 'react-icons/ri';
 import FontSelector from './FontSelector';
 import FontFaceObserver from 'fontfaceobserver';
 
-// 字体子项接口（字体变体）
+// fontchild itemsinterface?fontvariant??
 interface FontChild {
-  family: string; // 完整字体家族名，如 "Microsoft YaHei Light"
-  displayName: string; // 显示名称，如 "Light", "Bold"
-  url: string; // 字体文件路径
+  family: string; // fontfamily ??"Microsoft YaHei Light"
+  displayName: string; // display ??"Light", "Bold"
+  url: string; // font path
 }
 
-// 字体家族接口
+// fontfamilyinterface
 interface FontFamily {
-  family: string; // 字体家族名，如 "Microsoft YaHei"
-  displayName: string; // 显示名称，如 "微软雅黑" 或 "楷体"
-  url?: string; // 单字体文件路径（无子项时使用）
-  children: FontChild[]; // 子项列表（字体变体）
+  family: string; // fontfamily ??"Microsoft YaHei"
+  displayName: string; // display ??" " " "
+  url?: string; // font path??child items use??
+  children: FontChild[]; // child itemslist?fontvariant??
 }
 
 interface TextStylePanelProps {
@@ -40,15 +41,15 @@ const sliderBaseProps = {
   thumbHeight: 16,
   thumbColor: '#B3B3B3',
 } as const;
+const DEFAULT_FONT_WEIGHT_OPTION = { value: 'default', label: 'Regular' };
 
-const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = [] }) => {
-  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+const TextStylePanel: React.FC<TextStylePanelProps> = ({ fontConfig = [] }) => {
+  const { clips, selectedClipId, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const { t } = useTranslation();
   const [fontSelectorVisible, setFontSelectorVisible] = useState(false);
-  const [availableFontWeights, setAvailableFontWeights] = useState<{ value: string; label: string }[]>([
-    { value: 'default', label: '默认' },
-  ]);
-  const [fontSelectorPosition, setFontSelectorPosition] = useState({ x: 0, y: 0 });
+  const [availableFontWeights, setAvailableFontWeights] = useState<
+    { value: string; label: string }[]
+  >([DEFAULT_FONT_WEIGHT_OPTION]);
   const fontButtonRef = useRef<HTMLButtonElement>(null);
   const fontFamiliesRef = useRef<FontFamily[]>([]);
   const fontSizeAdjustStartRef = useRef<{
@@ -58,14 +59,14 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
   } | null>(null);
   const isFontInitializedRef = useRef(false);
 
-  // 获取所有选中的 clips（相同类型的）
+  // getallselected clips?same type ??
   const selectedClips = selectedClipId.length > 0
     ? selectedClipId.map((id) => clips.find((c: { id: string }) => c.id === id)).filter(Boolean) as typeof clips
     : [];
 
   const selectedClip = selectedClips[0] || null;
 
-  // 初始化字体列表（页面加载时执行，包括 @font-face 注入）
+  // initializefontlist??load ??@font-face inject??
   useEffect(() => {
     const initializeFonts = async () => {
       if (isFontInitializedRef.current || fontConfig.length === 0) {
@@ -76,7 +77,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
         const fonts: FontFamily[] = fontConfig;
         fontFamiliesRef.current = fonts;
 
-        // 生成 @font-face 规则
+        // @font-face rule
         const rules: string[] = [];
         const fontObservers: Promise<void>[] = [];
 
@@ -90,7 +91,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
               const observer = new FontFaceObserver(child.family);
               fontObservers.push(
                 observer.load(null, 15000).catch(() => {
-                  console.warn(`字体加载超时: ${child.family}`);
+                  console.warn(`??????: ${child.family}`);
                 })
               );
             });
@@ -102,13 +103,13 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
             const observer = new FontFaceObserver(font.family);
             fontObservers.push(
               observer.load(null, 15000).catch(() => {
-                console.warn(`字体加载超时: ${font.family}`);
+                console.warn(`??????: ${font.family}`);
               })
             );
           }
         });
 
-        // 注入样式
+        // injectstyle
         const existingStyle = document.getElementById('dynamic-fonts');
         if (existingStyle) {
           existingStyle.remove();
@@ -118,43 +119,43 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
         styleElement.textContent = rules.join('\n\n');
         document.head.appendChild(styleElement);
 
-        // 等待字体加载（不阻塞，后台加载）
+        // waitfontload????load??
         Promise.all(fontObservers).catch(() => {
-          // 静默处理错误
+          // handle
         });
 
         isFontInitializedRef.current = true;
       } catch (error) {
-        console.error('❌ 字体管理器初始化失败:', error);
+        console.error('????????????:', error);
       }
     };
 
     initializeFonts();
   }, [fontConfig]);
 
-  // 字体管理器方法（内联到组件中）
+  // font ??component ??
   const getFontChildren = (family: string) => {
     const font = fontFamiliesRef.current.find((f) => f.family === family);
     return font?.children || [];
   };
 
   const getBaseFontFamily = (fontFamily: string): string => {
-    // 在所有字体的子项中查找匹配的 family
+    // allfont child items family
     for (const font of fontFamiliesRef.current) {
       if (font.children && font.children.length > 0) {
         const child = font.children.find((c) => c.family === fontFamily);
         if (child) {
-          // 找到了，返回父级的 family
+          // ??family
           return font.family;
         }
       }
     }
-    // 如果没找到，可能本身就是基础字体名，或者是系统字体
+    // if ??font ?or font
     return fontFamily;
   };
 
   const availableFontWeightsMemo = useMemo(() => {
-    if (!selectedClip) return [{ value: 'default', label: '默认' }];
+    if (!selectedClip) return [DEFAULT_FONT_WEIGHT_OPTION];
     const fontFamily = selectedClip.textStyle?.fontFamily || 'Arial';
     const baseFamily = getBaseFontFamily(fontFamily);
     const children = getFontChildren(baseFamily);
@@ -165,14 +166,14 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
         label: child.displayName,
       }));
     }
-    return [{ value: 'default', label: '默认' }];
+    return [DEFAULT_FONT_WEIGHT_OPTION];
   }, [selectedClip]);
 
   useEffect(() => {
     setAvailableFontWeights(availableFontWeightsMemo);
   }, [availableFontWeightsMemo]);
 
-  // 点击外部关闭字体选择器
+  // click outsideclosefontselector
   useEffect(() => {
     if (!fontSelectorVisible) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -200,7 +201,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     return chineseRegex.test(text);
   };
 
-  // 从 textDecoration 字符串解析装饰状态
+  // textDecoration decoration
   const getTextDecoration = () => {
     const decoration = selectedClip.textStyle?.textDecoration || 'none';
     return {
@@ -210,9 +211,9 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     };
   };
 
-  // 批量更新所有选中的 clips 的文本样式
+  // batchupdateallselected clips textstyle
   const updateTextStyle = (updates: Partial<typeof selectedClip.textStyle>) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate??updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const newTextStyle = { ...(clip.textStyle || {}), ...updates };
@@ -224,7 +225,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
   };
 
   const updateOpacity = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate??updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, opacity: value };
@@ -252,90 +253,77 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     updateTextStyle({ fontStyle: newFontStyle });
   };
 
-  // 获取字体的显示名称
+  // getfont display
   const getFontDisplayName = (fontFamily: string): string => {
     if (!fontFamily) return 'Arial';
 
-    // 提取基础字体名称（去掉 variant 后缀）
+    // font ??variant ??
     const baseFamily = getBaseFontFamily(fontFamily);
 
-    // 从字体列表中获取 displayName
+    // fontlist get displayName
     const font = fontFamiliesRef.current.find((f) => f.family === baseFamily);
     if (font) {
       return font.displayName;
     }
 
-    // 否则返回基础字体名称
+    // font
     return baseFamily;
   };
 
-  // 处理字体选择器显示
+  // handlefontselectordisplay
   const handleFontButtonClick = () => {
-    if (fontButtonRef.current) {
-      const rect = fontButtonRef.current.getBoundingClientRect();
-      // 计算位置：距离右侧面板上右都是10px
-      // 右侧面板宽度270px，字体面板宽度250px
-      const x = rect.left - 370; // 右侧面板宽度270px + 间距10px
-      const y = rect.top - 45; // 与按钮顶部对齐
-
-      // 确保面板不超出屏幕边界
-      const adjustedX = Math.max(10, x);
-      const adjustedY = Math.max(10, y);
-
-      setFontSelectorPosition({ x: adjustedX, y: adjustedY });
-      setFontSelectorVisible(true);
-    }
+    setFontSelectorVisible(true);
   };
 
-  // 处理字体选择
+  // handlefont
   const handleFontSelect = (font: string) => {
-    // 获取字体的所有子项
+    // getfont allchild items
     const children = getFontChildren(font);
 
     if (children.length > 0) {
-      // 有子项 - 使用完整的 family 名称
+      // child items - use family
       const defaultChild =
         children.find((c) => c.displayName === 'Regular') || children[0];
-      const familyName = defaultChild.family; // 直接使用 child.family
+      const familyName = defaultChild.family; // use child.family
 
       updateTextStyle({ fontFamily: familyName });
 
-      // 更新字重选项 - value 使用完整的 family，label 使用 displayName
+      // updatefont weight - value use family?label use displayName
       const weightOptions = children.map((child) => ({
-        value: child.family, // 使用完整的 family，如 "Microsoft YaHei Bold"
-        label: child.displayName, // 显示名称，如 "Bold"
+        value: child.family, // use family??"Microsoft YaHei Bold"
+        label: child.displayName, // display ??"Bold"
       }));
       setAvailableFontWeights(weightOptions);
     } else {
-      // 没有子项 - 直接使用字体名称
+      // nochild items - usefont
       updateTextStyle({ fontFamily: font });
 
-      // 字重选项为空或显示一个默认项
-      setAvailableFontWeights([{ value: 'default', label: '默认' }]);
+      // font weight display default
+      setAvailableFontWeights([DEFAULT_FONT_WEIGHT_OPTION]);
     }
   };
 
-  // 处理字重检测结果（现在基于子项）
+  // handlefont weight ??child items??
   const handleFontWeightsDetected = (font: string, _weights: string[]) => {
-    // 获取字体的所有子项
+    // getfont allchild items
     const children = getFontChildren(font);
 
     if (children.length === 0) {
-      setAvailableFontWeights([{ value: 'default', label: '默认' }]);
+      setAvailableFontWeights([DEFAULT_FONT_WEIGHT_OPTION]);
       return;
     }
 
-    // 将子项转换为选项 - value 使用完整的 family，label 使用 displayName
+    // child items - value use family?label use displayName
     const weightOptions = children.map((child) => ({
-      value: child.family, // 使用完整的 family，如 "Microsoft YaHei Bold"
-      label: child.displayName, // 显示名称，如 "Bold"
+      value: child.family, // use family??"Microsoft YaHei Bold"
+      label: child.displayName, // display ??"Bold"
     }));
 
-    // 更新字重选项
+    // updatefont weight
     setAvailableFontWeights(weightOptions);
   };
 
-  // 获取字重 Select 的值
+  // getfont weight Select
   const getFontWeightValue = () => {
     const fontFamily = selectedClip.textStyle?.fontFamily || 'Arial';
     const isAvailable = availableFontWeights.some(
@@ -344,7 +332,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     return isAvailable ? fontFamily : 'default';
   };
 
-  // 处理字重选择变化
+  // handlefont weight
   const handleFontWeightChange = (selectedFamily: string | number) => {
     if (selectedFamily === 'default') {
       return;
@@ -352,7 +340,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     updateTextStyle({ fontFamily: String(selectedFamily) });
   };
 
-  // 处理字号 Slider 变化
+  // handlefont size Slider
   const handleFontSizeSliderChange = (value: number) => {
     if (!fontSizeAdjustStartRef.current) {
       fontSizeAdjustStartRef.current = {
@@ -361,7 +349,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
         initialHeight: selectedClip.height || 80,
       };
     }
-    // 批量更新所有选中的 clips
+    // batchupdateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const clipInitialFontSize = clip.textStyle?.fontSize || 48;
@@ -382,17 +370,19 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     batchUpdateClips(updatedClips);
   };
 
-  // 处理对齐选择变化
+  // handlealignment
   const handleTextAlignChange = (value: string | number) => {
     updateTextStyle({ textAlign: String(value) });
   };
 
-  // 处理 Case 选择变化
+  const currentTextAlign = selectedClip.textStyle?.textAlign || 'center';
+
+  // handle Case
   const handleTextTransformChange = (value: string | number) => {
     updateTextStyle({ textTransform: String(value) });
   };
 
-  // 处理字号输入变化
+  // handlefont size
   const handleFontSizeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     if (!isNaN(val)) {
@@ -404,7 +394,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           initialHeight: selectedClip.height || 80,
         };
       }
-      // 批量更新所有选中的 clips
+      // batchupdateallselected clips
       const updatedClips = clips.map((clip) => {
         if (selectedClipId.includes(clip.id)) {
           const clipInitialFontSize = clip.textStyle?.fontSize || 48;
@@ -426,7 +416,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     }
   };
 
-  // 处理字号输入框获得焦点
+  // handlefont sizeinputon focus
   const handleFontSizeInputFocus = () => {
     if (!fontSizeAdjustStartRef.current) {
       fontSizeAdjustStartRef.current = {
@@ -437,11 +427,11 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     }
   };
 
-  // 处理字号输入框失去焦点
+  // handlefont sizeinputon blur
   const handleFontSizeInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     const finalValue = isNaN(val) ? 48 : Math.max(5, Math.min(300, Math.round(val)));
-    // 批量更新所有选中的 clips
+    // batchupdateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const clipInitialFontSize = clip.textStyle?.fontSize || 48;
@@ -463,7 +453,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
     fontSizeAdjustStartRef.current = null;
   };
 
-  // 处理字号输入框键盘按键
+  // handlefont sizeinput key
   const handleFontSizeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.currentTarget.blur();
@@ -481,11 +471,9 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
         </button>
       </div>
       <div className='space-y-4'>
-        {/* 字体 */}
+        {/* font */}
         <div className='flex items-center justify-between'>
-          <div className='text-text-default-tertiary text-xs flex-1'>
-            {t('textStyle.font') || 'Font'}
-          </div>
+          <div className='text-text-default-tertiary text-xs flex-1'>{t('textStyle.font') || 'Font'}</div>
           <div className='w-[130px]'>
             <Button
               ref={fontButtonRef}
@@ -497,12 +485,17 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
               <span className='truncate'>
                 {getFontDisplayName(selectedClip.textStyle?.fontFamily || 'Arial')}
               </span>
-              <Icon name='videoEditor-arrow-down-icon' width={12} height={12} className='ml-2' />
+              <Icon
+                name='videoEditor-arrow-down-icon'
+                width={10}
+                height={10}
+                className={`ml-2 transition-transform duration-150 ${fontSelectorVisible ? 'rotate-180' : 'rotate-0'}`}
+              />
             </Button>
           </div>
         </div>
 
-        {/* 字重 */}
+        {/* font weight */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.fontWeight') || 'Font Weight'}
@@ -513,14 +506,11 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
             className='w-[130px] h-[26px]'
             size='small'
             options={availableFontWeights}
-            disabled={
-              availableFontWeights.length === 1 &&
-              availableFontWeights[0].value === 'default'
-            }
+            disabled={availableFontWeights.length === 1 && availableFontWeights[0].value === 'default'}
           />
         </div>
 
-        {/* 字号 */}
+        {/* font size */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.fontSize') || 'Font Size'}
@@ -547,7 +537,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           </div>
         </div>
 
-        {/* 颜色 */}
+        {/* color */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.color') || 'Color'}
@@ -563,25 +553,55 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           </div>
         </div>
 
-        {/* 对齐 */}
+        {/* alignment */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.align') || 'Align'}
           </div>
-          <Select
-            value={selectedClip.textStyle?.textAlign || 'center'}
-            onChange={handleTextAlignChange}
-            className='w-[130px]'
-            size='small'
-            options={[
-              { value: 'left', label: t('textStyle.alignLeft') || 'Left' },
-              { value: 'center', label: t('textStyle.alignCenter') || 'Center' },
-              { value: 'right', label: t('textStyle.alignRight') || 'Right' },
-            ]}
-          />
+          <div className='flex gap-2 w-[130px]'>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'left'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('left')}
+            >
+              <RiAlignLeft
+                size={14}
+                color={currentTextAlign === 'left' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'center'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('center')}
+            >
+              <RiAlignCenter
+                size={14}
+                color={currentTextAlign === 'center' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+            <button
+              className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
+                currentTextAlign === 'right'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
+              }`}
+              onClick={() => handleTextAlignChange('right')}
+            >
+              <RiAlignRight
+                size={14}
+                color={currentTextAlign === 'right' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+              />
+            </button>
+          </div>
         </div>
 
-        {/* 装饰 */}
+        {/* decoration */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.decoration') || 'Decoration'}
@@ -589,7 +609,9 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           <div className='flex gap-2 w-[130px]'>
             <button
               className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
-                getTextDecoration().underline ? 'bg-background-default-base' : 'bg-background-default-secondary'
+                getTextDecoration().underline
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
               }`}
               onClick={() => handleDecorationClick('underline')}
             >
@@ -597,12 +619,18 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
                 name='videoEditor-underline-icon'
                 width={14}
                 height={14}
-                color={getTextDecoration().underline ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+                color={
+                  getTextDecoration().underline
+                    ? 'var(--color-icon-secondary-hover)'
+                    : 'var(--color-icon-secondary)'
+                }
               />
             </button>
             <button
               className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
-                getTextDecoration().lineThrough ? 'bg-background-default-base' : 'bg-background-default-secondary'
+                getTextDecoration().lineThrough
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
               }`}
               onClick={() => handleDecorationClick('lineThrough')}
             >
@@ -610,12 +638,18 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
                 name='videoEditor-line-through-icon'
                 width={14}
                 height={14}
-                color={getTextDecoration().lineThrough ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+                color={
+                  getTextDecoration().lineThrough
+                    ? 'var(--color-icon-secondary-hover)'
+                    : 'var(--color-icon-secondary)'
+                }
               />
             </button>
             <button
               className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
-                getTextDecoration().overline ? 'bg-background-default-base' : 'bg-background-default-secondary'
+                getTextDecoration().overline
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
               }`}
               onClick={() => handleDecorationClick('overline')}
             >
@@ -623,12 +657,18 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
                 name='videoEditor-overline-icon'
                 width={14}
                 height={14}
-                color={getTextDecoration().overline ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+                color={
+                  getTextDecoration().overline
+                    ? 'var(--color-icon-secondary-hover)'
+                    : 'var(--color-icon-secondary)'
+                }
               />
             </button>
             <button
               className={`flex-1 border rounded hover:bg-background-default-base flex items-center justify-center h-[26px] ${
-                selectedClip.textStyle?.fontStyle === 'italic' ? 'bg-background-default-base' : 'bg-background-default-secondary'
+                selectedClip.textStyle?.fontStyle === 'italic'
+                  ? 'bg-background-default-base'
+                  : 'bg-background-default-secondary'
               }`}
               onClick={handleItalicClick}
             >
@@ -636,7 +676,11 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
                 name='videoEditor-italic-icon'
                 width={14}
                 height={14}
-                color={selectedClip.textStyle?.fontStyle === 'italic' ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+                color={
+                  selectedClip.textStyle?.fontStyle === 'italic'
+                    ? 'var(--color-icon-secondary-hover)'
+                    : 'var(--color-icon-secondary)'
+                }
               />
             </button>
           </div>
@@ -644,9 +688,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
 
         {/* Case */}
         <div className='flex items-center justify-between'>
-          <div className='text-text-default-tertiary text-xs flex-1'>
-            {t('textStyle.case') || 'Case'}
-          </div>
+          <div className='text-text-default-tertiary text-xs flex-1'>{t('textStyle.case') || 'Case'}</div>
           <Select
             value={selectedClip.textStyle?.textTransform || 'none'}
             onChange={handleTextTransformChange}
@@ -662,7 +704,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           />
         </div>
 
-        {/* 不透明度 */}
+        {/* opacity */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('textStyle.opacity') || 'Opacity'}
@@ -701,7 +743,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           </div>
         </div>
 
-        {/* 字体描边 */}
+        {/* fontstroke */}
         <div className='pt-3 mt-3 border-t border-border-default-base'>
           <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
             {t('textStyle.stroke') || 'Stroke'}
@@ -751,7 +793,7 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
           </div>
         </div>
 
-        {/* 字体阴影 */}
+        {/* fontshadow */}
         <div className='pt-3 mt-3 border-t border-border-default-base'>
           <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
             {t('textStyle.shadow') || 'Shadow'}
@@ -857,12 +899,11 @@ const TextStylePanel: React.FC<TextStylePanelProps> = ({ nodeId, fontConfig = []
             </div>
           </div>
         </div>
-      </div>
 
-      {/* 字体选择器 */}
+      </div>
+      {/* fontselector */}
       <FontSelector
         visible={fontSelectorVisible}
-        position={fontSelectorPosition}
         currentFont={selectedClip.textStyle?.fontFamily || 'Arial'}
         onFontSelect={handleFontSelect}
         onClose={() => setFontSelectorVisible(false)}

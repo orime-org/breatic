@@ -2,15 +2,14 @@ import React, { memo } from 'react';
 import Tooltip from '@/components/base/tooltip';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
+import { RiFolder3Line } from 'react-icons/ri';
 
 interface ToolbarProps {
   activePanel: string | null;
   onPanelChange: (panelId: string) => void;
 }
 
-/**
- * Toolbar 组件 - 左侧工具栏
- */
+/* * * Toolbar component - left */
 const Toolbar: React.FC<ToolbarProps> = ({ activePanel, onPanelChange }) => {
   const { t } = useTranslation();
 
@@ -38,7 +37,12 @@ const Toolbar: React.FC<ToolbarProps> = ({ activePanel, onPanelChange }) => {
                 isActive ? 'bg-background-default-base text-[#1F2125]' : 'text-[#71717a]'
               }`}
             >
-              {tool.iconName && (
+              {tool.id === 'folder' ? (
+                <RiFolder3Line
+                  size={14}
+                  color={isActive ? 'var(--color-icon-secondary-hover)' : 'var(--color-icon-secondary)'}
+                />
+              ) : (
                 <Icon
                   name={tool.iconName}
                   width={14}

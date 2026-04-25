@@ -86,40 +86,107 @@ export interface CanvasNodeFields {
     attachments: AttachRef[];
     /** Generation parameters — Y.Map<string, unknown> at runtime. */
     params: Record<string, unknown>;
+    /**
+     * Last failure message. Set when a task fails (POST-side rejection or
+     * Worker-side throw); cleared automatically by the Collab consumer
+     * when the next `handling` or `completed` event lands on the node.
+     *
+     * Semantics differ by doc kind (enforced in the Collab consumer):
+     *   - Canvas: failure preserves prior `content` / `coverUrl` so the
+     *     user never loses their last successful result.
+     *   - Mixed editor flow: failure clears `content` + `coverUrl`
+     *     because the node IS the task's output — a failed mini-tool
+     *     placeholder has no valid content to retain, and there is no
+     *     retry UX for mixed-editor tiles (user deletes the node).
+     */
+    errorInfo?: string;
   };
 }
 
 // ── Event bus payloads ─────────────────────────────────────────────
 
-/** Node enters handling state (generation or upload started). */
+/**
+ * `docName` identifies the target Yjs document unambiguously:
+ *   - `"project-{projectId}/canvas"` — main canvas (CanvasNodeFields above)
+ *   - `"project-{projectId}/node/{hostNodeId}"` — mixed editor flow
+ *     (the `nodeId` on the event is then the sub-node inside that flow)
+ *
+ * See `packages/collab/src/schema.ts` for the canonical builders
+ * (`canvasDocName`, `nodeEditorDocName`) and parser (`parseDocName`).
+ */
+
+/**
+ * Task-level event schema (unified multi-output):
+ *
+ * Every task — whether it produces 1 output or N — emits a single
+ * event per state transition. Consumers iterate the `nodeIds` /
+ * `outputs` array; N=1 tasks are a degenerate case of the same
+ * shape. This is the outcome of the T3 phase5 refactor:
+ * there is no "single-output fast path" — one schema, one code path.
+ *
+ * Examples:
+ *   - `image.crop` — 1 input image → 1 output → `nodeIds: [x]`
+ *   - `video.cut` — 1 input video + N segments → N outputs →
+ *     `nodeIds: [x1,x2,...]` at handling,
+ *     `outputs: [{nodeId:x1, content:...}, ...]` at completion
+ */
+
+/** All N nodes for the task enter handling simultaneously. */
 export interface NodeHandlingEvent {
   type: "handling";
-  projectId: string;
-  nodeId: string;
+  docName: string;
   /** Task ID that acquired the lock. */
   taskId: string;
   actor: HandlingActor;
+  /** The set of nodes this task updates on completion (N ≥ 1). */
+  nodeIds: string[];
 }
 
-/** Node handling finishes successfully. */
+/**
+ * Task completed. Exactly one output per node in `nodeIds`; the
+ * consumer matches them by index-parallel iteration.
+ */
 export interface NodeCompletedEvent {
   type: "completed";
-  projectId: string;
-  nodeId: string;
+  docName: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
-  content: string;
-  cover_url?: string;
+  /** One entry per affected node (N ≥ 1). */
+  outputs: Array<{
+    nodeId: string;
+    content: string;
+    cover_url?: string;
+  }>;
 }
 
-/** Node handling fails — content stays unchanged. */
+/**
+ * Task failed. All N nodes enter the failed state together (all-or-
+ * nothing); partial success is expressed via completed + failed on
+ * overlapping subsets if a handler ever needs that (not currently
+ * used).
+ *
+ * Behavior on each node's `data` is doc-kind dependent (the Collab
+ * consumer routes by `parseDocName(docName)`):
+ *   - Canvas: `content` / `coverUrl` preserved (user's prior result
+ *     stays visible); `errorInfo` set; `state` → `'idle'`.
+ *   - Mixed editor flow: `content` + `coverUrl` cleared; `errorInfo`
+ *     set; `state` → `'idle'`. The node becomes an explicit "failed
+ *     placeholder" that the user must delete manually (no retry UI).
+ */
 export interface NodeFailedEvent {
   type: "failed";
-  projectId: string;
-  nodeId: string;
+  docName: string;
   /** Task ID that held the lock — used for verified release. */
   taskId: string;
+  /** All nodes affected by this failure (N ≥ 1). */
+  nodeIds: string[];
+  /**
+   * Human-readable failure reason. Written into each node's
+   * `data.errorInfo` by the Collab consumer. Optional — events
+   * without this field land as `errorInfo: ''`.
+   */
+  errorMessage?: string;
 }
 
-/** Union of all node state events on the canvas event bus. */
+/** Union of all node state events on the task-events bus. */
 export type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;

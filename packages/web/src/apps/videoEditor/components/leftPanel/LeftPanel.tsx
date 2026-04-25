@@ -24,7 +24,7 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
   canvasRatio = '16:9',
   getBaseCanvasSize,
 }) => {
-  const { addMediaItem } = useVideoEditorStore(nodeId);
+  const { addMediaItem } = useVideoEditorStore();
 
   const handleMediaAdd = (item: MediaItem) => {
     addMediaItem(item);

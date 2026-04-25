@@ -1,12 +1,10 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-export type VideoCropRect = { x: number; y: number; w: number; h: number };
-
 const ffmpegCoreBaseUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
 const ffmpegLoadTimeoutMs = 30000;
 const ffmpegFetchTimeoutMs = 30000;
-const ffmpegExecTimeoutMs = 600000;
+const ffmpegExecTimeoutMs = 120000;
 
 let ffmpegInstance: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
@@ -59,75 +57,81 @@ const ensureFfmpegLoaded = async (): Promise<FFmpeg> => {
   }
 };
 
-const toSourceCrop = (rect: VideoCropRect, containerWidth: number, containerHeight: number) => {
-  const cw = Math.max(1, containerWidth);
-  const ch = Math.max(1, containerHeight);
-
-  const xPct = rect.x / cw;
-  const yPct = rect.y / ch;
-  const wPct = rect.w / cw;
-  const hPct = rect.h / ch;
-
-  return { xPct, yPct, wPct, hPct };
+const toAtempoFilter = (speed: number): string => {
+  if (speed <= 0) return 'atempo=1.0';
+  const factors: number[] = [];
+  let remaining = speed;
+  while (remaining > 2.0) {
+    factors.push(2.0);
+    remaining /= 2.0;
+  }
+  while (remaining < 0.5) {
+    factors.push(0.5);
+    remaining /= 0.5;
+  }
+  factors.push(remaining);
+  return factors.map((factor) => `atempo=${factor.toFixed(5)}`).join(',');
 };
 
-export const videoCropWithFfmpeg = async (
-  videoSrc: string,
-  rect: VideoCropRect,
-  container: { width: number; height: number },
-): Promise<string> => {
+/**
+ * Changes a video playback speed and returns a playable object URL.
+ */
+export const speedVideoWithFfmpeg = async (videoSrc: string, speed: number): Promise<string> => {
+  const normalizedSpeed = Math.min(2, Math.max(0.5, speed));
   if (!videoSrc) return '';
+  if (Math.abs(normalizedSpeed - 1) <= 1e-6) return videoSrc;
 
   const ffmpeg = await ensureFfmpegLoaded();
   const response = await withTimeout(fetch(videoSrc), ffmpegFetchTimeoutMs, 'Fetching source video');
   if (!response.ok) throw new Error(`Failed to fetch source video: ${response.status}`);
   const inputBlob = await response.blob();
-  const inputName = `crop-input-${Date.now()}.mp4`;
-  const outputName = `crop-output-${Date.now()}.mp4`;
-
-  const pct = toSourceCrop(rect, container.width, container.height);
-  // Convert from node-space percentage to source-space pixels in ffmpeg expression.
-  const cropExpr = [
-    `x='trunc(iw*${pct.xPct.toFixed(8)}/2)*2'`,
-    `y='trunc(ih*${pct.yPct.toFixed(8)}/2)*2'`,
-    `w='trunc(iw*${pct.wPct.toFixed(8)}/2)*2'`,
-    `h='trunc(ih*${pct.hPct.toFixed(8)}/2)*2'`,
-  ].join(':');
+  const inputName = `speed-input-${Date.now()}.mp4`;
+  const outputName = `speed-output-${Date.now()}.mp4`;
 
   await ffmpeg.writeFile(inputName, await fetchFile(inputBlob));
   try {
-    const run = async (audioArgs: string[]) => {
+    const videoPtsFactor = (1 / normalizedSpeed).toFixed(6);
+    const atempo = toAtempoFilter(normalizedSpeed);
+    try {
       await withTimeout(
         ffmpeg.exec([
           '-i',
           inputName,
-          '-vf',
-          `crop=${cropExpr},setsar=1`,
-          '-c:v',
-          'libx264',
-          '-preset',
-          'veryfast',
-          '-crf',
-          '23',
-          ...audioArgs,
+          '-filter:v',
+          `setpts=${videoPtsFactor}*PTS`,
+          '-filter:a',
+          atempo,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
           '-movflags',
           '+faststart',
           outputName,
         ]),
         ffmpegExecTimeoutMs,
-        'Cropping video',
+        'Changing video speed',
       );
-    };
-
-    try {
-      await run(['-c:a', 'copy']);
     } catch {
-      await run(['-c:a', 'aac', '-b:a', '128k']);
+      await withTimeout(
+        ffmpeg.exec([
+          '-i',
+          inputName,
+          '-filter:v',
+          `setpts=${videoPtsFactor}*PTS`,
+          '-an',
+          '-movflags',
+          '+faststart',
+          outputName,
+        ]),
+        ffmpegExecTimeoutMs,
+        'Changing video speed without audio',
+      );
     }
 
     const outputData = await ffmpeg.readFile(outputName);
     if (!(outputData instanceof Uint8Array)) {
-      throw new Error('ffmpeg returned invalid crop output data');
+      throw new Error('ffmpeg returned invalid speed output data');
     }
     const safeBuffer = new ArrayBuffer(outputData.byteLength);
     new Uint8Array(safeBuffer).set(outputData);
@@ -138,4 +142,3 @@ export const videoCropWithFfmpeg = async (
     await ffmpeg.deleteFile(outputName).catch(() => undefined);
   }
 };
-

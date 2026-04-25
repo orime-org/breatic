@@ -21,7 +21,6 @@ import {
 import { Modal } from '@/components/modals/Modal';
 import { Input } from '@/components/base/input';
 import WaveSurfer from 'wavesurfer.js';
-// @ts-expect-error - RecordPlugin typing issue; use ESM import directly.
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
@@ -172,10 +171,13 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
     const recordPlugin = RecordPlugin.create({
       mimeType: 'audio/webm',
-      /* Recording params and realtime waveform */
+      // Record-time waveform appearance is inherited from the
+      // WaveSurfer instance above (waveColor / barWidth / progressColor
+      // / …). Wavesurfer v7's RecordPlugin no longer has its own
+      // waveform renderer — the v6-era `lineWidth` and
+      // `realtimeWaveColor` options were removed from
+      // `RecordPluginOptions` and are silently dropped at runtime.
       audioBitsPerSecond: 128000,
-      lineWidth: 2,
-      realtimeWaveColor: '#262626',
       renderRecordedAudio: false,
       scrollingWaveform: false,
       continuousWaveform: true,

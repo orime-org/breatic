@@ -45,11 +45,14 @@ async function checkCredits(userId: string): Promise<string | null> {
 /**
  * Shared helper — create task and enqueue BullMQ job.
  *
+ * `params.node_ids: string[]` (optional, 1..N) identifies the result
+ * nodes the Worker will update when the task completes. Absent for
+ * tasks that don't bind to canvas nodes (rare for mini-tools).
+ *
  * @param toolName - The specific mini-tool name (e.g. "remove-bg", "upscale")
  * @param taskType - High-level task type (e.g. "image", "video", "audio", "tts")
  * @param params - Tool-specific parameters from the validated body
  * @param userId - Authenticated user ID
- * @param nodeId - Optional canvas node ID
  * @param projectId - Optional project ID
  * @returns Object with `task_id` and `status: "pending"`
  */
@@ -58,7 +61,6 @@ async function enqueueMiniTool(
   taskType: string,
   params: Record<string, unknown>,
   userId: string,
-  _nodeId?: string,
   projectId?: string,
 ): Promise<{ task_id: string; status: string }> {
   const task = await taskService.create(
@@ -103,9 +105,9 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, node_id, project_id, ...params } = body;
+  const { tool, project_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "image", params, user.id, node_id, project_id);
+  const result = await enqueueMiniTool(tool, "image", params, user.id, project_id);
   return c.json({ data: result }, 201);
 });
 
@@ -124,9 +126,9 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, node_id, project_id, ...params } = body;
+  const { tool, project_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "video", params, user.id, node_id, project_id);
+  const result = await enqueueMiniTool(tool, "video", params, user.id, project_id);
   return c.json({ data: result }, 201);
 });
 
@@ -146,10 +148,10 @@ miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, node_id, project_id, ...params } = body;
+  const { tool, project_id, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
-  const result = await enqueueMiniTool(tool, taskType, params, user.id, node_id, project_id);
+  const result = await enqueueMiniTool(tool, taskType, params, user.id, project_id);
   return c.json({ data: result }, 201);
 });
 

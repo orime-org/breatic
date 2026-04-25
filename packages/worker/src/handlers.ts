@@ -11,7 +11,8 @@
 
 import type { Job } from "bullmq";
 import { generateText, stepCountIs } from "ai";
-import { MINI_TOOL_DEFAULTS } from "./mini-tool-defaults.js";
+import { resolveMiniToolEntry } from "./mini-tool-registry.js";
+import { runLocalHandler } from "./handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
@@ -21,6 +22,27 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
+import { canvasDocName, nodeEditorDocName } from "@breatic/shared";
+
+/**
+ * Build the target docName for a NodeEvent.
+ *
+ * Mini-tool jobs triggered from a mixed-editor (node-editor) doc
+ * carry `host_node_id` in their params. When present, the event must
+ * target the per-node editor doc so the Collab consumer routes to the
+ * mixed-editor flow schema. Otherwise the event targets the main
+ * canvas doc — unchanged pre-T3 behaviour.
+ */
+function resolveEventDocName(
+  projectId: string,
+  params: Record<string, unknown>,
+): string {
+  const hostNodeId = params.host_node_id;
+  if (typeof hostNodeId === "string" && hostNodeId.length > 0) {
+    return nodeEditorDocName(projectId, hostNodeId);
+  }
+  return canvasDocName(projectId);
+}
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -83,7 +105,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   const redis = getRedis();
   const streamRedis = getStreamRedis();
-  const nodeId = params.node_id as string | undefined;
+  const nodeIds = parseNodeIds(params);
 
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -112,7 +134,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, "Retry not allowed after provider returned a result");
+    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, "Retry not allowed after provider returned a result");
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -127,7 +149,14 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   try {
     if (source === "mini_tool" && toolName) {
-      [providerResult, creditsUsed] = await runMiniTool(toolName, taskType, params);
+      [providerResult, creditsUsed] = await runMiniTool({
+        toolName,
+        taskType,
+        params,
+        jobId: job.id ?? "",
+        userId,
+        projectId,
+      });
     } else if (taskType === "understand") {
       [providerResult, creditsUsed] = await runUnderstand(model, params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
@@ -148,9 +177,24 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
-    await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
+  }
+
+  // ─── Normalize to unified outputs shape ──────────────────────────
+  // Provider paths and local handlers return different shapes; we
+  // collapse them here so the rest of runTask works with a single
+  // `{outputs:[{url,cover_url?,extra?}], extras}` view. N=1 (provider)
+  // and N>1 (local cut) flow through the same code path.
+  const unified = toUnifiedOutputs(providerResult);
+  if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
+    const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
+    logger.error({ taskId, toolName }, msg);
+    await taskService.markFailed(taskId, msg);
+    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, msg);
+    return { failed: true, reason: "output_count_mismatch" };
   }
 
   // ─── Point of no return: record that the provider has returned ───
@@ -159,45 +203,48 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   // raw buffer with no upstream URL) so the re-entry guard at the top
   // of runTask can detect a duplicate delivery and fail-fast.
   const providerUrlSentinel =
-    (providerResult.url as string | undefined) ??
+    unified.outputs[0]?.url ??
     (providerResult.url_original as string | undefined) ??
     `buffer://${taskId}`; // sync transports return raw bytes with no URL
   await taskService.recordProviderResult(taskId, providerUrlSentinel);
 
   // ─── Stage 2: Persist to permanent storage ────────────────────────
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
-  let result: Record<string, unknown>;
+  let persistedOutputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
   try {
-    result = await persistResultUrls(providerResult, { taskType, userId, projectId });
+    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, { taskType, userId, projectId });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
-    await recordFailureHistory(taskId, projectId, nodeId, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeId, taskId, userId, model, params, errorMsg);
+    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
   }
 
-  // Per policy: the task's "content" must be a URL pointing at permanent
-  // storage for the user to be charged. If persist ran but didn't produce
-  // a usable URL (e.g. text content from Skill agent), treat it as text
-  // and skip the AIGC charging rule.
-  const persistedUrl = result.url as string | undefined;
-
-  // Extract video cover (best-effort, failure is non-fatal)
-  if (taskType === "video" && typeof persistedUrl === "string") {
-    try {
-      const { extractVideoCover } = await import("@breatic/core");
-      const coverUrl = await extractVideoCover(persistedUrl, { userId, projectId });
-      if (coverUrl) {
-        result.cover_url = coverUrl;
+  // Extract video cover per output (best-effort, failure is non-fatal)
+  if (taskType === "video") {
+    const { extractVideoCover } = await import("@breatic/core");
+    for (const out of persistedOutputs) {
+      if (typeof out.url === "string" && !out.cover_url) {
+        try {
+          const coverUrl = await extractVideoCover(out.url, { userId, projectId });
+          if (coverUrl) out.cover_url = coverUrl;
+        } catch (err) {
+          logger.warn({ taskId, err }, "video_cover_extraction_failed_non_fatal");
+        }
       }
-    } catch (err) {
-      logger.warn({ taskId, err }, "video_cover_extraction_failed_non_fatal");
     }
   }
+
+  // Canonical result dict stored on the task row — mirrors the unified
+  // outputs schema so downstream consumers (history, audits) see one shape.
+  const result: Record<string, unknown> = {
+    ...unified.extras,
+    outputs: persistedOutputs,
+  };
 
   const durationMs = Math.round(performance.now() - startTime);
 
@@ -234,35 +281,45 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   }
 
   // ─── Stage 4: Record history + publish completed event ────────────
-  if (nodeId && projectId && typeof persistedUrl === "string") {
-    try {
-      await nodeHistoryService.recordGenerationSuccess({
-        projectId,
-        nodeId,
-        userId,
-        content: persistedUrl,
-        thumbnailUrl: (result.cover_url as string | undefined) ?? (taskType === "image" ? persistedUrl : undefined),
-        taskId,
-        metadata: {
-          model: (result.model as string | undefined) ?? model,
-          cost: result.cost as number | undefined,
-          durationMs,
-          params,
-        },
-      });
-    } catch (err) {
-      logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
+  if (projectId && nodeIds.length > 0) {
+    for (let i = 0; i < nodeIds.length; i++) {
+      const nodeId = nodeIds[i]!;
+      const out = persistedOutputs[i];
+      const content = out?.url;
+      if (typeof content !== "string") continue;
+      try {
+        await nodeHistoryService.recordGenerationSuccess({
+          projectId,
+          nodeId,
+          userId,
+          content,
+          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? content : undefined),
+          taskId,
+          metadata: {
+            model: (unified.extras.model as string | undefined) ?? model,
+            cost: unified.extras.cost as number | undefined,
+            durationMs,
+            params,
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
+      }
     }
-  }
 
-  if (nodeId && projectId) {
+    const eventOutputs = nodeIds.map((nodeId, i) => {
+      const out = persistedOutputs[i];
+      return {
+        nodeId,
+        content: (out?.url ?? (unified.extras.content as string | undefined)) ?? "",
+        cover_url: out?.cover_url,
+      };
+    });
     await publishNodeEvent(streamRedis, {
       type: "completed",
-      projectId,
-      nodeId,
+      docName: resolveEventDocName(projectId, params),
       taskId,
-      content: (persistedUrl ?? (result.content as string | undefined)) ?? "",
-      cover_url: result.cover_url as string | undefined,
+      outputs: eventOutputs,
     });
   }
 
@@ -275,68 +332,234 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
-/** Record a failed-generation entry in node_history (non-fatal). */
+/** Record failed-generation entries in node_history (non-fatal). */
 async function recordFailureHistory(
   taskId: string,
   projectId: string | undefined,
-  nodeId: string | undefined,
+  nodeIds: string[],
   userId: string,
   model: string | undefined,
   params: Record<string, unknown>,
   errorMessage: string,
 ): Promise<void> {
-  if (!nodeId || !projectId) return;
-  try {
-    await nodeHistoryService.recordGenerationFailure({
-      projectId,
-      nodeId,
-      userId,
-      errorMessage,
-      taskId,
-      metadata: { model, params },
-    });
-  } catch (err) {
-    logger.warn({ err, taskId, nodeId }, "Failed to record node history (failure)");
+  if (!projectId || nodeIds.length === 0) return;
+  for (const nodeId of nodeIds) {
+    try {
+      await nodeHistoryService.recordGenerationFailure({
+        projectId,
+        nodeId,
+        userId,
+        errorMessage,
+        taskId,
+        metadata: { model, params },
+      });
+    } catch (err) {
+      logger.warn({ err, taskId, nodeId }, "Failed to record node history (failure)");
+    }
   }
 }
 
-/** Publish a `failed` NodeEvent to the canvas-nodes stream. */
+/** Publish a `failed` NodeEvent to the task-events stream. */
 async function publishFailedEvent(
   streamRedis: ReturnType<typeof getStreamRedis>,
   projectId: string | undefined,
-  nodeId: string | undefined,
+  nodeIds: string[],
   taskId: string,
-  _userId: string,
-  _model: string | undefined,
-  _params: Record<string, unknown>,
-  _errorMessage: string,
+  params: Record<string, unknown>,
+  errorMessage: string,
 ): Promise<void> {
-  if (!nodeId || !projectId) return;
+  if (!projectId || nodeIds.length === 0) return;
   try {
-    await publishNodeEvent(streamRedis, { type: "failed", projectId, nodeId, taskId });
+    await publishNodeEvent(streamRedis, {
+      type: "failed",
+      docName: resolveEventDocName(projectId, params),
+      taskId,
+      nodeIds,
+      errorMessage,
+    });
   } catch (err) {
-    logger.warn({ err, nodeId }, "Failed to publish failed NodeEvent");
+    logger.warn({ err, taskId }, "Failed to publish failed NodeEvent");
   }
+}
+
+// ── Normalisation + persistence helpers ────────────────────────────
+
+/**
+ * Parse `params.node_ids` (array, 0..N).
+ *
+ * All mini-tool callers — single-output or multi-output — send
+ * `node_ids: string[]`. N=1 is a degenerate case of the same shape.
+ * Non-mini-tool tasks (understand, skill agent) may omit it entirely
+ * (returns `[]`); in that case no NodeEvent is published.
+ */
+function parseNodeIds(params: Record<string, unknown>): string[] {
+  const arr = params.node_ids;
+  if (Array.isArray(arr)) {
+    return arr.filter((x): x is string => typeof x === "string");
+  }
+  return [];
+}
+
+/**
+ * Collapse provider / handler raw results into a unified outputs
+ * shape. Provider paths return `{url, cover_url, buffer?, cost, ...}`
+ * (always one output). Local handlers return
+ * `{outputs:[{url,cover_url?,extra?}], cost}` (N outputs). Callers
+ * downstream consume a single shape.
+ */
+function toUnifiedOutputs(raw: Record<string, unknown>): {
+  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+  extras: Record<string, unknown>;
+} {
+  if (Array.isArray(raw.outputs)) {
+    const outputs = raw.outputs as Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+    const extras: Record<string, unknown> = { ...raw };
+    delete extras.outputs;
+    return { outputs, extras };
+  }
+  const { url, cover_url, buffer, contentType, ...rest } = raw;
+  return {
+    outputs: [{
+      url: url as string | undefined,
+      cover_url: cover_url as string | undefined,
+      extra: (buffer !== undefined || contentType !== undefined)
+        ? { buffer, contentType }
+        : undefined,
+    }],
+    extras: rest,
+  };
+}
+
+/**
+ * Persist each output's URL / buffer to permanent storage. Mirrors the
+ * pre-refactor `persistResultUrls` but iterates outputs.
+ */
+async function persistOutputs(
+  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
+  extras: Record<string, unknown>,
+  opts: { taskType: string; userId: string; projectId?: string },
+): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
+  const extMap: Record<string, string> = {
+    image: ".png",
+    video: ".mp4",
+    audio: ".mp3",
+    tts: ".mp3",
+    three_d: ".glb",
+    understand: ".json",
+  };
+  const ext = extMap[opts.taskType] ?? ".bin";
+  const makeKey = () => storageKey({
+    userId: opts.userId,
+    projectId: opts.projectId,
+    taskType: opts.taskType,
+    ext,
+  });
+
+  const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
+
+  for (const out of outputs) {
+    const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
+
+    // Case 1: raw bytes from sync transports (sync provider calls).
+    // These live in extra.buffer / extra.contentType (normalized by
+    // toUnifiedOutputs) rather than a top-level field.
+    const extra = next.extra ?? {};
+    if (Buffer.isBuffer((extra as Record<string, unknown>).buffer)) {
+      try {
+        const key = makeKey();
+        const contentType = ((extra as Record<string, unknown>).contentType as string) ?? "application/octet-stream";
+        const adapter = await getStorageAdapter();
+        const url = await adapter.upload(key, (extra as Record<string, unknown>).buffer as Buffer, contentType);
+        next.url = url;
+        logger.info({ key, size: ((extra as Record<string, unknown>).buffer as Buffer).length }, "Persisted sync transport result");
+      } catch (err) {
+        logger.warn({ err }, "Failed to persist buffer result");
+      }
+      delete (extra as Record<string, unknown>).buffer;
+      delete (extra as Record<string, unknown>).contentType;
+    }
+
+    // Case 2: temporary CDN URL — re-host to our storage.
+    if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
+      try {
+        const key = makeKey();
+        const permanentUrl = await downloadAndStore(next.url, key);
+        if (!next.extra) next.extra = {};
+        (next.extra as Record<string, unknown>).url_original = next.url;
+        next.url = permanentUrl;
+      } catch (err) {
+        logger.warn({ url: next.url, err }, "Failed to persist result URL, keeping original");
+      }
+    }
+
+    persisted.push(next);
+  }
+
+  // Provider-level extras (non-output fields) may also carry URL
+  // fields used by consumers — re-host them the same way. Kept for
+  // parity with the pre-refactor behaviour that persisted e.g.
+  // `audio_url` / `image_url` on the result dict.
+  const urlFields = ["result_url", "audio_url", "video_url", "image_url", "output_url"];
+  for (const field of urlFields) {
+    const value = extras[field];
+    if (typeof value !== "string" || !value.startsWith("http")) continue;
+    if (value.includes("/uploads/")) continue;
+    try {
+      const key = makeKey();
+      const permanentUrl = await downloadAndStore(value, key);
+      extras[field] = permanentUrl;
+      extras[`${field}_original`] = value;
+    } catch (err) {
+      logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
+    }
+  }
+
+  return persisted;
 }
 
 // ── Execution Path Helpers ───────────────────────────────────────────
 
+interface RunMiniToolOpts {
+  toolName: string;
+  taskType: string;
+  params: Record<string, unknown>;
+  jobId: string;
+  userId: string;
+  projectId: string | undefined;
+}
+
 async function runMiniTool(
-  toolName: string,
-  taskType: string,
-  params: Record<string, unknown>,
+  opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const defaults = MINI_TOOL_DEFAULTS[taskType];
-  if (!defaults) throw new Error(`No mini-tool defaults for task type '${taskType}'`);
+  const { toolName, taskType, params, jobId, userId, projectId } = opts;
+  const entry = resolveMiniToolEntry(taskType, toolName);
 
-  const defaultModel = defaults[toolName];
-  if (!defaultModel) throw new Error(`Unknown mini-tool '${toolName}' for '${taskType}'`);
-
-  const modelName = (params.model as string) || defaultModel;
+  // Strip workflow-meta fields that are for infra (not for the
+  // provider/handler to see). Model override survives so users can
+  // pick a non-default vendor model; it's stripped again inside the
+  // provider branch before validation.
   const cleanParams = { ...params };
-  delete cleanParams.model;
-  delete cleanParams.node_id;
+  delete cleanParams.node_ids;
   delete cleanParams.project_id;
+
+  if (entry.kind === "local") {
+    const result = await runLocalHandler({
+      handler: entry.handler,
+      taskType,
+      toolName,
+      params: cleanParams,
+      jobId,
+      userId,
+      projectId,
+    });
+    const cost = result.cost ?? 0;
+    const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+    return [result as unknown as Record<string, unknown>, credits];
+  }
+
+  // kind === "provider"
+  const modelName = (cleanParams.model as string) || entry.model;
+  delete cleanParams.model;
 
   const provider = await importProvider(taskType);
   const [, validated] = provider.validateParams(modelName, cleanParams);
@@ -389,7 +612,7 @@ async function runAigcDirect(
   const cleanParams = { ...params };
   delete cleanParams.prompt;
   delete cleanParams.text;
-  delete cleanParams.node_id;
+  delete cleanParams.node_ids;
   delete cleanParams.project_id;
 
   const provider = await importProvider(taskType);
@@ -451,71 +674,6 @@ async function runSkillAgent(
   return [result.text || "Task completed.", resolved];
 }
 
-/**
- * Persist AIGC results to permanent storage.
- *
- * Handles two cases:
- * 1. `buffer` + `contentType` — sync transports returned raw bytes, upload directly
- * 2. URL fields — async transports returned temporary CDN URLs, download then re-upload
- */
-async function persistResultUrls(
-  result: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string },
-): Promise<Record<string, unknown>> {
-  const extMap: Record<string, string> = {
-    image: ".png",
-    video: ".mp4",
-    audio: ".mp3",
-    tts: ".mp3",
-    three_d: ".glb",
-    understand: ".json",
-  };
-
-  const updated = { ...result };
-  const ext = extMap[opts.taskType] ?? ".bin";
-
-  const makeKey = () => storageKey({
-    userId: opts.userId,
-    projectId: opts.projectId,
-    taskType: opts.taskType,
-    ext,
-  });
-
-  // Case 1: raw bytes from sync transports (ElevenLabs, MiniMax, Fish)
-  if (Buffer.isBuffer(updated.buffer)) {
-    try {
-      const key = makeKey();
-      const contentType = (updated.contentType as string) ?? "application/octet-stream";
-      const adapter = await getStorageAdapter();
-      const url = await adapter.upload(key, updated.buffer as Buffer, contentType);
-      updated.url = url;
-      logger.info({ key, size: (updated.buffer as Buffer).length }, "Persisted sync transport result");
-    } catch (err) {
-      logger.warn({ err }, "Failed to persist buffer result");
-    }
-    delete updated.buffer;
-    delete updated.contentType;
-  }
-
-  // Case 2: temporary CDN URLs from async transports
-  const urlFields = ["url", "result_url", "audio_url", "video_url", "image_url", "output_url"];
-  for (const field of urlFields) {
-    const value = updated[field];
-    if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (value.includes("/uploads/")) continue;
-
-    try {
-      const key = makeKey();
-      const permanentUrl = await downloadAndStore(value, key);
-      updated[field] = permanentUrl;
-      updated[`${field}_original`] = value;
-    } catch (err) {
-      logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
-    }
-  }
-
-  return updated;
-}
 
 /** Dynamic provider import by task type. */
 async function importProvider(taskType: string): Promise<{

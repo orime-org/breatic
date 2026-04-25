@@ -24,17 +24,20 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
   mediaItems: _mediaItems,
   canvasSize,
   zoom = 1,
-  nodeId,
   isSelected = false,
   target: _target,
   container,
 }, ref) => {
+  const MIN_TEXT_FONT_SIZE = 5;
+  const MAX_TEXT_FONT_SIZE = 300;
   const moveableRef = useRef<Moveable>(null);
-  const { updateClip } = useVideoEditorStore(nodeId);
+  const { updateClip } = useVideoEditorStore();
   const dragDeltaRef = useRef<Record<string, { x: number; y: number }>>({});
   const dragStartRef = useRef<Record<string, { x: number; y: number }>>({});
   const resizeStateRef = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const resizeStartRef = useRef<Record<string, { x: number; y: number }>>({});
+  const textResizeStartRef = useRef<Record<string, { fontSize: number; width: number; height: number }>>({});
+  const textPreviewFontSizeRef = useRef<Record<string, number>>({});
 
   const getElementCanvasPosition = (element: HTMLElement) => {
     const left = Number.isFinite(element.offsetLeft) ? element.offsetLeft : 0;
@@ -44,8 +47,15 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
 
   const [targets, setTargets] = useState<HTMLElement[]>([]);
 
-  // 根据 clips 获取对应的 DOM 元素。
-  // 这里在布局后再取一次，避免新增元素时首次渲染拿不到 DOM 导致“时间轴选中但画布无选中框”。
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const getTextContentHeight = (textContent: HTMLElement, fontSize: number) => {
+    const minHeight = Math.max(fontSize * 1.5, 60);
+    return Math.max(Math.ceil(textContent.scrollHeight), Math.ceil(minHeight));
+  };
+  const getWidthScale = (startWidth: number, nextWidth: number) => Math.max(nextWidth, 1) / Math.max(startWidth, 1);
+
+  // based on clips getcorresponding DOM 。
+  // ，avoidnewly added first time DOM causing“timelineselected canvas selected ”。
   useLayoutEffect(() => {
     if (!clips || clips.length === 0) {
       setTargets([]);
@@ -67,20 +77,20 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     };
   }, [clips]);
 
-  // 暴露 getMoveable 方法给父组件
+  // getMoveable component
   useImperativeHandle(ref, () => ({
     getMoveable: () => moveableRef.current,
   }), []);
 
-  // 当 targets 变化时，更新 Moveable 的 rect
-  // 使用 useLayoutEffect 在 DOM 更新后同步执行，确保 Moveable 能正确计算位置
+  // targets ，update Moveable rect
+  // use useLayoutEffect DOM update ，ensure Moveable calculate
   useLayoutEffect(() => {
     if (moveableRef.current && targets.length > 0) {
       moveableRef.current.updateRect();
     }
   }, [targets]);
 
-  // 处理拖拽（单选和多选都使用同一个处理函数）
+  // handledrag（single select multi-select use handle ）
   const handleDrag = (e: OnDrag) => {
     const { target, beforeTranslate } = e;
     if (!target) return;
@@ -91,8 +101,8 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     }
     dragDeltaRef.current[clipId] = { x: deltaX, y: deltaY };
 
-    // 按照 moveable-master 示例，只更新 DOM，不更新 store
-    // 避免与 PreviewCanvas 的渲染冲突导致抖动
+    // moveable-master ， update DOM， update store
+    // avoid PreviewCanvas conflictcausingjitter
     const element = target as HTMLElement;
     const nextX = dragStartRef.current[clipId].x + deltaX;
     const nextY = dragStartRef.current[clipId].y + deltaY;
@@ -100,7 +110,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     element.style.top = `${nextY}px`;
   };
 
-  // 处理拖拽结束 - 在这里更新 store
+  // handledragend - update store
   const handleDragEnd = (e: OnDragEnd) => {
     const { target } = e;
     if (!target) return;
@@ -128,37 +138,112 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     });
   };
 
-  // 处理调整大小 - 按照 moveable-master 示例实现
-  // 只更新 DOM，不更新 store，避免与 PreviewCanvas 渲染冲突导致抖动
+  // handle - moveable-master
+  // update DOM， update store，avoid PreviewCanvas conflictcausingjitter
   const handleResize = (e: OnResize) => {
-    const { target, width, height, drag } = e;
+    const { target, width, height, drag, direction } = e;
     if (!target) return;
     const clipId = (target as HTMLElement).id.replace('element-', '');
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    const media = _mediaItems.find((m) => m.id === clip.mediaId);
+    const isText = media?.type === 'text';
+    const isCornerDirection = direction[0] !== 0 && direction[1] !== 0;
+    const isHorizontalDirection = direction[0] !== 0 && direction[1] === 0;
+    const isVerticalDirection = direction[0] === 0 && direction[1] !== 0;
     const [deltaX, deltaY] = drag.beforeTranslate;
     if (!resizeStartRef.current[clipId]) {
       resizeStartRef.current[clipId] = getElementCanvasPosition(target as HTMLElement);
     }
-    resizeStateRef.current[clipId] = { x: deltaX, y: deltaY, width, height };
-
-    // 按照示例：只更新 DOM
     const element = target as HTMLElement;
-    element.style.width = `${width}px`;
-    element.style.height = `${height}px`;
+
     const nextX = resizeStartRef.current[clipId].x + deltaX;
     const nextY = resizeStartRef.current[clipId].y + deltaY;
     element.style.left = `${nextX}px`;
     element.style.top = `${nextY}px`;
+
+    if (isText && (isCornerDirection || isVerticalDirection)) {
+      const start = textResizeStartRef.current[clipId] || {
+        fontSize: clip.textStyle?.fontSize ?? 48,
+        width: clip.width ?? element.offsetWidth,
+        height: clip.height ?? element.offsetHeight,
+      };
+      textResizeStartRef.current[clipId] = start;
+      const scale = isVerticalDirection
+        ? clamp(getWidthScale(start.height, height), 0.2, 8)
+        : clamp(getWidthScale(start.width, width), 0.2, 8);
+      const nextFontSize = clamp(Math.round(start.fontSize * scale), MIN_TEXT_FONT_SIZE, MAX_TEXT_FONT_SIZE);
+      textPreviewFontSizeRef.current[clipId] = nextFontSize;
+      const nextWidth = isVerticalDirection ? Math.max(1, Math.round(start.width * scale)) : width;
+
+      const textContent = element.querySelector<HTMLElement>('[data-text-content="true"]');
+      if (textContent) {
+        textContent.style.fontSize = `${nextFontSize}px`;
+        const contentHeight = getTextContentHeight(textContent, nextFontSize);
+        element.style.height = `${contentHeight}px`;
+      } else {
+        element.style.height = `${height}px`;
+      }
+
+      element.style.width = `${nextWidth}px`;
+      resizeStateRef.current[clipId] = {
+        x: deltaX,
+        y: deltaY,
+        width: nextWidth,
+        height: element.offsetHeight,
+      };
+      return;
+    }
+
+    // textkeepleftright ； logic
+    if (isText && isHorizontalDirection) {
+      element.style.width = `${width}px`;
+      const currentFontSize = clip.textStyle?.fontSize ?? 48;
+      const textContent = element.querySelector<HTMLElement>('[data-text-content="true"]');
+      if (textContent) {
+        const contentHeight = getTextContentHeight(textContent, currentFontSize);
+        element.style.height = `${contentHeight}px`;
+      }
+      resizeStateRef.current[clipId] = {
+        x: deltaX,
+        y: deltaY,
+        width,
+        height: element.offsetHeight,
+      };
+      return;
+    }
+
+    // ： update DOM
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
+    resizeStateRef.current[clipId] = { x: deltaX, y: deltaY, width, height };
+
+    // media（image/video）resize during drag should be realtime synced to store.
+    // This avoids waiting until resize end before preview reflects final dimensions.
+    if (!isText) {
+      updateClip(clipId, {
+        width,
+        height,
+        x: nextX,
+        y: nextY,
+      });
+    }
   };
 
-  // 处理调整大小结束 - 在这里更新 store
+  // handle end - update store
   const handleResizeEnd = (e: OnResizeEnd) => {
     const { target } = e;
     if (!target) return;
 
     const clipId = (target as HTMLElement).id.replace('element-', '');
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    const media = _mediaItems.find((m) => m.id === clip.mediaId);
+    const isText = media?.type === 'text';
     const element = target as HTMLElement;
     const resizeState = resizeStateRef.current[clipId];
     const resizeStart = resizeStartRef.current[clipId];
+    const textResizeStart = textResizeStartRef.current[clipId];
     const currentPos = getElementCanvasPosition(element);
     const currentSize = {
       width: element.offsetWidth,
@@ -169,12 +254,33 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     delete resizeStartRef.current[clipId];
 
     if (resizeState && resizeStart) {
+      if (isText && textResizeStart) {
+        const previewFontSize = textPreviewFontSizeRef.current[clipId];
+        const scale = clamp(getWidthScale(textResizeStart.width, resizeState.width), 0.2, 8);
+        const nextFontSize = previewFontSize
+          ?? clamp(Math.round(textResizeStart.fontSize * scale), MIN_TEXT_FONT_SIZE, MAX_TEXT_FONT_SIZE);
+        updateClip(clipId, {
+          width: resizeState.width,
+          height: currentSize.height,
+          x: resizeStart.x + resizeState.x,
+          y: resizeStart.y + resizeState.y,
+          textStyle: {
+            ...(clip.textStyle || {}),
+            fontSize: nextFontSize,
+          },
+        });
+        delete textResizeStartRef.current[clipId];
+        delete textPreviewFontSizeRef.current[clipId];
+        return;
+      }
       updateClip(clipId, {
         width: resizeState.width,
         height: resizeState.height,
         x: resizeStart.x + resizeState.x,
         y: resizeStart.y + resizeState.y,
       });
+      delete textResizeStartRef.current[clipId];
+      delete textPreviewFontSizeRef.current[clipId];
       return;
     }
 
@@ -184,20 +290,22 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
       x: currentPos.x,
       y: currentPos.y,
     });
+    delete textResizeStartRef.current[clipId];
+    delete textPreviewFontSizeRef.current[clipId];
   };
 
-  // 处理缩放 - 按照 moveable-master 示例实现
-  // 只更新 DOM，不更新 store，避免与 PreviewCanvas 渲染冲突导致抖动
+  // handlescale - moveable-master
+  // update DOM， update store，avoid PreviewCanvas conflictcausingjitter
   const handleScale = (e: OnScale) => {
     const { target, drag } = e;
     if (!target) return;
 
-    // 按照示例：只更新 DOM
+    // ： update DOM
     const element = target as HTMLElement;
     element.style.transform = drag.transform;
   };
 
-  // 处理缩放结束 - 在这里更新 store
+  // handlescaleend - update store
   const handleScaleEnd = (e: OnScaleEnd) => {
     const { target } = e;
     if (!target) return;
@@ -206,26 +314,26 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     const clip = clips.find((c) => c.id === clipId);
     if (!clip) return;
 
-    // OnScaleEnd 可能没有 scale 属性，保持当前的 scale 值
-    // 因为缩放通常通过 resize 处理，scale 主要用于 transform
+    // OnScaleEnd no scale ，keep scale
+    // scale resize handle，scale used for transform
     const currentScale = clip.scale || 1;
     updateClip(clipId, {
       scale: currentScale,
     });
   };
 
-  // 处理旋转 - 按照 moveable-master 示例实现
-  // 只更新 DOM，不更新 store，避免与 PreviewCanvas 渲染冲突导致抖动
+  // handlerotation - moveable-master
+  // update DOM， update store，avoid PreviewCanvas conflictcausingjitter
   const handleRotate = (e: OnRotate) => {
     const { target, drag } = e;
     if (!target) return;
 
-    // 按照示例：只更新 DOM
+    // ： update DOM
     const element = target as HTMLElement;
     element.style.transform = drag.transform;
   };
 
-  // 处理旋转结束 - 在这里更新 store
+  // handlerotationend - update store
   const handleRotateEnd = (e: OnRotateEnd) => {
     const { target } = e;
     if (!target) return;
@@ -234,9 +342,9 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     const clip = clips.find((c) => c.id === clipId);
     if (!clip) return;
 
-    // OnRotateEnd 可能没有 rotation 属性，需要从 transform 中提取
-    // 或者保持当前的 rotation 值（因为旋转已经通过 transform 应用）
-    // 这里简化处理，从 clip 中获取当前 rotation
+    // OnRotateEnd no rotation ，need to transform
+    // orkeep rotation （ rotation transform ）
+    // handle， clip get rotation
     const currentRotation = clip.rotation || 0;
     updateClip(clipId, {
       rotation: currentRotation,
@@ -247,23 +355,25 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     return null;
   }
 
-  // 判断是否为文本元素
+  // text
   const isTextElement = (clip: TimelineClip) => {
     const media = _mediaItems.find((m) => m.id === clip.mediaId);
     return media?.type === 'text';
   };
 
-  // 判断是否为图片或视频元素（需要等比例缩放）
+  // image video （need to ratioscale）
   const isMediaElement = (clip: TimelineClip) => {
     const media = _mediaItems.find((m) => m.id === clip.mediaId);
     return media?.type === 'image' || media?.type === 'video';
   };
 
-  // 获取第一个元素的类型，用于应用不同的样式类
+  // get ，used for style
   const firstClip = clips[0];
   const controlClassName = firstClip && isTextElement(firstClip) ? 'moveable-control-text' : 'moveable-control-media';
+  const isSingleTextSelection = clips.length === 1 && !!firstClip && isTextElement(firstClip);
+  const textRenderDirections: Array<'n' | 's' | 'nw' | 'ne' | 'sw' | 'se' | 'e' | 'w'> = ['n', 's', 'nw', 'ne', 'sw', 'se', 'e', 'w'];
 
-  // 对于图片和视频，启用等比例缩放；对于文本，不启用等比例
+  // image video， ratioscale； text， ratio
   const shouldKeepRatio = firstClip ? isMediaElement(firstClip) : false;
 
   return (
@@ -273,13 +383,14 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
       container={container}
       draggable={true}
       resizable={true}
-      scalable={true}
+      scalable={!isSingleTextSelection}
       rotatable={true}
       warpable={false}
-      pinchable={true}
+      pinchable={!isSingleTextSelection}
       origin={false}
       keepRatio={shouldKeepRatio}
       edge={false}
+      renderDirections={isSingleTextSelection ? textRenderDirections : undefined}
       throttleDrag={0}
       throttleResize={0}
       throttleScale={0}
@@ -293,7 +404,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
       onScaleEnd={handleScaleEnd}
       onRotate={handleRotate}
       onRotateEnd={handleRotateEnd}
-      // 边界限制
+      // comment
       bounds={{
         left: 0,
         top: 0,
@@ -301,7 +412,7 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
         bottom: canvasSize.height,
         position: 'css',
       }}
-      // zoom 由外层根据画布缩放传入，用于保持控制框交互稳定
+      // zoom based oncanvasscale ，used forkeepcontrol
       zoom={zoom}
     />
   );

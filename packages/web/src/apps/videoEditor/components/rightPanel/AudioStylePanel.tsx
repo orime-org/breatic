@@ -21,12 +21,12 @@ const sliderBaseProps = {
   thumbColor: '#B3B3B3',
 } as const;
 
-const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
+const AudioStylePanel: React.FC<AudioStylePanelProps> = () => {
   const { t } = useTranslation();
-  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const initializedRef = useRef<Set<string>>(new Set());
 
-  // 获取所有选中的 clips（相同类型的）
+  // getallselected clips（same type ）
   const selectedClips = useMemo(() => {
     return selectedClipId.length > 0
       ? selectedClipId.map((id) => clips.find((c: { id: string }) => c.id === id)).filter(Boolean) as typeof clips
@@ -36,7 +36,7 @@ const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
   const selectedClip = selectedClips[0] || null;
 
   useEffect(() => {
-    // 初始化所有选中 clips 的 volume
+    // initializeallselected clips volume
     selectedClips.forEach((clip) => {
       if (clip.volume === undefined && !initializedRef.current.has(clip.id)) {
         initializedRef.current.add(clip.id);
@@ -50,7 +50,7 @@ const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
   }
 
   const handleVolumeChange = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, volume: value };
@@ -61,7 +61,7 @@ const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
   };
 
   const handleSpeedChange = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const trimStart = clip.trimStart || 0;
@@ -100,7 +100,7 @@ const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
         </button>
       </div>
       <div className='space-y-3'>
-        {/* 音量控制 */}
+        {/* control */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('audioStyle.volume') || 'Volume'}
@@ -139,7 +139,7 @@ const AudioStylePanel: React.FC<AudioStylePanelProps> = ({ nodeId }) => {
           </div>
         </div>
 
-        {/* 速度控制 */}
+        {/* control */}
         <div className='flex items-center justify-between'>
           <div className='text-text-default-tertiary text-xs flex-1'>
             {t('audioStyle.speed') || 'Speed'}

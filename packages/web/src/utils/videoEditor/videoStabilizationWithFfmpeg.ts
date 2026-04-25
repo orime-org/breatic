@@ -4,7 +4,7 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 const ffmpegCoreBaseUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
 const ffmpegLoadTimeoutMs = 30000;
 const ffmpegFetchTimeoutMs = 30000;
-const ffmpegExecTimeoutMs = 120000;
+const ffmpegExecTimeoutMs = 600000;
 
 let ffmpegInstance: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
@@ -57,81 +57,61 @@ const ensureFfmpegLoaded = async (): Promise<FFmpeg> => {
   }
 };
 
-const toAtempoFilter = (speed: number): string => {
-  if (speed <= 0) return 'atempo=1.0';
-  const factors: number[] = [];
-  let remaining = speed;
-  while (remaining > 2.0) {
-    factors.push(2.0);
-    remaining /= 2.0;
-  }
-  while (remaining < 0.5) {
-    factors.push(0.5);
-    remaining /= 0.5;
-  }
-  factors.push(remaining);
-  return factors.map((factor) => `atempo=${factor.toFixed(5)}`).join(',');
+const clampCropPct = (cropPct: number) => Math.max(0, Math.min(14, cropPct));
+
+const buildCropFilter = (cropPct: number): string => {
+  const p = clampCropPct(cropPct) / 100;
+  // Keep equal-ratio crop with symmetric margins and even dimensions for x264.
+  return `crop=trunc(iw*(1-2*${p})/2)*2:trunc(ih*(1-2*${p})/2)*2:trunc(iw*${p}/2)*2:trunc(ih*${p}/2)*2,setsar=1`;
 };
 
-/**
- * Changes a video playback speed and returns a playable object URL.
- */
-export const speedVideoWithFfmpeg = async (videoSrc: string, speed: number): Promise<string> => {
-  const normalizedSpeed = Math.min(2, Math.max(0.5, speed));
+export const videoStabilizationWithFfmpeg = async (videoSrc: string, cropPct: number): Promise<string> => {
+  const normalizedCrop = clampCropPct(cropPct);
   if (!videoSrc) return '';
-  if (Math.abs(normalizedSpeed - 1) <= 1e-6) return videoSrc;
+  if (normalizedCrop <= 0) return videoSrc;
 
   const ffmpeg = await ensureFfmpegLoaded();
   const response = await withTimeout(fetch(videoSrc), ffmpegFetchTimeoutMs, 'Fetching source video');
   if (!response.ok) throw new Error(`Failed to fetch source video: ${response.status}`);
   const inputBlob = await response.blob();
-  const inputName = `speed-input-${Date.now()}.mp4`;
-  const outputName = `speed-output-${Date.now()}.mp4`;
+  const inputName = `stabilization-input-${Date.now()}.mp4`;
+  const outputName = `stabilization-output-${Date.now()}.mp4`;
+  const vf = buildCropFilter(normalizedCrop);
 
   await ffmpeg.writeFile(inputName, await fetchFile(inputBlob));
   try {
-    const videoPtsFactor = (1 / normalizedSpeed).toFixed(6);
-    const atempo = toAtempoFilter(normalizedSpeed);
+    const run = async (audioArgs: string[]) => {
+      await withTimeout(
+        ffmpeg.exec([
+          '-i',
+          inputName,
+          '-vf',
+          vf,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '23',
+          ...audioArgs,
+          '-movflags',
+          '+faststart',
+          outputName,
+        ]),
+        ffmpegExecTimeoutMs,
+        'Applying stabilization crop',
+      );
+    };
+
     try {
-      await withTimeout(
-        ffmpeg.exec([
-          '-i',
-          inputName,
-          '-filter:v',
-          `setpts=${videoPtsFactor}*PTS`,
-          '-filter:a',
-          atempo,
-          '-map',
-          '0:v:0',
-          '-map',
-          '0:a:0?',
-          '-movflags',
-          '+faststart',
-          outputName,
-        ]),
-        ffmpegExecTimeoutMs,
-        'Changing video speed',
-      );
+      await run(['-c:a', 'copy']);
     } catch {
-      await withTimeout(
-        ffmpeg.exec([
-          '-i',
-          inputName,
-          '-filter:v',
-          `setpts=${videoPtsFactor}*PTS`,
-          '-an',
-          '-movflags',
-          '+faststart',
-          outputName,
-        ]),
-        ffmpegExecTimeoutMs,
-        'Changing video speed without audio',
-      );
+      await run(['-c:a', 'aac', '-b:a', '128k']);
     }
 
     const outputData = await ffmpeg.readFile(outputName);
     if (!(outputData instanceof Uint8Array)) {
-      throw new Error('ffmpeg returned invalid speed output data');
+      throw new Error('ffmpeg returned invalid stabilization output data');
     }
     const safeBuffer = new ArrayBuffer(outputData.byteLength);
     new Uint8Array(safeBuffer).set(outputData);
@@ -142,4 +122,3 @@ export const speedVideoWithFfmpeg = async (videoSrc: string, speed: number): Pro
     await ffmpeg.deleteFile(outputName).catch(() => undefined);
   }
 };
-

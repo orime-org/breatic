@@ -53,6 +53,7 @@ import type { RootState } from '@/store';
 import { useMixedEditorDataInternal } from '@/contexts/MixedEditorDataContext';
 import { message } from '@/components/base/message';
 import { getImageMeta, getVideoMeta } from '@/utils/mediaUtils';
+import * as miniToolsApi from '@/apis/miniTools';
 import {
   clearMixedEditorExpandLock,
   pruneMixedEditorExpandLocks,
@@ -222,6 +223,33 @@ export interface UseMixedEditorActionsResult {
   /** Remove a handling node whose heartbeat is stuck (called by the cleanup UI). */
   forceRemoveStaleLocalPendingNode: (nodeId: string) => void;
 
+  /**
+   * Trigger a backend-executed mini-tool and show a result placeholder
+   * immediately. Writes a `state:'handling'` node to Yjs (collaborators
+   * see it instantly), fires the POST, and on POST failure flips the
+   * node to `state:'idle'` with `errorInfo`, `content:''`, `coverUrl:''`
+   * so the user can manually delete it (no retry UX on mixed editor).
+   * Worker completion flows back through the `task-events` stream +
+   * Collab — no `await` on the result URL here.
+   *
+   * @returns Created placeholder node id, or null if the source is gone.
+   */
+  triggerBackendMiniTool: (opts: {
+    sourceNodeId: string;
+    category: 'image' | 'video' | 'audio';
+    toolName: string;
+    nameSuffix: string;
+    /** Explicit placeholder size; defaults to source node's size. */
+    expectedSize?: { width: number; height: number };
+    /**
+     * Tool-specific params forwarded to the Worker. Must include the
+     * source URL field matching that modality's schema convention
+     * (image family: `image`; video family: `video`; audio family:
+     * `audio`), plus any operation-specific fields.
+     */
+    params: Record<string, unknown>;
+  }) => Promise<string | null>;
+
   // ── High-level convenience ──
   onCropNode: (nodeId: string) => void;
   replaceNodeWithFile: (nodeId: string, file: File) => Promise<void>;
@@ -286,9 +314,15 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     addPendingTask,
     removePendingTask,
     getPendingTask,
+    hostNodeId,
   } = useMixedEditorDataInternal();
   const userInfo = useSelector((s: RootState) => s.userCenter.userInfo);
   const userId = (userInfo as { id?: string } | undefined)?.id ?? '';
+  const username =
+    (userInfo as { username?: string; name?: string } | undefined)?.username ??
+    (userInfo as { name?: string } | undefined)?.name ??
+    '';
+  const projectId = useSelector((s: RootState) => s.canvas.workflowId);
 
   const userOrigin = userOriginFor(userId);
 
@@ -1078,6 +1112,121 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     [createVideoPlaceholderNodeRight, resolveVideoResultNode],
   );
 
+  /**
+   * Trigger a backend-executed mini-tool (T3 phase 2+).
+   *
+   * Unlike `createVideoPlaceholderNodeRight` which writes to the local
+   * pendingTasks map (X pattern for browser-local ffmpeg.wasm tasks),
+   * this path:
+   *   1. `addNode(state:'handling')` writes the placeholder to Yjs
+   *      directly — collaborators see it instantly.
+   *   2. POSTs to `/api/v1/mini-tools/:category` with `host_node_id`
+   *      so the Worker routes its completion event to the mixed-editor
+   *      doc (not the main canvas).
+   *   3. On POST failure, flips the node to `state:'idle'` with
+   *      `errorInfo`, clears `content` / `coverUrl` (mixed-editor
+   *      failure contract — no retry, user deletes manually).
+   *
+   * Successful task completion flows back through the task-events
+   * Redis stream → Collab task-listener → Yjs observer in every
+   * connected client. No awaited HTTP result here.
+   */
+  const triggerBackendMiniTool = useCallback(
+    async (opts: {
+      sourceNodeId: string;
+      category: 'image' | 'video' | 'audio';
+      toolName: string;
+      nameSuffix: string;
+      expectedSize?: { width: number; height: number };
+      params: Record<string, unknown>;
+    }): Promise<string | null> => {
+      const { sourceNodeId, category, toolName, nameSuffix, expectedSize, params: toolParams } = opts;
+
+      const allNodes = readAllNodesSnapshot();
+      const source = allNodes.find((n) => n.id === sourceNodeId);
+      if (!source) return null;
+
+      const sourceData = (source.data ?? {}) as ImageFlowNodeData;
+      const sourceName = typeof sourceData.name === 'string' && sourceData.name.trim()
+        ? sourceData.name.trim()
+        : category;
+      const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
+      const sizeW = expectedSize?.width ?? sourceStyle.width ?? imageFlowDefaultWidth;
+      const sizeH = expectedSize?.height ?? sourceStyle.height ?? imageFlowDefaultHeight;
+
+      const idPrefix = category === 'video' ? 'video-flow' : category === 'audio' ? 'audio-flow' : 'image-flow';
+      const nodeType = category === 'video' ? imageEditorVideoNodeType
+        : category === 'audio' ? imageEditorAudioNodeType
+        : imageEditorImageNodeType;
+      const newNodeId = `${idPrefix}-${nanoid(12)}`;
+      const newX = source.position.x + sizeW + uploadGap;
+      const newY = source.position.y;
+
+      const seedData = category === 'video'
+        ? createEditorVideoNodeData(`${sourceName} (${nameSuffix})`, '')
+        : category === 'audio'
+          ? createEditorAudioNodeData(`${sourceName} (${nameSuffix})`, '')
+          : createEditorImageNodeData(`${sourceName} (${nameSuffix})`, '');
+
+      const placeholder: Node<ImageFlowNodeData> = {
+        id: newNodeId,
+        type: nodeType,
+        position: { x: newX, y: newY },
+        style: { width: sizeW, height: sizeH },
+        data: {
+          ...seedData,
+          state: 'handling',
+        },
+        ...inheritParentFieldsFromNode(source),
+      };
+
+      // Write to Yjs — collaborators see the handling tile appear
+      // immediately. Uses userOrigin so the creation is undoable by the
+      // triggerer; conflict with a concurrent Ctrl+Z is resolved by the
+      // existing handling-guard (see PR #156).
+      addNode(placeholder);
+
+      const body = {
+        tool: toolName,
+        project_id: projectId ?? undefined,
+        node_id: newNodeId,
+        host_node_id: hostNodeId ?? undefined,
+        ...toolParams,
+      };
+
+      try {
+        if (category === 'video') {
+          await miniToolsApi.executeVideo(body);
+        } else if (category === 'audio') {
+          await miniToolsApi.executeAudio(body);
+        } else {
+          await miniToolsApi.executeImage(body);
+        }
+        return newNodeId;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : typeof err === 'string' ? err : 'Mini-tool request failed';
+        // Mixed-editor failure contract: clear content/coverUrl,
+        // surface errorInfo. `history: 'skip'` keeps the undo stack
+        // clean so the user's next Ctrl+Z does not revive the handling
+        // placeholder (which would be confusing).
+        updateNodeData(
+          newNodeId,
+          {
+            state: 'idle',
+            content: '',
+            coverUrl: '',
+            errorInfo: errorMessage,
+          },
+          { history: 'skip' },
+        );
+        message.error(errorMessage);
+        return newNodeId;
+      }
+    },
+    [readAllNodesSnapshot, addNode, updateNodeData, projectId, hostNodeId],
+  );
+
   const createCutVideoResultNodesRight = useCallback(
     (
       sourceNodeId: string,
@@ -1416,6 +1565,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
     createVideoPlaceholderNodeRight,
     resolveVideoResultNode,
     createVideoResultNodeRight,
+    triggerBackendMiniTool,
     createCutVideoResultNodesRight,
     importImagesFromFiles,
     importVideosFromFiles,

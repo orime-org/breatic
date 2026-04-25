@@ -22,9 +22,10 @@ import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import { getRedis, getStreamRedis } from "@breatic/core";
-import { acquireNodeLock } from "@breatic/core";
+import { acquireNodeLock, releaseNodeLock } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
 import { ConflictError, ValidationError } from "@breatic/core";
+import { canvasDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -44,13 +45,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Node lock + state broadcast require a projectId + nodeId. Agent
-  // chat / standalone tasks without a node just skip the lock step.
-  const nodeId = body.params.node_id as string | undefined;
+  // Node lock + state broadcast require a projectId + nodeIds. Agent
+  // chat / standalone tasks without nodes just skip the lock step.
+  const rawNodeIds = body.params.node_ids;
+  const nodeIds = Array.isArray(rawNodeIds)
+    ? rawNodeIds.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
   const projectId = body.project_id;
 
-  if (nodeId && !projectId) {
-    throw new ValidationError("node_id requires project_id");
+  if (nodeIds.length > 0 && !projectId) {
+    throw new ValidationError("node_ids requires project_id");
   }
 
   // Cross-tenant guard: never trust body.project_id. Without this,
@@ -78,21 +82,29 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Acquire the node lock with taskId so only this task can release it.
-  // If the lock is already held, the task we just created becomes an orphan
-  // (never enqueued, never completed, forever pending in DB). Soft-delete
-  // it before throwing so listings don't show stuck "pending" tasks.
+  // Acquire a node lock per target nodeId with taskId so only this
+  // task can release it. All-or-nothing: if any lock fails, release
+  // the ones we already acquired and roll back the task.
   //
   // A cleaner long-term design is "lock first, then create task", but that
   // requires passing a client-generated taskId through taskService.create —
   // a bigger refactor left for a follow-up. Rollback here is the minimal
   // fix that closes the correctness gap.
-  if (nodeId && projectId) {
-    const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
-    if (!acquired) {
+  if (nodeIds.length > 0 && projectId) {
+    const acquiredLocks: string[] = [];
+    for (const nodeId of nodeIds) {
+      const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
+      if (acquired) {
+        acquiredLocks.push(nodeId);
+        continue;
+      }
+      // Release any locks we already got, then soft-delete + throw.
+      for (const already of acquiredLocks) {
+        await releaseNodeLock(redis, projectId, already, task.id);
+      }
       await taskService.softDelete(task.id);
       throw new ConflictError(
-        "Another user is currently handling this node. Try again after they finish.",
+        "Another user is currently handling one of the target nodes. Try again after they finish.",
       );
     }
   }
@@ -114,15 +126,15 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
 
   await taskService.setJobId(task.id, job.id ?? "");
 
-  // Broadcast `handling` so every collaborator sees the node enter
-  // its busy state immediately — before the Worker picks up the job.
-  if (nodeId && projectId) {
+  // Broadcast `handling` so every collaborator sees the nodes enter
+  // their busy state immediately — before the Worker picks up the job.
+  if (nodeIds.length > 0 && projectId) {
     await publishNodeEvent(streamRedis, {
       type: "handling",
-      projectId,
-      nodeId,
+      docName: canvasDocName(projectId),
       taskId: task.id,
       actor,
+      nodeIds,
     });
   }
 

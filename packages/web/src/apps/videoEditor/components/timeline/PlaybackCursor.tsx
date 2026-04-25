@@ -10,7 +10,6 @@ interface PlaybackCursorProps {
   scrollLeft: number;
   getScrollLeft: () => number;
   reactflowScale?: number;
-  nodeId?: string;
 }
 
 const PlaybackCursor: React.FC<PlaybackCursorProps> = ({
@@ -22,10 +21,9 @@ const PlaybackCursor: React.FC<PlaybackCursorProps> = ({
   scrollLeft,
   getScrollLeft,
   reactflowScale = 1.0,
-  nodeId,
 }) => {
-  // 从 store 获取 clips
-  const { clips } = useVideoEditorStore(nodeId);
+  // store get clips
+  const { clips } = useVideoEditorStore();
   const [isDragging, setIsDragging] = useState(false);
   const dragStateRef = useRef<{
     startX: number;
@@ -35,7 +33,7 @@ const PlaybackCursor: React.FC<PlaybackCursorProps> = ({
 
   const playheadLeft = currentTime * pixelsPerSecond + 20 - scrollLeft;
 
-  // 使用 useEffect 管理拖拽事件监听器
+  // use useEffect drag listen
   useEffect(() => {
     if (!isDragging || !dragStateRef.current) return;
 

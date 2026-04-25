@@ -10,11 +10,11 @@ interface AudioPanelProps {
 }
 
 /**
- * AudioPanel 组件 - 音频面板
+ * AudioPanel component - audiopanel
  */
-const AudioPanel: React.FC<AudioPanelProps> = ({ nodeId, currentTime = 0 }) => {
+const AudioPanel: React.FC<AudioPanelProps> = ({ currentTime = 0 }) => {
   const { t } = useTranslation();
-  const { mediaItems, addClip } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip } = useVideoEditorStore();
 
   const audioItems = mediaItems.filter((item: MediaItem) => item.type === 'audio');
 
@@ -31,7 +31,7 @@ const AudioPanel: React.FC<AudioPanelProps> = ({ nodeId, currentTime = 0 }) => {
       trimEnd: mediaDuration,
     };
 
-    // 使用 addClip，会自动选中新添加的素材
+    // use addClip， automaticallyselected asset
     addClip(clip);
   };
 

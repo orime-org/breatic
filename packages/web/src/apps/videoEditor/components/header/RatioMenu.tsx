@@ -8,9 +8,7 @@ interface RatioMenuProps {
   selectedRatio: string;
 }
 
-/**
- * RatioMenu 组件 - 画布比例菜单
- */
+/* * * RatioMenu component - canvasratio */
 const RatioMenu: React.FC<RatioMenuProps> = ({ onRatioChange, selectedRatio }) => {
   const { t } = useTranslation();
 
@@ -18,7 +16,7 @@ const RatioMenu: React.FC<RatioMenuProps> = ({ onRatioChange, selectedRatio }) =
     onRatioChange(ratio);
   };
 
-  // 画布比例菜单项
+  // canvasratio
   const menuItems = [
     {
       key: '16:9',

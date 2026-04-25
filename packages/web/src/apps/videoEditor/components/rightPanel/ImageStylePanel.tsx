@@ -22,12 +22,12 @@ const sliderBaseProps = {
   thumbColor: '#B3B3B3',
 } as const;
 
-const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
+const ImageStylePanel: React.FC<ImageStylePanelProps> = () => {
   const { t } = useTranslation();
-  const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
-  // 获取所有选中的 clips（相同类型的）
+  // getallselected clips（same type ）
   const selectedClips = selectedClipId.length > 0
     ? selectedClipId.map((id) => clips.find((c: TimelineClip) => c.id === id)).filter(Boolean) as TimelineClip[]
     : [];
@@ -45,9 +45,9 @@ const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
 
   const mediaStyle = selectedClip.mediaStyle || {};
 
-  // 批量更新所有选中的 clips 的媒体样式
+  // batchupdateallselected clips style
   const updateMediaStyle = (updates: Partial<typeof mediaStyle>) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         const currentMediaStyle = clip.mediaStyle || {};
@@ -59,9 +59,9 @@ const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
     batchUpdateClips(updatedClips);
   };
 
-  // 批量更新所有选中的 clips 的透明度
+  // batchupdateallselected clips
   const updateOpacity = (value: number) => {
-    // 使用批量更新，一次性更新所有选中的 clips
+    // usebatchupdate， updateallselected clips
     const updatedClips = clips.map((clip) => {
       if (selectedClipId.includes(clip.id)) {
         return { ...clip, opacity: value };
@@ -93,7 +93,7 @@ const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
       newHeight = Math.sqrt(currentArea / cropRatio);
       newWidth = newHeight * cropRatio;
     } else {
-      // 首次裁剪：模拟 MediaElement 的默认尺寸计算逻辑
+      // first timecrop： MediaElement default calculatelogic
       const canvasElement = document.getElementById('preview-canvas-bg');
       let canvasWidth = 1920;
       let canvasHeight = 1080;
@@ -136,7 +136,7 @@ const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
 
   return (
     <>
-      <div className='flex items-center justify-between mb-4'>
+      <div className='flex items-center justify-between'>
         <div className='font-semibold text-xs text-text-default-secondary'>
           {t('toolbar.image') || 'Image'}
         </div>
@@ -145,350 +145,7 @@ const ImageStylePanel: React.FC<ImageStylePanelProps> = ({ nodeId }) => {
         </button>
       </div>
       <div className='space-y-4'>
-        {/* 裁剪按钮 */}
-        <div className='flex items-center py-3 border-b border-border-default-base'>
-          <div
-            className='p-1.5 rounded outline outline-1 outline-offset-[-1px] outline-border-default-base inline-flex justify-start items-center gap-3 cursor-pointer'
-            onClick={() => setCropModalVisible(true)}
-          >
-            <Icon
-              name='videoEditor-crop-icon'
-              width={16}
-              height={16}
-              color='var(--color-icon-base)'
-            />
-          </div>
-        </div>
-
-        {/* Basic */}
-        <div>
-          <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
-            {t('imageStyle.title') || 'Basic'}
-          </h4>
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.borderRadius') || 'Border Radius'}
-              </div>
-              <div className='flex items-center gap-2 w-[130px]'>
-                <Input
-                  value={String(mediaStyle.borderRadius ?? 0)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ borderRadius: Math.max(0, Math.min(100, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
-                    updateMediaStyle({ borderRadius: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
-                />
-                <div className='flex-1 pr-2.5'>
-                  <Slider
-                    className={sliderClass}
-                    value={mediaStyle.borderRadius || 0}
-                    onChange={(value) => {
-                      updateMediaStyle({ borderRadius: value });
-                    }}
-                    min={0}
-                    max={100}
-                    {...sliderBaseProps}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.opacity') || 'Opacity'}
-              </div>
-              <div className='flex items-center gap-2 w-[130px]'>
-                <Input
-                  value={String(selectedClip.opacity ?? 100)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateOpacity(Math.max(0, Math.min(100, val)));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val));
-                    updateOpacity(finalValue);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
-                />
-                <div className='flex-1 pr-2.5'>
-                  <Slider
-                    className={sliderClass}
-                    value={selectedClip.opacity ?? 100}
-                    onChange={(value) => {
-                      updateOpacity(value);
-                    }}
-                    min={0}
-                    max={100}
-                    {...sliderBaseProps}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter */}
-        <div className='pt-3 mt-3 border-t border-border-default-base'>
-          <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
-            {t('imageStyle.filter') || 'Filter'}
-          </h4>
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.blur') || 'Blur'}
-              </div>
-              <div className='flex items-center gap-2 w-[130px]'>
-                <Input
-                  value={String(mediaStyle.blur ?? 0)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ blur: Math.max(0, Math.min(100, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
-                    updateMediaStyle({ blur: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
-                />
-                <div className='flex-1 pr-2.5'>
-                  <Slider
-                    className={sliderClass}
-                    value={mediaStyle.blur || 0}
-                    onChange={(value) => {
-                      updateMediaStyle({ blur: value });
-                    }}
-                    min={0}
-                    max={100}
-                    {...sliderBaseProps}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.brightness') || 'Brightness'}
-              </div>
-              <div className='flex items-center gap-2 w-[130px]'>
-                <Input
-                  value={String(mediaStyle.brightness ?? 100)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      updateMediaStyle({ brightness: Math.max(0, Math.min(200, val)) });
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(200, val));
-                    updateMediaStyle({ brightness: finalValue });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  className='text-center w-[35px] h-[26px] text-xs p-1 rounded'
-                />
-                <div className='flex-1 pr-2.5'>
-                  <Slider
-                    className={sliderClass}
-                    value={mediaStyle.brightness || 100}
-                    onChange={(value) => {
-                      updateMediaStyle({ brightness: value });
-                    }}
-                    min={0}
-                    max={200}
-                    {...sliderBaseProps}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Outline */}
-        <div className='pt-3 mt-3 border-t border-border-default-base'>
-          <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
-            {t('imageStyle.outline') || 'Outline'}
-          </h4>
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.outlineColor') || 'Outline Color'}
-              </div>
-              <div className='w-[130px]'>
-                <ColorPicker
-                  value={mediaStyle.outlineColor || '#000000'}
-                  onChange={(color) => updateMediaStyle({ outlineColor: color })}
-                  showText
-                  className='w-full justify-start px-[7px] h-[26px]'
-                />
-              </div>
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.outlineWidth') || 'Outline Width'}
-              </div>
-              <Input
-                inputType='number'
-                value={String(mediaStyle.outlineWidth ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ outlineWidth: Math.max(0, val) });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : Math.max(0, val);
-                  updateMediaStyle({ outlineWidth: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className='w-[130px] h-[26px]'
-                size='small'
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Shadow */}
-        <div className='pt-3 mt-3 border-t border-border-default-base'>
-          <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'>
-            {t('imageStyle.shadow') || 'Shadow'}
-          </h4>
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.shadowColor') || 'Shadow Color'}
-              </div>
-              <div className='w-[130px]'>
-                <ColorPicker
-                  value={mediaStyle.shadowColor || '#000000'}
-                  onChange={(color) => updateMediaStyle({ shadowColor: color })}
-                  size='small'
-                  showText
-                  className='w-full justify-start px-[7px] h-[26px]'
-                />
-              </div>
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.shadowX') || 'Shadow X'}
-              </div>
-              <Input
-                inputType='number'
-                value={String(mediaStyle.shadowOffsetX ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowOffsetX: val });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : val;
-                  updateMediaStyle({ shadowOffsetX: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className='w-[130px] h-[26px]'
-                size='small'
-              />
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.shadowY') || 'Shadow Y'}
-              </div>
-              <Input
-                inputType='number'
-                value={String(mediaStyle.shadowOffsetY ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowOffsetY: val });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : val;
-                  updateMediaStyle({ shadowOffsetY: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className='w-[130px] h-[26px]'
-                size='small'
-              />
-            </div>
-            <div className='flex items-center justify-between'>
-              <div className='text-text-default-tertiary text-xs flex-1'>
-                {t('imageStyle.shadowBlur') || 'Shadow Blur'}
-              </div>
-              <Input
-                inputType='number'
-                value={String(mediaStyle.shadowBlur ?? 0)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    updateMediaStyle({ shadowBlur: Math.max(0, val) });
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const finalValue = isNaN(val) ? 0 : Math.max(0, val);
-                  updateMediaStyle({ shadowBlur: finalValue });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className='w-[130px] h-[26px]'
-                size='small'
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 裁剪模态框 */}
+        {/* cropbutton */} <div className='flex items-center py-3 border-b border-border-default-base'> <div className='p-1.5 rounded outline outline-1 outline-offset-[-1px] outline-border-default-base inline-flex justify-start items-center gap-3 cursor-pointer' onClick={() => setCropModalVisible(true)} > <Icon name='videoEditor-crop-icon' width={16} height={16} color='var(--color-icon-base)' /> </div> </div> {/* Basic */} <div> <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'> {t('imageStyle.title') || 'Basic'} </h4> <div className='space-y-3'> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.borderRadius') || 'Border Radius'} </div> <div className='flex items-center gap-2 w-[130px]'> <Input value={String(mediaStyle.borderRadius ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ borderRadius: Math.max(0, Math.min(100, val)) }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val)); updateMediaStyle({ borderRadius: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='text-center w-[35px] h-[26px] text-xs p-1 rounded' /> <div className='flex-1 pr-2.5'> <Slider className={sliderClass} value={mediaStyle.borderRadius || 0} onChange={(value) => { updateMediaStyle({ borderRadius: value }); }} min={0} max={100} {...sliderBaseProps} /> </div> </div> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.opacity') || 'Opacity'} </div> <div className='flex items-center gap-2 w-[130px]'> <Input value={String(selectedClip.opacity ?? 100)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateOpacity(Math.max(0, Math.min(100, val))); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(100, val)); updateOpacity(finalValue); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='text-center w-[35px] h-[26px] text-xs p-1 rounded' /> <div className='flex-1 pr-2.5'> <Slider className={sliderClass} value={selectedClip.opacity ?? 100} onChange={(value) => { updateOpacity(value); }} min={0} max={100} {...sliderBaseProps} /> </div> </div> </div> </div> </div> {/* Filter */} <div className='pt-3 mt-3 border-t border-border-default-base'> <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'> {t('imageStyle.filter') || 'Filter'} </h4> <div className='space-y-3'> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.blur') || 'Blur'} </div> <div className='flex items-center gap-2 w-[130px]'> <Input value={String(mediaStyle.blur ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ blur: Math.max(0, Math.min(100, val)) }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : Math.max(0, Math.min(100, val)); updateMediaStyle({ blur: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='text-center w-[35px] h-[26px] text-xs p-1 rounded' /> <div className='flex-1 pr-2.5'> <Slider className={sliderClass} value={mediaStyle.blur || 0} onChange={(value) => { updateMediaStyle({ blur: value }); }} min={0} max={100} {...sliderBaseProps} /> </div> </div> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.brightness') || 'Brightness'} </div> <div className='flex items-center gap-2 w-[130px]'> <Input value={String(mediaStyle.brightness ?? 100)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ brightness: Math.max(0, Math.min(200, val)) }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 100 : Math.max(0, Math.min(200, val)); updateMediaStyle({ brightness: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='text-center w-[35px] h-[26px] text-xs p-1 rounded' /> <div className='flex-1 pr-2.5'> <Slider className={sliderClass} value={mediaStyle.brightness || 100} onChange={(value) => { updateMediaStyle({ brightness: value }); }} min={0} max={200} {...sliderBaseProps} /> </div> </div> </div> </div> </div> {/* Outline */} <div className='pt-3 mt-3 border-t border-border-default-base'> <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'> {t('imageStyle.outline') || 'Outline'} </h4> <div className='space-y-3'> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.outlineColor') || 'Outline Color'} </div> <div className='w-[130px]'> <ColorPicker value={mediaStyle.outlineColor || '#000000'} onChange={(color) => updateMediaStyle({ outlineColor: color })} showText className='w-full justify-start px-[7px] h-[26px]' /> </div> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.outlineWidth') || 'Outline Width'} </div> <Input inputType='number' value={String(mediaStyle.outlineWidth ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ outlineWidth: Math.max(0, val) }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : Math.max(0, val); updateMediaStyle({ outlineWidth: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='w-[130px] h-[26px]' size='small' /> </div> </div> </div> {/* Shadow */} <div className='pt-3 mt-3 border-t border-border-default-base'> <h4 className='mb-3 font-semibold text-text-default-secondary text-xs'> {t('imageStyle.shadow') || 'Shadow'} </h4> <div className='space-y-3'> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.shadowColor') || 'Shadow Color'} </div> <div className='w-[130px]'> <ColorPicker value={mediaStyle.shadowColor || '#000000'} onChange={(color) => updateMediaStyle({ shadowColor: color })} size='small' showText className='w-full justify-start px-[7px] h-[26px]' /> </div> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.shadowX') || 'Shadow X'} </div> <Input inputType='number' value={String(mediaStyle.shadowOffsetX ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ shadowOffsetX: val }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : val; updateMediaStyle({ shadowOffsetX: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='w-[130px] h-[26px]' size='small' /> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.shadowY') || 'Shadow Y'} </div> <Input inputType='number' value={String(mediaStyle.shadowOffsetY ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ shadowOffsetY: val }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : val; updateMediaStyle({ shadowOffsetY: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='w-[130px] h-[26px]' size='small' /> </div> <div className='flex items-center justify-between'> <div className='text-text-default-tertiary text-xs flex-1'> {t('imageStyle.shadowBlur') || 'Shadow Blur'} </div> <Input inputType='number' value={String(mediaStyle.shadowBlur ?? 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val)) { updateMediaStyle({ shadowBlur: Math.max(0, val) }); } }} onBlur={(e) => { const val = parseFloat(e.target.value); const finalValue = isNaN(val) ? 0 : Math.max(0, val); updateMediaStyle({ shadowBlur: finalValue }); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }} className='w-[130px] h-[26px]' size='small' /> </div> </div> </div> </div> {/* crop */}
       <CropModal
         visible={cropModalVisible}
         mediaUrl={mediaItem.url || ''}

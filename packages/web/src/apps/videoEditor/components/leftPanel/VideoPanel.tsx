@@ -13,12 +13,12 @@ interface VideoPanelProps {
 }
 
 /**
- * VideoPanel 组件 - 视频面板
+ * VideoPanel component - videopanel
  */
-const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
+const VideoPanel: React.FC<VideoPanelProps> = ({ currentTime = 0, canvasRatio = '16:9', getBaseCanvasSize }) => {
   const { t } = useTranslation();
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
-  const { mediaItems, addClip } = useVideoEditorStore(nodeId);
+  const { mediaItems, addClip } = useVideoEditorStore();
 
   const videoItems = mediaItems.filter((item: MediaItem) => item.type === 'video');
 
@@ -41,15 +41,15 @@ const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvas
       const mediaRatio = item.width / item.height;
       const canvasRatioValue = CANVAS_WIDTH / CANVAS_HEIGHT;
 
-      // 填充满画布，保持宽高比不变形
-      // 如果媒体更宽（宽高比更大），则宽度填充满画布，高度按比例缩放
-      // 如果媒体更高（宽高比更小），则高度填充满画布，宽度按比例缩放
+      // canvas，keep
+      // if （ ）， width canvas，height ratioscale
+      // if （ ）， height canvas，width ratioscale
       if (mediaRatio > canvasRatioValue) {
-        // 媒体更宽，宽度填充满画布
+        // ，width canvas
         clip.width = CANVAS_WIDTH;
         clip.height = CANVAS_WIDTH / mediaRatio;
       } else {
-        // 媒体更高，高度填充满画布
+        // ，height canvas
         clip.height = CANVAS_HEIGHT;
         clip.width = CANVAS_HEIGHT * mediaRatio;
       }
@@ -57,7 +57,7 @@ const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvas
       clip.y = (CANVAS_HEIGHT - clip.height) / 2;
     }
 
-    // 使用 addClip，会自动选中新添加的素材
+    // use addClip， automaticallyselected asset
     addClip(clip);
   };
 
@@ -106,9 +106,11 @@ const VideoPanel: React.FC<VideoPanelProps> = ({ nodeId, currentTime = 0, canvas
                     </div>
                   )}
                 </div>
-                <div className='px-2.5 py-1.5'>
-                  <Tooltip title={item.name || ''}>
-                    <p className='text-xs text-text-default-tertiary truncate'>{item.name || ''}</p>
+                <div className='px-2.5 py-1.5 min-w-0'>
+                  <Tooltip title={item.name || ''} asChild={false} triggerClassName='block w-full min-w-0'>
+                    <div className='w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-text-default-tertiary'>
+                      {item.name || ''}
+                    </div>
                   </Tooltip>
                 </div>
               </div>

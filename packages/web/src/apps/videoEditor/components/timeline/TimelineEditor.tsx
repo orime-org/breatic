@@ -16,7 +16,7 @@ interface TimelineEditorProps {
   nodeId?: string;
 }
 
-// 检查片段碰撞
+// checkclip
 const checkCollision = (
   clips: TimelineClip[],
   clipId: string,
@@ -33,7 +33,7 @@ const checkCollision = (
   return false;
 };
 
-// 智能吸附位置计算
+// calculate
 const snapToPosition = (
   time: number,
   currentTime: number,
@@ -68,7 +68,7 @@ const snapToPosition = (
   return { time: snappedTime, snapLines: detectedSnapLines };
 };
 
-// 顶部空白区域组件（用于拖拽到顶部）
+// top regioncomponent（used fordrag top）
 interface TopDropZoneProps {
   onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
@@ -96,7 +96,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // 使用 useVideoEditorStore hook
+  // use useVideoEditorStore hook
   const {
     clips,
     mediaItems,
@@ -104,11 +104,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     setClips,
     setSelectedClipId,
     selectedClipId,
-  } = useVideoEditorStore(nodeId);
+  } = useVideoEditorStore();
 
   const selectoRef = useRef<Selecto>(null);
 
-  // 组件内部的处理函数
+  // componentinside handle
   const handleTimeChange = useCallback((time: number) => {
     onTimeChange(time);
   }, [onTimeChange]);
@@ -129,7 +129,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     isSnapped: false,
   });
 
-  // 计算时间轴缩放参数
+  // calculatetimelinescale
   const scaleParams = useMemo(() => {
     let timeScaleValue: number;
     let fixedScaleWidth: number;
@@ -186,7 +186,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
   const { pixelsPerSecond, timeScaleValue, fixedScaleWidth } = scaleParams;
 
-  // 轨道数据处理
+  // track handle
   const trackData = useMemo(() => {
     const tracks: { [key: number]: TimelineClip[] } = {};
     clips.forEach((clip: TimelineClip) => {
@@ -232,7 +232,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     };
   }, [clips, preserveEmptyTracks]);
 
-  // 监听轨道映射变化
+  // listentrack
   useEffect(() => {
     if (preserveEmptyTracks) return;
     if (trackData.trackIndexMap) {
@@ -249,7 +249,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   }, [trackData.trackIndexMap, preserveEmptyTracks, clips, setClips]);
 
-  // 吸附修饰器
+  // comment
   const snapModifier: Modifier = ({ transform, active }) => {
     if (!isDragging || !active) return transform;
 
@@ -293,7 +293,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     lastSnapRef.current = { time: 0, isSnapped: false };
   };
 
-  // 处理滚动事件
+  // handle
   const handleScroll = () => {
     if (scrollbarRef.current) {
       const scrollLeft = scrollbarRef.current.scrollLeft;
@@ -303,7 +303,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
   const getScrollLeft = () => scrollbarRef.current?.scrollLeft || 0;
 
-  // 处理片段调整大小
+  // handleclip
   const handleClipResize = (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => {
     const clip = clips.find((c: TimelineClip) => c.id === clipId);
     if (!clip) return;
@@ -321,7 +321,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       const oldTrimStart = clip.trimStart || 0;
       const currentClipDuration = clip.end - clip.start;
       const clipSpeed = clip.speed || 1;
-      // 计算实际的素材时长（考虑倍速）
+      // calculateactual asset （ ）
       const actualMediaDuration = currentClipDuration * clipSpeed;
       const oldTrimEnd = clip.trimEnd ?? (media.duration ? media.duration : oldTrimStart + actualMediaDuration);
       const originalDuration = media.duration || Math.max(oldTrimEnd, oldTrimStart + actualMediaDuration);
@@ -329,13 +329,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       if (media.type === 'video' || media.type === 'audio') {
         if (edge === 'left') {
           const startDelta = snappedStart - clip.start;
-          // 考虑倍速：时间轴上的变化需要乘以 speed 才是素材时长的变化
+          // ：timelineup need to speed asset
           const trimStartDelta = startDelta * clipSpeed;
           const calculatedTrimStart = oldTrimStart + trimStartDelta;
           const safeOldTrimEnd = oldTrimEnd ?? 0;
-          // 限制 trimStart 不能小于 0，且不能超过 trimEnd
+          // trimStart 0， trimEnd
           newTrimStart = Math.max(0, Math.min(calculatedTrimStart, safeOldTrimEnd - 0.1));
-          // 根据新的 trimStart 和 trimEnd 计算时间轴上的时长（需要考虑倍速）
+          // based on trimStart trimEnd calculatetimelineup （need to ）
           const trimmedDuration = (safeOldTrimEnd - newTrimStart) / clipSpeed;
           finalStart = snappedStart;
           finalEnd = snappedStart + trimmedDuration;
@@ -343,7 +343,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         } else {
           const endDelta = snappedEnd - clip.end;
           const safeOldTrimEnd = oldTrimEnd ?? 0;
-          // 考虑倍速：时间轴上的变化需要乘以 speed 才是素材时长的变化
+          // ：timelineup need to speed asset
           const trimEndDelta = endDelta * clipSpeed;
           let calculatedTrimEnd = safeOldTrimEnd + trimEndDelta;
           calculatedTrimEnd = Math.max(oldTrimStart + 0.1, Math.min(calculatedTrimEnd, originalDuration));
@@ -375,7 +375,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     setSnapLines([]);
   };
 
-  // 处理拖动开始
+  // handle start
   const handleDragStart = (event: DragStartEvent) => {
     setIsDragging(true);
     setDraggingMaxEnd(0);
@@ -393,7 +393,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     resetSnap();
   };
 
-  // 处理拖动过程
+  // handle
   const handleDragMove = (event: DragMoveEvent) => {
     const { active, delta, over } = event;
     if (!active) return;
@@ -416,7 +416,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     if (over && over.id) {
       const overTrackId = String(over.id);
 
-      // 处理拖动到顶部空白区域
+      // handle top region
       if (overTrackId === 'track-top') {
         setIsHoverAboveFirstTrack(true);
         setHoverTrackIndex(null);
@@ -426,7 +426,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       if (overTrackId.startsWith('track-')) {
         const overTrackIndex = parseInt(overTrackId.replace('track-', ''));
 
-        // 检测同一轨道或不同轨道的重叠
+        // track track
         const targetTrackClips = clips.filter((c: TimelineClip) => c.trackIndex === overTrackIndex && c.id !== itemId);
 
         let hasOverlap = false;
@@ -438,9 +438,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         }
 
         if (hasOverlap) {
-          // 如果是同一轨道
+          // if track
           if (overTrackIndex === dragSourceTrackRef.current) {
-            // 同一轨道内的重叠：检查该轨道是否还有其他素材
+            // track ：check track otherasset
             const trackHasOthers = clips.some((c: TimelineClip) => c.id !== itemId && c.trackIndex === overTrackIndex);
 
             if (trackHasOthers) {
@@ -451,12 +451,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
               setIsHoverAboveFirstTrack(false);
             }
           } else {
-            // 不同轨道的重叠
+            // track
             setHoverTrackIndex(overTrackIndex);
             setIsHoverAboveFirstTrack(false);
           }
         } else {
-          // 没有重叠，检查是否是0号轨道且向上超出20px
+          // no ，check 0 track upexceed20px
           if (overTrackIndex === 0) {
             const trackHeight = 42;
             const sourceTrackIndex = dragSourceTrackRef.current || 0;
@@ -472,7 +472,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             }
             return;
           }
-          // 非0号轨道且无重叠，普通移动
+          // 0 track ，normal
           setHoverTrackIndex(null);
           setIsHoverAboveFirstTrack(false);
         }
@@ -483,7 +483,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
-  // 处理拖动结束
+  // handle end
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over, delta } = event;
 
@@ -532,13 +532,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       newTrackIndex = parseInt(newRowId.replace('track-', ''));
     }
 
-    // 如果是轨道插入模式
+    // if track
     if (shouldInsertTrack && insertAtTrackIndex !== null && sourceTrackIndex !== null) {
-      // 特殊处理：新增顶部轨道
+      // specialhandle：newly addedtoptrack
       if (shouldInsertAtTop) {
-        // 设置标志，保留空轨道
+        // set ，keep track
         setPreserveEmptyTracks(true);
-        // 将拖动素材移动到轨道0
+        // asset track0
         newTrackIndex = 0;
         const updatedClips = clips.map((c: TimelineClip) => {
           if (c.id === itemId) {
@@ -549,35 +549,35 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             }
             return updated;
           }
-          // 所有其他素材：下移一个轨道
+          // allotherasset：down track
           return { ...c, trackIndex: c.trackIndex + 1 };
         });
 
-        // 批量应用所有更新
+        // batch allupdate
         setClips(updatedClips);
 
-        // 立即恢复正常模式，空轨道将被自动清理
+        // restore ， track automatically
         setPreserveEmptyTracks(false);
 
         return;
       }
 
-      // 普通插入模式
-      // 设置标志，保留空轨道
+      // normal
+      // set ，keep track
       setPreserveEmptyTracks(true);
 
-      // 将拖动素材移动到目标轨道
+      // asset track
       newTrackIndex = insertAtTrackIndex;
 
-      // 【关键判断】检查源轨道是否还有其他素材
+      // 【key 】check track otherasset
       const sourceTrackHasOtherClips = clips.some((c: TimelineClip) => c.id !== itemId && c.trackIndex === sourceTrackIndex);
 
-      // 【关键修复】一次性创建包含所有更新的clips数组（包括拖动素材的轨道和时间）
+      // 【keyfix】 create allupdate clips （ asset track time）
       const updatedClips = clips.map((c: TimelineClip) => {
-        // 拖动素材：移到目标轨道 + 更新时间
+        // asset： track + updatetime
         if (c.id === itemId) {
           const updated: TimelineClip = { ...c, trackIndex: newTrackIndex };
-          // 如果有时间变化，也一起更新
+          // if time ， update
           if (Math.abs(deltaTime) > 0.01) {
             updated.start = finalStart;
             updated.end = finalEnd;
@@ -585,22 +585,22 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           return updated;
         }
 
-        // 如果源轨道还有其他素材：新增轨道模式
+        // if track otherasset：newly addedtrack
         if (sourceTrackHasOtherClips) {
-          // 所有从插入位置开始的素材都下移
+          // all start asset down
           if (c.trackIndex >= insertAtTrackIndex) {
             return { ...c, trackIndex: c.trackIndex + 1 };
           }
         } else {
-          // 源轨道没有其他素材：原有逻辑
-          // 往上拖动：中间素材下移
+          // tracknootherasset： logic
+          // up ：middleassetdown
           if (insertAtTrackIndex < sourceTrackIndex) {
             if (c.trackIndex >= insertAtTrackIndex && c.trackIndex < sourceTrackIndex) {
               return { ...c, trackIndex: c.trackIndex + 1 };
             }
             return c;
           }
-          // 往下拖动：中间素材上移
+          // down ：middleassetup
           if (insertAtTrackIndex > sourceTrackIndex) {
             if (c.trackIndex > sourceTrackIndex && c.trackIndex <= insertAtTrackIndex) {
               return { ...c, trackIndex: c.trackIndex - 1 };
@@ -611,16 +611,16 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         return c;
       });
 
-      // 批量应用所有更新
+      // batch allupdate
       setClips(updatedClips);
 
-      // 立即恢复正常模式，清理空轨道
+      // restore ， track
       setPreserveEmptyTracks(false);
 
-      // 调用拖拽结束回调
-      return; // 已经批量更新完成，直接返回
+      // dragend
+      return; // batchupdate ，
     }
-    // 普通拖拽模式：检查碰撞
+    // normaldrag ：check
     const willCollide = checkCollision(clips, itemId, newTrackIndex, finalStart, finalEnd);
 
     if (willCollide) {
@@ -628,7 +628,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       return;
     }
 
-    // 更新拖动素材的轨道和时间
+    // update asset track time
     const updates: Partial<TimelineClip> = {};
 
     if (clip.trackIndex !== newTrackIndex) {
@@ -645,24 +645,24 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
-  // 计算时间刻度宽度
+  // calculatetimetickwidth
   const { displayDuration, scaleContainerWidth } = useMemo(() => {
     const containerWidth = containerRef.current?.clientWidth || window.innerWidth - 270;
     const startLeftOffset = 20;
-    const endRightOffset = 20; // 右侧安全距离
+    const endRightOffset = 20; // right offset
     const availableWidth = containerWidth - startLeftOffset - endRightOffset;
 
-    // 计算素材的最远位置（考虑拖动中的位置）
+    // calculateasset （ ）
     const maxClipEnd = clips.length > 0 ? Math.max(...clips.map((c: TimelineClip) => c.end)) : 0;
     const actualMaxEnd = Math.max(maxClipEnd, draggingMaxEnd);
 
-    // 时间轴长度比最大素材长5秒
+    // timeline asset 5sec
     const minTimelineDuration = actualMaxEnd + 5;
 
-    // 容器宽度对应的时长
+    // containerwidthcorresponding
     const containerDisplayTime = availableWidth / pixelsPerSecond;
 
-    // 使用素材时长+5秒和容器时长的最大值（确保即使素材减少，宽度也不会小于容器宽度）
+    // useasset +5sec container （ensure asset ，width containerwidth）
     const displayDuration = Math.max(minTimelineDuration, containerDisplayTime);
 
     const requiredWidth = displayDuration * pixelsPerSecond + startLeftOffset + endRightOffset;
@@ -674,7 +674,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     };
   }, [clips, pixelsPerSecond, draggingMaxEnd]);
 
-  // 自动滚动：保持播放头在可见区域内
+  // automatically ：keepplayback region
   useEffect(() => {
     if (!scrollbarRef.current) return;
 
@@ -691,46 +691,46 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   }, [currentTime, pixelsPerSecond]);
 
-  // 处理框选开始
+  // handlebox selectstart
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectStart = useCallback((e: any) => {
-    // 如果正在拖拽 clip，不启动框选
+    // if drag clip， box select
     if (isDragging) {
       e.stop();
       return;
     }
-    // 如果点击的是 clip 元素本身，不启动框选（让拖拽优先）
+    // if clip ， box select（ drag ）
     const target = e.inputEvent?.target as HTMLElement;
     if (target && (target.id?.startsWith('timeline-clip-') || target.closest('[id^="timeline-clip-"]'))) {
-      // 检查是否点击在调整大小的手柄上
+      // check up
       const isResizeHandle = target.closest('.cursor-ew-resize');
       if (!isResizeHandle) {
-        // 不是调整大小手柄，可能是要拖拽 clip，停止框选
+        // ， drag clip， box select
         e.stop();
       }
     }
   }, [isDragging]);
 
-  // 处理框选移动 - 阻止其他事件
+  // handlebox select - preventother
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectMove = useCallback((e: any) => {
-    // 阻止事件传播
+    // prevent
     if (e.inputEvent) {
       e.inputEvent.stopPropagation();
     }
   }, []);
 
-  // 处理框选结束
+  // handlebox selectend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectEnd = useCallback((e: any) => {
     const { selected, inputEvent } = e;
 
-    // 如果正在拖拽 clip，不处理框选
+    // if drag clip， handlebox select
     if (isDragging) {
       return;
     }
 
-    // 将选中的 DOM 元素转换为 clip IDs
+    // selected DOM clip IDs
     const selectedIds: string[] = [];
     if (selected && Array.isArray(selected)) {
       selected.forEach((el: HTMLElement) => {
@@ -744,26 +744,26 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       });
     }
 
-    // 支持 Shift 键多选
+    // support Shift multi-select
     if (inputEvent?.shiftKey && selectedIds.length > 0) {
-      // 合并选中项
+      // selected
       const currentSelected = Array.isArray(selectedClipId) ? selectedClipId : Array.from(selectedClipId || []) as string[];
       const newSelected = Array.from(new Set([...currentSelected, ...selectedIds])) as string[];
       setSelectedClipId(newSelected);
     } else if (selectedIds.length > 0) {
-      // 有选中元素时更新选中状态
+      // selected updateselected
       setSelectedClipId(selectedIds);
     } else if (!inputEvent || (inputEvent.target as HTMLElement) === containerRef.current) {
-      // 点击空白区域时清除选中（但不在拖拽 clip 时）
+      // region clearselected（ drag clip ）
       if (!isDragging) {
         setSelectedClipId([]);
       }
     }
   }, [isDragging, selectedClipId, setSelectedClipId]);
 
-  // 处理点击空白处清除选中
+  // handle clearselected
   const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // 点击空白处（不是 clip）时清除选中
+    // （ clip） clearselected
     const target = e.target as HTMLElement;
     const isClip = target.id?.startsWith('timeline-clip-') || target.closest('[id^="timeline-clip-"]');
     const isResizeHandle = target.closest('.cursor-ew-resize');
@@ -772,14 +772,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   }, [setSelectedClipId]);
 
-  // 处理点击轨道容器空白处清除选中
+  // handle trackcontainer clearselected
   const handleTrackContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // 点击空白处（不是 clip）时清除选中
+    // （ clip） clearselected
     const target = e.target as HTMLElement;
     const isClip = target.id?.startsWith('timeline-clip-') || target.closest('[id^="timeline-clip-"]');
     const isResizeHandle = target.closest('.cursor-ew-resize');
     const isTrackRow = target.closest('[class*="track-"]') || target.closest('.bg-background-default-secondary');
-    // 如果点击的是容器本身或轨道行（但不是 clip），清除选中
+    // if container track （ clip），clearselected
     if (!isClip && !isResizeHandle && (target === e.currentTarget || isTrackRow)) {
       setSelectedClipId([]);
     }
@@ -797,10 +797,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         }
       }}
     >
-      {/* 顶部固定区域：播放头图标空间 */}
+      {/* top region：playback */}
       <div className='h-2.5 bg-background-default-base shrink-0 relative' />
 
-      {/* 时间刻度 - 固定在顶部 */}
+      {/* timetick - top */}
       <div
         ref={scaleRef}
         className='sticky top-0 w-full h-8 bg-background-default-base shrink-0 cursor-pointer overflow-hidden'
@@ -811,7 +811,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
           const relativeX = (e.clientX - scaleRect.left) / reactflowScale;
           const clickX = relativeX + scaleScrollLeft - 20;
-
           const maxClipEnd = clips.length > 0 ? Math.max(...clips.map((c: TimelineClip) => c.end)) : 0;
           const playheadWidthTime = 2 / pixelsPerSecond;
           const maxClickTime = maxClipEnd - playheadWidthTime;
@@ -827,15 +826,18 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             startLeft={20}
             width={scaleContainerWidth}
             height={32}
-            nodeId={nodeId}
             displayDuration={displayDuration}
           />
         </div>
       </div>
 
-      {/* 轨道滚动区域 */}
+      {/* track region */}
       <div className='bg-background-default-base flex-1 overflow-y-auto'>
-        <div ref={scrollbarRef} className='flex-1 h-full overflow-auto' onScroll={handleScroll}>
+        <div
+          ref={scrollbarRef}
+          className='flex-1 h-full overflow-auto'
+          onScroll={handleScroll}
+        >
           <div
             ref={containerRef}
             className='h-full'
@@ -853,15 +855,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 style={{ minWidth: `${scaleContainerWidth}px` }}
                 onClick={handleContainerClick}
               >
-                {/* 顶部空白区域（用于插入到顶部） */}
+                {/* top region（used for top） */}
                 {trackData.trackCount > 0 && (
                   <TopDropZone onClick={handleContainerClick} />
                 )}
 
-                {/* 轨道 - 只显示有素材的轨道 */}
+                {/* track - display asset track */}
                 {trackData.trackCount === 0 ? (
                   <div className='text-center p-10 text-gray-400 text-sm'>
-                    {t('timeline.addMediaPrompt') || '添加素材到时间轴'}
+                    {t('timeline.addMediaPrompt') || ' time '}
                   </div>
                 ) : (
                   <>
@@ -885,7 +887,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         </div>
       </div>
 
-      {/* 吸附辅助线（虚线） */}
+      {/* line（ line） */}
       {snapLines.map((snapTime) => (
         <div
           key={`snap-${snapTime}`}
@@ -894,7 +896,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         />
       ))}
 
-      {/* 播放头游标 - 固定不滚动，跟随横向滚动 */}
+      {/* playback - ， */}
       {trackData.trackCount > 0 && (
         <div className='absolute top-[18px] left-0 right-0 bottom-0 pointer-events-none z-20'>
           <PlaybackCursor
@@ -906,12 +908,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             scrollLeft={scaleScrollLeft}
             getScrollLeft={getScrollLeft}
             reactflowScale={reactflowScale}
-            nodeId={nodeId}
           />
         </div>
       )}
 
-      {/* Selecto 框选组件 */}
+      {/* Selecto box selectcomponent */}
       {containerRef.current && (
         <Selecto
           ref={selectoRef}
@@ -919,15 +920,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           dragContainer={containerRef.current}
           rootContainer={containerRef.current}
           selectableTargets={['[id^="timeline-clip-"]', '[data-selectable="true"]']}
-          hitRate={0} // 允许选中部分重叠的元素
-          selectByClick={false} // 禁用点击选中，只允许框选
-          selectFromInside={false} // 允许从外部框选
-          toggleContinueSelect={['shift']} // Shift 键继续选择
-          ratio={0} // 不限制选择框的宽高比
-          boundContainer={containerRef.current} // 限制选择区域在容器内
-          checkInput={false} // 不检查输入元素
-          preventClickEventOnDrag={true} // 拖动时阻止点击事件
-          preventDefault={false} // 不阻止默认事件，让框选正常工作
+          hitRate={0} // selected
+          selectByClick={false} // selected， box select
+          selectFromInside={false} // box select
+          toggleContinueSelect={['shift']} // Shift
+          ratio={0} // comment
+          boundContainer={containerRef.current} // region container
+          checkInput={false} // check
+          preventClickEventOnDrag={true} // prevent
+          preventDefault={false} // preventdefault ， box select
           onDragStart={handleSelectStart}
           onDrag={handleSelectMove}
           onSelectEnd={handleSelectEnd}

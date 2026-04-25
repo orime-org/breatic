@@ -17,7 +17,7 @@ interface TimelineTracksProps {
   parentScrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-// 每个轨道的高度：h-7 (28px) + mb-2.5 (10px) = 38px
+// track height：h-7 (28px) + mb-2.5 (10px) = 38px
 const TRACK_HEIGHT = 38;
 
 const TimelineTracks: React.FC<TimelineTracksProps> = ({
@@ -32,10 +32,10 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
   parentRef,
   parentScrollRef,
 }) => {
-  // 从 store 获取状态
-  const { clips } = useVideoEditorStore(nodeId);
+  // store get
+  const { clips } = useVideoEditorStore();
 
-  // 按轨道索引分组 clips 并获取所有有素材的轨道索引
+  // track clips getall asset track
   const usedTrackIndexes = useMemo(() => {
     const tracksMap: { [key: number]: TimelineClip[] } = {};
     clips.forEach((clip: TimelineClip) => {
@@ -45,19 +45,19 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
       tracksMap[clip.trackIndex].push(clip);
     });
 
-    // 获取所有有素材的轨道索引并排序
+    // getall asset track
     return Object.keys(tracksMap)
       .map(Number)
       .filter((index) => tracksMap[index].length > 0)
       .sort((a, b) => a - b);
   }, [clips]);
 
-  // 使用虚拟列表优化轨道渲染（纵向）
+  // use list track （ ）
   const virtualizer = useVirtualizer({
     count: usedTrackIndexes.length,
     getScrollElement: () => parentRef?.current || null,
     estimateSize: () => TRACK_HEIGHT,
-    overscan: 5, // 预渲染5个轨道
+    overscan: 5, // 5 track
   });
 
   return (

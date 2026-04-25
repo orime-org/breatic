@@ -32,7 +32,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
   isFullscreen = false,
 }, ref) => {
   // 从 store 获取数据
-  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore(nodeId);
+  const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const selectoRef = useRef<Selecto>(null);
@@ -356,6 +356,16 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
       }
     }
   }, []);
+
+  const handleInfiniteCanvasClick = useCallback(() => {
+    // 如果正在框选或刚刚完成框选，不清除选中
+    if (isSelectingRef.current) {
+      return;
+    }
+    if (!isFullscreen) {
+      setSelectedClipId([]);
+    }
+  }, [isFullscreen, setSelectedClipId]);
 
   const getActiveClips = () =>
     clips.filter((clip: TimelineClip) => currentTime >= clip.start && currentTime < clip.end);
@@ -689,15 +699,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
           canvasSize={canvasSize}
           baseCanvasSize={baseCanvasSize}
           onTransformChange={handleTransformChange}
-          onClick={() => {
-            // 如果正在框选或刚刚完成框选，不清除选中
-            if (isSelectingRef.current) {
-              return;
-            }
-            if (!isFullscreen) {
-              setSelectedClipId([]);
-            }
-          }}
+          onClick={handleInfiniteCanvasClick}
         >
           <div
             className='relative overflow-visible min-w-[100px] min-h-[100px]'
@@ -721,83 +723,91 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
               id='preview-canvas'
               className='relative bg-[#000]'
               style={{
-                width: `${baseCanvasSize.width}px`,
-                height: `${baseCanvasSize.height}px`,
-                transform: `scale(${canvasSize.width / baseCanvasSize.width})`,
-                transformOrigin: 'top left',
+                width: `${canvasSize.width}px`,
+                height: `${canvasSize.height}px`,
                 overflow: 'hidden',
                 visibility: isInitialCenterReady || isPlaying ? 'visible' : 'hidden',
               }}
             >
-              {audioClipsForRender.map(({ clip, media }: { clip: TimelineClip; media: MediaItem }) => (
-                <audio
-                  key={clip.id}
-                  ref={(el) => {
-                    if (el) {
-                      audioRefs.current[clip.id] = el;
-                      if (clip.volume !== undefined) {
-                        el.volume = Math.min(Math.max(clip.volume / 200, 0), 1);
-                      }
-                      if (clip.speed !== undefined) {
-                        el.playbackRate = clip.speed;
-                      }
-                    }
-                  }}
-                  src={media.url}
-                  className='hidden'
-                />
-              ))}
-
-              {visualClipsForRender.map(({
-                clip,
-                media,
-                layout,
-                outerStyle,
-              }: {
-                clip: TimelineClip;
-                media: MediaItem;
-                layout: ReturnType<typeof getElementLayout>;
-                outerStyle: React.CSSProperties;
-              }) => {
-                const elementId = `element-${clip.id}`;
-                return (
-                  <div
+              <div
+                className='relative bg-[#000]'
+                style={{
+                  width: `${baseCanvasSize.width}px`,
+                  height: `${baseCanvasSize.height}px`,
+                  transform: `scale(${canvasSize.width / baseCanvasSize.width})`,
+                  transformOrigin: 'top left',
+                }}
+              >
+                {audioClipsForRender.map(({ clip, media }: { clip: TimelineClip; media: MediaItem }) => (
+                  <audio
                     key={clip.id}
-                    id={elementId}
-                    data-selectable='true'
-                    className={`relative ${isFullscreen ? 'cursor-default' : 'cursor-move'}`}
-                    style={{
-                      position: 'absolute',
-                      inset: `${layout.y}px auto auto ${layout.x}px`,
-                      width: `${layout.width}px`,
-                      height: typeof layout.height === 'string' && layout.height === 'auto' ? 'auto' : `${layout.height}px`,
-                      transform: `rotate(${layout.rotation}deg) scale(${layout.scale})`,
-                      transformOrigin: 'center center',
-                      zIndex: 100 - clip.trackIndex,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      pointerEvents: 'auto',
-                      overflow: 'hidden',
-                      ...outerStyle,
+                    ref={(el) => {
+                      if (el) {
+                        audioRefs.current[clip.id] = el;
+                        if (clip.volume !== undefined) {
+                          el.volume = Math.min(Math.max(clip.volume / 200, 0), 1);
+                        }
+                        if (clip.speed !== undefined) {
+                          el.playbackRate = clip.speed;
+                        }
+                      }
                     }}
-                    onClick={(e) => {
-                      handleElementClick(e, clip.id);
-                    }}
-                  >
-                    {/* 内容容器 */}
+                    src={media.url}
+                    className='hidden'
+                  />
+                ))}
+
+                {visualClipsForRender.map(({
+                  clip,
+                  media,
+                  layout,
+                  outerStyle,
+                }: {
+                  clip: TimelineClip;
+                  media: MediaItem;
+                  layout: ReturnType<typeof getElementLayout>;
+                  outerStyle: React.CSSProperties;
+                }) => {
+                  const elementId = `element-${clip.id}`;
+                  return (
                     <div
+                      key={clip.id}
+                      id={elementId}
+                      data-selectable='true'
+                      className={`relative ${isFullscreen ? 'cursor-default' : 'cursor-move'}`}
                       style={{
                         position: 'absolute',
-                        width: '100%',
-                        height: '100%',
+                        inset: `${layout.y}px auto auto ${layout.x}px`,
+                        width: `${layout.width}px`,
+                        height: typeof layout.height === 'string' && layout.height === 'auto' ? 'auto' : `${layout.height}px`,
+                        transform: `rotate(${layout.rotation}deg) scale(${layout.scale})`,
+                        transformOrigin: 'center center',
+                        zIndex: 100 - clip.trackIndex,
+                        display: 'flex',
+                        flexDirection: 'column',
                         pointerEvents: 'auto',
+                        overflow: 'hidden',
+                        ...outerStyle,
+                      }}
+                      onClick={(e) => {
+                        handleElementClick(e, clip.id);
                       }}
                     >
-                      {renderElementContent(media, clip, layout)}
+                      {/* 内容容器 */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'auto',
+                        }}
+                      >
+                        {renderElementContent(media, clip, layout)}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </InfiniteCanvas>

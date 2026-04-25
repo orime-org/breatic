@@ -28,8 +28,9 @@ Breatic is an open-source project. Under current **US copyright law**
 (see the [U.S. Copyright Office report on AI, Part 2 (2025)](https://www.copyright.gov/ai/Copyright-and-Artificial-Intelligence-Part-2-Copyrightability-Report.pdf)),
 purely AI-generated content is not copyrightable. Listing an AI tool as
 the author or co-author of a commit creates **licensing ambiguity** —
-the project's MIT-style license depends on identifiable human authors
-being able to grant rights. An "AI contributor" cannot grant anything.
+the Breatic Open Source License (like any license) depends on
+identifiable human authors being able to grant rights. An "AI
+contributor" cannot grant anything.
 
 ### What is NOT allowed
 

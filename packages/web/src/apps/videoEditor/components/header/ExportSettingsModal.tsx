@@ -7,45 +7,25 @@ import { useTranslation } from 'react-i18next';
 import { LoadingDots } from './LoadingDots';
 
 interface ExportSettingsModalProps {
-  // 导出状态
+  // comment
   isExporting: boolean;
   exportProgress: number;
   exportComplete: boolean;
   exportedFormat: string;
-  isUploading?: boolean; // 上传状态
+  isUploading?: boolean; // up
 
-  // 状态设置函数
+  // set
   setIsExporting: (value: boolean) => void;
   setExportProgress: (value: number) => void;
   setExportComplete: (value: boolean) => void;
   setExportedBlob: (value: Blob | null) => void;
 
-  // 回调函数
+  // comment
   handleDownload: () => void;
-  handleCancelExport?: () => void; // 取消导出的回调
+  handleCancelExport?: () => void; // comment
 }
 
-/**
- * 导出进度 Modal 组件
- *
- * 显示导出进度或导出完成状态，包括：
- *
- * 导出中状态：
- * - 进度百分比（大号显示）
- * - "导出中" 文字 + 动画点
- * - 进度提示文字
- *
- * 导出完成状态：
- * - 完成图标
- * - 成功提示文字
- * - 格式提示（图片/音频/视频）
- * - 下载按钮
- *
- * 功能：
- * - 导出中可以取消（显示确认对话框）
- * - 导出完成可以直接关闭
- * - 点击下载按钮触发文件下载
- */
+/* * * Modal component * * display ， ： * * ： * - （ display） * - " " text + * - text * * ： * - * - text * - （image/audio/video） * - down button * * ： * - （display ） * - close * - down button down */
 export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
   isExporting,
   exportProgress,
@@ -62,34 +42,28 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
   const { t } = useTranslation();
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
-  /**
-   * 处理 Modal 关闭事件
-   * - 导出完成：直接关闭并重置状态
-   * - 导出中：显示确认对话框
-   */
+  /* * * handle Modal close * - ： close reset * - ：display */
   const handleCancel = () => {
     if (exportComplete) {
-      // 下载页面：直接关闭
+      // down ： close
       setIsExporting(false);
       setExportProgress(0);
       setExportComplete(false);
       setExportedBlob(null);
     } else {
-      // 导出中：显示确认对话框
+      // ：display
       setCancelConfirmOpen(true);
     }
   };
 
-  /**
-   * 确认取消导出
-   */
+  /* * * */
   const handleConfirmCancel = () => {
     setCancelConfirmOpen(false);
-    // 调用取消导出回调，真正中止导出进程
+    // ，
     if (handleCancelExport) {
       handleCancelExport();
     } else {
-      // 兜底：重置导出状态
+      // ：reset
       setIsExporting(false);
       setExportProgress(0);
       setExportComplete(false);
@@ -97,9 +71,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
     }
   };
 
-  /**
-   * 获取导出格式提示文字
-   */
+  /* * * get text */
   const getFormatMessage = () => {
     if (exportedFormat === 'PNG' || exportedFormat === 'JPG') {
       return t('export.exportingImage');
@@ -123,7 +95,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
           style={{ height: '400px' }}
         >
           {exportComplete && !isUploading ? (
-            // 导出和上传都完成状态
+            // up
             <>
               <Icon name='videoEditor-check-success-icon' width={24} height={24} className='mb-2' />
               <div className='mb-2 text-lg text-gray-900'>
@@ -142,7 +114,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
               </Button>
             </>
           ) : isUploading ? (
-            // 上传中状态
+            // up
             <>
               <div className='mb-6 text-6xl font-bold text-gray-900'>
                 100%
@@ -154,7 +126,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
               <div className='text-sm text-gray-500'>正在上传到服务器...</div>
             </>
           ) : (
-            // 导出中状态
+            // comment
             <>
               <div className='mb-6 text-6xl font-bold text-gray-900'>
                 {exportProgress}%

@@ -25,12 +25,8 @@ interface PlaybackControlsProps {
 
 const sliderClass = 'nodrag nopan !w-full';
 
-/**
- * PlaybackControls 组件 - 播放控制栏
- *
- */
+/* * * PlaybackControls component - playbackcontrol * */
 const PlaybackControls: React.FC<PlaybackControlsProps> = ({
-  nodeId,
   currentTime,
   isPlaying,
   scale,
@@ -46,7 +42,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // 使用 useVideoEditorStore hook
+  // use useVideoEditorStore hook
   const {
     clips,
     mediaItems,
@@ -54,12 +50,12 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     setClips,
     batchUpdateClips,
     setSelectedClipId,
-  } = useVideoEditorStore(nodeId);
+  } = useVideoEditorStore();
 
-  // 计算实际时长
+  // calculateactual
   const actualDuration = clips.length === 0 ? 0 : Math.max(...clips.map((c: TimelineClip) => c.end));
 
-  // 组件内部的方法
+  // componentinside
   const handleTimeChange = (time: number) => {
     onTimeChange(time);
   };
@@ -68,7 +64,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     const playheadWidthTime = 2 / (scale * 50);
     const maxPlayheadTime = actualDuration - playheadWidthTime;
 
-    // 如果播放已结束或到达末尾，从头开始播放
+    // ifplayback end ， startplayback
     if ((currentTime >= maxPlayheadTime - 0.1 || currentTime >= actualDuration - 0.1) && !isPlaying) {
       onTimeChange(0);
     }
@@ -83,7 +79,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     onFullscreen();
   };
 
-  // 组件内部的片段操作方法
+  // componentinside clip
   const handleClipSplit = () => {
     if (selectedClipId.length === 0) return;
 
@@ -129,38 +125,38 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   const handleCopyClip = () => {
     if (selectedClipId.length === 0) return;
 
-    // 获取所有要复制的 clips
+    // getall duplicate clips
     const clipsToCopy = selectedClipId
       .map((id) => clips.find((c: TimelineClip) => c.id === id))
       .filter(Boolean) as TimelineClip[];
 
     if (clipsToCopy.length === 0) return;
 
-    // 复制片段的数量
+    // duplicateclip
     const copyCount = clipsToCopy.length;
 
-    // 找到要复制的 clips 中的最小 trackIndex（用于计算轨道偏移）
+    // duplicate clips trackIndex（used forcalculatetrackoffset）
     const minSourceTrackIndex = clipsToCopy.length > 0
       ? Math.min(...clipsToCopy.map((c: TimelineClip) => c.trackIndex))
       : 0;
 
-    // 计算复制片段的最小开始时间（用于保持相对位置）
+    // calculateduplicateclip starttime（used forkeep ）
     const minStartTime = Math.min(...clipsToCopy.map((clip) => clip.start));
-    // 计算时间偏移量：将片段移动到播放头位置
+    // calculatetimeoffset ： clip playback
     const timeOffset = currentTime - minStartTime;
 
-    // 创建副本，改变 id、trackIndex 和时间位置（定位到播放头位置）
+    // createcopy， id、trackIndex time （ playback ）
     const timestamp = Date.now();
     const newClips: TimelineClip[] = clipsToCopy.map((clip, index) => ({
       ...clip,
       id: `clip-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
       start: clip.start + timeOffset,
       end: clip.end + timeOffset,
-      // 放到轨道0开头，保持相对轨道关系（复制N个片段，放到轨道0到N-1）
+      // track0 ，keep trackrelation（duplicateN clip， track0 N-1）
       trackIndex: clip.trackIndex - minSourceTrackIndex,
     }));
 
-    // 将新片段添加到轨道0-N，其他所有现有片段轨道索引都增加复制片段的数量，避免重合
+    // clip track0-N，otherall cliptrack duplicateclip ，avoidoverlap
     const updatedClips = [
       ...newClips,
       ...clips.map((c: TimelineClip) => ({
@@ -174,18 +170,18 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     message.success(`已复制 ${newClips.length} 个片段`);
   };
 
-  // 向左分割：删除左侧部分，保留右侧
+  // split leftsplit：deleteleft ，keepright
   const handleSplitLeft = () => {
     if (selectedClipId.length === 0) return;
 
-    // 获取所有要分割的 clips
+    // getall split clips
     const clipsToSplit = selectedClipId
       .map((id) => clips.find((c: TimelineClip) => c.id === id))
       .filter(Boolean) as TimelineClip[];
 
     if (clipsToSplit.length === 0) return;
 
-    // 检查播放头是否在所有选中的 clips 内部
+    // checkplayback allselected clips inside
     const validClips = clipsToSplit.filter(
       (clip) => currentTime > clip.start && currentTime < clip.end
     );
@@ -195,7 +191,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       return;
     }
 
-    // 批量更新所有有效的 clips
+    // batchupdateallvalid clips
     const updatedClips = clips.map((clip) => {
       if (validClips.some((c) => c.id === clip.id)) {
         const oldTrimStart = clip.trimStart || 0;
@@ -216,18 +212,18 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     }
   };
 
-  // 向右分割：删除右侧部分，保留左侧
+  // split rightsplit：deleteright ，keepleft
   const handleSplitRight = () => {
     if (selectedClipId.length === 0) return;
 
-    // 获取所有要分割的 clips
+    // getall split clips
     const clipsToSplit = selectedClipId
       .map((id) => clips.find((c: TimelineClip) => c.id === id))
       .filter(Boolean) as TimelineClip[];
 
     if (clipsToSplit.length === 0) return;
 
-    // 检查播放头是否在所有选中的 clips 内部
+    // checkplayback allselected clips inside
     const validClips = clipsToSplit.filter(
       (clip) => currentTime > clip.start && currentTime < clip.end
     );
@@ -237,7 +233,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       return;
     }
 
-    // 批量更新所有有效的 clips
+    // batchupdateallvalid clips
     const updatedClips = clips.map((clip) => {
       if (validClips.some((c) => c.id === clip.id)) {
         const oldTrimStart = clip.trimStart || 0;
@@ -264,29 +260,29 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     if (selectedClipId.length === 0) return;
 
     const deletedClips = clips.filter((c: TimelineClip) => selectedClipId.includes(c.id));
-    // 批量删除：直接过滤掉所有要删除的 clips
+    // batchdelete： all delete clips
     const remainingClips = clips.filter((c: TimelineClip) => !selectedClipId.includes(c.id));
 
-    // 使用 setClips 批量更新，而不是循环调用 removeClip
+    // use setClips batchupdate， removeClip
     setClips(remainingClips);
 
-    // 计算剩余素材的最大结束时间
+    // calculateremainingasset endtime
     const maxEndTime = remainingClips.length > 0
       ? Math.max(...remainingClips.map((c: TimelineClip) => c.end))
       : 0;
 
-    // 只有删除后播放头超出了最大结束时间，才重置到最长的素材结尾
+    // delete playback exceed endtime， reset longest assetend
     if (currentTime > maxEndTime) {
       if (remainingClips.length > 0) {
-        // 重置到最长的素材结尾（最大结束时间）
+        // reset longest assetend（ endtime）
         onTimeChange(maxEndTime);
       } else {
-        // 如果没有剩余素材，重置到 0
+        // ifnoremainingasset，reset 0
         onTimeChange(0);
       }
     }
 
-    // 删除后自动选中一个最近的剩余片段，保持操作连续性
+    // delete automaticallyselected remainingclip，keep
     if (remainingClips.length === 0) {
       setSelectedClipId([]);
     } else {
@@ -333,7 +329,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       data-nodrag='true'
       data-nopan='true'
     >
-      {/* 左侧：编辑工具 */}
+      {/* left： */}
       <div className='flex items-center gap-6'>
         <Tooltip title={t('playbackControls.reset') || 'Reset'} placement='top-end'>
           <div className='cursor-pointer' onClick={onReset}>
@@ -441,7 +437,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         </Tooltip>
       </div>
 
-      {/* 中间：播放控制和时间显示 */}
+      {/* middle：playbackcontrol timedisplay */}
       <div className='flex items-center justify-center gap-4 flex-1'>
         <div className='flex items-center gap-3'>
           <Tooltip title={t('playbackControls.stepBackward') || 'Step Backward'} placement='top'>
@@ -498,14 +494,14 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           </Tooltip>
         </div>
 
-        {/* 时间显示 */}
+        {/* timedisplay */}
         <div className='flex items-center gap-2 font-mono text-sm text-gray-600'>
           <span className='text-[#71717a]'>{formatTime(currentTime)}</span>
           <span>/</span>
           <span className='text-[#e4e4e7]'>{formatTime(actualDuration)}</span>
         </div>
 
-        {/* 全屏按钮 */}
+        {/* fullscreenbutton */}
         <Tooltip title={t('playbackControls.fullscreen') || 'Fullscreen'} placement='top'>
           <div
             className={`flex items-center justify-center ml-4 ${actualDuration > 0 ? 'cursor-pointer' : 'opacity-30 cursor-not-allowed'}`}
@@ -521,7 +517,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         </Tooltip>
       </div>
 
-      {/* 右侧：缩放控制 */}
+      {/* right：scalecontrol */}
       <div className='flex items-center gap-2'>
         <div className='w-px h-4 bg-border-default-base shrink-0 self-center' aria-hidden />
         <Tooltip title={t('playbackControls.zoomOut') || 'Zoom Out'} placement='top'>
