@@ -10,6 +10,9 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/store';
+import { uploadBlobToStorage } from '@/utils/uploadBlobToStorage';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/apps/project/components/canvas/common/NodeSkeleton';
 import { type CanvasWorkflowNodeData, getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +23,7 @@ import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import type { ImageFlowNodeData } from '../../types';
 import type { ImageEditorPickResultBox } from '../../types';
+import { imageEditorImageNodeType, createEditorImageNodeData } from '../../types';
 import Toolbar from './Toolbar';
 import BottomToolbar from './BottomToolbar';
 import NodeHeader from '../../common/NodeHeader';
@@ -394,7 +398,7 @@ const buildAdjustFabricFilters = (value: AdjustValue): unknown[] => {
 
 /** Image flow node: top toolbar + bottom toolbar + resizable image card */
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
-  const { setCenter } = useReactFlow();
+  const { setCenter, getNode } = useReactFlow();
   const { zoom } = useViewport();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodeData = data as ImageFlowNodeData;
@@ -412,7 +416,11 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     createInpaintResultNodesRight,
     createEnhanceResultNodesRight,
     triggerBackendMiniTool,
+    addLocalPendingNode,
+    resolveLocalPendingNode,
+    failLocalPendingNode,
   } = useMixedEditorActions();
+  const projectId = useSelector((s: RootState) => s.canvas.workflowId);
   const { setExpandViewportLock } = useMixedEditorUI();
   const {
     nodes: projectCanvasNodes,
@@ -777,9 +785,9 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     const currentSrc = imageContent;
     exitEditing();
     if (!currentSrc) return;
-    // Image mini-tools require an already-persisted URL — a blob: or
-    // data: src means the asset hasn't been uploaded yet, in which case
-    // we refuse rather than send an unresolvable URL to the Worker.
+    // Need a persisted (http) URL so Image() with crossOrigin='anonymous'
+    // can decode it onto a canvas without tainting. blob: / data: are
+    // too narrow a slice of cases to handle here.
     if (!/^https?:\/\//i.test(currentSrc)) {
       message.error('Source image must be a persistent URL before cropping');
       return;
@@ -797,25 +805,65 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
       return;
     }
 
-    // NOTE: phase4c撤了后端 image.crop。这条调用会 422 — 留在此处,
-    // 等阶段4 image 前端补齐时改成纯前端 Canvas crop + presigned
-    // 上传 + resolveLocalPendingNode。
-    await triggerBackendMiniTool({
-      category: 'image',
-      toolName: 'crop',
-      placeholders: [{
-        sourceNodeId: id,
-        nameSuffix: 'crop',
-        expectedSize: { width: sourceRect.w, height: sourceRect.h },
-      }],
-      params: {
-        image: currentSrc,
-        x: sourceRect.x,
-        y: sourceRect.y,
-        w: sourceRect.w,
-        h: sourceRect.h,
+    const sourceNode = getNode(id);
+    if (!sourceNode) return;
+
+    // X pattern: build the result placeholder locally, run Canvas
+    // crop + presigned upload, then resolve to Yjs (state:'idle').
+    // Failure drops the local entry → no zombie tile in Yjs for the
+    // collaborators (they never saw it).
+    const newNodeId = `image-flow-${nanoid(12)}`;
+    const sourceWidth = (sourceNode.style?.width as number | undefined) ?? width;
+    const sourceName = (sourceNode.data as ImageFlowNodeData | undefined)?.name ?? 'image';
+    const placeholder: Node<ImageFlowNodeData> = {
+      id: newNodeId,
+      type: imageEditorImageNodeType,
+      position: {
+        x: sourceNode.position.x + sourceWidth + 30,
+        y: sourceNode.position.y,
       },
-    });
+      style: { width: sourceRect.w, height: sourceRect.h },
+      data: createEditorImageNodeData(`${sourceName} (crop)`, ''),
+    };
+    const placeholderId = addLocalPendingNode(placeholder);
+
+    try {
+      // Canvas crop → PNG Blob.
+      const image = new window.Image();
+      image.crossOrigin = 'anonymous';
+      image.src = currentSrc;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('crop source load failed'));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceRect.w;
+      canvas.height = sourceRect.h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+      ctx.drawImage(
+        image,
+        sourceRect.x, sourceRect.y, sourceRect.w, sourceRect.h,
+        0, 0, sourceRect.w, sourceRect.h,
+      );
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))),
+          'image/png',
+        );
+      });
+
+      const url = await uploadBlobToStorage(blob, {
+        filename: 'crop.png',
+        projectId: projectId ?? '',
+      });
+
+      resolveLocalPendingNode(placeholderId, { content: url });
+    } catch (err) {
+      failLocalPendingNode(placeholderId);
+      const msg = err instanceof Error ? err.message : 'Crop failed';
+      message.error(`Crop failed: ${msg}`);
+    }
   };
 
   const handleMultiAngleClose = () => exitEditing();
