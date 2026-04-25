@@ -1,0 +1,21 @@
+{
+  "name": "text_generation",
+  "description": "Generate written content: articles, captions, scripts, poems, descriptions, copy. Use when the user wants to write or needs text content for their canvas.",
+  "tools": [],
+  "output_type": "canvas",
+  "category": "text",
+  "keywords": [
+    "text",
+    "writing",
+    "content",
+    "creative"
+  ],
+  "requires": {
+    "env": [
+      "OPENROUTER_API_KEY"
+    ]
+  },
+  "scope": [
+    "agent"
+  ]
+}

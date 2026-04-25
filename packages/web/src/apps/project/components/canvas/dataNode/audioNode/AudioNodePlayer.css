@@ -1,0 +1,9 @@
+/* Audio progress bar: unplayed #D9D9D9, played #383838 */
+.audio-progress-slider .slider-track {
+  background-color: #383838 !important;
+}
+
+.audio-progress-slider .slider-track-1 {
+  background-color: #D9D9D9 !important;
+}
+

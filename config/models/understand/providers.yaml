@@ -1,0 +1,21 @@
+# Understand Provider Connection Config
+# LLM providers (gemini, openai, anthropic, openrouter) — used by vi/vv/va modes via LiteLLM.
+# HTTP providers (wavespeed) — used by transcribe mode via WaveSpeed API.
+
+gemini:
+  api_key_env: GEMINI_API_KEY
+  timeout: 120
+openai:
+  api_key_env: OPENAI_API_KEY
+  timeout: 60
+anthropic:
+  api_key_env: ANTHROPIC_API_KEY
+  timeout: 60
+openrouter:
+  api_key_env: OPENROUTER_API_KEY
+  timeout: 120
+wavespeed:
+  base_url: "https://api.wavespeed.ai/api/v3"
+  api_key_env: WAVESPEED_API_KEY
+  timeout: 120
+  max_concurrency: 50

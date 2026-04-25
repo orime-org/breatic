@@ -1,0 +1,64 @@
+# MiniMax Music Model Family — Music Generation & Voice Cloning
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t2m (text-to-music) | a2m (audio-to-music)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "minimax-music-2.5"
+    display_name: "MiniMax Music 2.5"
+    mode: "t2m"
+    tier: recommended
+    description: "Studio-grade, 100+ instruments"
+    guide: "Highest fidelity with studio-grade mixing and 14 structural tags for precise song structure control. 100+ instrument palette, style-adaptive mixing, lyrics up to 3500 chars. Supports instrumental-only mode. 5x cost of Music 02. Choose for professional production or complex arrangements."
+    cost_per_call: 50
+    generation_time: 180
+    params:
+      prompt:
+        description: "Music style (genre, mood, instruments)"
+        default: null
+      lyrics:
+        description: "Song lyrics (10-3500 chars)"
+        default: null
+      is_instrumental:
+        description: "Instrumental only, no vocals"
+        default: false
+    providers:
+      - name: minimax
+        model_id: "music-2.5"
+        priority: 1
+      - name: wavespeed
+        model_id: "minimax/music-2.5"
+        priority: 2
+
+  - name: "minimax-music-01"
+    display_name: "MiniMax Music 01"
+    mode: "a2m"
+    tier: recommended
+    description: "Voice cloning, style transfer"
+    guide: "Reference-based generation. Requires uploading a reference track (song/voice/instrumental). Analyzes vocal patterns, rhythms, and arrangements to generate new music in that style. Max 60 seconds. Choose when user provides reference audio or wants to clone a specific voice/style."
+    cost_per_call: 10
+    generation_time: 120
+    params:
+      prompt:
+        description: "Music style description"
+        default: null
+      song:
+        description: "Reference song URL (>=15s, wav/mp3)"
+        default: null
+      voice:
+        description: "Reference voice URL for cloning"
+        default: null
+      instrumental:
+        description: "Reference instrumental URL"
+        default: null
+    providers:
+      - name: minimax
+        model_id: "music-01"
+        priority: 1
+      - name: wavespeed
+        model_id: "minimax/music-01"
+        priority: 2

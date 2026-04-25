@@ -1,0 +1,42 @@
+models:
+  # ── Video Upscaling ────────────────────────────────────────────────────
+
+  - name: "video-upscale-pro"
+    display_name: "Video Upscale Pro"
+    mode: "upscale"
+    tier: internal
+    description: "Premium AI upscale with detail recovery"
+    guide: "Professional-grade upscaling with superior detail reconstruction — restores fine textures (hair, fabric, foliage) and sharp edges without over-sharpening. Slower but higher quality than standard."
+    cost_per_call: 15
+    generation_time: 120
+    params:
+      video_url:
+        description: "Source video URL (required)"
+        default: null
+      target_resolution:
+        description: "Target output resolution"
+        values: ["720p", "1080p", "2k", "4k"]
+        default: "1080p"
+    providers:
+      - name: wavespeed
+        model_id: "wavespeed-ai/video-upscaler-pro"
+        priority: 1
+
+  # ── Frame Interpolation ────────────────────────────────────────────────
+
+  - name: "rife-interpolation"
+    display_name: "RIFE Frame Interpolation"
+    mode: "interpolate"
+    tier: internal
+    description: "AI frame rate doubling for smooth motion"
+    guide: "RIFE (Real-Time Intermediate Flow Estimation) inserts AI-generated frames between existing ones — doubles the frame rate for smoother motion. Ideal for slow-motion effects, fixing choppy footage, or upgrading visual fluidity."
+    cost_per_call: 5
+    generation_time: 30
+    params:
+      video_url:
+        description: "Source video URL (required)"
+        default: null
+    providers:
+      - name: wavespeed
+        model_id: "wavespeed-ai/rife/video-interpolation"
+        priority: 1

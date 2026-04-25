@@ -1,0 +1,17 @@
+{
+  "name": "generate_video_plan",
+  "description": "Generate a task plan for video creation. Use when the user asks to create, animate, or generate a video.",
+  "tools": [],
+  "output_type": "task_plan",
+  "category": "video",
+  "keywords": [
+    "video",
+    "animate",
+    "clip",
+    "film",
+    "motion"
+  ],
+  "scope": [
+    "agent"
+  ]
+}

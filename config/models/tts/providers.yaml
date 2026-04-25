@@ -1,0 +1,28 @@
+# TTS Provider Connection Config
+# Each provider defines: base_url, api_key_env, timeout, max_concurrency
+
+elevenlabs:
+  base_url: "https://api.elevenlabs.io/v1"
+  api_key_env: ELEVENLABS_API_KEY
+  timeout: 60
+  max_concurrency: 10
+minimax:
+  base_url: "https://api.minimax.io"
+  api_key_env: MINIMAX_API_KEY
+  timeout: 60
+  max_concurrency: 10
+fish:
+  base_url: "https://api.fish.audio"
+  api_key_env: FISH_API_KEY
+  timeout: 60
+  max_concurrency: 10
+wavespeed:
+  base_url: "https://api.wavespeed.ai/api/v3"
+  api_key_env: WAVESPEED_API_KEY
+  timeout: 120
+  max_concurrency: 50
+fal:
+  base_url: "https://queue.fal.run"
+  api_key_env: FAL_API_KEY
+  timeout: 120
+  max_concurrency: 20

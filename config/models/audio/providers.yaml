@@ -1,0 +1,23 @@
+# Audio Provider Connection Config (music + sound effects + separation)
+# Each provider defines: base_url, api_key_env, timeout, max_concurrency
+
+minimax:
+  base_url: "https://api.minimax.io"
+  api_key_env: MINIMAX_API_KEY
+  timeout: 180
+  max_concurrency: 10
+elevenlabs:
+  base_url: "https://api.elevenlabs.io/v1"
+  api_key_env: ELEVENLABS_API_KEY
+  timeout: 60
+  max_concurrency: 10
+wavespeed:
+  base_url: "https://api.wavespeed.ai/api/v3"
+  api_key_env: WAVESPEED_API_KEY
+  timeout: 120
+  max_concurrency: 50
+fal:
+  base_url: "https://queue.fal.run"
+  api_key_env: FAL_API_KEY
+  timeout: 120
+  max_concurrency: 20

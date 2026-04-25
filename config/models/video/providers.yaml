@@ -1,0 +1,53 @@
+# Shared provider configuration for all video models.
+# Each provider defines: base_url, api_key_env, timeout, max_concurrency.
+
+wavespeed:
+  base_url: "https://api.wavespeed.ai/api/v3"
+  api_key_env: WAVESPEED_API_KEY
+  timeout: 300
+  max_concurrency: 50
+klingai:
+  base_url: "https://api.klingai.com/v1"
+  api_key_env: KLING_ACCESS_KEY
+  timeout: 300
+  max_concurrency: 20
+dashscope:
+  base_url: "https://dashscope-intl.aliyuncs.com/api/v1"
+  api_key_env: DASHSCOPE_API_KEY
+  timeout: 300
+  max_concurrency: 20
+byteplus:
+  base_url: "https://api.byteplus.com"
+  api_key_env: BYTEPLUS_API_KEY
+  timeout: 300
+  max_concurrency: 20
+minimax:
+  base_url: "https://api.minimax.chat/v1"
+  api_key_env: MINIMAX_API_KEY
+  timeout: 300
+  max_concurrency: 20
+google:
+  base_url: "https://generativelanguage.googleapis.com/v1beta"
+  api_key_env: GOOGLE_API_KEY
+  timeout: 300
+  max_concurrency: 10
+openai:
+  base_url: "https://api.openai.com/v1"
+  api_key_env: OPENAI_API_KEY
+  timeout: 300
+  max_concurrency: 10
+pixverse:
+  base_url: "https://app-api.pixverse.ai/openapi/v2"
+  api_key_env: PIXVERSE_API_KEY
+  timeout: 300
+  max_concurrency: 20
+vidu:
+  base_url: "https://api.vidu.com/v1"
+  api_key_env: VIDU_API_KEY
+  timeout: 300
+  max_concurrency: 20
+luma:
+  base_url: "https://api.lumalabs.ai/dream-machine/v1"
+  api_key_env: LUMA_API_KEY
+  timeout: 300
+  max_concurrency: 10

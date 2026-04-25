@@ -1,0 +1,229 @@
+# LLM Provider Configuration
+# Guidelines:
+#   model.description    — max 80 chars (shown in UI model selector)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   provider.priority    — lower number = tried first; direct API as 1, OpenRouter as 2
+
+default_model: "claude-sonnet-4.6"
+
+models:
+  # ── Anthropic ────────────────────────────────────────────────────────────
+  - name: "claude-opus-4.6"
+    display_name: "Claude Opus 4.6"
+    description: "Anthropic's most capable model. Complex reasoning and creative planning."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: anthropic
+        model_id: "claude-opus-4-6"
+        credits_per_1k_tokens: 0.5
+        priority: 1
+      - name: openrouter
+        model_id: "anthropic/claude-opus-4-6"
+        credits_per_1k_tokens: 0.5
+        priority: 2
+
+  - name: "claude-sonnet-4.6"
+    display_name: "Claude Sonnet 4.6"
+    description: "Anthropic's balanced model. Strong reasoning, coding, fast response."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: anthropic
+        model_id: "claude-sonnet-4-6"
+        credits_per_1k_tokens: 0.1
+        priority: 1
+      - name: openrouter
+        model_id: "anthropic/claude-sonnet-4-6"
+        credits_per_1k_tokens: 0.1
+        priority: 2
+
+  # ── OpenAI ───────────────────────────────────────────────────────────────
+  - name: "gpt-5.4"
+    display_name: "GPT-5.4"
+    description: "OpenAI's flagship model. Complex reasoning, coding, 1M+ context."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: openai
+        model_id: "gpt-5.4"
+        credits_per_1k_tokens: 0.15
+        priority: 1
+      - name: openrouter
+        model_id: "openai/gpt-5.4"
+        credits_per_1k_tokens: 0.15
+        priority: 2
+
+  - name: "gpt-5.4-mini"
+    display_name: "GPT-5.4 Mini"
+    description: "OpenAI's fast mid-tier model. Coding, tool use, multimodal."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: openai
+        model_id: "gpt-5.4-mini"
+        credits_per_1k_tokens: 0.05
+        priority: 1
+      - name: openrouter
+        model_id: "openai/gpt-5.4-mini"
+        credits_per_1k_tokens: 0.05
+        priority: 2
+
+  - name: "gpt-5.4-nano"
+    display_name: "GPT-5.4 Nano"
+    description: "OpenAI's smallest model. Ultra-low cost, fastest response."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 4096
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: openai
+        model_id: "gpt-5.4-nano"
+        credits_per_1k_tokens: 0.01
+        priority: 1
+      - name: openrouter
+        model_id: "openai/gpt-5.4-nano"
+        credits_per_1k_tokens: 0.01
+        priority: 2
+
+  # ── Google Gemini ────────────────────────────────────────────────────────
+  - name: "gemini-3.1-pro"
+    display_name: "Gemini 3.1 Pro"
+    description: "Google's strongest model. Advanced reasoning, long context, multimodal."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: gemini
+        model_id: "gemini-3.1-pro-preview"
+        credits_per_1k_tokens: 0.15
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-3.1-pro-preview"
+        credits_per_1k_tokens: 0.15
+        priority: 2
+
+  - name: "gemini-3-flash"
+    display_name: "Gemini 3 Flash"
+    description: "Google's fast model. Pro-level intelligence at Flash speed and price."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: gemini
+        model_id: "gemini-3-flash-preview"
+        credits_per_1k_tokens: 0.03
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-3-flash-preview"
+        credits_per_1k_tokens: 0.03
+        priority: 2
+
+  - name: "gemini-3.1-flash-lite"
+    display_name: "Gemini 3.1 Flash Lite"
+    description: "Google's most cost-effective model. Ultra-low cost, fast response."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: gemini
+        model_id: "gemini-3.1-flash-lite-preview"
+        credits_per_1k_tokens: 0.02
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-3.1-flash-lite-preview"
+        credits_per_1k_tokens: 0.02
+        priority: 2
+
+  # ── DeepSeek ─────────────────────────────────────────────────────────────
+  - name: "deepseek-v3"
+    display_name: "DeepSeek V3"
+    description: "DeepSeek's flagship model. Strong Chinese + English, very affordable."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: deepseek
+        model_id: "deepseek-chat"
+        credits_per_1k_tokens: 0.01
+        priority: 1
+      - name: openrouter
+        model_id: "deepseek/deepseek-chat-v3-0324"
+        credits_per_1k_tokens: 0.01
+        priority: 2
+
+  - name: "deepseek-r1"
+    display_name: "DeepSeek R1"
+    description: "DeepSeek's reasoning model. Math, logic, complex problem-solving."
+    params:
+      max_tokens:
+        description: "Maximum tokens in the response"
+        default: 8192
+      temperature:
+        description: "Sampling temperature (0=deterministic, 1=creative)"
+        default: 0.7
+    providers:
+      - name: deepseek
+        model_id: "deepseek-reasoner"
+        credits_per_1k_tokens: 0.03
+        priority: 1
+      - name: openrouter
+        model_id: "deepseek/deepseek-r1"
+        credits_per_1k_tokens: 0.03
+        priority: 2
+
+providers:
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    timeout: 60
+  openai:
+    api_key_env: OPENAI_API_KEY
+    timeout: 60
+  gemini:
+    api_key_env: GEMINI_API_KEY
+    timeout: 60
+  deepseek:
+    api_key_env: DEEPSEEK_API_KEY
+    timeout: 60
+  openrouter:
+    api_key_env: OPENROUTER_API_KEY
+    timeout: 60
