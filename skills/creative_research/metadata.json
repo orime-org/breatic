@@ -1,0 +1,19 @@
+{
+  "name": "creative_research",
+  "description": "Search for creative references, explore visual styles, and curate inspiration for the user's project.",
+  "tools": ["web_search", "web_fetch"],
+  "output_type": "inline",
+  "category": "research",
+  "keywords": [
+    "reference",
+    "style",
+    "inspiration",
+    "mood board",
+    "trend",
+    "aesthetic",
+    "visual",
+    "explore",
+    "research"
+  ],
+  "scope": ["agent"]
+}

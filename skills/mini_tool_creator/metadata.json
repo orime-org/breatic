@@ -1,0 +1,16 @@
+{
+  "name": "mini_tool_creator",
+  "description": "Generate JavaScript mini-tools for the canvas (image/video/audio processing). Use when the user wants a custom browser-side tool for media editing, color grading, filters, or any creative processing not already available.",
+  "tools": [],
+  "output_type": "inline",
+  "category": "default",
+  "keywords": [
+    "mini-tool",
+    "javascript",
+    "canvas",
+    "media-processing"
+  ],
+  "scope": [
+    "agent"
+  ]
+}

@@ -1,0 +1,122 @@
+# ElevenLabs TTS Model Family — High-Quality Text-to-Speech
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — tts (text-to-speech)
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "elevenlabs-v3"
+    display_name: "ElevenLabs V3"
+    mode: "tts"
+    tier: recommended
+    description: "Most natural, emotional speech"
+    guide: "Most expressive TTS model with natural emotion and intonation. 70+ languages, 5000 char limit. 50+ preset voices covering diverse accents, ages, and styles. Choose for the highest-quality single-speaker voiceover, narration, or dialogue where naturalness matters most."
+    cost_per_call: 10
+    generation_time: 30
+    languages:
+      - English
+      - Chinese
+      - Japanese
+      - Korean
+      - French
+      - German
+      - Spanish
+      - Portuguese
+      - Italian
+      - Dutch
+      - Polish
+      - Russian
+      - Arabic
+      - Hindi
+      - Turkish
+      - Vietnamese
+      - Thai
+      - Indonesian
+      - Swedish
+      - Czech
+      - Romanian
+      - Ukrainian
+      - Greek
+      - Hungarian
+      - Finnish
+      - Danish
+      - Norwegian
+      - Tamil
+      - Filipino
+    voices:
+      # All voices are multilingual — they support all languages listed above.
+      # Female voices
+      - { id: Alice,     gender: female, description: "Confident, clear British accent",   sample_url: null }
+      - { id: Aria,      gender: female, description: "Expressive, warm American",         sample_url: null }
+      - { id: Charlotte, gender: female, description: "Elegant, mature British",           sample_url: null }
+      - { id: Dorothy,   gender: female, description: "Warm, friendly conversational",     sample_url: null }
+      - { id: Domi,      gender: female, description: "Strong, assertive tone",            sample_url: null }
+      - { id: Elli,      gender: female, description: "Young, enthusiastic",               sample_url: null }
+      - { id: Emily,     gender: female, description: "Calm, soothing narration",          sample_url: null }
+      - { id: Freya,     gender: female, description: "Bold, dynamic personality",         sample_url: null }
+      - { id: Gigi,      gender: female, description: "Childlike, playful",                sample_url: null }
+      - { id: Glinda,    gender: female, description: "Warm, motherly tone",               sample_url: null }
+      - { id: Grace,     gender: female, description: "Soft, gentle Southern accent",      sample_url: null }
+      - { id: Jessica,   gender: female, description: "Clear, professional American",      sample_url: null }
+      - { id: Jessie,    gender: female, description: "Casual, upbeat tone",               sample_url: null }
+      - { id: Laura,     gender: female, description: "Smooth, polished delivery",         sample_url: null }
+      - { id: Lily,      gender: female, description: "Bright, youthful British",          sample_url: null }
+      - { id: Matilda,   gender: female, description: "Warm, friendly Australian",         sample_url: null }
+      - { id: Mimi,      gender: female, description: "Sweet, animated delivery",          sample_url: null }
+      - { id: Nicole,    gender: female, description: "Confident, authoritative",          sample_url: null }
+      - { id: Rachel,    gender: female, description: "Calm, measured narration",          sample_url: null }
+      - { id: Sarah,     gender: female, description: "Soft, intimate whisper",            sample_url: null }
+      - { id: Serena,    gender: female, description: "Smooth, relaxed delivery",          sample_url: null }
+      # Male voices
+      - { id: Adam,      gender: male,   description: "Deep, resonant narration",          sample_url: null }
+      - { id: Antoni,    gender: male,   description: "Well-rounded, versatile",           sample_url: null }
+      - { id: Arnold,    gender: male,   description: "Crisp, authoritative",              sample_url: null }
+      - { id: Bill,      gender: male,   description: "Trustworthy, documentary style",    sample_url: null }
+      - { id: Brian,     gender: male,   description: "Deep, calm American",               sample_url: null }
+      - { id: Callum,    gender: male,   description: "Intense, character voice",          sample_url: null }
+      - { id: Charlie,   gender: male,   description: "Casual, conversational Australian", sample_url: null }
+      - { id: Chris,     gender: male,   description: "Casual, friendly American",         sample_url: null }
+      - { id: Clyde,     gender: male,   description: "Deep, gravelly war veteran",        sample_url: null }
+      - { id: Daniel,    gender: male,   description: "Authoritative, deep British",       sample_url: null }
+      - { id: Dave,      gender: male,   description: "Conversational, British-Essex",     sample_url: null }
+      - { id: Drew,      gender: male,   description: "Well-rounded, informative",         sample_url: null }
+      - { id: Eric,      gender: male,   description: "Friendly, natural American",        sample_url: null }
+      - { id: Ethan,     gender: male,   description: "Natural, conversational",           sample_url: null }
+      - { id: Fin,       gender: male,   description: "Energetic, youthful Irish",         sample_url: null }
+      - { id: George,    gender: male,   description: "Warm, storytelling British",        sample_url: null }
+      - { id: Giovanni,  gender: male,   description: "Smooth Italian-accented",           sample_url: null }
+      - { id: Harry,     gender: male,   description: "Anxious, young British",            sample_url: null }
+      - { id: James,     gender: male,   description: "Calm, authoritative Australian",    sample_url: null }
+      - { id: Jeremy,    gender: male,   description: "Excited, energetic American",       sample_url: null }
+      - { id: Joseph,    gender: male,   description: "Articulate, formal British",        sample_url: null }
+      - { id: Josh,      gender: male,   description: "Young, dynamic American",           sample_url: null }
+      - { id: Liam,      gender: male,   description: "Articulate, confident",             sample_url: null }
+      - { id: Michael,   gender: male,   description: "Mature, steady narration",          sample_url: null }
+      - { id: Patrick,   gender: male,   description: "Shouty, energetic delivery",        sample_url: null }
+      - { id: Paul,      gender: male,   description: "Ground news, authoritative",        sample_url: null }
+      - { id: River,     gender: male,   description: "Confident, articulate",             sample_url: null }
+      - { id: Roger,     gender: male,   description: "Confident, middle-aged",            sample_url: null }
+      - { id: Sam,       gender: male,   description: "Raspy, youthful American",          sample_url: null }
+      - { id: Thomas,    gender: male,   description: "Calm, steady British",              sample_url: null }
+      - { id: Will,      gender: male,   description: "Friendly, young American",          sample_url: null }
+    params:
+      text:
+        description: "Text to convert to speech"
+        default: null
+      voice_id:
+        description: "Voice identifier"
+        default: "Alice"
+      stability:
+        description: "Voice consistency (0-1)"
+        default: 0.5
+      similarity:
+        description: "Closeness to base voice (0-1)"
+        default: 0.75
+    providers:
+      - name: elevenlabs
+        model_id: "eleven_v3"
+        priority: 1
+      - name: wavespeed
+        model_id: "elevenlabs/eleven-v3"
+        priority: 2

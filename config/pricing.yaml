@@ -1,0 +1,54 @@
+# Credit purchase tiers.
+#
+# Each tier has test and live Stripe Price IDs.
+# The backend selects the correct ID based on ENV (dev/staging → test, prod → live).
+# Fill in the Price IDs after creating Products in Stripe Dashboard.
+#
+# Pricing: higher tiers get better per-credit rates.
+# 1 credit ≈ 1 US cent at base rate.
+
+tiers:
+  - name: Starter
+    credits: 500
+    price_cents: 500
+    currency: usd
+    description: "500 credits — $0.010/credit"
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: Creator
+    credits: 2200
+    price_cents: 2000
+    currency: usd
+    description: "2,200 credits — $0.009/credit, save 10%"
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: Pro
+    credits: 5800
+    price_cents: 5000
+    currency: usd
+    description: "5,800 credits — $0.0086/credit, save 14%"
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: Power
+    credits: 12500
+    price_cents: 10000
+    currency: usd
+    description: "12,500 credits — $0.008/credit, save 20%"
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: Ultimate
+    credits: 70000
+    price_cents: 50000
+    currency: usd
+    description: "70,000 credits — $0.0071/credit, save 29%"
+    stripe_price_id:
+      test: ""
+      live: ""

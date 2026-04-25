@@ -1,0 +1,74 @@
+name: No AI Attribution
+
+# Blocks commits whose author or co-author is attributed to an AI tool.
+# Under US copyright law, AI-generated content cannot hold copyright —
+# listing AI as an author on an open-source project creates licensing
+# ambiguity. Description text that mentions AI assistance is fine.
+#
+# Mirrors the .husky/commit-msg client-side hook.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-authorship:
+    name: Check commit authorship
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan commits for AI authorship
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Match AI-identifying tokens in author name OR trailer value
+          AI_PATTERN='(Claude|Anthropic|GPT|Copilot|Cursor|ChatGPT|Codex|noreply@(anthropic|openai)\.com)'
+
+          # 1. Check author name + email per commit
+          BAD_AUTHOR=$(git log "${BASE_SHA}..${HEAD_SHA}" \
+            --format='%H%x09%an <%ae>' \
+            | grep -iE "$AI_PATTERN" || true)
+
+          # 2. Check Co-Authored-By / Signed-off-by trailers per commit
+          BAD_TRAILER=$(git log "${BASE_SHA}..${HEAD_SHA}" --format='%H%n%B%n---END---' \
+            | awk -v RS='---END---\n' '
+                {
+                  n = split($0, lines, "\n")
+                  hash = lines[1]
+                  for (i = 2; i <= n; i++) {
+                    if (lines[i] ~ /^(Co-Authored-By|Signed-off-by):/) {
+                      print hash "\t" lines[i]
+                    }
+                  }
+                }
+              ' \
+            | grep -iE "$AI_PATTERN" || true)
+
+          if [ -n "$BAD_AUTHOR" ] || [ -n "$BAD_TRAILER" ]; then
+            echo "::error::This PR contains commits with AI author/co-author attribution."
+            echo ""
+            if [ -n "$BAD_AUTHOR" ]; then
+              echo "Author-level offenses (commit hash / author):"
+              echo "$BAD_AUTHOR"
+              echo ""
+            fi
+            if [ -n "$BAD_TRAILER" ]; then
+              echo "Trailer-level offenses (commit hash / trailer):"
+              echo "$BAD_TRAILER"
+              echo ""
+            fi
+            echo "How to fix:"
+            echo "  - For a trailer: git rebase -i $BASE_SHA → reword → remove Co-Authored-By"
+            echo "  - For an author: git rebase -i $BASE_SHA → reword + git commit --amend --author='You <you@example.com>'"
+            echo "  - Then git push --force-with-lease"
+            exit 1
+          fi
+
+          echo "OK: no AI author/co-author attribution found in ${BASE_SHA}..${HEAD_SHA}"

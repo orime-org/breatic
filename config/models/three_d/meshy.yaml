@@ -1,0 +1,47 @@
+# Meshy 6 Model Family — High-Quality 3D Generation with PBR Textures
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — t23d (text-to-3d) | i23d (image-to-3d)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "meshy6-t23d"
+    display_name: "Meshy 6 Text-to-3D"
+    mode: "t23d"
+    tier: recommended
+    description: "Best quality, PBR textures"
+    guide: "Highest quality text-to-3D with accurate geometry and PBR texture support. Outputs GLB/FBX/OBJ/USDZ. Supports A/T-pose for character rigging, quad/triangle topology, and symmetry control. 5-10 min generation. Choose for production-ready 3D assets."
+    cost_per_call: 80
+    generation_time: 600
+    params:
+      prompt:
+        description: "3D object description (max 600 chars)"
+        default: null
+      art_style:
+        description: "Visual style"
+        default: "realistic"
+        values: ["realistic", "sculpture"]
+      topology:
+        description: "Mesh topology type"
+        default: "triangle"
+        values: ["quad", "triangle"]
+      target_polycount:
+        description: "Target polygon count (100-300000)"
+        default: 30000
+      enable_pbr:
+        description: "Enable PBR material textures"
+        default: false
+      symmetry_mode:
+        description: "Mesh symmetry handling"
+        default: "auto"
+        values: ["off", "auto", "on"]
+      ta_pose:
+        description: "A/T-pose for character rigging"
+        default: false
+    providers:
+      - name: wavespeed
+        model_id: "wavespeed-ai/meshy6/text-to-3d"
+        priority: 1

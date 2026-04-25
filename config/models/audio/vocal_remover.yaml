@@ -1,0 +1,30 @@
+# Vocal Remover Model Family — Audio Separation
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — separate (vocal/instrumental separation)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+
+models:
+  - name: "vocal-remover"
+    display_name: "AI Vocal Remover"
+    mode: "separate"
+    tier: recommended
+    description: "Separate vocals from instruments"
+    guide: "AI-powered vocal/instrumental separation. Splits any audio track into isolated vocal and instrumental stems. $0.001/second. Choose for karaoke, remixing, or isolating vocals."
+    cost_per_call: 2
+    generation_time: 30
+    params:
+      audio:
+        description: "Audio URL to separate"
+        default: null
+      mode:
+        description: "Extract vocals or instrumental"
+        default: "vocals"
+        values: ["vocals", "instrumental"]
+    providers:
+      - name: wavespeed
+        # TODO: verify exact WaveSpeed model_id — "ai-vocal-remover" and "audio-vocal-isolator" both return 404
+        model_id: "wavespeed-ai/audio-vocal-isolator"
+        priority: 1

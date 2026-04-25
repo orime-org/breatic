@@ -1,0 +1,222 @@
+# Topaz Image Models — Upscale, Sharpen, Denoise, Restore, Adjust
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — upscale, sharpen, denoise, restore, adjust
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+#   provider.priority    — lower number = tried first
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   generation_time      — max generation time in seconds (worst case)
+
+models:
+  # -- Topaz Upscale (upscale) ---------------------------------------------------
+
+  - name: "topaz-upscale"
+    display_name: "Topaz Upscale"
+    mode: "upscale"
+    tier: internal
+    description: "AI upscale to 2K/4K/8K"
+    guide: "Professional AI image upscaling. Enlarges images to target resolution (2K/4K/8K) while preserving original aspect ratio and adding real detail. Provide source_width and source_height so the system can calculate the correct output dimensions. Standard V2 model handles most cases well. Max output 32000px per side. Choose for enlarging low-res images to print or display quality."
+    cost_per_call: 7
+    generation_time: 30
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      output_resolution:
+        description: "Target resolution for the long edge"
+        values: ["2k", "4k", "8k"]
+        default: null
+      source_width:
+        description: "Original image width in pixels"
+        default: null
+      source_height:
+        description: "Original image height in pixels"
+        default: null
+    providers:
+      - name: topaz
+        model_id: "enhance"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/enhance"
+        priority: 2
+
+  # -- Topaz Sharpen (sharpen) ---------------------------------------------------
+
+  - name: "topaz-sharpen"
+    display_name: "Topaz Sharpen"
+    mode: "sharpen"
+    tier: internal
+    description: "AI sharpening for blur recovery"
+    guide: "Professional AI sharpening with 9 specialized models. Corrects lens blur, motion blur, and general softness while preserving natural texture. Portrait and Wildlife modes handle faces and fine detail (hair, feathers) without artifacts. Choose for blurry photos, soft focus recovery, or detail enhancement."
+    cost_per_call: 15
+    generation_time: 30
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      sharpen_model:
+        description: "Sharpening algorithm"
+        values: ["Standard", "Strong", "Lens Blur", "Lens Blur V2", "Motion Blur", "Natural", "Refocus", "Wildlife", "Portrait"]
+        default: "Standard"
+      sharpen_strength:
+        description: "Sharpening intensity (0=auto)"
+        min: 0
+        max: 1.0
+        default: 0
+      denoise_strength:
+        description: "Noise reduction during sharpening"
+        min: 0
+        max: 1.0
+        default: 0
+    providers:
+      - name: topaz
+        model_id: "sharpen-gen/async"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/sharpen"
+        priority: 2
+
+  # -- Topaz Denoise (denoise) ---------------------------------------------------
+
+  - name: "topaz-denoise"
+    display_name: "Topaz Denoise"
+    mode: "denoise"
+    tier: internal
+    description: "AI noise removal with detail preservation"
+    guide: "Professional AI denoising for noisy or grainy photos. Three strength levels: Normal (smartphones, light compression), Strong (low-light, high ISO), Extreme (severe noise, heavy compression). Face enhancement reconstructs facial detail. Subject detection allows selective denoising (foreground/background only)."
+    cost_per_call: 15
+    generation_time: 30
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      denoise_model:
+        description: "Noise reduction strength level"
+        values: ["Normal", "Strong", "Extreme"]
+        default: "Normal"
+      denoise:
+        description: "Noise reduction amount (0=auto)"
+        min: 0
+        max: 1.0
+        default: 0
+      detail:
+        description: "Fine detail preservation level (0=auto)"
+        min: 0
+        max: 1.0
+        default: 0
+      face_enhancement:
+        description: "Enable AI face enhancement"
+        values: [true, false]
+        default: true
+    providers:
+      - name: topaz
+        model_id: "denoise/async"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/denoise"
+        priority: 2
+
+  # -- Topaz Restore (restore) ---------------------------------------------------
+
+  - name: "topaz-restore"
+    display_name: "Topaz Restore"
+    mode: "restore"
+    tier: internal
+    description: "AI dust and scratch removal for old photos"
+    guide: "Restore old or damaged photographs by removing dust, scratches, and surface imperfections. Two models: Dust-Scratch (standard) and Dust-Scratch V2 (improved detection for heavily damaged images). Fully automatic — no parameter tuning needed. Choose for scanned photos, film negatives, or archival restoration."
+    cost_per_call: 15
+    generation_time: 30
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      restore_model:
+        description: "Restoration algorithm"
+        values: ["Dust-Scratch", "Dust-Scratch V2"]
+        default: "Dust-Scratch"
+    providers:
+      - name: topaz
+        model_id: "restore/async"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/restore"
+        priority: 2
+
+  # -- Topaz Adjust (adjust) ----------------------------------------------------
+
+  - name: "topaz-adjust"
+    display_name: "Topaz Adjust"
+    mode: "adjust"
+    tier: internal
+    description: "AI exposure, white balance, and colorize"
+    guide: "AI-powered image adjustment with 4 modes: Adjust (general exposure/lighting correction), Adjust V2 (improved tonal range), White Balance (neutralize color casts), Colorize (convert B&W to full color). Pixel-level intelligent correction — not global sliders. Choose for underexposed photos, color cast removal, or black-and-white colorization."
+    cost_per_call: 15
+    generation_time: 30
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      adjust_mode:
+        description: "Adjustment type"
+        values: ["Adjust", "Adjust V2", "White Balance", "Colorize"]
+        default: "Adjust"
+      saturation:
+        description: "Color saturation (Colorize mode only)"
+        min: 0
+        max: 1.0
+        default: 0.2
+    providers:
+      - name: topaz
+        model_id: "lighting/async"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/lighting"
+        priority: 2
+
+  # -- Topaz Upscale Creative (upscale) ------------------------------------------
+
+  - name: "topaz-upscale-creative"
+    display_name: "Topaz Upscale Creative"
+    mode: "upscale"
+    tier: internal
+    description: "Creative upscale with prompt guidance"
+    guide: "Generative upscaling that adds creative detail guided by a text prompt. Uses the Redefine model to reimagine and enhance image content beyond simple enlargement. Provide source_width and source_height for accurate output sizing. Creativity level controls fidelity vs artistic freedom (1=faithful, 6=most creative). Max input 256 MP."
+    cost_per_call: 7
+    generation_time: 60
+    params:
+      image:
+        description: "Source image URL (required)"
+        default: null
+      output_resolution:
+        description: "Target resolution for the long edge"
+        values: ["2k", "4k", "8k"]
+        default: null
+      source_width:
+        description: "Original image width in pixels"
+        default: null
+      source_height:
+        description: "Original image height in pixels"
+        default: null
+      prompt:
+        description: "Text guidance for creative enhancement"
+        default: null
+      creativity:
+        description: "Creative freedom level (1=faithful, 6=artistic)"
+        values: [1, 2, 3, 4, 5, 6]
+        default: 3
+    providers:
+      - name: topaz
+        model_id: "enhance/async"
+        credit_price: 0.0005
+        priority: 1
+      - name: wavespeed
+        model_id: "topaz/image/enhance"
+        priority: 2

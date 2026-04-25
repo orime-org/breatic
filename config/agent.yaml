@@ -1,0 +1,37 @@
+# Agent Configuration
+# Controls MainAgent behavior, memory system, tools, and worker limits.
+# These values can be overridden by environment variables (uppercase, e.g. MAX_TOOL_ITERATIONS=50).
+
+# ── Agent Loop ────────────────────────────────────────────
+# Maximum number of tool-call round-trips the agent loop will execute.
+max_tool_iterations: 40
+
+# ── Models ────────────────────────────────────────────────
+# Default model for MainAgent chat.
+default_model: anthropic/claude-sonnet-4-6
+
+# Model used for memory consolidation (summarizing old turns).
+consolidation_model: anthropic/claude-sonnet-4-6
+
+# ── Memory System ─────────────────────────────────────────
+# Number of recent turns (user → agent round-trips) before triggering consolidation.
+# A "turn" = one user message + all agent steps (tool calls + final reply).
+memory_window: 20
+
+# Number of recent turns to keep unconsolidated during memory consolidation.
+memory_keep_recent_turns: 3
+
+# Number of recent turns to preserve full step detail (tool calls + results)
+# when building LLM context. Older unconsolidated turns are compressed to
+# user message + assistant final reply only.
+full_detail_turns: 3
+
+# Maximum character length for project memory injected into AI calls.
+memory_project_max_size: 3072
+
+# Maximum character length for user memory injected into AI calls.
+memory_user_max_size: 2048
+
+# ── Tools ─────────────────────────────────────────────────
+# Maximum characters returned from web_fetch tool output.
+web_fetch_max_chars: 50000

@@ -1,0 +1,168 @@
+# Gemini Vision Model Family — Full Multimodal Understanding
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — vi (vision-image) | vv (vision-video) | va (vision-audio)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+
+models:
+  # Gemini 2.5 Flash — cheapest, supports all 3 modes
+  - name: "gemini-flash-vi"
+    display_name: "Gemini Flash Image"
+    mode: "vi"
+    tier: optional
+    description: "Cheapest image understanding"
+    guide: "Fast and cheap image understanding. Describe content, extract text (OCR), analyze composition, reverse-engineer prompts. 1M token context supports many images at once. Choose for bulk image analysis or budget-sensitive tasks."
+    cost_per_call: 1
+    generation_time: 10
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this image in detail."
+      images:
+        description: "Image URLs to analyze"
+        default: null
+        max_items: 20
+      max_tokens:
+        description: "Max response length"
+        default: 2048
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-flash-preview-05-20"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-flash-preview-05-20"
+        priority: 2
+
+  - name: "gemini-flash-vv"
+    display_name: "Gemini Flash Video"
+    mode: "vv"
+    tier: optional
+    description: "Cheapest video understanding"
+    guide: "Fast and cheap video understanding. Describe scenes, analyze motion, identify actions, reverse-engineer video prompts. Supports long videos via Gemini's 1M context. Choose for video content analysis."
+    cost_per_call: 3
+    generation_time: 30
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this video in detail."
+      video_url:
+        description: "Video URL to analyze"
+        default: null
+      max_tokens:
+        description: "Max response length"
+        default: 4096
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-flash-preview-05-20"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-flash-preview-05-20"
+        priority: 2
+
+  - name: "gemini-flash-va"
+    display_name: "Gemini Flash Audio"
+    mode: "va"
+    tier: optional
+    description: "Cheapest audio understanding"
+    guide: "Fast and cheap audio understanding. Describe music style, identify instruments, transcribe lyrics, analyze mood, reverse-engineer audio prompts. Choose for audio content analysis."
+    cost_per_call: 2
+    generation_time: 20
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this audio in detail."
+      audio_url:
+        description: "Audio URL to analyze"
+        default: null
+      max_tokens:
+        description: "Max response length"
+        default: 2048
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-flash-preview-05-20"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-flash-preview-05-20"
+        priority: 2
+
+  # Gemini 2.5 Pro — strongest understanding, supports all 3 modes
+  - name: "gemini-pro-vi"
+    display_name: "Gemini Pro Image"
+    mode: "vi"
+    tier: recommended
+    description: "Best image understanding"
+    guide: "Strongest image understanding with advanced reasoning. Best for complex visual analysis, detailed style extraction, precise prompt reverse-engineering, and multi-image comparison. Higher cost but significantly better quality."
+    cost_per_call: 5
+    generation_time: 15
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this image in detail."
+      images:
+        description: "Image URLs to analyze"
+        default: null
+        max_items: 20
+      max_tokens:
+        description: "Max response length"
+        default: 4096
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-pro-preview-06-05"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-pro-preview-06-05"
+        priority: 2
+
+  - name: "gemini-pro-vv"
+    display_name: "Gemini Pro Video"
+    mode: "vv"
+    tier: recommended
+    description: "Best video understanding"
+    guide: "Strongest video understanding with advanced temporal reasoning. Best for detailed scene-by-scene analysis, camera movement identification, and complex narrative extraction."
+    cost_per_call: 10
+    generation_time: 45
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this video in detail."
+      video_url:
+        description: "Video URL to analyze"
+        default: null
+      max_tokens:
+        description: "Max response length"
+        default: 4096
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-pro-preview-06-05"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-pro-preview-06-05"
+        priority: 2
+
+  - name: "gemini-pro-va"
+    display_name: "Gemini Pro Audio"
+    mode: "va"
+    tier: recommended
+    description: "Best audio understanding"
+    guide: "Strongest audio understanding with advanced reasoning. Best for detailed music analysis, complex genre classification, and precise audio prompt reverse-engineering."
+    cost_per_call: 5
+    generation_time: 30
+    params:
+      prompt:
+        description: "Analysis instruction"
+        default: "Describe this audio in detail."
+      audio_url:
+        description: "Audio URL to analyze"
+        default: null
+      max_tokens:
+        description: "Max response length"
+        default: 4096
+    providers:
+      - name: gemini
+        model_id: "gemini-2.5-pro-preview-06-05"
+        priority: 1
+      - name: openrouter
+        model_id: "google/gemini-2.5-pro-preview-06-05"
+        priority: 2

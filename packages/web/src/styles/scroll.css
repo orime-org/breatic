@@ -1,0 +1,38 @@
+/*定义滚动条高宽及背景 高宽分别对应横竖滚动条的尺寸*/
+::-webkit-scrollbar {
+	width: 4px;
+	height: 4px;
+	transition: width 0.3s ease, height 0.3s ease;
+}
+ 
+/*定义滚动条轨道 内阴影+圆角*/
+::-webkit-scrollbar-track {
+	border-radius: 10px;
+	background-color: transparent;
+	transition: background-color 0.3s ease;
+}
+ 
+/*定义滑块 内阴影+圆角 - 默认透明*/
+::-webkit-scrollbar-thumb {
+	border-radius: 4px;
+	background-color: transparent;
+	transition: background-color 0.3s ease, border-radius 0.3s ease;
+}
+
+:hover::-webkit-scrollbar {
+	width: 4px;
+	height: 4px;
+}
+
+/* 鼠标移入滚动区域时显示滚动条 - 浅色主题（默认） */
+*:hover::-webkit-scrollbar-thumb {
+	background-color: #E6E6E6;
+	transition: background-color 0.3s ease;
+}
+
+/* 深色主题适配 - 使用 data-theme 属性 */
+html[data-theme="dark"] *:hover::-webkit-scrollbar-thumb {
+	background-color: rgba(0, 0, 0, 0.5);
+	transition: background-color 0.3s ease;
+}
+ 

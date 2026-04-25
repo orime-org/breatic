@@ -1,0 +1,29 @@
+# Whisper Model Family — Speech-to-Text Transcription
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — transcribe
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+
+models:
+  - name: "whisper-turbo"
+    display_name: "Whisper Large V3 Turbo"
+    mode: "transcribe"
+    tier: recommended
+    description: "Fastest ASR, 30% cheaper"
+    guide: "Fastest and cheapest speech-to-text. OpenAI Whisper Large V3 Turbo optimized for speed. 50+ languages with auto-detection. $0.0007/second. Choose for bulk transcription or when speed matters."
+    cost_per_call: 1
+    generation_time: 15
+    params:
+      audio:
+        description: "Audio URL (MP3/WAV/FLAC, max 60min)"
+        default: null
+      language:
+        description: "Language code or auto-detect"
+        default: "auto"
+        values: ["auto", "en", "zh", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar", "hi", "it", "nl", "pl", "sv", "tr", "uk", "vi"]
+    providers:
+      - name: wavespeed
+        model_id: "wavespeed-ai/openai-whisper-turbo"
+        priority: 1
