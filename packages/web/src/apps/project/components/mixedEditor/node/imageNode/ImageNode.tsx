@@ -1090,6 +1090,20 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     }
   };
 
+  const handleRemoveBg = async () => {
+    if (!imageContent) return;
+    if (!/^https?:\/\//i.test(imageContent)) {
+      message.error('Source image must be a persistent URL before cutout');
+      return;
+    }
+    await triggerBackendMiniTool({
+      category: 'image',
+      toolName: 'remove-bg',
+      placeholders: [{ sourceNodeId: id, nameSuffix: 'cutout' }],
+      params: { image: imageContent },
+    });
+  };
+
   const handleUpscaleSend = async (payload: {
     resolution: '2k' | '4k' | '8k';
     promptEnabled: boolean;
@@ -1256,6 +1270,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
           onGridSlice={(_nid) => handleGridSliceOpen()}
           onFlipRotate={(_nid) => handleFlipRotateOpen()}
           onGraffiti={(_nid) => handleGraffitiFocus()}
+          onRemoveBg={(_nid) => handleRemoveBg()}
         />
       </FlowNodeToolbar>
       <FlowNodeToolbar isVisible={showStandardToolbars} position={Position.Bottom} offset={12} align='center'>
