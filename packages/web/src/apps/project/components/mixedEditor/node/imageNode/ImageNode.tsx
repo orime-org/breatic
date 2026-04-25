@@ -1090,14 +1090,37 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging, data }) => {
     }
   };
 
-  const handleUpscaleSend = async (_payload: {
+  const handleUpscaleSend = async (payload: {
     resolution: '2k' | '4k' | '8k';
     promptEnabled: boolean;
     prompt: string;
   }) => {
     handleUpscaleClose();
     if (!imageContent) return;
-    createInpaintResultNodeRight(id, imageContent, 3000);
+    if (!/^https?:\/\//i.test(imageContent)) {
+      message.error('Source image must be a persistent URL before upscale');
+      return;
+    }
+    // Backend imageToolSchema picks `upscale-creative` when a prompt
+    // drives the result, otherwise plain `upscale`. Fields match
+    // schemas.ts variants 1:1.
+    const toolName = payload.promptEnabled ? 'upscale-creative' : 'upscale';
+    const params: Record<string, unknown> = {
+      image: imageContent,
+      output_resolution: payload.resolution,
+      source_width: width,
+      source_height: height,
+    };
+    if (payload.promptEnabled) {
+      params.prompt = payload.prompt;
+      params.creativity = 3;
+    }
+    await triggerBackendMiniTool({
+      category: 'image',
+      toolName,
+      placeholders: [{ sourceNodeId: id, nameSuffix: 'upscale' }],
+      params,
+    });
   };
 
   const handleQuickEditClose = () => exitEditing();
