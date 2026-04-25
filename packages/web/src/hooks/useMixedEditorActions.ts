@@ -317,6 +317,15 @@ export interface UseMixedEditorActionsResult {
       parentId?: string;
       /** Explicit position override (group-local if `parentId` set). */
       positionOverride?: { x: number; y: number };
+      /**
+       * Reuse an existing Yjs node instead of creating a new one. Used
+       * by multi-output flows (e.g. `video.cut`) where the caller has
+       * already laid out a group + N handling children via
+       * `createGroupWithChildren`. When set, the placeholder fields
+       * (`expectedSize` / `parentId` / `positionOverride`) are
+       * ignored — the existing node is taken as-is.
+       */
+      existingNodeId?: string;
     }>;
     /**
      * Tool-specific params forwarded to the Worker. Must include the
@@ -1317,6 +1326,7 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         expectedSize?: { width: number; height: number };
         parentId?: string;
         positionOverride?: { x: number; y: number };
+        existingNodeId?: string;
       }>;
       params: Record<string, unknown>;
     }): Promise<string[] | null> => {
@@ -1334,6 +1344,14 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       const newNodes: Node<ImageFlowNodeData>[] = [];
 
       for (const p of placeholders) {
+        // Multi-output flows (cut) supply pre-created Yjs nodes via
+        // `existingNodeId` and we just register them. No source lookup,
+        // no new placeholder.
+        if (p.existingNodeId) {
+          newNodeIds.push(p.existingNodeId);
+          continue;
+        }
+
         const source = allNodes.find((n) => n.id === p.sourceNodeId);
         if (!source) return null;
 
@@ -1375,9 +1393,10 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
         newNodes.push(placeholder);
       }
 
-      // One atomic Yjs write — every collaborator sees all placeholders
-      // appear together. Uses userOrigin so the creation is undoable.
-      addNodes(newNodes);
+      // One atomic Yjs write — every collaborator sees all freshly
+      // created placeholders appear together. (No-op when every entry
+      // was an `existingNodeId`.) Uses userOrigin so undoable.
+      if (newNodes.length > 0) addNodes(newNodes);
 
       const body = {
         tool: toolName,
