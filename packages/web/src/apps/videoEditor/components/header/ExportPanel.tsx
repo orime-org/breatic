@@ -475,41 +475,19 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   };
 
   // Handle export button click.
+  //
+  // Timeline Exporter is under product redesign (memory:
+  // project_t3_batch_status) — the in-browser ffmpeg.wasm export path
+  // is unsuitable long-term and the server-side flow hasn't shipped
+  // yet. Ban the entry point and surface a "coming soon" message.
+  // The internal `exportAsImage / exportAsVideo / exportAsAudio`
+  // helpers + the three Exporter utilities + the `@ffmpeg/*` package
+  // all live until the follow-up PR that rewrites ExportPanel into a
+  // "Coming Soon" placeholder.
   const handleExport = async () => {
-    if (clips.length === 0) {
-      message.warning('No content to export');
-      return;
-    }
-
-    // Create new AbortController for this run.
-    abortControllerRef.current = new AbortController();
-
-    setIsExporting(true);
-    setExportProgress(0);
-    setExportComplete(false);
-    setExportedBlob(null);
-
-    try {
-      if (exportConfig.type === 'IMAGE') {
-        setExportedFormat(exportConfig.imageFormat);
-        await exportAsImage();
-      } else if (exportConfig.type === 'VIDEO') {
-        setExportedFormat(exportConfig.videoFormat);
-        await exportAsVideo();
-      } else if (exportConfig.type === 'AUDIO') {
-        setExportedFormat(exportConfig.audioFormat);
-        await exportAsAudio();
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // User canceled export.
-        return;
-      }
-      console.warn('Export failed:', error);
-      setIsExporting(false);
-    } finally {
-      abortControllerRef.current = null;
-    }
+    message.warning(
+      'Export is being redesigned and is temporarily unavailable. Coming soon.',
+    );
   };
 
   // Download exported blob.
