@@ -107,6 +107,23 @@ If you use a tool that auto-inserts AI attribution:
 - **Cursor**: Check your commit template settings.
 - **Any other tool**: Inspect the commit message template before pushing.
 
+### Historical Context
+
+Before this policy was put in place, some PRs in this repository
+contained `Co-Authored-By: Claude` trailers in their commit history.
+These trailers exist only in GitHub's read-only PR references
+(`refs/pull/N/head`) and **were never merged into the `main` branch**:
+all PRs are squashed on merge, producing a single human-authored
+commit per merged change.
+
+The `main` branch — the authoritative publication history — has never
+contained AI-author attribution. Automated checks now block any such
+trailers from entering new commits.
+
+Copyright over project code remains with the human contributors
+identified in `git log` and the [LICENSE](./LICENSE). Tooling assistance
+during development does not affect that attribution.
+
 ---
 
 ## Commit Message Conventions
