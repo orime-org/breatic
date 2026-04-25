@@ -67,11 +67,14 @@
 - [ ] 积分购买页面：Stripe Checkout 跳转 + 余额显示 + 购买历史
 - [ ] 项目管理：创建/删除/重命名项目、项目列表、缩略图
 - [ ] 节点编辑器：根据节点类型切换（text 富文本 + AIGC mini-tools UI + text mini-tools UI）
+  - text 富文本：✅ PR #138 TextEditor + TipTap collaboration
+  - AIGC mini-tools UI：✅ PR #134 mixed editor (cut/speed/erase/extend/animate/adjust/stabilization/crop) + #136 HDR/scene-extension + #139 lip-sync/denoise；PR #135 类型路由（1001→text，1002-1004→mixed）
+  - text mini-tools UI：10 个 text mini-tool 的 slash-menu 接入待确认
 - [ ] i18n 前端接入：统一 i18n 方案（前后端共享或独立），语言切换 UI
 
 ### 画布协作
 
-- [ ] 节点编辑器文档：每个节点的富文本编辑器独立 Yjs 文档（`project-{id}/node/{nodeId}`）
+- [x] 节点编辑器文档：每个节点的富文本编辑器独立 Yjs 文档（`project-{id}/node/{nodeId}`）—— PR #138 (foundation `useYjsNodeEditor` + `nodeEditorYjsRef`) + #140 (修复 docName 路由错误，从 `project-{nodeId}/canvas` 改成 `project-{projectId}/node/{nodeId}`)
 - [ ] 文档权限控制：onAuthenticate 中按 project 成员关系校验，支持 readOnly
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
