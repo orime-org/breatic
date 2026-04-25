@@ -195,6 +195,35 @@ function getNodeDataMap(flow: Y.Map<unknown>, nodeId: string): Y.Map<unknown> | 
   return dataMap instanceof Y.Map ? (dataMap as Y.Map<unknown>) : null;
 }
 
+/**
+ * "Handling-busy" — node itself is in `state:'handling'` OR (if it's a
+ * group) any descendant is. Used by `removeNode` / `onNodesChange` to
+ * enforce the product rule: handling nodes cannot be deleted.
+ */
+function isFlowNodeBusy(flow: Y.Map<unknown>, nodeId: string): boolean {
+  const nodeMap = flow.get(nodeId);
+  if (!(nodeMap instanceof Y.Map)) return false;
+
+  const dataMap = nodeMap.get('data');
+  if (dataMap instanceof Y.Map && dataMap.get('state') === 'handling') {
+    return true;
+  }
+
+  if (nodeMap.get('type') !== 'group') return false;
+
+  // Group: refuse if any direct child is busy. Recursive — nested
+  // groups propagate their busy state up.
+  let busy = false;
+  flow.forEach((childMap, childId) => {
+    if (busy) return;
+    if (childId === nodeId) return;
+    if (!(childMap instanceof Y.Map)) return;
+    if (childMap.get('parentId') !== nodeId) return;
+    if (isFlowNodeBusy(flow, childId)) busy = true;
+  });
+  return busy;
+}
+
 // X pattern: Yjs never holds `state: 'localPending'` — the originator
 // keeps that pending tile locally, and Yjs only sees completed
 // `state: 'idle'` nodes (or `state: 'handling'` for backend-owned
@@ -586,6 +615,17 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
       withFlow((flow, doc) => {
         const nodeMap = flow.get(nodeId);
         if (!(nodeMap instanceof Y.Map)) return;
+        // Handling guard (Yjs side): refuse to delete a node that's in
+        // `state:'handling'` itself, or — if it's a group — has any
+        // descendant in handling. Mirrors the "handling cannot be
+        // deleted" product rule. Surface a toast so the user knows why
+        // their delete was a no-op.
+        if (isFlowNodeBusy(flow, nodeId)) {
+          message.warning(
+            'This node is still processing. Please wait for it to finish before deleting.',
+          );
+          return;
+        }
         doc.transact(() => {
           flow.delete(nodeId);
         }, userOrigin);
@@ -633,6 +673,11 @@ export function useMixedEditorActions(): UseMixedEditorActionsResult {
               if (getPendingTask(change.id)) continue;
               const nodeMap = flow.get(change.id);
               if (!(nodeMap instanceof Y.Map)) continue;
+              // Handling-busy guard: same rule as `removeNode`. Silent
+              // continue here (vs the explicit toast in `removeNode`)
+              // because batched ReactFlow remove changes can include
+              // many nodes and we don't want to spam.
+              if (isFlowNodeBusy(flow, change.id)) continue;
               flow.delete(change.id);
               dispatch(clearMixedEditorExpandLock(change.id));
             }
