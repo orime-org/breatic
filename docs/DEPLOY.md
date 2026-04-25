@@ -56,8 +56,8 @@ For writing code with hot reload. Only PostgreSQL and Redis run in Docker.
 ### Setup
 
 ```bash
-git clone https://github.com/orime-org/breatic_ai.git
-cd breatic_ai
+git clone https://github.com/orime-org/breatic.git
+cd breatic
 pnpm install
 
 # Start database and cache only
@@ -132,8 +132,8 @@ One command deploys everything. For open-source users and internal networks.
 
 ```bash
 # 1. Clone (you only need docker-compose.yml + .env.docker from here)
-git clone https://github.com/orime-org/breatic_ai.git
-cd breatic_ai
+git clone https://github.com/orime-org/breatic.git
+cd breatic
 
 # 2. Configure environment
 cp .env.docker .env
