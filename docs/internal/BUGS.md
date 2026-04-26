@@ -4,7 +4,7 @@
 
 **状态标记**:`[ ]` 待修 · `[~]` 进行中 · `[x]` 已修(修完即移除本行并追加到月度归档)· `⚫ 不修`(附原因,保留可追溯)
 
-**当前总计**:140 个活跃条目(P0 × 12 + P1 × 66 + P2 × 61 + 长期 × 1)· 1 个不修(BUG-034)
+**当前总计**:157 个活跃条目(P0 × 15 + P1 × 72 + P2 × 69 + 长期 × 1)· 1 个不修(BUG-034)
 
 > **本分支(`bugs_list`)职责**:审计、核查、维护本文档。不做修复代码改动。修复请另开分支或在 `breatic` 主 clone 进行。
 
@@ -27,7 +27,10 @@
 | BUG-153 | 🔴 HIGH | ffmpeg.wasm 核心从 `cdn.jsdelivr.net` 动态加载,无 SRI / CSP / fallback → CDN 污染即客户端 RCE | `web/src/utils/video{Adjust,Crop,Cut,Speed,Stabilization}WithFfmpeg.ts`(5 文件) | R6 | 3-4h | [→](audit/2026-04-23-round-6-found.md#bug-153) |
 | BUG-154 | 🔴 HIGH | ffmpeg 输出 `blob:` URL 直接写 `data.content`,刷新即失效 + 永不 revoke(违反 AIGC 持久化架构) | `web/src/hooks/useMixedEditorStore.ts:615` (`resolveVideoResultNode`) | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-154) |
 | BUG-173 | 🔴 HIGH | `POST /mini-tools/text` `Idempotency-Key` 含非 REFKEY_PATTERN 字符时 **`catch {}` 静默吞错 → 用户拿完整 AI + 0 扣费**(扣费绕过,等价 BUG-079 级) | `core/src/modules/text-tool.service.ts:215` (`catch {}`) + `server/src/routes/text-tools.ts:46` | R7 | 20m | [→](audit/2026-04-23-round-7-found.md#bug-173) |
-**P0 小计**:12 个活跃 · 预估 **~13.5 小时**(BUG-034 不计入,已标不修)
+| BUG-186 | 🔴 HIGH | git history 4-25 被无解释 force push 重写,402 commit 全部重新计算 SHA,所有 closed bug 引用的 12+ 个 fix commit hash 全部失效 → 审计反查链全断 | `docs/internal/BUGS.md` + `docs/internal/audit/*.md`(整个反查体系)+ 整个 git 历史 | R9 | 1.5h(docs 改用 PR 号引用 + 维护 hash 映射表)— **由 [INC-2026-04-25-001](INCIDENTS/2026-04-25-history-rewrite-rca.md) 统一处置** | [→](audit/2026-04-25-round-9-found.md#bug-186) |
+| BUG-187 | 🔴 HIGH | cutoff 前约 400 commit 缺基础设施文件(`pnpm-workspace.yaml` / `tsconfig.base.json` / `agents/*.md` / `eslint.config.mjs` / `.husky/commit-msg` 等) → `git bisect` / 历史回滚 / Postmortem 重现全部失效 | 4-10 ~ 4-25 17:25 之间约 400 commit | R9 | TBD(filter-repo 反向写 ~ 4-8h vs 接受现状 + warning ~ 30m)— **由 [INC-2026-04-25-001](INCIDENTS/2026-04-25-history-rewrite-rca.md) 统一处置** | [→](audit/2026-04-25-round-9-found.md#bug-187) |
+| BUG-192 | 🔴 HIGH | AI 聊天前端 `handleSend` 是 `setTimeout(..., 3000)` mock,完全不调任何 API/SSE → 核心 AI 协作功能在前端不通,后端 Agent + SubAgent + 三层记忆全空跑(影响 R3~R8 chat 链路审计的"前端在调"基础假设) | `web/src/apps/project/components/agent/AiChatRecordPanel.tsx:309-330` | R10 | 补功能(非简单 fix);dev PR 必须明确"是否 regression vs from day 1" | [→](audit/2026-04-25-round-10-found.md#bug-192) |
+**P0 小计**:15 个活跃 · 预估 **~15 小时 + BUG-192 补功能工时**(BUG-034 不计入,已标不修;BUG-187 / BUG-192 工时方案待决)
 
 ---
 
@@ -93,7 +96,6 @@
 | BUG-156 | 🟠 MED | `PUT /assets/local-upload` 无大小限制 + 无 rate limit + 信任客户端 contentType(BUG-129 systemic 扩大) | `server/src/routes/assets.ts:136-162` | R6 | 2h | [→](audit/2026-04-23-round-6-found.md#bug-156) |
 | BUG-157 | 🟠 MED | `mini-tools/video` 的 `video: z.string()` 接任意字符串(SSRF + file:// + data:)(BUG-133 systemic 扩大) | `server/src/routes/schemas.ts:48-51` | R6 | 1.5h | [→](audit/2026-04-23-round-6-found.md#bug-157) |
 | BUG-158 | 🟠 MED | 5 个 ffmpeg util 重复 boilerplate + `@ffmpeg/core` deps 声明但未使用 + 无 init mutex | `web/package.json:13-15` + 5 个 `*WithFfmpeg.ts` | R6 | 3h | [→](audit/2026-04-23-round-6-found.md#bug-158) |
-| BUG-159 | 🟠 MED | 6 处裸 `catch {}` 静默吞错误(违反 CLAUDE.md 禁止清单) | `web/.../mixedEditor/node/videoNode/videoNode.tsx:676,733,767,800,823,847` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-159) |
 | BUG-165 | 🔴 HIGH | `canvas/common/Video.tsx` videojs player 从不 dispose(BUG-070/071 systemic 放大) | `web/.../canvas/common/Video.tsx:224-319` | R6 | 45m | [→](audit/2026-04-23-round-6-found.md#bug-165) |
 | BUG-167 | 🟠 MED | `textEditor/ui/AIMenu.tsx` `insertContentAt(replacement)` 目前 mock,接真 LLM 即 XSS(Tiptap 把 string 作 HTML 解析) | `web/.../textEditor/ui/AIMenu.tsx:359,386,408` | R6 | 45m | [→](audit/2026-04-23-round-6-found.md#bug-167) |
 | BUG-168 | 🟠 MED | `resolveVideoResultNode` / `updateNodeData` 连续编辑同视频不 revoke 旧 blob URL → 潜在 GB 级泄漏 | `web/src/hooks/useMixedEditorStore.ts:608-618` | R6 | 20m | [→](audit/2026-04-23-round-6-found.md#bug-168) |
@@ -101,8 +103,15 @@
 | BUG-177 | 🟠 MED | Video/Audio Exporter 是"假成功"占位 —— 进度 100% 返回 text/plain 假冒 MP4 / 空 WAV,UI 说谎 | `web/.../videoEditor/videoExporter.ts` + `audioExporter.ts` | R8 | 30m(标 WIP / disable UI / 抛明确错) | [→](audit/2026-04-23-round-8-found.md#bug-177) |
 | BUG-179 | 🟠 MED | `handleDragMove` 每 mousemove O(N) × 3 扫描 → 100 clips × 60Hz ≈ 36k ops/sec 浪费 | `web/.../videoEditor/timeline/...` | R8 | 1h(index-by-id / 缓存) | [→](audit/2026-04-23-round-8-found.md#bug-179) |
 | BUG-184 | 🟠 MED | Security header 全仓 systemic 缺失 —— Hono / nginx × 3 / index.html 三层零 CSP / HSTS / X-Frame-Options / nosniff(BUG-136 scope 升级 + 独立追踪) | `packages/server/src/app.ts` + `docker/*.conf` + `packages/web/index.html` | R8 | 2h(Hono secureHeaders + nginx add_header + CSP nonce) | [→](audit/2026-04-23-round-8-found.md#bug-184) |
+| BUG-188 | 🟠 MED | 4-25 force push / history rewrite 操作零 commit message / 零 docs / 零 SECURITY 通知 / 零审批,违反 CLAUDE.md 编码行为准则 #5 + 违反 OSS force push 流程 | `docs/INCIDENTS/`([RCA 已建](INCIDENTS/2026-04-25-history-rewrite-rca.md))+ `SECURITY.md` + `CHANGELOG.md`(均待 maintainer 填 disclosure) | R9 | 1h(写 INCIDENTS + SECURITY 章节 disclosure)— **由 [INC-2026-04-25-001](INCIDENTS/2026-04-25-history-rewrite-rca.md) 统一处置** | [→](audit/2026-04-25-round-9-found.md#bug-188) |
+| BUG-189 | 🟠 MED | 421 文件 restore commit(`dfc3544` + `eea202e`)无 per-file 决策记录 → 已发现至少 1 处 dead code 引入(`googleAuthSchema` 在 shared + server 两处独立定义) | `packages/shared/src/schemas/index.ts:5` + `packages/shared/src/schemas/api.ts:27` + `packages/server/src/routes/auth.ts:91`(同一符号 3 处定义路径) | R9 | 2h(全 11 个 shared schema 符号 grep + 逐文件 per-file 决策)— **由 [INC-2026-04-25-001](INCIDENTS/2026-04-25-history-rewrite-rca.md) 统一处置** | [→](audit/2026-04-25-round-9-found.md#bug-189) |
+| BUG-190 | 🟠 MED | BUGS.md 状态机滞后 —— BUG-159 / BUG-169 已被 PR #144 / PR #138 自然修复但 BUGS.md 仍标 active(本轮直接关闭,但流程缺陷需补) | `docs/internal/BUGS.md`(状态同步流程) | R9 | 1h(本轮已 inline 处理 + 补建 weekly 假阳性扫描 spec) | [→](audit/2026-04-25-round-9-found.md#bug-190) |
+| BUG-193 | 🟠 MED | `sse.ts` `onerror` 不调用户传入的 `config.onerror` callback,所有 SSE 错误对 caller 静默失败 → UI 看不到任何错误,流断后无 toast / retry / fallback | `packages/web/src/utils/sse.ts:90-92` | R10 | 15m(加 `config.onerror?.(err)` 调用) | [→](audit/2026-04-25-round-10-found.md#bug-193) |
+| BUG-194 | 🟠 MED | `sse.ts` 402 抛通用 `Failed to open stream: 402` 神秘错误,无"积分不足"专属处理 + 无购买 CTA → 用户在常态(积分制)情况下看英文技术错误 | `packages/web/src/utils/sse.ts:71-80` + 404 / 5xx 同位置 | R10 | 1h(402 走专属 onPaymentRequired callback + 全局 modal listen) | [→](audit/2026-04-25-round-10-found.md#bug-194) |
+| BUG-195 | 🟠 MED | `request.ts` 网络错误时 `decrementLoading()` 不调,全局 spinner 永转看似死机 | `packages/web/src/utils/request.ts:50-53` | R10 | 5m(删除 `if (!isNetworkError)` 条件) | [→](audit/2026-04-25-round-10-found.md#bug-195) |
+| BUG-196 | 🟠 MED | `sse.ts` `Accept-Language` header 硬编码 `'en'`,无视用户语言设置 → 后端 zod validation 错误消息永远英文,日志 user locale 漂移 | `packages/web/src/utils/sse.ts:36` | R10 | 15m(读 `i18next.language` 替代) | [→](audit/2026-04-25-round-10-found.md#bug-196) |
 
-**P1 小计**:66 个 · 预估 **~42.5 小时**
+**P1 小计**:72 个 · 预估 **~48 小时**(R10 +1.5h:BUG-193/194/195/196)
 
 ---
 
@@ -160,7 +169,6 @@
 | BUG-161 | 🟡 LOW | ffmpeg cut 用 `-ss <t> -i <file>`(input seek)精度差,某些格式输出错位 I-frame | `web/src/utils/videoCutWithFfmpeg.ts:109-123` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-161) |
 | BUG-162 | 🟡 LOW | adjust WebGL 预览 vs ffmpeg 再压缩色彩管线不一致(`colorchannelmixer` 与 WebGL uniforms 对不上) | `web/src/utils/videoAdjustWithFfmpeg.ts:107-114` + adjust uniforms | R6 | 1d | [→](audit/2026-04-23-round-6-found.md#bug-162) |
 | BUG-166 | 🟡 LOW | `PlaybackTimelineSection.tsx` + `EraseTrackingPanel.tsx` 隐藏 video 元素 `loadeddata {once:true}` unmount 前未触发时 listener 未清 | `web/.../mixedEditor/node/videoNode/playback/PlaybackTimelineSection.tsx:158-194` + EraseTrackingPanel | R6 | 15m | [→](audit/2026-04-23-round-6-found.md#bug-166) |
-| BUG-169 | 🟡 LOW | 新增 `@tiptap/extension-collaboration` / `y-tiptap` 依赖装了但零引用(2.x vs 3.x 版本还不一致) | `web/package.json`(diff `a91e2cb`) | R6 | 10m | [→](audit/2026-04-23-round-6-found.md#bug-169) |
 | BUG-170 | 🟡 LOW | `90d8451` workspace API stabilize = band-aid(imageEditor→mixedEditor 漏改 + RecentProjects refetch 循环) | `web/vite.config.ts` + `web/.../workspace/components/RecentProjects.tsx` | R6 | 30m | [→](audit/2026-04-23-round-6-found.md#bug-170) |
 | BUG-171 | 🟡 LOW | `yjsProjectManager._userOrigin` per-user 非 per-tab(BUG-040 regression 面扩大) | `web/src/utils/yjsProjectManager.ts:72` | R6 | 15m(并入 BUG-040 修) | [→](audit/2026-04-23-round-6-found.md#bug-171) |
 | BUG-174 | 🟡 LOW | mini-tools 的 `node_id` / `project_id` 无 UUID 校验(对比 canvas.ts nodeHistory 用 `.uuid()`,不一致) | `server/src/routes/schemas.ts:30,47-55` | R7 | 10m(并入 BUG-133) | [→](audit/2026-04-23-round-7-found.md#bug-174) |
@@ -171,8 +179,17 @@
 | BUG-181 | 🟡 LOW | `useMemo` 读 `containerRef.current?.clientWidth` 但 ref 不在 deps → 容器尺寸变化后 stale | `web/.../videoEditor/timeline/...` | R8 | 10m(ResizeObserver + state) | [→](audit/2026-04-23-round-8-found.md#bug-181) |
 | BUG-182 | 🟡 LOW | `TimelineScale.drawScale` 刻度数无上限,超长 timeline + 细粒度 zoom 画数万条线 | `web/.../videoEditor/timeline/TimelineScale*` | R8 | 15m(max ticks / LOD) | [→](audit/2026-04-23-round-8-found.md#bug-182) |
 | BUG-183 | 🟡 LOW | 生产代码大量 `console.log`(InfiniteCanvas clickHandler 每次点击都打印) | `web/.../videoEditor/canvas/InfiniteCanvas*` | R8 | 20m(扫仓 + 改 logger) | [→](audit/2026-04-23-round-8-found.md#bug-183) |
+| BUG-191 | 🟠 MED | 14 个 `.tsx` / `.ts` 源码文件违反 CLAUDE.md 800 行 max(最严重 `videoNode.tsx` 1913 行 = 2.39× 上限,含 PR #140 重写后产物 `mixedEditor/index.tsx` 1348 行) | `packages/web/src/apps/project/components/mixedEditor/**` + `videoEditor/**` + `textEditor/**` 共 14 文件 | R9 | 30m(加 ESLint `max-lines: 800` 防新违规)+ 长期(分批拆 14 文件,每文件 2~6h) | [→](audit/2026-04-25-round-9-found.md#bug-191) |
+| BUG-197 | 🟠 MED | i18n systemic 漏洞 —— 6 文件群至少 50+ 处用户可见字符串硬编码英文 / 中英混搭(LoginPage / ResetPasswordPage / EmptyState / 9 BottomToolbar Save / TTS panel / Loading "..." )违反 4 语言承诺 | `packages/web/src/apps/auth/{Login,ResetPassword}Page.tsx` + `mixedEditor/ui/EmptyState.tsx` + 9 个 `*BottomToolbar.tsx` + `textToSpeech/TextToSpeechPlaceholderPanel.tsx` | R10 | 2h(ESLint `i18next/no-literal-string` rule + 全仓 codemod) | [→](audit/2026-04-25-round-10-found.md#bug-197) |
+| BUG-198 | 🟡 LOW | `textEditor/index.tsx` 节点切换时 `key={manager.docName}` 触发 remount,`if (!manager) Loading…` fallback 短暂闪烁 | `packages/web/src/apps/project/components/textEditor/index.tsx:74-86` | R10 | 30m(manager 缓存 + skeleton) | [→](audit/2026-04-25-round-10-found.md#bug-198) |
+| BUG-199 | 🟡 LOW | `RecentProjects.tsx` 删除项目 `await API` 后才 setState,无乐观 UI → 卡片在 API 完成前 visible | `packages/web/src/apps/workspace/components/RecentProjects.tsx:118-130` | R10 | 20m(乐观更新 + 失败回滚) | [→](audit/2026-04-25-round-10-found.md#bug-199) |
+| BUG-200 | 🟡 LOW | `request.ts:65` `await logoutApi().catch(() => {})` 静默吞错 → logout 失败完全无 log / 无埋点(违反 CLAUDE.md "禁止裸 catch") | `packages/web/src/utils/request.ts:65` | R10 | 5m(改 `catch((err) => logger.warn(...))`) | [→](audit/2026-04-25-round-10-found.md#bug-200) |
+| BUG-201 | 🟡 LOW | `packages/web/package.json` 死依赖 3 个(`zustand` / `@tanstack/react-query` / `zundo` 全部 0 引用)+ 包名 `"reagt-jike"` 拼写错(react-jike 模板早期遗迹) | `packages/web/package.json` | R10 | 10m(`pnpm remove` + 改 name) | [→](audit/2026-04-25-round-10-found.md#bug-201) |
+| BUG-202 | 🟡 LOW | 401 重定向路径 + 跳转方式不一致 —— `request.ts:68 window.location.href='/workspace'`(SPA 硬跳)vs `sse.ts:78 router.navigate('/login')`(SPA 软跳) | `packages/web/src/utils/{request,sse}.ts` | R10 | 15m(统一为 `router.navigate('/login')`) | [→](audit/2026-04-25-round-10-found.md#bug-202) |
+| BUG-203 | 🟡 LOW | `request.ts:45` axios interceptor 不解响应信封,`return response.data` 直接返回 → 后端 200 + `{success:false}` 时 caller 拿到当成功处理,每个 caller 必须手动 `if (!res.success)` | `packages/web/src/utils/request.ts:45` | R10 | 30m(interceptor 检查 success + 抛 ApiError + 全部 caller 适配) | [→](audit/2026-04-25-round-10-found.md#bug-203) |
+| BUG-204 | 🟡 LOW | `videoEditor/index.tsx:36` `const standalone = true` 写死,导出 / 保存调用 stub 路径(`getOssStsApi` / `saveWorkflowApi` 抛 not configured),生产部署该路由用户能进但功能不闭环 | `packages/web/src/apps/videoEditor/index.tsx:36` + `apis/projectApi.ts:6-20`(stubs) | R10 | TBD(产品决策:隐藏路由 vs 补完 OSS/workflow 集成) | [→](audit/2026-04-25-round-10-found.md#bug-204) |
 
-**P2 小计**:61 个 · 预估 **~20.75 小时**
+**P2 小计**:69 个 · 预估 **~24.55 小时**(R10 +3.3h:BUG-197 ~ BUG-204;BUG-204 工时方案待决)
 
 ---
 
@@ -190,11 +207,11 @@
 
 | 桶 | 数量 | 预估工时 |
 |----|------|---------|
-| P0 | 12(+1 不修) | ~13.5 h |
-| P1 | 66 | ~42.5 h |
-| P2 | 61 | ~20.75 h |
+| P0 | 15(+1 不修) | ~15 h + BUG-192 补功能(BUG-187 / BUG-192 工时方案待决) |
+| P1 | 72 | ~48 h |
+| P2 | 69 | ~24.55 h |
 | 长期 | 1 | ~12 h |
-| **总计** | **140**(含长期,+1 不修) | **~88.75 h** |
+| **总计** | **157**(含长期,+1 不修) | **~99.55 h**(BUG-187 / BUG-192 / BUG-204 待决方案 + BUG-191 长期任务未计入) |
 
 ---
 
@@ -209,6 +226,9 @@
 - **Round 7**(2026-04-23 slim):5 新发现(1 P0 + 1 P1 MED + 3 P2 LOW)+ 2 个 scope 扩大 note(BUG-132 / BUG-157)。单 agent 聚焦 rate limit / Zod / auth 覆盖 3 主题(补 Round 6 Agent J timeout 盲点),8 分钟完成不 timeout,验证"≤ 3 主题 / agent"规则。**P0 BUG-173 是主 session 从 agent 原判 MED 上调**(扣费绕过,与 BUG-079 同级)。快照见 [`audit/2026-04-23-round-7-found.md`](audit/2026-04-23-round-7-found.md)。**状态**:未修复
 - **Round 8**(2026-04-23 slim 夜):8 新发现(0 P0 + 3 P1 MED + 5 P2 LOW)。针对 PR #144 video editor workspace + exporters + TTS placeholder。单 agent 6.5 分钟完成。**关键正面观察**:BUG-070/071/165 memory leak pattern + BUG-153/154 blob/CDN pattern + BUG-093/164 useYjsStore 误用 pattern —— **全都没在新代码里复发**,dev 团队 defensive 习惯已建立。BUG-136 CSP systemic 从 LOW 升级独立 BUG-184(MED)。快照见 [`audit/2026-04-23-round-8-found.md`](audit/2026-04-23-round-8-found.md)。**状态**:未修复
 - **Round 8 后 grep**(2026-04-23):PR #150 merge 后,主 session 主动 grep `store.getState().mixedEditor\|useMixedEditorStore` 发现 `AiChatRecordPanel.tsx` 2 处漏修 stale Redux read → **BUG-185**(P0)。追踪 PR #140 Yjs-first rewrite 的第 4 个 post-merge regression(前 3 个由 PR #149/#150 修)。**教训**:Redux slice 删除后,代码审计应**全仓 grep 所有 `store.getState().<slice>` 引用**,单文件/视觉审不充分。**状态**:**已关**(PR #153 · `296b392` · 2026-04-23,dev 独立并行修复,自带 defensive grep 验证 0 残留)
+  - ⚠️ **2026-04-25 注**:`296b392` 这个 commit hash 已因 history rewrite **失效**(`git cat-file -e` 返回 missing)。详见 BUG-186 / Round 9 found。
+- **Round 9**(2026-04-25,主 session forensics):**6 新 BUG**(2 P0 + 3 P1 MED + 1 P2 MED)起因于发现 4-25 出现 2 个 `chore: restore N files dropped by 4-11 cutoff` 的描述模糊 commit。反推确认整个 git 历史在 4-25 当天被**无解释 force push 重写**(402 commit 全部塌缩到 4-25 当日 commit date,12+ 已 closed bug 的 fix commit hash 全部 GONE)+ 421 个文件被作为"new files" restore(`dfc3544` + `eea202e`)。**关键观察**:全部 P0/P1 finding 都是**流程层 / 治理层**问题,非代码层 —— audit role 第一次反身性发现"audit 自身状态机有 bug"(BUG-190)。新建 BUG-186/187/188/189/190/191 + 顺带关闭 2 个假阳性(BUG-159 / BUG-169 已被 PR #144 / PR #138 自然修复但未追踪)。快照见 [`audit/2026-04-25-round-9-found.md`](audit/2026-04-25-round-9-found.md)。**状态**:全部未修复;BUG-186/187/188/189 同根同源(4-25 history rewrite 单一事件),已写 RCA 半成品 [`INCIDENTS/2026-04-25-history-rewrite-rca.md`](INCIDENTS/2026-04-25-history-rewrite-rca.md)(audit forensics 部分完成,触发原因 + 处置决策待 maintainer 填),完成后 4 BUG 一并关闭
+- **Round 10**(2026-04-25,夜间,主 session fact-check):用户提供一份 49 项前端 bug 清单(3 炸弹 + 7 P0 + 9 P1 + 14 P2 + 16 P3 + 5 产品策略),audit 逐条核查真伪。**13 新 BUG**(1 P0 + 4 P1 + 8 P2),清单整体准确率约 **47%** —— 真新 + 重复合计 23/49,假阳性 / 描述不准 ~20%(集中在 React Hook 闭包 / Effect 依赖 / Yjs 迭代等微妙 timing 问题),i18n 类合并条目 + 产品策略非 bug ~30%。**关键发现 BUG-192(P0)**:`AiChatRecordPanel.tsx:309-330` `handleSend` 是 `setTimeout(3000)` mock,**核心 AI 聊天前端不通,后端 chat 链路全空跑** —— 影响 R3~R8 chat 链路 audit 的"前端在调"基础假设。**audit 反身性观察**:本轮第一次对外部清单做 fact-check,展示 audit role "质量门禁"价值(不是产生 bug 而是判定他人产生 bug 的真伪)。清单中 3 项 ✓ "已手工验证"标记中 1 项假阳性(B2 axios `error.status`,清单作者用旧版心智模型),**"已手工验证"标记不可盲信**。快照见 [`audit/2026-04-25-round-10-found.md`](audit/2026-04-25-round-10-found.md)。**状态**:全部未修复
 
 ---
 
