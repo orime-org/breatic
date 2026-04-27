@@ -145,7 +145,20 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
                 <span className='text-[13px] font-semibold text-text-default-base'>Brightness</span>
                 <span className='text-[12px] font-semibold text-text-default-secondary'>{brightness}%</span>
               </div>
-              <Slider className={sliderClass} value={brightness} min={0} max={100} step={1} onChange={setBrightness} />
+              <Slider
+                className={sliderClass}
+                value={brightness}
+                min={0}
+                max={100}
+                step={1}
+                activeColor='#5A5A5A'
+                inactiveColor='#E3E3E3'
+                trackHeight={6}
+                thumbWidth={20}
+                thumbHeight={16}
+                thumbColor='#B3B3B3'
+                onChange={setBrightness}
+              />
             </div>
 
             <div className='flex flex-col justify-between'>
@@ -160,6 +173,10 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
                 max={10000}
                 step={50}
                 trackBackground={temperatureTrackBackground}
+                trackHeight={6}
+                thumbWidth={20}
+                thumbHeight={16}
+                thumbColor='#B3B3B3'
                 onChange={setTemperatureK}
               />
             </div>

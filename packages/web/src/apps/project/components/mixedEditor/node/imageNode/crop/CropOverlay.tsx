@@ -104,9 +104,10 @@ type CropOverlayProps = {
   containerHeight: number;
   value: CropRect;
   onChange: (rect: CropRect) => void;
+  viewportScale?: number;
 };
 
-const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeight, value, onChange }) => {
+const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeight, value, onChange, viewportScale }) => {
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const valueRef = useRef(value);
@@ -122,6 +123,8 @@ const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeig
 
   // Used to read the container's actual rendered size to calculate the ReactFlow viewport zoom ratio
   const containerElRef = useRef<HTMLDivElement>(null);
+  const viewportScaleRef = useRef<number | undefined>(viewportScale);
+  viewportScaleRef.current = viewportScale;
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -131,7 +134,8 @@ const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeig
       // Convert screen pixel offset to node logical coordinate system.
       // containerEl clientWidth is the actual rendered width; containerWidth is the logical width; their ratio is the viewport zoom.
       const renderedWidth = containerElRef.current?.getBoundingClientRect().width ?? containerWidthRef.current;
-      const zoom = renderedWidth / containerWidthRef.current;
+      const measuredZoom = renderedWidth / containerWidthRef.current;
+      const zoom = Math.max(0.0001, viewportScaleRef.current ?? measuredZoom);
 
       const dx = (e.clientX - drag.startX) / zoom;
       const dy = (e.clientY - drag.startY) / zoom;
@@ -167,6 +171,16 @@ const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeig
   }, []);
 
   const { x, y, w, h } = value;
+  const renderZoom = Math.max(0.0001, viewportScale ?? 1);
+  const uiScale = 1 / renderZoom;
+  const borderWidth = Math.max(1 / renderZoom, 0.5);
+  const handleOffset = 4 * uiScale;
+  const cornerSize = 8 * uiScale;
+  const horizontalHandleWidth = 16 * uiScale;
+  const horizontalHandleHeight = 6 * uiScale;
+  const verticalHandleWidth = 6 * uiScale;
+  const verticalHandleHeight = 16 * uiScale;
+  const handleBorderWidth = Math.max(1 * uiScale, 0.5);
 
   const handleCropBoxMouseDown = (e: React.MouseEvent) => {
     dragRef.current = {
@@ -221,7 +235,7 @@ const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeig
           left: x,
           width: w,
           height: h,
-          border: '1px solid #A5A6F6',
+          border: `${borderWidth}px solid #A5A6F6`,
           boxSizing: 'border-box',
           overflow: 'visible',
         }}
@@ -230,25 +244,48 @@ const CropOverlay: React.FC<CropOverlayProps> = ({ containerWidth, containerHeig
         {/* Rule-of-thirds grid */}
         {isDragging && (
           <div className='pointer-events-none absolute inset-0'>
-            <div className='absolute bg-white/30' style={{ top: '33.33%', left: 0, right: 0, height: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: '66.66%', left: 0, right: 0, height: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '33.33%', width: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '66.66%', width: 1 }} />
+            <div className='absolute bg-white/30' style={{ top: '33.33%', left: 0, right: 0, height: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: '66.66%', left: 0, right: 0, height: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '33.33%', width: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '66.66%', width: borderWidth }} />
           </div>
         )}
 
         {/* Corner & edge resize handles */}
-        {handles.map(({ id, cursor, style }) => {
+        {handles.map(({ id, cursor }) => {
           const isHorizontalEdge = id === 'n' || id === 's';
           const isVerticalEdge = id === 'w' || id === 'e';
-          let shapeClass = 'h-2 w-2 rounded-full';
-          if (isHorizontalEdge) shapeClass = 'h-1.5 w-4 rounded-full';
-          if (isVerticalEdge) shapeClass = 'h-4 w-1.5 rounded-full';
+          const baseStyle: React.CSSProperties = {};
+          if (id.includes('n')) baseStyle.top = -handleOffset;
+          if (id.includes('s')) baseStyle.bottom = -handleOffset;
+          if (id.includes('w')) baseStyle.left = -handleOffset;
+          if (id.includes('e')) baseStyle.right = -handleOffset;
+          if (id === 'n' || id === 's') {
+            baseStyle.left = '50%';
+            baseStyle.transform = 'translateX(-50%)';
+          }
+          if (id === 'w' || id === 'e') {
+            baseStyle.top = '50%';
+            baseStyle.transform = 'translateY(-50%)';
+          }
+          if (id === 'nw' || id === 'ne' || id === 'sw' || id === 'se') {
+            baseStyle.width = cornerSize;
+            baseStyle.height = cornerSize;
+            baseStyle.borderRadius = '9999px';
+          } else if (isHorizontalEdge) {
+            baseStyle.width = horizontalHandleWidth;
+            baseStyle.height = horizontalHandleHeight;
+            baseStyle.borderRadius = 9999 * uiScale;
+          } else if (isVerticalEdge) {
+            baseStyle.width = verticalHandleWidth;
+            baseStyle.height = verticalHandleHeight;
+            baseStyle.borderRadius = 9999 * uiScale;
+          }
           return (
             <div
               key={id}
-              className={`nodrag nopan pointer-events-auto absolute border border-[#A5A6F6] bg-white shadow ${shapeClass}`}
-              style={{ ...style, cursor }}
+              className='nodrag nopan pointer-events-auto absolute bg-white shadow'
+              style={{ ...baseStyle, cursor, border: `${handleBorderWidth}px solid #A5A6F6` }}
               onMouseDown={createHandleMouseDown(id)}
             />
           );

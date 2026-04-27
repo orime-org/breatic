@@ -112,6 +112,7 @@ type ExpandOverlayProps = {
   originX: number;
   originY: number;
   onFrameChange: (next: ExpandFrame) => void;
+  viewportScale?: number;
 };
 
 const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
@@ -122,6 +123,7 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
   originX,
   originY,
   onFrameChange,
+  viewportScale,
 }) => {
   const cw = Math.max(1, containerWidth);
   const ch = Math.max(1, containerHeight);
@@ -149,6 +151,8 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
   chRef.current = ch;
 
   const containerElRef = useRef<HTMLDivElement>(null);
+  const viewportScaleRef = useRef<number | undefined>(viewportScale);
+  viewportScaleRef.current = viewportScale;
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -156,7 +160,8 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
       if (!drag) return;
 
       const renderedWidth = containerElRef.current?.getBoundingClientRect().width ?? cwRef.current;
-      const zoom = renderedWidth / cwRef.current;
+      const measuredZoom = renderedWidth / cwRef.current;
+      const zoom = Math.max(0.0001, viewportScaleRef.current ?? measuredZoom);
       const dx = (e.clientX - drag.startX) / zoom;
       const dy = (e.clientY - drag.startY) / zoom;
       const { orig } = drag;
@@ -234,6 +239,16 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
   // Image offset within the outer frame (since frame ox≤0 oy≤0, these values are ≥0)
   const holeLeft = -originX;
   const holeTop = -originY;
+  const renderZoom = Math.max(0.0001, viewportScale ?? 1);
+  const uiScale = 1 / renderZoom;
+  const borderWidth = Math.max(1 / renderZoom, 0.5);
+  const handleOffset = 4 * uiScale;
+  const cornerSize = 8 * uiScale;
+  const horizontalHandleWidth = 16 * uiScale;
+  const horizontalHandleHeight = 6 * uiScale;
+  const verticalHandleWidth = 6 * uiScale;
+  const verticalHandleHeight = 16 * uiScale;
+  const handleBorderWidth = Math.max(1 * uiScale, 0.5);
 
   return (
     <div
@@ -248,7 +263,7 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
           top: originY,
           width: ow,
           height: oh,
-          border: '1px solid #A5A6F6',
+          border: `${borderWidth}px solid #A5A6F6`,
           boxSizing: 'border-box',
           overflow: 'visible',
         }}
@@ -271,36 +286,59 @@ const ExpandOverlay: React.FC<ExpandOverlayProps> = ({
         {isDragging && snapX && (
           <div
             className='pointer-events-none absolute'
-            style={{ left: holeLeft + cw / 2 - 0.5, top: 0, width: 1, bottom: 0, background: '#818cf8' }}
+            style={{ left: holeLeft + cw / 2 - borderWidth / 2, top: 0, width: borderWidth, bottom: 0, background: '#818cf8' }}
           />
         )}
         {isDragging && snapY && (
           <div
             className='pointer-events-none absolute'
-            style={{ top: holeTop + ch / 2 - 0.5, left: 0, height: 1, right: 0, background: '#818cf8' }}
+            style={{ top: holeTop + ch / 2 - borderWidth / 2, left: 0, height: borderWidth, right: 0, background: '#818cf8' }}
           />
         )}
 
         {isDragging && (
           <div className='pointer-events-none absolute inset-0'>
-            <div className='absolute bg-white/30' style={{ top: '33.33%', left: 0, right: 0, height: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: '66.66%', left: 0, right: 0, height: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '33.33%', width: 1 }} />
-            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '66.66%', width: 1 }} />
+            <div className='absolute bg-white/30' style={{ top: '33.33%', left: 0, right: 0, height: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: '66.66%', left: 0, right: 0, height: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '33.33%', width: borderWidth }} />
+            <div className='absolute bg-white/30' style={{ top: 0, bottom: 0, left: '66.66%', width: borderWidth }} />
           </div>
         )}
 
-        {handles.map(({ id, cursor, style }) => {
+        {handles.map(({ id, cursor }) => {
           const isHorizontalEdge = id === 'n' || id === 's';
           const isVerticalEdge = id === 'w' || id === 'e';
-          let shapeClass = 'h-2 w-2 rounded-full'; // Corner handle: circle
-          if (isHorizontalEdge) shapeClass = 'h-1.5 w-4 rounded-full'; // Top/bottom: horizontal capsule
-          if (isVerticalEdge) shapeClass = 'h-4 w-1.5 rounded-full'; // Left/right: vertical capsule
+          const baseStyle: React.CSSProperties = {};
+          if (id.includes('n')) baseStyle.top = -handleOffset;
+          if (id.includes('s')) baseStyle.bottom = -handleOffset;
+          if (id.includes('w')) baseStyle.left = -handleOffset;
+          if (id.includes('e')) baseStyle.right = -handleOffset;
+          if (id === 'n' || id === 's') {
+            baseStyle.left = '50%';
+            baseStyle.transform = 'translateX(-50%)';
+          }
+          if (id === 'w' || id === 'e') {
+            baseStyle.top = '50%';
+            baseStyle.transform = 'translateY(-50%)';
+          }
+          if (id === 'nw' || id === 'ne' || id === 'sw' || id === 'se') {
+            baseStyle.width = cornerSize;
+            baseStyle.height = cornerSize;
+            baseStyle.borderRadius = '9999px';
+          } else if (isHorizontalEdge) {
+            baseStyle.width = horizontalHandleWidth;
+            baseStyle.height = horizontalHandleHeight;
+            baseStyle.borderRadius = 9999 * uiScale;
+          } else if (isVerticalEdge) {
+            baseStyle.width = verticalHandleWidth;
+            baseStyle.height = verticalHandleHeight;
+            baseStyle.borderRadius = 9999 * uiScale;
+          }
           return (
             <div
               key={id}
-              className={`nodrag nopan pointer-events-auto absolute border border-[#A5A6F6] bg-white shadow ${shapeClass}`}
-              style={{ ...style, cursor }}
+              className='nodrag nopan pointer-events-auto absolute bg-white shadow'
+              style={{ ...baseStyle, cursor, border: `${handleBorderWidth}px solid #A5A6F6` }}
               onMouseDown={createHandleMouseDown(id)}
             />
           );

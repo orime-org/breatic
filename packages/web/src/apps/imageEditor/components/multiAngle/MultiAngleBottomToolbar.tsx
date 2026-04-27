@@ -16,6 +16,7 @@ type MultiAngleBottomToolbarProps = {
 
 const iconBtnClass =
   'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[10px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+const sliderClass = 'nodrag nopan !w-full';
 
 const tabs = [
   { key: 'custom', label: 'Custom' },
@@ -108,21 +109,60 @@ const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ activ
                 <span className='text-[13px] font-semibold text-text-default-base'>Rotate</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{rotate}</span>
               </div>
-              <Slider className='nodrag nopan !w-full' value={rotate} min={0} max={315} step={45} onChange={setRotate} />
+              <Slider
+                className={sliderClass}
+                value={rotate}
+                min={0}
+                max={315}
+                step={45}
+                activeColor='#5A5A5A'
+                inactiveColor='#E3E3E3'
+                trackHeight={6}
+                thumbWidth={20}
+                thumbHeight={16}
+                thumbColor='#B3B3B3'
+                onChange={setRotate}
+              />
             </div>
             <div className='flex flex-col justify-between'>
               <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Tilt</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{tilt}</span>
               </div>
-              <Slider className='nodrag nopan !w-full' value={tilt} min={-30} max={60} step={30} onChange={setTilt} />
+              <Slider
+                className={sliderClass}
+                value={tilt}
+                min={-30}
+                max={60}
+                step={30}
+                activeColor='#5A5A5A'
+                inactiveColor='#E3E3E3'
+                trackHeight={6}
+                thumbWidth={20}
+                thumbHeight={16}
+                thumbColor='#B3B3B3'
+                onChange={setTilt}
+              />
             </div>
             <div className='flex flex-col justify-between'>
               <div className='mb-4 flex items-center justify-between'>
                 <span className='text-[13px] font-semibold text-text-default-base'>Scale</span>
                 <span className='text-[13px] font-semibold text-text-default-base'>{scaleLabel}</span>
               </div>
-              <Slider className='nodrag nopan !w-full' value={scaleValueToIndex(scale)} min={0} max={2} step={1} onChange={(v) => setScale(scaleIndexToValue(v))} />
+              <Slider
+                className={sliderClass}
+                value={scaleValueToIndex(scale)}
+                min={0}
+                max={2}
+                step={1}
+                activeColor='#5A5A5A'
+                inactiveColor='#E3E3E3'
+                trackHeight={6}
+                thumbWidth={20}
+                thumbHeight={16}
+                thumbColor='#B3B3B3'
+                onChange={(v) => setScale(scaleIndexToValue(v))}
+              />
             </div>
           </div>
         </div>

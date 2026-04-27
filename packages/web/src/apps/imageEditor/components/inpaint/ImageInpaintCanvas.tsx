@@ -155,16 +155,17 @@ const ImageInpaintCanvas: React.FC<ImageInpaintCanvasProps> = ({
     <div
       ref={hostRef}
       className='nodrag nopan block h-full w-full touch-none'
-      style={
-        drawBackgroundOnCanvas || !src
-          ? undefined
+      style={{
+        backgroundColor: '#ffffff',
+        ...(drawBackgroundOnCanvas || !src
+          ? {}
           : {
             backgroundImage: `url("${src}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
-          }
-      }
+          }),
+      }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}

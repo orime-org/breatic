@@ -340,6 +340,30 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     setActiveTool('inpaint');
   }, [cropRect.h, cropRect.w, cropRect.x, cropRect.y, imageSize, imageSrc]);
 
+  const generateCroppedImage = useCallback(async (sourceSrc: string): Promise<string | null> => {
+    if (!sourceSrc || !imageSize) return null;
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
+    image.src = sourceSrc;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('crop image load failed'));
+    });
+
+    const sx = Math.max(0, Math.min(image.naturalWidth, cropRect.x));
+    const sy = Math.max(0, Math.min(image.naturalHeight, cropRect.y));
+    const sw = Math.max(1, Math.min(image.naturalWidth - sx, cropRect.w));
+    const sh = Math.max(1, Math.min(image.naturalHeight - sy, cropRect.h));
+
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = sw;
+    outputCanvas.height = sh;
+    const ctx = outputCanvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+    return outputCanvas.toDataURL('image/png');
+  }, [cropRect.h, cropRect.w, cropRect.x, cropRect.y, imageSize]);
+
   const handleFlipRotateApply = useCallback(
     async (op: FlipRotateBitmapOp) => {
       if (!imageSrc) return;
@@ -523,7 +547,12 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     void 0;
   }, []);
 
-  const handleApplyToHistory = useCallback(() => {
+  const handleExitTool = useCallback(() => {
+    setActiveTool('inpaint');
+    setBottomActionMode('history-item');
+  }, []);
+
+  const handleApplyToHistory = useCallback(async () => {
     if (activeTool === 'cutout') {
       const loadingItem: ImageHistoryItem = {
         src: currentSelectedSrc || imageSrc,
@@ -556,12 +585,56 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
       mockTaskTimersRef.current.push(timer);
       return;
     }
-    const src = currentSelectedSrc || imageSrc;
+
+    let src = currentSelectedSrc || imageSrc;
+    if (activeTool === 'crop') {
+      const cropped = await generateCroppedImage(src);
+      if (cropped) src = cropped;
+    } else if (activeTool === 'adjust') {
+      if (imageSrc && !isNeutralAdjustValue(adjustValue)) {
+        const adjusted = await generateAdjustedImage(imageSrc, adjustValue);
+        if (adjusted) src = adjusted;
+      }
+    } else if (activeTool === 'expand') {
+      const frame = {
+        w: Math.max(1, Math.round(expandSize.w)),
+        h: Math.max(1, Math.round(expandSize.h)),
+        ox: expandOrigin.x,
+        oy: expandOrigin.y,
+      };
+      if (imageSrc) {
+        const expanded = await generateExpandedImage(imageSrc, frame);
+        if (expanded) src = expanded;
+      }
+    } else if ((activeTool === 'mark' || activeTool === 'graffiti') && editorCanvas) {
+      src = editorCanvas.toDataURL({
+        format: 'png',
+        quality: 1,
+        multiplier: 1,
+      });
+    }
+
     if (!src) return;
+    setImageSrc(src);
     setHistoryList((prev) => [...prev, { src, status: 'done' }]);
     setSelectedHistoryIndex(historyList.length);
     setBottomActionMode('history-item');
-  }, [activeTool, currentSelectedSrc, historyList.length, imageSrc]);
+    setActiveTool('inpaint');
+  }, [
+    activeTool,
+    adjustValue,
+    currentSelectedSrc,
+    editorCanvas,
+    expandOrigin.x,
+    expandOrigin.y,
+    expandSize.h,
+    expandSize.w,
+    generateAdjustedImage,
+    generateCroppedImage,
+    generateExpandedImage,
+    historyList.length,
+    imageSrc,
+  ]);
 
   const handleHistorySelect = useCallback((idx: number, item: ImageHistoryItem) => {
     setSelectedHistoryIndex(idx);
@@ -687,6 +760,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                         <CropOverlay
                           containerWidth={imageSize.width}
                           containerHeight={imageSize.height}
+                          viewportScale={displayScale}
                           value={cropRect}
                           onChange={setCropRect}
                         />
@@ -695,6 +769,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                         <ExpandOverlay
                           containerWidth={imageSize.width}
                           containerHeight={imageSize.height}
+                          viewportScale={displayScale}
                           outerWidth={expandSize.w}
                           outerHeight={expandSize.h}
                           originX={expandOrigin.x}
@@ -706,6 +781,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                         <GridSliceOverlay
                           rows={Math.max(1, gridSlice.rows)}
                           cols={Math.max(1, gridSlice.cols)}
+                          viewportScale={displayScale}
                           selectedCells={selectedGridCells}
                           onToggleCell={handleGridCellToggle}
                         />
@@ -809,7 +885,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     active={isInpaintCanvasMode(activeTool)}
                     onClose={(nextImageSrc) => {
                       if (nextImageSrc) setImageSrc(nextImageSrc);
-                      setActiveTool('inpaint');
+                      handleExitTool();
                     }}
                   />
                 )}
@@ -819,14 +895,14 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     active={isInpaintCanvasMode(activeTool)}
                     onClose={(nextImageSrc) => {
                       if (nextImageSrc) setImageSrc(nextImageSrc);
-                      setActiveTool('inpaint');
+                      handleExitTool();
                     }}
                   />
                 )}
                 {bottomActionMode === 'tool-apply-history' && activeTool === 'adjust' && (
                   <AdjustBottomToolbar
                     active={activeTool === 'adjust'}
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onChange={setAdjustValue}
                     onSave={handleAdjustSave}
                   />
@@ -839,7 +915,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     containerWidth={imageSize.width}
                     containerHeight={imageSize.height}
                     onDimensionChange={handleCropDimensionChange}
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onSave={() => {
                       void handleCropSave();
                     }}
@@ -849,7 +925,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                   <FlipRotateBottomToolbar
                     active={activeTool === 'flip-rotate'}
                     imageSrc={imageSrc}
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onApply={handleFlipRotateApply}
                   />
                 )}
@@ -861,14 +937,14 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     containerWidth={imageSize.width}
                     containerHeight={imageSize.height}
                     onDimensionChange={handleExpandDimensionChange}
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onSend={handleExpandSend}
                   />
                 )}
                 {bottomActionMode === 'tool-apply-history' && activeTool === 'upscale' && (
                   <UpscaleBottomToolbar
                     active={activeTool === 'upscale'}
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onSend={(payload) => {
                       void handleUpscaleSend(payload);
                     }}
@@ -877,7 +953,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                 {bottomActionMode === 'tool-apply-history' && activeTool === 'grid-slice' && (
                   <GridSliceBottomToolbar
                     active
-                    onClose={() => setActiveTool('inpaint')}
+                    onClose={handleExitTool}
                     onSend={() => handleGridSliceSend()}
                     gridSlice={gridSlice}
                     onGridSliceChange={setGridSlice}
@@ -886,10 +962,10 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                   />
                 )}
                 {bottomActionMode === 'tool-apply-history' && activeTool === 'relight' && (
-                  <RelightBottomToolbar active onClose={() => setActiveTool('inpaint')} imageSrc={imageSrc} />
+                  <RelightBottomToolbar active onClose={handleExitTool} imageSrc={imageSrc} />
                 )}
                 {bottomActionMode === 'tool-apply-history' && activeTool === 'multi-angle' && (
-                  <MultiAngleBottomToolbar active onClose={() => setActiveTool('inpaint')} imageSrc={imageSrc} />
+                  <MultiAngleBottomToolbar active onClose={handleExitTool} imageSrc={imageSrc} />
                 )}
                 {bottomActionMode === 'history-item' && (
                   <div className='flex w-full max-w-[740px] flex-col items-center gap-2'>
