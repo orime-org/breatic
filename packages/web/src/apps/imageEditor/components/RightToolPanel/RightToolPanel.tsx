@@ -2,7 +2,28 @@ import React from 'react';
 import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
 
-const RightToolPanel: React.FC = () => {
+export type ImageEditorToolMode =
+  | 'inpaint'
+  | 'mark'
+  | 'graffiti'
+  | 'adjust'
+  | 'crop'
+  | 'flip-rotate'
+  | 'quick-edit'
+  | 'erase'
+  | 'cutout'
+  | 'upscale'
+  | 'expand'
+  | 'grid-slice'
+  | 'relight'
+  | 'multi-angle';
+
+type RightToolPanelProps = {
+  activeTool: ImageEditorToolMode;
+  onSelect: (tool: ImageEditorToolMode) => void;
+};
+
+const RightToolPanel: React.FC<RightToolPanelProps> = ({ activeTool, onSelect }) => {
   const coreTools = [
     { id: 'quick-edit', icon: 'project-excalidraw-top-quick-edit-icon', label: 'Quick Edit', width: 18, height: 18 },
     { id: 'inpaint', icon: 'project-excalidraw-top-inpaint-icon', label: 'Inpaint', width: 18, height: 18 },
@@ -26,59 +47,39 @@ const RightToolPanel: React.FC = () => {
     { id: 'multi-angle', icon: 'project-excalidraw-top-multi-angle-icon', label: 'Multi-Angle', width: 20, height: 20 },
   ] as const;
 
+  const renderToolButton = (tool: (typeof coreTools | typeof transformTools | typeof creativeTools)[number]) => {
+    const isActive = activeTool === tool.id;
+    return (
+      <Tooltip key={tool.id} title={tool.label} placement='left' offset={6}>
+        <button
+          type='button'
+          onClick={() => {
+            onSelect(tool.id as ImageEditorToolMode);
+          }}
+          className={`my-1 flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
+            isActive
+              ? 'border-[#a7dfb4] bg-[#eef9f0]'
+              : 'border-transparent hover:border-[#e3e6ec] hover:bg-[#f1f3f7]'
+          }`}
+        >
+          <Icon
+            name={tool.icon}
+            width={tool.width}
+            height={tool.height}
+            color='var(--color-icon-base)'
+          />
+        </button>
+      </Tooltip>
+    );
+  };
+
   return (
     <div className='flex h-full flex-col items-center bg-background-default-secondary py-2'>
-      {coreTools.map((tool, idx) => (
-        <Tooltip key={tool.id} title={tool.label} placement='left' offset={6}>
-          <button
-            type='button'
-            className={`my-1 flex h-10 w-10 items-center justify-center rounded-lg border ${
-              idx === 0
-                ? 'border-[#a7dfb4] bg-[#eef9f0]'
-                : 'border-transparent hover:border-[#e3e6ec] hover:bg-[#f1f3f7]'
-            }`}
-          >
-            <Icon
-              name={tool.icon}
-              width={tool.width}
-              height={tool.height}
-              color='var(--color-icon-base)'
-            />
-          </button>
-        </Tooltip>
-      ))}
+      {coreTools.map(renderToolButton)}
       <div className='my-1 h-px w-8 bg-[#e6e8ec]' />
-      {transformTools.map((tool) => (
-        <Tooltip key={tool.id} title={tool.label} placement='left' offset={6}>
-          <button
-            type='button'
-            className='my-1 flex h-10 w-10 items-center justify-center rounded-lg border border-transparent hover:border-[#e3e6ec] hover:bg-[#f1f3f7]'
-          >
-            <Icon
-              name={tool.icon}
-              width={tool.width}
-              height={tool.height}
-              color='var(--color-icon-base)'
-            />
-          </button>
-        </Tooltip>
-      ))}
+      {transformTools.map(renderToolButton)}
       <div className='my-1 h-px w-8 bg-[#e6e8ec]' />
-      {creativeTools.map((tool) => (
-        <Tooltip key={tool.id} title={tool.label} placement='left' offset={6}>
-          <button
-            type='button'
-            className='my-1 flex h-10 w-10 items-center justify-center rounded-lg border border-transparent hover:border-[#e3e6ec] hover:bg-[#f1f3f7]'
-          >
-            <Icon
-              name={tool.icon}
-              width={tool.width}
-              height={tool.height}
-              color='var(--color-icon-base)'
-            />
-          </button>
-        </Tooltip>
-      ))}
+      {creativeTools.map(renderToolButton)}
     </div>
   );
 };

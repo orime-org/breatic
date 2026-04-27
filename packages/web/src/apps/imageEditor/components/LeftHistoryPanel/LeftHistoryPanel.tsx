@@ -1,23 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import Loading from '@/components/loading/Loading';
 
+export type ImageHistoryItem = {
+  src: string;
+  status: 'done' | 'loading' | 'failed';
+  errorMessage?: string;
+};
+
 interface LeftHistoryPanelProps {
-  historyList: string[];
+  historyList: ImageHistoryItem[];
   activeIndex: number;
-  onSelect: (index: number, src: string) => void;
+  hostIndex: number;
+  onSelect: (index: number, item: ImageHistoryItem) => void;
+  onRetry?: (index: number, item: ImageHistoryItem) => void;
 }
 
 const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
   historyList,
   activeIndex,
+  hostIndex,
   onSelect,
+  onRetry,
 }) => {
   const [loadedMap, setLoadedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setLoadedMap((prev) => {
       const next: Record<string, boolean> = {};
-      historyList.forEach((src) => {
+      historyList.forEach(({ src }) => {
         next[src] = prev[src] ?? false;
       });
       return next;
@@ -35,18 +45,18 @@ const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
     <div className='flex h-full min-h-0 flex-col overflow-hidden bg-background-default-secondary p-3 pt-[50px]'>
       <div className='h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden -mr-3 pr-3'>
         <div className='space-y-3'>
-          {historyList.map((thumb, idx) => (
+          {historyList.map((item, idx) => (
             <button
-              key={`${thumb}-${idx}`}
+              key={`${item.src}-${idx}`}
               type='button'
               className={`relative box-border block w-full overflow-hidden rounded-lg border p-0 leading-none transition-all ${
                 activeIndex === idx
                   ? 'border-[#52c46b] ring-2 ring-[#c4ebcd]'
                   : 'border-[#e5e7eb] hover:border-[#cfd4dd]'
               }`}
-              onClick={() => onSelect(idx, thumb)}
+              onClick={() => onSelect(idx, item)}
             >
-              {!loadedMap[thumb] && (
+              {item.status === 'loading' && (
                 <div className='absolute inset-0 z-10'>
                   <Loading
                     inline
@@ -57,15 +67,38 @@ const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
                   />
                 </div>
               )}
+              {item.status === 'failed' && (
+                <div className='absolute inset-0 z-10 flex items-center justify-center bg-[#fee2e2]/85'>
+                  <span className='text-lg font-bold text-[#b91c1c]'>!</span>
+                </div>
+              )}
               <img
-                src={thumb}
+                src={item.src}
                 alt={`history-${idx}`}
                 className={`block w-full align-top transition-opacity ${
-                  loadedMap[thumb] ? 'h-auto opacity-100' : 'h-[150px] object-cover opacity-0'
+                  loadedMap[item.src] ? 'h-auto opacity-100' : 'h-[150px] object-cover opacity-0'
                 }`}
-                onLoad={() => markLoaded(thumb)}
-                onError={() => markLoaded(thumb)}
+                onLoad={() => markLoaded(item.src)}
+                onError={() => markLoaded(item.src)}
               />
+              {item.status === 'failed' && onRetry && (
+                <button
+                  type='button'
+                  className='absolute bottom-1 left-1 z-20 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-[#b91c1c] hover:bg-white'
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRetry(idx, item);
+                  }}
+                >
+                  Retry
+                </button>
+              )}
+              {hostIndex === idx && (
+                <span
+                  className='absolute bottom-1 right-1 inline-flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[#2563eb]'
+                  title='Current node content'
+                />
+              )}
             </button>
           ))}
         </div>

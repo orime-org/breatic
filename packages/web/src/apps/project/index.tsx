@@ -15,6 +15,7 @@ import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import MixedEditor from './components/mixedEditor';
 import TextEditor from './components/textEditor';
+import ImageEditorPage from '@/apps/imageEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
 import ProjectCanvas from './components/canvas';
@@ -369,6 +370,8 @@ const ProjectContentBody: React.FC<{
                   </Tooltip>
                   {isTextNode && panelNode ? (
                     <TextEditor nodeId={panelNode.id} />
+                  ) : isImageNode && panelNode ? (
+                    <ImageEditorPage nodeId={panelNode.id} />
                   ) : isMixedEditorNode && panelNode ? (
                     <MixedEditor nodeId={panelNode.id} hotkeysDisabled={selectedWorkspaceRegion !== 'rightEditor'} />
                   ) : (

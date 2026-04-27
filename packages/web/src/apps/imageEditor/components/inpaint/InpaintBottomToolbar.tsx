@@ -5,6 +5,7 @@ import Slider from '@/components/base/slider';
 import Tooltip from '@/components/base/tooltip';
 import { Icon } from '@/components/base/icon';
 import { Button } from '@/components/base/button';
+import Divider from '@/components/base/divider';
 import AgentComposerInput from '@/components/base/agent/AgentInput';
 
 export type InpaintTool = 'brush' | 'circle' | 'rectangle' | 'eraser';
@@ -15,28 +16,31 @@ type InpaintBottomToolbarProps = {
   baseImageSrc?: string;
   composeResultWithBaseImage?: boolean;
   objectCompositeOperation?: GlobalCompositeOperation;
+  onCanvasCommit?: () => void;
   onClose: (nextImageSrc?: string) => void;
 };
 
 const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 const iconBtnActiveClass = 'bg-background-default-base-hover';
+const inpaintLabelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
 const inpaintSliderWrapClass = 'nodrag nopan mx-1 flex h-8 w-[88px] shrink-0 [&_.slider-container]:flex [&_.slider-container]:h-full [&_.slider-container]:w-full [&_.slider-container]:items-center';
 const disabledLeftSlotClass = 'inline-flex h-[40px] items-center gap-1.5 rounded-full border border-[#C8C8C8] px-4 text-[12px] font-semibold !text-text-disabled-base cursor-not-allowed bg-[var(--color-background-default-base)]';
 const inpaintDisplayOpacity = 0.55;
-const mosaicTileSize = 8;
+const mosaicTileWidth = 8;
+const mosaicTileHeight = 8;
 const shapeInitialSize = 2;
 
 const createMosaicTile = (): HTMLCanvasElement => {
   const tile = document.createElement('canvas');
-  tile.width = mosaicTileSize;
-  tile.height = mosaicTileSize;
+  tile.width = mosaicTileWidth;
+  tile.height = mosaicTileHeight;
   const ctx = tile.getContext('2d');
   if (ctx) {
     ctx.fillStyle = '#c4cad4';
-    ctx.fillRect(0, 0, mosaicTileSize, mosaicTileSize);
+    ctx.fillRect(0, 0, mosaicTileWidth, mosaicTileHeight);
     ctx.fillStyle = '#d5dae2';
-    ctx.fillRect(0, 0, mosaicTileSize / 2, mosaicTileSize / 2);
-    ctx.fillRect(mosaicTileSize / 2, mosaicTileSize / 2, mosaicTileSize / 2, mosaicTileSize / 2);
+    ctx.fillRect(0, 0, mosaicTileWidth / 2, mosaicTileHeight / 2);
+    ctx.fillRect(mosaicTileWidth / 2, mosaicTileHeight / 2, mosaicTileWidth / 2, mosaicTileHeight / 2);
   }
   return tile;
 };
@@ -47,6 +51,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
   baseImageSrc,
   composeResultWithBaseImage = true,
   objectCompositeOperation = 'lighten',
+  onCanvasCommit,
   onClose,
 }) => {
   const [activeTool, setActiveTool] = useState<InpaintTool>('brush');
@@ -147,10 +152,14 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
     if (!canvas || !active) return;
     canvas.isDrawingMode = activeTool === 'eraser';
     if (activeTool === 'eraser') canvas.freeDrawingBrush = getEraser(canvas);
+    // Reuse one pattern instance in this session so all drawn shapes
+    // share the same mosaic phase and look like one continuous layer.
+    const sharedMosaicPattern = getMosaicPattern();
 
     let mouseFrom: { x: number; y: number } | null = null;
     let brushPoints: Array<{ x: number; y: number }> | null = null;
     let previewObject: Rect | Circle | Path | null = null;
+    let hasCanvasMutation = false;
 
     const clampToCanvas = (point: { x: number; y: number }): { x: number; y: number } => {
       const maxX = Math.max(0, canvas.getWidth());
@@ -227,6 +236,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
       nextPath.erasable = true;
       nextPath.opacity = 1;
       nextPath.globalCompositeOperation = objectCompositeOperation;
+      onCanvasCommit?.();
     };
 
     const buildBrushPreviewObject = (points: Array<{ x: number; y: number }>): Circle | Path => {
@@ -238,7 +248,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           radius: Math.max(1, brushSize / 2),
           originX: 'center',
           originY: 'center',
-          fill: getMosaicPattern(),
+          fill: sharedMosaicPattern,
           opacity: 1,
           stroke: 'rgba(0, 0, 0, 0)',
           strokeWidth: 0,
@@ -261,7 +271,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
 
       return new Path(path, {
         fill: '',
-        stroke: getMosaicPattern(),
+        stroke: sharedMosaicPattern,
         strokeWidth: brushSize,
         strokeLineCap: 'round',
         strokeLineJoin: 'round',
@@ -283,6 +293,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
       if (activeTool === 'brush') {
         brushPoints = [p];
         previewObject = buildBrushPreviewObject(brushPoints);
+        hasCanvasMutation = true;
         canvas.discardActiveObject();
         canvas.add(previewObject);
         canvas.requestRenderAll();
@@ -313,7 +324,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           toY +
           ' z';
         previewObject = new Path(path, {
-          fill: getMosaicPattern(),
+          fill: sharedMosaicPattern,
           opacity: 1,
           stroke: 'rgba(0, 0, 0, 0)',
           strokeWidth: 0,
@@ -327,7 +338,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           left: p.x + shapeInitialSize,
           top: p.y + shapeInitialSize,
           radius: shapeInitialSize,
-          fill: getMosaicPattern(),
+          fill: sharedMosaicPattern,
           opacity: 1,
           stroke: 'rgba(0, 0, 0, 0)',
           strokeWidth: 0,
@@ -338,6 +349,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
         });
       }
 
+      hasCanvasMutation = true;
       canvas.discardActiveObject();
       canvas.add(previewObject);
       canvas.requestRenderAll();
@@ -383,7 +395,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           toY +
           ' z';
         previewObject = new Path(path, {
-          fill: getMosaicPattern(),
+          fill: sharedMosaicPattern,
           opacity: 1,
           stroke: 'rgba(0, 0, 0, 0)',
           strokeWidth: 0,
@@ -404,11 +416,11 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           left,
           top,
           radius,
-          fill: getMosaicPattern(),
+          fill: sharedMosaicPattern,
           opacity: 1,
           stroke: 'rgba(0, 0, 0, 0)',
           strokeWidth: 0,
-          globalCompositeOperation: 'lighten',
+          globalCompositeOperation: objectCompositeOperation,
           selectable: false,
           evented: false,
           erasable: true,
@@ -420,9 +432,11 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
     };
 
     const onMouseUp = () => {
+      if (hasCanvasMutation) onCanvasCommit?.();
       mouseFrom = null;
       brushPoints = null;
       previewObject = null;
+      hasCanvasMutation = false;
       canvas.requestRenderAll();
     };
 
@@ -438,15 +452,20 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
       canvas.off('mouse:up', onMouseUp);
       canvas.isDrawingMode = false;
     };
-  }, [canvas, active, activeTool, brushSize, getEraser, getMosaicPattern, objectCompositeOperation]);
+  }, [canvas, active, activeTool, brushSize, getEraser, getMosaicPattern, objectCompositeOperation, onCanvasCommit]);
 
   return (
-    <div className='nodrag nopan pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-[10px] bg-background-default-secondary'>
+    <div className='nodrag nopan pointer-events-auto flex flex-col items-center gap-3'>
       <div
-        className='nodrag nopan pointer-events-auto flex min-h-[40px] w-full flex-wrap items-center gap-1 bg-background-default-secondary px-1 py-2'
+        className='nodrag nopan pointer-events-auto flex h-[40px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[12px] py-[4px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        <div className={inpaintLabelClass}>
+          <Icon name='project-excalidraw-top-inpaint-icon' width={20} height={20} color='var(--bg-icon-base)' />
+          <span className='text-sm font-bold text-text-default-base'>Inpaint</span>
+        </div>
+        <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
         <Tooltip title='Brush' placement='top' offset={4}>
           <button
             type='button'
@@ -502,9 +521,15 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
             onChange={handleBrushSizeChange}
           />
         </div>
+        <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
+        <Tooltip title='Exit' placement='top' offset={4}>
+          <button type='button' className={iconBtnClass} onClick={() => onClose()} aria-label='Close inpaint toolbar'>
+            <Icon name='imageEditor-multi-angle-close-icon' width={20} height={20} />
+          </button>
+        </Tooltip>
       </div>
 
-      <div className='pointer-events-auto min-h-0 flex-1 overflow-hidden border border-[#d7dce3] rounded-[4px] bg-background-default-secondary'>
+      <div className='pointer-events-auto h-[150px] w-[470px] overflow-hidden rounded-[8px] border border-[#DBDBDB] bg-background-default-base shadow-[0_1px_3px_rgba(0,0,0,0.08)]'>
         <div className='flex h-full flex-col px-3 py-2'>
           <AgentComposerInput
             className='flex-1 !cursor-text'
