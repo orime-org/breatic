@@ -411,9 +411,16 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
   );
 
   const handleAddToInput = useCallback(() => {
-    const content = targetNodeData?.content;
+    // TODO PR-6+: node output URL is now resolved from the active history item,
+    // not from `data.content` (removed from schema). Resolve the active HistoryItem.url
+    // from `targetNodeData.history` + `targetNodeData.activeHistoryId` here.
+    const { activeHistoryId, history, name: nodeName } = targetNodeData ?? {};
+    const activeItem = Array.isArray(history) && activeHistoryId
+      ? history.find((h) => h.id === activeHistoryId)
+      : undefined;
+    const content = activeItem?.url;
     if (!content) return;
-    const name = targetNodeData?.name ?? 'File';
+    const name = nodeName ?? 'File';
     let type: 'image' | 'video' | 'audio' | 'text' = 'image';
     if (targetNode?.type === '1001') type = 'text';
     else if (targetNode?.type === '1003') type = 'audio';
