@@ -21,9 +21,13 @@ export function projectDocName(projectId: string): string {
 }
 
 /**
- * Extract the project ID from a doc name. Returns null if the doc
- * name is malformed (legacy `/canvas` or `/node/{id}` sub-paths are
- * NOT recognized — those are obsolete).
+ * Extract the project ID from a doc name.
+ *
+ * Legacy `/canvas` and `/node/{id}` sub-paths are NOT recognized — those
+ * are obsolete; this function returns null for them.
+ *
+ * @param docName - Document name string from WebSocket handshake or persistence layer
+ * @returns Project ID extracted from the doc name, or null if malformed
  */
 export function parseProjectDocName(docName: string): string | null {
   const match = docName.match(/^project-([^/]+)$/);

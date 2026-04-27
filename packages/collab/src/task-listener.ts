@@ -18,12 +18,30 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
-import type { HistoryUpdateEvent, NodeEvent } from "@breatic/shared";
+import type { HistoryItem, HistoryUpdateEvent, NodeEvent } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
 import { parseProjectDocName } from "./schema.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("task-listener");
+
+/**
+ * Keys of `HistoryItem` that the Worker is permitted to set.
+ *
+ * This allowlist prevents:
+ *   - adversarial overwrite of stable fields (e.g., `id` breaks future findIndex)
+ *   - silent type corruption (e.g., `by` is a Y.Map at runtime; overwriting
+ *     it with a plain object breaks `item.get("by").get("userId")` downstream)
+ */
+const WORKER_UPDATABLE_FIELDS = new Set<keyof HistoryItem>([
+  "status",
+  "url",
+  "cover",
+  "width",
+  "height",
+  "duration",
+  "errorMessage",
+] as const);
 
 function taskEventsStreamKey(envPrefix: string): string {
   return `${envPrefix}:stream:task-events`;
@@ -40,6 +58,13 @@ function taskEventsLastIdKey(envPrefix: string): string {
  * `nodesMap.get(nodeId).get("data").get("history")` and merges
  * `event.update` (a `Partial<HistoryItem>`) into it field-by-field.
  *
+ * Only fields listed in `WORKER_UPDATABLE_FIELDS` are applied; unknown
+ * or disallowed keys are dropped with a warn-level log.
+ *
+ * The field-merge loop is wrapped in `doc.transact("history-update")`
+ * so all key updates are broadcast to collaborators as a single atomic
+ * Yjs update, preventing intermediate-state observations.
+ *
  * Idempotent — applying the same update twice produces the same
  * result (Y.Map set is last-write-wins), so stream redelivery is safe.
  */
@@ -47,12 +72,47 @@ async function handleHistoryUpdateEvent(
   hocuspocus: Hocuspocus,
   event: HistoryUpdateEvent,
 ): Promise<void> {
-  const projectId = parseProjectDocName(event.docName);
-  if (!projectId) {
+  // Fix I2: debug trace at the top, before any async work
+  logger.debug({
+    docName: event.docName,
+    nodeId: event.nodeId,
+    historyItemId: event.historyItemId,
+    updateKeys: Object.keys(event.update),
+  }, "history-update received");
+
+  // Fix I1: inline the docName check; projectId is unused so skip the variable
+  if (!parseProjectDocName(event.docName)) {
     logger.warn(
       { docName: event.docName, type: event.type },
       "Unknown docName pattern (expected project-{id}), skipping",
     );
+    return;
+  }
+
+  // Fix C3: build allowlist-filtered update BEFORE opening the connection
+  // to avoid an unnecessary Doc load when there is nothing to apply.
+  const filteredUpdate: Record<string, unknown> = {};
+  const droppedKeys: string[] = [];
+  for (const [k, v] of Object.entries(event.update)) {
+    if (WORKER_UPDATABLE_FIELDS.has(k as keyof HistoryItem)) {
+      filteredUpdate[k] = v;
+    } else {
+      droppedKeys.push(k);
+    }
+  }
+  if (droppedKeys.length > 0) {
+    logger.warn(
+      {
+        docName: event.docName,
+        nodeId: event.nodeId,
+        historyItemId: event.historyItemId,
+        droppedKeys,
+      },
+      "history-update event included disallowed update keys; dropped",
+    );
+  }
+  if (Object.keys(filteredUpdate).length === 0) {
+    // Nothing allowed to apply — skip without opening the document.
     return;
   }
 
@@ -101,6 +161,8 @@ async function handleHistoryUpdateEvent(
         return;
       }
 
+      // Fix I4: use items[idx] (already-validated reference) instead of
+      // a second history.get(idx) lookup.
       const items = history.toArray() as Y.Map<unknown>[];
       const idx = items.findIndex(
         (item) => item instanceof Y.Map && item.get("id") === event.historyItemId,
@@ -118,10 +180,23 @@ async function handleHistoryUpdateEvent(
         return;
       }
 
-      const item = history.get(idx) as Y.Map<unknown>;
-      for (const [k, v] of Object.entries(event.update)) {
-        item.set(k, v);
-      }
+      // items[idx] is guaranteed defined because idx >= 0 and the array
+      // was built by history.toArray() in the same synchronous frame.
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const item = items[idx]!;
+
+      // Fix C1: wrap the multi-field merge in a single Yjs transaction so
+      // all key updates are broadcast as one atomic update. Without this,
+      // each item.set() emits a separate Yjs update and collaborators can
+      // observe intermediate states (e.g., status="done" before url arrives).
+      // The "history-update" origin lets UndoManager (PR-12) filter these
+      // server-side writes.
+      doc.transact(() => {
+        for (const [k, v] of Object.entries(filteredUpdate)) {
+          item.set(k, v);
+        }
+      }, "history-update");
+
       applied = true;
     });
   } finally {
@@ -134,7 +209,7 @@ async function handleHistoryUpdateEvent(
         docName: event.docName,
         nodeId: event.nodeId,
         historyItemId: event.historyItemId,
-        updateKeys: Object.keys(event.update),
+        updateKeys: Object.keys(filteredUpdate),
       },
       "History item updated",
     );
@@ -155,7 +230,9 @@ async function handleNodeEvent(
     await handleHistoryUpdateEvent(hocuspocus, event);
     return;
   }
-  // Unknown event type — log and skip to stay forward-compatible.
+  // Fix M2: Unreachable with current NodeEvent union, but kept for forward
+  // compatibility — when a new event type is added in shared/, this
+  // guard logs unknown types instead of silently dropping them.
   logger.warn({ type: (event as { type: string }).type }, "Unknown event type, skipping");
 }
 
