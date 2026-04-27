@@ -7,10 +7,4 @@
  * existing Collab-internal imports don't churn.
  */
 
-export {
-  canvasDocName,
-  nodeEditorDocName,
-  parseDocName,
-} from "@breatic/shared";
-
-export type { ParsedDocName } from "@breatic/shared";
+export { projectDocName, parseProjectDocName } from "@breatic/shared";

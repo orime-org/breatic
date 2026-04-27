@@ -46,8 +46,7 @@ async function main(): Promise<void> {
 
   // Start task result listener (Worker → Yjs)
   // streamRedisUrl: consume Redis Streams (DB 2)
-  // redisUrl: release canvas locks (DB 0)
-  const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, REDIS_URL, ENV_PREFIX);
+  const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, ENV_PREFIX);
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
