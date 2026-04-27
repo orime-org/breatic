@@ -54,6 +54,7 @@ async function checkCredits(userId: string): Promise<string | null> {
  * @param params - Tool-specific parameters from the validated body
  * @param userId - Authenticated user ID
  * @param projectId - Optional project ID
+ * @param historyItemId - UUID of the HistoryItem the frontend pre-pushed with status "loading"
  * @returns Object with `task_id` and `status: "pending"`
  */
 async function enqueueMiniTool(
@@ -62,6 +63,7 @@ async function enqueueMiniTool(
   params: Record<string, unknown>,
   userId: string,
   projectId?: string,
+  historyItemId?: string,
 ): Promise<{ task_id: string; status: string }> {
   const task = await taskService.create(
     userId,
@@ -81,6 +83,7 @@ async function enqueueMiniTool(
       toolName,
       taskType,
       params,
+      historyItemId,
     },
     defaultJobOpts(),
   );
@@ -105,9 +108,9 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, ...params } = body;
+  const { tool, project_id, history_item_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "image", params, user.id, project_id);
+  const result = await enqueueMiniTool(tool, "image", params, user.id, project_id, history_item_id);
   return c.json({ data: result }, 201);
 });
 
@@ -126,9 +129,9 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, ...params } = body;
+  const { tool, project_id, history_item_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "video", params, user.id, project_id);
+  const result = await enqueueMiniTool(tool, "video", params, user.id, project_id, history_item_id);
   return c.json({ data: result }, 201);
 });
 
@@ -148,10 +151,10 @@ miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, ...params } = body;
+  const { tool, project_id, history_item_id, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
-  const result = await enqueueMiniTool(tool, taskType, params, user.id, project_id);
+  const result = await enqueueMiniTool(tool, taskType, params, user.id, project_id, history_item_id);
   return c.json({ data: result }, 201);
 });
 
