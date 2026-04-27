@@ -117,9 +117,6 @@ export const mocks = {
     getBalance: vi.fn().mockResolvedValue(100),
     add: vi.fn().mockResolvedValue(200),
   },
-  // Infra hooks that tests need to override. Kept stable across runs so
-  // `beforeEach` can `.mockReset()` and re-program them.
-  acquireNodeLock: vi.fn().mockResolvedValue(true),
 };
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -140,8 +137,6 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),
-    acquireNodeLock: mocks.acquireNodeLock,
-    releaseNodeLock: vi.fn(),
     publishNodeEvent: vi.fn(),
     getStorageAdapter: vi.fn(),
     setSession: vi.fn(),
