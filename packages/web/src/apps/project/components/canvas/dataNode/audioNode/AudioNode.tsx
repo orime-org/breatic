@@ -14,6 +14,8 @@ import { Icon } from '@/components/base/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useActiveHistoryItem } from '@/hooks/useActiveHistoryItem';
+import type { HistoryItem } from '@breatic/shared';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -32,7 +34,7 @@ import NodeChatComposer from '@/apps/project/components/agent/NodeChatComposer';
 const targetHandleId = 'Audio_0_0';
 const sourceHandleId = 'Audio_0_0';
 
-type AudioNodeData = Partial<CanvasWorkflowNodeData>;
+type AudioNodeData = { name?: string; activeHistoryId?: string; history?: HistoryItem[]; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 /** Maximum recording duration (ms). */
 const maxRecordingTime = 60000;
@@ -48,7 +50,7 @@ const formatTime = (seconds: number): string => {
 const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, onNodesChange } = useCanvasActions();
+  const { pushHistoryItem, setActiveHistoryId, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -79,14 +81,15 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     return () => window.clearTimeout(timerId);
   }, [modalVisible]);
 
-  // ---------- Derived from node data: current audio URL and pending file ----------
+  // ---------- Derived from node data: current audio URL via active history item ----------
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as AudioNodeData | undefined;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const audioUrlFromData = typeof wf?.content === 'string' ? wf.content : '';
+  const activeItem = useActiveHistoryItem(nodeData as { activeHistoryId?: string; history: HistoryItem[] } | undefined);
+  const audioUrlFromData = activeItem?.url ?? '';
   const [audioUrl, setAudioUrl] = useState(audioUrlFromData);
 
-  /** Sync local audio URL when store content changes. */
+  /** Sync local audio URL when active history item URL changes. */
   useEffect(() => {
     if (audioUrlFromData !== audioUrl) {
       setAudioUrl(audioUrlFromData);
@@ -94,7 +97,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrlFromData]);
 
-  /** Local file: object URL only (no OSS / workflow APIs). */
+  /** Local file: object URL — writes a history item + sets activeHistoryId. */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -104,20 +107,16 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     setIsLoading(true);
     try {
       const resourceUrl = URL.createObjectURL(file);
-      const current = nodes.find((n: { id: string }) => n.id === id);
-      const currentData = (current?.data as Record<string, unknown>) || {};
-      const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-      void _pf;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...restData,
-          name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
-          content: resourceUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
+      const historyId = crypto.randomUUID();
+      pushHistoryItem(id, {
+        id: historyId,
+        url: resourceUrl,
+        by: { userId: 'local', username: 'local' },
+        createdAt: Date.now(),
+        source: 'upload',
+        status: 'done',
       });
+      setActiveHistoryId(id, historyId);
       setIsLoading(false);
       onSuccess(resourceUrl);
     } catch (error) {
@@ -204,20 +203,16 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
         setIsLoading(true);
         try {
           const resourceUrl = URL.createObjectURL(blob);
-          const current = nodes.find((n: { id: string }) => n.id === id);
-          const currentData = (current?.data as Record<string, unknown>) || {};
-          const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-          void _pf;
-          void _legacy;
-          updateNode(id, {
-            data: {
-              ...restData,
-              name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
-              content: resourceUrl,
-              state: 'idle',
-              runType: 'parameter',
-            },
+          const historyId = crypto.randomUUID();
+          pushHistoryItem(id, {
+            id: historyId,
+            url: resourceUrl,
+            by: { userId: 'local', username: 'local' },
+            createdAt: Date.now(),
+            source: 'upload',
+            status: 'done',
           });
+          setActiveHistoryId(id, historyId);
           setShowRecordView(false);
           setIsLoading(false);
         } catch (error) {
@@ -273,18 +268,16 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     setUrlValue('');
     setIsLoading(true);
     try {
-      const cur = (nodes.find((n: { id: string }) => n.id === id)?.data as Record<string, unknown>) || {};
-      const { nodeSelectedResultData: _legacy, ...rest } = cur;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...rest,
-          name: typeof rest.name === 'string' && rest.name ? rest.name : 'audio',
-          content: trimmedUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
+      const historyId = crypto.randomUUID();
+      pushHistoryItem(id, {
+        id: historyId,
+        url: trimmedUrl,
+        by: { userId: 'local', username: 'local' },
+        createdAt: Date.now(),
+        source: 'upload',
+        status: 'done',
       });
+      setActiveHistoryId(id, historyId);
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to set URL:', error);
