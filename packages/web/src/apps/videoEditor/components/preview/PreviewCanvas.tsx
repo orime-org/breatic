@@ -55,34 +55,16 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
     // 标记开始框选
     isSelectingRef.current = true;
 
-    // 按照案例：检查是否是 MoveableControl 元素或已选中的元素
+    const isElement = Boolean(target.closest('[id^="element-"]'));
+
+    // 按照案例：检查是否是 MoveableControl 元素或素材元素本身
     // 如果是，则阻止 Selecto 处理
     const isMoveableElement = moveable?.isMoveableElement?.(target);
-    const isSelectedElement = selectedClipId.some((clipId) => {
-      const element = document.getElementById(`element-${clipId}`);
-      return element && (element === target || element.contains(target));
-    });
 
-    if (isMoveableElement || isSelectedElement) {
+    if (isMoveableElement || isElement) {
       e.stop();
       isSelectingRef.current = false;
       return;
-    }
-  }, [selectedClipId]);
-
-  // 处理框选
-  const handleSelect = useCallback((e: any) => {
-    // 阻止 InfiniteViewer 的拖动
-    if (e.inputEvent) {
-      e.inputEvent.preventDefault();
-    }
-  }, []);
-
-  // 处理框选中
-  const handleSelectMove = useCallback((e: any) => {
-    // 阻止 InfiniteViewer 的拖动
-    if (e.inputEvent) {
-      e.inputEvent.preventDefault();
     }
   }, []);
 
@@ -117,6 +99,9 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
       moveable.waitToChangeTarget().then(() => {
         moveable.dragStart(inputEvent);
       });
+    } else if ((inputEvent?.shiftKey || inputEvent?.metaKey || inputEvent?.ctrlKey) && selectedIds.length > 0) {
+      const mergedSelected = Array.from(new Set([...selectedClipId, ...selectedIds]));
+      setSelectedClipId(mergedSelected);
     } else {
       // 不是拖动开始，直接更新选中状态
       setSelectedClipId(selectedIds);
@@ -124,7 +109,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
 
     // 标记框选结束
     isSelectingRef.current = false;
-  }, [setSelectedClipId]);
+  }, [selectedClipId, setSelectedClipId]);
 
   // 处理元素点击 - 支持 Shift 多选
   const handleElementClick = useCallback((e: React.MouseEvent, clipId: string) => {
@@ -416,11 +401,12 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
     videoElement.volume = Math.min(volume / 100, 1);
     videoElement.muted = fullscreen || volume === 0;
 
-    if (timelineTime >= 0 && timelineTime <= clipDuration) {
-      const videoTime = trimStart + timelineTime;
-      const clampedVideoTime = Math.min(Math.max(trimStart, videoTime), trimEnd);
+    const videoSpeed = Math.min(4, Math.max(0.25, clip.speed ?? 1));
+    videoElement.playbackRate = videoSpeed;
 
-      videoElement.playbackRate = 1.0;
+    if (timelineTime >= 0 && timelineTime <= clipDuration) {
+      const videoTime = trimStart + timelineTime * videoSpeed;
+      const clampedVideoTime = Math.min(Math.max(trimStart, videoTime), trimEnd);
 
       if (videoElement.readyState >= 1 && Math.abs(videoElement.currentTime - clampedVideoTime) > 0.1) {
         videoElement.currentTime = clampedVideoTime;
@@ -777,7 +763,8 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
                       className={`relative ${isFullscreen ? 'cursor-default' : 'cursor-move'}`}
                       style={{
                         position: 'absolute',
-                        inset: `${layout.y}px auto auto ${layout.x}px`,
+                        left: `${layout.x}px`,
+                        top: `${layout.y}px`,
                         width: `${layout.width}px`,
                         height: typeof layout.height === 'string' && layout.height === 'auto' ? 'auto' : `${layout.height}px`,
                         transform: `rotate(${layout.rotation}deg) scale(${layout.scale})`,
@@ -790,6 +777,7 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
                         ...outerStyle,
                       }}
                       onClick={(e) => {
+                        e.stopPropagation();
                         handleElementClick(e, clip.id);
                       }}
                     >
@@ -844,17 +832,15 @@ const PreviewCanvas = forwardRef<PreviewCanvasRef, PreviewCanvasProps>(({
             rootContainer={containerRef.current}
             selectableTargets={['[id^="element-"]', '[data-selectable="true"]']}
             hitRate={0} // 允许选中部分重叠的元素
-            selectByClick={true} // 按照案例：允许点击选中
+            selectByClick={false} // 点击选中走元素 onClick，避免和 Selecto 冲突
             selectFromInside={false} // 允许从外部框选
             toggleContinueSelect={['shift']} // Shift 键继续选择
             ratio={0} // 不限制选择框的宽高比
             boundContainer={containerRef.current} // 限制选择区域在容器内
             checkInput={false} // 不检查输入元素
-            preventClickEventOnDrag={false} // 允许点击事件正常触发
+            preventClickEventOnDrag={true} // 拖拽框选时阻止 click，避免误触单选
             preventDefault={false} // 不阻止默认事件，让框选正常工作
             onDragStart={handleSelectStart}
-            onSelect={handleSelect}
-            onDrag={handleSelectMove}
             onSelectEnd={handleSelectEnd}
           />
         )}

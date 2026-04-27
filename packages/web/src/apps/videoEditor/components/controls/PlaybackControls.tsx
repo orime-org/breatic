@@ -83,43 +83,61 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   const handleClipSplit = () => {
     if (selectedClipId.length === 0) return;
 
-    const clipToSplit = clips.find((c: TimelineClip) => c.id === selectedClipId[0]);
-    if (!clipToSplit) return;
+    const clipsToSplit = selectedClipId
+      .map((id) => clips.find((c: TimelineClip) => c.id === id))
+      .filter(Boolean) as TimelineClip[];
+    if (clipsToSplit.length === 0) return;
 
-    if (currentTime <= clipToSplit.start || currentTime >= clipToSplit.end) {
+    const validClips = clipsToSplit.filter(
+      (clip) => currentTime > clip.start && currentTime < clip.end
+    );
+
+    if (validClips.length === 0) {
       message.warning('请将播放头移动到片段内部以进行分割');
       return;
     }
 
-    const media = mediaItems.find((m: { id: string; duration?: number }) => m.id === clipToSplit.mediaId);
-    const mediaDuration = media?.duration || 0;
+    const validClipIds = new Set(validClips.map((clip) => clip.id));
+    const newSelectedRightClipIds: string[] = [];
+    const newClips = clips.flatMap((clip: TimelineClip) => {
+      if (!validClipIds.has(clip.id)) {
+        return [clip];
+      }
 
-    const oldTrimStart = clipToSplit.trimStart || 0;
-    const oldTrimEnd = clipToSplit.trimEnd || mediaDuration;
+      const media = mediaItems.find((m: { id: string; duration?: number }) => m.id === clip.mediaId);
+      const mediaDuration = media?.duration || 0;
+      const oldTrimStart = clip.trimStart || 0;
+      const oldTrimEnd = clip.trimEnd || mediaDuration;
+      const timelineOffset = currentTime - clip.start;
+      const splitVideoTime = oldTrimStart + timelineOffset;
+      const clipBaseId = `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const timelineOffset = currentTime - clipToSplit.start;
-    const splitVideoTime = oldTrimStart + timelineOffset;
+      const leftClip: TimelineClip = {
+        ...clip,
+        id: `${clipBaseId}-l`,
+        end: currentTime,
+        trimStart: oldTrimStart,
+        trimEnd: splitVideoTime,
+      };
 
-    const clip1: TimelineClip = {
-      ...clipToSplit,
-      id: `clip-${Date.now()}-${Math.random()}-1`,
-      end: currentTime,
-      trimStart: oldTrimStart,
-      trimEnd: splitVideoTime,
-    };
+      const rightClip: TimelineClip = {
+        ...clip,
+        id: `${clipBaseId}-r`,
+        start: currentTime,
+        trimStart: splitVideoTime,
+        trimEnd: oldTrimEnd,
+      };
+      newSelectedRightClipIds.push(rightClip.id);
+      return [leftClip, rightClip];
+    });
 
-    const clip2: TimelineClip = {
-      ...clipToSplit,
-      id: `clip-${Date.now()}-${Math.random()}-2`,
-      start: currentTime,
-      trimStart: splitVideoTime,
-      trimEnd: oldTrimEnd,
-    };
-
-    const newClips = clips.filter((c: TimelineClip) => c.id !== selectedClipId[0]).concat([clip1, clip2]);
     setClips(newClips);
-    setSelectedClipId([clip2.id]);
-    message.success('片段已分割');
+    setSelectedClipId(newSelectedRightClipIds);
+    if (validClips.length === clipsToSplit.length) {
+      message.success(`已分割 ${validClips.length} 个片段`);
+    } else {
+      message.warning(`已分割 ${validClips.length} 个片段，${clipsToSplit.length - validClips.length} 个片段不在播放头位置`);
+    }
   };
 
   const handleCopyClip = () => {
