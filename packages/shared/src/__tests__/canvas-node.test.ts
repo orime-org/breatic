@@ -60,11 +60,10 @@ describe("HistoryItemSource", () => {
 // ── HistoryItem ────────────────────────────────────────────────────
 
 describe("HistoryItem", () => {
-  it("accepts a minimal required-field item (loading state)", () => {
+  it("accepts a minimal required-field item (loading state, no url)", () => {
     const item: HistoryItem = {
       id: "550e8400-e29b-41d4-a716-446655440000",
-      url: "",
-      by: { userId: "user-1", name: "Alice" },
+      by: { userId: "user-1", username: "alice" },
       createdAt: Date.now(),
       source: "canvas-ai",
       status: "loading",
@@ -72,6 +71,7 @@ describe("HistoryItem", () => {
 
     expect(item.id).toBe("550e8400-e29b-41d4-a716-446655440000");
     expect(item.status).toBe("loading");
+    expect(item.url).toBeUndefined();
   });
 
   it("accepts a full item with all optional fields (done state)", () => {
@@ -82,7 +82,7 @@ describe("HistoryItem", () => {
       width: 1024,
       height: 768,
       duration: 30,
-      by: { userId: "user-2", name: "Bob" },
+      by: { userId: "user-2", username: "bob" },
       createdAt: 1_700_000_000_000,
       source: "editor-mini-tool",
       tool: "image.remove-bg",
@@ -99,8 +99,7 @@ describe("HistoryItem", () => {
   it("accepts a failed item with errorMessage", () => {
     const item: HistoryItem = {
       id: "11111111-2222-3333-4444-555555555555",
-      url: "",
-      by: { userId: "user-3", name: "Carol" },
+      by: { userId: "user-3", username: "carol" },
       createdAt: Date.now(),
       source: "upload",
       status: "failed",
@@ -116,10 +115,11 @@ describe("HistoryItem", () => {
 
 describe("CanvasNodeFields", () => {
   it("data accepts activeHistoryId and history array", () => {
+    const historyId = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
     const historyItem: HistoryItem = {
-      id: "h1",
+      id: historyId,
       url: "https://cdn.example.com/img.png",
-      by: { userId: "u1", name: "Alice" },
+      by: { userId: "u1", username: "alice" },
       createdAt: 1_700_000_000_000,
       source: "canvas-ai",
       status: "done",
@@ -131,14 +131,14 @@ describe("CanvasNodeFields", () => {
       position: { x: 100, y: 200 },
       data: {
         name: "Image Node",
-        activeHistoryId: "h1",
+        activeHistoryId: historyId,
         history: [historyItem],
         attachments: [],
         prompt: null,
       },
     };
 
-    expect(node.data.activeHistoryId).toBe("h1");
+    expect(node.data.activeHistoryId).toBe(historyId);
     expect(node.data.history).toHaveLength(1);
   });
 
@@ -160,40 +160,25 @@ describe("CanvasNodeFields", () => {
     expect(node.data.activeHistoryId).toBeUndefined();
   });
 
-  it("legacy field coverUrl does not exist on data", () => {
-    const node: CanvasNodeFields = {
-      id: "node-3",
-      type: "1002",
-      position: { x: 0, y: 0 },
-      data: {
-        name: "Test Node",
-        history: [],
-        attachments: [],
-        prompt: null,
-      },
+  it("removed legacy data fields no longer compile", () => {
+    const data: CanvasNodeFields["data"] = {
+      name: "x",
+      history: [],
+      attachments: [],
+      prompt: undefined,
     };
-
-    // @ts-expect-error coverUrl was removed from CanvasNodeFields.data
-    const _unused = node.data.coverUrl;
-    expect(node).toBeDefined();
-  });
-
-  it("legacy field state does not exist on data", () => {
-    const node: CanvasNodeFields = {
-      id: "node-4",
-      type: "1001",
-      position: { x: 0, y: 0 },
-      data: {
-        name: "Text Node",
-        history: [],
-        attachments: [],
-        prompt: null,
-      },
-    };
-
-    // @ts-expect-error state was removed from CanvasNodeFields.data
-    const _unused = node.data.state;
-    expect(node).toBeDefined();
+    // @ts-expect-error coverUrl removed
+    data.coverUrl;
+    // @ts-expect-error state removed
+    data.state;
+    // @ts-expect-error content removed
+    data.content;
+    // @ts-expect-error handlingBy removed
+    data.handlingBy;
+    // @ts-expect-error runType removed
+    data.runType;
+    // Positive control: .name access works (data is a real object)
+    expect(data.name).toBe("x");
   });
 });
 
