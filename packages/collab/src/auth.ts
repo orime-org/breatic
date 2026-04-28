@@ -4,48 +4,30 @@
  * Verifies the client's session token via Redis session store AND
  * enforces per-document project authorization. Without the project
  * check, any logged-in user who knows a target project UUID could
- * open `project-<uuid>/canvas` or `project-<uuid>/node/<nodeId>` and
- * read or write the victim's canvas — document names are predictable
- * by design to enable shareable deep links.
+ * open `project-<uuid>` and read or write the victim's canvas —
+ * document names are predictable by design to enable shareable deep
+ * links.
  *
  * The auth hook receives the Hocuspocus `documentName` alongside the
  * session token, so we parse the project UUID out of the name and
  * hit the `projects` table to verify ownership before returning the
  * user context.
+ *
+ * Only `project-{uuid}` document names are accepted. Legacy
+ * `project-{uuid}/canvas` and `project-{uuid}/node/{nodeId}` forms
+ * are rejected — there is exactly one document per project now.
  */
 
 import type Redis from "ioredis";
 import postgres from "postgres";
 import { DEV_USER_ID } from "@breatic/shared";
+import { parseProjectDocName } from "./schema.js";
 
 /** Resolved user context from authentication. */
 export interface AuthContext {
   user: {
     id: string;
   };
-}
-
-/**
- * Parse a Hocuspocus document name and return the project UUID it
- * refers to, or `null` if the name does not match the expected
- * canvas / node-editor patterns.
- *
- * Recognized formats:
- *
- *   - `project-<uuid>/canvas`
- *   - `project-<uuid>/node/<nodeId>`
- *
- * The UUID check uses a tolerant regex (hex + dashes, 36 chars)
- * rather than the strict RFC 4122 variant so that test fixtures
- * using non-v4 UUIDs still parse.
- */
-function parseProjectIdFromDocName(documentName: string): string | null {
-  // project-<uuid>/<rest>
-  const match = documentName.match(
-    /^project-([0-9a-fA-F-]{36})\/(canvas|node\/.+)$/,
-  );
-  if (!match) return null;
-  return match[1]!;
 }
 
 /**
@@ -65,13 +47,12 @@ export interface CreateAuthHookOptions {
  * subscribe to a document:
  *
  *   1. The supplied session token resolves to a user id in Redis.
- *   2. The `documentName` encodes a project UUID the user owns
- *      (enforced by a SQL query that joins projects on user_id and
- *      filters soft-deleted rows).
+ *   2. The `documentName` is a valid `project-{uuid}` name that the
+ *      user owns (enforced by a SQL query that joins projects on
+ *      user_id and filters soft-deleted rows).
  *
- * Documents whose name does not match the expected project pattern
- * are rejected outright so that arbitrary string document names
- * cannot bypass the project check in the future.
+ * Documents whose name does not match `project-{uuid}` (including
+ * legacy `/canvas` and `/node/{id}` sub-paths) are rejected outright.
  */
 export function createAuthHook({
   redis,
@@ -104,7 +85,7 @@ export function createAuthHook({
       throw new Error("Invalid or expired session token");
     }
 
-    const projectId = parseProjectIdFromDocName(documentName);
+    const projectId = parseProjectDocName(documentName);
     if (!projectId) {
       throw new Error(
         `Document '${documentName}' is not in a recognized project format`,

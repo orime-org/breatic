@@ -1,15 +1,15 @@
 /**
  * Unit tests for the Hocuspocus auth hook.
  *
- * Pins three properties:
+ * Pins four properties:
  *
  *   1. A missing or expired session token → error
  *   2. A session belonging to user A cannot open documents for a
  *      project owned by user B (the High-4 finding)
  *   3. A document name that does not match the expected
- *      `project-<uuid>/(canvas|node/...)` pattern is rejected rather
- *      than silently passed through — defense against future name
- *      schemes sneaking past the project check
+ *      `project-{uuid}` pattern is rejected — legacy `/canvas` and
+ *      `/node/{id}` sub-paths are no longer recognized
+ *   4. A valid session for the project owner is accepted
  *
  * Both Redis and postgres are mocked so the test is hermetic.
  */
@@ -46,7 +46,7 @@ describe("createAuthHook", () => {
 
   it("rejects an empty token", async () => {
     const hook = buildHook();
-    await expect(hook({ token: "", documentName: "project-x/canvas" })).rejects.toThrow(
+    await expect(hook({ token: "", documentName: "project-abc-123" })).rejects.toThrow(
       /token/i,
     );
   });
@@ -55,15 +55,31 @@ describe("createAuthHook", () => {
     redisGet.mockResolvedValue(null);
     const hook = buildHook();
     await expect(
-      hook({ token: "bad-token", documentName: "project-00000000-0000-0000-0000-000000000001/canvas" }),
+      hook({ token: "bad-token", documentName: "project-00000000-0000-0000-0000-000000000001" }),
     ).rejects.toThrow(/session/i);
   });
 
-  it("rejects a document name not matching project-<uuid>/...", async () => {
+  it("rejects a document name not matching project-{id}", async () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
     await expect(
       hook({ token: "tok", documentName: "random-doc-name" }),
+    ).rejects.toThrow(/recognized project format/);
+  });
+
+  it("rejects legacy project-{uuid}/canvas document name", async () => {
+    redisGet.mockResolvedValue("user-1");
+    const hook = buildHook();
+    await expect(
+      hook({ token: "tok", documentName: "project-abc-123/canvas" }),
+    ).rejects.toThrow(/recognized project format/);
+  });
+
+  it("rejects legacy project-{uuid}/node/{id} document name", async () => {
+    redisGet.mockResolvedValue("user-1");
+    const hook = buildHook();
+    await expect(
+      hook({ token: "tok", documentName: "project-abc-123/node/xyz" }),
     ).rejects.toThrow(/recognized project format/);
   });
 
@@ -76,7 +92,7 @@ describe("createAuthHook", () => {
     await expect(
       hook({
         token: "tok",
-        documentName: "project-00000000-0000-0000-0000-000000000001/canvas",
+        documentName: "project-00000000-0000-0000-0000-000000000001",
       }),
     ).rejects.toThrow(/not authorized/);
   });
@@ -90,22 +106,7 @@ describe("createAuthHook", () => {
 
     const ctx = await hook({
       token: "tok",
-      documentName: "project-00000000-0000-0000-0000-000000000001/canvas",
-    });
-
-    expect(ctx).toEqual({ user: { id: "user-1" } });
-  });
-
-  it("accepts a project-<uuid>/node/<nodeId> document name for the owner", async () => {
-    redisGet.mockResolvedValue("user-1");
-    sqlImpl = vi.fn().mockResolvedValue([
-      { id: "00000000-0000-0000-0000-000000000001" },
-    ]);
-    const hook = buildHook();
-
-    const ctx = await hook({
-      token: "tok",
-      documentName: "project-00000000-0000-0000-0000-000000000001/node/some-node",
+      documentName: "project-00000000-0000-0000-0000-000000000001",
     });
 
     expect(ctx).toEqual({ user: { id: "user-1" } });

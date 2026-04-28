@@ -2,15 +2,9 @@
  * Yjs document naming helpers for the Collab service.
  *
  * The canonical definitions live in `@breatic/shared`
- * (`yjs-doc-names.ts`) so Worker and Web import them from the same
- * place. This module re-exports them under the original names so
- * existing Collab-internal imports don't churn.
+ * (`yjs-doc-names.ts`). Re-exported here so Collab-internal modules
+ * can import from a stable local path (`./schema.js`) without each
+ * touching the shared package directly.
  */
 
-export {
-  canvasDocName,
-  nodeEditorDocName,
-  parseDocName,
-} from "@breatic/shared";
-
-export type { ParsedDocName } from "@breatic/shared";
+export { projectDocName, parseProjectDocName } from "@breatic/shared";

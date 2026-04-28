@@ -22,27 +22,7 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
-import { canvasDocName, nodeEditorDocName } from "@breatic/shared";
-
-/**
- * Build the target docName for a NodeEvent.
- *
- * Mini-tool jobs triggered from a mixed-editor (node-editor) doc
- * carry `host_node_id` in their params. When present, the event must
- * target the per-node editor doc so the Collab consumer routes to the
- * mixed-editor flow schema. Otherwise the event targets the main
- * canvas doc — unchanged pre-T3 behaviour.
- */
-function resolveEventDocName(
-  projectId: string,
-  params: Record<string, unknown>,
-): string {
-  const hostNodeId = params.host_node_id;
-  if (typeof hostNodeId === "string" && hostNodeId.length > 0) {
-    return nodeEditorDocName(projectId, hostNodeId);
-  }
-  return canvasDocName(projectId);
-}
+import { projectDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -73,6 +53,12 @@ export interface TaskJobData {
   skillName?: string;
   source?: string;
   toolName?: string;
+  /**
+   * UUID of the HistoryItem the frontend pre-pushed with status "loading".
+   * Worker emits HistoryUpdateEvent targeting this id on completion/failure.
+   * Absent for tasks not bound to a canvas node.
+   */
+  historyItemId?: string;
 }
 
 /**
@@ -101,7 +87,7 @@ export interface TaskJobData {
  * @returns Result dict on success, or a failure status marker
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName } = job.data;
+  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, historyItemId } = job.data;
 
   const redis = getRedis();
   const streamRedis = getStreamRedis();
@@ -134,7 +120,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, "Retry not allowed after provider returned a result");
+    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, "Retry not allowed after provider returned a result");
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -178,7 +164,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, errorMsg);
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
 
@@ -193,7 +179,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, toolName }, msg);
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, msg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, msg);
     return { failed: true, reason: "output_count_mismatch" };
   }
 
@@ -218,7 +204,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
+    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, errorMsg);
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -280,20 +266,21 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
   }
 
-  // ─── Stage 4: Record history + publish completed event ────────────
+  // ─── Stage 4: Record history + publish HistoryUpdateEvent ─────────
   if (projectId && nodeIds.length > 0) {
+    const docName = projectDocName(projectId);
     for (let i = 0; i < nodeIds.length; i++) {
       const nodeId = nodeIds[i]!;
       const out = persistedOutputs[i];
-      const content = out?.url;
-      if (typeof content !== "string") continue;
+      const url = out?.url;
+      if (typeof url !== "string") continue;
       try {
         await nodeHistoryService.recordGenerationSuccess({
           projectId,
           nodeId,
           userId,
-          content,
-          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? content : undefined),
+          content: url,
+          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? url : undefined),
           taskId,
           metadata: {
             model: (unified.extras.model as string | undefined) ?? model,
@@ -305,22 +292,26 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       } catch (err) {
         logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
       }
-    }
 
-    const eventOutputs = nodeIds.map((nodeId, i) => {
-      const out = persistedOutputs[i];
-      return {
-        nodeId,
-        content: (out?.url ?? (unified.extras.content as string | undefined)) ?? "",
-        cover_url: out?.cover_url,
-      };
-    });
-    await publishNodeEvent(streamRedis, {
-      type: "completed",
-      docName: resolveEventDocName(projectId, params),
-      taskId,
-      outputs: eventOutputs,
-    });
+      // historyItemId is absent for non-canvas tasks (understand, skill agents
+      // without node bindings). Only emit HistoryUpdateEvent when present.
+      if (!historyItemId) continue;
+      try {
+        await publishNodeEvent(streamRedis, {
+          type: "history-update",
+          docName,
+          nodeId,
+          historyItemId,
+          update: {
+            status: "done",
+            url,
+            cover: out?.cover_url,
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, taskId, nodeId }, "Failed to publish HistoryUpdateEvent (success)");
+      }
+    }
   }
 
   logger.info(
@@ -359,26 +350,36 @@ async function recordFailureHistory(
   }
 }
 
-/** Publish a `failed` NodeEvent to the task-events stream. */
+/**
+ * Publish a `history-update` event with status "failed" to the task-events stream.
+ *
+ * Only emits if historyItemId is present — tasks without a canvas binding
+ * have no HistoryItem to update.
+ */
 async function publishFailedEvent(
   streamRedis: ReturnType<typeof getStreamRedis>,
   projectId: string | undefined,
   nodeIds: string[],
-  taskId: string,
-  params: Record<string, unknown>,
+  historyItemId: string | undefined,
   errorMessage: string,
 ): Promise<void> {
-  if (!projectId || nodeIds.length === 0) return;
-  try {
-    await publishNodeEvent(streamRedis, {
-      type: "failed",
-      docName: resolveEventDocName(projectId, params),
-      taskId,
-      nodeIds,
-      errorMessage,
-    });
-  } catch (err) {
-    logger.warn({ err, taskId }, "Failed to publish failed NodeEvent");
+  if (!projectId || nodeIds.length === 0 || !historyItemId) return;
+  const docName = projectDocName(projectId);
+  for (const nodeId of nodeIds) {
+    try {
+      await publishNodeEvent(streamRedis, {
+        type: "history-update",
+        docName,
+        nodeId,
+        historyItemId,
+        update: {
+          status: "failed",
+          errorMessage,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err, nodeId }, "Failed to publish HistoryUpdateEvent (failed)");
+    }
   }
 }
 

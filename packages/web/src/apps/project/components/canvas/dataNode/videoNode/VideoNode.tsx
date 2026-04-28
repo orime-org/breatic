@@ -15,6 +15,8 @@ import VideoNodeContent from './VideoNodeContent';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useActiveHistoryItem } from '@/hooks/useActiveHistoryItem';
+import type { HistoryItem } from '@breatic/shared';
 import { getVideoMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
@@ -33,12 +35,12 @@ const sourceHandleId = 'Video_0_0';
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
-type VideoNodeData = Partial<CanvasWorkflowNodeData>;
+type VideoNodeData = { name?: string; activeHistoryId?: string; history?: HistoryItem[]; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, updateNodeParams, onNodesChange } = useCanvasActions();
+  const { updateNode, pushHistoryItem, setActiveHistoryId, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -54,14 +56,15 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
 
-  /** Derived from node data: current video URL and pending file. */
+  /** Derived from node data: current video URL via active history item. */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as VideoNodeData | undefined;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const videoUrlFromData = typeof wf?.content === 'string' ? wf.content : '';
+  const activeItem = useActiveHistoryItem(nodeData as { activeHistoryId?: string; history: HistoryItem[] } | undefined);
+  const videoUrlFromData = activeItem?.url ?? '';
   const [videoUrl, setVideoUrl] = useState(videoUrlFromData);
 
-  /** Sync local state from store video URL and dimensions when available. */
+  /** Sync local state from active history item URL and dimensions. */
   useEffect(() => {
     if (videoUrlFromData !== videoUrl) {
       setVideoUrl(videoUrlFromData);
@@ -71,9 +74,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(null);
       setContentWidth(null);
     }
-    const param = wf?.params as { width?: number; height?: number } | undefined;
-    const w = param?.width;
-    const h = param?.height;
+    const w = activeItem?.width;
+    const h = activeItem?.height;
     if (videoUrlFromData && typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
       const isLandscape = w >= h;
       if (isLandscape) {
@@ -86,7 +88,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoUrlFromData]);
+  }, [videoUrlFromData, activeItem?.width, activeItem?.height]);
 
   /** Compute content area size from source dimensions (same as ImageNode). */
   const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
@@ -102,7 +104,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     }
   };
 
-  /** Local file: object URL only (no OSS / workflow APIs). */
+  /** Local file: object URL — writes a history item + sets activeHistoryId. */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -110,27 +112,24 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   }) => {
     const { file, onSuccess, onError } = options;
     setIsLoading(true);
-    const meta = await getVideoMeta(file);
-    if (meta.width != null && meta.height != null) {
-      applyContentSizeFromDimensions(meta.width, meta.height);
-    }
     try {
+      const meta = await getVideoMeta(file);
+      if (meta.width != null && meta.height != null) {
+        applyContentSizeFromDimensions(meta.width, meta.height);
+      }
       const resourceUrl = URL.createObjectURL(file);
-      const current = nodes.find((n: { id: string }) => n.id === id);
-      const currentData = (current?.data as Record<string, unknown>) || {};
-      const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-      void _pf;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...restData,
-          name: typeof restData.name === 'string' && restData.name ? restData.name : 'video',
-          content: resourceUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
+      const historyId = crypto.randomUUID();
+      pushHistoryItem(id, {
+        id: historyId,
+        url: resourceUrl,
+        width: meta.width ?? undefined,
+        height: meta.height ?? undefined,
+        by: { userId: 'local', username: 'local' },
+        createdAt: Date.now(),
+        source: 'upload',
+        status: 'done',
       });
-      updateNodeParams(id, { width: meta.width, height: meta.height });
+      setActiveHistoryId(id, historyId);
       setIsLoading(false);
       onSuccess(resourceUrl);
     } catch (error) {
@@ -145,7 +144,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
   const handleMentionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = videoUrl || wf?.content || '';
+    const url = videoUrl || videoUrlFromData || '';
     if (url) {
       const nameFromUrl = url.split('/').pop()?.split('?')[0] || 'video';
       requestAddResourceToInput({ url, name: nameFromUrl, type: 'video' });

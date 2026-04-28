@@ -1,22 +1,5 @@
 import { memo, forwardRef, useImperativeHandle, useRef, useLayoutEffect, useState } from 'react';
-import Moveable, {
-  OnDrag,
-  OnDragEnd,
-  OnDragGroup,
-  OnDragGroupEnd,
-  OnResize,
-  OnResizeEnd,
-  OnResizeGroup,
-  OnResizeGroupEnd,
-  OnScale,
-  OnScaleEnd,
-  OnScaleGroup,
-  OnScaleGroupEnd,
-  OnRotate,
-  OnRotateEnd,
-  OnRotateGroup,
-  OnRotateGroupEnd,
-} from 'react-moveable';
+import Moveable, { OnDrag, OnDragEnd, OnResize, OnResizeEnd, OnScale, OnScaleEnd, OnRotate, OnRotateEnd } from 'react-moveable';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { MediaItem, TimelineClip } from '../../types';
 import './MoveableControl.css';
@@ -152,19 +135,6 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     updateClip(clipId, {
       x: currentPos.x,
       y: currentPos.y,
-    });
-  };
-
-  // 多选拖拽走 group 事件，这里把每个子元素按单元素逻辑更新
-  const handleDragGroup = (e: OnDragGroup) => {
-    e.events?.forEach((dragEvent: OnDrag) => {
-      handleDrag(dragEvent);
-    });
-  };
-
-  const handleDragGroupEnd = (e: OnDragGroupEnd) => {
-    e.events?.forEach((dragEndEvent: OnDragEnd) => {
-      handleDragEnd(dragEndEvent);
     });
   };
 
@@ -324,18 +294,6 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     delete textPreviewFontSizeRef.current[clipId];
   };
 
-  const handleResizeGroup = (e: OnResizeGroup) => {
-    e.events?.forEach((resizeEvent: OnResize) => {
-      handleResize(resizeEvent);
-    });
-  };
-
-  const handleResizeGroupEnd = (e: OnResizeGroupEnd) => {
-    e.events?.forEach((resizeEndEvent: OnResizeEnd) => {
-      handleResizeEnd(resizeEndEvent);
-    });
-  };
-
   // handlescale - moveable-master
   // update DOM， update store，avoid PreviewCanvas conflictcausingjitter
   const handleScale = (e: OnScale) => {
@@ -356,24 +314,11 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     const clip = clips.find((c) => c.id === clipId);
     if (!clip) return;
 
-    const lastScale = e.lastEvent?.scale;
-    const scaleX = Array.isArray(lastScale) ? lastScale[0] : 1;
-    const currentScale = Math.max(0.01, (clip.scale || 1) * scaleX);
+    // OnScaleEnd no scale ，keep scale
+    // scale resize handle，scale used for transform
+    const currentScale = clip.scale || 1;
     updateClip(clipId, {
       scale: currentScale,
-    });
-  };
-
-  // 多选缩放走 group 事件
-  const handleScaleGroup = (e: OnScaleGroup) => {
-    e.events?.forEach((scaleEvent: OnScale) => {
-      handleScale(scaleEvent);
-    });
-  };
-
-  const handleScaleGroupEnd = (e: OnScaleGroupEnd) => {
-    e.events?.forEach((scaleEndEvent: OnScaleEnd) => {
-      handleScaleEnd(scaleEndEvent);
     });
   };
 
@@ -397,22 +342,12 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
     const clip = clips.find((c) => c.id === clipId);
     if (!clip) return;
 
-    const lastRotate = e.lastEvent?.rotate;
-    const currentRotation = typeof lastRotate === 'number' ? lastRotate : (clip.rotation || 0);
+    // OnRotateEnd no rotation ，need to transform
+    // orkeep rotation （ rotation transform ）
+    // handle， clip get rotation
+    const currentRotation = clip.rotation || 0;
     updateClip(clipId, {
       rotation: currentRotation,
-    });
-  };
-
-  const handleRotateGroup = (e: OnRotateGroup) => {
-    e.events?.forEach((rotateEvent: OnRotate) => {
-      handleRotate(rotateEvent);
-    });
-  };
-
-  const handleRotateGroupEnd = (e: OnRotateGroupEnd) => {
-    e.events?.forEach((rotateEndEvent: OnRotateEnd) => {
-      handleRotateEnd(rotateEndEvent);
     });
   };
 
@@ -463,20 +398,12 @@ const MoveableControl = forwardRef<MoveableControlRef, MoveableControlProps>(({
       className={controlClassName}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
-      onDragGroup={handleDragGroup}
-      onDragGroupEnd={handleDragGroupEnd}
       onResize={handleResize}
       onResizeEnd={handleResizeEnd}
-      onResizeGroup={handleResizeGroup}
-      onResizeGroupEnd={handleResizeGroupEnd}
       onScale={handleScale}
       onScaleEnd={handleScaleEnd}
-      onScaleGroup={handleScaleGroup}
-      onScaleGroupEnd={handleScaleGroupEnd}
       onRotate={handleRotate}
       onRotateEnd={handleRotateEnd}
-      onRotateGroup={handleRotateGroup}
-      onRotateGroupEnd={handleRotateGroupEnd}
       // comment
       bounds={{
         left: 0,

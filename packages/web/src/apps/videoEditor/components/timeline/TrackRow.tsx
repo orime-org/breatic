@@ -12,10 +12,6 @@ interface TrackRowProps {
   onShowSnapLines: (lines: number[]) => void;
   hoverTrackIndex: number | null;
   isHoverAboveFirstTrack: boolean;
-  draggingClipId?: string | null;
-  groupDraggingIds?: string[];
-  groupDragOffsetX?: number;
-  groupDragOffsetY?: number;
   nodeId?: string;
   parentScrollRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -28,15 +24,10 @@ const TrackRow: React.FC<TrackRowProps> = ({
   onShowSnapLines,
   hoverTrackIndex,
   isHoverAboveFirstTrack,
-  draggingClipId,
-  groupDraggingIds = [],
-  groupDragOffsetX = 0,
-  groupDragOffsetY = 0,
   nodeId,
   parentScrollRef,
 }) => {
   const { clips, mediaItems, selectedClipId, setSelectedClipId } = useVideoEditorStore();
-  const isMultiSelected = selectedClipId.length > 1;
   const rowRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -126,43 +117,11 @@ const TrackRow: React.FC<TrackRowProps> = ({
             clip={clip}
             media={media}
             isSelected={isSelected}
-            showSelectedOutline={!isMultiSelected}
-            groupDragOffsetX={
-              groupDraggingIds.includes(clip.id) && clip.id !== draggingClipId
-                ? groupDragOffsetX
-                : 0
-            }
-            groupDragOffsetY={
-              groupDraggingIds.includes(clip.id) && clip.id !== draggingClipId
-                ? groupDragOffsetY
-                : 0
-            }
             pixelsPerSecond={pixelsPerSecond}
             currentTime={currentTime}
             onResize={onClipResize}
             onShowSnapLines={onShowSnapLines}
-            onSelectClip={(clipId: string, options) => {
-              const currentSelected = Array.isArray(selectedClipId) ? selectedClipId : [];
-              const isAlreadySelected = currentSelected.includes(clipId);
-
-              if (options?.toggle) {
-                if (isAlreadySelected) {
-                  setSelectedClipId(currentSelected.filter((id) => id !== clipId));
-                } else {
-                  setSelectedClipId([...currentSelected, clipId]);
-                }
-                return;
-              }
-
-              if (options?.append) {
-                if (!isAlreadySelected) {
-                  setSelectedClipId([...currentSelected, clipId]);
-                }
-                return;
-              }
-
-              setSelectedClipId([clipId]);
-            }}
+            onSelectClip={(clipId: string) => setSelectedClipId([clipId])}
             allClips={clips}
             nodeId={nodeId}
           />

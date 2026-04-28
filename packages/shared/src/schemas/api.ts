@@ -63,6 +63,15 @@ export const taskCreateSchema = z.object({
   node_ids: z.array(z.string()).min(1).optional(),
   project_id: z.string().optional(),
   source: z.string().default("canvas"),
+  /**
+   * UUID v4 of the HistoryItem the frontend has already pushed into Yjs
+   * with `status: "loading"`.  The worker uses this id to target the
+   * correct item when emitting HistoryUpdateEvent on completion / failure.
+   *
+   * Required when `node_ids` is present (single-node tasks).
+   * Omit for tasks that do not bind to a canvas node.
+   */
+  history_item_id: z.string().uuid().optional(),
 });
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 

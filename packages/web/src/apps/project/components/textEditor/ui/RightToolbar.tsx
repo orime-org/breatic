@@ -11,13 +11,17 @@ import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
-import { useMixedEditorUI } from '@/hooks/useMixedEditorUI';
+import { useSelector, useDispatch } from 'react-redux';
+import type { RootState } from '@/store';
+import { toggleMixedEditorFavoriteAsset } from '@/store/modules/mixedEditor';
 import type { AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
-import MediaResourceListPanel, { type MediaResourceListItem } from '@/apps/project/components/mixedEditor/ui/MediaResourceListPanel';
-import type { ImageEditorRightSidePanelId } from '@/apps/project/components/mixedEditor/types';
+import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';
 import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
+
+/** Side-panel tab ids shared with the mixedEditor module (inlined here after mixedEditor deletion). */
+type ImageEditorRightSidePanelId = 'assets' | 'attach' | 'link' | 'history';
 
 type RightToolbarProps = {
   editor: Editor;
@@ -143,7 +147,13 @@ async function parseTextUploadFile(file: File): Promise<string> {
 
 const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
-  const { favoriteAssets, toggleFavoriteAsset } = useMixedEditorUI();
+  const favoriteAssets = useSelector((s: RootState) => s.mixedEditor.favoriteAssets);
+  const dispatch = useDispatch();
+  const toggleFavoriteAsset = useCallback(
+    (payload: { panel: ImageEditorRightSidePanelId; item: MediaResourceListItem }) =>
+      dispatch(toggleMixedEditorFavoriteAsset(payload)),
+    [dispatch],
+  );
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
 
   const [openSidePanel, setOpenSidePanel] = useState<ImageEditorRightSidePanelId | null>(null);

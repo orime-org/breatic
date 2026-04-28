@@ -27,13 +27,12 @@ export type {
   ProjectEntity,
   MemoryContext,
   SkillMeta,
-  CanvasNodeState,
-  HandlingActor,
-  CanvasNodeFields,
+  HistoryItemStatus,
+  HistoryItemSource,
+  HistoryItem,
   AttachRef,
-  NodeHandlingEvent,
-  NodeCompletedEvent,
-  NodeFailedEvent,
+  CanvasNodeFields,
+  HistoryUpdateEvent,
   NodeEvent,
 } from "./types/index.js";
 
@@ -73,8 +72,7 @@ export type {
 export { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "./i18n/index.js";
 export type { Locale } from "./i18n/index.js";
 
-export { canvasDocName, nodeEditorDocName, parseDocName } from "./yjs-doc-names.js";
-export type { ParsedDocName } from "./yjs-doc-names.js";
+export { projectDocName, parseProjectDocName } from "./yjs-doc-names.js";
 
 export {
   defaultAdjustValue,

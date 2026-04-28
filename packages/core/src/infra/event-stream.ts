@@ -6,11 +6,10 @@
  * from the last processed stream id after reconnect.
  *
  * Current stream:
- *   `${env}:stream:task-events` — handling / completed / failed
- *   events published by the API (on task creation / upload lock)
- *   and by the Worker (on task completion / failure). Consumed by
- *   the Collab service and routed to the target Yjs document
- *   (main canvas or mixed editor) by the event's `docName` field.
+ *   `${env}:stream:task-events` — history-update events published
+ *   by the Worker (on task completion / failure). Consumed by the
+ *   Collab service and routed to the target Yjs document by the
+ *   event's `docName` field.
  *
  * Renamed from `${env}:stream:canvas-nodes` when node-editor
  * documents joined as additional write targets — the name now
@@ -66,7 +65,7 @@ export async function publishToStream(
  * cannot drift from the schema the Collab consumer expects.
  *
  * @param redis - Connected ioredis instance
- * @param event - `NodeEvent` union payload (handling / completed / failed)
+ * @param event - `HistoryUpdateEvent` payload
  */
 export async function publishNodeEvent(
   redis: Redis,

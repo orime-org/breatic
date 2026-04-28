@@ -4,7 +4,7 @@ import { Icon } from '@/components/base/icon';
 import { Image } from '@/components/base/image';
 
 /**
- * One image row: preview URL, optional display name (image editor side panels are image-only).
+ * One image row: preview URL, optional display name.
  */
 export type MediaResourceListItem = {
   id: string;
@@ -24,29 +24,24 @@ export type MediaResourceListPanelProps = {
   /** Shown when `items.length === 0`. */
   emptyText?: string;
   onItemAddClick?: (item: MediaResourceListItem) => void;
-  /** Same hover bar as {@link MediaResourceListPanelProps.onItemAddClick}. */
   onItemDownloadClick?: (item: MediaResourceListItem) => void;
-  /** When set with {@link MediaResourceListPanelProps.onItemFavoriteClick}, shows a star control on the top-right of each row. */
   isItemFavorited?: (item: MediaResourceListItem) => boolean;
-  /** Toggle favorite; parent updates list (e.g. Redux) and {@link MediaResourceListPanelProps.isItemFavorited} reflects state. */
   onItemFavoriteClick?: (item: MediaResourceListItem) => void;
   className?: string;
 };
 
-const itemThumbClass = 'relative aspect-square w-full overflow-hidden rounded-[8px] border border-[var(--color-border-default-base)] bg-[var(--color-background-default-secondary)]';
-
-/** Matches `ImageNodeContent` floating bar (`barClass` / `btnClass`). */
+const itemThumbClass =
+  'relative aspect-square w-full overflow-hidden rounded-[8px] border border-[var(--color-border-default-base)] bg-[var(--color-background-default-secondary)]';
 const itemHoverBarClass = 'flex items-center gap-[2px] rounded-[4px] bg-white/80 p-[4px] shadow-sm';
-const itemHoverBtnClass = 'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
-const itemFavoriteBtnClass = 'absolute right-1 top-1 z-20 flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-white/85 shadow-sm transition-colors hover:bg-white';
+const itemHoverBtnClass =
+  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
+const itemFavoriteBtnClass =
+  'absolute right-1 top-1 z-20 flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-white/85 shadow-sm transition-colors hover:bg-white';
 
 type MediaResourceListThumbProps = {
   item: MediaResourceListItem;
 };
 
-/**
- * Square image preview using the same `Image` component as the canvas / composer.
- */
 const MediaResourceListThumb = memo(function MediaResourceListThumb({ item }: MediaResourceListThumbProps) {
   if (!item.previewUrl) {
     return (
@@ -68,7 +63,7 @@ const MediaResourceListThumb = memo(function MediaResourceListThumb({ item }: Me
 });
 
 /**
- * Flyout list panel for image rows only. Data-driven; callers supply `items`.
+ * Flyout list panel for image rows. Data-driven; callers supply `items`.
  *
  * @param props.open - Visibility.
  * @param props.title - Header label.
@@ -101,9 +96,7 @@ function MediaResourceListPanelComponent({
     >
       <div className='flex shrink-0 items-center justify-between gap-2 px-[10px] pt-[10px] pb-0'>
         <div className='flex min-w-0 items-center gap-2'>
-          {showStatusDot ? (
-            <span className='h-2 w-2 shrink-0 rounded-full bg-[#2FB344]' aria-hidden />
-          ) : null}
+          {showStatusDot ? <span className='h-2 w-2 shrink-0 rounded-full bg-[#2FB344]' aria-hidden /> : null}
           <span className='truncate text-sm font-semibold text-text-default-base'>{title}</span>
         </div>
         <button

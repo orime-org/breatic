@@ -21,11 +21,7 @@ import { taskService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { getRedis, getStreamRedis } from "@breatic/core";
-import { acquireNodeLock, releaseNodeLock } from "@breatic/core";
-import { publishNodeEvent } from "@breatic/core";
-import { ConflictError, ValidationError } from "@breatic/core";
-import { canvasDocName } from "@breatic/shared";
+import { ValidationError } from "@breatic/core";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -45,8 +41,6 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Node lock + state broadcast require a projectId + nodeIds. Agent
-  // chat / standalone tasks without nodes just skip the lock step.
   const rawNodeIds = body.params.node_ids;
   const nodeIds = Array.isArray(rawNodeIds)
     ? rawNodeIds.filter((x): x is string => typeof x === "string" && x.length > 0)
@@ -65,13 +59,6 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     await projectService.assertAccess(projectId, user.id);
   }
 
-  const redis = getRedis();
-  const streamRedis = getStreamRedis();
-  const actor = {
-    userId: user.id,
-    username: user.email,
-  };
-
   const task = await taskService.create(
     user.id,
     projectId,
@@ -82,33 +69,9 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Acquire a node lock per target nodeId with taskId so only this
-  // task can release it. All-or-nothing: if any lock fails, release
-  // the ones we already acquired and roll back the task.
-  //
-  // A cleaner long-term design is "lock first, then create task", but that
-  // requires passing a client-generated taskId through taskService.create —
-  // a bigger refactor left for a follow-up. Rollback here is the minimal
-  // fix that closes the correctness gap.
-  if (nodeIds.length > 0 && projectId) {
-    const acquiredLocks: string[] = [];
-    for (const nodeId of nodeIds) {
-      const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
-      if (acquired) {
-        acquiredLocks.push(nodeId);
-        continue;
-      }
-      // Release any locks we already got, then soft-delete + throw.
-      for (const already of acquiredLocks) {
-        await releaseNodeLock(redis, projectId, already, task.id);
-      }
-      await taskService.softDelete(task.id);
-      throw new ConflictError(
-        "Another user is currently handling one of the target nodes. Try again after they finish.",
-      );
-    }
-  }
-
+  // Per spec §4.6: frontend already pushed HistoryItem { status: "loading" }
+  // into Yjs before POSTing. No "handling" event needed from the server.
+  // Worker emits HistoryUpdateEvent on completion/failure via historyItemId.
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -120,23 +83,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       skillName: body.skill_name,
       params: body.params,
       source: body.source,
+      historyItemId: body.history_item_id,
     },
     defaultJobOpts(),
   );
 
   await taskService.setJobId(task.id, job.id ?? "");
-
-  // Broadcast `handling` so every collaborator sees the nodes enter
-  // their busy state immediately — before the Worker picks up the job.
-  if (nodeIds.length > 0 && projectId) {
-    await publishNodeEvent(streamRedis, {
-      type: "handling",
-      docName: canvasDocName(projectId),
-      taskId: task.id,
-      actor,
-      nodeIds,
-    });
-  }
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });

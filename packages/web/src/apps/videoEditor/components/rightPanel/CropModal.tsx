@@ -1,4 +1,4 @@
-import React, { useState, useRef, memo, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useRef, memo, useEffect, useCallback } from 'react';
 import Dialog from '@/components/base/dialog';
 import { Icon } from '@/components/base/icon';
 import { Button } from '@/components/base/button';
@@ -39,91 +39,6 @@ type DragState =
   | { type: 'resize'; handle: HandlePos; startX: number; startY: number; origRect: CropRect };
 
 const MIN_CROP_SIZE = 50;
-
-/**
- * Fits source media into the crop stage (padding-aware). Same math as rendered img size.
- * Returns null when the stage has no usable layout yet.
- */
-function measureFitDisplaySize(
-  stage: HTMLElement,
-  img: HTMLImageElement,
-  mediaType: 'image' | 'video',
-  mediaWidth: number | undefined,
-  mediaHeight: number | undefined
-): { width: number; height: number } | null {
-  const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
-  const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
-  if (!sourceWidth || !sourceHeight) return null;
-
-  const stageStyle = window.getComputedStyle(stage);
-  const paddingX = parseFloat(stageStyle.paddingLeft || '0') + parseFloat(stageStyle.paddingRight || '0');
-  const paddingY = parseFloat(stageStyle.paddingTop || '0') + parseFloat(stageStyle.paddingBottom || '0');
-  const availableWidth = Math.max(0, stage.clientWidth - paddingX);
-  const availableHeight = Math.max(0, stage.clientHeight - paddingY);
-  if (!availableWidth || !availableHeight) return null;
-
-  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight, 1);
-  return {
-    width: Math.max(1, Math.round(sourceWidth * scale)),
-    height: Math.max(1, Math.round(sourceHeight * scale)),
-  };
-}
-
-function buildInitialCropRect(
-  imgWidth: number,
-  imgHeight: number,
-  img: HTMLImageElement,
-  existingCrop: CropModalProps['existingCrop'],
-  mediaType: 'image' | 'video',
-  mediaWidth: number | undefined,
-  mediaHeight: number | undefined
-): CropRect {
-  if (existingCrop) {
-    const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
-    const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
-
-    const scaleX = imgWidth / sourceWidth;
-    const scaleY = imgHeight / sourceHeight;
-
-    let cropX = existingCrop.x * scaleX;
-    let cropY = existingCrop.y * scaleY;
-    let cropWidth = existingCrop.width * scaleX;
-    let cropHeight = existingCrop.height * scaleY;
-
-    if (cropX < 0) {
-      cropWidth += cropX;
-      cropX = 0;
-    }
-    if (cropY < 0) {
-      cropHeight += cropY;
-      cropY = 0;
-    }
-    if (cropX + cropWidth > imgWidth) {
-      cropWidth = imgWidth - cropX;
-    }
-    if (cropY + cropHeight > imgHeight) {
-      cropHeight = imgHeight - cropY;
-    }
-
-    if (cropWidth < MIN_CROP_SIZE) {
-      cropWidth = Math.min(MIN_CROP_SIZE, imgWidth - cropX);
-    }
-    if (cropHeight < MIN_CROP_SIZE) {
-      cropHeight = Math.min(MIN_CROP_SIZE, imgHeight - cropY);
-    }
-
-    if (cropWidth <= 0 || cropHeight <= 0 || cropX < 0 || cropY < 0) {
-      return { x: 0, y: 0, w: imgWidth, h: imgHeight };
-    }
-    return {
-      x: cropX,
-      y: cropY,
-      w: cropWidth,
-      h: cropHeight,
-    };
-  }
-  return { x: 0, y: 0, w: imgWidth, h: imgHeight };
-}
 
 const calcMove = (origRect: CropRect, dx: number, dy: number, cw: number, ch: number): CropRect => {
   const newX = Math.max(0, Math.min(origRect.x + dx, cw - origRect.w));
@@ -239,61 +154,89 @@ const CropModal: React.FC<CropModalProps> = ({
     setIsDragging(false);
   }, []);
 
-  /**
-   * Measures the stage, applies fitted display pixel size to the image, and maps
-   * `existingCrop` with a uniform scale (same basis as confirm). Must run after layout
-   * so stage dimensions are non-zero — avoids scaleX ≠ scaleY when reopening the modal.
-   */
-  const applyCropLayout = useCallback(() => {
-    if (!visible) return;
+  const updateDisplaySize = useCallback(() => {
     const stage = cropStageRef.current;
     const img = imgRef.current;
-    if (!stage || !img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+    if (!stage || !img) return;
+
+    const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
+    const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
+    if (!sourceWidth || !sourceHeight) return;
+
+    const stageStyle = window.getComputedStyle(stage);
+    const paddingX = parseFloat(stageStyle.paddingLeft || '0') + parseFloat(stageStyle.paddingRight || '0');
+    const paddingY = parseFloat(stageStyle.paddingTop || '0') + parseFloat(stageStyle.paddingBottom || '0');
+    const availableWidth = Math.max(0, stage.clientWidth - paddingX);
+    const availableHeight = Math.max(0, stage.clientHeight - paddingY);
+    if (!availableWidth || !availableHeight) return;
+
+    const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight, 1);
+    setDisplaySize({
+      width: Math.max(1, Math.round(sourceWidth * scale)),
+      height: Math.max(1, Math.round(sourceHeight * scale)),
+    });
+  }, [mediaType, mediaWidth, mediaHeight]);
+
+  const initializeCrop = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
       return;
     }
 
-    const measured = measureFitDisplaySize(stage, img, mediaType, mediaWidth, mediaHeight);
-    if (!measured) return;
+    const imgWidth = img.width;
+    const imgHeight = img.height;
 
-    const rect = buildInitialCropRect(
-      measured.width,
-      measured.height,
-      img,
-      existingCrop,
-      mediaType,
-      mediaWidth,
-      mediaHeight
-    );
+    if (existingCrop) {
+      // video，existingCrop videoactual
+      // need to display （ ）
+      const sourceWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
+      const sourceHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
 
-    setDisplaySize(measured);
-    setCropRect(rect);
-    setImageLoaded(true);
-  }, [visible, existingCrop, mediaType, mediaWidth, mediaHeight]);
+      const scaleX = imgWidth / sourceWidth;
+      const scaleY = imgHeight / sourceHeight;
 
-  const displayUrl = mediaType === 'video' ? mediaThumbnail || mediaUrl : mediaUrl;
+      let cropX = existingCrop.x * scaleX;
+      let cropY = existingCrop.y * scaleY;
+      let cropWidth = existingCrop.width * scaleX;
+      let cropHeight = existingCrop.height * scaleY;
 
-  useLayoutEffect(() => {
-    if (!visible || !displayUrl) return;
-    applyCropLayout();
-  }, [visible, displayUrl, existingCrop, mediaType, mediaWidth, mediaHeight, applyCropLayout]);
+      if (cropX < 0) {
+        cropWidth += cropX;
+        cropX = 0;
+      }
+      if (cropY < 0) {
+        cropHeight += cropY;
+        cropY = 0;
+      }
+      if (cropX + cropWidth > imgWidth) {
+        cropWidth = imgWidth - cropX;
+      }
+      if (cropY + cropHeight > imgHeight) {
+        cropHeight = imgHeight - cropY;
+      }
 
-  useEffect(() => {
-    if (!visible || !displayUrl) return;
-    const stage = cropStageRef.current;
-    if (!stage) return;
+      if (cropWidth < MIN_CROP_SIZE) {
+        cropWidth = Math.min(MIN_CROP_SIZE, imgWidth - cropX);
+      }
+      if (cropHeight < MIN_CROP_SIZE) {
+        cropHeight = Math.min(MIN_CROP_SIZE, imgHeight - cropY);
+      }
 
-    const ro = new ResizeObserver(() => {
-      applyCropLayout();
-    });
-    ro.observe(stage);
-    return () => ro.disconnect();
-  }, [visible, displayUrl, applyCropLayout]);
-
-  useEffect(() => {
-    if (!visible) {
-      handleAfterClose();
+      if (cropWidth <= 0 || cropHeight <= 0 || cropX < 0 || cropY < 0) {
+        setCropRect({ x: 0, y: 0, w: imgWidth, h: imgHeight });
+      } else {
+        setCropRect({
+          x: cropX,
+          y: cropY,
+          w: cropWidth,
+          h: cropHeight,
+        });
+      }
+    } else {
+      setCropRect({ x: 0, y: 0, w: imgWidth, h: imgHeight });
     }
-  }, [visible, handleAfterClose]);
+    setImageLoaded(true);
+  }, [existingCrop, mediaType, mediaWidth, mediaHeight]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -304,8 +247,8 @@ const CropModal: React.FC<CropModalProps> = ({
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
       const { origRect } = drag;
-      const cw = displaySize?.width ?? img.width;
-      const ch = displaySize?.height ?? img.height;
+      const cw = img.width;
+      const ch = img.height;
 
       if (drag.type === 'move') {
         setCropRect(calcMove(origRect, dx, dy, cw, ch));
@@ -332,11 +275,13 @@ const CropModal: React.FC<CropModalProps> = ({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [displaySize]);
+  }, []);
 
   const handleReset = () => {
-    if (!displaySize) return;
-    setCropRect({ x: 0, y: 0, w: displaySize.width, h: displaySize.height });
+    const img = imgRef.current;
+    if (img) {
+      setCropRect({ x: 0, y: 0, w: img.width, h: img.height });
+    }
   };
 
   const handleApply = () => {
@@ -349,10 +294,8 @@ const CropModal: React.FC<CropModalProps> = ({
     const targetWidth = mediaType === 'video' && mediaWidth ? mediaWidth : img.naturalWidth;
     const targetHeight = mediaType === 'video' && mediaHeight ? mediaHeight : img.naturalHeight;
 
-    const dw = displaySize?.width ?? img.width;
-    const dh = displaySize?.height ?? img.height;
-    const scaleX = targetWidth / dw;
-    const scaleY = targetHeight / dh;
+    const scaleX = targetWidth / img.width;
+    const scaleY = targetHeight / img.height;
 
     // original coordinate（ videoactual imageoriginal ）
     const originalCrop = {
@@ -366,6 +309,48 @@ const CropModal: React.FC<CropModalProps> = ({
     onApply(null, originalCrop);
     onClose();
   };
+
+  const displayUrl = mediaType === 'video' ? mediaThumbnail || mediaUrl : mediaUrl;
+
+  useEffect(() => {
+    if (visible && imageLoaded) {
+      initializeCrop();
+    }
+  }, [visible, existingCrop, imageLoaded, initializeCrop]);
+
+  useEffect(() => {
+    if (!visible) {
+      handleAfterClose();
+    }
+  }, [visible, handleAfterClose]);
+
+  useEffect(() => {
+    if (!visible || !imageLoaded) return;
+
+    const stage = cropStageRef.current;
+    if (!stage) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateDisplaySize();
+      initializeCrop();
+    });
+
+    resizeObserver.observe(stage);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [visible, imageLoaded, initializeCrop, updateDisplaySize]);
+
+  useEffect(() => {
+    if (!visible || !imageLoaded) return;
+    updateDisplaySize();
+  }, [visible, imageLoaded, mediaUrl, mediaType, mediaWidth, mediaHeight, updateDisplaySize]);
+
+  useEffect(() => {
+    if (!visible || !imageLoaded || !displaySize) return;
+    initializeCrop();
+  }, [displaySize, visible, imageLoaded, initializeCrop]);
 
   const startMove = (e: React.MouseEvent) => {
     if (!cropRect) return;
@@ -416,11 +401,16 @@ const CropModal: React.FC<CropModalProps> = ({
               <div className={`transition-opacity duration-150 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}>
                 <div ref={containerRef} className='crop-modal-container'>
                   <img
-                    ref={imgRef}
+                    ref={(el) => {
+                      imgRef.current = el;
+                      if (el && el.complete && el.naturalWidth > 0 && !imageLoaded) {
+                        initializeCrop();
+                      }
+                    }}
                     src={displayUrl}
                     alt='Crop'
                     onLoad={() => {
-                      applyCropLayout();
+                      initializeCrop();
                     }}
                     onError={() => {
                       setImageLoaded(true); // failed hideload

@@ -8,14 +8,11 @@ interface ClipItemProps {
   clip: TimelineClip;
   media?: { id: string; type?: string; name?: string; thumbnail?: string; url?: string; text?: string };
   isSelected: boolean;
-  showSelectedOutline?: boolean;
-  groupDragOffsetX?: number;
-  groupDragOffsetY?: number;
   pixelsPerSecond: number;
   currentTime: number;
   onResize: (clipId: string, newStart: number, newEnd: number, edge: 'left' | 'right') => void;
   onShowSnapLines: (lines: number[]) => void;
-  onSelectClip: (clipId: string, options?: { append?: boolean; toggle?: boolean }) => void;
+  onSelectClip: (clipId: string) => void;
   allClips: TimelineClip[]; // used for calculate
   nodeId?: string;
 }
@@ -24,9 +21,6 @@ const ClipItem: React.FC<ClipItemProps> = ({
   clip,
   media,
   isSelected,
-  showSelectedOutline = true,
-  groupDragOffsetX = 0,
-  groupDragOffsetY = 0,
   pixelsPerSecond,
   currentTime,
   onResize,
@@ -257,10 +251,8 @@ const ClipItem: React.FC<ClipItemProps> = ({
       backgroundImage: backgroundUrl ? `url(${backgroundUrl})` : 'none',
       backgroundColor,
       backgroundSize,
-      transform: transform || groupDragOffsetX || groupDragOffsetY
-        ? `translate3d(${(transform?.x ?? 0) + groupDragOffsetX}px, ${(transform?.y ?? 0) + groupDragOffsetY}px, 0)`
-        : undefined,
-      zIndex: transform || groupDragOffsetX || groupDragOffsetY ? 100 : 10,
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      zIndex: transform ? 100 : 10,
     };
   };
 
@@ -268,7 +260,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
 
   // Tailwind
   const className = `absolute h-7 top-0 bg-repeat-x bg-left-center rounded border flex items-end overflow-hidden select-none ${
-    isSelected && showSelectedOutline
+    isSelected
       ? 'border-2 border-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]'
       : 'border border-white/30'
   } ${isResizing ? 'cursor-ew-resize' : 'cursor-grab'}`;
@@ -286,10 +278,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
 
     if (distance < 5) {
       e.stopPropagation();
-      onSelectClip(clip.id, {
-        append: e.shiftKey,
-        toggle: e.ctrlKey || e.metaKey,
-      });
+      onSelectClip(clip.id);
     }
 
     mouseDownPos.current = null;
@@ -318,7 +307,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
       ) : null}
 
       {/* left */}
-      {isSelected && showSelectedOutline && (
+      {isSelected && (
         <div
           onMouseDown={handleLeftResize}
           onPointerDown={(e) => e.stopPropagation()}
@@ -333,7 +322,7 @@ const ClipItem: React.FC<ClipItemProps> = ({
       )}
 
       {/* right */}
-      {isSelected && showSelectedOutline && (
+      {isSelected && (
         <div
           onMouseDown={handleRightResize}
           onPointerDown={(e) => e.stopPropagation()}
