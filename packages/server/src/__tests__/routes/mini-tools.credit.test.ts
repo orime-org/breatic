@@ -38,6 +38,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
+        history_item_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       }),
     });
 
@@ -54,6 +55,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
+        history_item_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       }),
     });
 

@@ -19,21 +19,22 @@ import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
 // ── Converters ─────────────────────────────────────────────────
 
-function yMapToPlain(ymap: Y.Map<unknown>): Record<string, unknown> {
-  const obj: Record<string, unknown> = {};
-  ymap.forEach((v, k) => { obj[k] = v; });
-  return obj;
+/**
+ * Convert a `Y.Array<Y.Map>` to a plain-JS array by calling
+ * `.toJSON()` on each item map.  Returns an empty array if the
+ * value is not a Y.Array.
+ */
+function yArrayToPlainArray(arr: unknown): unknown[] {
+  if (!(arr instanceof Y.Array)) return [];
+  return arr.toArray().map((item) => {
+    if (item instanceof Y.Map) return item.toJSON();
+    return item;
+  });
 }
 
 function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
   const pos = nodeMap.get('position') as Y.Map<unknown> | undefined;
   const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
-  const handlingBy = dataMap instanceof Y.Map
-    ? dataMap.get('handlingBy') as Y.Map<unknown> | undefined
-    : undefined;
-  const paramsMap = dataMap instanceof Y.Map
-    ? dataMap.get('params') as Y.Map<unknown> | undefined
-    : undefined;
 
   return {
     id,
@@ -45,17 +46,11 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
     data: dataMap instanceof Y.Map
       ? {
           name: (dataMap.get('name') as string) ?? '',
-          content: (dataMap.get('content') as string) ?? '',
-          coverUrl: dataMap.get('coverUrl') as string | undefined,
-          state: (dataMap.get('state') as string) ?? 'idle',
-          handlingBy: handlingBy instanceof Y.Map
-            ? { userId: handlingBy.get('userId') as string, username: handlingBy.get('username') as string }
-            : undefined,
-          runType: dataMap.get('runType') as string | undefined,
-          lastEventType: dataMap.get('lastEventType') as string | undefined,
-          params: paramsMap instanceof Y.Map ? yMapToPlain(paramsMap) : {},
+          activeHistoryId: dataMap.get('activeHistoryId') as string | undefined,
+          history: yArrayToPlainArray(dataMap.get('history')),
+          attachments: yArrayToPlainArray(dataMap.get('attachments')),
         }
-      : { name: '', content: '', state: 'idle', params: {} },
+      : { name: '', history: [], attachments: [] },
   };
 }
 
@@ -206,14 +201,23 @@ export function useCanvasYjsInternal(
             if (ymap instanceof Y.Map) {
               const newNode = yMapToNode(ymap, node.id);
 
-              // Toast: handling → idle transition
-              if (node.data?.state === 'handling' && newNode.data?.state === 'idle') {
-                const eventType = newNode.data?.lastEventType as string | undefined;
-                pushToastRef.current({
-                  nodeId: node.id,
-                  nodeName: (newNode.data?.name as string) || node.id,
-                  type: eventType === 'failed' ? 'failed' : 'completed',
-                });
+              // Toast: a history item transitions from loading → done/failed.
+              // Detect by comparing previous history array length or any newly
+              // completed item (status changed from loading to done/failed).
+              const prevHistory = (node.data?.history as Array<{ id: string; status: string }> | undefined) ?? [];
+              const nextHistory = (newNode.data?.history as Array<{ id: string; status: string }> | undefined) ?? [];
+              for (const nextItem of nextHistory) {
+                if (nextItem.status === 'done' || nextItem.status === 'failed') {
+                  const prevItem = prevHistory.find((h) => h.id === nextItem.id);
+                  if (prevItem?.status === 'loading') {
+                    pushToastRef.current({
+                      nodeId: node.id,
+                      nodeName: (newNode.data?.name as string) || node.id,
+                      type: nextItem.status === 'failed' ? 'failed' : 'completed',
+                    });
+                    break; // one toast per update cycle per node
+                  }
+                }
               }
 
               next.push(newNode);
@@ -225,14 +229,14 @@ export function useCanvasYjsInternal(
         }
 
         // Add newly created nodes
-        for (const id of affected) {
+        Array.from(affected).forEach((id) => {
           if (!rebuilt.has(id) && currentKeys.has(id)) {
             const ymap = nodesMap.get(id) as Y.Map<unknown>;
             if (ymap instanceof Y.Map) {
               next.push(yMapToNode(ymap, id));
             }
           }
-        }
+        });
 
         yjsNodesRef.current = next;
         setYjsNodes(next);

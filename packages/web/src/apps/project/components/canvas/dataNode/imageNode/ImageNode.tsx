@@ -16,8 +16,10 @@ import { Icon } from '@/components/base/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { getImageMeta } from '@/utils/mediaUtils';
+import { useActiveHistoryItem } from '@/hooks/useActiveHistoryItem';
+import type { HistoryItem } from '@breatic/shared';
 import { cn } from '@/utils/classnames';
+import { getImageMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type PickPending,
@@ -43,12 +45,12 @@ const recognizedOverlayPresets = [
   { key: 'tree', label: '大树', cxPct: 76, cyPct: 42, wPct: 20, hPct: 34 },
 ] as const;
 
-type ImageNodeData = Partial<CanvasWorkflowNodeData>;
+type ImageNodeData = { name?: string; activeHistoryId?: string; history?: HistoryItem[]; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, updateNodeParams, onNodesChange } = useCanvasActions();
+  const { updateNode, pushHistoryItem, setActiveHistoryId, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -66,15 +68,16 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
 
-  /** Derived from node data: current image URL and pending upload file. */
+  /** Derived from node data: current image URL via active history item. */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as ImageNodeData | undefined;
+  const pick = nodeData?.pickState;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const pick = wf?.pickState;
-  const imageUrlFromData = typeof wf?.content === 'string' ? wf.content : '';
+  const activeItem = useActiveHistoryItem(nodeData as { activeHistoryId?: string; history: HistoryItem[] } | undefined);
+  const imageUrlFromData = activeItem?.url ?? '';
   const [imageUrl, setImageUrl] = useState(imageUrlFromData);
 
-  /** Sync local state from store image URL and dimensions when available. */
+  /** Sync local state from active history item URL and dimensions. */
   useEffect(() => {
     if (imageUrlFromData !== imageUrl) {
       setImageUrl(imageUrlFromData);
@@ -83,9 +86,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(null);
       setContentWidth(null);
     } else {
-      const param = wf?.params as { width?: number; height?: number } | undefined;
-      const w = param?.width;
-      const h = param?.height;
+      const w = activeItem?.width;
+      const h = activeItem?.height;
       if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
         const isLandscape = w >= h;
         if (isLandscape) {
@@ -99,7 +101,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrlFromData]);
+  }, [imageUrlFromData, activeItem?.width, activeItem?.height]);
 
   /** Compute content area size from source dimensions. */
   const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
@@ -115,7 +117,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     }
   };
 
-  /** Local file: object URL only (no OSS / workflow APIs). */
+  /** Local file: object URL — writes a history item + sets activeHistoryId. */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -123,27 +125,24 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   }) => {
     const { file, onSuccess, onError } = options;
     setIsLoading(true);
-    const meta = await getImageMeta(file);
-    if (meta.width != null && meta.height != null) {
-      applyContentSizeFromDimensions(meta.width, meta.height);
-    }
     try {
+      const meta = await getImageMeta(file);
+      if (meta.width != null && meta.height != null) {
+        applyContentSizeFromDimensions(meta.width, meta.height);
+      }
       const resourceUrl = URL.createObjectURL(file);
-      const current = nodes.find((n: { id: string }) => n.id === id);
-      const currentData = (current?.data as Record<string, unknown>) || {};
-      const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-      void _pf;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...restData,
-          name: typeof restData.name === 'string' && restData.name ? restData.name : 'image',
-          content: resourceUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
+      const historyId = crypto.randomUUID();
+      pushHistoryItem(id, {
+        id: historyId,
+        url: resourceUrl,
+        width: meta.width ?? undefined,
+        height: meta.height ?? undefined,
+        by: { userId: 'local', username: 'local' },
+        createdAt: Date.now(),
+        source: 'upload',
+        status: 'done',
       });
-      updateNodeParams(id, { width: meta.width, height: meta.height });
+      setActiveHistoryId(id, historyId);
       onSuccess(resourceUrl);
     } catch (error) {
       console.error('Upload failed:', error);

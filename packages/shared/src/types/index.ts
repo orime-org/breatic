@@ -15,12 +15,11 @@ export type {
 } from "./entities.js";
 
 export type {
-  CanvasNodeState,
-  HandlingActor,
-  CanvasNodeFields,
+  HistoryItemStatus,
+  HistoryItemSource,
+  HistoryItem,
   AttachRef,
-  NodeHandlingEvent,
-  NodeCompletedEvent,
-  NodeFailedEvent,
+  CanvasNodeFields,
+  HistoryUpdateEvent,
   NodeEvent,
 } from "./canvas-node.js";

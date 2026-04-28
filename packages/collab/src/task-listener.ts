@@ -1,35 +1,47 @@
 /**
  * Task lifecycle event listener backed by Redis Streams.
  *
- * Consumes `NodeEvent` payloads from the `${env}:stream:task-events`
- * stream and routes each event to the correct Yjs document + field
- * layout based on `event.docName`:
+ * Consumes `HistoryUpdateEvent` payloads from the
+ * `${env}:stream:task-events` stream and applies partial updates to
+ * the target history item inside the project's single Yjs document.
  *
- *   - `project-{id}/canvas` → main canvas
- *       `doc.getMap("canvas").get("nodesMap").get(nodeId) → data Y.Map`
- *   - `project-{id}/node/{hostNodeId}` → mixed editor (image/video/audio
- *      sub-canvas)
- *       `doc.getMap("flow").get(nodeId) → data Y.Map`
+ * Data path:
+ *   Worker → Redis Streams → task-listener → Hocuspocus openDirectConnection
+ *   → doc.transact → nodesMap.get(nodeId).get("data").get("history")[i].set(...)
  *
  * Durable resume — the last handled stream id is persisted to Redis
  * so a Collab restart never drops in-flight events.
  *
- * Renamed from the earlier canvas-only listener when node-editor
- * documents joined as additional write targets. The Hocuspocus
- * `openDirectConnection` mechanism handles the "nobody connected"
- * case identically for either doc shape — the server-side
- * persistence extension loads the doc from PostgreSQL on demand.
+ * There is one document per project (`project-{projectId}`). The
+ * legacy canvas / nodeEditor routing switch is gone.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
-import Redis from "ioredis";
 import * as Y from "yjs";
-import type { NodeEvent } from "@breatic/shared";
+import type { HistoryItem, HistoryUpdateEvent, NodeEvent } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
-import { parseDocName, type ParsedDocName } from "./schema.js";
+import { parseProjectDocName } from "./schema.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("task-listener");
+
+/**
+ * Keys of `HistoryItem` that the Worker is permitted to set.
+ *
+ * This allowlist prevents:
+ *   - adversarial overwrite of stable fields (e.g., `id` breaks future findIndex)
+ *   - silent type corruption (e.g., `by` is a Y.Map at runtime; overwriting
+ *     it with a plain object breaks `item.get("by").get("userId")` downstream)
+ */
+const WORKER_UPDATABLE_FIELDS = new Set<keyof HistoryItem>([
+  "status",
+  "url",
+  "cover",
+  "width",
+  "height",
+  "duration",
+  "errorMessage",
+] as const);
 
 function taskEventsStreamKey(envPrefix: string): string {
   return `${envPrefix}:stream:task-events`;
@@ -39,241 +51,189 @@ function taskEventsLastIdKey(envPrefix: string): string {
   return `${envPrefix}:collab:task-events:last-id`;
 }
 
-function nodeLockKey(envPrefix: string, projectId: string, nodeId: string): string {
-  return `${envPrefix}:canvas:lock:${projectId}:${nodeId}`;
-}
-
 /**
- * Apply a NodeEvent to the target Yjs document — unified multi-node.
+ * Apply a `HistoryUpdateEvent` to the target project Yjs document.
  *
- * The event carries all N target nodes (N ≥ 1) and gets applied in a
- * single `connection.transact` so every node transition is atomic from
- * the collaborator's perspective. Idempotent — safe to retry on stream
- * redelivery.
+ * Finds the history item identified by `event.historyItemId` inside
+ * `nodesMap.get(nodeId).get("data").get("history")` and merges
+ * `event.update` (a `Partial<HistoryItem>`) into it field-by-field.
+ *
+ * Only fields listed in `WORKER_UPDATABLE_FIELDS` are applied; unknown
+ * or disallowed keys are dropped with a warn-level log.
+ *
+ * The field-merge loop is wrapped in `doc.transact("history-update")`
+ * so all key updates are broadcast to collaborators as a single atomic
+ * Yjs update, preventing intermediate-state observations.
+ *
+ * Idempotent — applying the same update twice produces the same
+ * result (Y.Map set is last-write-wins), so stream redelivery is safe.
  */
-async function handleNodeEvent(
+async function handleHistoryUpdateEvent(
   hocuspocus: Hocuspocus,
-  lockRedis: Redis,
-  envPrefix: string,
-  event: NodeEvent,
+  event: HistoryUpdateEvent,
 ): Promise<void> {
-  const parsed = parseDocName(event.docName);
-  if (!parsed) {
+  // Fix I2: debug trace at the top, before any async work
+  logger.debug({
+    docName: event.docName,
+    nodeId: event.nodeId,
+    historyItemId: event.historyItemId,
+    updateKeys: Object.keys(event.update),
+  }, "history-update received");
+
+  // Fix I1: inline the docName check; projectId is unused so skip the variable
+  if (!parseProjectDocName(event.docName)) {
     logger.warn(
       { docName: event.docName, type: event.type },
-      "Unknown docName pattern, skipping",
+      "Unknown docName pattern (expected project-{id}), skipping",
     );
     return;
   }
 
-  const targets = collectTargetNodeIds(event);
-  if (targets.length === 0) {
+  // Fix C3: build allowlist-filtered update BEFORE opening the connection
+  // to avoid an unnecessary Doc load when there is nothing to apply.
+  const filteredUpdate: Record<string, unknown> = {};
+  const droppedKeys: string[] = [];
+  for (const [k, v] of Object.entries(event.update)) {
+    if (WORKER_UPDATABLE_FIELDS.has(k as keyof HistoryItem)) {
+      filteredUpdate[k] = v;
+    } else {
+      droppedKeys.push(k);
+    }
+  }
+  if (droppedKeys.length > 0) {
     logger.warn(
-      { docName: event.docName, type: event.type, taskId: event.taskId },
-      "Event has no target nodeIds, skipping",
+      {
+        docName: event.docName,
+        nodeId: event.nodeId,
+        historyItemId: event.historyItemId,
+        droppedKeys,
+      },
+      "history-update event included disallowed update keys; dropped",
     );
+  }
+  if (Object.keys(filteredUpdate).length === 0) {
+    // Nothing allowed to apply — skip without opening the document.
     return;
   }
 
   const connection = await hocuspocus.openDirectConnection(event.docName, {
-    context: {
-      user: { id: event.type === "handling" ? event.actor.userId : "system" },
-      source: "event-stream",
-    },
+    context: { user: { id: "system" }, source: "task-listener" },
   });
 
-  let updatedCount = 0;
+  let applied = false;
   try {
-    await connection.transact((doc) => {
-      for (const nodeId of targets) {
-        const dataMap = resolveNodeDataMap(doc, parsed, event, nodeId);
-        if (!dataMap) continue;
-        applyEventToDataMap(dataMap, event, parsed, nodeId);
-        updatedCount++;
+    await connection.transact((doc: Y.Doc) => {
+      const canvasMap = doc.getMap("canvas");
+      const nodesMap = canvasMap.get("nodesMap");
+      if (!(nodesMap instanceof Y.Map)) {
+        logger.warn(
+          { docName: event.docName, nodeId: event.nodeId },
+          "canvas.nodesMap is not a Y.Map, skipping",
+        );
+        return;
       }
+
+      const nodeMap = nodesMap.get(event.nodeId);
+      if (!(nodeMap instanceof Y.Map)) {
+        // Node deleted before the task completed — expected race.
+        logger.warn(
+          { docName: event.docName, nodeId: event.nodeId },
+          "Canvas node not found in nodesMap (deleted?), skipping",
+        );
+        return;
+      }
+
+      const dataMap = nodeMap.get("data");
+      if (!(dataMap instanceof Y.Map)) {
+        logger.warn(
+          { docName: event.docName, nodeId: event.nodeId },
+          "node.data is not a Y.Map, skipping",
+        );
+        return;
+      }
+
+      const history = dataMap.get("history");
+      if (!(history instanceof Y.Array)) {
+        logger.warn(
+          { docName: event.docName, nodeId: event.nodeId },
+          "node.data.history is not a Y.Array, skipping",
+        );
+        return;
+      }
+
+      // Fix I4: use items[idx] (already-validated reference) instead of
+      // a second history.get(idx) lookup.
+      const items = history.toArray() as Y.Map<unknown>[];
+      const idx = items.findIndex(
+        (item) => item instanceof Y.Map && item.get("id") === event.historyItemId,
+      );
+      if (idx < 0) {
+        // History item deleted before the task completed — expected race.
+        logger.warn(
+          {
+            docName: event.docName,
+            nodeId: event.nodeId,
+            historyItemId: event.historyItemId,
+          },
+          "History item not found (deleted?), skipping",
+        );
+        return;
+      }
+
+      // items[idx] is guaranteed defined because idx >= 0 and the array
+      // was built by history.toArray() in the same synchronous frame.
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const item = items[idx]!;
+
+      // Fix C1: wrap the multi-field merge in a single Yjs transaction so
+      // all key updates are broadcast as one atomic update. Without this,
+      // each item.set() emits a separate Yjs update and collaborators can
+      // observe intermediate states (e.g., status="done" before url arrives).
+      // The "history-update" origin lets UndoManager (PR-12) filter these
+      // server-side writes.
+      doc.transact(() => {
+        for (const [k, v] of Object.entries(filteredUpdate)) {
+          item.set(k, v);
+        }
+      }, "history-update");
+
+      applied = true;
     });
   } finally {
     await connection.disconnect();
   }
 
-  // Release the Redis node lock for each affected node. Only the task
-  // that holds the lock can release it (Lua CAS checks taskId).
-  if (event.type === "completed" || event.type === "failed") {
-    for (const nodeId of targets) {
-      const key = nodeLockKey(envPrefix, parsed.projectId, nodeId);
-      const lockValue = await lockRedis.get(key);
-      if (!lockValue) continue;
-      try {
-        const lock = JSON.parse(lockValue) as { taskId?: string };
-        if (lock.taskId === event.taskId) {
-          await lockRedis.del(key);
-        } else {
-          logger.warn(
-            { key, eventTaskId: event.taskId, lockTaskId: lock.taskId },
-            "Lock held by different task, refusing to release",
-          );
-        }
-      } catch {
-        await lockRedis.del(key);
-      }
-    }
-  }
-
-  logger.info(
-    { docName: event.docName, type: event.type, taskId: event.taskId, targets: targets.length, updated: updatedCount },
-    "Task event handled",
-  );
-}
-
-function collectTargetNodeIds(event: NodeEvent): string[] {
-  if (event.type === "handling") return event.nodeIds;
-  if (event.type === "failed") return event.nodeIds;
-  // completed
-  return event.outputs.map((o) => o.nodeId);
-}
-
-/**
- * Locate (and lazily migrate) the target node's `data` Y.Map inside
- * the loaded Y.Doc. Returns `null` when the node isn't present — the
- * caller then silently skips the event (expected when a task resolves
- * for a node the user has since deleted).
- */
-function resolveNodeDataMap(
-  doc: Y.Doc,
-  parsed: ParsedDocName,
-  event: NodeEvent,
-  nodeId: string,
-): Y.Map<unknown> | null {
-  if (parsed.kind === "canvas") {
-    const canvasMap = doc.getMap("canvas");
-    const nodesMap = canvasMap.get("nodesMap");
-    if (!(nodesMap instanceof Y.Map)) {
-      logger.warn(
-        { docName: event.docName, nodeId, type: event.type },
-        "canvas.nodesMap is not a Y.Map, skipping",
-      );
-      return null;
-    }
-    const nodeMap = nodesMap.get(nodeId);
-    if (!(nodeMap instanceof Y.Map)) {
-      logger.warn(
-        { docName: event.docName, nodeId, type: event.type },
-        "Canvas node not found in nodesMap, skipping",
-      );
-      return null;
-    }
-    return ensureDataMap(nodeMap, event, nodeId);
-  }
-
-  // parsed.kind === "nodeEditor" — mixed editor (image/video/audio)
-  // sub-canvas. Uses a flat `flow: Y.Map<nodeId, Y.Map>` schema
-  // (see packages/web/src/hooks/useMixedEditorYjsInternal.ts doc).
-  const flow = doc.getMap("flow");
-  if (!(flow instanceof Y.Map)) {
-    logger.warn(
-      { docName: event.docName, nodeId, type: event.type },
-      "flow is not a Y.Map, skipping",
+  if (applied) {
+    logger.info(
+      {
+        docName: event.docName,
+        nodeId: event.nodeId,
+        historyItemId: event.historyItemId,
+        updateKeys: Object.keys(filteredUpdate),
+      },
+      "History item updated",
     );
-    return null;
   }
-  const nodeMap = flow.get(nodeId);
-  if (!(nodeMap instanceof Y.Map)) {
-    logger.warn(
-      { docName: event.docName, nodeId, type: event.type },
-      "Mixed editor node not found in flow, skipping",
-    );
-    return null;
-  }
-  return ensureDataMap(nodeMap, event, nodeId);
 }
 
 /**
- * Legacy safety: upgrade a plain JS `data` value to a Y.Map in place.
+ * Route incoming `NodeEvent` to the appropriate handler.
  *
- * Older canvas docs occasionally stored `data` as a plain object
- * instead of a Y.Map. We silently migrate when first touched so the
- * downstream mutation always operates on a Y.Map.
+ * Currently only `HistoryUpdateEvent` is in the union, but the guard
+ * is explicit for forward-compatibility.
  */
-function ensureDataMap(nodeMap: Y.Map<unknown>, event: NodeEvent, nodeId: string): Y.Map<unknown> {
-  const existing = nodeMap.get("data");
-  if (existing instanceof Y.Map) return existing as Y.Map<unknown>;
-
-  logger.warn(
-    { docName: event.docName, nodeId, type: event.type },
-    "Migrating legacy node data (plain → Y.Map)",
-  );
-  const oldData = (existing ?? {}) as Record<string, unknown>;
-  const newDataMap = new Y.Map<unknown>();
-  for (const [k, v] of Object.entries(oldData)) {
-    newDataMap.set(k, v);
-  }
-  nodeMap.set("data", newDataMap);
-  return newDataMap;
-}
-
-/**
- * Apply the event's state transition to a node's `data` Y.Map.
- *
- * Fields always touched:
- *   - `state`: 'handling' / 'idle'
- *   - `handlingBy`: created on handling, deleted on completed/failed
- *   - `errorInfo`: cleared on handling/completed, set on failed
- *   - `lastEventType`: set on completed/failed
- *
- * Doc-kind-specific behaviour:
- *   - Canvas `failed`: `content` / `coverUrl` preserved — canvas nodes
- *     are user-created entities, failing an AIGC run must not wipe
- *     the user's prior successful output.
- *   - `nodeEditor` (mixed editor) `failed`: `content` / `coverUrl`
- *     cleared — mixed-editor tiles ARE mini-tool outputs, so a failed
- *     run has no valid content to retain. The node becomes an explicit
- *     "failed placeholder" that the user deletes manually (no retry UX).
- */
-function applyEventToDataMap(
-  dataMap: Y.Map<unknown>,
+async function handleNodeEvent(
+  hocuspocus: Hocuspocus,
   event: NodeEvent,
-  parsed: ParsedDocName,
-  nodeId: string,
-): void {
-  if (event.type === "handling") {
-    dataMap.set("state", "handling");
-    // Re-triggering a node should wipe stale failure info so the UI
-    // doesn't keep showing an old error while the new run is pending.
-    dataMap.delete("errorInfo");
-    let handlingBy = dataMap.get("handlingBy");
-    if (!(handlingBy instanceof Y.Map)) {
-      handlingBy = new Y.Map();
-      dataMap.set("handlingBy", handlingBy);
-    }
-    (handlingBy as Y.Map<unknown>).set("userId", event.actor.userId);
-    (handlingBy as Y.Map<unknown>).set("username", event.actor.username);
-  } else if (event.type === "completed") {
-    const output = event.outputs.find((o) => o.nodeId === nodeId);
-    if (!output) return;
-    dataMap.set("state", "idle");
-    dataMap.set("content", output.content);
-    if (output.cover_url !== undefined) {
-      dataMap.set("coverUrl", output.cover_url);
-    }
-    dataMap.set("lastEventType", "completed");
-    dataMap.delete("handlingBy");
-    // Success clears any lingering error from a prior failed run.
-    dataMap.delete("errorInfo");
-  } else {
-    // failed (all-or-nothing: every nodeId in event.nodeIds fails together)
-    dataMap.set("lastEventType", "failed");
-    dataMap.set("state", "idle");
-    dataMap.delete("handlingBy");
-    dataMap.set("errorInfo", event.errorMessage ?? "");
-
-    if (parsed.kind === "nodeEditor") {
-      // Mixed-editor tile is the task's output — clear it on failure.
-      dataMap.set("content", "");
-      dataMap.delete("coverUrl");
-    }
-    // parsed.kind === "canvas": leave content/coverUrl untouched so
-    // the user's prior result stays visible.
+): Promise<void> {
+  if (event.type === "history-update") {
+    await handleHistoryUpdateEvent(hocuspocus, event);
+    return;
   }
+  // Fix M2: Unreachable with current NodeEvent union, but kept for forward
+  // compatibility — when a new event type is added in shared/, this
+  // guard logs unknown types instead of silently dropping them.
+  logger.warn({ type: (event as { type: string }).type }, "Unknown event type, skipping");
 }
 
 /**
@@ -281,20 +241,16 @@ function applyEventToDataMap(
  *
  * @param hocuspocus - Running Hocuspocus server instance
  * @param streamRedisUrl - Redis URL for Streams (DB 2)
- * @param lockRedisUrl - Redis URL for canvas lock operations (DB 0)
  * @param envPrefix - Environment prefix for stream + last-id keys
  * @returns Cleanup function to stop listening
  */
 export function startTaskListener(
   hocuspocus: Hocuspocus,
   streamRedisUrl: string,
-  lockRedisUrl: string,
   envPrefix: string,
 ): () => Promise<void> {
   const streamKey = taskEventsStreamKey(envPrefix);
   const lastIdKey = taskEventsLastIdKey(envPrefix);
-
-  const lockRedis = new Redis(lockRedisUrl);
 
   logger.info({ streamKey }, "Task event listener starting");
 
@@ -303,12 +259,11 @@ export function startTaskListener(
     streamKey,
     lastIdKey,
     parse: (raw) => JSON.parse(raw) as NodeEvent,
-    handle: (event) => handleNodeEvent(hocuspocus, lockRedis, envPrefix, event),
+    handle: (event) => handleNodeEvent(hocuspocus, event),
   });
 
   return async () => {
     await stopStream();
-    await lockRedis.quit();
     logger.info("Task event listener stopped");
   };
 }

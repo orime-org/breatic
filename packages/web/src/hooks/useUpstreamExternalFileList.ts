@@ -45,7 +45,12 @@ export const useUpstreamExternalFileList = (
   return upstreamNodes
     .map((node) => {
       const data = node.data as Partial<CanvasWorkflowNodeData> | undefined;
-      const content = data?.content;
+      // Resolve the active history item URL (new schema: no `content` field).
+      const { activeHistoryId, history } = data ?? {};
+      const activeItem = Array.isArray(history) && activeHistoryId
+        ? history.find((h) => h.id === activeHistoryId)
+        : undefined;
+      const content = activeItem?.url;
       if (typeof content !== 'string' || !content.trim()) return null;
 
       const url = content;

@@ -17,7 +17,7 @@
 
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { nanoid } from 'nanoid';
-import type { ImageEditorRightSidePanelId } from '@/apps/project/components/mixedEditor/types';
+type ImageEditorRightSidePanelId = 'assets' | 'attach' | 'link' | 'history';
 
 export type MixedEditorActiveTool = 'select' | 'crop' | 'blank' | 'brush' | 'text';
 
