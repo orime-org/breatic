@@ -14,6 +14,7 @@ interface TimelineEditorProps {
   scale: number;
   onTimeChange: (time: number) => void;
   nodeId?: string;
+  disableBoxSelect?: boolean;
 }
 
 // checkclip
@@ -93,6 +94,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   scale,
   onTimeChange,
   nodeId,
+  disableBoxSelect = false,
 }) => {
   const { t } = useTranslation();
 
@@ -113,6 +115,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     onTimeChange(time);
   }, [onTimeChange]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [selectoContainer, setSelectoContainer] = useState<HTMLDivElement | null>(null);
   const scrollbarRef = useRef<HTMLDivElement | null>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
   const [snapLines, setSnapLines] = useState<number[]>([]);
@@ -123,7 +126,27 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const [hoverTrackIndex, setHoverTrackIndex] = useState<number | null>(null);
   const [isHoverAboveFirstTrack, setIsHoverAboveFirstTrack] = useState<boolean>(false);
   const [preserveEmptyTracks, setPreserveEmptyTracks] = useState<boolean>(false);
+  const [groupDragOffsetX, setGroupDragOffsetX] = useState(0);
+  const [groupDragOffsetY, setGroupDragOffsetY] = useState(0);
+  const [groupDraggingIds, setGroupDraggingIds] = useState<string[]>([]);
+  const [groupResizeState, setGroupResizeState] = useState<{
+    edge: 'left' | 'right';
+    startClientX: number;
+    baseClips: TimelineClip[];
+  } | null>(null);
   const dragSourceTrackRef = useRef<number | null>(null);
+  const groupDragBaseRef = useRef<TimelineClip[]>([]);
+  const groupDraggingIdsRef = useRef<string[]>([]);
+
+  const effectiveGroupDraggingIds = useMemo(() => {
+    if (groupDraggingIds.length > 1) {
+      return groupDraggingIds;
+    }
+    if (draggingClipId && selectedClipId.length > 1 && selectedClipId.includes(draggingClipId)) {
+      return selectedClipId;
+    }
+    return groupDraggingIds;
+  }, [groupDraggingIds, draggingClipId, selectedClipId]);
   const lastSnapRef = useRef<{ time: number; isSnapped: boolean }>({
     time: 0,
     isSnapped: false,
@@ -385,6 +408,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
     const itemId = String(event.active.id);
     setDraggingClipId(itemId);
+    const selectedSet = new Set(selectedClipId);
+    const shouldGroupDrag = selectedClipId.length > 1 && selectedSet.has(itemId);
+    const dragIds = shouldGroupDrag ? selectedClipId : [itemId];
+    setGroupDraggingIds(dragIds);
+    groupDraggingIdsRef.current = dragIds;
+    setGroupDragOffsetX(0);
+    setGroupDragOffsetY(0);
+    groupDragBaseRef.current = clips.filter((c) => dragIds.includes(c.id));
     const clip = clips.find((c: TimelineClip) => c.id === itemId);
     if (clip) {
       dragSourceTrackRef.current = clip.trackIndex;
@@ -400,6 +431,18 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     const itemId = String(active.id);
     const clip = clips.find((c: TimelineClip) => c.id === itemId);
     if (!clip) return;
+
+    const activeGroupIds = groupDraggingIdsRef.current;
+    const isGroupDragging = activeGroupIds.length > 1 && activeGroupIds.includes(itemId);
+    if (isGroupDragging && groupDragBaseRef.current.length > 0) {
+      const baseMinStart = Math.min(...groupDragBaseRef.current.map((c) => c.start));
+      const boundedDeltaTime = Math.max(delta.x / pixelsPerSecond, -baseMinStart);
+      setGroupDragOffsetX(boundedDeltaTime * pixelsPerSecond);
+      setGroupDragOffsetY(delta.y);
+    } else {
+      setGroupDragOffsetX(0);
+      setGroupDragOffsetY(0);
+    }
 
     const deltaTime = delta.x / pixelsPerSecond;
     const newStart = Math.max(0, clip.start + deltaTime);
@@ -491,6 +534,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     const shouldInsertAtTop = isHoverAboveFirstTrack;
     const insertAtTrackIndex = isHoverAboveFirstTrack ? 0 : hoverTrackIndex;
     const sourceTrackIndex = dragSourceTrackRef.current;
+    const activeGroupIds = [...groupDraggingIdsRef.current];
+    const activeGroupBase = [...groupDragBaseRef.current];
 
     setSnapLines([]);
     setIsDragging(false);
@@ -498,9 +543,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     setDraggingMaxEnd(0);
     setHoverTrackIndex(null);
     setIsHoverAboveFirstTrack(false);
+    setGroupDragOffsetX(0);
+    setGroupDragOffsetY(0);
     dragSourceTrackRef.current = null;
 
     if (!over) {
+      setGroupDraggingIds([]);
+      groupDraggingIdsRef.current = [];
+      groupDragBaseRef.current = [];
+      setGroupDragOffsetY(0);
       return;
     }
 
@@ -509,6 +560,103 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
     const clip = clips.find((c: TimelineClip) => c.id === itemId);
     if (!clip) {
+      setGroupDraggingIds([]);
+      return;
+    }
+
+    const isGroupDragging = activeGroupIds.length > 1 && activeGroupIds.includes(itemId);
+    if (isGroupDragging && activeGroupBase.length > 0) {
+      const selectedSet = new Set(activeGroupIds);
+      const baseMinStart = Math.min(...activeGroupBase.map((c) => c.start));
+      const rawDeltaTime = delta.x / pixelsPerSecond;
+      const boundedDeltaTime = Math.max(rawDeltaTime, -baseMinStart);
+
+      const snapThreshold = 0.1;
+      const movedMinStart = baseMinStart + boundedDeltaTime;
+      let snappedMinStart = movedMinStart;
+      let minDistance = Infinity;
+      const snapPoints: number[] = [currentTime, 0];
+      clips.forEach((c) => {
+        if (!selectedSet.has(c.id)) {
+          snapPoints.push(c.start, c.end);
+        }
+      });
+      snapPoints.forEach((point) => {
+        const distance = Math.abs(movedMinStart - point);
+        if (distance < snapThreshold && distance < minDistance) {
+          minDistance = distance;
+          snappedMinStart = point;
+        }
+      });
+      const finalDeltaTime = snappedMinStart - baseMinStart;
+      const activeBaseClip = activeGroupBase.find((baseClip) => baseClip.id === itemId);
+      const activeBaseTrackIndex = activeBaseClip?.trackIndex ?? clip.trackIndex;
+      let targetTrackIndex = activeBaseTrackIndex;
+
+      if (newRowId === 'track-top') {
+        targetTrackIndex = 0;
+      } else if (newRowId.startsWith('track-')) {
+        targetTrackIndex = parseInt(newRowId.replace('track-', ''));
+      }
+
+      const rawTrackDelta = targetTrackIndex - activeBaseTrackIndex;
+      const sourceMinTrack = Math.min(...activeGroupBase.map((baseClip) => baseClip.trackIndex));
+      const sourceMaxTrack = Math.max(...activeGroupBase.map((baseClip) => baseClip.trackIndex));
+      const blockTrackCount = sourceMaxTrack - sourceMinTrack + 1;
+      const trackDelta = Math.max(rawTrackDelta, -sourceMinTrack);
+      const targetMinTrack = sourceMinTrack + trackDelta;
+      const targetMaxTrack = sourceMaxTrack + trackDelta;
+
+      const movedSelectedClips = activeGroupBase.map((baseClip) => ({
+        ...baseClip,
+        start: baseClip.start + finalDeltaTime,
+        end: baseClip.end + finalDeltaTime,
+        trackIndex: Math.max(0, baseClip.trackIndex + trackDelta),
+      }));
+
+      const movedSelectedIds = new Set(movedSelectedClips.map((c) => c.id));
+      let mergedClips = clips.map((c) => movedSelectedClips.find((moved) => moved.id === c.id) ?? c);
+
+      if (trackDelta !== 0) {
+        mergedClips = mergedClips.map((timelineClip) => {
+          if (movedSelectedIds.has(timelineClip.id)) {
+            return timelineClip;
+          }
+          if (trackDelta > 0) {
+            // Move intermediate tracks up, achieving block swap.
+            if (timelineClip.trackIndex > sourceMaxTrack && timelineClip.trackIndex <= targetMaxTrack) {
+              return { ...timelineClip, trackIndex: timelineClip.trackIndex - blockTrackCount };
+            }
+            return timelineClip;
+          }
+          // Move intermediate tracks down, achieving block swap.
+          if (timelineClip.trackIndex >= targetMinTrack && timelineClip.trackIndex < sourceMinTrack) {
+            return { ...timelineClip, trackIndex: timelineClip.trackIndex + blockTrackCount };
+          }
+          return timelineClip;
+        });
+      } else {
+        const hasCollision = movedSelectedClips.some((movedClip) => {
+          return mergedClips.some((otherClip) => {
+            if (movedSelectedIds.has(otherClip.id)) return false;
+            if (otherClip.trackIndex !== movedClip.trackIndex) return false;
+            return movedClip.start < otherClip.end && movedClip.end > otherClip.start;
+          });
+        });
+        if (hasCollision) {
+          setGroupDraggingIds([]);
+          groupDraggingIdsRef.current = [];
+          groupDragBaseRef.current = [];
+          setGroupDragOffsetY(0);
+          return;
+        }
+      }
+
+      setClips(mergedClips);
+      setGroupDraggingIds([]);
+      groupDraggingIdsRef.current = [];
+      groupDragBaseRef.current = [];
+      setGroupDragOffsetY(0);
       return;
     }
 
@@ -643,7 +791,76 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     if (Object.keys(updates).length > 0) {
       updateClip(itemId, updates);
     }
+    setGroupDraggingIds([]);
+    groupDraggingIdsRef.current = [];
+    groupDragBaseRef.current = [];
+    setGroupDragOffsetY(0);
   };
+
+  const handleMultiSelectResizeStart = useCallback((edge: 'left' | 'right', clientX: number) => {
+    if (selectedClipId.length <= 1) return;
+    const selectedSet = new Set(selectedClipId);
+    const baseClips = clips.filter((clip) => selectedSet.has(clip.id));
+    if (baseClips.length <= 1) return;
+    setGroupResizeState({
+      edge,
+      startClientX: clientX,
+      baseClips,
+    });
+  }, [clips, selectedClipId]);
+
+  useEffect(() => {
+    if (!groupResizeState) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      const deltaX = moveEvent.clientX - groupResizeState.startClientX;
+      const rawDeltaTime = deltaX / pixelsPerSecond;
+      const minStart = Math.min(...groupResizeState.baseClips.map((clip) => clip.start));
+      const minShrinkable = Math.min(...groupResizeState.baseClips.map((clip) => (clip.end - clip.start) - 0.1));
+      let boundedDeltaTime = rawDeltaTime;
+
+      if (groupResizeState.edge === 'left') {
+        boundedDeltaTime = Math.max(rawDeltaTime, -minStart);
+        boundedDeltaTime = Math.min(boundedDeltaTime, minShrinkable);
+      } else {
+        boundedDeltaTime = Math.max(rawDeltaTime, -minShrinkable);
+      }
+
+      const resizedClips = groupResizeState.baseClips.map((clip) => {
+        if (groupResizeState.edge === 'left') {
+          return { ...clip, start: clip.start + boundedDeltaTime };
+        }
+        return { ...clip, end: clip.end + boundedDeltaTime };
+      });
+
+      const resizedIds = new Set(resizedClips.map((clip) => clip.id));
+      const hasCollision = resizedClips.some((resizedClip) =>
+        clips.some((otherClip) => {
+          if (resizedIds.has(otherClip.id)) return false;
+          if (otherClip.trackIndex !== resizedClip.trackIndex) return false;
+          return resizedClip.start < otherClip.end && resizedClip.end > otherClip.start;
+        })
+      );
+
+      if (!hasCollision) {
+        const merged = clips.map((clip) => resizedClips.find((resized) => resized.id === clip.id) ?? clip);
+        setClips(merged);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setGroupResizeState(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [groupResizeState, pixelsPerSecond, clips, setClips]);
 
   // calculatetimetickwidth
   const { displayDuration, scaleContainerWidth } = useMemo(() => {
@@ -694,22 +911,34 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   // handlebox selectstart
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectStart = useCallback((e: any) => {
+    if (disableBoxSelect) {
+      e.stop();
+      return;
+    }
+
     // if drag clip， box select
     if (isDragging) {
       e.stop();
       return;
     }
-    // if clip ， box select（ drag ）
+    // if resize handle（panel / clip / group resize handle）, block box select
     const target = e.inputEvent?.target as HTMLElement;
-    if (target && (target.id?.startsWith('timeline-clip-') || target.closest('[id^="timeline-clip-"]'))) {
-      // check up
-      const isResizeHandle = target.closest('.cursor-ew-resize');
-      if (!isResizeHandle) {
-        // ， drag clip， box select
-        e.stop();
-      }
+    if (target && (
+      target.closest('.cursor-ew-resize') ||
+      target.closest('.cursor-row-resize') ||
+      target.closest('[data-panel-resize-handle-id]') ||
+      target.closest('[data-panel-group-id] [role="separator"]')
+    )) {
+      e.stop();
+      return;
     }
-  }, [isDragging]);
+
+    // if clip ， box select（ drag ）
+    if (target && (target.id?.startsWith('timeline-clip-') || target.closest('[id^="timeline-clip-"]'))) {
+      // ， drag clip， box select
+      e.stop();
+    }
+  }, [disableBoxSelect, isDragging]);
 
   // handlebox select - preventother
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -723,17 +952,25 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   // handlebox selectend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectEnd = useCallback((e: any) => {
-    const { selected, inputEvent } = e;
+    const { selected, added, afterAdded, inputEvent } = e;
 
     // if drag clip， handlebox select
-    if (isDragging) {
+    if (disableBoxSelect || isDragging) {
       return;
     }
 
     // selected DOM clip IDs
+    const selectedElements: HTMLElement[] = Array.isArray(selected)
+      ? selected
+      : Array.isArray(afterAdded)
+        ? afterAdded
+        : Array.isArray(added)
+          ? added
+          : [];
+
     const selectedIds: string[] = [];
-    if (selected && Array.isArray(selected)) {
-      selected.forEach((el: HTMLElement) => {
+    if (selectedElements.length > 0) {
+      selectedElements.forEach((el: HTMLElement) => {
         const elementId = el.id;
         if (elementId && elementId.startsWith('timeline-clip-')) {
           const clipId = elementId.replace('timeline-clip-', '');
@@ -745,7 +982,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
 
     // support Shift multi-select
-    if (inputEvent?.shiftKey && selectedIds.length > 0) {
+    if ((inputEvent?.shiftKey || inputEvent?.metaKey || inputEvent?.ctrlKey) && selectedIds.length > 0) {
       // selected
       const currentSelected = Array.isArray(selectedClipId) ? selectedClipId : Array.from(selectedClipId || []) as string[];
       const newSelected = Array.from(new Set([...currentSelected, ...selectedIds])) as string[];
@@ -759,7 +996,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         setSelectedClipId([]);
       }
     }
-  }, [isDragging, selectedClipId, setSelectedClipId]);
+  }, [disableBoxSelect, isDragging, selectedClipId, setSelectedClipId]);
 
   // handle clearselected
   const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -839,7 +1076,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           onScroll={handleScroll}
         >
           <div
-            ref={containerRef}
+            ref={(node) => {
+              containerRef.current = node;
+              setSelectoContainer(node);
+            }}
             className='h-full'
             onClick={handleTrackContainerClick}
           >
@@ -875,6 +1115,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                       hoverTrackIndex={hoverTrackIndex}
                       isHoverAboveFirstTrack={isHoverAboveFirstTrack}
                       draggingClipId={draggingClipId}
+                      groupDraggingIds={effectiveGroupDraggingIds}
+                      groupDragOffsetX={groupDragOffsetX}
+                      groupDragOffsetY={groupDragOffsetY}
+                      onMultiSelectResizeStart={handleMultiSelectResizeStart}
                       nodeId={nodeId}
                       parentRef={scrollbarRef}
                       parentScrollRef={scrollbarRef}
@@ -913,19 +1157,19 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       )}
 
       {/* Selecto box selectcomponent */}
-      {containerRef.current && (
+      {selectoContainer && (
         <Selecto
           ref={selectoRef}
-          container={containerRef.current}
-          dragContainer={containerRef.current}
-          rootContainer={containerRef.current}
+          container={selectoContainer}
+          dragContainer={selectoContainer}
+          rootContainer={selectoContainer}
           selectableTargets={['[id^="timeline-clip-"]', '[data-selectable="true"]']}
           hitRate={0} // selected
           selectByClick={false} // selected， box select
           selectFromInside={false} // box select
           toggleContinueSelect={['shift']} // Shift
           ratio={0} // comment
-          boundContainer={containerRef.current} // region container
+          boundContainer={selectoContainer} // region container
           checkInput={false} // check
           preventClickEventOnDrag={true} // prevent
           preventDefault={false} // preventdefault ， box select

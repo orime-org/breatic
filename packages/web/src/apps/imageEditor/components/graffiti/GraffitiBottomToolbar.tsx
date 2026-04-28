@@ -14,6 +14,7 @@ type GraffitiTool = 'brush' | 'circle' | 'rectangle' | 'eraser';
 type GraffitiBottomToolbarProps = {
   canvas: Canvas | null;
   active: boolean;
+  onCanvasCommit?: () => void;
   onClose: (nextImageSrc?: string) => void;
   nodeId?: string;
 };
@@ -21,8 +22,6 @@ type GraffitiBottomToolbarProps = {
 const iconBtnClass =
   'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 const iconBtnActiveClass = 'bg-background-default-base-hover';
-const iconBtnDisabledClass = 'cursor-not-allowed text-icon-disabled hover:bg-transparent opacity-50';
-const getHistoryBtnClass = (enabled: boolean) => `${iconBtnClass} ${enabled ? '' : iconBtnDisabledClass}`;
 const shapeInitialSize = 2;
 const minShapeDragPx = 8;
 const graffitiLabelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
@@ -32,15 +31,18 @@ const colorOptions = ['#9CA3AF', '#0C0C0D', '#FFD600', '#FF9230', '#FF375F', '#D
 const disabledLeftSlotClass =
   'inline-flex h-[40px] items-center gap-1.5 rounded-full border border-[#C8C8C8] px-4 text-[12px] font-semibold !text-text-disabled-base cursor-not-allowed bg-[var(--color-background-default-base)]';
 
-const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, active, onClose, nodeId: _nodeId }) => {
+const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({
+  canvas,
+  active,
+  onCanvasCommit,
+  onClose,
+  nodeId: _nodeId,
+}) => {
   const [activeTool, setActiveTool] = useState<GraffitiTool>('brush');
   const [brushSize, setBrushSize] = useState(8);
   const [brushColor, setBrushColor] = useState('#FF375F');
   const [colorOpen, setColorOpen] = useState(false);
-  const [history, setHistory] = useState<{ undo: unknown[]; redo: unknown[] }>({ undo: [], redo: [] });
   const [inputEmpty, setInputEmpty] = useState(true);
-  const canUndo = history.undo.length > 0;
-  const canRedo = history.redo.length > 0;
 
   const getBrush = React.useCallback(
     (target: Canvas) => {
@@ -130,35 +132,6 @@ const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, a
       </div>
     </div>
   );
-
-  const handleUndoClick = () => {
-    if (!canvas || !canUndo) return;
-    const item = history.undo[history.undo.length - 1];
-    if (!item) return;
-    canvas.remove(item as never);
-    canvas.requestRenderAll();
-    setHistory((prev) => ({
-      undo: prev.undo.slice(0, -1),
-      redo: [...prev.redo, item],
-    }));
-  };
-
-  const handleRedoClick = () => {
-    if (!canvas || !canRedo) return;
-    const item = history.redo[history.redo.length - 1];
-    if (!item) return;
-    canvas.add(item as never);
-    canvas.requestRenderAll();
-    setHistory((prev) => ({
-      undo: [...prev.undo, item],
-      redo: prev.redo.slice(0, -1),
-    }));
-  };
-
-  useEffect(() => {
-    if (!canvas || !active) return;
-    setHistory({ undo: [], redo: [] });
-  }, [canvas, active]);
 
   useEffect(() => {
     if (!canvas || !active) return;
@@ -255,7 +228,7 @@ const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, a
       nextPath.globalCompositeOperation = 'source-over';
       nextPath.selectable = false;
       nextPath.evented = false;
-      setHistory((prev) => ({ undo: [...prev.undo, e.path as unknown], redo: [] }));
+      onCanvasCommit?.();
     };
 
     const onMouseDown = (e: unknown) => {
@@ -370,8 +343,7 @@ const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, a
         }
       }
       if (previewObject) {
-        const added = previewObject;
-        setHistory((prev) => ({ undo: [...prev.undo, added], redo: [] }));
+        onCanvasCommit?.();
       }
       mouseFrom = null;
       shapeDragEnd = null;
@@ -393,7 +365,7 @@ const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, a
       canvas.skipTargetFind = false;
       canvas.defaultCursor = 'default';
     };
-  }, [canvas, active, activeTool, getBrush, getEraser, brushColor, brushSize]);
+  }, [canvas, active, activeTool, getBrush, getEraser, brushColor, brushSize, onCanvasCommit]);
 
   return (
     <div className='nodrag nopan pointer-events-auto flex flex-col items-center gap-3'>
@@ -471,17 +443,6 @@ const GraffitiBottomToolbar: React.FC<GraffitiBottomToolbarProps> = ({ canvas, a
             onClick={() => handleToolChange('eraser')}
           >
             <Icon name='imageEditor-flow-inpaint-eraser-icon' width={22} height={22} />
-          </button>
-        </Tooltip>
-        <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
-        <Tooltip title='Undo' placement='top' offset={4}>
-          <button type='button' className={getHistoryBtnClass(canUndo)} aria-label='Undo graffiti' onClick={handleUndoClick} disabled={!canUndo}>
-            <Icon name='imageEditor-flow-inpaint-undo-icon' width={20} height={20} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Redo' placement='top' offset={4}>
-          <button type='button' className={getHistoryBtnClass(canRedo)} aria-label='Redo graffiti' onClick={handleRedoClick} disabled={!canRedo}>
-            <Icon name='imageEditor-flow-inpaint-redo-icon' width={20} height={20} />
           </button>
         </Tooltip>
         <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />

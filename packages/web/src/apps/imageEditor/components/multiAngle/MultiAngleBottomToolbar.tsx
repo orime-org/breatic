@@ -12,6 +12,7 @@ type MultiAngleBottomToolbarProps = {
   active: boolean;
   onClose: () => void;
   imageSrc?: string;
+  onSend?: () => void;
 };
 
 const iconBtnClass =
@@ -31,7 +32,7 @@ type TabKey = (typeof tabs)[number]['key'];
 const scaleIndexToValue = (i: number): AngleCubeScale => (i === 0 ? 1 : i === 2 ? 10 : 5);
 const scaleValueToIndex = (s: AngleCubeScale): 0 | 1 | 2 => (s === 1 ? 0 : s === 10 ? 2 : 1);
 
-const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ active, onClose, imageSrc }) => {
+const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ active, onClose, imageSrc, onSend }) => {
   const [tab, setTab] = useState<TabKey>('custom');
   const [rotate, setRotate] = useState(0);
   const [tilt, setTilt] = useState(0);
@@ -211,7 +212,7 @@ const MultiAngleBottomToolbar: React.FC<MultiAngleBottomToolbarProps> = ({ activ
               shape='round'
               className='!h-[28px] !w-[52px] !min-w-[52px] !py-[2px] !pl-[16px] !pr-[12px] !bg-[#35C838] !border-[#35C838] !text-white hover:!bg-[#35C838] hover:!border-[#35C838]'
               icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
-              onClick={() => void 0}
+              onClick={() => onSend?.()}
               aria-label='Generate multi-angle'
             />
           </div>

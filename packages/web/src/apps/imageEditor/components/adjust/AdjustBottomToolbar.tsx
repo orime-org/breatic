@@ -29,8 +29,7 @@ type AdjustBottomToolbarProps = {
   onSave: (value: AdjustValue) => void;
 };
 
-const iconBtnClass =
-  'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 
 export const defaultAdjustValue: AdjustValue = {
   exposure: 0,

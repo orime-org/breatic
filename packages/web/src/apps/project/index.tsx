@@ -11,6 +11,7 @@ import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
+import ImageEditorPage from '../imageEditor';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
@@ -86,7 +87,8 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
   const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
   const panelNodeType = String(panelNode?.type ?? '');
   const isTextNode = panelNodeType === '1001';
-  const isMixedEditorNode = panelNodeType === '1002' || panelNodeType === '1003' || panelNodeType === '1004';
+  const isImageNode = panelNodeType === '1002';
+  const isVideoOrAudioNode = panelNodeType === '1003' || panelNodeType === '1004';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
 
   const exitCanvasPickMode = useCallback(() => {
@@ -181,10 +183,69 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
               ) : null}
             </>
           )}
+          {isRightEditorOpen && (
+            <Panel
+              id='resizable-left'
+              className={`bg-background-default-secondary flex flex-col shrink-0 border box-border ${rightEditorBorderClass}`}
+              onMouseDownCapture={() => {
+                exitCanvasPickMode();
+                setSelectedWorkspaceRegion('rightEditor');
+              }}
+            >
+              <div className='relative h-full min-h-0 w-full overflow-visible'>
+                <Tooltip
+                  title={canvasPanelVisible ? 'Collapse canvas' : 'Expand canvas'}
+                  placement='right'
+                  triggerClassName='absolute left-3 top-3 z-10'
+                >
+                  <button
+                    type='button'
+                    onClick={handleToggleCanvasToolbar}
+                    className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
+                  >
+                    <Icon
+                      name={canvasPanelVisible ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
+                      width={16}
+                      height={16}
+                      color='var(--color-icon-base)'
+                    />
+                  </button>
+                </Tooltip>
+                {isTextNode && panelNode ? (
+                  <TextEditor nodeId={panelNode.id} />
+                ) : isImageNode && panelNode ? (
+                  <div className='flex h-full min-h-0 w-full flex-col overflow-hidden pt-10'>
+                    <ImageEditorPage nodeId={panelNode.id} />
+                  </div>
+                ) : isVideoOrAudioNode && panelNode ? (
+                  <EditorComingSoonPlaceholder nodeId={panelNode.id} />
+                ) : (
+                  <ResizableLeftPanel />
+                )}
+                <div
+                  id='chat-left-panel-portal'
+                  className='absolute right-0 top-0 bottom-0 w-0 pointer-events-none'
+                  aria-hidden
+                />
+              </div>
+            </Panel>
+          )}
+          {showRightSeparator ? (
+            <Separator
+              id='resize-canvas-right'
+              className='w-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-col-resize shrink-0 transition-colors focus-visible:outline-none'
+              onMouseDownCapture={() => {
+                exitCanvasPickMode();
+                setSelectedWorkspaceRegion('rightEditor');
+                setIsResizingRightEditor(true);
+              }}
+            />
+          ) : null}
           {canvasPanelVisible && (
             <Panel
               id='canvas'
-              minSize={0}
+              defaultSize={700}
+              minSize={700}
               className={`border ${selectedWorkspaceRegion === 'canvas' ? 'border-[#949494]' : 'border-transparent'}`}
               onMouseDownCapture={() => {
                 setSelectedWorkspaceRegion('canvas');
@@ -234,64 +295,6 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
                 <ProjectCanvas yjs={yjs} hotkeysDisabled={selectedWorkspaceRegion === 'rightEditor'} />
               </div>
             </Panel>
-          )}
-          {isRightEditorOpen && (
-            <>
-              {showRightSeparator ? (
-                <Separator
-                  id='resize-canvas-right'
-                  className='w-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-col-resize shrink-0 transition-colors focus-visible:outline-none'
-                  onMouseDownCapture={() => {
-                    exitCanvasPickMode();
-                    setSelectedWorkspaceRegion('rightEditor');
-                    setIsResizingRightEditor(true);
-                  }}
-                />
-              ) : null}
-              <Panel
-                id='resizable-left'
-                defaultSize={700}
-                minSize={700}
-                className={`bg-background-default-secondary flex flex-col shrink-0 border box-border ${rightEditorBorderClass}`}
-                onMouseDownCapture={() => {
-                  exitCanvasPickMode();
-                  setSelectedWorkspaceRegion('rightEditor');
-                }}
-              >
-                <div className='relative h-full min-h-0 w-full overflow-visible'>
-                  <Tooltip
-                    title={canvasPanelVisible ? 'Collapse canvas' : 'Expand canvas'}
-                    placement='right'
-                    triggerClassName='absolute left-3 top-3 z-10'
-                  >
-                    <button
-                      type='button'
-                      onClick={handleToggleCanvasToolbar}
-                      className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
-                    >
-                      <Icon
-                        name={canvasPanelVisible ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
-                        width={16}
-                        height={16}
-                        color='var(--color-icon-base)'
-                      />
-                    </button>
-                  </Tooltip>
-                  {isTextNode && panelNode ? (
-                    <TextEditor nodeId={panelNode.id} />
-                  ) : isMixedEditorNode && panelNode ? (
-                    <EditorComingSoonPlaceholder nodeId={panelNode.id} />
-                  ) : (
-                    <ResizableLeftPanel />
-                  )}
-                  <div
-                    id='chat-left-panel-portal'
-                    className='absolute right-0 top-0 bottom-0 w-0 pointer-events-none'
-                    aria-hidden
-                  />
-                </div>
-              </Panel>
-            </>
           )}
         </Group>
       </div>

@@ -19,7 +19,8 @@ export type ImageEditorToolMode =
   | 'multi-angle';
 
 type RightToolPanelProps = {
-  activeTool: ImageEditorToolMode;
+  /** When `null`, no tool button shows the selected (green) state. */
+  activeTool: ImageEditorToolMode | null;
   onSelect: (tool: ImageEditorToolMode) => void;
 };
 

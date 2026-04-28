@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+
 import { cn } from '@/utils/classnames';
 
 export type RelightViewMode = 'perspective' | 'front';
@@ -81,28 +82,34 @@ const applySceneLighting = (
 ) => {
   const b01 = clamp(opts.brightness / 100, 0, 1);
   deps.gridShader.uniforms.brightness01.value = 0.6 + b01 * 0.4;
+
   const rgb = kelvinToRgb01(opts.temperatureKelvin);
   const color = new THREE.Color(rgb.r, rgb.g, rgb.b);
+
   deps.spot.color.copy(color);
   deps.rimSpot.color.copy(color);
   deps.coreMat.color.copy(color);
   deps.midGlowMat.color.copy(color);
   deps.haloMat.color.copy(color);
+
   deps.rimGlowShader.uniforms.glowColor.value.set(
     0.55 * (0.6 + rgb.r * 0.4),
     0.72 * (0.6 + rgb.g * 0.4),
     1.0 * (0.6 + rgb.b * 0.4),
   );
+
   deps.gridShader.uniforms.gridColor.value.set(
     0.45 * (0.6 + rgb.r * 0.4),
     0.48 * (0.6 + rgb.g * 0.4),
     0.55 * (0.6 + rgb.b * 0.4),
   );
+
   deps.ambientLight.intensity = 0.04 + b01 * 0.08;
   deps.spot.intensity = 0.2 + b01 * 10;
   deps.rimSpot.intensity = opts.rimLight ? 0.18 + b01 * 3.5 : 0;
   deps.rayMat.opacity = 0.05 + b01 * 0.35;
   deps.coneMat.uniforms.beamAlpha.value = 0.04 + b01 * 0.2;
+
   deps.sphereFrontMat.opacity = opts.rimLight ? 0.04 + b01 * 0.04 : 0.03;
   deps.rimGlowShader.uniforms.glowIntensity.value = 0.7 + b01 * 0.6;
 };
@@ -128,6 +135,7 @@ const applySceneTexture = async (deps: TextureDeps, src?: string) => {
     deps.textureState.planeTexture = deps.defaultTex;
     return;
   }
+
   const loader = new THREE.TextureLoader();
   loader.setCrossOrigin?.('anonymous');
   const tex = await new Promise<THREE.Texture>((resolve, reject) => {
@@ -139,9 +147,11 @@ const applySceneTexture = async (deps: TextureDeps, src?: string) => {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
+
   deps.planeMat.map = tex;
   deps.planeMat.needsUpdate = true;
   deps.textureState.planeTexture = tex;
+
   const imgW = (tex.image as { width?: number } | undefined)?.width ?? 512;
   const imgH = (tex.image as { height?: number } | undefined)?.height ?? 400;
   if (deps.textureState.vignetteTexture) deps.textureState.vignetteTexture.dispose?.();
@@ -152,14 +162,16 @@ const applySceneTexture = async (deps: TextureDeps, src?: string) => {
 
 const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
   const { imageSrc, rimLight, brightness, temperatureKelvin, viewMode, lightPreset, className } = props;
+
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const lightPresetRef = useRef(lightPreset);
-  const apiRef = useRef<RelightThreeApi | null>(null);
 
+  const lightPresetRef = useRef(lightPreset);
   useEffect(() => {
     lightPresetRef.current = lightPreset;
   }, [lightPreset]);
+
+  const apiRef = useRef<RelightThreeApi | null>(null);
 
   const defaultTextureCanvas = useMemo(() => {
     const c = document.createElement('canvas');
@@ -167,17 +179,35 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     c.height = 400;
     const ctx = c.getContext('2d');
     if (!ctx) return c;
+
     const sky = ctx.createLinearGradient(0, 0, 0, 200);
     sky.addColorStop(0, '#ff6030');
     sky.addColorStop(0.4, '#cc3a20');
     sky.addColorStop(1, '#551810');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, 512, 220);
+
+    ctx.fillStyle = '#3a2d40';
+    ctx.beginPath();
+    ctx.moveTo(0, 220);
+    ctx.lineTo(60, 130);
+    ctx.lineTo(130, 170);
+    ctx.lineTo(200, 100);
+    ctx.lineTo(260, 140);
+    ctx.lineTo(330, 90);
+    ctx.lineTo(400, 130);
+    ctx.lineTo(460, 110);
+    ctx.lineTo(512, 150);
+    ctx.lineTo(512, 220);
+    ctx.closePath();
+    ctx.fill();
+
     const ground = ctx.createLinearGradient(0, 220, 0, 400);
     ground.addColorStop(0, '#1a120a');
     ground.addColorStop(1, '#080503');
     ctx.fillStyle = ground;
     ctx.fillRect(0, 220, 512, 180);
+
     return c;
   }, []);
 
@@ -195,8 +225,8 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     const latDegs = [-90, -60, -30, 0, 30, 60, 90];
     const lonCount = 12;
     const lonStep = 360 / lonCount;
-    const gridNodes: Array<{ lat: number; lon: number; pos: THREE.Vector3 }> = [];
 
+    const gridNodes: Array<{ lat: number; lon: number; pos: THREE.Vector3 }> = [];
     latDegs.forEach((lat) => {
       const latRad = (lat * Math.PI) / 180;
       if (lat === 90 || lat === -90) {
@@ -241,7 +271,9 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
       const latRad = (lat * Math.PI) / 180;
       const lonRad = (lon * Math.PI) / 180;
       const r = sphereRadius * Math.cos(latRad);
-      return nearestNode(new THREE.Vector3(r * Math.sin(lonRad), sphereRadius * Math.sin(latRad), r * Math.cos(lonRad)));
+      return nearestNode(
+        new THREE.Vector3(r * Math.sin(lonRad), sphereRadius * Math.sin(latRad), r * Math.cos(lonRad)),
+      );
     };
 
     const createVignetteTexture = (w: number, h: number) => {
@@ -266,6 +298,7 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x16161e);
+
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 
     const ro = new ResizeObserver(() => {
@@ -277,6 +310,14 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
       renderer.setSize(w, h, false);
     });
     ro.observe(host);
+    {
+      const rect = host.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    }
 
     const defaultTex = new THREE.CanvasTexture(defaultTextureCanvas);
     defaultTex.colorSpace = THREE.SRGBColorSpace;
@@ -293,13 +334,23 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), planeMat);
     plane.position.set(0, -0.3, 0);
+    plane.receiveShadow = true;
+    plane.renderOrder = 1;
     scene.add(plane);
 
     const makeVignette = (w: number, h: number) => createVignetteTexture(w, h) ?? new THREE.Texture();
+
     textureState.vignetteTexture = makeVignette(512, 400);
-    const vignetteMat = new THREE.MeshBasicMaterial({ map: textureState.vignetteTexture, transparent: true });
+    textureState.vignetteTexture.colorSpace = THREE.SRGBColorSpace;
+    const vignetteMat = new THREE.MeshBasicMaterial({
+      map: textureState.vignetteTexture,
+      transparent: true,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+    });
     const vignettePlane = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), vignetteMat);
     vignettePlane.position.set(0, -0.3, 0.001);
+    vignettePlane.renderOrder = 2;
     scene.add(vignettePlane);
 
     const gridSegs = 96;
@@ -334,6 +385,7 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     const gridGeo = new THREE.BufferGeometry();
     gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(allPoints, 3));
     gridGeo.setIndex(lineIndices);
+
     const gridShader = new THREE.ShaderMaterial({
       uniforms: {
         lightPos: { value: new THREE.Vector3(0, sphereRadius * 0.99, 0) },
@@ -342,20 +394,40 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
         gridColor: { value: new THREE.Vector3(0.55, 0.58, 0.65) },
       },
       vertexShader: `
-        uniform vec3 lightPos; uniform float highlightRadius; uniform float brightness01; varying float vBright;
+        uniform vec3 lightPos;
+        uniform float highlightRadius;
+        uniform float brightness01;
+        varying float vBright;
         void main() {
           vec3 wPos = (modelMatrix * vec4(position, 1.0)).xyz;
-          float hb = smoothstep(highlightRadius, 0.0, distance(wPos, lightPos));
+          float distanceToLight = distance(wPos, lightPos);
+          float hb = smoothstep(highlightRadius, 0.0, distanceToLight);
           vBright = mix(0.008, 0.30, hb) * brightness01;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }`,
-      fragmentShader: `uniform vec3 gridColor; varying float vBright; void main(){ gl_FragColor = vec4(gridColor, vBright); }`,
+      fragmentShader: `
+        uniform vec3 gridColor;
+        varying float vBright;
+        void main() { gl_FragColor = vec4(gridColor, vBright); }`,
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+
     const gridLines = new THREE.LineSegments(gridGeo, gridShader);
+    gridLines.renderOrder = 4;
     scene.add(gridLines);
+
+    const sphereFrontMat = new THREE.MeshPhysicalMaterial({
+      color: 0x778899,
+      transparent: true,
+      opacity: 0.04,
+      side: THREE.FrontSide,
+      depthWrite: false,
+    });
+    const sphereFront = new THREE.Mesh(new THREE.SphereGeometry(sphereRadius, 64, 64), sphereFrontMat);
+    sphereFront.renderOrder = 3;
+    scene.add(sphereFront);
 
     const rimGlowShader = new THREE.ShaderMaterial({
       uniforms: {
@@ -363,81 +435,156 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
         glowColor: { value: new THREE.Vector3(0.55, 0.72, 1.0) },
         glowIntensity: { value: 1.0 },
       },
-      vertexShader: `varying float vFresnel; varying vec3 vWorldPos;
-        void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vWorldPos = wp.xyz; vec3 vd = normalize(cameraPosition - wp.xyz); vFresnel = 1.0 - abs(dot(normalize(normal), vd)); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 lightPos; uniform vec3 glowColor; uniform float glowIntensity; varying float vFresnel; varying vec3 vWorldPos;
-        void main(){ float lightD = distance(vWorldPos, lightPos) / (${sphereRadius.toFixed(1)} * 2.0); float lightGlow = pow(1.0 - clamp(lightD,0.0,1.0), 2.5) * 0.45; float rim = pow(vFresnel, 2.5); float alpha = (rim * 0.38 + lightGlow) * glowIntensity; gl_FragColor = vec4(glowColor, alpha);} `,
+      vertexShader: `
+        uniform vec3 lightPos;
+        varying float vFresnel;
+        varying vec3 vWorldPos;
+        void main() {
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          vec3 viewDir = normalize(cameraPosition - wp.xyz);
+          vFresnel = 1.0 - abs(dot(normalize(normal), viewDir));
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 lightPos;
+        uniform vec3 glowColor;
+        uniform float glowIntensity;
+        varying float vFresnel;
+        varying vec3 vWorldPos;
+        void main() {
+          float lightD = distance(vWorldPos, lightPos) / (${sphereRadius.toFixed(1)} * 2.0);
+          float lightGlow = pow(1.0 - clamp(lightD, 0.0, 1.0), 2.5) * 0.45;
+          float rim = pow(vFresnel, 2.5);
+          float alpha = (rim * 0.38 + lightGlow) * glowIntensity;
+          gl_FragColor = vec4(glowColor, alpha);
+        }`,
       transparent: true,
       depthWrite: false,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
     });
     const rimGlowSphere = new THREE.Mesh(new THREE.SphereGeometry(sphereRadius + 0.06, 64, 64), rimGlowShader);
+    rimGlowSphere.renderOrder = 6;
     scene.add(rimGlowSphere);
-
-    const sphereFrontMat = new THREE.MeshPhysicalMaterial({ color: 0x778899, transparent: true, opacity: 0.03, side: THREE.FrontSide, depthWrite: false });
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(sphereRadius, 64, 64), sphereFrontMat));
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.06);
     scene.add(ambientLight);
+
+    const coneAngle = Math.PI / 9;
     const spot = new THREE.SpotLight(0xffffff, 8);
-    spot.angle = Math.PI / 9;
+    spot.angle = coneAngle;
+    spot.penumbra = 0.4;
+    spot.decay = 1.2;
+    spot.distance = 22;
+    spot.castShadow = true;
+    spot.shadow.mapSize.width = 1024;
+    spot.shadow.mapSize.height = 1024;
+    spot.shadow.bias = -0.001;
+    spot.target.position.set(0, -0.3, 0);
+    scene.add(spot, spot.target);
+
     const rimSpot = new THREE.SpotLight(0xffffff, 0);
-    rimSpot.angle = Math.PI / 9;
-    scene.add(spot, spot.target, rimSpot, rimSpot.target);
+    rimSpot.angle = coneAngle;
+    rimSpot.penumbra = 0.4;
+    rimSpot.decay = 1.2;
+    rimSpot.distance = 22;
+    rimSpot.castShadow = false;
+    rimSpot.target.position.set(0, -0.3, 0);
+    scene.add(rimSpot, rimSpot.target);
+
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.07,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.48, 24, 24), haloMat);
+    halo.renderOrder = 7;
+    scene.add(halo);
+
+    const midGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.18,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const midGlow = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 24), midGlowMat);
+    midGlow.renderOrder = 7;
+    scene.add(midGlow);
+
     const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 20), coreMat);
+    core.renderOrder = 8;
     scene.add(core);
-    const midGlowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false });
-    const midGlow = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 24), midGlowMat);
-    scene.add(midGlow);
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false });
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.48, 24, 24), haloMat);
-    scene.add(halo);
+
+    const handleRingMat = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+    const handleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 32), handleRingMat);
+    handleRing.renderOrder = 8;
+    scene.add(handleRing);
+
+    const handleMat = new THREE.MeshBasicMaterial({ color: 0x060606 });
+    const hitMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.28, 32), handleMat);
+    hitMesh.renderOrder = 10;
+    scene.add(hitMesh);
+
+    const sphereHit = new THREE.Mesh(
+      new THREE.SphereGeometry(sphereRadius, 48, 48),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    scene.add(sphereHit);
 
     const rayPositions = new Float32Array(6);
     const rayGeo = new THREE.BufferGeometry();
     rayGeo.setAttribute('position', new THREE.BufferAttribute(rayPositions, 3));
-    const rayMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending });
-    scene.add(new THREE.Line(rayGeo, rayMat));
+    const rayMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+    });
+    const rayLine = new THREE.Line(rayGeo, rayMat);
+    rayLine.renderOrder = 5;
+    scene.add(rayLine);
+
     const coneGeo = new THREE.BufferGeometry();
     const coneMat = new THREE.ShaderMaterial({
       uniforms: { beamAlpha: { value: 0.12 } },
-      vertexShader: 'attribute float alpha; varying float vAlpha; void main(){ vAlpha=alpha; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader: 'uniform float beamAlpha; varying float vAlpha; void main(){ gl_FragColor=vec4(1.0,1.0,1.0,vAlpha*beamAlpha); }',
+      vertexShader:
+        'attribute float alpha; varying float vAlpha; void main(){ vAlpha=alpha; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader:
+        'uniform float beamAlpha; varying float vAlpha; void main(){ gl_FragColor=vec4(1.0,1.0,1.0,vAlpha*beamAlpha); }',
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    scene.add(new THREE.Mesh(coneGeo, coneMat));
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    coneMesh.renderOrder = 5;
+    scene.add(coneMesh);
 
     let activeNode: (typeof gridNodes)[number] | null = null;
-    const applyNode = (node: (typeof gridNodes)[number]) => {
-      activeNode = node;
-      const { x: lx, y: ly, z: lz } = node.pos;
-      spot.position.set(lx, ly, lz);
-      rimSpot.position.set(-lx, ly, -lz);
-      core.position.set(lx, ly, lz);
-      midGlow.position.set(lx, ly, lz);
-      halo.position.set(lx, ly, lz);
-      gridShader.uniforms.lightPos.value.set(lx, ly, lz);
-      rimGlowShader.uniforms.lightPos.value.set(lx, ly, lz);
-      rayPositions[0] = lx;
-      rayPositions[1] = ly;
-      rayPositions[2] = lz;
-      rayPositions[3] = planeCenter.x;
-      rayPositions[4] = planeCenter.y;
-      rayPositions[5] = planeCenter.z;
-      (rayGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      const hw = planeW / 2 + border;
-      const hh = planeH / 2 + border;
-      const corners: [number, number, number][] = [[-hw, -0.3 - hh, 0], [hw, -0.3 - hh, 0], [hw, -0.3 + hh, 0], [-hw, -0.3 + hh, 0]];
-      const pos: number[] = [];
-      const alp: number[] = [];
+
+    const updateConeGeometry = (nodePos: THREE.Vector3) => {
+      const { x: lx, y: ly, z: lz } = nodePos;
+      const hw = planeW / 2 + border,
+        hh = planeH / 2 + border;
+      const cx = 0,
+        cy = -0.3,
+        cz = 0;
+      const corners: [number, number, number][] = [
+        [cx - hw, cy - hh, cz],
+        [cx + hw, cy - hh, cz],
+        [cx + hw, cy + hh, cz],
+        [cx - hw, cy + hh, cz],
+      ];
+      const pos: number[] = [],
+        alp: number[] = [];
       for (let i = 0; i < 4; i++) {
-        const a = corners[i];
-        const b = corners[(i + 1) % 4];
+        const a = corners[i],
+          b = corners[(i + 1) % 4];
         pos.push(lx, ly, lz, a[0], a[1], a[2], b[0], b[1], b[2]);
         alp.push(1, 0, 0);
       }
@@ -445,55 +592,142 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
       coneGeo.setAttribute('alpha', new THREE.Float32BufferAttribute(alp, 1));
     };
 
-    applyNode(presetToNode('right') ?? gridNodes.find((n) => n.lat === 90) ?? gridNodes[0]);
+    const applyNode = (node: (typeof gridNodes)[number]) => {
+      activeNode = node;
+      const { x: lx, y: ly, z: lz } = node.pos;
+      spot.position.set(lx, ly, lz);
+      rimSpot.position.set(-lx, ly, -lz);
+
+      core.position.set(lx, ly, lz);
+      midGlow.position.set(lx, ly, lz);
+      halo.position.set(lx, ly, lz);
+
+      const dir = planeCenter.clone().sub(node.pos).normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+
+      hitMesh.setRotationFromQuaternion(q);
+      hitMesh.position.set(lx, ly, lz).addScaledVector(dir, -0.14);
+
+      handleRing.setRotationFromQuaternion(q);
+      handleRing.position.set(lx, ly, lz).addScaledVector(dir, 0.19);
+      sphereHit.position.set(0, 0, 0);
+
+      gridShader.uniforms.lightPos.value.set(lx, ly, lz);
+      rimGlowShader.uniforms.lightPos.value.set(lx, ly, lz);
+
+      rayPositions[0] = lx;
+      rayPositions[1] = ly;
+      rayPositions[2] = lz;
+      rayPositions[3] = planeCenter.x;
+      rayPositions[4] = planeCenter.y;
+      rayPositions[5] = planeCenter.z;
+      (rayGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+
+      updateConeGeometry(node.pos);
+    };
+
+    const initialNode = presetToNode('right') ?? gridNodes.find((n) => n.lat === 90) ?? gridNodes[0];
+    applyNode(initialNode);
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let dragging = false;
     let activePointerId: number | null = null;
-    const sphereHit = new THREE.Mesh(new THREE.SphereGeometry(sphereRadius, 48, 48), new THREE.MeshBasicMaterial({ visible: false }));
-    scene.add(sphereHit);
-    const hitDetectMesh = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
+
+    const hitDetectMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 8, 8),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    hitDetectMesh.renderOrder = 10;
     scene.add(hitDetectMesh);
+
+    const setCursor = (value: string) => {
+      canvas.style.cursor = value;
+    };
 
     const getMousePos = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     };
-    const setCursor = (value: string) => { canvas.style.cursor = value; };
+
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType !== 'touch') return;
       if (!apiRef.current?.isDraggingEnabled()) return;
-      getMousePos(e); raycaster.setFromCamera(mouse, camera);
-      if (raycaster.intersectObject(hitDetectMesh, false).length > 0) { dragging = true; activePointerId = e.pointerId; setCursor('grabbing'); }
+      getMousePos(e);
+      raycaster.setFromCamera(mouse, camera);
+      if (raycaster.intersectObject(hitDetectMesh, false).length > 0) {
+        dragging = true;
+        activePointerId = e.pointerId;
+        setCursor('grabbing');
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          void 0;
+        }
+      }
     };
+
     const onPointerMove = (e: PointerEvent) => {
-      getMousePos(e); raycaster.setFromCamera(mouse, camera);
+      getMousePos(e);
+      raycaster.setFromCamera(mouse, camera);
       if (dragging && activePointerId === e.pointerId) {
         const hits = raycaster.intersectObject(sphereHit, false);
-        if (hits.length > 0) { const node = nearestNode(hits[0].point); if (node && node !== activeNode) applyNode(node); }
+        if (hits.length > 0) {
+          const node = nearestNode(hits[0].point);
+          if (node && node !== activeNode) applyNode(node);
+        }
         return;
       }
       const onHead = raycaster.intersectObject(hitDetectMesh, false).length > 0;
       if (apiRef.current?.isDraggingEnabled() && onHead) setCursor('grab');
       else setCursor('default');
     };
+
     const endDrag = (e: PointerEvent) => {
       if (activePointerId !== e.pointerId) return;
-      dragging = false; activePointerId = null; setCursor('default');
+      dragging = false;
+      activePointerId = null;
+      setCursor('default');
     };
+
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    const onLeave = () => {
+      dragging = false;
+      activePointerId = null;
+      setCursor('default');
+    };
+    canvas.addEventListener('pointerleave', onLeave);
 
     const lightingDeps: LightingDeps = {
-      gridShader, rimGlowShader, spot, rimSpot, coreMat, midGlowMat, haloMat, ambientLight, rayMat, coneMat, sphereFrontMat,
+      gridShader,
+      rimGlowShader,
+      spot,
+      rimSpot,
+      coreMat,
+      midGlowMat,
+      haloMat,
+      ambientLight,
+      rayMat,
+      coneMat,
+      sphereFrontMat,
     };
-    const textureDeps: TextureDeps = { planeMat, defaultTex, vignetteMat, makeVignette, textureState };
+
+    const textureDeps: TextureDeps = {
+      planeMat,
+      defaultTex,
+      vignetteMat,
+      makeVignette,
+      textureState,
+    };
+
     const setViewModeImpl = (v: RelightViewMode) => setCameraViewMode(camera, v);
-    const applyLighting = (opts: { rimLight: boolean; brightness: number; temperatureKelvin: number }) => applySceneLighting(lightingDeps, opts);
+    const applyLighting = (opts: { rimLight: boolean; brightness: number; temperatureKelvin: number }) =>
+      applySceneLighting(lightingDeps, opts);
     const setTextureImpl = async (src?: string) => applySceneTexture(textureDeps, src);
     const applyPreset = (p: RelightLightPreset) => applyLightPreset(p, presetToNode, applyNode);
 
@@ -501,6 +735,7 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     applyLighting({ rimLight, brightness, temperatureKelvin });
     applyPreset(lightPreset);
 
+    let t = 0;
     apiRef.current = {
       setViewMode: setViewModeImpl,
       setLighting: applyLighting,
@@ -512,28 +747,70 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
         canvas.removeEventListener('pointermove', onPointerMove);
         canvas.removeEventListener('pointerup', endDrag);
         canvas.removeEventListener('pointercancel', endDrag);
+        canvas.removeEventListener('pointerleave', onLeave);
         ro.disconnect();
-        renderer.dispose();
+        try {
+          renderer.dispose();
+        } catch {
+          void 0;
+        }
+        try {
+          gridGeo.dispose();
+          gridShader.dispose();
+          coneGeo.dispose();
+          coneMat.dispose();
+          plane.geometry.dispose();
+          planeMat.dispose();
+          vignettePlane.geometry.dispose();
+          vignetteMat.dispose();
+          sphereFront.geometry.dispose();
+          (sphereFront.material as THREE.Material).dispose();
+          rimGlowSphere.geometry.dispose();
+          rimGlowShader.dispose();
+          core.geometry.dispose();
+          coreMat.dispose();
+          midGlow.geometry.dispose();
+          midGlowMat.dispose();
+          halo.geometry.dispose();
+          haloMat.dispose();
+          hitMesh.geometry.dispose();
+          handleMat.dispose();
+          handleRing.geometry.dispose();
+          handleRingMat.dispose();
+          hitDetectMesh.geometry.dispose();
+          (hitDetectMesh.material as THREE.Material).dispose();
+          sphereHit.geometry.dispose();
+          (sphereHit.material as THREE.Material).dispose();
+          rayGeo.dispose();
+          (rayLine.material as THREE.Material).dispose();
+          defaultTex.dispose?.();
+          if (textureState.vignetteTexture && textureState.vignetteTexture !== defaultTex) {
+            textureState.vignetteTexture.dispose?.();
+          }
+        } catch {
+          void 0;
+        }
       },
     };
 
-    let t = 0;
     let frameId = 0;
     const tick = () => {
       frameId = requestAnimationFrame(tick);
       t += 0.016;
       haloMat.opacity = 0.06 + Math.sin(t * 1.8) * 0.025;
       midGlowMat.opacity = 0.16 + Math.sin(t * 2.2) * 0.04;
-      hitDetectMesh.position.copy(core.position);
+      hitDetectMesh.position.copy(hitMesh.position);
       renderer.render(scene, camera);
     };
     tick();
+
     return () => {
       cancelAnimationFrame(frameId);
       apiRef.current?.dispose();
       apiRef.current = null;
     };
-  }, [defaultTextureCanvas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     apiRef.current?.setViewMode(viewMode);
@@ -545,7 +822,14 @@ const RelightThreeScene: React.FC<RelightThreeSceneProps> = (props) => {
     apiRef.current?.applyPreset(lightPreset);
   }, [lightPreset]);
   useEffect(() => {
-    void apiRef.current?.setTexture(imageSrc);
+    void (async () => {
+      try {
+        await apiRef.current?.setTexture(imageSrc);
+      } catch {
+        void 0;
+      }
+    })();
+    return undefined;
   }, [imageSrc]);
 
   return (

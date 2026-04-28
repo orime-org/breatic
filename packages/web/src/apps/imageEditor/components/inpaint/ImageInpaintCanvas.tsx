@@ -9,6 +9,7 @@ type ImageInpaintCanvasProps = {
   drawLayerOpacity?: number;
   canvasFilter?: string;
   onImageReady?: (image: FabricImage) => Promise<void> | void;
+  onBackgroundRendered?: () => void;
   onCanvasReady?: (canvas: Canvas | null) => void;
 };
 
@@ -20,6 +21,7 @@ const ImageInpaintCanvas: React.FC<ImageInpaintCanvasProps> = ({
   drawLayerOpacity = 1,
   canvasFilter,
   onImageReady,
+  onBackgroundRendered,
   onCanvasReady,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -97,11 +99,12 @@ const ImageInpaintCanvas: React.FC<ImageInpaintCanvasProps> = ({
         fabricCanvas.add(img);
         fabricCanvas.sendObjectToBack(img);
         fabricCanvas.requestRenderAll();
+        onBackgroundRendered?.();
       } catch {
         // Keep canvas usable if image loading fails.
       }
     },
-    [canvasFilter, onImageReady],
+    [canvasFilter, onBackgroundRendered, onImageReady],
   );
 
   const cleanupCanvas = useCallback(

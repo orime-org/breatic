@@ -12,6 +12,7 @@ type MarkTool = 'brush' | 'circle' | 'rectangle' | 'arrow' | 'text';
 type MarkBottomToolbarProps = {
   canvas: Canvas | null;
   active: boolean;
+  onCanvasCommit?: () => void;
   onClose: (nextImageSrc?: string) => void;
   nodeId?: string;
 };
@@ -19,8 +20,6 @@ type MarkBottomToolbarProps = {
 const iconBtnClass =
   'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 const iconBtnActiveClass = 'bg-background-default-base-hover';
-const iconBtnDisabledClass = 'cursor-not-allowed text-icon-disabled hover:bg-transparent opacity-50';
-const getHistoryBtnClass = (enabled: boolean) => `${iconBtnClass} ${enabled ? '' : iconBtnDisabledClass}`;
 const shapeInitialSize = 2;
 const minShapeDragPx = 8;
 const markLabelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
@@ -128,14 +127,11 @@ const buildArrowMark = (
   });
 };
 
-const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, onClose }) => {
+const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, onCanvasCommit, onClose }) => {
   const [activeTool, setActiveTool] = useState<MarkTool>('brush');
   const [brushSize, setBrushSize] = useState(8);
   const [brushColor, setBrushColor] = useState('#9CA3AF');
   const [colorOpen, setColorOpen] = useState(false);
-  const [history, setHistory] = useState<{ undo: unknown[]; redo: unknown[] }>({ undo: [], redo: [] });
-  const canUndo = history.undo.length > 0;
-  const canRedo = history.redo.length > 0;
 
   const getBrush = React.useCallback(
     (target: Canvas) => {
@@ -215,35 +211,6 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
     </div>
   );
 
-  const handleUndoClick = () => {
-    if (!canvas || !canUndo) return;
-    const item = history.undo[history.undo.length - 1];
-    if (!item) return;
-    canvas.remove(item as never);
-    canvas.requestRenderAll();
-    setHistory((prev) => ({
-      undo: prev.undo.slice(0, -1),
-      redo: [...prev.redo, item],
-    }));
-  };
-
-  const handleRedoClick = () => {
-    if (!canvas || !canRedo) return;
-    const item = history.redo[history.redo.length - 1];
-    if (!item) return;
-    canvas.add(item as never);
-    canvas.requestRenderAll();
-    setHistory((prev) => ({
-      undo: [...prev.undo, item],
-      redo: prev.redo.slice(0, -1),
-    }));
-  };
-
-  useEffect(() => {
-    if (!canvas || !active) return;
-    setHistory({ undo: [], redo: [] });
-  }, [canvas, active]);
-
   useEffect(() => {
     if (!canvas || !active) return;
     canvas.isDrawingMode = activeTool === 'brush';
@@ -280,7 +247,9 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
           if (typeof sp?.x === 'number' && typeof sp?.y === 'number') {
             return clampToCanvas({ x: sp.x, y: sp.y });
           }
-        } catch {}
+        } catch {
+          void 0;
+        }
       }
 
       const e = nativeE ?? fabricOptions;
@@ -330,7 +299,7 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
       nextPath.erasable = true;
       nextPath.globalCompositeOperation = 'source-over';
       finalizeMarkObject(e.path, { perPixelTargetFind: true });
-      setHistory((prev) => ({ undo: [...prev.undo, e.path as unknown], redo: [] }));
+      onCanvasCommit?.();
     };
 
     const addTextAtPointer = (e: unknown) => {
@@ -369,8 +338,8 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
       canvas.add(text);
       finalizeMarkObject(text);
       canvas.setActiveObject(text);
-      setHistory((prev) => ({ undo: [...prev.undo, text as unknown], redo: [] }));
       canvas.requestRenderAll();
+      onCanvasCommit?.();
     };
 
     const onMouseDown = (e: unknown) => {
@@ -550,7 +519,7 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
       if (previewObject) {
         const added = previewObject;
         finalizeMarkObject(added, { perPixelTargetFind: true });
-        setHistory((prev) => ({ undo: [...prev.undo, added], redo: [] }));
+        onCanvasCommit?.();
       }
       mouseFrom = null;
       arrowEnd = null;
@@ -577,7 +546,7 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
       canvas.skipTargetFind = false;
       canvas.defaultCursor = 'default';
     };
-  }, [canvas, active, activeTool, getBrush, brushColor, brushSize]);
+  }, [canvas, active, activeTool, getBrush, brushColor, brushSize, onCanvasCommit]);
 
   return (
     <div className='nodrag nopan pointer-events-auto flex flex-col items-center gap-3'>
@@ -673,29 +642,6 @@ const MarkBottomToolbar: React.FC<MarkBottomToolbarProps> = ({ canvas, active, o
             onClick={() => handleToolChange('text')}
           >
             <Icon name='imageEditor-mark-text-tool-icon' width={14} height={16} />
-          </button>
-        </Tooltip>
-        <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
-        <Tooltip title='Undo' placement='top' offset={4}>
-          <button
-            type='button'
-            className={getHistoryBtnClass(canUndo)}
-            aria-label='Undo inpaint'
-            onClick={handleUndoClick}
-            disabled={!canUndo}
-          >
-            <Icon name='imageEditor-flow-inpaint-undo-icon' width={20} height={20} />
-          </button>
-        </Tooltip>
-        <Tooltip title='Redo' placement='top' offset={4}>
-          <button
-            type='button'
-            className={getHistoryBtnClass(canRedo)}
-            aria-label='Redo inpaint'
-            onClick={handleRedoClick}
-            disabled={!canRedo}
-          >
-            <Icon name='imageEditor-flow-inpaint-redo-icon' width={20} height={20} />
           </button>
         </Tooltip>
         <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />

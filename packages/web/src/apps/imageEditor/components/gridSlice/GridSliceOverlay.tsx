@@ -20,6 +20,9 @@ const GridSliceOverlay: React.FC<GridSliceOverlayProps> = ({
   const inverseScale = 1 / safeScale;
   const borderWidth = Math.max(1 * inverseScale, 0.5);
   const labelHeight = Math.max(14 * inverseScale, 10);
+  const labelFontSize = Math.max(10 * inverseScale, 8);
+  const labelHorizontalPadding = Math.max(5 * inverseScale, 3);
+  const labelMinWidth = Math.max(24 * inverseScale, 16);
   const labelLineHeight = `${labelHeight}px`;
   const labelOffset = Math.max(4 * inverseScale, 2);
 
@@ -103,9 +106,10 @@ const GridSliceOverlay: React.FC<GridSliceOverlayProps> = ({
                   right: `calc(${cellRightPercent}% + ${labelOffset}px)`,
                   top: `calc(${cellTopPercent}% + ${labelOffset}px)`,
                   height: labelHeight,
-                  paddingLeft: 5,
-                  paddingRight: 5,
-                  fontSize: 10,
+                  minWidth: labelMinWidth,
+                  paddingLeft: labelHorizontalPadding,
+                  paddingRight: labelHorizontalPadding,
+                  fontSize: labelFontSize,
                   lineHeight: labelLineHeight,
                 }}
               >

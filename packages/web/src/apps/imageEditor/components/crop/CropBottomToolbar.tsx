@@ -72,9 +72,9 @@ const CropBottomToolbar: React.FC<CropBottomToolbarProps> = ({
         prev === 'original'
           ? containerWidth / containerHeight
           : (() => {
-              const p = prev.split(':');
-              return Number(p[0]) / Number(p[1]);
-            })();
+            const p = prev.split(':');
+            return Number(p[0]) / Number(p[1]);
+          })();
       return Math.abs(width / height - ar) > 0.02 ? 'free' : prev;
     });
   }, [width, height, containerWidth, containerHeight]);

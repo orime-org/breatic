@@ -13,11 +13,15 @@ type RelightBottomToolbarProps = {
   active: boolean;
   onClose: () => void;
   imageSrc?: string;
+  onSend?: () => void;
 };
 
 const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[10px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+
 const sliderClass = 'nodrag nopan !w-full';
+
 const temperatureTrackBackground = 'linear-gradient(to right, #1A45FF 0%, #9333EA 45%, #FF8C00 100%)';
+
 const lightPresetTabs = ['free', 'left', 'top', 'right', 'front', 'bottom', 'back'] as const;
 
 const lightPresetItems: MenuItemType[] = lightPresetTabs.map((key) => ({
@@ -31,7 +35,10 @@ const viewModeLabel: Record<RelightViewMode, string> = {
   front: 'Front',
 };
 
-const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onClose, imageSrc }) => {
+/**
+ * Relight: Three.js light preview on the left, parameters on the right; reference image and Prompt area at the bottom.
+ */
+const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onClose, imageSrc, onSend }) => {
   const [viewMode, setViewMode] = useState<RelightViewMode>('perspective');
   const [rimLight, setRimLight] = useState(false);
   const [brightness, setBrightness] = useState(50);
@@ -60,6 +67,13 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
     setLightPreset('free');
   }, [active]);
 
+  useEffect(() => {
+    return () => {
+      if (lightingReferenceObjectUrlRef.current) URL.revokeObjectURL(lightingReferenceObjectUrlRef.current);
+      lightingReferenceObjectUrlRef.current = null;
+    };
+  }, []);
+
   const revokeLightingReferenceObjectUrl = () => {
     if (lightingReferenceObjectUrlRef.current) URL.revokeObjectURL(lightingReferenceObjectUrlRef.current);
     lightingReferenceObjectUrlRef.current = null;
@@ -68,13 +82,17 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
   const handleLightingReferenceChange = (info: { fileList: UploadFile[] }) => {
     const nextList = info.fileList.slice(0, 1);
     setLightingReferenceFileList(nextList);
+
     revokeLightingReferenceObjectUrl();
     setLightingReferenceSrc(null);
+
     const file = nextList[0];
-    if (!file?.originFileObj) return;
-    const url = URL.createObjectURL(file.originFileObj);
-    lightingReferenceObjectUrlRef.current = url;
-    setLightingReferenceSrc(url);
+    if (!file) return;
+    if (file.originFileObj) {
+      const url = URL.createObjectURL(file.originFileObj);
+      lightingReferenceObjectUrlRef.current = url;
+      setLightingReferenceSrc(url);
+    }
   };
 
   const handleLightingReferenceDelete = (e?: React.MouseEvent) => {
@@ -88,7 +106,11 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
 
   return (
     <div className='nodrag nopan pointer-events-auto flex flex-col items-center gap-3'>
-      <div className='nodrag nopan pointer-events-auto flex w-[530px] flex-col rounded-[14px] border border-[#DBDBDB] bg-background-default-base p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]'>
+      <div
+        className='nodrag nopan pointer-events-auto flex w-[530px] flex-col rounded-[14px] border border-[#DBDBDB] bg-background-default-base p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-1 text-[16px] font-semibold text-text-default-base'>
             <Icon name='project-image-editor-more-relight-icon' width={20} height={20} color='var(--bg-icon-base)' />
@@ -136,7 +158,14 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
 
           <div className='flex min-w-0 flex-1 flex-col justify-center gap-6'>
             <div className='flex items-center justify-between gap-1'>
-              <span className='text-[13px] font-semibold text-text-default-base'>Rim Light</span>
+              <div className='flex items-center gap-1'>
+                <span className='text-[13px] font-semibold text-text-default-base'>Rim Light</span>
+                <Tooltip title='Add rim highlight from behind the subject' placement='top' offset={4}>
+                  <span className='inline-flex cursor-default text-icon-base'>
+                    <Icon name='project-info-icon' width={15} height={15} color='#383838' />
+                  </span>
+                </Tooltip>
+              </div>
               <Switch checked={rimLight} onChange={setRimLight} className='nodrag nopan shrink-0' />
             </div>
 
@@ -173,6 +202,8 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
                 max={10000}
                 step={50}
                 trackBackground={temperatureTrackBackground}
+                activeColor='rgba(0,0,0,0.25)'
+                inactiveColor='rgba(0,0,0,0.12)'
                 trackHeight={6}
                 thumbWidth={20}
                 thumbHeight={16}
@@ -185,11 +216,42 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
 
         {promptEnabled ? (
           <div className='mt-3 flex items-start gap-3'>
-            <Upload accept='image/*' maxCount={1} fileList={lightingReferenceFileList} onChange={handleLightingReferenceChange} showUploadList={false}>
-              <div className='nodrag nopan relative flex h-[80px] w-[80px] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[8px] border border-dashed border-border-default-base bg-background-default-base p-[8px] text-text-default-tertiary transition-colors hover:bg-background-default-base-hover'>
-                {lightingReferenceSrc ? <img src={lightingReferenceSrc} alt='Lighting reference' className='absolute inset-0 h-full w-full rounded-[8px] object-cover' /> : <span className='text-[22px] leading-none'>+</span>}
+            <Upload
+              accept='image/*'
+              maxCount={1}
+              fileList={lightingReferenceFileList}
+              onChange={handleLightingReferenceChange}
+              showUploadList={false}
+            >
+              <div
+                role='button'
+                tabIndex={0}
+                aria-label='Lighting reference'
+                className='nodrag nopan relative flex h-[80px] w-[80px] shrink-0 flex-col items-center justify-center gap-1 rounded-[8px] border border-dashed border-border-default-base bg-background-default-base p-[8px] text-text-default-tertiary transition-colors hover:bg-background-default-base-hover cursor-pointer group'
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click();
+                }}
+              >
                 {lightingReferenceSrc ? (
-                  <button type='button' aria-label='Delete lighting reference' className='absolute right-[6px] top-[6px] flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/40 text-white' onClick={(e) => handleLightingReferenceDelete(e)}>
+                  <img
+                    src={lightingReferenceSrc}
+                    alt='Lighting reference'
+                    className='absolute inset-0 h-full w-full rounded-[8px] object-cover'
+                  />
+                ) : (
+                  <>
+                    <span className='text-[22px] leading-none'>+</span>
+                    <span className='px-1 text-center text-[11px] font-semibold leading-tight'>Lighting reference</span>
+                  </>
+                )}
+
+                {lightingReferenceSrc ? (
+                  <button
+                    type='button'
+                    aria-label='Delete lighting reference'
+                    className='absolute right-[6px] top-[6px] flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/40 text-white opacity-0 transition-opacity outline-none shadow-none hover:bg-black/60 group-hover:opacity-100'
+                    onClick={(e) => handleLightingReferenceDelete(e)}
+                  >
                     <Icon name='imageEditor-relight-delete-icon' width={14} height={14} color='#fff' />
                   </button>
                 ) : null}
@@ -216,16 +278,43 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
               open={lightPresetOpen}
               onOpenChange={setLightPresetOpen}
               onClick={(key) => setLightPreset(String(key) as RelightLightPreset)}
+              popupClassName='rounded-[6px] border border-border-default-base p-1 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'
+              itemClassName='h-8 px-2'
             >
-              <button type='button' className='nodrag nopan inline-flex h-[28px] items-center gap-1 rounded-[6px] bg-background-default-base px-2 hover:bg-background-default-base-hover' aria-label='Light position preset'>
+              <button
+                type='button'
+                className='nodrag nopan inline-flex h-[28px] items-center gap-1 rounded-[6px] bg-background-default-base px-2 hover:bg-background-default-base-hover'
+                aria-label='Light position preset'
+              >
                 <span className='px-1 text-[13px] font-semibold capitalize text-text-default-base'>{lightPreset}</span>
-                <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
+                <span
+                  className={`ml-auto flex shrink-0 items-center justify-center transition-transform duration-200 ${lightPresetOpen ? 'rotate-180' : ''}`}
+                >
+                  <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
+                </span>
               </button>
             </Dropdown>
+
             <div className='flex items-center gap-1'>
               <span className='text-[13px] font-semibold text-text-default-base'>Prompt</span>
               <Switch checked={promptEnabled} onChange={setPromptEnabled} className='nodrag nopan shrink-0' />
             </div>
+
+            <button
+              type='button'
+              className='nodrag nopan flex items-center gap-1.5 text-[13px] font-semibold text-text-default-base hover:opacity-80'
+              onClick={() => {
+                setBrightness(50);
+                setTemperatureK(2000);
+                setRimLight(false);
+                setPrompt('');
+                handleLightingReferenceDelete();
+                setLightPreset('free');
+              }}
+            >
+              <Icon name='imageEditor-reset-icon' width={16} height={18} color='var(--bg-icon-base)' />
+              Reset
+            </button>
           </div>
 
           <div className='flex shrink-0 items-center gap-1'>
@@ -239,7 +328,7 @@ const RelightBottomToolbar: React.FC<RelightBottomToolbarProps> = ({ active, onC
               shape='round'
               className='!h-[28px] !w-[52px] !min-w-[52px] !py-[2px] !pl-[16px] !pr-[12px] !bg-[#35C838] !border-[#35C838] !text-white hover:!bg-[#35C838] hover:!border-[#35C838]'
               icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
-              onClick={() => void 0}
+              onClick={() => onSend?.()}
               aria-label='Submit relight'
             />
           </div>

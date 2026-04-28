@@ -96,7 +96,7 @@ const ToastItemRow: React.FC<{ item: ToastItem }> = ({ item }) => {
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-full text-sm text-text-on-button-base',
+        'flex items-center gap-3 rounded-full text-sm text-text-on-button-base shadow-lg shadow-black/15',
         TOAST_BG[item.type],
         isVisible && !isExiting
           ? 'opacity-100 translate-y-0'
