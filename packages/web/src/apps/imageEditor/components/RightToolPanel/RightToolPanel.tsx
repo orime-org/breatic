@@ -15,6 +15,7 @@ export type ImageEditorToolMode =
   | 'upscale'
   | 'expand'
   | 'grid-slice'
+  | 'stitch'
   | 'relight'
   | 'multi-angle';
 

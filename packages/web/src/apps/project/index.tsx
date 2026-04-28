@@ -214,7 +214,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
                 {isTextNode && panelNode ? (
                   <TextEditor nodeId={panelNode.id} />
                 ) : isImageNode && panelNode ? (
-                  <div className='flex h-full min-h-0 w-full flex-col overflow-hidden pt-10'>
+                  <div className='flex h-full min-h-0 w-full flex-col overflow-hidden'>
                     <ImageEditorPage nodeId={panelNode.id} />
                   </div>
                 ) : isVideoOrAudioNode && panelNode ? (

@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import Loading from '@/components/loading/Loading';
 
 export type ImageHistoryItem = {
+  id: string;
   src: string;
   status: 'done' | 'loading' | 'failed';
+  mode?: 'stitch';
   errorMessage?: string;
 };
 
 interface LeftHistoryPanelProps {
   historyList: ImageHistoryItem[];
   activeIndex: number;
-  hostIndex: number;
+  hostHistoryId: string | null;
   onSelect: (index: number, item: ImageHistoryItem) => void;
   onRetry?: (index: number, item: ImageHistoryItem) => void;
 }
@@ -18,7 +20,7 @@ interface LeftHistoryPanelProps {
 const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
   historyList,
   activeIndex,
-  hostIndex,
+  hostHistoryId,
   onSelect,
   onRetry,
 }) => {
@@ -47,7 +49,7 @@ const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
         <div className='space-y-3'>
           {historyList.map((item, idx) => (
             <button
-              key={`${item.src}-${idx}`}
+              key={item.id}
               type='button'
               className={`relative box-border block w-full overflow-hidden rounded-lg border p-0 leading-none transition-all ${
                 activeIndex === idx
@@ -93,7 +95,7 @@ const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
                   Retry
                 </button>
               )}
-              {hostIndex === idx && (
+              {hostHistoryId != null && item.id === hostHistoryId && (
                 <span
                   className='absolute bottom-1 right-1 inline-flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[#2563eb]'
                   title='Current node content'

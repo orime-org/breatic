@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Tooltip from '@/components/base/tooltip';
 import { Icon } from '@/components/base/icon';
 import Divider from '@/components/base/divider';
+import { Button } from '@/components/base/button';
 
 export type FlipRotateBitmapOp = 'rotateMinus90' | 'rotate90' | 'flipHorizontal' | 'flipVertical';
 
@@ -10,6 +11,7 @@ type FlipRotateBottomToolbarProps = {
   imageSrc?: string;
   onClose: () => void;
   onApply: (op: FlipRotateBitmapOp) => void | Promise<void>;
+  onSave: () => void;
 };
 
 const iconBtnClass =
@@ -64,7 +66,7 @@ export const bitmapTransformToPngDataUrl = async (
 
 export const swapsNodeDimensions = (op: FlipRotateBitmapOp) => op === 'rotateMinus90' || op === 'rotate90';
 
-const FlipRotateBottomToolbar: React.FC<FlipRotateBottomToolbarProps> = ({ active, imageSrc, onClose, onApply }) => {
+const FlipRotateBottomToolbar: React.FC<FlipRotateBottomToolbarProps> = ({ active, imageSrc, onClose, onApply, onSave }) => {
   const [busy, setBusy] = useState(false);
 
   if (!active) return null;
@@ -145,6 +147,21 @@ const FlipRotateBottomToolbar: React.FC<FlipRotateBottomToolbarProps> = ({ activ
           <Icon name='imageEditor-flip-vertical-icon' width={20} height={20} color='var(--color-icon-base)' />
         </button>
       </Tooltip>
+
+      <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
+
+      <Button
+        type='primary'
+        shape='round'
+        className='nodrag nopan !h-[28px] !bg-[#2FB344] !px-3 !text-[13px] !font-semibold !text-white hover:!bg-[#28A13D]'
+        disabled={!imageSrc || busy}
+        onClick={onSave}
+      >
+        <span className='inline-flex items-center'>
+          <Icon name='imageEditor-mark-save-icon' width={18} height={18} />
+          <span className='pl-2'>Save</span>
+        </span>
+      </Button>
 
       <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
 

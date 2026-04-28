@@ -5,6 +5,8 @@ import { useParams } from 'react-router-dom';
 import { Icon } from '@/components/base/icon';
 import Loading from '@/components/loading/Loading';
 import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
+import Tooltip from '@/components/base/tooltip';
+import Divider from '@/components/base/divider';
 import IMAGE_EDITOR_DEFAULT_IMAGE from './defaultImageBase64';
 import LeftHistoryPanel, { type ImageHistoryItem } from './components/LeftHistoryPanel/LeftHistoryPanel';
 import RightToolPanel, { type ImageEditorToolMode } from './components/RightToolPanel/RightToolPanel';
@@ -26,9 +28,13 @@ import UpscaleBottomToolbar from './components/upscale/UpscaleBottomToolbar';
 import GridSliceBottomToolbar from './components/gridSlice/GridSliceBottomToolbar';
 import { type GridSliceValue } from './components/gridSlice/GridSliceSettings';
 import GridSliceOverlay from './components/gridSlice/GridSliceOverlay';
+import StitchOverlay from './components/stitch/StitchOverlay';
+import StitchBottomToolbar from './components/stitch/StitchBottomToolbar';
+import { type StitchValue } from './components/stitch/StitchSettings';
 import RelightBottomToolbar from './components/relight/RelightBottomToolbar';
 import MultiAngleBottomToolbar from './components/multiAngle/MultiAngleBottomToolbar';
 import QuickEditBottomToolbar from './components/quickEdit/QuickEditBottomToolbar';
+import EraseBottomToolbar from './components/erase/EraseBottomToolbar';
 
 type ImageEditorPageProps = {
   nodeId?: string;
@@ -59,10 +65,11 @@ const recognizedOverlayPresets = [
 const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp }) => {
   const params = useParams<'projectId' | 'nodeId'>();
   const nodeId = nodeIdProp ?? params.nodeId ?? '';
+  const initialHistoryId = 'history-initial';
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(0);
-  const [hostHistoryIndex, setHostHistoryIndex] = useState(0);
+  const [hostHistoryId, setHostHistoryId] = useState<string | null>(initialHistoryId);
   const [historyList, setHistoryList] = useState<ImageHistoryItem[]>([
-    { src: IMAGE_EDITOR_DEFAULT_IMAGE, status: 'done' },
+    { id: initialHistoryId, src: IMAGE_EDITOR_DEFAULT_IMAGE, status: 'done' },
   ]);
   const [imageSrc, setImageSrc] = useState(IMAGE_EDITOR_DEFAULT_IMAGE);
   const [editorCanvas, setEditorCanvas] = useState<Canvas | null>(null);
@@ -86,56 +93,81 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
   const [bottomActionMode, setBottomActionMode] = useState<BottomActionMode>('history-item');
   const mockTaskTimersRef = useRef<number[]>([]);
   const [gridSlice, setGridSlice] = useState<GridSliceValue>({ rows: 2, cols: 2 });
+  const [stitch, setStitch] = useState<StitchValue>({ rows: 2, cols: 2 });
   const [selectedGridCells, setSelectedGridCells] = useState<string[]>([]);
   const [quickEditPickBoxes, setQuickEditPickBoxes] = useState<QuickEditPickBox[]>([]);
   const [quickEditPendingPicks, setQuickEditPendingPicks] = useState<QuickEditPendingPick[]>([]);
   const [quickEditPickEnabled, setQuickEditPickEnabled] = useState(false);
   const quickEditPickTimersRef = useRef<number[]>([]);
   const [toolSessionSeed, setToolSessionSeed] = useState(0);
+  const historyIdRef = useRef(0);
 
   const currentSelectedItem = historyList[selectedHistoryIndex];
   const currentSelectedSrc = currentSelectedItem?.src ?? imageSrc;
-  const toolsAutoAddHistoryOnSend = useMemo(
-    () =>
-      new Set<ImageEditorToolMode>([
-        'inpaint',
-        'quick-edit',
-        'expand',
-        'grid-slice',
-        'graffiti',
-        'relight',
-        'multi-angle',
-        'upscale',
-      ]),
-    [],
-  );
+  const isStitchActive = activeTool === 'stitch';
+  const toolsWithBottomToolbar = new Set<ImageEditorToolMode>([
+    'inpaint',
+    'erase',
+    'quick-edit',
+    'mark',
+    'graffiti',
+    'adjust',
+    'flip-rotate',
+    'upscale',
+    'grid-slice',
+    'stitch',
+    'relight',
+    'multi-angle',
+  ]);
+  const requiresImageSizeForToolbar = activeTool === 'crop' || activeTool === 'expand';
+  const showBottomToolbar =
+    bottomActionMode === 'tool-apply-history' &&
+    activeTool !== null &&
+    (toolsWithBottomToolbar.has(activeTool) || (requiresImageSizeForToolbar && Boolean(imageSize)));
+  const createHistoryId = useCallback(() => {
+    historyIdRef.current += 1;
+    return `history-${Date.now()}-${historyIdRef.current}`;
+  }, []);
+
+  const prependDoneHistoryItem = useCallback((src: string, mode?: 'stitch') => {
+    const nextItem: ImageHistoryItem = {
+      id: createHistoryId(),
+      src,
+      status: 'done',
+      mode,
+    };
+    setImageSrc(src);
+    setHistoryList((prev) => [nextItem, ...prev]);
+    setSelectedHistoryIndex(0);
+    setBottomActionMode('tool-apply-history');
+    setToolSessionSeed((prev) => prev + 1);
+  }, [createHistoryId]);
 
   const enqueueMockHistoryTask = useCallback(
     ({
       src,
       delayMs,
+      mode,
     }: {
       src?: string;
       delayMs: number;
+      mode?: 'stitch';
     }) => {
       const loadingSrc = src || currentSelectedSrc || imageSrc;
       const loadingItem: ImageHistoryItem = {
+        id: createHistoryId(),
         src: loadingSrc,
         status: 'loading',
+        mode,
       };
-      let loadingIndex = -1;
-      setHistoryList((prev) => {
-        const next = [...prev, loadingItem];
-        loadingIndex = next.length - 1;
-        return next;
-      });
-      setSelectedHistoryIndex(Math.max(0, loadingIndex));
+      setHistoryList((prev) => [loadingItem, ...prev]);
+      setSelectedHistoryIndex(0);
       setBottomActionMode('tool-apply-history');
       setToolSessionSeed((prev) => prev + 1);
       const timer = window.setTimeout(() => {
         setHistoryList((prev) =>
-          prev.map((entry, idx) =>
-            idx === loadingIndex
+          prev.map((entry) =>
+            entry.id === loadingItem.id
               ? {
                 ...entry,
                 src: loadingSrc,
@@ -148,7 +180,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
       }, delayMs);
       mockTaskTimersRef.current.push(timer);
     },
-    [currentSelectedSrc, imageSrc],
+    [createHistoryId, currentSelectedSrc, imageSrc],
   );
 
   useEffect(() => {
@@ -523,34 +555,8 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     const ctx = outputCanvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-    setImageSrc(outputCanvas.toDataURL('image/png'));
-    setBottomActionMode('tool-apply-history');
-    setToolSessionSeed((prev) => prev + 1);
-  }, [cropRect.h, cropRect.w, cropRect.x, cropRect.y, imageSize, imageSrc]);
-
-  const generateCroppedImage = useCallback(async (sourceSrc: string): Promise<string | null> => {
-    if (!sourceSrc || !imageSize) return null;
-    const image = new window.Image();
-    image.crossOrigin = 'anonymous';
-    image.src = sourceSrc;
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error('crop image load failed'));
-    });
-
-    const sx = Math.max(0, Math.min(image.naturalWidth, cropRect.x));
-    const sy = Math.max(0, Math.min(image.naturalHeight, cropRect.y));
-    const sw = Math.max(1, Math.min(image.naturalWidth - sx, cropRect.w));
-    const sh = Math.max(1, Math.min(image.naturalHeight - sy, cropRect.h));
-
-    const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = sw;
-    outputCanvas.height = sh;
-    const ctx = outputCanvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-    return outputCanvas.toDataURL('image/png');
-  }, [cropRect.h, cropRect.w, cropRect.x, cropRect.y, imageSize]);
+    prependDoneHistoryItem(outputCanvas.toDataURL('image/png'));
+  }, [cropRect.h, cropRect.w, cropRect.x, cropRect.y, imageSize, imageSrc, prependDoneHistoryItem]);
 
   const handleFlipRotateApply = useCallback(
     async (op: FlipRotateBitmapOp) => {
@@ -560,6 +566,11 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     },
     [imageSrc],
   );
+
+  const handleFlipRotateSave = useCallback(() => {
+    if (!imageSrc) return;
+    prependDoneHistoryItem(imageSrc);
+  }, [imageSrc, prependDoneHistoryItem]);
 
   const applyAdjustFiltersToFabricImage = useCallback(async (image: FabricImage, value: AdjustValue) => {
     image.filters = buildAdjustFabricFilters(value) as FabricImage['filters'];
@@ -613,11 +624,9 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
         return;
       }
       const next = await generateAdjustedImage(imageSrc, value);
-      if (next) setImageSrc(next);
-      setBottomActionMode('tool-apply-history');
-      setToolSessionSeed((prev) => prev + 1);
+      if (next) prependDoneHistoryItem(next);
     },
-    [generateAdjustedImage, imageSrc],
+    [generateAdjustedImage, imageSrc, prependDoneHistoryItem],
   );
 
   const handleExpandDimensionChange = useCallback(
@@ -711,12 +720,76 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
   );
 
   const handleApplyToNode = useCallback(() => {
-    setHostHistoryIndex(selectedHistoryIndex);
-  }, [selectedHistoryIndex]);
+    const selectedItem = historyList[selectedHistoryIndex];
+    if (!selectedItem) return;
+    setHostHistoryId(selectedItem.id);
+  }, [historyList, selectedHistoryIndex]);
 
   const handleAddNewNodeToCanvas = useCallback(() => {
     void 0;
   }, []);
+
+  const createWhiteCanvasImage = useCallback(async (): Promise<string | null> => {
+    const src = imageSrc || currentSelectedSrc;
+    if (!src) return null;
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
+    image.src = src;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('blank image load failed'));
+    });
+    const w = Math.max(1, image.naturalWidth || image.width || 1);
+    const h = Math.max(1, image.naturalHeight || image.height || 1);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    return canvas.toDataURL('image/png');
+  }, [currentSelectedSrc, imageSrc]);
+
+  const handleBlankClick = useCallback(async () => {
+    const blankSrc = await createWhiteCanvasImage();
+    if (!blankSrc) return;
+    prependDoneHistoryItem(blankSrc);
+    setActiveTool(null);
+    setBottomActionMode('history-item');
+  }, [createWhiteCanvasImage, prependDoneHistoryItem]);
+
+  const handleStitchClick = useCallback(() => {
+    const blankW = Math.max(1, imageSize?.width ?? 1024);
+    const blankH = Math.max(1, imageSize?.height ?? 1024);
+    const blankCanvas = document.createElement('canvas');
+    blankCanvas.width = blankW;
+    blankCanvas.height = blankH;
+    const ctx = blankCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, blankW, blankH);
+    prependDoneHistoryItem(blankCanvas.toDataURL('image/png'), 'stitch');
+    setSelectedGridCells([]);
+    setStitch({ rows: 2, cols: 2 });
+    setActiveTool('stitch');
+    setBottomActionMode('tool-apply-history');
+  }, [imageSize?.height, imageSize?.width, prependDoneHistoryItem]);
+
+  const handleStitchSend = useCallback(() => {
+    setHistoryList((prev) =>
+      prev.filter((item, idx) => !(idx === selectedHistoryIndex && item.mode === 'stitch')),
+    );
+    enqueueMockHistoryTask({
+      src: imageSrc || currentSelectedSrc,
+      delayMs: 1600,
+    });
+    setActiveTool(null);
+    setBottomActionMode('history-item');
+    setQuickEditPickBoxes([]);
+    setQuickEditPendingPicks([]);
+    setQuickEditPickEnabled(false);
+  }, [currentSelectedSrc, enqueueMockHistoryTask, imageSrc, selectedHistoryIndex]);
 
   const handleExitTool = useCallback(() => {
     setActiveTool(null);
@@ -726,71 +799,11 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     setQuickEditPickEnabled(false);
   }, []);
 
-  const handleApplyToHistory = useCallback(async () => {
-    if (!activeTool) return;
-    if (activeTool === 'cutout' || activeTool === 'erase') {
-      enqueueMockHistoryTask({
-        delayMs: 1500,
-      });
-      return;
-    }
-
-    let src = imageSrc || currentSelectedSrc;
-    if (activeTool === 'crop') {
-      const cropped = await generateCroppedImage(src);
-      if (cropped) src = cropped;
-    } else if (activeTool === 'adjust') {
-      if (imageSrc && !isNeutralAdjustValue(adjustValue)) {
-        const adjusted = await generateAdjustedImage(imageSrc, adjustValue);
-        if (adjusted) src = adjusted;
-      }
-    } else if (activeTool === 'expand') {
-      const frame = {
-        w: Math.max(1, Math.round(expandSize.w)),
-        h: Math.max(1, Math.round(expandSize.h)),
-        ox: expandOrigin.x,
-        oy: expandOrigin.y,
-      };
-      if (imageSrc) {
-        const expanded = await generateExpandedImage(imageSrc, frame);
-        if (expanded) src = expanded;
-      }
-    } else if ((activeTool === 'mark' || activeTool === 'graffiti') && editorCanvas) {
-      src = editorCanvas.toDataURL({
-        format: 'png',
-        quality: 1,
-        multiplier: 1,
-      });
-    }
-
-    if (!src) return;
-    setImageSrc(src);
-    setHistoryList((prev) => [...prev, { src, status: 'done' }]);
-    setSelectedHistoryIndex(historyList.length);
-    // Same as Inpaint/enqueueMockHistoryTask after send: keep tool strip + bottom toolbar for current tool.
-    setBottomActionMode('tool-apply-history');
-    setToolSessionSeed((prev) => prev + 1);
-  }, [
-    activeTool,
-    adjustValue,
-    currentSelectedSrc,
-    editorCanvas,
-    enqueueMockHistoryTask,
-    expandOrigin.x,
-    expandOrigin.y,
-    expandSize.h,
-    expandSize.w,
-    generateAdjustedImage,
-    generateCroppedImage,
-    generateExpandedImage,
-    historyList.length,
-    imageSrc,
-  ]);
-
   const handleHistorySelect = useCallback((idx: number, item: ImageHistoryItem) => {
     setSelectedHistoryIndex(idx);
-    setBottomActionMode('history-item');
-    setActiveTool(null);
+    const isStitchItem = item.mode === 'stitch';
+    setBottomActionMode(isStitchItem ? 'tool-apply-history' : 'history-item');
+    setActiveTool(isStitchItem ? 'stitch' : null);
     if (item.status === 'failed') {
       return;
     }
@@ -868,21 +881,28 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
 
   return (
     <div className='flex h-full w-full min-h-0 min-w-0 flex-col bg-[#f2f3f5]'>
-      <div className='flex min-h-0 flex-1 flex-col rounded-xl border border-[#e6e8ec] bg-background-default-secondary'>
+      <div className='flex min-h-0 flex-1 flex-col bg-background-default-secondary'>
         <div className='grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_64px] divide-x divide-[#e6e8ec]'>
           <div className='h-full min-h-0'>
-            <LeftHistoryPanel
-              historyList={historyList}
-              activeIndex={selectedHistoryIndex}
-              hostIndex={hostHistoryIndex}
-              onSelect={handleHistorySelect}
-              onRetry={handleHistoryRetry}
-            />
+            <div className={`h-full min-h-0 ${isStitchActive ? 'pt-10' : ''}`}>
+              <LeftHistoryPanel
+                historyList={historyList}
+                activeIndex={selectedHistoryIndex}
+                hostHistoryId={hostHistoryId}
+                onSelect={handleHistorySelect}
+                onRetry={handleHistoryRetry}
+              />
+            </div>
           </div>
 
           <div className='flex min-h-0 h-full flex-col bg-background-default-secondary'>
-            <div className='flex min-h-0 flex-1 items-center justify-center bg-[#f6f8fb] p-3'>
-              <div ref={canvasShellRef} className='relative h-full w-full overflow-hidden rounded-lg bg-[#f6f8fb]'>
+            <div
+              className={`flex min-h-0 flex-1 justify-center bg-[#f6f8fb] ${isStitchActive ? 'items-start px-0 pb-3 pt-10' : 'items-center p-3'}`}
+            >
+              <div
+                ref={canvasShellRef}
+                className={`relative h-full w-full overflow-hidden bg-[#f6f8fb] ${isStitchActive ? 'rounded-none' : 'rounded-lg'}`}
+              >
                 {imageSize ? (
                   <div className='flex h-full w-full items-center justify-center'>
                     <div
@@ -895,8 +915,10 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                         src={imageSrc}
                         width={imageSize.width}
                         height={imageSize.height}
-                        drawBackgroundOnCanvas={activeTool !== 'inpaint'}
-                        drawLayerOpacity={activeTool === 'inpaint' ? 0.55 : 1}
+                        drawBackgroundOnCanvas={
+                          activeTool !== 'inpaint' && activeTool !== 'erase' && activeTool !== 'stitch'
+                        }
+                        drawLayerOpacity={activeTool === 'inpaint' || activeTool === 'erase' ? 0.55 : 1}
                         onImageReady={activeTool === 'adjust' ? handleAdjustPreviewImageReady : undefined}
                         onBackgroundRendered={handleCanvasCommit}
                         onCanvasReady={setEditorCanvas}
@@ -929,6 +951,13 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                           viewportScale={displayScale}
                           selectedCells={selectedGridCells}
                           onToggleCell={handleGridCellToggle}
+                        />
+                      )}
+                      {activeTool === 'stitch' && (
+                        <StitchOverlay
+                          rows={Math.max(1, stitch.rows)}
+                          cols={Math.max(1, stitch.cols)}
+                          viewportScale={displayScale}
                         />
                       )}
                       {activeTool === 'quick-edit' && quickEditPickEnabled && (
@@ -1076,212 +1105,269 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className='flex min-h-[200px] justify-center overflow-hidden border-t border-[#e6e8ec] bg-background-default-secondary px-3 pb-3 pt-2'>
-              <div className='flex w-full max-w-[740px] flex-col items-center gap-2 overflow-hidden'>
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'inpaint' && (
-                  <InpaintBottomToolbar
-                    key={`inpaint-${toolSessionSeed}`}
-                    canvas={editorCanvas}
-                    active
-                    baseImageSrc={imageSrc}
-                    onCanvasCommit={handleCanvasCommit}
-                    onClose={(nextImageSrc) => {
-                      if (nextImageSrc) {
-                        setImageSrc(nextImageSrc);
-                        enqueueMockHistoryTask({
-                          src: nextImageSrc,
-                          delayMs: 1200,
-                        });
-                        return;
-                      }
-                      handleExitTool();
-                    }}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'quick-edit' && (
-                  <QuickEditBottomToolbar
-                    key={`quick-edit-${toolSessionSeed}`}
-                    active
-                    imageSrc={imageSrc}
-                    pendingPicks={quickEditPendingPicks}
-                    recognizedPicks={quickEditPickBoxes}
-                    onStartPick={() => setQuickEditPickEnabled(true)}
-                    onRemovePickBox={handleRemoveQuickEditPickBox}
-                    onClose={handleExitTool}
-                    onSend={handleQuickEditSend}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'mark' && (
-                  <MarkBottomToolbar
-                    key={`mark-${toolSessionSeed}`}
-                    canvas={editorCanvas}
-                    active={isInpaintCanvasMode(activeTool)}
-                    onCanvasCommit={handleCanvasCommit}
-                    onClose={(nextImageSrc) => {
-                      if (nextImageSrc) {
-                        setImageSrc(nextImageSrc);
-                        setBottomActionMode('tool-apply-history');
-                        setToolSessionSeed((prev) => prev + 1);
-                        return;
-                      }
-                      handleExitTool();
-                    }}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'graffiti' && (
-                  <GraffitiBottomToolbar
-                    key={`graffiti-${toolSessionSeed}`}
-                    canvas={editorCanvas}
-                    active={isInpaintCanvasMode(activeTool)}
-                    onCanvasCommit={handleCanvasCommit}
-                    onClose={(nextImageSrc) => {
-                      if (nextImageSrc) {
-                        setImageSrc(nextImageSrc);
-                        enqueueMockHistoryTask({
-                          src: nextImageSrc,
-                          delayMs: 1400,
-                        });
-                        return;
-                      }
-                      handleExitTool();
-                    }}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'adjust' && (
-                  <AdjustBottomToolbar
-                    key={`adjust-${toolSessionSeed}`}
-                    active={activeTool === 'adjust'}
-                    onClose={handleExitTool}
-                    onChange={setAdjustValue}
-                    onSave={handleAdjustSave}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'crop' && imageSize && (
-                  <CropBottomToolbar
-                    key={`crop-${toolSessionSeed}`}
-                    active={activeTool === 'crop'}
-                    width={cropRect.w}
-                    height={cropRect.h}
-                    containerWidth={imageSize.width}
-                    containerHeight={imageSize.height}
-                    onDimensionChange={handleCropDimensionChange}
-                    onClose={handleExitTool}
-                    onSave={() => {
-                      void handleCropSave();
-                    }}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'flip-rotate' && (
-                  <FlipRotateBottomToolbar
-                    key={`flip-rotate-${toolSessionSeed}`}
-                    active={activeTool === 'flip-rotate'}
-                    imageSrc={imageSrc}
-                    onClose={handleExitTool}
-                    onApply={handleFlipRotateApply}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'expand' && imageSize && (
-                  <ExpandBottomToolbar
-                    key={`expand-${toolSessionSeed}`}
-                    active={activeTool === 'expand'}
-                    width={expandSize.w}
-                    height={expandSize.h}
-                    containerWidth={imageSize.width}
-                    containerHeight={imageSize.height}
-                    onDimensionChange={handleExpandDimensionChange}
-                    onClose={handleExitTool}
-                    onSend={handleExpandSend}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'upscale' && (
-                  <UpscaleBottomToolbar
-                    key={`upscale-${toolSessionSeed}`}
-                    active={activeTool === 'upscale'}
-                    onClose={handleExitTool}
-                    onSend={(payload) => {
-                      void handleUpscaleSend(payload);
-                    }}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'grid-slice' && (
-                  <GridSliceBottomToolbar
-                    key={`grid-slice-${toolSessionSeed}`}
-                    active
-                    onClose={handleExitTool}
-                    onSend={() => handleGridSliceSend()}
-                    gridSlice={gridSlice}
-                    onGridSliceChange={setGridSlice}
-                    selectedCellCount={selectedGridCells.length}
-                    selectedCells={selectedGridCells}
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'relight' && (
-                  <RelightBottomToolbar
-                    key={`relight-${toolSessionSeed}`}
-                    active
-                    onClose={handleExitTool}
-                    imageSrc={imageSrc}
-                    onSend={() =>
-                      enqueueMockHistoryTask({
-                        delayMs: 1800,
-                      })
-                    }
-                  />
-                )}
-                {bottomActionMode === 'tool-apply-history' && activeTool === 'multi-angle' && (
-                  <MultiAngleBottomToolbar
-                    key={`multi-angle-${toolSessionSeed}`}
-                    active
-                    onClose={handleExitTool}
-                    imageSrc={imageSrc}
-                    onSend={() =>
-                      enqueueMockHistoryTask({
-                        delayMs: 1800,
-                      })
-                    }
-                  />
-                )}
-                {bottomActionMode === 'history-item' && (
-                  <div className='flex w-full max-w-[740px] flex-col items-center gap-2'>
-                    <div className='flex w-full items-center gap-2'>
+                <div className='pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2'>
+                  <div className='pointer-events-auto flex items-center gap-1 rounded-xl bg-background-default-base px-[4px] py-[6px] shadow-[0px_4px_16px_-1px_rgba(12,12,13,0.05),0px_4px_4px_-1px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]'>
+                    <Tooltip title='Apply to Node' placement='bottom' offset={4}>
                       <button
                         type='button'
-                        className='flex h-[40px] flex-1 items-center justify-center whitespace-nowrap rounded-[8px] bg-[#21B57A] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#1aa56f]'
                         onClick={handleApplyToNode}
+                        className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+                        aria-label='Apply to Node'
                       >
-                        Apply to Node
+                        <Icon name='project-chat-generated-add-to-input-icon' width={20} height={20} />
                       </button>
+                    </Tooltip>
+                    <Tooltip title='Create New Node' placement='bottom' offset={4}>
                       <button
                         type='button'
-                        className='flex h-[40px] flex-1 items-center justify-center whitespace-nowrap rounded-[8px] border border-[#dbdbdb] bg-background-default-base px-4 text-[12px] font-medium text-text-default-base transition-colors hover:bg-background-default-base-hover'
                         onClick={handleAddNewNodeToCanvas}
+                        className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+                        aria-label='Create New Node'
                       >
-                        Add new node to canvas
+                        <Icon name='project-create-new-node-icon' width={20} height={20} />
                       </button>
-                    </div>
+                    </Tooltip>
+                    <Divider type='vertical' className='mx-1 h-5 bg-[#D0D0D0]' />
+                    <Tooltip title='Blank' placement='bottom' offset={4}>
+                      <button
+                        type='button'
+                        onClick={() => {
+                          void handleBlankClick();
+                        }}
+                        className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+                        aria-label='Blank'
+                      >
+                        <Icon name='project-image-editor-right-square-icon' width={20} height={20} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title='Stitch' placement='bottom' offset={4}>
+                      <button
+                        type='button'
+                        onClick={handleStitchClick}
+                        className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+                        aria-label='Stitch'
+                      >
+                        <Icon name='project-image-editor-more-grid-slice-icon' width={20} height={20} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title='Location' placement='bottom' offset={4}>
+                      <button
+                        type='button'
+                        onClick={() => void 0}
+                        className='flex h-9 w-9 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
+                        aria-label='Location'
+                      >
+                        <Icon name='project-image-editor-right-expand-corner-icon' width={20} height={20} />
+                      </button>
+                    </Tooltip>
                   </div>
-                )}
-                {bottomActionMode === 'tool-apply-history' &&
-                  activeTool != null &&
-                  !toolsAutoAddHistoryOnSend.has(activeTool) && (
-                  <div className='flex flex-col items-center gap-1'>
-                    <button
-                      type='button'
-                      className='flex h-[40px] items-center justify-center whitespace-nowrap rounded-[8px] bg-[#21B57A] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#1aa56f]'
-                      onClick={handleApplyToHistory}
-                    >
-                      Apply ↗ history
-                    </button>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
+            {showBottomToolbar && (
+              <div className='flex min-h-[200px] justify-center overflow-hidden border-t border-[#e6e8ec] bg-background-default-secondary px-3 pb-3 pt-2'>
+                <div className='flex w-full max-w-[740px] flex-col items-center gap-2 overflow-hidden'>
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'inpaint' && (
+                    <InpaintBottomToolbar
+                      key={`inpaint-${toolSessionSeed}`}
+                      canvas={editorCanvas}
+                      active
+                      baseImageSrc={imageSrc}
+                      onCanvasCommit={handleCanvasCommit}
+                      onClose={(nextImageSrc) => {
+                        if (nextImageSrc) {
+                          setImageSrc(nextImageSrc);
+                          enqueueMockHistoryTask({
+                            src: nextImageSrc,
+                            delayMs: 1200,
+                          });
+                          return;
+                        }
+                        handleExitTool();
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'erase' && (
+                    <EraseBottomToolbar
+                      key={`erase-${toolSessionSeed}`}
+                      canvas={editorCanvas}
+                      active
+                      baseImageSrc={imageSrc}
+                      onCanvasCommit={handleCanvasCommit}
+                      onClose={(nextImageSrc) => {
+                        if (nextImageSrc) {
+                          setImageSrc(nextImageSrc);
+                          enqueueMockHistoryTask({
+                            src: nextImageSrc,
+                            delayMs: 1200,
+                          });
+                          return;
+                        }
+                        handleExitTool();
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'quick-edit' && (
+                    <QuickEditBottomToolbar
+                      key={`quick-edit-${toolSessionSeed}`}
+                      active
+                      imageSrc={imageSrc}
+                      pendingPicks={quickEditPendingPicks}
+                      recognizedPicks={quickEditPickBoxes}
+                      onStartPick={() => setQuickEditPickEnabled(true)}
+                      onRemovePickBox={handleRemoveQuickEditPickBox}
+                      onClose={handleExitTool}
+                      onSend={handleQuickEditSend}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'mark' && (
+                    <MarkBottomToolbar
+                      key={`mark-${toolSessionSeed}`}
+                      canvas={editorCanvas}
+                      active={isInpaintCanvasMode(activeTool)}
+                      onCanvasCommit={handleCanvasCommit}
+                      onClose={(nextImageSrc) => {
+                        if (nextImageSrc) {
+                          prependDoneHistoryItem(nextImageSrc);
+                          return;
+                        }
+                        handleExitTool();
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'graffiti' && (
+                    <GraffitiBottomToolbar
+                      key={`graffiti-${toolSessionSeed}`}
+                      canvas={editorCanvas}
+                      active={isInpaintCanvasMode(activeTool)}
+                      onCanvasCommit={handleCanvasCommit}
+                      onClose={(nextImageSrc) => {
+                        if (nextImageSrc) {
+                          setImageSrc(nextImageSrc);
+                          enqueueMockHistoryTask({
+                            src: nextImageSrc,
+                            delayMs: 1400,
+                          });
+                          return;
+                        }
+                        handleExitTool();
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'adjust' && (
+                    <AdjustBottomToolbar
+                      key={`adjust-${toolSessionSeed}`}
+                      active={activeTool === 'adjust'}
+                      onClose={handleExitTool}
+                      onChange={setAdjustValue}
+                      onSave={handleAdjustSave}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'crop' && imageSize && (
+                    <CropBottomToolbar
+                      key={`crop-${toolSessionSeed}`}
+                      active={activeTool === 'crop'}
+                      width={cropRect.w}
+                      height={cropRect.h}
+                      containerWidth={imageSize.width}
+                      containerHeight={imageSize.height}
+                      onDimensionChange={handleCropDimensionChange}
+                      onClose={handleExitTool}
+                      onSave={() => {
+                        void handleCropSave();
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'flip-rotate' && (
+                    <FlipRotateBottomToolbar
+                      key={`flip-rotate-${toolSessionSeed}`}
+                      active={activeTool === 'flip-rotate'}
+                      imageSrc={imageSrc}
+                      onClose={handleExitTool}
+                      onApply={handleFlipRotateApply}
+                      onSave={handleFlipRotateSave}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'expand' && imageSize && (
+                    <ExpandBottomToolbar
+                      key={`expand-${toolSessionSeed}`}
+                      active={activeTool === 'expand'}
+                      width={expandSize.w}
+                      height={expandSize.h}
+                      containerWidth={imageSize.width}
+                      containerHeight={imageSize.height}
+                      onDimensionChange={handleExpandDimensionChange}
+                      onClose={handleExitTool}
+                      onSend={handleExpandSend}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'upscale' && (
+                    <UpscaleBottomToolbar
+                      key={`upscale-${toolSessionSeed}`}
+                      active={activeTool === 'upscale'}
+                      onClose={handleExitTool}
+                      onSend={(payload) => {
+                        void handleUpscaleSend(payload);
+                      }}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'grid-slice' && (
+                    <GridSliceBottomToolbar
+                      key={`grid-slice-${toolSessionSeed}`}
+                      active
+                      onClose={handleExitTool}
+                      onSend={() => handleGridSliceSend()}
+                      gridSlice={gridSlice}
+                      onGridSliceChange={setGridSlice}
+                      selectedCellCount={selectedGridCells.length}
+                      selectedCells={selectedGridCells}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'stitch' && (
+                    <StitchBottomToolbar
+                      key={`stitch-${toolSessionSeed}`}
+                      active
+                      onClose={handleExitTool}
+                      onSend={handleStitchSend}
+                      stitch={stitch}
+                      onStitchChange={setStitch}
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'relight' && (
+                    <RelightBottomToolbar
+                      key={`relight-${toolSessionSeed}`}
+                      active
+                      onClose={handleExitTool}
+                      imageSrc={imageSrc}
+                      onSend={() =>
+                        enqueueMockHistoryTask({
+                          delayMs: 1800,
+                        })
+                      }
+                    />
+                  )}
+                  {bottomActionMode === 'tool-apply-history' && activeTool === 'multi-angle' && (
+                    <MultiAngleBottomToolbar
+                      key={`multi-angle-${toolSessionSeed}`}
+                      active
+                      onClose={handleExitTool}
+                      imageSrc={imageSrc}
+                      onSend={() =>
+                        enqueueMockHistoryTask({
+                          delayMs: 1800,
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className='h-full'>
-            <RightToolPanel activeTool={activeTool} onSelect={handleToolSelect} />
+            <div className={`h-full ${isStitchActive ? 'pt-10' : ''}`}>
+              <RightToolPanel activeTool={activeTool} onSelect={handleToolSelect} />
+            </div>
           </div>
         </div>
       </div>
@@ -1290,4 +1376,3 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
 };
 
 export default ImageEditorPage;
-

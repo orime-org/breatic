@@ -6,11 +6,9 @@ import Tooltip from '@/components/base/tooltip';
 import { Icon } from '@/components/base/icon';
 import { Button } from '@/components/base/button';
 import Divider from '@/components/base/divider';
-import AgentComposerInput from '@/components/base/agent/AgentInput';
+import { type InpaintTool } from '../inpaint/InpaintBottomToolbar';
 
-export type InpaintTool = 'brush' | 'circle' | 'rectangle' | 'eraser';
-
-type InpaintBottomToolbarProps = {
+type EraseBottomToolbarProps = {
   canvas: Canvas | null;
   active: boolean;
   baseImageSrc?: string;
@@ -20,12 +18,15 @@ type InpaintBottomToolbarProps = {
   onClose: (nextImageSrc?: string) => void;
 };
 
-const iconBtnClass = 'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
+const iconBtnClass =
+  'nodrag nopan flex h-8 w-8 items-center justify-center rounded-[4px] text-icon-base transition-colors hover:bg-background-default-base-hover';
 const iconBtnActiveClass = 'bg-background-default-base-hover';
-const inpaintLabelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
-const inpaintSliderWrapClass = 'nodrag nopan mx-1 flex h-8 w-[88px] shrink-0 [&_.slider-container]:flex [&_.slider-container]:h-full [&_.slider-container]:w-full [&_.slider-container]:items-center';
-const disabledLeftSlotClass = 'inline-flex h-[40px] items-center gap-1.5 rounded-full border border-[#C8C8C8] px-4 text-[12px] font-semibold !text-text-disabled-base cursor-not-allowed bg-[var(--color-background-default-base)]';
-const inpaintDisplayOpacity = 0.55;
+const labelClass = 'nodrag nopan inline-flex h-8 items-center gap-1';
+const sliderWrapClass =
+  'nodrag nopan mx-1 flex h-8 w-[88px] shrink-0 [&_.slider-container]:flex [&_.slider-container]:h-full [&_.slider-container]:w-full [&_.slider-container]:items-center';
+const disabledLeftSlotClass =
+  'inline-flex h-[28px] items-center gap-1.5 rounded-full border border-[#C8C8C8] px-3 text-[12px] font-semibold !text-text-disabled-base cursor-not-allowed bg-[var(--color-background-default-base)]';
+const displayOpacity = 0.55;
 const mosaicTileWidth = 8;
 const mosaicTileHeight = 8;
 const shapeInitialSize = 2;
@@ -45,7 +46,7 @@ const createMosaicTile = (): HTMLCanvasElement => {
   return tile;
 };
 
-const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
+const EraseBottomToolbar: React.FC<EraseBottomToolbarProps> = ({
   canvas,
   active,
   baseImageSrc,
@@ -56,7 +57,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
 }) => {
   const [activeTool, setActiveTool] = useState<InpaintTool>('brush');
   const [brushSize, setBrushSize] = useState(8);
-  const [inputEmpty, setInputEmpty] = useState(true);
 
   const getMosaicPattern = React.useCallback(() => {
     const tile = createMosaicTile();
@@ -135,7 +135,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           const baseX = (w - baseDrawW) / 2;
           const baseY = (h - baseDrawH) / 2;
           ctx.drawImage(baseImg, baseX, baseY, baseDrawW, baseDrawH);
-          ctx.globalAlpha = inpaintDisplayOpacity;
+          ctx.globalAlpha = displayOpacity;
           ctx.drawImage(overlayImg, 0, 0, w, h);
           ctx.globalAlpha = 1;
           onClose(mergeCanvas.toDataURL('image/png'));
@@ -152,8 +152,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
     if (!canvas || !active) return;
     canvas.isDrawingMode = activeTool === 'eraser';
     if (activeTool === 'eraser') canvas.freeDrawingBrush = getEraser(canvas);
-    // Reuse one pattern instance in this session so all drawn shapes
-    // share the same mosaic phase and look like one continuous layer.
     const sharedMosaicPattern = getMosaicPattern();
 
     let mouseFrom: { x: number; y: number } | null = null;
@@ -172,7 +170,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
 
     const getPointer = (fabricOptions: unknown): { x: number; y: number } | null => {
       const e = (fabricOptions as { e?: unknown })?.e ?? fabricOptions;
-
       const scenePoint = (fabricOptions as { scenePoint?: { x?: unknown; y?: unknown } })?.scenePoint;
       if (typeof scenePoint?.x === 'number' && typeof scenePoint?.y === 'number') {
         return clampToCanvas({ x: scenePoint.x, y: scenePoint.y });
@@ -181,18 +178,15 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
       if (typeof absolutePointer?.x === 'number' && typeof absolutePointer?.y === 'number') {
         return clampToCanvas({ x: absolutePointer.x, y: absolutePointer.y });
       }
-
       const offsetX = (e as { offsetX?: unknown })?.offsetX;
       const offsetY = (e as { offsetY?: unknown })?.offsetY;
       if (typeof offsetX === 'number' && typeof offsetY === 'number') {
-        const zoom =
-          typeof (canvas as unknown as { getZoom?: () => number }).getZoom === 'function'
-            ? (canvas as unknown as { getZoom?: () => number }).getZoom?.()
-            : 1;
+        const zoom = typeof (canvas as unknown as { getZoom?: () => number }).getZoom === 'function'
+          ? (canvas as unknown as { getZoom?: () => number }).getZoom?.()
+          : 1;
         const z = typeof zoom === 'number' && zoom > 0 ? zoom : 1;
         return clampToCanvas({ x: offsetX / z, y: offsetY / z });
       }
-
       const clientX = (e as { clientX?: unknown })?.clientX;
       const clientY = (e as { clientY?: unknown })?.clientY;
       const el =
@@ -219,7 +213,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
       const cw = canvas.getWidth();
       const ch = canvas.getHeight();
       if (rect.width <= 0 || rect.height <= 0) return null;
-
       const x = ((clientX - rect.left) / rect.width) * cw;
       const y = ((clientY - rect.top) / rect.height) * ch;
       if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
@@ -258,17 +251,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           erasable: true,
         });
       }
-
-      const path =
-        'M ' +
-        points[0]!.x +
-        ' ' +
-        points[0]!.y +
-        points
-          .slice(1)
-          .map((point) => ` L ${point.x} ${point.y}`)
-          .join('');
-
+      const path = 'M ' + points[0]!.x + ' ' + points[0]!.y + points.slice(1).map((point) => ` L ${point.x} ${point.y}`).join('');
       return new Path(path, {
         fill: '',
         stroke: sharedMosaicPattern,
@@ -306,23 +289,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
         const toX = p.x + shapeInitialSize;
         const toY = p.y + shapeInitialSize;
         const path =
-          'M ' +
-          fromX +
-          ' ' +
-          fromY +
-          ' L ' +
-          toX +
-          ' ' +
-          fromY +
-          ' L ' +
-          toX +
-          ' ' +
-          toY +
-          ' L ' +
-          fromX +
-          ' ' +
-          toY +
-          ' z';
+          'M ' + fromX + ' ' + fromY + ' L ' + toX + ' ' + fromY + ' L ' + toX + ' ' + toY + ' L ' + fromX + ' ' + toY + ' z';
         previewObject = new Path(path, {
           fill: sharedMosaicPattern,
           opacity: 1,
@@ -348,7 +315,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           erasable: true,
         });
       }
-
       hasCanvasMutation = true;
       canvas.discardActiveObject();
       canvas.add(previewObject);
@@ -370,30 +336,13 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
         canvas.requestRenderAll();
         return;
       }
-
       if (activeTool === 'rectangle') {
         const fromX = mouseFrom.x;
         const fromY = mouseFrom.y;
         const toX = p.x;
         const toY = p.y;
         const path =
-          'M ' +
-          fromX +
-          ' ' +
-          fromY +
-          ' L ' +
-          toX +
-          ' ' +
-          fromY +
-          ' L ' +
-          toX +
-          ' ' +
-          toY +
-          ' L ' +
-          fromX +
-          ' ' +
-          toY +
-          ' z';
+          'M ' + fromX + ' ' + fromY + ' L ' + toX + ' ' + fromY + ' L ' + toX + ' ' + toY + ' L ' + fromX + ' ' + toY + ' z';
         previewObject = new Path(path, {
           fill: sharedMosaicPattern,
           opacity: 1,
@@ -426,7 +375,6 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           erasable: true,
         });
       }
-
       canvas.add(previewObject);
       canvas.requestRenderAll();
     };
@@ -461,22 +409,22 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className={inpaintLabelClass}>
-          <Icon name='project-excalidraw-top-inpaint-icon' width={20} height={20} color='var(--bg-icon-base)' />
-          <span className='text-sm font-bold text-text-default-base'>Inpaint</span>
+        <div className={labelClass}>
+          <Icon name='project-excalidraw-top-erase-icon' width={20} height={20} color='var(--bg-icon-base)' />
+          <span className='text-sm font-bold text-text-default-base'>Erase</span>
         </div>
         <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
         <Tooltip title='Brush' placement='top' offset={4}>
           <button
             type='button'
             className={`${iconBtnClass} ${activeTool === 'brush' ? iconBtnActiveClass : ''}`}
-            aria-label='Brush inpaint'
+            aria-label='Brush erase'
             onClick={() => handleToolChange('brush')}
           >
             <Icon name='imageEditor-flow-inpaint-brush-icon' width={20} height={20} />
           </button>
         </Tooltip>
-        <div className={inpaintSliderWrapClass} onPointerDown={(e) => e.stopPropagation()}>
+        <div className={sliderWrapClass} onPointerDown={(e) => e.stopPropagation()}>
           <Slider
             className='nodrag nopan !w-full'
             value={brushSize}
@@ -495,7 +443,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           <button
             type='button'
             className={`${iconBtnClass} ${activeTool === 'circle' ? iconBtnActiveClass : ''}`}
-            aria-label='Circle select'
+            aria-label='Circle erase'
             onClick={() => handleToolChange('circle')}
           >
             <Icon name='imageEditor-flow-inpaint-circle-icon' width={20} height={20} />
@@ -505,7 +453,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           <button
             type='button'
             className={`${iconBtnClass} ${activeTool === 'rectangle' ? iconBtnActiveClass : ''}`}
-            aria-label='Rect select'
+            aria-label='Rectangle erase'
             onClick={() => handleToolChange('rectangle')}
           >
             <Icon name='imageEditor-flow-inpaint-rectangle-icon' width={20} height={20} />
@@ -515,7 +463,7 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
           <button
             type='button'
             className={`${iconBtnClass} ${activeTool === 'eraser' ? iconBtnActiveClass : ''}`}
-            aria-label='Eraser inpaint'
+            aria-label='Eraser'
             onClick={() => handleToolChange('eraser')}
           >
             <Icon name='imageEditor-flow-inpaint-eraser-icon' width={22} height={22} />
@@ -523,60 +471,37 @@ const InpaintBottomToolbar: React.FC<InpaintBottomToolbarProps> = ({
         </Tooltip>
         <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
         <Tooltip title='Exit' placement='top' offset={4}>
-          <button type='button' className={iconBtnClass} onClick={() => onClose()} aria-label='Close inpaint toolbar'>
+          <button type='button' className={iconBtnClass} onClick={() => onClose()} aria-label='Close erase toolbar'>
             <Icon name='imageEditor-multi-angle-close-icon' width={20} height={20} />
           </button>
         </Tooltip>
       </div>
 
-      <div className='pointer-events-auto h-[150px] w-[470px] overflow-hidden rounded-[8px] border border-[#DBDBDB] bg-background-default-base shadow-[0_1px_3px_rgba(0,0,0,0.08)]'>
-        <div className='flex h-full flex-col px-3 py-2'>
-          <AgentComposerInput
-            className='flex-1 !cursor-text'
-            placeholder='Please describe the modifications you want here.'
-            disabled={!active}
-            onEnterSend={handleSendClick}
-            onEmptyChange={setInputEmpty}
-            upstreamItems={[]}
-            uploadItems={[]}
-          />
-          <div className='mt-2 flex items-center justify-between gap-2'>
-            <Button
-              type='default'
-              shape='round'
-              disabled
-              className={disabledLeftSlotClass}
-              aria-label='Nano Banana Pro disabled'
-            >
-              <Icon
-                name='imageEditor-nano-banana-pro-icon'
-                width={16}
-                height={17}
-                color='var(--color-bg-icon-tertiary-hover)'
-              />
-              <span className='text-text-disabled-base'>Nano Banana Pro</span>
-            </Button>
-            <div className='flex-1' />
-            <div className='flex items-center gap-2'>
-              <div className='flex h-[28px] items-center gap-1 text-xs font-bold text-text-disabled-base'>
-                <Icon name='imageEditor-nano-banana-credit-icon' width={18} height={18} />
-                <span>120</span>
-              </div>
-              <Button
-                type='primary'
-                size='medium'
-                shape='round'
-                disabled={!active || !canvas || inputEmpty}
-                icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
-                onClick={handleSendClick}
-                className='!h-[28px] w-[52px] shrink-0 !border-[#35C838] !bg-[#35C838] !py-[2px] !pl-[16px] !pr-[12px] hover:!border-[#35C838] hover:!bg-[#35C838] disabled:!border-[#CDCDCD] disabled:!bg-[#CDCDCD]'
-              />
-            </div>
+      <div className='pointer-events-auto flex h-[40px] min-w-[252px] items-center justify-between gap-2 rounded-full border border-[#DBDBDB] bg-background-default-base px-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)]'>
+        <Button type='default' shape='round' disabled className={disabledLeftSlotClass} aria-label='Nano Banana Pro disabled'>
+          <Icon name='imageEditor-nano-banana-pro-icon' width={16} height={17} color='var(--color-bg-icon-tertiary-hover)' />
+          <span className='text-text-disabled-base'>Nano Banana Pro</span>
+        </Button>
+        <div className='flex items-center gap-2'>
+          <div className='flex h-[28px] items-center gap-1 text-xs font-bold text-text-disabled-base'>
+            <Icon name='imageEditor-nano-banana-credit-icon' width={18} height={18} />
+            <span>120</span>
           </div>
+          <Button
+            type='primary'
+            size='medium'
+            shape='round'
+            disabled={!active || !canvas}
+            icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+            onClick={handleSendClick}
+            className='!h-[28px] w-[52px] shrink-0 !border-[#35C838] !bg-[#35C838] !py-[2px] !pl-[16px] !pr-[12px] hover:!border-[#35C838] hover:!bg-[#35C838] disabled:!border-[#CDCDCD] disabled:!bg-[#CDCDCD]'
+            aria-label='Send erase'
+          />
         </div>
       </div>
     </div>
   );
 };
 
-export default InpaintBottomToolbar;
+export default EraseBottomToolbar;
+
