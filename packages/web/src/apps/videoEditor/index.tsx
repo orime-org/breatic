@@ -53,6 +53,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
   const [activePanel, setActivePanel] = useState<string | null>('folder');
   const [canvasRatio, setCanvasRatio] = useState(initialCanvasRatio ?? '16:9');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isResizingTimelinePanel, setIsResizingTimelinePanel] = useState(false);
 
   const forceUpdateTextRef = useRef<(() => void) | null>(null);
   const previewCanvasRef = useRef<PreviewCanvasRef>(null);
@@ -72,6 +73,19 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isResizingTimelinePanel) return;
+
+    const handlePointerUp = () => {
+      setIsResizingTimelinePanel(false);
+    };
+
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isResizingTimelinePanel]);
 
   const actualDuration = clips.length > 0 ? Math.max(...clips.map((c) => c.end)) : 0;
 
@@ -203,7 +217,10 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
             </div>
           </Panel>
 
-          <Separator className='h-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-row-resize shrink-0 transition-colors focus-visible:outline-none' />
+          <Separator
+            className='h-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-row-resize shrink-0 transition-colors focus-visible:outline-none'
+            onPointerDown={() => setIsResizingTimelinePanel(true)}
+          />
 
           <Panel defaultSize={30} minSize={20} className='flex flex-col'>
             <PlaybackControls
@@ -236,6 +253,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({
                 scale={scale}
                 onTimeChange={setCurrentTime}
                 nodeId={nodeId}
+                disableBoxSelect={isResizingTimelinePanel}
               />
             </div>
           </Panel>

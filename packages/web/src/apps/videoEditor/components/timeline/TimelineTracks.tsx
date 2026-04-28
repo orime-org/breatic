@@ -12,6 +12,10 @@ interface TimelineTracksProps {
   hoverTrackIndex: number | null;
   isHoverAboveFirstTrack: boolean;
   draggingClipId?: string | null;
+  groupDraggingIds?: string[];
+  groupDragOffsetX?: number;
+  groupDragOffsetY?: number;
+  onMultiSelectResizeStart?: (edge: 'left' | 'right', clientX: number) => void;
   nodeId?: string;
   parentRef?: React.RefObject<HTMLDivElement | null>;
   parentScrollRef?: React.RefObject<HTMLDivElement | null>;
@@ -28,12 +32,36 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
   hoverTrackIndex,
   isHoverAboveFirstTrack,
   draggingClipId,
+  groupDraggingIds = [],
+  groupDragOffsetX = 0,
+  groupDragOffsetY = 0,
+  onMultiSelectResizeStart,
   nodeId,
   parentRef,
   parentScrollRef,
 }) => {
   // store get
-  const { clips } = useVideoEditorStore();
+  const { clips, selectedClipId } = useVideoEditorStore();
+
+  const draggingTrackIndexes = useMemo(() => {
+    const trackIndexes = new Set<number>();
+    if (draggingClipId) {
+      clips.forEach((clip: TimelineClip) => {
+        if (clip.id === draggingClipId) {
+          trackIndexes.add(clip.trackIndex);
+        }
+      });
+    }
+    if (groupDraggingIds.length > 1) {
+      const groupIdSet = new Set(groupDraggingIds);
+      clips.forEach((clip: TimelineClip) => {
+        if (groupIdSet.has(clip.id)) {
+          trackIndexes.add(clip.trackIndex);
+        }
+      });
+    }
+    return trackIndexes;
+  }, [clips, draggingClipId, groupDraggingIds]);
 
   // track clips getall asset track
   const usedTrackIndexes = useMemo(() => {
@@ -51,6 +79,43 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
       .filter((index) => tracksMap[index].length > 0)
       .sort((a, b) => a - b);
   }, [clips]);
+
+  const selectionBounds = useMemo(() => {
+    if (selectedClipId.length <= 1 || usedTrackIndexes.length === 0) {
+      return null;
+    }
+
+    const selectedSet = new Set(selectedClipId);
+    const selectedClips = clips.filter((clip) => selectedSet.has(clip.id));
+    if (selectedClips.length <= 1) {
+      return null;
+    }
+
+    const trackOrderMap = new Map<number, number>();
+    usedTrackIndexes.forEach((trackIndex, order) => {
+      trackOrderMap.set(trackIndex, order);
+    });
+
+    const orderedTracks = selectedClips
+      .map((clip) => trackOrderMap.get(clip.trackIndex))
+      .filter((order): order is number => order !== undefined);
+
+    if (orderedTracks.length === 0) {
+      return null;
+    }
+
+    const minStart = Math.min(...selectedClips.map((clip) => clip.start));
+    const maxEnd = Math.max(...selectedClips.map((clip) => clip.end));
+    const minTrackOrder = Math.min(...orderedTracks);
+    const maxTrackOrder = Math.max(...orderedTracks);
+
+    return {
+      left: minStart * pixelsPerSecond + 20 + (groupDraggingIds.length > 1 ? groupDragOffsetX : 0),
+      width: Math.max((maxEnd - minStart) * pixelsPerSecond, 1),
+      top: minTrackOrder * TRACK_HEIGHT + (groupDraggingIds.length > 1 ? groupDragOffsetY : 0),
+      height: (maxTrackOrder - minTrackOrder) * TRACK_HEIGHT + 28,
+    };
+  }, [clips, selectedClipId, usedTrackIndexes, pixelsPerSecond, groupDraggingIds.length, groupDragOffsetX, groupDragOffsetY]);
 
   // use list track （ ）
   const virtualizer = useVirtualizer({
@@ -71,9 +136,7 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const actualTrackIndex = usedTrackIndexes[virtualRow.index];
-          const isDraggingTrack =
-            !!draggingClipId &&
-            clips.some((clip: TimelineClip) => clip.id === draggingClipId && clip.trackIndex === actualTrackIndex);
+          const isDraggingTrack = draggingTrackIndexes.has(actualTrackIndex);
           return (
             <div
               key={virtualRow.key}
@@ -97,12 +160,54 @@ const TimelineTracks: React.FC<TimelineTracksProps> = ({
                 onShowSnapLines={onShowSnapLines}
                 hoverTrackIndex={hoverTrackIndex}
                 isHoverAboveFirstTrack={isHoverAboveFirstTrack}
+                draggingClipId={draggingClipId}
+                groupDraggingIds={groupDraggingIds}
+                groupDragOffsetX={groupDragOffsetX}
+                groupDragOffsetY={groupDragOffsetY}
                 nodeId={nodeId}
                 parentScrollRef={parentScrollRef}
               />
             </div>
           );
         })}
+        {selectionBounds && (
+          <div
+            className='absolute pointer-events-none rounded border-2 border-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)] z-[3]'
+            style={{
+              left: `${selectionBounds.left}px`,
+              width: `${selectionBounds.width}px`,
+              top: `${selectionBounds.top}px`,
+              height: `${selectionBounds.height}px`,
+            }}
+          >
+            <div
+              className='absolute left-0 top-0 bottom-0 w-2.5 bg-blue-500/30 flex items-center justify-center pointer-events-auto cursor-ew-resize'
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onMultiSelectResizeStart?.('left', e.clientX);
+              }}
+            >
+              <div className='flex gap-px items-center justify-center'>
+                <div className='w-px h-3.5 bg-blue-500 rounded-[0.5px]' />
+                <div className='w-px h-3.5 bg-blue-500 rounded-[0.5px]' />
+              </div>
+            </div>
+            <div
+              className='absolute right-0 top-0 bottom-0 w-2.5 bg-blue-500/30 flex items-center justify-center pointer-events-auto cursor-ew-resize'
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onMultiSelectResizeStart?.('right', e.clientX);
+              }}
+            >
+              <div className='flex gap-px items-center justify-center'>
+                <div className='w-px h-3.5 bg-blue-500 rounded-[0.5px]' />
+                <div className='w-px h-3.5 bg-blue-500 rounded-[0.5px]' />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

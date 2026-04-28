@@ -46,6 +46,9 @@ export type AgentComposerTabsProps = {
   onTrailingClick?: () => void;
   trailingActionsSlot?: React.ReactNode;
   showTrailingActions?: boolean;
+  showMention?: boolean;
+  showUploadDivider?: boolean;
+  showTrailingDivider?: boolean;
   accept?: string;
   multiple?: boolean;
   disabled?: boolean;
@@ -191,6 +194,9 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
   onTrailingClick,
   trailingActionsSlot,
   showTrailingActions = true,
+  showMention = true,
+  showUploadDivider = true,
+  showTrailingDivider = true,
   accept = 'image/*,video/*,audio/*,.txt,text/plain',
   multiple = true,
   disabled = false,
@@ -404,17 +410,19 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
           </button>
         </Tooltip>
 
-        <Tooltip title='Mention' placement='top' offset={4}>
-          <button
-            type='button'
-            className={squareBtnClass}
-            aria-label='Mention upstream'
-            onMouseDown={stopPropagationMouseDown}
-            onClick={onMentionClick}
-          >
-            <Icon name='project-chat-mention-icon' width={16} height={16} />
-          </button>
-        </Tooltip>
+        {showMention ? (
+          <Tooltip title='Mention' placement='top' offset={4}>
+            <button
+              type='button'
+              className={squareBtnClass}
+              aria-label='Mention upstream'
+              onMouseDown={stopPropagationMouseDown}
+              onClick={onMentionClick}
+            >
+              <Icon name='project-chat-mention-icon' width={16} height={16} />
+            </button>
+          </Tooltip>
+        ) : null}
 
         {upstreamItems.length > 0 ? (
           <div className='contents'>
@@ -450,7 +458,9 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
           </div>
         ) : null}
 
-        <Divider type='vertical' className='h-10 shrink-0 self-center bg-[var(--color-border-default-base)]' />
+        {showUploadDivider ? (
+          <Divider type='vertical' className='h-10 shrink-0 self-center bg-[var(--color-border-default-base)]' />
+        ) : null}
 
         <Upload
           accept={accept}
@@ -510,7 +520,9 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
 
       {showTrailingActions ? (
         <div className='flex shrink-0 self-stretch items-start gap-2'>
-          <Divider type='vertical' className='h-auto shrink-0 self-stretch bg-[var(--color-border-default-base)]' />
+          {showTrailingDivider ? (
+            <Divider type='vertical' className='h-auto shrink-0 self-stretch bg-[var(--color-border-default-base)]' />
+          ) : null}
           <Tooltip title='Add to input' placement='top' offset={4} triggerClassName='self-start'>
             <button
               type='button'

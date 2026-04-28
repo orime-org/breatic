@@ -32,7 +32,7 @@ const sliderBaseProps = {
 
 const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   const { t } = useTranslation();
-  const { clips, mediaItems, selectedClipId, updateClip, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
+  const { clips, mediaItems, selectedClipId, batchUpdateClips, setSelectedClipId } = useVideoEditorStore();
   const [cropModalVisible, setCropModalVisible] = useState(false);
 
   // getallselected clips（same type ）
@@ -86,13 +86,29 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
     batchUpdateClips(updatedClips);
   };
 
+  /** 与音频面板相同：变速时按 trim 段在素材上的时长重算时间轴 `end`，轨道长度随速度变化。 */
   const updateSpeed = (value: number) => {
-    // usebatchupdate， updateallselected clips
+    const clamped = Math.max(0.25, Math.min(4, value));
     const updatedClips = clips.map((clip) => {
-      if (selectedClipId.includes(clip.id)) {
-        return { ...clip, speed: value };
+      if (!selectedClipId.includes(clip.id)) {
+        return clip;
       }
-      return clip;
+
+      const trimStart = clip.trimStart || 0;
+      const trimEnd = clip.trimEnd || 0;
+      const oldSpeed = clip.speed || 1;
+
+      let sourceSpan: number;
+      if (trimEnd > 0) {
+        sourceSpan = trimEnd - trimStart;
+      } else {
+        sourceSpan = (clip.end - clip.start) * oldSpeed;
+      }
+
+      const newTimelineDuration = sourceSpan / clamped;
+      const newEnd = clip.start + newTimelineDuration;
+
+      return { ...clip, speed: clamped, end: newEnd };
     });
     batchUpdateClips(updatedClips);
   };
@@ -266,71 +282,72 @@ const VideoStylePanel: React.FC<VideoStylePanelProps> = () => {
   };
 
   const handleCropApply = (_croppedUrl: string | null, cropData: CropData) => {
-    // videocrop：container ， cropregion
-    const currentWidth = selectedClip.width;
-    const currentHeight = selectedClip.height;
+    const canvasElement = document.getElementById('preview-canvas-bg');
+    const canvasWidth = canvasElement ? parseFloat(canvasElement.getAttribute('data-width') || '1920') : 1920;
+    const canvasHeight = canvasElement ? parseFloat(canvasElement.getAttribute('data-height') || '1080') : 1080;
+    const maxWidth = canvasWidth * 0.5;
+    const maxHeight = canvasHeight * 0.5;
+    const referenceMediaWidth = mediaItem?.width || cropData.width;
+    const referenceMediaHeight = mediaItem?.height || cropData.height;
 
-    // calculatecropregion
-    const cropRatio = cropData.width / cropData.height;
-
-    let newWidth;
-    let newHeight;
-
-    if (currentWidth && currentHeight) {
-      // container：keep ， cropregion ratio
-      const currentArea = currentWidth * currentHeight;
-      newHeight = Math.sqrt(currentArea / cropRatio);
-      newWidth = newHeight * cropRatio;
-    } else {
-      // first timecrop： MediaElement default calculatelogic
-      const canvasElement = document.getElementById('preview-canvas-bg');
-      let canvasWidth = 1920;
-      let canvasHeight = 1080;
-
-      if (canvasElement) {
-        canvasWidth = parseFloat(canvasElement.getAttribute('data-width') || '1920');
-        canvasHeight = parseFloat(canvasElement.getAttribute('data-height') || '1080');
+    const updatedClips = clips.map((clip) => {
+      if (!selectedClipId.includes(clip.id)) {
+        return clip;
       }
 
-      const maxWidth = canvasWidth * 0.5;
-      const maxHeight = canvasHeight * 0.5;
-      const mediaWidth = mediaItem?.width || cropData.width;
-      const mediaHeight = mediaItem?.height || cropData.height;
-      const mediaRatio = mediaWidth / mediaHeight;
+      const clipMedia = mediaItems.find((item) => item.id === clip.mediaId);
+      const targetMediaWidth = clipMedia?.width || referenceMediaWidth;
+      const targetMediaHeight = clipMedia?.height || referenceMediaHeight;
+      const scaleToTargetX = targetMediaWidth / referenceMediaWidth;
+      const scaleToTargetY = targetMediaHeight / referenceMediaHeight;
+      const scaledCropData: CropData = {
+        x: cropData.x * scaleToTargetX,
+        y: cropData.y * scaleToTargetY,
+        width: cropData.width * scaleToTargetX,
+        height: cropData.height * scaleToTargetY,
+        unit: 'px',
+      };
+      const cropRatio = scaledCropData.width / scaledCropData.height;
 
-      // calculatevideo crop defaultdisplay
-      let originalDisplayWidth: number;
-      let originalDisplayHeight: number;
-      if (mediaWidth > maxWidth || mediaHeight > maxHeight) {
-        // original canvas50%，need toscale
-        if (mediaRatio > maxWidth / maxHeight) {
-          originalDisplayWidth = maxWidth;
-          originalDisplayHeight = maxWidth / mediaRatio;
-        } else {
-          originalDisplayHeight = maxHeight;
-          originalDisplayWidth = maxHeight * mediaRatio;
-        }
+      let newWidth: number;
+      let newHeight: number;
+      if (clip.width && clip.height) {
+        const currentArea = clip.width * clip.height;
+        newHeight = Math.sqrt(currentArea / cropRatio);
+        newWidth = newHeight * cropRatio;
       } else {
-        // original canvas50%，useoriginal
-        originalDisplayWidth = mediaWidth;
-        originalDisplayHeight = mediaHeight;
+        const mediaRatio = targetMediaWidth / targetMediaHeight;
+        let originalDisplayWidth: number;
+        let originalDisplayHeight: number;
+
+        if (targetMediaWidth > maxWidth || targetMediaHeight > maxHeight) {
+          if (mediaRatio > maxWidth / maxHeight) {
+            originalDisplayWidth = maxWidth;
+            originalDisplayHeight = maxWidth / mediaRatio;
+          } else {
+            originalDisplayHeight = maxHeight;
+            originalDisplayWidth = maxHeight * mediaRatio;
+          }
+        } else {
+          originalDisplayWidth = targetMediaWidth;
+          originalDisplayHeight = targetMediaHeight;
+        }
+
+        const cropWidthRatio = scaledCropData.width / targetMediaWidth;
+        const cropHeightRatio = scaledCropData.height / targetMediaHeight;
+        newWidth = originalDisplayWidth * cropWidthRatio;
+        newHeight = originalDisplayHeight * cropHeightRatio;
       }
 
-      // calculatecropratio（cropregion originalvideo ratio）
-      const cropWidthRatio = cropData.width / mediaWidth;
-      const cropHeightRatio = cropData.height / mediaHeight;
-
-      // crop container = defaultdisplay × cropratio
-      newWidth = originalDisplayWidth * cropWidthRatio;
-      newHeight = originalDisplayHeight * cropHeightRatio;
-    }
-
-    // CSS crop coordinate， croppedUrl（ imagecropkeepconsistent）
-    updateClip(selectedClip.id, {
-      cropArea: cropData,
-      width: newWidth,
-      height: newHeight,
+      return {
+        ...clip,
+        cropArea: scaledCropData,
+        width: newWidth,
+        height: newHeight,
+      };
     });
+
+    batchUpdateClips(updatedClips);
   };
 
   return (
