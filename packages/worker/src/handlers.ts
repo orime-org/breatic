@@ -297,17 +297,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       // without node bindings). Only emit HistoryUpdateEvent when present.
       if (!historyItemId) continue;
       try {
-        await publishNodeEvent(streamRedis, {
-          type: "history-update",
-          docName,
-          nodeId,
-          historyItemId,
-          update: {
-            status: "done",
-            url,
-            cover: out?.cover_url,
-          },
-        });
+        await emitHistoryDone(streamRedis, docName, nodeId, historyItemId, url, out?.cover_url);
       } catch (err) {
         logger.warn({ err, taskId, nodeId }, "Failed to publish HistoryUpdateEvent (success)");
       }
@@ -319,6 +309,42 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     "task_completed",
   );
   return result;
+}
+
+// ─── Event emit helpers ──────────────────────────────────────────────
+
+/**
+ * Publish a `history-update` event with status "done" for a single node.
+ *
+ * Extracted for testability. Called from Stage 4 of `runTask` after
+ * a successful persist. Errors are swallowed by the caller.
+ *
+ * @param streamRedis - Redis client for the stream DB
+ * @param docName - Project doc name (e.g. "project-{projectId}")
+ * @param nodeId - Canvas node receiving the update
+ * @param historyItemId - UUID of the HistoryItem pre-pushed by the frontend
+ * @param url - Permanent URL of the generated asset
+ * @param cover - Optional cover/thumbnail URL
+ */
+export async function emitHistoryDone(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeId: string,
+  historyItemId: string,
+  url: string,
+  cover: string | undefined,
+): Promise<void> {
+  await publishNodeEvent(streamRedis, {
+    type: "history-update",
+    docName,
+    nodeId,
+    historyItemId,
+    update: {
+      status: "done",
+      url,
+      cover,
+    },
+  });
 }
 
 // ─── Failure-path helpers ────────────────────────────────────────────
@@ -355,8 +381,10 @@ async function recordFailureHistory(
  *
  * Only emits if historyItemId is present — tasks without a canvas binding
  * have no HistoryItem to update.
+ *
+ * Exported for unit testing.
  */
-async function publishFailedEvent(
+export async function publishFailedEvent(
   streamRedis: ReturnType<typeof getStreamRedis>,
   projectId: string | undefined,
   nodeIds: string[],

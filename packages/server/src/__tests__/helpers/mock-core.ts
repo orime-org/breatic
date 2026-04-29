@@ -38,6 +38,10 @@ const mockRedis = {
   pipeline: () => mockPipeline,
 };
 
+/** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can
+ *  assert BullMQ job payloads without needing access to the queue instance. */
+export const mockQueueAdd = vi.fn().mockResolvedValue({ id: "job-1" });
+
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
   authService: {
@@ -133,7 +137,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getRedis: () => mockRedis,
     closeRedis: () => Promise.resolve(),
     runMigrations: vi.fn(),
-    createQueue: () => ({ add: vi.fn().mockResolvedValue({ id: "job-1" }) }),
+    createQueue: () => ({ add: mockQueueAdd }),
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),

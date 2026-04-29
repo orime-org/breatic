@@ -68,7 +68,7 @@ function taskEventsLastIdKey(envPrefix: string): string {
  * Idempotent — applying the same update twice produces the same
  * result (Y.Map set is last-write-wins), so stream redelivery is safe.
  */
-async function handleHistoryUpdateEvent(
+export async function handleHistoryUpdateEvent(
   hocuspocus: Hocuspocus,
   event: HistoryUpdateEvent,
 ): Promise<void> {
