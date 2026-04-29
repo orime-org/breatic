@@ -351,12 +351,61 @@ breatic 高频场景示例(均属上述触发的具体化,不是新增 mandate):
 
 DD 报告位置:`docs/dd/<YYYY-MM-DD>-<topic>.md`(可公开)。涉及 vendor 关系 / 安全模型等敏感内容的 DD 应放团队私有 channel,不入公开仓库。
 
-# Test-Driven Development (TDD)
+# Test-Driven Development (TDD) — AI coding 时代版
 
-🚧 **本章节待完善** —— Breatic 正在调研 AI coding 时代的 TDD 工程实践(测试 debt 雪球 / 抽象锁死 / false confidence 三类风险),完成后补充项目级 TDD mandate。
+> 业界共识(Anthropic 官方 / Kent Beck / Aider / 多个 case study):**TDD 在 AI 时代不退化,而是升级为关键纪律**。但 AI 引入的"作弊"和"false confidence"风险需要专门防御。本章节是项目级 TDD mandate,详见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) 第 10 节衔接 DD 流程。
 
-短期约束(必守):
+## 硬约束(零容忍违规)
 
-- **修 bug 必须先写复现测试**(防 AI 补丁式修复 → 同 #5)
-- **spec 由 audit / 人写,test 代码由 dev 写**(反 AI 闭环;参考 [bugs_list role boundary](https://github.com/orime-org/breatic-inner))
-- **重构前测试必须 green**(防 AI 偷换语义)
+1. **修 bug 必须先写复现测试** —— 没有"先看到 fail 再修"直接给 fix = 违反 #5(治标补丁)
+   - 业界印证:Anthropic 官方 *"address root causes, not symptoms"* + DEV.to false confidence case study
+2. **spec 由 audit / 人写,test 代码由 dev 写** —— Writer/Reviewer 角色分离反 AI 闭环
+   - 业界印证:[Anthropic Best Practices](https://code.claude.com/docs/en/best-practices) *"have one Claude write tests, then another write code to pass them"*
+3. **重构前测试必须 green** —— 防 AI 偷换语义
+4. **禁止 AI 通过删除 / 禁用测试来"通过"** —— Kent Beck 明确 cheating warning
+   - 实操:CI / pre-commit 监控测试套件总数,异常下降(> 10% drop)alert
+5. **测试套件不能依赖单一 AI session 既写 spec 又写实现** —— Breaking the loop is mandatory
+
+## TDD 节奏(production code 适用)
+
+1. **红**:先写**具体 assertion** 的 test(禁止 weak assertion 如 `toBeDefined()` / `toBeTruthy()` 不带具体期望值)
+2. **绿**:实现满足 test
+3. **蓝**:重构 + 跑全套 test 确认 green
+
+**例外**:原型 / explore 阶段允许后置 test(production code 严禁)。
+
+## 测试质量优于覆盖率数字
+
+- **关键路径**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作同步) → 100% 必须 + 显式 invariant assertion
+- **业务逻辑** → 应有 unit test 配合 integration test
+- **UI 组件** → 优先 E2E,unit test 按需
+- **覆盖率 < 80% 不是 hard block,但关键路径裸奔是 P0 BUG**
+- 业界共识:**测试质量(strong assertion / 显式 invariant)比覆盖率数字更重要**
+
+## 反 AI coding anti-pattern
+
+- ❌ AI 在 single session 同时写 spec + test + 实现 —— **闭环 hallucination 风险**
+- ❌ Weak assertion 凑数(如 `toBeDefined()` / `toBeTruthy()` 不带期望值)
+- ❌ "先实现再补 test"(production code 严禁;原型阶段允许)
+- ❌ 修 bug 不写复现 test(违反 #1 硬约束)
+- ❌ 测试代码大段 mock 真实数据流(integration / E2E 应不 mock 关键路径)
+- ❌ 把 AI 生成的测试作为终态 —— **应作为 draft**,显式审 invariant 是否覆盖业务真实约束(DEV.to case study 教训)
+
+## 显式 invariant + Property-based 推荐(关键路径)
+
+业界 case study 教训:AI 生成测试倾向 reproduce canonical *setup/call/assert* pattern,但**不会 reason about 哪些 invariant 真正重要**。修复方式:
+
+- 关键路径写测试时,**显式列出 invariants**(idempotency / order-independence / escaping / monotonic / commutative)
+- 用 property-based testing(如 [`fast-check`](https://github.com/dubzzz/fast-check) for TS,[`hypothesis`](https://hypothesis.readthedocs.io/) for Python)覆盖 invariants
+- 单纯 example-based assertion 对关键路径不充分
+
+## 衔接 DD
+
+DD 锁定方案后才走 TDD;TDD 中发现 DD 假设错 → **停下重做 DD**,不在错假设上打补丁(违反 #5)。详见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) 第 10 节。
+
+## 衔接 audit(`bugs_list` 角色)
+
+- audit 写测试 spec(input / expected / 边界 / pass / fail / 边界条件)
+- dev 写测试代码(`*.test.ts` / `pytest`)
+- spec by audit / code by dev,**严格分离反 AI 闭环**(同 Anthropic Writer/Reviewer pattern)
+- audit 不替 dev 写 test code,dev 不绕过 audit 自己定义 spec
