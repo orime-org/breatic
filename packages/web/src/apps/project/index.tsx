@@ -12,6 +12,7 @@ import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import ImageEditorPage from '../imageEditor';
+import VideoEditorNodePage from '../videoEditorNode';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
@@ -88,7 +89,8 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
   const panelNodeType = String(panelNode?.type ?? '');
   const isTextNode = panelNodeType === '1001';
   const isImageNode = panelNodeType === '1002';
-  const isVideoOrAudioNode = panelNodeType === '1003' || panelNodeType === '1004';
+  const isVideoNode = panelNodeType === '1003';
+  const isAudioNode = panelNodeType === '1004';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
 
   const exitCanvasPickMode = useCallback(() => {
@@ -217,7 +219,11 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
                   <div className='flex h-full min-h-0 w-full flex-col overflow-hidden'>
                     <ImageEditorPage nodeId={panelNode.id} />
                   </div>
-                ) : isVideoOrAudioNode && panelNode ? (
+                ) : isVideoNode && panelNode ? (
+                  <div className='flex h-full min-h-0 w-full flex-col overflow-hidden'>
+                    <VideoEditorNodePage nodeId={panelNode.id} />
+                  </div>
+                ) : isAudioNode && panelNode ? (
                   <EditorComingSoonPlaceholder nodeId={panelNode.id} />
                 ) : (
                   <ResizableLeftPanel />

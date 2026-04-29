@@ -205,8 +205,9 @@ export function useCanvasYjsInternal(
               // Detect by comparing previous history array length or any newly
               // completed item (status changed from loading to done/failed).
               const prevHistory = (node.data?.history as Array<{ id: string; status: string }> | undefined) ?? [];
-              const nextHistory = (newNode.data?.history as Array<{ id: string; status: string }> | undefined) ?? [];
+              const nextHistory = (newNode.data?.history as Array<{ id: string; status: string; source?: string }> | undefined) ?? [];
               for (const nextItem of nextHistory) {
+                if (nextItem.source === 'editor-mini-tool') continue;
                 if (nextItem.status === 'done' || nextItem.status === 'failed') {
                   const prevItem = prevHistory.find((h) => h.id === nextItem.id);
                   if (prevItem?.status === 'loading') {
