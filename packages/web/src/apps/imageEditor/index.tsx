@@ -7,7 +7,8 @@ import Loading from '@/components/loading/Loading';
 import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
 import Tooltip from '@/components/base/tooltip';
 import Divider from '@/components/base/divider';
-import IMAGE_EDITOR_DEFAULT_IMAGE from './defaultImageBase64';
+import { useCanvasData } from '@/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/hooks/useCanvasActions';
 import LeftHistoryPanel, { type ImageHistoryItem } from './components/LeftHistoryPanel/LeftHistoryPanel';
 import RightToolPanel, { type ImageEditorToolMode } from './components/RightToolPanel/RightToolPanel';
 import ImageInpaintCanvas from './components/inpaint/ImageInpaintCanvas';
@@ -65,20 +66,37 @@ const recognizedOverlayPresets = [
 const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp }) => {
   const params = useParams<'projectId' | 'nodeId'>();
   const nodeId = nodeIdProp ?? params.nodeId ?? '';
-  const initialHistoryId = 'history-initial';
-  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(0);
-  const [hostHistoryId, setHostHistoryId] = useState<string | null>(initialHistoryId);
-  const [historyList, setHistoryList] = useState<ImageHistoryItem[]>([
-    { id: initialHistoryId, src: IMAGE_EDITOR_DEFAULT_IMAGE, status: 'done' },
-  ]);
-  const [imageSrc, setImageSrc] = useState(IMAGE_EDITOR_DEFAULT_IMAGE);
+  const { nodes } = useCanvasData();
+  const { setActiveHistoryId: setCanvasNodeActiveHistoryId } = useCanvasActions();
+  const currentNode = useMemo(() => nodes.find((n) => n.id === nodeId), [nodeId, nodes]);
+  const nodeHistory = useMemo(() => {
+    const raw = ((currentNode?.data as { history?: Array<{ id: string; url?: string; cover?: string; status: 'done' | 'loading' | 'failed'; errorMessage?: string }> } | undefined)?.history ?? []);
+    const mapped: ImageHistoryItem[] = raw
+      .map((item) => ({
+        id: item.id,
+        src: item.url ?? item.cover ?? '',
+        status: item.status,
+        errorMessage: item.errorMessage,
+      }))
+      .filter((item) => item.src);
+    return mapped;
+  }, [currentNode?.data]);
+  const nodeActiveHistoryId = ((currentNode?.data as { activeHistoryId?: string } | undefined)?.activeHistoryId ?? null);
+  const initialHistory = nodeHistory;
+  const initialActiveId = nodeActiveHistoryId ?? initialHistory[0]?.id ?? null;
+  const initialSelectedIndex = Math.max(0, initialHistory.findIndex((item) => item.id === initialActiveId));
+  const initialSrc = initialHistory[initialSelectedIndex]?.src ?? '';
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(initialSelectedIndex);
+  const [hostHistoryId, setHostHistoryId] = useState<string | null>(initialActiveId);
+  const [historyList, setHistoryList] = useState<ImageHistoryItem[]>(initialHistory);
+  const [imageSrc, setImageSrc] = useState(initialSrc);
   const [editorCanvas, setEditorCanvas] = useState<Canvas | null>(null);
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const [shellSize, setShellSize] = useState({ width: 1, height: 1 });
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
-  const [zoomFactor, setZoomFactor] = useState(1);
-  const [zoomInput, setZoomInput] = useState('100');
+  const [zoomFactor, setZoomFactor] = useState(0.8);
+  const [zoomInput, setZoomInput] = useState('80');
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const restoringRef = useRef(false);
@@ -101,6 +119,18 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
   const quickEditPickTimersRef = useRef<number[]>([]);
   const [toolSessionSeed, setToolSessionSeed] = useState(0);
   const historyIdRef = useRef(0);
+  const transientBlankHistoryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const nextHistory = nodeHistory;
+    const nextHostId = nodeActiveHistoryId ?? nextHistory[0]?.id ?? null;
+    const nextIndex = Math.max(0, nextHistory.findIndex((item) => item.id === nextHostId));
+    const nextSrc = nextHistory[nextIndex]?.src ?? nextHistory[0]?.src ?? '';
+    setHistoryList(nextHistory);
+    setHostHistoryId(nextHostId);
+    setSelectedHistoryIndex(nextIndex);
+    setImageSrc(nextSrc);
+  }, [nodeHistory, nodeActiveHistoryId]);
 
   const currentSelectedItem = historyList[selectedHistoryIndex];
   const currentSelectedSrc = currentSelectedItem?.src ?? imageSrc;
@@ -129,7 +159,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     return `history-${Date.now()}-${historyIdRef.current}`;
   }, []);
 
-  const prependDoneHistoryItem = useCallback((src: string, mode?: 'stitch') => {
+  const prependDoneHistoryItem = useCallback((src: string, mode?: 'stitch'): ImageHistoryItem => {
     const nextItem: ImageHistoryItem = {
       id: createHistoryId(),
       src,
@@ -141,6 +171,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     setSelectedHistoryIndex(0);
     setBottomActionMode('tool-apply-history');
     setToolSessionSeed((prev) => prev + 1);
+    return nextItem;
   }, [createHistoryId]);
 
   const enqueueMockHistoryTask = useCallback(
@@ -153,7 +184,29 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
       delayMs: number;
       mode?: 'stitch';
     }) => {
-      const loadingSrc = src || currentSelectedSrc || imageSrc;
+      const selectedItem = historyList[selectedHistoryIndex];
+      const shouldDropTransientBlank =
+        Boolean(selectedItem) && transientBlankHistoryIdRef.current !== null && selectedItem?.id === transientBlankHistoryIdRef.current;
+      const loadingSrc = src || (shouldDropTransientBlank ? '' : currentSelectedSrc || imageSrc);
+      if (shouldDropTransientBlank && selectedItem) {
+        setHistoryList((prev) => prev.filter((item) => item.id !== selectedItem.id));
+        setSelectedHistoryIndex(0);
+        transientBlankHistoryIdRef.current = null;
+      }
+      if (!loadingSrc) {
+        const failedItem: ImageHistoryItem = {
+          id: createHistoryId(),
+          src: '',
+          status: 'failed',
+          mode,
+          errorMessage: 'Source image lost. Please retry.',
+        };
+        setHistoryList((prev) => [failedItem, ...prev]);
+        setSelectedHistoryIndex(0);
+        setBottomActionMode('tool-apply-history');
+        setToolSessionSeed((prev) => prev + 1);
+        return;
+      }
       const loadingItem: ImageHistoryItem = {
         id: createHistoryId(),
         src: loadingSrc,
@@ -180,7 +233,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
       }, delayMs);
       mockTaskTimersRef.current.push(timer);
     },
-    [createHistoryId, currentSelectedSrc, imageSrc],
+    [createHistoryId, currentSelectedSrc, historyList, imageSrc, selectedHistoryIndex],
   );
 
   useEffect(() => {
@@ -723,7 +776,10 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
     const selectedItem = historyList[selectedHistoryIndex];
     if (!selectedItem) return;
     setHostHistoryId(selectedItem.id);
-  }, [historyList, selectedHistoryIndex]);
+    if (nodeId) {
+      setCanvasNodeActiveHistoryId(nodeId, selectedItem.id);
+    }
+  }, [historyList, nodeId, selectedHistoryIndex, setCanvasNodeActiveHistoryId]);
 
   const handleAddNewNodeToCanvas = useCallback(() => {
     void 0;
@@ -754,7 +810,8 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
   const handleBlankClick = useCallback(async () => {
     const blankSrc = await createWhiteCanvasImage();
     if (!blankSrc) return;
-    prependDoneHistoryItem(blankSrc);
+    const blankItem = prependDoneHistoryItem(blankSrc);
+    transientBlankHistoryIdRef.current = blankItem.id;
     setActiveTool(null);
     setBottomActionMode('history-item');
   }, [createWhiteCanvasImage, prependDoneHistoryItem]);
@@ -1033,7 +1090,7 @@ const ImageEditorPage: React.FC<ImageEditorPageProps> = ({ nodeId: nodeIdProp })
                     </div>
                   </div>
                 ) : (
-                  <div className='flex h-full w-full items-center justify-center' />
+                  <div className='h-full w-full' />
                 )}
                 {imageLoading && (
                   <div className='pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#f0f2f666]'>

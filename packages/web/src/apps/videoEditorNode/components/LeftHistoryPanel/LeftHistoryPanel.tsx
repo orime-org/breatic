@@ -1,20 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import Loading from '@/components/loading/Loading';
 
-export type ImageHistoryItem = {
+export type VideoHistoryItem = {
   id: string;
   src: string;
   status: 'done' | 'loading' | 'failed';
-  mode?: 'stitch';
   errorMessage?: string;
 };
 
 interface LeftHistoryPanelProps {
-  historyList: ImageHistoryItem[];
+  historyList: VideoHistoryItem[];
   activeIndex: number;
   hostHistoryId: string | null;
-  onSelect: (index: number, item: ImageHistoryItem) => void;
-  onRetry?: (index: number, item: ImageHistoryItem) => void;
+  onSelect: (index: number, item: VideoHistoryItem) => void;
+  onRetry?: (index: number, item: VideoHistoryItem) => void;
 }
 
 const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
@@ -90,13 +89,19 @@ const LeftHistoryPanel: React.FC<LeftHistoryPanelProps> = ({
                     </span>
                   </div>
                 ) : (
-                  <img
+                  <video
                     src={item.src}
-                    alt={`history-${idx}`}
+                    muted
+                    playsInline
+                    preload='metadata'
                     className={`block w-full align-top transition-opacity ${
                       loadedMap[item.src] ? 'h-auto opacity-100' : 'h-[150px] object-cover opacity-0'
                     }`}
-                    onLoad={() => markLoaded(item.src)}
+                    onLoadedData={(event) => {
+                      // Keep history thumbnail pinned to the first frame.
+                      event.currentTarget.pause();
+                      markLoaded(item.src);
+                    }}
                     onError={() => {
                       markLoaded(item.src);
                       setBrokenThumbMap((prev) => ({ ...prev, [item.id]: true }));
