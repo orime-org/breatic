@@ -69,9 +69,8 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Per spec §4.6: frontend already pushed HistoryItem { status: "loading" }
-  // into Yjs before POSTing. No "handling" event needed from the server.
-  // Worker emits HistoryUpdateEvent on completion/failure via historyItemId.
+  // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
+  // and write result back to the Yjs canvas node via collab.
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -83,7 +82,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       skillName: body.skill_name,
       params: body.params,
       source: body.source,
-      historyItemId: body.history_item_id,
+      targetNodeIds: body.target_node_id ? [body.target_node_id] : [],
     },
     defaultJobOpts(),
   );

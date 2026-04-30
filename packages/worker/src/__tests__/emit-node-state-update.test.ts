@@ -1,10 +1,10 @@
 /**
- * Unit tests for the HistoryUpdateEvent emit helpers in handlers.ts.
+ * Unit tests for the NodeStateUpdateEvent emit helpers in handlers.ts.
  *
  * Covers:
- *  - emitHistoryDone: success shape, multi-node fanout, no-cover case
- *  - publishFailedEvent: failure shape, multi-node fanout, skip guards
- *    (missing historyItemId / empty nodeIds / missing projectId)
+ *  - emitNodeStateDone: success shape (all fields), partial fields, multi-node fanout
+ *  - emitNodeStateFailed: failure shape, single and multi-node (via caller loop)
+ *  - Guard: no publish when targetNodeIds is empty (caller-level guard simulation)
  *
  * No real Redis — publishNodeEvent from @breatic/core is fully mocked.
  */
@@ -73,158 +73,170 @@ vi.mock("ai", () => ({
 }));
 
 // ── Import the helpers under test AFTER mocks are wired ─────────────
-import { emitHistoryDone, publishFailedEvent } from "../handlers.js";
+import { emitNodeStateDone, emitNodeStateFailed } from "../handlers.js";
 
 // Dummy streamRedis value — handlers pass it through to publishNodeEvent
 // which is mocked, so any value works.
-const fakeStreamRedis = {} as Parameters<typeof emitHistoryDone>[0];
+const fakeStreamRedis = {} as Parameters<typeof emitNodeStateDone>[0];
 
 beforeEach(() => {
   mockPublishNodeEvent.mockReset();
 });
 
 // ────────────────────────────────────────────────────────────────────
-// emitHistoryDone
+// emitNodeStateDone
 // ────────────────────────────────────────────────────────────────────
 
-describe("emitHistoryDone", () => {
-  it("calls publishNodeEvent with the correct done shape (single node)", async () => {
-    const docName = "project-proj-1";
+describe("emitNodeStateDone", () => {
+  it("calls publishNodeEvent with the correct done shape (all content fields)", async () => {
+    const docName = "project-p1";
     const nodeId = "n1";
-    const historyItemId = "h1";
-    const url = "https://oss/x.png";
-    const cover = "https://oss/x-thumb.png";
+    const contentFields = {
+      content: "https://oss/x.png",
+      cover_url: "https://oss/x-thumb.png",
+      width: 100,
+      height: 200,
+    };
 
-    await emitHistoryDone(fakeStreamRedis, docName, nodeId, historyItemId, url, cover);
+    await emitNodeStateDone(fakeStreamRedis, docName, nodeId, contentFields);
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
-      type: "history-update",
+      type: "node-state-update",
       docName,
       nodeId,
-      historyItemId,
       update: {
-        status: "done",
-        url,
-        cover,
+        state: "idle",
+        content: contentFields.content,
+        cover_url: contentFields.cover_url,
+        width: contentFields.width,
+        height: contentFields.height,
+        duration: undefined,
+        handlingBy: undefined,
       },
     });
   });
 
-  it("passes undefined cover through unchanged (no-thumbnail case)", async () => {
-    await emitHistoryDone(
-      fakeStreamRedis,
-      "project-proj-2",
-      "n2",
-      "h2",
-      "https://oss/y.mp4",
-      undefined,
-    );
+  it("passes optional fields as undefined when not provided (no-cover case)", async () => {
+    await emitNodeStateDone(fakeStreamRedis, "project-p2", "n2", {
+      content: "https://oss/y.mp4",
+    });
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     const event = mockPublishNodeEvent.mock.calls[0]![1] as Record<string, unknown>;
-    expect((event.update as Record<string, unknown>).cover).toBeUndefined();
-    expect((event.update as Record<string, unknown>).status).toBe("done");
+    const update = event.update as Record<string, unknown>;
+
+    expect(update.state).toBe("idle");
+    expect(update.content).toBe("https://oss/y.mp4");
+    expect(update.cover_url).toBeUndefined();
+    expect(update.width).toBeUndefined();
+    expect(update.height).toBeUndefined();
+    expect(update.handlingBy).toBeUndefined();
   });
 
-  it("fans out once per nodeId when called in a loop (multi-node simulation)", async () => {
-    const projectId = "proj-fan";
-    const docName = `project-${projectId}`;
-    const historyItemId = "h-fan";
+  it("fans out N calls when called N times (multi-output fanout via caller loop)", async () => {
+    const docName = "project-proj-fan";
     const nodeIds = ["n1", "n2"];
     const urls = ["https://oss/a.png", "https://oss/b.png"];
 
-    // Simulate Stage 4 loop in runTask
+    // Simulate the Stage 4 loop in runTask — caller loops over targetNodeIds
     for (let i = 0; i < nodeIds.length; i++) {
-      await emitHistoryDone(
-        fakeStreamRedis,
-        docName,
-        nodeIds[i]!,
-        historyItemId,
-        urls[i]!,
-        undefined,
-      );
+      await emitNodeStateDone(fakeStreamRedis, docName, nodeIds[i]!, {
+        content: urls[i]!,
+      });
     }
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
 
     const calls = mockPublishNodeEvent.mock.calls as [unknown, Record<string, unknown>][];
     expect(calls[0]![1].nodeId).toBe("n1");
-    expect(calls[0]![1].historyItemId).toBe(historyItemId);
     expect(calls[1]![1].nodeId).toBe("n2");
-    expect(calls[1]![1].historyItemId).toBe(historyItemId);
 
     for (const [, event] of calls) {
-      expect(event.type).toBe("history-update");
+      expect(event.type).toBe("node-state-update");
       expect(event.docName).toBe(docName);
-      expect((event.update as Record<string, unknown>).status).toBe("done");
+      expect((event.update as Record<string, unknown>).state).toBe("idle");
+      expect((event.update as Record<string, unknown>).handlingBy).toBeUndefined();
+    }
+
+    expect((calls[0]![1].update as Record<string, unknown>).content).toBe("https://oss/a.png");
+    expect((calls[1]![1].update as Record<string, unknown>).content).toBe("https://oss/b.png");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// emitNodeStateFailed
+// ────────────────────────────────────────────────────────────────────
+
+describe("emitNodeStateFailed", () => {
+  it("emits the correct failure shape for a single node", async () => {
+    const docName = "project-p1";
+    const nodeId = "n1";
+    const errorMessage = "Worker exploded";
+
+    await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage);
+
+    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
+    expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
+      type: "node-state-update",
+      docName,
+      nodeId,
+      update: {
+        state: "idle",
+        errorMessage,
+        handlingBy: undefined,
+      },
+    });
+  });
+
+  it("emits per-node when called in a loop (multi-node failure fanout)", async () => {
+    const docName = "project-p2";
+    const nodeIds = ["n1", "n2"];
+    const errorMessage = "Provider timeout";
+
+    // Caller loops over targetNodeIds and calls helper once per node
+    for (const nodeId of nodeIds) {
+      await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage);
+    }
+
+    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
+
+    const calls = mockPublishNodeEvent.mock.calls as [unknown, Record<string, unknown>][];
+    expect(calls[0]![1].nodeId).toBe("n1");
+    expect(calls[1]![1].nodeId).toBe("n2");
+
+    for (const [, event] of calls) {
+      expect(event.type).toBe("node-state-update");
+      expect(event.docName).toBe(docName);
+      expect((event.update as Record<string, unknown>).state).toBe("idle");
+      expect((event.update as Record<string, unknown>).errorMessage).toBe(errorMessage);
+      expect((event.update as Record<string, unknown>).handlingBy).toBeUndefined();
     }
   });
 });
 
 // ────────────────────────────────────────────────────────────────────
-// publishFailedEvent
+// Guard: empty targetNodeIds — no publish
 // ────────────────────────────────────────────────────────────────────
 
-describe("publishFailedEvent", () => {
-  it("emits the correct failed shape for a single node", async () => {
-    const projectId = "proj-1";
-    const nodeIds = ["n1"];
-    const historyItemId = "h1";
-    const errorMessage = "Sharp threw";
+describe("caller-level empty targetNodeIds guard", () => {
+  it("does NOT call publishNodeEvent when targetNodeIds is empty (caller skips loop)", async () => {
+    const targetNodeIds: string[] = [];
 
-    await publishFailedEvent(fakeStreamRedis, projectId, nodeIds, historyItemId, errorMessage);
-
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
-    expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
-      type: "history-update",
-      docName: `project-${projectId}`,
-      nodeId: "n1",
-      historyItemId,
-      update: {
-        status: "failed",
-        errorMessage,
-      },
-    });
-  });
-
-  it("fans out to all nodeIds with the same historyItemId", async () => {
-    const projectId = "proj-2";
-    const nodeIds = ["n1", "n2"];
-    const historyItemId = "h2";
-    const errorMessage = "Provider timeout";
-
-    await publishFailedEvent(fakeStreamRedis, projectId, nodeIds, historyItemId, errorMessage);
-
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
-
-    const calls = mockPublishNodeEvent.mock.calls as [unknown, Record<string, unknown>][];
-    expect(calls[0]![1].nodeId).toBe("n1");
-    expect(calls[1]![1].nodeId).toBe("n2");
-
-    for (const [, event] of calls) {
-      expect(event.historyItemId).toBe(historyItemId);
-      expect(event.docName).toBe(`project-${projectId}`);
-      expect(event.type).toBe("history-update");
-      expect((event.update as Record<string, unknown>).status).toBe("failed");
-      expect((event.update as Record<string, unknown>).errorMessage).toBe(errorMessage);
+    // Simulate what runTask does when nodeIds.length === 0
+    for (const nodeId of targetNodeIds) {
+      await emitNodeStateDone(fakeStreamRedis, "project-p3", nodeId, { content: "https://oss/z.png" });
     }
-  });
-
-  it("does NOT call publishNodeEvent when historyItemId is undefined", async () => {
-    await publishFailedEvent(fakeStreamRedis, "proj-3", ["n1"], undefined, "some error");
 
     expect(mockPublishNodeEvent).not.toHaveBeenCalled();
   });
 
-  it("does NOT call publishNodeEvent when nodeIds is empty", async () => {
-    await publishFailedEvent(fakeStreamRedis, "proj-4", [], "h4", "some error");
+  it("does NOT call publishNodeEvent for failure when targetNodeIds is empty", async () => {
+    const targetNodeIds: string[] = [];
 
-    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
-  });
-
-  it("does NOT call publishNodeEvent when projectId is undefined", async () => {
-    await publishFailedEvent(fakeStreamRedis, undefined, ["n1"], "h5", "some error");
+    for (const nodeId of targetNodeIds) {
+      await emitNodeStateFailed(fakeStreamRedis, "project-p4", nodeId, "some error");
+    }
 
     expect(mockPublishNodeEvent).not.toHaveBeenCalled();
   });

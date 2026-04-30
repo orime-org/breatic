@@ -54,11 +54,12 @@ export interface TaskJobData {
   source?: string;
   toolName?: string;
   /**
-   * UUID of the HistoryItem the frontend pre-pushed with status "loading".
-   * Worker emits HistoryUpdateEvent targeting this id on completion/failure.
-   * Absent for tasks not bound to a canvas node.
+   * Target canvas node IDs to receive the result via NodeStateUpdateEvent.
+   * Length === 1 for single-output ops; length === N for multi-output ops
+   * (e.g., split image → 4 nodes). Absent for tasks not bound to any canvas
+   * node (understand, skill agents without node bindings).
    */
-  historyItemId?: string;
+  targetNodeIds?: string[];
 }
 
 /**
@@ -87,11 +88,13 @@ export interface TaskJobData {
  * @returns Result dict on success, or a failure status marker
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, historyItemId } = job.data;
+  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
 
   const redis = getRedis();
   const streamRedis = getStreamRedis();
-  const nodeIds = parseNodeIds(params);
+  // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
+  // Falls back to empty array for tasks not bound to any canvas node.
+  const nodeIds: string[] = targetNodeIds ?? [];
 
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -120,7 +123,12 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, "Retry not allowed after provider returned a result");
+    if (projectId) {
+      const docName = projectDocName(projectId);
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, docName, nodeId, "Retry not allowed after provider returned a result");
+      }
+    }
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -164,7 +172,12 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, errorMsg);
+    if (projectId) {
+      const docName = projectDocName(projectId);
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, docName, nodeId, errorMsg);
+      }
+    }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
 
@@ -179,7 +192,12 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, toolName }, msg);
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, msg);
+    if (projectId) {
+      const docName = projectDocName(projectId);
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, docName, nodeId, msg);
+      }
+    }
     return { failed: true, reason: "output_count_mismatch" };
   }
 
@@ -204,7 +222,12 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, historyItemId, errorMsg);
+    if (projectId) {
+      const docName = projectDocName(projectId);
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, docName, nodeId, errorMsg);
+      }
+    }
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -266,7 +289,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
   }
 
-  // ─── Stage 4: Record history + publish HistoryUpdateEvent ─────────
+  // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
   if (projectId && nodeIds.length > 0) {
     const docName = projectDocName(projectId);
     for (let i = 0; i < nodeIds.length; i++) {
@@ -293,13 +316,13 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
         logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
       }
 
-      // historyItemId is absent for non-canvas tasks (understand, skill agents
-      // without node bindings). Only emit HistoryUpdateEvent when present.
-      if (!historyItemId) continue;
       try {
-        await emitHistoryDone(streamRedis, docName, nodeId, historyItemId, url, out?.cover_url);
+        await emitNodeStateDone(streamRedis, docName, nodeId, {
+          content: url,
+          cover_url: out?.cover_url,
+        });
       } catch (err) {
-        logger.warn({ err, taskId, nodeId }, "Failed to publish HistoryUpdateEvent (success)");
+        logger.warn({ err, taskId, nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
       }
     }
   }
@@ -313,36 +336,82 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
 // ─── Event emit helpers ──────────────────────────────────────────────
 
+/** Content fields that may appear in a success NodeStateUpdateEvent. */
+export interface NodeStateDoneFields {
+  /** Permanent URL of the generated asset. */
+  content: string;
+  /** Optional cover/thumbnail URL (video first-frame, 3D preview, etc.). */
+  cover_url?: string;
+  /** Image / video pixel width. */
+  width?: number;
+  /** Image / video pixel height. */
+  height?: number;
+  /** Video / audio duration in seconds. */
+  duration?: number;
+}
+
 /**
- * Publish a `history-update` event with status "done" for a single node.
+ * Publish a `node-state-update` event with state "idle" (success) for a
+ * single node.
  *
- * Extracted for testability. Called from Stage 4 of `runTask` after
- * a successful persist. Errors are swallowed by the caller.
+ * Extracted for testability. Called from Stage 4 of `runTask` after a
+ * successful persist. Errors are swallowed by the caller.
+ *
+ * `handlingBy` is explicitly set to `undefined` so the Collab consumer
+ * deletes the key from the node's data Y.Map (clearing the actor badge).
  *
  * @param streamRedis - Redis client for the stream DB
  * @param docName - Project doc name (e.g. "project-{projectId}")
  * @param nodeId - Canvas node receiving the update
- * @param historyItemId - UUID of the HistoryItem pre-pushed by the frontend
- * @param url - Permanent URL of the generated asset
- * @param cover - Optional cover/thumbnail URL
+ * @param contentFields - Content fields to write into the node's data map
  */
-export async function emitHistoryDone(
+export async function emitNodeStateDone(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeId: string,
-  historyItemId: string,
-  url: string,
-  cover: string | undefined,
+  contentFields: NodeStateDoneFields,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
-    type: "history-update",
+    type: "node-state-update",
     docName,
     nodeId,
-    historyItemId,
     update: {
-      status: "done",
-      url,
-      cover,
+      state: "idle",
+      content: contentFields.content,
+      cover_url: contentFields.cover_url,
+      width: contentFields.width,
+      height: contentFields.height,
+      duration: contentFields.duration,
+      handlingBy: undefined,
+    },
+  });
+}
+
+/**
+ * Publish a `node-state-update` event with state "idle" (failure) for a
+ * single node.
+ *
+ * Exported for unit testing.
+ *
+ * @param streamRedis - Redis client for the stream DB
+ * @param docName - Project doc name (e.g. "project-{projectId}")
+ * @param nodeId - Canvas node receiving the update
+ * @param errorMessage - Human-readable error description
+ */
+export async function emitNodeStateFailed(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeId: string,
+  errorMessage: string,
+): Promise<void> {
+  await publishNodeEvent(streamRedis, {
+    type: "node-state-update",
+    docName,
+    nodeId,
+    update: {
+      state: "idle",
+      errorMessage,
+      handlingBy: undefined,
     },
   });
 }
@@ -376,58 +445,7 @@ async function recordFailureHistory(
   }
 }
 
-/**
- * Publish a `history-update` event with status "failed" to the task-events stream.
- *
- * Only emits if historyItemId is present — tasks without a canvas binding
- * have no HistoryItem to update.
- *
- * Exported for unit testing.
- */
-export async function publishFailedEvent(
-  streamRedis: ReturnType<typeof getStreamRedis>,
-  projectId: string | undefined,
-  nodeIds: string[],
-  historyItemId: string | undefined,
-  errorMessage: string,
-): Promise<void> {
-  if (!projectId || nodeIds.length === 0 || !historyItemId) return;
-  const docName = projectDocName(projectId);
-  for (const nodeId of nodeIds) {
-    try {
-      await publishNodeEvent(streamRedis, {
-        type: "history-update",
-        docName,
-        nodeId,
-        historyItemId,
-        update: {
-          status: "failed",
-          errorMessage,
-        },
-      });
-    } catch (err) {
-      logger.warn({ err, nodeId }, "Failed to publish HistoryUpdateEvent (failed)");
-    }
-  }
-}
-
 // ── Normalisation + persistence helpers ────────────────────────────
-
-/**
- * Parse `params.node_ids` (array, 0..N).
- *
- * All mini-tool callers — single-output or multi-output — send
- * `node_ids: string[]`. N=1 is a degenerate case of the same shape.
- * Non-mini-tool tasks (understand, skill agent) may omit it entirely
- * (returns `[]`); in that case no NodeEvent is published.
- */
-function parseNodeIds(params: Record<string, unknown>): string[] {
-  const arr = params.node_ids;
-  if (Array.isArray(arr)) {
-    return arr.filter((x): x is string => typeof x === "string");
-  }
-  return [];
-}
 
 /**
  * Collapse provider / handler raw results into a unified outputs
