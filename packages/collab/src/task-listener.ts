@@ -1,24 +1,23 @@
 /**
  * Task lifecycle event listener backed by Redis Streams.
  *
- * Consumes `HistoryUpdateEvent` payloads from the
+ * Consumes `NodeStateUpdateEvent` payloads from the
  * `${env}:stream:task-events` stream and applies partial updates to
- * the target history item inside the project's single Yjs document.
+ * the target node's `data` Y.Map inside the project's single Yjs document.
  *
  * Data path:
  *   Worker → Redis Streams → task-listener → Hocuspocus openDirectConnection
- *   → doc.transact → nodesMap.get(nodeId).get("data").get("history")[i].set(...)
+ *   → doc.transact('node-state-update') → nodesMap.get(nodeId).get("data").set(field, value)
  *
  * Durable resume — the last handled stream id is persisted to Redis
  * so a Collab restart never drops in-flight events.
  *
- * There is one document per project (`project-{projectId}`). The
- * legacy canvas / nodeEditor routing switch is gone.
+ * There is one document per project (`project-{projectId}`).
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
-import type { HistoryItem, HistoryUpdateEvent, NodeEvent } from "@breatic/shared";
+import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
 import { parseProjectDocName } from "./schema.js";
 import { createLogger } from "./logger.js";
@@ -26,21 +25,24 @@ import { createLogger } from "./logger.js";
 const logger = createLogger("task-listener");
 
 /**
- * Keys of `HistoryItem` that the Worker is permitted to set.
+ * Keys of `CanvasNodeFields['data']` that the Worker is permitted to set.
  *
  * This allowlist prevents:
- *   - adversarial overwrite of stable fields (e.g., `id` breaks future findIndex)
- *   - silent type corruption (e.g., `by` is a Y.Map at runtime; overwriting
- *     it with a plain object breaks `item.get("by").get("userId")` downstream)
+ *   - adversarial overwrite of stable fields (e.g., `name`, `sourceNodeId`)
+ *   - silent type corruption of fields owned by the frontend
+ *
+ * `handlingBy: undefined` clears the field via Y.Map.delete — safe and
+ * intentional for the handling→idle success/failure transition.
  */
-const WORKER_UPDATABLE_FIELDS = new Set<keyof HistoryItem>([
-  "status",
-  "url",
-  "cover",
+const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
+  "state",
+  "content",
+  "cover_url",
+  "errorMessage",
   "width",
   "height",
   "duration",
-  "errorMessage",
+  "handlingBy",
 ] as const);
 
 function taskEventsStreamKey(envPrefix: string): string {
@@ -52,35 +54,46 @@ function taskEventsLastIdKey(envPrefix: string): string {
 }
 
 /**
- * Apply a `HistoryUpdateEvent` to the target project Yjs document.
+ * Apply a `NodeStateUpdateEvent` to the target project Yjs document.
  *
- * Finds the history item identified by `event.historyItemId` inside
- * `nodesMap.get(nodeId).get("data").get("history")` and merges
- * `event.update` (a `Partial<HistoryItem>`) into it field-by-field.
+ * Targets `nodesMap.get(event.nodeId).get("data")` directly and merges
+ * `event.update` (a `Partial<CanvasNodeFields['data']>`) into it field-by-field.
  *
  * Only fields listed in `WORKER_UPDATABLE_FIELDS` are applied; unknown
  * or disallowed keys are dropped with a warn-level log.
  *
- * The field-merge loop is wrapped in `doc.transact("history-update")`
+ * For each allowed key:
+ *   - if value is `undefined` → `dataMap.delete(key)` (clears handlingBy on transition)
+ *   - if value is defined → `dataMap.set(key, value)`
+ *
+ * The field-merge loop is wrapped in `doc.transact('node-state-update')`
  * so all key updates are broadcast to collaborators as a single atomic
  * Yjs update, preventing intermediate-state observations.
  *
  * Idempotent — applying the same update twice produces the same
- * result (Y.Map set is last-write-wins), so stream redelivery is safe.
+ * result (Y.Map set/delete is last-write-wins), so stream redelivery is safe.
  */
-export async function handleHistoryUpdateEvent(
+export async function handleNodeStateUpdateEvent(
   hocuspocus: Hocuspocus,
-  event: HistoryUpdateEvent,
+  event: NodeStateUpdateEvent,
 ): Promise<void> {
-  // Fix I2: debug trace at the top, before any async work
+  // Guard: forward-compat for future unknown event types
+  if ((event as { type: string }).type !== "node-state-update") {
+    logger.warn(
+      { type: (event as { type: string }).type },
+      "Unknown event type, skipping",
+    );
+    return;
+  }
+
+  // Debug trace at the top, before any async work
   logger.debug({
     docName: event.docName,
     nodeId: event.nodeId,
-    historyItemId: event.historyItemId,
     updateKeys: Object.keys(event.update),
-  }, "history-update received");
+  }, "node-state-update received");
 
-  // Fix I1: inline the docName check; projectId is unused so skip the variable
+  // Validate docName — only project-{id} documents are routed here
   if (!parseProjectDocName(event.docName)) {
     logger.warn(
       { docName: event.docName, type: event.type },
@@ -89,13 +102,13 @@ export async function handleHistoryUpdateEvent(
     return;
   }
 
-  // Fix C3: build allowlist-filtered update BEFORE opening the connection
-  // to avoid an unnecessary Doc load when there is nothing to apply.
-  const filteredUpdate: Record<string, unknown> = {};
+  // Build allowlist-filtered update BEFORE opening the connection to avoid
+  // an unnecessary Doc load when there is nothing to apply.
+  const filteredEntries: Array<[string, unknown]> = [];
   const droppedKeys: string[] = [];
   for (const [k, v] of Object.entries(event.update)) {
-    if (WORKER_UPDATABLE_FIELDS.has(k as keyof HistoryItem)) {
-      filteredUpdate[k] = v;
+    if (WORKER_UPDATABLE_FIELDS.has(k as keyof CanvasNodeFields["data"])) {
+      filteredEntries.push([k, v]);
     } else {
       droppedKeys.push(k);
     }
@@ -105,13 +118,12 @@ export async function handleHistoryUpdateEvent(
       {
         docName: event.docName,
         nodeId: event.nodeId,
-        historyItemId: event.historyItemId,
         droppedKeys,
       },
-      "history-update event included disallowed update keys; dropped",
+      "node-state-update event included disallowed update keys; dropped",
     );
   }
-  if (Object.keys(filteredUpdate).length === 0) {
+  if (filteredEntries.length === 0) {
     // Nothing allowed to apply — skip without opening the document.
     return;
   }
@@ -152,50 +164,21 @@ export async function handleHistoryUpdateEvent(
         return;
       }
 
-      const history = dataMap.get("history");
-      if (!(history instanceof Y.Array)) {
-        logger.warn(
-          { docName: event.docName, nodeId: event.nodeId },
-          "node.data.history is not a Y.Array, skipping",
-        );
-        return;
-      }
-
-      // Fix I4: use items[idx] (already-validated reference) instead of
-      // a second history.get(idx) lookup.
-      const items = history.toArray() as Y.Map<unknown>[];
-      const idx = items.findIndex(
-        (item) => item instanceof Y.Map && item.get("id") === event.historyItemId,
-      );
-      if (idx < 0) {
-        // History item deleted before the task completed — expected race.
-        logger.warn(
-          {
-            docName: event.docName,
-            nodeId: event.nodeId,
-            historyItemId: event.historyItemId,
-          },
-          "History item not found (deleted?), skipping",
-        );
-        return;
-      }
-
-      // items[idx] is guaranteed defined because idx >= 0 and the array
-      // was built by history.toArray() in the same synchronous frame.
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const item = items[idx]!;
-
-      // Fix C1: wrap the multi-field merge in a single Yjs transaction so
-      // all key updates are broadcast as one atomic update. Without this,
-      // each item.set() emits a separate Yjs update and collaborators can
-      // observe intermediate states (e.g., status="done" before url arrives).
-      // The "history-update" origin lets UndoManager (PR-12) filter these
-      // server-side writes.
+      // Wrap the multi-field merge in a single Yjs transaction so all key
+      // updates are broadcast as one atomic update. Without this, each
+      // dataMap.set/delete() emits a separate Yjs update and collaborators
+      // can observe intermediate states (e.g., state='idle' before handlingBy cleared).
+      // The 'node-state-update' origin lets UndoManager filter server-side writes.
       doc.transact(() => {
-        for (const [k, v] of Object.entries(filteredUpdate)) {
-          item.set(k, v);
+        for (const [k, v] of filteredEntries) {
+          if (v === undefined) {
+            // Worker sends handlingBy: undefined to clear it on idle transition.
+            dataMap.delete(k);
+          } else {
+            dataMap.set(k, v);
+          }
         }
-      }, "history-update");
+      }, "node-state-update");
 
       applied = true;
     });
@@ -208,10 +191,9 @@ export async function handleHistoryUpdateEvent(
       {
         docName: event.docName,
         nodeId: event.nodeId,
-        historyItemId: event.historyItemId,
-        updateKeys: Object.keys(filteredUpdate),
+        updateKeys: filteredEntries.map(([k]) => k),
       },
-      "History item updated",
+      "Node state updated",
     );
   }
 }
@@ -219,18 +201,18 @@ export async function handleHistoryUpdateEvent(
 /**
  * Route incoming `NodeEvent` to the appropriate handler.
  *
- * Currently only `HistoryUpdateEvent` is in the union, but the guard
+ * Currently only `NodeStateUpdateEvent` is in the union, but the guard
  * is explicit for forward-compatibility.
  */
 async function handleNodeEvent(
   hocuspocus: Hocuspocus,
   event: NodeEvent,
 ): Promise<void> {
-  if (event.type === "history-update") {
-    await handleHistoryUpdateEvent(hocuspocus, event);
+  if (event.type === "node-state-update") {
+    await handleNodeStateUpdateEvent(hocuspocus, event);
     return;
   }
-  // Fix M2: Unreachable with current NodeEvent union, but kept for forward
+  // Unreachable with current NodeEvent union, but kept for forward
   // compatibility — when a new event type is added in shared/, this
   // guard logs unknown types instead of silently dropping them.
   logger.warn({ type: (event as { type: string }).type }, "Unknown event type, skipping");

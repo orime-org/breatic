@@ -1,8 +1,8 @@
 /**
- * Unit tests for `handleHistoryUpdateEvent` in task-listener.ts.
+ * Unit tests for `handleNodeStateUpdateEvent` in task-listener.ts.
  *
  * Strategy:
- *   - Use real `yjs` (`new Y.Doc()`, `Y.Map`, `Y.Array`) — deterministic, no mocking needed.
+ *   - Use real `yjs` (`new Y.Doc()`, `Y.Map`) — deterministic, no mocking needed.
  *   - Stub Hocuspocus: `openDirectConnection` returns a fake connection whose
  *     `transact` callback receives the pre-seeded Y.Doc.
  *   - Mock the collab logger so we can assert warn/info calls without file I/O.
@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
-import type { HistoryUpdateEvent } from "@breatic/shared";
+import type { NodeStateUpdateEvent } from "@breatic/shared";
 
 // ── Hoist spy instances so they are available inside vi.mock factories ─────
 // vi.mock factories are hoisted to the top of the file by Vitest's transform,
@@ -49,7 +49,7 @@ vi.mock("pino", () => ({
 }));
 
 // Now import the function under test (after mocks are in place).
-import { handleHistoryUpdateEvent } from "../task-listener.js";
+import { handleNodeStateUpdateEvent } from "../task-listener.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -61,13 +61,12 @@ import { handleHistoryUpdateEvent } from "../task-listener.js";
  *   canvas: Y.Map
  *     nodesMap: Y.Map
  *       [nodeId]: Y.Map
- *         data: Y.Map
- *           history: Y.Array<Y.Map>   ← each entry has at least { id, status }
+ *         data: Y.Map   ← keyed by CanvasNodeFields['data'] field names
  * ```
  */
 function buildSeededDoc(
   nodeId: string,
-  historyItems: Array<Record<string, unknown>>,
+  dataFields: Record<string, unknown>,
 ): Y.Doc {
   const doc = new Y.Doc();
   const canvasMap = doc.getMap("canvas");
@@ -79,17 +78,10 @@ function buildSeededDoc(
   nodesMap.set(nodeId, nodeMap);
 
   const dataMap = new Y.Map();
-  nodeMap.set("data", dataMap);
-
-  const history = new Y.Array();
-  for (const item of historyItems) {
-    const itemMap = new Y.Map();
-    for (const [k, v] of Object.entries(item)) {
-      itemMap.set(k, v);
-    }
-    history.push([itemMap]);
+  for (const [k, v] of Object.entries(dataFields)) {
+    dataMap.set(k, v);
   }
-  dataMap.set("history", history);
+  nodeMap.set("data", dataMap);
 
   return doc;
 }
@@ -97,240 +89,275 @@ function buildSeededDoc(
 /**
  * Build a Hocuspocus stub whose `openDirectConnection` delivers
  * `transact` callbacks to the provided pre-built doc.
+ *
+ * Captures doc.transact calls so tests can assert transaction origin.
  */
-function buildHocuspocus(doc: Y.Doc): Hocuspocus {
-  const transact = vi.fn(async (cb: (doc: Y.Doc) => void) => {
+function buildHocuspocus(doc: Y.Doc): {
+  hocuspocus: Hocuspocus;
+  transactSpy: ReturnType<typeof vi.fn>;
+  disconnectSpy: ReturnType<typeof vi.fn>;
+} {
+  const transactSpy = vi.fn(async (cb: (doc: Y.Doc) => void) => {
     cb(doc);
   });
-  const disconnect = vi.fn(async () => undefined);
-  const openDirectConnection = vi.fn(async () => ({ transact, disconnect }));
+  const disconnectSpy = vi.fn(async () => undefined);
+  const openDirectConnection = vi.fn(async () => ({
+    transact: transactSpy,
+    disconnect: disconnectSpy,
+  }));
 
-  return { openDirectConnection } as unknown as Hocuspocus;
+  return {
+    hocuspocus: { openDirectConnection } as unknown as Hocuspocus,
+    transactSpy,
+    disconnectSpy,
+  };
+}
+
+/** Helper: navigate to a node's data Y.Map. */
+function getDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> {
+  const canvasMap = doc.getMap("canvas");
+  const nodesMap = canvasMap.get("nodesMap") as Y.Map<unknown>;
+  const nodeMap = nodesMap.get(nodeId) as Y.Map<unknown>;
+  return nodeMap.get("data") as Y.Map<unknown>;
 }
 
 /** Valid docName matching the `project-{id}` pattern. */
 const VALID_DOC_NAME = "project-00000000-0000-0000-0000-000000000001";
 const NODE_ID = "node-abc";
-const HISTORY_ITEM_ID = "h1";
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
-describe("handleHistoryUpdateEvent", () => {
+describe("handleNodeStateUpdateEvent", () => {
   beforeEach(() => {
     warnSpy.mockClear();
     infoSpy.mockClear();
     debugSpy.mockClear();
   });
 
-  // ── Case 1: loading → done ─────────────────────────────────────────────
-  it("applies status+url update when history item exists (loading→done)", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+  // ── Case 1: handling → idle success ───────────────────────────────────
+  it("applies state + content; deletes handlingBy when value is undefined (handling→idle success)", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", username: "alice" },
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
-      update: { status: "done", url: "https://cdn.example.com/result.png" },
-    };
-
-    await handleHistoryUpdateEvent(hocuspocus, event);
-
-    // Verify the Yjs doc was mutated correctly.
-    const canvasMap = doc.getMap("canvas");
-    const nodesMap = canvasMap.get("nodesMap") as Y.Map<unknown>;
-    const nodeMap = nodesMap.get(NODE_ID) as Y.Map<unknown>;
-    const dataMap = nodeMap.get("data") as Y.Map<unknown>;
-    const history = dataMap.get("history") as Y.Array<Y.Map<unknown>>;
-    const item = history.get(0);
-
-    expect(item.get("status")).toBe("done");
-    expect(item.get("url")).toBe("https://cdn.example.com/result.png");
-    // Original id untouched.
-    expect(item.get("id")).toBe(HISTORY_ITEM_ID);
-  });
-
-  // ── Case 2: loading → failed ───────────────────────────────────────────
-  it("applies status+errorMessage update (loading→failed)", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
-
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
-      docName: VALID_DOC_NAME,
-      nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
-      update: { status: "failed", errorMessage: "upstream error" },
-    };
-
-    await handleHistoryUpdateEvent(hocuspocus, event);
-
-    const history = (
-      (
-        (doc.getMap("canvas").get("nodesMap") as Y.Map<unknown>)
-          .get(NODE_ID) as Y.Map<unknown>
-      ).get("data") as Y.Map<unknown>
-    ).get("history") as Y.Array<Y.Map<unknown>>;
-
-    const item = history.get(0);
-    expect(item.get("status")).toBe("failed");
-    expect(item.get("errorMessage")).toBe("upstream error");
-  });
-
-  // ── Case 3: allowlist filter ───────────────────────────────────────────
-  it("filters disallowed keys and logs droppedKeys", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
-
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
-      docName: VALID_DOC_NAME,
-      nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
       update: {
-        status: "done",
-        url: "https://cdn.example.com/r.png",
-        // These are disallowed: id, by (not in WORKER_UPDATABLE_FIELDS)
-        id: "OVERWRITE" as never,
-        by: { userId: "evil", username: "evil" } as never,
+        state: "idle",
+        content: "https://cdn.example.com/result.png",
+        handlingBy: undefined,
       },
     };
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    await handleNodeStateUpdateEvent(hocuspocus, event);
 
-    // Allowed fields applied.
-    const history = (
-      (
-        (doc.getMap("canvas").get("nodesMap") as Y.Map<unknown>)
-          .get(NODE_ID) as Y.Map<unknown>
-      ).get("data") as Y.Map<unknown>
-    ).get("history") as Y.Array<Y.Map<unknown>>;
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("content")).toBe("https://cdn.example.com/result.png");
+    // handlingBy: undefined → Y.Map.delete(key) — key should no longer exist
+    expect(dataMap.has("handlingBy")).toBe(false);
+  });
 
-    const item = history.get(0);
-    expect(item.get("status")).toBe("done");
-    expect(item.get("url")).toBe("https://cdn.example.com/r.png");
+  // ── Case 2: handling → idle failure ───────────────────────────────────
+  it("applies state + errorMessage; deletes handlingBy; leaves content untouched (handling→idle failure)", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", username: "alice" },
+      content: "https://cdn.example.com/previous.png",
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    // Disallowed fields NOT applied.
-    expect(item.get("id")).toBe(HISTORY_ITEM_ID); // unchanged
-    expect(item.get("by")).toBeUndefined();
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: {
+        state: "idle",
+        errorMessage: "upstream timeout",
+        handlingBy: undefined,
+      },
+    };
 
-    // droppedKeys logged.
-    expect(warnSpy).toHaveBeenCalledOnce();
-    // pino logger.warn(obj, message) — 2 arguments.
-    const [logObj, msg] = warnSpy.mock.calls[0] as [{ droppedKeys: string[] }, string];
-    expect(msg).toMatch(/disallowed/i);
-    expect(logObj.droppedKeys).toEqual(expect.arrayContaining(["id", "by"]));
-    expect(logObj.droppedKeys).toHaveLength(2);
+    await handleNodeStateUpdateEvent(hocuspocus, event);
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("errorMessage")).toBe("upstream timeout");
+    expect(dataMap.has("handlingBy")).toBe(false);
+    // content is NOT in update → must remain untouched
+    expect(dataMap.get("content")).toBe("https://cdn.example.com/previous.png");
+  });
+
+  // ── Case 3: allowlist drops disallowed keys ────────────────────────────
+  it("filters disallowed keys and logs droppedKeys; only allowed keys applied", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const event = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: {
+        state: "idle" as const,
+        // Disallowed keys
+        name: "OVERWRITE",
+        sourceNodeId: "evil",
+      },
+    };
+
+    await handleNodeStateUpdateEvent(hocuspocus, event as NodeStateUpdateEvent);
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    // Allowed key applied
+    expect(dataMap.get("state")).toBe("idle");
+    // Disallowed keys NOT applied
+    expect(dataMap.has("name")).toBe(false);
+    expect(dataMap.has("sourceNodeId")).toBe(false);
+
+    // droppedKeys warn emitted
+    expect(warnSpy).toHaveBeenCalled();
+    const warnCalls = warnSpy.mock.calls as [{ droppedKeys: string[] }, string][];
+    const droppedCall = warnCalls.find(([, msg]) => /disallowed/i.test(msg ?? ""));
+    expect(droppedCall).toBeDefined();
+    const droppedKeys = droppedCall![0].droppedKeys;
+    expect(droppedKeys).toEqual(expect.arrayContaining(["name", "sourceNodeId"]));
   });
 
   // ── Case 4: empty filtered update bails before doc load ───────────────
-  it("does NOT call openDirectConnection when all keys are disallowed", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+  it("does NOT call openDirectConnection when all keys are disallowed (filtered update empty)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
+    const event = {
+      type: "node-state-update" as const,
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
-      // Only disallowed keys — nothing survives the allowlist filter.
-      update: {
-        id: "x" as never,
-      },
+      update: { name: "x" },
     };
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    await handleNodeStateUpdateEvent(hocuspocus, event as NodeStateUpdateEvent);
 
     expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
   });
 
   // ── Case 5: node not found ─────────────────────────────────────────────
-  it("warns and returns when nodeId is not in nodesMap", async () => {
-    // Doc has no nodes.
-    const doc = buildSeededDoc("other-node", [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+  it("warns and returns when nodeId is not in nodesMap (race-safe)", async () => {
+    // Doc has a different node; target NODE_ID is absent
+    const doc = buildSeededDoc("other-node", { state: "idle" });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
       docName: VALID_DOC_NAME,
-      nodeId: "missing-node",
-      historyItemId: HISTORY_ITEM_ID,
-      update: { status: "done" },
+      nodeId: NODE_ID,
+      update: { state: "idle" },
     };
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    await handleNodeStateUpdateEvent(hocuspocus, event);
 
-    // Should have warned about missing node.
-    // pino warn signature: logger.warn(obj, message) — message is arg[1].
     expect(warnSpy).toHaveBeenCalled();
     const warningMessages = (warnSpy.mock.calls as [unknown, string][])
       .map(([, msg]) => msg ?? "");
     expect(warningMessages.some((m) => /not found/i.test(m))).toBe(true);
   });
 
-  // ── Case 6: history item not found ────────────────────────────────────
-  it("warns and returns when historyItemId is not in history array", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: "h1", status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+  // ── Case 6: multi-field atomicity via doc.transact ────────────────────
+  it("wraps all field mutations in a single doc.transact with origin 'node-state-update'", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", username: "alice" },
+    });
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
-      docName: VALID_DOC_NAME,
-      nodeId: NODE_ID,
-      historyItemId: "h999", // does not exist
-      update: { status: "done" },
+    // We intercept doc.transact to inspect the origin string.
+    const transactCalls: Array<{ origin: string }> = [];
+    const originalTransact = doc.transact.bind(doc);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (doc as any).transact = (fn: () => void, origin?: unknown) => {
+      transactCalls.push({ origin: origin as string });
+      originalTransact(fn, origin);
     };
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    expect(warnSpy).toHaveBeenCalled();
-    const warningMessages = (warnSpy.mock.calls as [unknown, string][])
-      .map(([, msg]) => msg ?? "");
-    expect(warningMessages.some((m) => /not found/i.test(m))).toBe(true);
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: {
+        state: "idle",
+        content: "https://cdn.example.com/r.png",
+        cover_url: "https://cdn.example.com/r.png",
+        handlingBy: undefined,
+      },
+    };
+
+    await handleNodeStateUpdateEvent(hocuspocus, event);
+
+    // Exactly one doc.transact call with the correct origin
+    const nodeStateTransacts = transactCalls.filter(
+      (c) => c.origin === "node-state-update",
+    );
+    expect(nodeStateTransacts).toHaveLength(1);
+
+    // All 4 fields should have been applied within that single transaction
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("content")).toBe("https://cdn.example.com/r.png");
+    expect(dataMap.get("cover_url")).toBe("https://cdn.example.com/r.png");
+    expect(dataMap.has("handlingBy")).toBe(false);
   });
 
   // ── Case 7: malformed docName ──────────────────────────────────────────
   it("warns and skips when docName does not match project-{id} pattern", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
-      docName: "bad-doc-name", // invalid pattern
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: "bad",   // invalid pattern
       nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
-      update: { status: "done" },
+      update: { state: "idle" },
     };
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    await handleNodeStateUpdateEvent(hocuspocus, event);
 
     expect(warnSpy).toHaveBeenCalled();
     expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
   });
 
-  // ── Case 8: unknown event type dispatched via handleNodeEvent ─────────
-  // We test the internal guard via the exported handler indirectly:
-  // handleHistoryUpdateEvent only handles "history-update"; the unknown-type
-  // guard lives in handleNodeEvent. We verify that a legacy docName sub-path
-  // (which parseProjectDocName rejects) triggers the same warn+skip path,
-  // ensuring forward-compat behaviour is exercised.
-  it("legacy sub-path docName (project-id/canvas) is rejected with warn and no connection", async () => {
-    const doc = buildSeededDoc(NODE_ID, [{ id: HISTORY_ITEM_ID, status: "loading" }]);
-    const hocuspocus = buildHocuspocus(doc);
+  // ── Case 8: unknown event type forward-compat ─────────────────────────
+  // The `NodeEvent` union currently has one member, but the router guard
+  // should warn+skip unknown future types instead of crashing.
+  // We test via startTaskListener's internal router by importing a private
+  // helper; since that's not exported, we verify the guard indirectly by
+  // checking that a future-type event with an otherwise-valid docName
+  // does NOT touch openDirectConnection (the router calls the handler,
+  // which starts with a type check — an unknown type returns early).
+  it("warns and skips event with unrecognised type (forward-compat guard)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
 
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
-      // Legacy path — parseProjectDocName returns null for this.
-      docName: "project-00000000-0000-0000-0000-000000000001/canvas",
+    // Cast to NodeStateUpdateEvent to bypass TS type check for this test.
+    const event = {
+      type: "future-unknown-type",
+      docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
-      historyItemId: HISTORY_ITEM_ID,
-      update: { status: "done" },
-    };
+      update: { state: "idle" },
+    } as unknown as NodeStateUpdateEvent;
 
-    await handleHistoryUpdateEvent(hocuspocus, event);
+    // handleNodeStateUpdateEvent will receive it; the guard at top of the
+    // function checks event.type === 'node-state-update' and should bail.
+    await handleNodeStateUpdateEvent(hocuspocus, event);
 
-    expect(warnSpy).toHaveBeenCalled();
+    // The function should not have opened a connection for an unknown type.
     expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    const warningMessages = (warnSpy.mock.calls as [unknown, string][])
+      .map(([, msg]) => msg ?? "");
+    expect(warningMessages.some((m) => /Unknown event type|unknown.*type/i.test(m))).toBe(true);
   });
 });
