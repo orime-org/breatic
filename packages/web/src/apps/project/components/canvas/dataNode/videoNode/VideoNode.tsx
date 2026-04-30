@@ -15,8 +15,7 @@ import VideoNodeContent from './VideoNodeContent';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useActiveHistoryItem } from '@/hooks/useActiveHistoryItem';
-import type { HistoryItem } from '@breatic/shared';
+import { cn } from '@/utils/classnames';
 import { getVideoMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
@@ -35,12 +34,12 @@ const sourceHandleId = 'Video_0_0';
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
-type VideoNodeData = { name?: string; activeHistoryId?: string; history?: HistoryItem[]; pickState?: CanvasWorkflowNodeData['pickState'] };
+type VideoNodeData = { name?: string; content?: string; cover_url?: string; width?: number; height?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, pushHistoryItem, setActiveHistoryId, onNodesChange } = useCanvasActions();
+  const { setNodeContent, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -56,15 +55,17 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
 
-  /** Derived from node data: current video URL via active history item. */
+  /** Derived from node data: current video URL from data.content (canvas-native schema). */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as VideoNodeData | undefined;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const activeItem = useActiveHistoryItem(nodeData as { activeHistoryId?: string; history: HistoryItem[] } | undefined);
-  const videoUrlFromData = activeItem?.url ?? '';
+  /** Direct read: cover_url for thumbnail, content for playback URL. */
+  const videoUrlFromData = nodeData?.content ?? '';
+  const isHandling = nodeData?.state === 'handling';
+  const errorMessage = nodeData?.errorMessage;
   const [videoUrl, setVideoUrl] = useState(videoUrlFromData);
 
-  /** Sync local state from active history item URL and dimensions. */
+  /** Sync local state from data.content and dimensions. */
   useEffect(() => {
     if (videoUrlFromData !== videoUrl) {
       setVideoUrl(videoUrlFromData);
@@ -74,8 +75,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(null);
       setContentWidth(null);
     }
-    const w = activeItem?.width;
-    const h = activeItem?.height;
+    const w = nodeData?.width;
+    const h = nodeData?.height;
     if (videoUrlFromData && typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
       const isLandscape = w >= h;
       if (isLandscape) {
@@ -88,7 +89,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoUrlFromData, activeItem?.width, activeItem?.height]);
+  }, [videoUrlFromData, nodeData?.width, nodeData?.height]);
 
   /** Compute content area size from source dimensions (same as ImageNode). */
   const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
@@ -104,7 +105,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     }
   };
 
-  /** Local file: object URL — writes a history item + sets activeHistoryId. */
+  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -118,18 +119,11 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
         applyContentSizeFromDimensions(meta.width, meta.height);
       }
       const resourceUrl = URL.createObjectURL(file);
-      const historyId = crypto.randomUUID();
-      pushHistoryItem(id, {
-        id: historyId,
-        url: resourceUrl,
+      setNodeContent(id, {
+        content: resourceUrl,
         width: meta.width ?? undefined,
         height: meta.height ?? undefined,
-        by: { userId: 'local', username: 'local' },
-        createdAt: Date.now(),
-        source: 'upload',
-        status: 'done',
       });
-      setActiveHistoryId(id, historyId);
       setIsLoading(false);
       onSuccess(resourceUrl);
     } catch (error) {
@@ -264,10 +258,30 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                 <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Loading Video...</div>
               </div>
             ) : (
-              <div className='w-full h-full min-h-0 flex items-center justify-center overflow-hidden rounded-[8px]'>
+              <div className={cn(
+                'w-full h-full min-h-0 flex items-center justify-center overflow-hidden rounded-[8px]',
+                errorMessage && !isHandling && 'outline outline-2 outline-red-400',
+              )}>
                 {videoUrl ? (
-                  <div className='w-full h-full'>
+                  <div className='relative w-full h-full'>
+                    {/* Handling overlay */}
+                    {isHandling && (
+                      <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
+                        <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
+                        <div className='text-[12px] text-white font-normal mt-2'>Processing...</div>
+                      </div>
+                    )}
+                    {errorMessage && !isHandling && (
+                      <div className='absolute top-1 right-1 z-[10] max-w-[80%] rounded px-1.5 py-0.5 text-[10px] font-medium text-white bg-red-500 leading-tight truncate' title={errorMessage}>
+                        {errorMessage}
+                      </div>
+                    )}
                     <VideoNodeContent src={videoUrl} selected={selected} onMentionClick={handleMentionClick} />
+                  </div>
+                ) : isHandling ? (
+                  <div className='w-full h-full flex flex-col items-center justify-center text-center'>
+                    <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
+                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Processing...</div>
                   </div>
                 ) : (
                   <Upload
