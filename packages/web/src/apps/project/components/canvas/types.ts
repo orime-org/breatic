@@ -91,21 +91,31 @@ export type AgentCanvasPickConsumeFrom = PickConsumeFrom;
  *
  * Extends `CanvasNodeFields["data"]` from `@breatic/shared` (the canonical
  * Yjs schema) with UI-only fields that live in React local state or as
- * transient Yjs coordination signals, NOT part of the history schema.
+ * transient Yjs coordination signals, NOT part of the node-state-machine schema.
  *
- * Shared fields (from `CanvasNodeFields["data"]`):
+ * Shared fields (from `CanvasNodeFields["data"]`, canvas-native schema):
  * - `name`              — display label
- * - `activeHistoryId`   — UUID of the active history entry
- * - `history`           — ordered timeline of versioned results (HistoryItem[])
- * - `attachments`       — per-node upload pool (AttachRef[])
- * - `prompt`            — rich text (Y.XmlFragment at runtime; typed `unknown` in shared)
+ * - `state`             — Yjs-shared lifecycle: 'idle' | 'handling'
+ * - `handlingBy`        — who triggered the current handling (present iff state === 'handling')
+ * - `errorMessage`      — last failure message (present when state === 'idle' + last op failed)
+ * - `content`           — primary result URL (image/video/audio/3D) or text body
+ * - `cover_url`         — video first-frame thumbnail
+ * - `width`/`height`    — pixel dimensions (image/video)
+ * - `duration`          — video/audio duration in seconds
+ * - `sourceNodeId`      — parent node id when produced by mini-tool
+ * - `operation`/`operationParams` — mini-tool provenance
+ * - `prompt`/`model`/`modelParams` — generative node fields
  * - `childIds`          — group node child IDs
+ * - `attachments`       — per-node upload pool (AttachRef[])
  *
- * UI-only fields (NOT in Yjs history schema):
+ * UI-only fields (NOT in Yjs schema):
  * - `pickState`         — canvas-pick-mode state (stored in Yjs as transient coordination signal)
  * - `handles`           — React Flow handle config (React local state only)
- * - `attach`            — composer draft upload stash (React local state only, written via updateNode but not persisted in Yjs history)
+ * - `attach`            — composer draft upload stash (React local state only)
  * - `params`            — composer parameter overrides (React local state only)
+ *
+ * TODO PR-C+: migrate `attach` / `params` to a dedicated React context or zustand slice
+ * so they are no longer tunnelled through node.data.
  */
 export interface CanvasWorkflowNodeData extends CanvasNodeData {
   /** Present only while pick mode is active for this node; absent otherwise. */
@@ -115,21 +125,13 @@ export interface CanvasWorkflowNodeData extends CanvasNodeData {
   /**
    * UI-only — composer draft upload stash.
    *
-   * Written via `updateNode({ data: { attach } })` as a transient React-state
-   * coordination mechanism; the `updateNode` implementation does NOT persist
-   * this field to Yjs history (see useCanvasActions.ts "Do not persist old fields").
-   *
-   * TODO PR-6+: migrate composer draft state to a dedicated React context or
-   * zustand slice so it is no longer tunnelled through node.data.
+   * TODO PR-C+: move to dedicated composer state.
    */
   attach?: unknown;
   /**
    * UI-only — composer parameter overrides.
    *
-   * Similar to `attach`: written to node.data as a transient stash but not
-   * written to Yjs history by the current updateNode implementation.
-   *
-   * TODO PR-6+: move to dedicated composer state.
+   * TODO PR-C+: move to dedicated composer state.
    */
   params?: Record<string, unknown>;
 }

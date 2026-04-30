@@ -32,7 +32,7 @@ const isEditablePasteContext = (e: ClipboardEvent): boolean => {
 };
 
 /** Builds a text node for pasted plain text.
- * TODO PR-6+: `textContent` is currently unused in the new schema because
+ * TODO PR-C+: `textContent` is currently unused in the canvas-native schema because
  * text lives in the Yjs `prompt` Y.XmlFragment. After paste, the caller should
  * open the node editor and insert text into the TipTap document.
  */
@@ -47,13 +47,12 @@ const createTextNode = (
     position,
     selected: true,
     style: { width: 300 },
-    // addNode() in useCanvasActions only reads `name`; history/attachments/prompt
-    // are initialised as empty Yjs structures. UI-only `handles` config is kept here.
+    // addNode() in useCanvasActions reads `name` and `state`; attachments is
+    // initialised as empty Y.Array. UI-only `handles` config is kept here.
     data: {
       name: 'text',
-      history: [],
+      state: 'idle',
       attachments: [],
-      prompt: null,
       handles: {
         target: [{ handleType: 'Text', number: 1 }],
       },
@@ -74,9 +73,8 @@ const createImageNodeForUpload = (
     selected: true,
     data: {
       name: 'image',
-      history: [],
+      state: 'idle',
       attachments: [],
-      prompt: null,
       handles: {
         target: [{ handleType: 'Image', number: 1 }],
       },
@@ -97,9 +95,8 @@ const createVideoNodeForUpload = (
     selected: true,
     data: {
       name: 'video',
-      history: [],
+      state: 'idle',
       attachments: [],
-      prompt: null,
       handles: {
         target: [{ handleType: 'Video', number: 1 }],
       },
@@ -120,9 +117,8 @@ const createAudioNodeForUpload = (
     selected: true,
     data: {
       name: 'audio',
-      history: [],
+      state: 'idle',
       attachments: [],
-      prompt: null,
       handles: {
         target: [{ handleType: 'Audio', number: 1 }],
       },

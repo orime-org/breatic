@@ -5,6 +5,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
+import { LocalPendingProvider } from '@/contexts/LocalPendingProvider';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
@@ -65,7 +66,9 @@ const ProjectPage: React.FC = () => {
 
   return (
     <CanvasDataProvider manager={yjs.manager ?? null}>
-      <ProjectContentBody yjs={yjs} />
+      <LocalPendingProvider>
+        <ProjectContentBody yjs={yjs} />
+      </LocalPendingProvider>
     </CanvasDataProvider>
   );
 };
