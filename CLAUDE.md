@@ -85,14 +85,16 @@ server / worker / web
 
 ## 画布协作
 
-- 节点创建/布局：**前端控制**，后端只更新节点 `data` 字段
+- 节点创建/布局：**前端控制**，后端只更新节点 `data` 字段；前端独占节点 create/delete，后端只能改 state 字段
 - 画布事件：**全走 Yjs**（不走 SSE），Agent 聊天流保留 SSE
-- 并发生成冲突：**后端 Redis SETNX 锁**（`${env}:canvas:lock:{projectId}:{nodeId}` TTL 2h），前端只读 state 不写
-- 事件总线：**Redis Streams** `${env}:stream:canvas-nodes`，NodeEvent 类型（handling/completed/failed），Collab 消费后通过 `nodesMap.get(nodeId).get("data").set(field, value)` 写目标节点的嵌套 data Y.Map
-- 文档命名：`project-{id}/canvas`（画布），`project-{id}/node/{nodeId}`（节点编辑器）
-- Yjs 节点结构镜像 ReactFlow `{ id, type, position, data }`：`id/type/position` 顶层，`name/content/state/handlingBy/prompt/attachments/params` 在嵌套 `data: Y.Map` 内
+- 并发无锁：Phase 2 起每次操作在画布上产生新的兄弟节点（用 edge 连接），不再有 per-node Redis SETNX 锁；Category B mini-tool 允许同一节点并发操作
+- 事件总线：**Redis Streams** `${env}:stream:canvas-nodes`，NodeEvent 类型（`node-state-update`），Collab 消费后通过 `nodesMap.get(nodeId).get("data").set(field, value)` 更新目标节点 state/content 等字段
+- 文档命名：`project-{id}`（每项目一个 Yjs 文档；不再有 per-node 编辑器子文档）
+- Yjs 节点结构镜像 ReactFlow `{ id, type, position, data }`：`id/type/position` 顶层，`name/state/handlingBy/content/cover_url/errorMessage/width/height/duration/sourceNodeId/operation/operationParams/prompt/model/modelParams/attachments/childIds` 在嵌套 `data: Y.Map` 内
+- 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state（不入 Yjs）；失败 = `idle` + `errorMessage`
 - 前端 Yjs-first 架构：写操作直接写 Yjs，增量 observe 只重建变更节点
 - **Yjs 持久化**走 PG `yjs_documents` 表（Hocuspocus Database extension），**跨实例同步**走 Redis pub/sub（Hocuspocus Redis extension）
+- Worker 发出的事件支持 `targetNodeIds: string[]`（1:N），前端预先创建 N 个占位节点，Worker 对每个节点分别 emit 一条 NodeStateUpdateEvent
 - 完整规范见 [docs/YJS.md](./docs/YJS.md)
 
 ## 三层记忆 + Turn 压缩
@@ -140,7 +142,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 ## Skill 系统
 
-**三区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）| Editor（不用 Skill）
+**两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap，左侧全屏面板）独立运行，不使用 Skill。
 
 **metadata.json 字段规范**：
 

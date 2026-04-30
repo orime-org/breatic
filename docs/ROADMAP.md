@@ -66,15 +66,17 @@
 
 - [ ] 积分购买页面：Stripe Checkout 跳转 + 余额显示 + 购买历史
 - [ ] 项目管理：创建/删除/重命名项目、项目列表、缩略图
-- [ ] 节点编辑器：根据节点类型切换（text 富文本 + AIGC mini-tools UI + text mini-tools UI）
-  - text 富文本：✅ PR #138 TextEditor + TipTap collaboration
-  - AIGC mini-tools UI：✅ PR #134 mixed editor (cut/speed/erase/extend/animate/adjust/stabilization/crop) + #136 HDR/scene-extension + #139 lip-sync/denoise；PR #135 类型路由（1001→text，1002-1004→mixed）
+- [ ] 节点交互（canvas-native，PR-C 起）：
+  - text 富文本：✅ TipTap 富文本编辑器（左侧全屏面板，绑定 `data.prompt` Y.XmlFragment）
+  - canvas-native mini-tools：image.crop / image.adjust / image.remove-bg / video tools / audio tools 逐条接入（前端 `new/` 分支开发中）
+  - 节点悬浮菜单（selected 节点上方）+ 底部工具栏：PR-C 范畴
   - text mini-tools UI：10 个 text mini-tool 的 slash-menu 接入待确认
 - [ ] i18n 前端接入：统一 i18n 方案（前后端共享或独立），语言切换 UI
 
 ### 画布协作
 
-- [x] 节点编辑器文档：每个节点的富文本编辑器独立 Yjs 文档（`project-{id}/node/{nodeId}`）—— PR #138 (foundation `useYjsNodeEditor` + `nodeEditorYjsRef`) + #140 (修复 docName 路由错误，从 `project-{nodeId}/canvas` 改成 `project-{projectId}/node/{nodeId}`)
+- [x] 节点编辑器文档（Phase 1）：per-node Yjs 文档 `project-{id}/node/{nodeId}` 支持文本/混合编辑器 —— PR #138 + #140。已在 Phase 2 替换为 canvas-native 模型（见下方 Phase 2）
+- [x] **Phase 2: canvas-native 架构前向修复（PR #13 后端 + PR #14 前端）**：单项目 Yjs 文档（`project-{id}`），取消 per-node 编辑器子文档；NodeStateUpdateEvent 统一事件形态（替代 handling/completed/failed 三事件）；节点状态机 idle/handling（Yjs）+ localPending（本地）；后端不再持有 per-node Redis 锁；操作产生新兄弟节点；1:N 支持（targetNodeIds）
 - [ ] 文档权限控制：onAuthenticate 中按 project 成员关系校验，支持 readOnly
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
