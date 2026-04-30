@@ -24,7 +24,7 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 
 miniTools.use("*", requireAuth);
 
-const tasksQueue = createQueue("mini-tools");
+const tasksQueue = createQueue("tasks");
 
 /** TTS-class tool names that use task_type="tts" instead of "audio". */
 const TTS_TOOLS = new Set(["tts", "voice-clone"]);
@@ -75,14 +75,19 @@ async function enqueueMiniTool(
     "mini_tool",
   );
 
+  // Worker dispatcher reads `source: "mini_tool"` to route to runMiniTool.
+  // Without it, the job falls through to the AIGC direct path which expects
+  // a `model` field that mini-tool requests don't provide.
   const job = await tasksQueue.add(
     "execute-mini-tool",
     {
       taskId: task.id,
       userId,
+      projectId,
       toolName,
       taskType,
       params,
+      source: "mini_tool",
       targetNodeIds,
     },
     defaultJobOpts(),
