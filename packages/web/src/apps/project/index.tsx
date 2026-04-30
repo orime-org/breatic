@@ -12,7 +12,6 @@ import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/utils/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
-import ImageEditorPage from '../imageEditor';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
 import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
@@ -216,11 +215,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({
                 </Tooltip>
                 {isTextNode && panelNode ? (
                   <TextEditor nodeId={panelNode.id} />
-                ) : isImageNode && panelNode ? (
-                  <div className='flex h-full min-h-0 w-full flex-col overflow-hidden pt-10'>
-                    <ImageEditorPage nodeId={panelNode.id} />
-                  </div>
-                ) : isVideoOrAudioNode && panelNode ? (
+                ) : (isImageNode || isVideoOrAudioNode) && panelNode ? (
                   <EditorComingSoonPlaceholder nodeId={panelNode.id} />
                 ) : (
                   <ResizableLeftPanel />
