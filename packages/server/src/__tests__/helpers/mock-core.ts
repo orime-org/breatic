@@ -42,6 +42,14 @@ const mockRedis = {
  *  assert BullMQ job payloads without needing access to the queue instance. */
 export const mockQueueAdd = vi.fn().mockResolvedValue({ id: "job-1" });
 
+/**
+ * Tracks `createQueue(name)` calls so tests can assert the queue name —
+ * regression guard for a Phase 2 wiring bug where mini-tools.ts created
+ * `"mini-tools"` queue but the worker only listens on `"tasks"`. Caught
+ * in dev smoke test (PR #16); guarded by tests now.
+ */
+export const mockCreateQueue = vi.fn();
+
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
   authService: {
@@ -137,7 +145,10 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getRedis: () => mockRedis,
     closeRedis: () => Promise.resolve(),
     runMigrations: vi.fn(),
-    createQueue: () => ({ add: mockQueueAdd }),
+    createQueue: (name: string) => {
+      mockCreateQueue(name);
+      return { add: mockQueueAdd };
+    },
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),
