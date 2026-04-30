@@ -357,8 +357,9 @@ export interface NodeStateDoneFields {
  * Extracted for testability. Called from Stage 4 of `runTask` after a
  * successful persist. Errors are swallowed by the caller.
  *
- * `handlingBy` is explicitly set to `undefined` so the Collab consumer
+ * `handlingBy` is explicitly set to `null` so the Collab consumer
  * deletes the key from the node's data Y.Map (clearing the actor badge).
+ * null is used instead of undefined because JSON.stringify strips undefined.
  *
  * @param streamRedis - Redis client for the stream DB
  * @param docName - Project doc name (e.g. "project-{projectId}")
@@ -382,7 +383,9 @@ export async function emitNodeStateDone(
       width: contentFields.width,
       height: contentFields.height,
       duration: contentFields.duration,
-      handlingBy: undefined,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
     },
   });
 }
@@ -411,7 +414,9 @@ export async function emitNodeStateFailed(
     update: {
       state: "idle",
       errorMessage,
-      handlingBy: undefined,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
     },
   });
 }

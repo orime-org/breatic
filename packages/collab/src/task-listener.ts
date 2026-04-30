@@ -31,8 +31,9 @@ const logger = createLogger("task-listener");
  *   - adversarial overwrite of stable fields (e.g., `name`, `sourceNodeId`)
  *   - silent type corruption of fields owned by the frontend
  *
- * `handlingBy: undefined` clears the field via Y.Map.delete — safe and
+ * `handlingBy: null` clears the field via Y.Map.delete — safe and
  * intentional for the handling→idle success/failure transition.
+ * null is used (not undefined) because JSON.stringify strips undefined keys.
  */
 const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "state",
@@ -171,8 +172,10 @@ export async function handleNodeStateUpdateEvent(
       // The 'node-state-update' origin lets UndoManager filter server-side writes.
       doc.transact(() => {
         for (const [k, v] of filteredEntries) {
-          if (v === undefined) {
-            // Worker sends handlingBy: undefined to clear it on idle transition.
+          if (v === undefined || v === null) {
+            // Worker sends handlingBy: null to clear it on idle transition.
+            // null survives JSON.stringify/parse; undefined does not.
+            // Both are treated as "delete this key from the Y.Map".
             dataMap.delete(k);
           } else {
             dataMap.set(k, v);

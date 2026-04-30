@@ -101,10 +101,26 @@ export interface CanvasNodeFields {
 // ── Event bus payloads ────────────────────────────────────────────
 
 /**
+ * Partial update payload for a NodeStateUpdateEvent.
+ *
+ * Mirrors `Partial<CanvasNodeFields['data']>` but allows `null` for
+ * fields that can be explicitly cleared — most importantly `handlingBy`.
+ *
+ * Why null instead of undefined:
+ *   `JSON.stringify({ handlingBy: undefined })` → `"{}"` — the key is
+ *   dropped and the Collab consumer never sees it. Using `null` preserves
+ *   the key through the JSON round-trip so the consumer can call
+ *   `dataMap.delete("handlingBy")` to clear the field.
+ */
+export type NodeStateUpdatePayload = {
+  [K in keyof CanvasNodeFields['data']]?: CanvasNodeFields['data'][K] | null;
+};
+
+/**
  * Worker → Collab event.
  *
  * Worker writes to canvas state via this event (never directly to Yjs).
- * Collab consumes the event and applies `update` (Partial<CanvasNodeData>)
+ * Collab consumes the event and applies `update` (NodeStateUpdatePayload)
  * to the target node, with allowlist filtering on the receiving end.
  *
  * Universal rule: backend can ONLY modify state fields. It cannot
@@ -114,6 +130,11 @@ export interface CanvasNodeFields {
  * duration), enforced by the consumer's allowlist.
  *
  * docName is always `project-{projectId}` (single-project-doc model).
+ *
+ * Null-as-delete convention:
+ *   A `null` value means "clear this field" (consumer calls Y.Map.delete).
+ *   An absent key means "leave this field untouched".
+ *   This distinction survives the JSON round-trip; `undefined` does not.
  */
 export interface NodeStateUpdateEvent {
   type: 'node-state-update';
@@ -122,7 +143,7 @@ export interface NodeStateUpdateEvent {
   /** Target node receiving the update. */
   nodeId: string;
   /** Partial update merged into target node's data Y.Map by Collab consumer. */
-  update: Partial<CanvasNodeFields['data']>;
+  update: NodeStateUpdatePayload;
 }
 
 /** Single union for forward-compat. */
