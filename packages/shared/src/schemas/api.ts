@@ -64,14 +64,13 @@ export const taskCreateSchema = z.object({
   project_id: z.string().optional(),
   source: z.string().default("canvas"),
   /**
-   * UUID v4 of the HistoryItem the frontend has already pushed into Yjs
-   * with `status: "loading"`.  The worker uses this id to target the
-   * correct item when emitting HistoryUpdateEvent on completion / failure.
-   *
+   * UUID v4 of the canvas node that will receive the task result.
    * Required when `node_ids` is present (single-node tasks).
+   * The worker wraps this into `targetNodeIds: [target_node_id]` in the
+   * BullMQ job payload.
    * Omit for tasks that do not bind to a canvas node.
    */
-  history_item_id: z.string().uuid().optional(),
+  target_node_id: z.string().uuid().optional(),
 });
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
