@@ -3,239 +3,267 @@
  *
  * Uses expectTypeOf for structural type assertions (vitest 3 compatible).
  * Runtime value tests verify that the declared shapes accept valid objects.
+ * @ts-expect-error tests verify that removed types/fields are truly gone.
  */
 
 import { describe, it, expect, expectTypeOf } from "vitest";
 import type {
-  HistoryItemStatus,
-  HistoryItemSource,
-  HistoryItem,
+  NodeState,
+  HandlingActor,
+  AttachRef,
   CanvasNodeFields,
-  HistoryUpdateEvent,
+  NodeStateUpdateEvent,
   NodeEvent,
 } from "../types/canvas-node.js";
 
-// ── HistoryItemStatus ──────────────────────────────────────────────
 
-describe("HistoryItemStatus", () => {
-  it("is the union loading | done | failed", () => {
-    const loading: HistoryItemStatus = "loading";
-    const done: HistoryItemStatus = "done";
-    const failed: HistoryItemStatus = "failed";
+// ── AttachRef ──────────────────────────────────────────────────────
 
-    expect(loading).toBe("loading");
-    expect(done).toBe("done");
-    expect(failed).toBe("failed");
-  });
-
-  it("type is exactly the three-value union", () => {
-    expectTypeOf<HistoryItemStatus>().toEqualTypeOf<
-      "loading" | "done" | "failed"
-    >();
+describe("AttachRef", () => {
+  it("accepts a valid AttachRef shape", () => {
+    const ref: AttachRef = {
+      id: "a1",
+      url: "https://cdn.example.com/file.png",
+      name: "file.png",
+      mimeType: "image/png",
+      size: 12345,
+      uploadedAt: "2026-04-30T00:00:00.000Z",
+    };
+    expect(ref.id).toBe("a1");
+    expect(ref.mimeType).toBe("image/png");
   });
 });
 
-// ── HistoryItemSource ──────────────────────────────────────────────
+// ── NodeState ──────────────────────────────────────────────────────
 
-describe("HistoryItemSource", () => {
-  it("accepts all four source values", () => {
-    const apply: HistoryItemSource = "apply";
-    const canvasAi: HistoryItemSource = "canvas-ai";
-    const editorMiniTool: HistoryItemSource = "editor-mini-tool";
-    const upload: HistoryItemSource = "upload";
-
-    expect(apply).toBe("apply");
-    expect(canvasAi).toBe("canvas-ai");
-    expect(editorMiniTool).toBe("editor-mini-tool");
-    expect(upload).toBe("upload");
+describe("NodeState", () => {
+  it("is exactly the two-value union idle | handling", () => {
+    const idle: NodeState = "idle";
+    const handling: NodeState = "handling";
+    expect(idle).toBe("idle");
+    expect(handling).toBe("handling");
   });
 
-  it("type is exactly the four-value union", () => {
-    expectTypeOf<HistoryItemSource>().toEqualTypeOf<
-      "apply" | "canvas-ai" | "editor-mini-tool" | "upload"
-    >();
+  it("type is exactly the two-value union (no third state)", () => {
+    expectTypeOf<NodeState>().toEqualTypeOf<"idle" | "handling">();
   });
 });
 
-// ── HistoryItem ────────────────────────────────────────────────────
+// ── HandlingActor ──────────────────────────────────────────────────
 
-describe("HistoryItem", () => {
-  it("accepts a minimal required-field item (loading state, no url)", () => {
-    const item: HistoryItem = {
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      by: { userId: "user-1", username: "alice" },
-      createdAt: Date.now(),
-      source: "canvas-ai",
-      status: "loading",
+describe("HandlingActor", () => {
+  it("accepts a valid HandlingActor shape", () => {
+    const actor: HandlingActor = {
+      userId: "user-1",
+      username: "alice",
     };
-
-    expect(item.id).toBe("550e8400-e29b-41d4-a716-446655440000");
-    expect(item.status).toBe("loading");
-    expect(item.url).toBeUndefined();
+    expect(actor.userId).toBe("user-1");
+    expect(actor.username).toBe("alice");
   });
 
-  it("accepts a full item with all optional fields (done state)", () => {
-    const item: HistoryItem = {
-      id: "aaaabbbb-cccc-dddd-eeee-ffffffffffff",
-      url: "https://cdn.example.com/image.jpg",
-      cover: "https://cdn.example.com/thumb.jpg",
-      width: 1024,
-      height: 768,
-      duration: 30,
-      by: { userId: "user-2", username: "bob" },
-      createdAt: 1_700_000_000_000,
-      source: "editor-mini-tool",
-      tool: "image.remove-bg",
-      params: { brightness: 12 },
-      prompt: "remove the background",
-      status: "done",
-    };
-
-    expect(item.status).toBe("done");
-    expect(item.width).toBe(1024);
-    expect(item.tool).toBe("image.remove-bg");
-  });
-
-  it("accepts a failed item with errorMessage", () => {
-    const item: HistoryItem = {
-      id: "11111111-2222-3333-4444-555555555555",
-      by: { userId: "user-3", username: "carol" },
-      createdAt: Date.now(),
-      source: "upload",
-      status: "failed",
-      errorMessage: "Upload timed out",
-    };
-
-    expect(item.status).toBe("failed");
-    expect(item.errorMessage).toBe("Upload timed out");
+  it("type matches { userId: string; username: string }", () => {
+    expectTypeOf<HandlingActor>().toEqualTypeOf<{
+      userId: string;
+      username: string;
+    }>();
   });
 });
 
 // ── CanvasNodeFields ───────────────────────────────────────────────
 
 describe("CanvasNodeFields", () => {
-  it("data accepts activeHistoryId and history array", () => {
-    const historyId = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
-    const historyItem: HistoryItem = {
-      id: historyId,
-      url: "https://cdn.example.com/img.png",
-      by: { userId: "u1", username: "alice" },
-      createdAt: 1_700_000_000_000,
-      source: "canvas-ai",
-      status: "done",
-    };
-
+  it("accepts a minimal valid shape with only required fields", () => {
     const node: CanvasNodeFields = {
       id: "node-1",
       type: "1002",
       position: { x: 100, y: 200 },
       data: {
         name: "Image Node",
-        activeHistoryId: historyId,
-        history: [historyItem],
+        state: "idle",
         attachments: [],
-        prompt: null,
       },
     };
-
-    expect(node.data.activeHistoryId).toBe(historyId);
-    expect(node.data.history).toHaveLength(1);
+    expect(node.id).toBe("node-1");
+    expect(node.data.state).toBe("idle");
+    expect(node.data.attachments).toHaveLength(0);
   });
 
-  it("data.activeHistoryId is optional", () => {
+  it("accepts a full data node with all optional data fields populated", () => {
     const node: CanvasNodeFields = {
       id: "node-2",
+      type: "1002",
+      position: { x: 50, y: 50 },
+      data: {
+        name: "Result Image",
+        state: "idle",
+        attachments: [],
+        handlingBy: undefined,
+        errorMessage: undefined,
+        content: "https://cdn.example.com/image.png",
+        cover_url: "https://cdn.example.com/image.png",
+        width: 1024,
+        height: 768,
+        duration: undefined,
+        sourceNodeId: "node-0",
+        operation: "image.crop",
+        operationParams: { x: 0, y: 0, w: 512, h: 512 },
+      },
+    };
+    expect(node.data.content).toBe("https://cdn.example.com/image.png");
+    expect(node.data.width).toBe(1024);
+    expect(node.data.operation).toBe("image.crop");
+    expect(node.data.sourceNodeId).toBe("node-0");
+  });
+
+  it("accepts a generative node with prompt/model/modelParams populated", () => {
+    const node: CanvasNodeFields = {
+      id: "node-3",
+      type: "generative",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "Generate Art",
+        state: "handling",
+        handlingBy: { userId: "u1", username: "alice" },
+        attachments: [],
+        prompt: "a painting of a sunset",
+        model: "flux-dev",
+        modelParams: { steps: 30, guidance: 7.5 },
+      },
+    };
+    expect(node.data.state).toBe("handling");
+    expect(node.data.handlingBy?.username).toBe("alice");
+    expect(node.data.model).toBe("flux-dev");
+  });
+
+  it("accepts a group node with childIds", () => {
+    const node: CanvasNodeFields = {
+      id: "group-1",
       type: "group",
       position: { x: 0, y: 0 },
       data: {
-        name: "Group Node",
-        history: [],
+        name: "My Group",
+        state: "idle",
         attachments: [],
-        prompt: null,
-        childIds: ["node-1", "node-3"],
+        childIds: ["node-1", "node-2"],
       },
     };
-
-    expect(node.data.childIds).toEqual(["node-1", "node-3"]);
-    expect(node.data.activeHistoryId).toBeUndefined();
+    expect(node.data.childIds).toEqual(["node-1", "node-2"]);
   });
 
-  it("removed legacy data fields no longer compile", () => {
+  it("removed data fields no longer compile", () => {
     const data: CanvasNodeFields["data"] = {
       name: "x",
-      history: [],
+      state: "idle",
       attachments: [],
-      prompt: undefined,
     };
-    // @ts-expect-error coverUrl removed
-    data.coverUrl;
-    // @ts-expect-error state removed
-    data.state;
-    // @ts-expect-error content removed
-    data.content;
-    // @ts-expect-error handlingBy removed
-    data.handlingBy;
-    // @ts-expect-error runType removed
+
+    // @ts-expect-error activeHistoryId removed in Phase 2 forward-fix
+    data.activeHistoryId;
+
+    // @ts-expect-error history removed in Phase 2 forward-fix
+    data.history;
+
+    // @ts-expect-error runType was removed earlier; verify still absent
     data.runType;
-    // Positive control: .name access works (data is a real object)
+
+    // @ts-expect-error errorInfo renamed to errorMessage; old name gone
+    data.errorInfo;
+
+    // Positive control: .name access works
     expect(data.name).toBe("x");
   });
 });
 
-// ── HistoryUpdateEvent ─────────────────────────────────────────────
+// ── NodeStateUpdateEvent ───────────────────────────────────────────
 
-describe("HistoryUpdateEvent", () => {
-  it("accepts a valid history update event", () => {
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
+describe("NodeStateUpdateEvent", () => {
+  it("accepts a valid node-state-update event shape", () => {
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
       docName: "project-abc123",
       nodeId: "node-1",
-      historyItemId: "h1",
       update: {
-        status: "done",
-        url: "https://cdn.example.com/result.png",
+        state: "handling",
+        handlingBy: { userId: "u1", username: "alice" },
       },
     };
-
-    expect(event.type).toBe("history-update");
+    expect(event.type).toBe("node-state-update");
     expect(event.docName).toBe("project-abc123");
-    expect(event.update.status).toBe("done");
+    expect(event.update.state).toBe("handling");
   });
 
-  it("type literal is exactly 'history-update'", () => {
-    expectTypeOf<HistoryUpdateEvent["type"]>().toEqualTypeOf<"history-update">();
-  });
-
-  it("update is Partial<HistoryItem>", () => {
-    // A minimal partial update (just status) must be valid
-    const event: HistoryUpdateEvent = {
-      type: "history-update",
+  it("update is Partial<CanvasNodeFields['data']>", () => {
+    // A completion update with content result
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
       docName: "project-xyz",
       nodeId: "node-5",
-      historyItemId: "h2",
-      update: { status: "failed", errorMessage: "Worker crashed" },
+      update: {
+        state: "idle",
+        content: "https://cdn.example.com/result.mp4",
+        cover_url: "https://cdn.example.com/thumb.jpg",
+        width: 1920,
+        height: 1080,
+        duration: 15,
+      },
     };
+    expect(event.update.content).toBe("https://cdn.example.com/result.mp4");
+    expect(event.update.duration).toBe(15);
+  });
 
-    expect(event.update.errorMessage).toBe("Worker crashed");
+  it("type literal is exactly 'node-state-update'", () => {
+    expectTypeOf<NodeStateUpdateEvent["type"]>().toEqualTypeOf<"node-state-update">();
   });
 });
 
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  it("is an alias of HistoryUpdateEvent", () => {
-    expectTypeOf<NodeEvent>().toEqualTypeOf<HistoryUpdateEvent>();
+  it("is an alias of NodeStateUpdateEvent", () => {
+    expectTypeOf<NodeEvent>().toEqualTypeOf<NodeStateUpdateEvent>();
   });
 
-  it("accepts a HistoryUpdateEvent as NodeEvent", () => {
+  it("accepts a NodeStateUpdateEvent as NodeEvent", () => {
     const event: NodeEvent = {
-      type: "history-update",
+      type: "node-state-update",
       docName: "project-abc",
       nodeId: "node-1",
-      historyItemId: "h1",
-      update: { status: "loading" },
+      update: { state: "idle", errorMessage: "Worker crashed" },
     };
+    expect(event.type).toBe("node-state-update");
+  });
+});
 
-    expect(event.type).toBe("history-update");
+// ── Removed types — import-level checks ───────────────────────────
+// The types below no longer exist in canvas-node.ts.
+// TypeScript's module resolution will catch the import as TS2305.
+// We verify here by testing the exported keys do NOT include the old names.
+
+describe("Removed types are absent from exports", () => {
+  it("HistoryItem is not exported (verified via @ts-expect-error on import)", () => {
+    // @ts-expect-error TS2305: 'HistoryItem' is not exported from module
+    type _H = import("../types/canvas-node.js").HistoryItem;
+    // If we reach this line, the test still passes — the @ts-expect-error
+    // suppresses the type error at compile time, which is exactly what we want:
+    // if HistoryItem IS exported, the @ts-expect-error itself would error.
+    expect(true).toBe(true);
+  });
+
+  it("HistoryUpdateEvent is not exported (verified via @ts-expect-error on import)", () => {
+    // @ts-expect-error TS2305: 'HistoryUpdateEvent' is not exported from module
+    type _H = import("../types/canvas-node.js").HistoryUpdateEvent;
+    expect(true).toBe(true);
+  });
+
+  it("HistoryItemStatus is not exported (verified via @ts-expect-error on import)", () => {
+    // @ts-expect-error TS2305: 'HistoryItemStatus' is not exported from module
+    type _S = import("../types/canvas-node.js").HistoryItemStatus;
+    expect(true).toBe(true);
+  });
+
+  it("HistoryItemSource is not exported (verified via @ts-expect-error on import)", () => {
+    // @ts-expect-error TS2305: 'HistoryItemSource' is not exported from module
+    type _S = import("../types/canvas-node.js").HistoryItemSource;
+    expect(true).toBe(true);
   });
 });
