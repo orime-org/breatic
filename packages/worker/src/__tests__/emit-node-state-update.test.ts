@@ -112,7 +112,8 @@ describe("emitNodeStateDone", () => {
         width: contentFields.width,
         height: contentFields.height,
         duration: undefined,
-        handlingBy: undefined,
+        // null (not undefined) so the key survives JSON.stringify round-trip
+        handlingBy: null,
       },
     });
   });
@@ -131,7 +132,7 @@ describe("emitNodeStateDone", () => {
     expect(update.cover_url).toBeUndefined();
     expect(update.width).toBeUndefined();
     expect(update.height).toBeUndefined();
-    expect(update.handlingBy).toBeUndefined();
+    expect(update.handlingBy).toBeNull();
   });
 
   it("fans out N calls when called N times (multi-output fanout via caller loop)", async () => {
@@ -156,7 +157,7 @@ describe("emitNodeStateDone", () => {
       expect(event.type).toBe("node-state-update");
       expect(event.docName).toBe(docName);
       expect((event.update as Record<string, unknown>).state).toBe("idle");
-      expect((event.update as Record<string, unknown>).handlingBy).toBeUndefined();
+      expect((event.update as Record<string, unknown>).handlingBy).toBeNull();
     }
 
     expect((calls[0]![1].update as Record<string, unknown>).content).toBe("https://oss/a.png");
@@ -184,7 +185,8 @@ describe("emitNodeStateFailed", () => {
       update: {
         state: "idle",
         errorMessage,
-        handlingBy: undefined,
+        // null (not undefined) so the key survives JSON.stringify round-trip
+        handlingBy: null,
       },
     });
   });
@@ -210,7 +212,7 @@ describe("emitNodeStateFailed", () => {
       expect(event.docName).toBe(docName);
       expect((event.update as Record<string, unknown>).state).toBe("idle");
       expect((event.update as Record<string, unknown>).errorMessage).toBe(errorMessage);
-      expect((event.update as Record<string, unknown>).handlingBy).toBeUndefined();
+      expect((event.update as Record<string, unknown>).handlingBy).toBeNull();
     }
   });
 });

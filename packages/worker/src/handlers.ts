@@ -16,7 +16,7 @@ import { runLocalHandler } from "./handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
-import { getRedis, getStreamRedis } from "@breatic/core";
+import { getStreamRedis } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
@@ -90,7 +90,6 @@ export interface TaskJobData {
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
 
-  const redis = getRedis();
   const streamRedis = getStreamRedis();
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
@@ -357,8 +356,9 @@ export interface NodeStateDoneFields {
  * Extracted for testability. Called from Stage 4 of `runTask` after a
  * successful persist. Errors are swallowed by the caller.
  *
- * `handlingBy` is explicitly set to `undefined` so the Collab consumer
+ * `handlingBy` is explicitly set to `null` so the Collab consumer
  * deletes the key from the node's data Y.Map (clearing the actor badge).
+ * null is used instead of undefined because JSON.stringify strips undefined.
  *
  * @param streamRedis - Redis client for the stream DB
  * @param docName - Project doc name (e.g. "project-{projectId}")
@@ -382,7 +382,9 @@ export async function emitNodeStateDone(
       width: contentFields.width,
       height: contentFields.height,
       duration: contentFields.duration,
-      handlingBy: undefined,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
     },
   });
 }
@@ -411,7 +413,9 @@ export async function emitNodeStateFailed(
     update: {
       state: "idle",
       errorMessage,
-      handlingBy: undefined,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
     },
   });
 }

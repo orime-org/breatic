@@ -31,8 +31,9 @@ const logger = createLogger("task-listener");
  *   - adversarial overwrite of stable fields (e.g., `name`, `sourceNodeId`)
  *   - silent type corruption of fields owned by the frontend
  *
- * `handlingBy: undefined` clears the field via Y.Map.delete — safe and
+ * `handlingBy: null` clears the field via Y.Map.delete — safe and
  * intentional for the handling→idle success/failure transition.
+ * null is used (not undefined) because JSON.stringify strips undefined keys.
  */
 const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "state",
@@ -104,11 +105,17 @@ export async function handleNodeStateUpdateEvent(
 
   // Build allowlist-filtered update BEFORE opening the connection to avoid
   // an unnecessary Doc load when there is nothing to apply.
+  //
+  // Sentinel decode: JSON.stringify drops `undefined` values, so the publisher
+  // (event-stream.ts::publishToStream) encodes them as the string "__undefined__".
+  // We decode that sentinel back to `undefined` here so the field-merge loop
+  // can call `dataMap.delete(key)` for the handlingBy→undefined clear path.
+  const UNDEFINED_SENTINEL = "__undefined__";
   const filteredEntries: Array<[string, unknown]> = [];
   const droppedKeys: string[] = [];
   for (const [k, v] of Object.entries(event.update)) {
     if (WORKER_UPDATABLE_FIELDS.has(k as keyof CanvasNodeFields["data"])) {
-      filteredEntries.push([k, v]);
+      filteredEntries.push([k, v === UNDEFINED_SENTINEL ? undefined : v]);
     } else {
       droppedKeys.push(k);
     }
@@ -171,8 +178,10 @@ export async function handleNodeStateUpdateEvent(
       // The 'node-state-update' origin lets UndoManager filter server-side writes.
       doc.transact(() => {
         for (const [k, v] of filteredEntries) {
-          if (v === undefined) {
-            // Worker sends handlingBy: undefined to clear it on idle transition.
+          if (v === undefined || v === null) {
+            // Worker sends handlingBy: null to clear it on idle transition.
+            // null survives JSON.stringify/parse; undefined does not.
+            // Both are treated as "delete this key from the Y.Map".
             dataMap.delete(k);
           } else {
             dataMap.set(k, v);
