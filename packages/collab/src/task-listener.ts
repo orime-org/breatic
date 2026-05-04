@@ -105,11 +105,17 @@ export async function handleNodeStateUpdateEvent(
 
   // Build allowlist-filtered update BEFORE opening the connection to avoid
   // an unnecessary Doc load when there is nothing to apply.
+  //
+  // Sentinel decode: JSON.stringify drops `undefined` values, so the publisher
+  // (event-stream.ts::publishToStream) encodes them as the string "__undefined__".
+  // We decode that sentinel back to `undefined` here so the field-merge loop
+  // can call `dataMap.delete(key)` for the handlingBy→undefined clear path.
+  const UNDEFINED_SENTINEL = "__undefined__";
   const filteredEntries: Array<[string, unknown]> = [];
   const droppedKeys: string[] = [];
   for (const [k, v] of Object.entries(event.update)) {
     if (WORKER_UPDATABLE_FIELDS.has(k as keyof CanvasNodeFields["data"])) {
-      filteredEntries.push([k, v]);
+      filteredEntries.push([k, v === UNDEFINED_SENTINEL ? undefined : v]);
     } else {
       droppedKeys.push(k);
     }

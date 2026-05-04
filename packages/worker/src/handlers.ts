@@ -16,7 +16,7 @@ import { runLocalHandler } from "./handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
-import { getRedis, getStreamRedis } from "@breatic/core";
+import { getStreamRedis } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
@@ -90,7 +90,6 @@ export interface TaskJobData {
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
 
-  const redis = getRedis();
   const streamRedis = getStreamRedis();
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
