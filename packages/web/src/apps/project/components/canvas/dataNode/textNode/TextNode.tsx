@@ -285,14 +285,12 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
         onChange={handleToolbarFileChange}
       />
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showToolbar}>
-        <div className='rounded-[8px] pointer-events-auto' onMouseDown={(e) => e.stopPropagation()}>
-          <TextNodeToolbar
-            nodeId={id}
-            isUploading={isUploading}
-            onUploadClick={handleToolbarUploadClick}
-            onInfoClick={handleToolbarInfoClick}
-          />
-        </div>
+        <TextNodeToolbar
+          nodeId={id}
+          isUploading={isUploading}
+          onUploadClick={handleToolbarUploadClick}
+          onInfoClick={handleToolbarInfoClick}
+        />
       </FlowNodeToolbar>
       <div className='relative'>
         <div className='absolute -translate-y-full text-left left-0 -top-0 text-foreground/60 overflow-hidden text-ellipsis whitespace-nowrap'>

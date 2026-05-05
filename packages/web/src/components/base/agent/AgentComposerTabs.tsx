@@ -239,6 +239,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
       if (!open) setStripPreview(null);
     },
     placement: 'top',
+    strategy: 'fixed',
     whileElementsMounted: autoUpdate,
     middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
   });
