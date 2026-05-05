@@ -210,6 +210,16 @@ export const tasks = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    /**
+     * Space within the project that the task targets. v10 multi-doc:
+     * worker writes results back into `project-{projectId}/canvas-{spaceId}`,
+     * so the worker MUST know which Space's doc to open.
+     *
+     * No FK — Spaces live in the Yjs `meta` doc (not in PG), so there
+     * is no FK target. Stored as plain UUID for round-tripping through
+     * the BullMQ payload + worker handler. v10 spec impl §1.2.1.
+     */
+    spaceId: uuid("space_id").notNull(),
     taskType: varchar("task_type", { length: 50 }).notNull(),
     model: varchar("model", { length: 100 }),
     skillName: varchar("skill_name", { length: 100 }),
@@ -246,6 +256,7 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_user_id_idx").on(table.userId),
     index("tasks_project_id_idx").on(table.projectId),
+    index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
     index("tasks_status_idx").on(table.status),
   ],
