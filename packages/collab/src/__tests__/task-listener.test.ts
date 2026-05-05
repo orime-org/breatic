@@ -54,14 +54,14 @@ import { handleNodeStateUpdateEvent } from "../task-listener.js";
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /**
- * Build a seeded Y.Doc that mirrors the canvas structure:
+ * Build a seeded Y.Doc that mirrors the v10 multi-doc canvas
+ * structure:
  *
  * ```
- * doc
- *   canvas: Y.Map
- *     nodesMap: Y.Map
- *       [nodeId]: Y.Map
- *         data: Y.Map   ← keyed by CanvasNodeFields['data'] field names
+ * doc                     ← `project-{pid}/canvas-{spaceId}`
+ *   nodesMap: Y.Map       ← top-level (no `canvas` wrapper Map)
+ *     [nodeId]: Y.Map
+ *       data: Y.Map       ← keyed by CanvasNodeFields['data'] field names
  * ```
  */
 function buildSeededDoc(
@@ -69,10 +69,7 @@ function buildSeededDoc(
   dataFields: Record<string, unknown>,
 ): Y.Doc {
   const doc = new Y.Doc();
-  const canvasMap = doc.getMap("canvas");
-
-  const nodesMap = new Y.Map();
-  canvasMap.set("nodesMap", nodesMap);
+  const nodesMap = doc.getMap("nodesMap");
 
   const nodeMap = new Y.Map();
   nodesMap.set(nodeId, nodeMap);
@@ -113,16 +110,15 @@ function buildHocuspocus(doc: Y.Doc): {
   };
 }
 
-/** Helper: navigate to a node's data Y.Map. */
+/** Helper: navigate to a node's data Y.Map (v10 top-level layout). */
 function getDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> {
-  const canvasMap = doc.getMap("canvas");
-  const nodesMap = canvasMap.get("nodesMap") as Y.Map<unknown>;
+  const nodesMap = doc.getMap("nodesMap");
   const nodeMap = nodesMap.get(nodeId) as Y.Map<unknown>;
   return nodeMap.get("data") as Y.Map<unknown>;
 }
 
-/** Valid docName matching the `project-{id}` pattern. */
-const VALID_DOC_NAME = "project-00000000-0000-0000-0000-000000000001";
+/** Valid docName for the v10 canvas-{spaceId} pattern. */
+const VALID_DOC_NAME = "project-11111111-1111-4111-8111-111111111111/canvas-22222222-2222-4222-9222-222222222222";
 const NODE_ID = "node-abc";
 
 // ── Tests ─────────────────────────────────────────────────────────────────

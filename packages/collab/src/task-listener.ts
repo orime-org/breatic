@@ -1,9 +1,10 @@
 /**
- * Task lifecycle event listener backed by Redis Streams.
+ * Task lifecycle event listener backed by Redis Streams (v10 multi-doc).
  *
  * Consumes `NodeStateUpdateEvent` payloads from the
  * `${env}:stream:task-events` stream and applies partial updates to
- * the target node's `data` Y.Map inside the project's single Yjs document.
+ * the target node's `data` Y.Map inside the project's per-Space
+ * canvas Yjs document.
  *
  * Data path:
  *   Worker → Redis Streams → task-listener → Hocuspocus openDirectConnection
@@ -12,14 +13,18 @@
  * Durable resume — the last handled stream id is persisted to Redis
  * so a Collab restart never drops in-flight events.
  *
- * There is one document per project (`project-{projectId}`).
+ * v10 doc layout: `project-{pid}/canvas-{spaceId}` (one canvas doc
+ * per Space). Worker computes the docName from `task.spaceId`; this
+ * listener accepts only that shape and rejects everything else.
+ * `nodesMap` lives at the top level of the canvas doc (not nested
+ * under a `canvas` wrapper Map).
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
+import { parseDocName } from "@breatic/shared";
 import { startStreamConsumer } from "./event-stream.js";
-import { parseProjectDocName } from "./schema.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("task-listener");
@@ -94,11 +99,15 @@ export async function handleNodeStateUpdateEvent(
     updateKeys: Object.keys(event.update),
   }, "node-state-update received");
 
-  // Validate docName — only project-{id} documents are routed here
-  if (!parseProjectDocName(event.docName)) {
+  // Validate docName — only canvas-Space docs are routed here.
+  // The Worker emits `project-{pid}/canvas-{spaceId}` for every node-
+  // state update; meta / document / timeline kinds are not valid
+  // routes for this listener.
+  const parsed = parseDocName(event.docName);
+  if (!parsed || parsed.kind !== "canvas") {
     logger.warn(
       { docName: event.docName, type: event.type },
-      "Unknown docName pattern (expected project-{id}), skipping",
+      "Unknown docName pattern (expected project-{pid}/canvas-{sid}), skipping",
     );
     return;
   }
@@ -142,15 +151,11 @@ export async function handleNodeStateUpdateEvent(
   let applied = false;
   try {
     await connection.transact((doc: Y.Doc) => {
-      const canvasMap = doc.getMap("canvas");
-      const nodesMap = canvasMap.get("nodesMap");
-      if (!(nodesMap instanceof Y.Map)) {
-        logger.warn(
-          { docName: event.docName, nodeId: event.nodeId },
-          "canvas.nodesMap is not a Y.Map, skipping",
-        );
-        return;
-      }
+      // v10 layout: `nodesMap` at the top level of `canvas-{sid}`.
+      // Pre-v10 used `doc.getMap("canvas").get("nodesMap")` (the
+      // single-doc model nested under a per-Space wrapper); that
+      // wrapper is gone now that each Space has its own doc.
+      const nodesMap = doc.getMap("nodesMap");
 
       const nodeMap = nodesMap.get(event.nodeId);
       if (!(nodeMap instanceof Y.Map)) {
