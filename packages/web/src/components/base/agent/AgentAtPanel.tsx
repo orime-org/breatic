@@ -88,7 +88,6 @@ const AgentAtPanel: React.FC<AgentAtPanelProps> = ({ upstreamItems, uploadItems,
       if (!open) setRowPreview(null);
     },
     placement: 'top',
-    strategy: 'fixed',
     whileElementsMounted: autoUpdate,
     middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
   });

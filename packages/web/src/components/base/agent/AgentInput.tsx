@@ -271,7 +271,6 @@ const AgentComposerInput = forwardRef<AgentComposerInputHandle, AgentComposerInp
       open: showAtPanel,
       onOpenChange: setShowAtPanel,
       placement: 'top-start',
-      strategy: 'fixed',
       whileElementsMounted: autoUpdate,
       middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
     });

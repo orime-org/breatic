@@ -7,11 +7,6 @@ const nodeIconMap: Record<string, string> = {
   '1002': 'node-image',
   '1003': 'node-movie-filter',
   '1004': 'node-music-note',
-  /** Local canvas generator nodes (`new/project` connect-end); same glyphs as palette types. */
-  gen1001: 'node-text-snippet',
-  gen1002: 'node-image',
-  gen1003: 'node-movie-filter',
-  gen1004: 'node-music-note',
   '6001': 'node-movie-edit',
 };
 

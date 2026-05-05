@@ -210,11 +210,7 @@ const edgeTypes = {
 const reactFlowDefaultViewport = { x: 0, y: 0, zoom: 0.5 } as const;
 const reactFlowPanOnDrag: [number] = [1];
 const reactFlowProOptions = { hideAttribution: true } as const;
-/**
- * Avoid `contain: paint` on the React Flow root: it can desync the box-selection rectangle from the graph.
- * Keep `layout` containment only for predictable subtree layout.
- */
-const reactFlowStyle = { contain: 'layout' } as const;
+const reactFlowStyle = { contain: 'layout style paint' } as const;
 
 /** Registers the viewport API (see `getProjectCanvasViewportApi`) for the image editor sibling panel. */
 const ProjectCanvasViewportRegistrar: React.FC = () => {
