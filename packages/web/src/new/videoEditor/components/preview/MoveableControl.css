@@ -1,0 +1,126 @@
+/* Moveable style */
+
+/* control style */
+.moveable-control-media .moveable-control {
+  background: #fff !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(0, 0, 0, 0.5) !important;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: -6px !important;
+  margin-left: -6px !important;
+}
+
+/* text control style */
+.moveable-control-text .moveable-control {
+  background: #fff !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(0, 0, 0, 0.5) !important;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: -6px !important;
+  margin-left: -6px !important;
+}
+
+/* leftrightcontrol */
+.moveable-control-media .moveable-control.moveable-e,
+.moveable-control-media .moveable-control.moveable-w,
+.moveable-control-media .moveable-direction.moveable-e,
+.moveable-control-media .moveable-direction.moveable-w,
+.moveable-control-text .moveable-control.moveable-e,
+.moveable-control-text .moveable-control.moveable-w,
+.moveable-control-text .moveable-direction.moveable-e,
+.moveable-control-text .moveable-direction.moveable-w {
+  width: 12px !important;
+  height: 12px !important;
+  margin-left: -6px !important;
+  margin-top: -6px !important;
+  border-radius: 50% !important;
+}
+
+/* controllinestyle */
+.moveable-control-media .moveable-line,
+.moveable-control-text .moveable-line {
+  background: #F662CC !important;
+  opacity: 0.6 !important;
+}
+
+/* rotationcontrolline - hide line keep control */
+.moveable-control-media .moveable-line.moveable-rotation-line,
+.moveable-control-text .moveable-line.moveable-rotation-line {
+  opacity: 0 !important; /* hiderotationcontrolline */
+  background: transparent !important;
+}
+
+/* rotationcontrol - use SVG */
+.moveable-control-media .moveable-rotation-control,
+.moveable-control-text .moveable-rotation-control {
+  background-image: url(data:image/svg+xml,%3Csvg%20width%3D%2724%27%20height%3D%2724%27%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20fill%3D%27%23757575%27%3E%3Cg%20fill%3D%27none%27%20fill-rule%3D%27evenodd%27%3E%3Ccircle%20stroke%3D%27%23CCD1DA%27%20fill%3D%27%23FFF%27%20cx%3D%2712%27%20cy%3D%2712%27%20r%3D%2711.5%27%2F%3E%3Cpath%20d%3D%27M16.242%2012.012a4.25%204.25%200%2000-5.944-4.158L9.696%206.48a5.75%205.75%200%20018.048%205.532h1.263l-2.01%203.002-2.008-3.002h1.253zm-8.484-.004a4.25%204.25%200%20005.943%203.638l.6%201.375a5.75%205.75%200%2001-8.046-5.013H5.023L7.02%209.004l1.997%203.004h-1.26z%27%20fill%3D%27%23000%27%20fill-rule%3D%27nonzero%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E) !important;
+  width: 24px !important;
+  height: 24px !important;
+  background-size: 100% 100% !important;
+  display: block !important;
+  margin-left: -10px !important;
+  margin-top: -14px !important;
+  border: none !important;
+  background-color: transparent !important;
+  cursor: pointer !important;
+}
+
+
+/* line style（ ） */
+.moveable-control-media .moveable-line.moveable-dashed.moveable-horizontal,
+.moveable-control-media .moveable-line.moveable-dashed.moveable-vertical {
+  border-color: #1677ff !important;
+}
+
+.moveable-control-text .moveable-line.moveable-dashed.moveable-horizontal,
+.moveable-control-text .moveable-line.moveable-dashed.moveable-vertical {
+  border-color: #52c41a !important;
+}
+
+/* control style */
+.moveable-control-media .moveable-direction.moveable-e,
+.moveable-control-media .moveable-direction.moveable-w {
+  cursor: ew-resize !important;
+}
+
+.moveable-control-media .moveable-direction.moveable-s,
+.moveable-control-media .moveable-direction.moveable-n {
+  cursor: ns-resize !important;
+}
+
+.moveable-control-media .moveable-direction.moveable-nw,
+.moveable-control-media .moveable-direction.moveable-se {
+  cursor: nwse-resize !important;
+}
+
+.moveable-control-media .moveable-direction.moveable-ne,
+.moveable-control-media .moveable-direction.moveable-sw {
+  cursor: nesw-resize !important;
+}
+
+.moveable-control-text .moveable-direction.moveable-e,
+.moveable-control-text .moveable-direction.moveable-w {
+  cursor: ew-resize !important;
+}
+
+.moveable-control-text .moveable-direction.moveable-s,
+.moveable-control-text .moveable-direction.moveable-n {
+  cursor: ns-resize !important;
+}
+
+.moveable-control-text .moveable-direction.moveable-nw,
+.moveable-control-text .moveable-direction.moveable-se {
+  cursor: nwse-resize !important;
+}
+
+.moveable-control-text .moveable-direction.moveable-ne,
+.moveable-control-text .moveable-direction.moveable-sw {
+  cursor: nesw-resize !important;
+}
+

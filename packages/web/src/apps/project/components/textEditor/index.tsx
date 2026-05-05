@@ -11,13 +11,11 @@ import '@/styles/editor.css';
  * added to `CanvasNodeFields.data` in `@breatic/shared`.
  *
  * The per-node Yjs doc machinery (`useYjsNodeEditor` / `YjsNodeEditorManager`)
- * was deleted in PR-5. Until PR-6 lands, text nodes show a placeholder.
+ * was deleted in PR-5. Canvas text nodes use the local AI tools panel until PR-6.
  */
-const TextEditor = ({ nodeId: _nodeId }: TextEditorProps) => {
+const TextEditor = (_props: TextEditorProps) => {
   return (
-    <div className='flex h-full w-full flex-col items-center justify-center gap-3 bg-background-default-secondary text-text-default-tertiary'>
-      <span className='text-sm'>Text editor coming soon</span>
-    </div>
+    <div className='flex h-full w-full flex-col bg-background-default-secondary text-text-default-tertiary' aria-label='Text editor placeholder' />
   );
 };
 
