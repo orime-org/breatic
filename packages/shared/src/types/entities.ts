@@ -61,6 +61,12 @@ export interface TaskEntity {
   id: string;
   userId: string;
   projectId: string | null;
+  /**
+   * Space within the project the task targets (v10 multi-doc).
+   * Worker writes results to `project-{projectId}/canvas-{spaceId}`,
+   * so the column is non-null. No FK — Spaces live in Yjs.
+   */
+  spaceId: string;
   taskType: string;
   model: string | null;
   skillName: string | null;

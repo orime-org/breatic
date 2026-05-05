@@ -37,9 +37,20 @@ export type {
   ProjectRole,
   ProjectMember,
   Studio,
+  SpaceType,
+  Space,
+  MembersChangedEvent,
+  SpaceCreatedEvent,
+  SpaceDeletedEvent,
 } from "./types/index.js";
 
-export { ROLE_RANK } from "./types/index.js";
+export {
+  ROLE_RANK,
+  membersChangedChannel,
+  spaceCreatedChannel,
+  spaceDeletedChannel,
+  ALL_PROJECT_CHANNELS_PATTERN,
+} from "./types/index.js";
 
 export type {
   ApiResponse,
@@ -82,9 +93,6 @@ export {
   timelineSpaceDocName,
   parseDocName,
   isProjectScopedDocName,
-  // Deprecated pre-v10 single-doc helpers; PR-C deletes these.
-  projectDocName,
-  parseProjectDocName,
 } from "./yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "./yjs-doc-names.js";
 

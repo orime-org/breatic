@@ -14,9 +14,11 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+import IORedis from "ioredis";
 import { createLogger } from "./logger.js";
 import { createCollabServer } from "./server.js";
 import { startTaskListener } from "./task-listener.js";
+import { startMembersSync } from "./members-sync.js";
 import { getCollabConfig } from "./config.js";
 import { checkCollabInfraReady } from "./connectivity-check.js";
 
@@ -48,9 +50,18 @@ async function main(): Promise<void> {
   // streamRedisUrl: consume Redis Streams (DB 2)
   const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, ENV_PREFIX);
 
+  // Start members-sync subscriber (API → kick + broadcastStateless +
+  // meta-doc Space CRUD apply). Same Redis instance as the task
+  // stream (DB2); members-sync .duplicate()s the connection for its
+  // dedicated subscriber.
+  const controlRedis = new IORedis(REDIS_STREAM_URL, { lazyConnect: false });
+  const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
+    await stopMembersSync();
+    await controlRedis.quit();
     await stopListener();
     await server.destroy();
     logger.info("Shutdown complete");

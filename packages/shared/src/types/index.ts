@@ -28,3 +28,17 @@ export { ROLE_RANK } from "./role.js";
 export type { ProjectRole, ProjectMember } from "./role.js";
 
 export type { Studio } from "./studio.js";
+
+export type { SpaceType, Space } from "./space.js";
+
+export {
+  membersChangedChannel,
+  spaceCreatedChannel,
+  spaceDeletedChannel,
+  ALL_PROJECT_CHANNELS_PATTERN,
+} from "./redis-events.js";
+export type {
+  MembersChangedEvent,
+  SpaceCreatedEvent,
+  SpaceDeletedEvent,
+} from "./redis-events.js";

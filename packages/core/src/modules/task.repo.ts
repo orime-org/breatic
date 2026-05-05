@@ -15,6 +15,7 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     id: row.id,
     userId: row.userId,
     projectId: row.projectId,
+    spaceId: row.spaceId,
     taskType: row.taskType,
     model: row.model,
     skillName: row.skillName,
@@ -77,6 +78,13 @@ export async function softDeleteTask(id: string): Promise<void> {
 export async function createTask(data: {
   userId: string;
   projectId?: string;
+  /**
+   * Space within the project the task targets. Required because the
+   * Worker writes results to `project-{projectId}/canvas-{spaceId}`
+   * (v10 multi-doc layout). Plain UUID — no FK in PG (Spaces live
+   * in Yjs `meta` doc).
+   */
+  spaceId: string;
   taskType: string;
   params: Record<string, unknown>;
   model?: string;
@@ -88,6 +96,7 @@ export async function createTask(data: {
     .values({
       userId: data.userId,
       projectId: data.projectId,
+      spaceId: data.spaceId,
       taskType: data.taskType,
       params: data.params,
       model: data.model,

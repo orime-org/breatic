@@ -16,6 +16,7 @@
  */
 
 import * as projectMembersRepo from "./projectMembers.repo.js";
+import { publishMembersChanged } from "../infra/control-events.js";
 import { ConflictError, NotFoundError } from "../errors.js";
 import { t } from "@breatic/shared";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
@@ -51,7 +52,11 @@ export async function invite(
     throw new ConflictError(t("server.error.conflict"));
   }
   await projectMembersRepo.upsertMember(projectId, targetUserId, role, inviterId);
-  // PR-C: await publishMembersChanged(projectId, { affectedUserId: targetUserId, action: "invite", newRole: role });
+  await publishMembersChanged(projectId, {
+    affectedUserId: targetUserId,
+    action: "invite",
+    newRole: role,
+  });
 }
 
 /**
@@ -84,7 +89,11 @@ export async function changeRole(
   if (!updated) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  // PR-C: await publishMembersChanged(projectId, { affectedUserId: targetUserId, action: "update", newRole });
+  await publishMembersChanged(projectId, {
+    affectedUserId: targetUserId,
+    action: "update",
+    newRole,
+  });
 }
 
 /**
@@ -114,5 +123,8 @@ export async function remove(
   if (!removed) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  // PR-C: await publishMembersChanged(projectId, { affectedUserId: targetUserId, action: "remove" });
+  await publishMembersChanged(projectId, {
+    affectedUserId: targetUserId,
+    action: "remove",
+  });
 }

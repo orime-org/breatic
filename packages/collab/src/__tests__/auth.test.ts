@@ -1,15 +1,19 @@
 /**
- * Unit tests for the Hocuspocus auth hook.
+ * Unit tests for the Hocuspocus auth hook (v10 multi-doc).
  *
- * Pins four properties:
+ * Pins these properties:
  *
  *   1. A missing or expired session token → error
  *   2. A session belonging to user A cannot open documents for a
- *      project owned by user B (the High-4 finding)
- *   3. A document name that does not match the expected
- *      `project-{uuid}` pattern is rejected — legacy `/canvas` and
- *      `/node/{id}` sub-paths are no longer recognized
- *   4. A valid session for the project owner is accepted
+ *      project they have no `project_members` row in
+ *   3. A document name not in the v10 multi-doc shape is rejected
+ *      (`project-{pid}/meta` or `project-{pid}/{kind}-{spaceId}`)
+ *      — including the obsolete pre-v10 single-doc form
+ *      `project-{pid}` and the pre-v6 `project-{pid}/canvas` /
+ *      `/node/{id}` sub-paths
+ *   4. A valid session for an active member is accepted, with the
+ *      member's role echoed back; view → readOnly:true, others →
+ *      readOnly:false
  *
  * Both Redis and postgres are mocked so the test is hermetic.
  */
@@ -18,23 +22,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type Redis from "ioredis";
 import { createAuthHook } from "../auth.js";
 
-// Mock postgres — we don't want to import a real postgres.js client.
-// The template tag is replaced with a function that returns whatever
-// we configure the test to return.
-let sqlImpl: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>;
+// Mock postgres — the auth hook calls `sql\`SELECT ...\`` twice per
+// invocation (project existence + member role). We track each call
+// in order so a single test can stage both queries.
+let sqlQueue: unknown[][];
 vi.mock("postgres", () => ({
-  default: () =>
-    (strings: TemplateStringsArray, ...values: unknown[]) =>
-      sqlImpl(strings, ...values),
+  default: () => () => {
+    const next = sqlQueue.shift();
+    return Promise.resolve(next ?? []);
+  },
 }));
 
 const redisGet = vi.fn();
 const mockRedis = { get: redisGet } as unknown as Redis;
 
+const PID = "11111111-1111-4111-8111-111111111111";
+const SID = "22222222-2222-4222-9222-222222222222";
+
 describe("createAuthHook", () => {
   beforeEach(() => {
     redisGet.mockReset();
-    sqlImpl = vi.fn().mockResolvedValue([]);
+    sqlQueue = [];
   });
 
   const buildHook = () =>
@@ -46,20 +54,20 @@ describe("createAuthHook", () => {
 
   it("rejects an empty token", async () => {
     const hook = buildHook();
-    await expect(hook({ token: "", documentName: "project-abc-123" })).rejects.toThrow(
-      /token/i,
-    );
+    await expect(
+      hook({ token: "", documentName: `project-${PID}/meta` }),
+    ).rejects.toThrow(/token/i);
   });
 
   it("rejects an expired / unknown session token", async () => {
     redisGet.mockResolvedValue(null);
     const hook = buildHook();
     await expect(
-      hook({ token: "bad-token", documentName: "project-00000000-0000-0000-0000-000000000001" }),
+      hook({ token: "bad-token", documentName: `project-${PID}/meta` }),
     ).rejects.toThrow(/session/i);
   });
 
-  it("rejects a document name not matching project-{id}", async () => {
+  it("rejects an unrecognized document name", async () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
     await expect(
@@ -67,48 +75,98 @@ describe("createAuthHook", () => {
     ).rejects.toThrow(/recognized project format/);
   });
 
-  it("rejects legacy project-{uuid}/canvas document name", async () => {
+  it("rejects the obsolete pre-v10 single-doc form", async () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
     await expect(
-      hook({ token: "tok", documentName: "project-abc-123/canvas" }),
+      hook({ token: "tok", documentName: `project-${PID}` }),
     ).rejects.toThrow(/recognized project format/);
   });
 
-  it("rejects legacy project-{uuid}/node/{id} document name", async () => {
+  it("rejects pre-v6 /canvas and /node/{id} sub-paths", async () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
+
     await expect(
-      hook({ token: "tok", documentName: "project-abc-123/node/xyz" }),
+      hook({ token: "tok", documentName: `project-${PID}/canvas` }),
+    ).rejects.toThrow(/recognized project format/);
+
+    await expect(
+      hook({ token: "tok", documentName: `project-${PID}/node/abc` }),
     ).rejects.toThrow(/recognized project format/);
   });
 
-  it("rejects when the authenticated user does not own the project", async () => {
+  it("rejects a valid doc name when the user is not a member", async () => {
     redisGet.mockResolvedValue("attacker");
-    // SQL returns no rows → project is not owned by `attacker`.
-    sqlImpl = vi.fn().mockResolvedValue([]);
+    // 1st query: project exists. 2nd query: no member row.
+    sqlQueue = [[{ id: PID }], []];
     const hook = buildHook();
 
     await expect(
-      hook({
-        token: "tok",
-        documentName: "project-00000000-0000-0000-0000-000000000001",
-      }),
+      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
     ).rejects.toThrow(/not authorized/);
   });
 
-  it("accepts a valid session for a project-owner", async () => {
+  it("rejects when the project itself does not exist", async () => {
     redisGet.mockResolvedValue("user-1");
-    sqlImpl = vi.fn().mockResolvedValue([
-      { id: "00000000-0000-0000-0000-000000000001" },
-    ]);
+    // 1st query: project missing. The auth hook should short-circuit
+    // and not run the member query. We verify by leaving only one
+    // staged response and asserting it ends up unconsumed.
+    sqlQueue = [[]];
+    const hook = buildHook();
+
+    await expect(
+      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
+    ).rejects.toThrow(/not authorized/);
+    // Member query never ran:
+    expect(sqlQueue.length).toBe(0);
+  });
+
+  it("accepts an active owner; readOnly = false", async () => {
+    redisGet.mockResolvedValue("user-1");
+    sqlQueue = [[{ id: PID }], [{ role: "owner" }]];
     const hook = buildHook();
 
     const ctx = await hook({
       token: "tok",
-      documentName: "project-00000000-0000-0000-0000-000000000001",
+      documentName: `project-${PID}/canvas-${SID}`,
     });
 
-    expect(ctx).toEqual({ user: { id: "user-1" } });
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "owner" },
+      connection: { readOnly: false },
+    });
+  });
+
+  it("accepts an active editor; readOnly = false", async () => {
+    redisGet.mockResolvedValue("user-1");
+    sqlQueue = [[{ id: PID }], [{ role: "edit" }]];
+    const hook = buildHook();
+
+    const ctx = await hook({
+      token: "tok",
+      documentName: `project-${PID}/meta`,
+    });
+
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "edit" },
+      connection: { readOnly: false },
+    });
+  });
+
+  it("accepts an active viewer; readOnly = true", async () => {
+    redisGet.mockResolvedValue("user-1");
+    sqlQueue = [[{ id: PID }], [{ role: "view" }]];
+    const hook = buildHook();
+
+    const ctx = await hook({
+      token: "tok",
+      documentName: `project-${PID}/canvas-${SID}`,
+    });
+
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "view" },
+      connection: { readOnly: true },
+    });
   });
 });

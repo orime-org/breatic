@@ -15,6 +15,8 @@ import type { TaskEntity } from "@breatic/shared";
  *
  * @param userId - Owner user UUID
  * @param projectId - Optional project UUID
+ * @param spaceId - Space within the project (required; the Worker writes
+ *   results back to `project-{projectId}/canvas-{spaceId}` — v10 multi-doc)
  * @param taskType - Task type identifier (e.g. "image", "audio")
  * @param params - Task parameters
  * @param model - Optional model name
@@ -25,13 +27,23 @@ import type { TaskEntity } from "@breatic/shared";
 export async function create(
   userId: string,
   projectId: string | undefined,
+  spaceId: string,
   taskType: string,
   params: Record<string, unknown>,
   model?: string,
   skillName?: string,
   source?: string,
 ): Promise<TaskEntity> {
-  return taskRepo.createTask({ userId, projectId, taskType, params, model, skillName, source });
+  return taskRepo.createTask({
+    userId,
+    projectId,
+    spaceId,
+    taskType,
+    params,
+    model,
+    skillName,
+    source,
+  });
 }
 
 /**

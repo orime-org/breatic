@@ -120,7 +120,7 @@ import { runTask } from "@breatic/worker/src/handlers.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers.js";
 import { taskService, schema } from "@breatic/core";
 import { startTaskListener } from "@breatic/collab/src/task-listener.js";
-import { projectDocName } from "@breatic/shared";
+import { canvasSpaceDocName } from "@breatic/shared";
 
 // Declare the shape of values provided by globalSetup.setup() via provide().
 // Vitest uses declaration merging on this interface to type inject() calls.
@@ -161,6 +161,10 @@ const FIXTURE_PROJECT_ID = "00000000-0000-0000-0000-000000000002";
 // the FK on projects.studio_id can be satisfied alongside the
 // existing user fixture.
 const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
+// v10 multi-doc: every task carries a spaceId; the worker writes back
+// to `project-{pid}/canvas-{spaceId}`. Spaces have no PG table, so
+// this is just a stable UUID we reuse across tasks in the test.
+const FIXTURE_SPACE_ID = "00000000-0000-0000-0000-000000000004";
 
 // ── Polling helpers ──────────────────────────────────────────────────────────
 
@@ -199,9 +203,9 @@ async function readNodeData(
   });
   try {
     await conn.transact((doc: Y.Doc) => {
-      const canvasMap = doc.getMap("canvas");
-      const nodesMap = canvasMap.get("nodesMap");
-      if (!(nodesMap instanceof Y.Map)) return;
+      // v10 layout: nodesMap lives at the top level of the canvas-{sid}
+      // doc, not nested under a `canvas` wrapper Map.
+      const nodesMap = doc.getMap("nodesMap");
       const nodeMap = nodesMap.get(nodeId);
       if (!(nodeMap instanceof Y.Map)) return;
       const dataMap = nodeMap.get("data");
@@ -223,8 +227,8 @@ async function readNodeData(
 /**
  * Pre-populate a canvas node in a Hocuspocus document.
  *
- * Mirrors the Yjs canvas structure:
- *   doc.getMap("canvas").nodesMap[nodeId].data = Y.Map(dataFields)
+ * Mirrors the v10 Yjs canvas structure:
+ *   doc.getMap("nodesMap")[nodeId].data = Y.Map(dataFields)
  *
  * Plain object values are set directly; nested plain-object values are
  * converted to Y.Map (for handlingBy etc.).
@@ -240,13 +244,9 @@ async function seedNode(
   });
   try {
     await conn.transact((doc: Y.Doc) => {
-      const canvasMap = doc.getMap("canvas");
-
-      let nodesMap = canvasMap.get("nodesMap");
-      if (!(nodesMap instanceof Y.Map)) {
-        nodesMap = new Y.Map();
-        canvasMap.set("nodesMap", nodesMap);
-      }
+      // v10 layout — nodesMap is the top-level Y.Map on the
+      // canvas-{spaceId} doc.
+      const nodesMap = doc.getMap("nodesMap");
 
       const dataMap = new Y.Map();
       for (const [k, v] of Object.entries(dataFields)) {
@@ -269,7 +269,7 @@ async function seedNode(
         ["data", dataMap],
       ]);
 
-      (nodesMap as Y.Map<unknown>).set(nodeId, nodeMap);
+      nodesMap.set(nodeId, nodeMap);
     });
   } finally {
     await conn.disconnect();
@@ -331,7 +331,7 @@ beforeAll(async () => {
   // Hocuspocus never unloads it between seedNode / readNodeData calls.
   // (Hocuspocus unloads a doc when the last connection closes — without an anchor,
   // disconnect() in seedNode would erase all Y.Map state before readNodeData runs.)
-  const docName = projectDocName(FIXTURE_PROJECT_ID);
+  const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
   anchorConn = await hocuspocus.openDirectConnection(docName, {
     context: { user: { id: "system" }, source: "test-anchor" },
   });
@@ -401,7 +401,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    */
   it("Test 1: success path — state=idle, content+cover_url written, handlingBy deleted", async () => {
     const nodeId = "node-success-t1";
-    const docName = projectDocName(FIXTURE_PROJECT_ID);
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "success";
     providerCtrl.outputs = [{
@@ -424,6 +424,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const [taskRow] = await db.insert(schema.tasks).values({
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
       source: "mini_tool",
       params: {},
@@ -436,6 +437,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       taskType: "image",
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
       toolName: "remove-bg",
       params: {},
@@ -486,7 +488,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    */
   it("Test 2: failure path — state=idle, errorMessage set, content unchanged", async () => {
     const nodeId = "node-failure-t2";
-    const docName = projectDocName(FIXTURE_PROJECT_ID);
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "failure";
     providerCtrl.error = new Error("Synthetic AIGC provider error for test 2");
@@ -503,6 +505,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const [taskRow] = await db.insert(schema.tasks).values({
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
       source: "mini_tool",
       params: {},
@@ -514,6 +517,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       taskType: "image",
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
       toolName: "remove-bg",
       params: {},
@@ -563,7 +567,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    */
   it("Test 3: multi-output fanout — 3 nodes each receive their distinct content URL", async () => {
     const nodeIds = ["node-fan-t3-a", "node-fan-t3-b", "node-fan-t3-c"];
-    const docName = projectDocName(FIXTURE_PROJECT_ID);
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "multi";
     providerCtrl.outputs = [
@@ -585,6 +589,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const [taskRow] = await db.insert(schema.tasks).values({
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
       source: "mini_tool",
       params: {},
@@ -596,6 +601,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       taskType: "image",
       userId: FIXTURE_USER_ID,
       projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
       source: "mini_tool",
       toolName: "multi-angle",
       params: {},

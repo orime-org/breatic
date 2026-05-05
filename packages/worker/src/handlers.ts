@@ -22,7 +22,7 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
-import { projectDocName } from "@breatic/shared";
+import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -47,7 +47,22 @@ export interface TaskJobData {
   taskId: string;
   taskType: string;
   userId: string;
+  /**
+   * Project the task is scoped to. Required for any task that writes
+   * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
+   * task is project + Space scoped). Optional only for legacy paths
+   * that do not bind to a canvas node — those skip
+   * `NodeStateUpdateEvent` emission entirely.
+   */
   projectId?: string;
+  /**
+   * Space within the project the task targets. v10 multi-doc: the
+   * worker writes results to `project-{projectId}/canvas-{spaceId}`.
+   * Required when `projectId` is set; canvas-bound tasks must
+   * always carry both. Producer is `server/routes/canvas.ts` /
+   * `server/routes/mini-tools.ts`.
+   */
+  spaceId?: string;
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
@@ -60,6 +75,23 @@ export interface TaskJobData {
    * node (understand, skill agents without node bindings).
    */
   targetNodeIds?: string[];
+}
+
+/**
+ * Resolve the Yjs canvas-doc name for a job, or return null when the
+ * job is not bound to a canvas (no projectId / no spaceId — those
+ * tasks never emit `NodeStateUpdateEvent`).
+ *
+ * Centralises the v10 multi-doc rule in one place: every site that
+ * formerly called `projectDocName(projectId)` now goes through
+ * here, guaranteeing the spaceId arrives at the doc-name builder.
+ */
+function resolveCanvasDocName(
+  projectId: string | undefined,
+  spaceId: string | undefined,
+): string | null {
+  if (!projectId || !spaceId) return null;
+  return canvasSpaceDocName(projectId, spaceId);
 }
 
 /**
@@ -88,7 +120,8 @@ export interface TaskJobData {
  * @returns Result dict on success, or a failure status marker
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
@@ -122,10 +155,9 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    if (projectId) {
-      const docName = projectDocName(projectId);
+    if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, docName, nodeId, "Retry not allowed after provider returned a result");
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, "Retry not allowed after provider returned a result");
       }
     }
     return { failed: true, reason: "no_retry_after_provider" };
@@ -171,10 +203,9 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    if (projectId) {
-      const docName = projectDocName(projectId);
+    if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, docName, nodeId, errorMsg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
       }
     }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
@@ -191,10 +222,9 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, toolName }, msg);
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    if (projectId) {
-      const docName = projectDocName(projectId);
+    if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, docName, nodeId, msg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, msg);
       }
     }
     return { failed: true, reason: "output_count_mismatch" };
@@ -221,10 +251,9 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    if (projectId) {
-      const docName = projectDocName(projectId);
+    if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, docName, nodeId, errorMsg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
       }
     }
     // Return normally (don't throw) — we don't want BullMQ to retry
@@ -289,8 +318,8 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
   }
 
   // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
-  if (projectId && nodeIds.length > 0) {
-    const docName = projectDocName(projectId);
+  if (canvasDocName && projectId && nodeIds.length > 0) {
+    const docName = canvasDocName;
     for (let i = 0; i < nodeIds.length; i++) {
       const nodeId = nodeIds[i]!;
       const out = persistedOutputs[i];
