@@ -43,7 +43,7 @@ jobs:
                   n = split($0, lines, "\n")
                   hash = lines[1]
                   for (i = 2; i <= n; i++) {
-                    if (lines[i] ~ /^(Co-Authored-By|Signed-off-by):/) {
+                    if (tolower(lines[i]) ~ /^(co-authored-by|signed-off-by):/) {
                       print hash "\t" lines[i]
                     }
                   }
