@@ -4,7 +4,7 @@
  * Handles CRUD operations and atomic credit modifications.
  */
 
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { users } from "../db/schema.js";
 import type { UserEntity } from "@breatic/shared";
@@ -33,6 +33,24 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Look up many users by id in one query (excludes soft-deleted).
+ *
+ * Returns rows in arbitrary order — caller is expected to map by
+ * id. Backs `GET /api/v1/users?ids=` (the frontend joins
+ * `useProjectMembers` with display info).
+ *
+ * @param ids - Up to 100 user UUIDs (caller caps the input)
+ */
+export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(inArray(users.id, ids), isNull(users.deletedAt)));
+  return rows.map(toEntity);
 }
 
 /** Find a user by email (excludes soft-deleted). */

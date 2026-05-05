@@ -1,126 +1,132 @@
 /**
  * Project service — business logic for canvas projects.
  *
- * Enforces ownership checks at the service layer before delegating
- * to the project repository. Projects support soft delete.
+ * v10: ownership lives in `project_members` rather than on the
+ * project row. Permission decisions go through
+ * {@link projectAuthService.loadProjectRole}; this service exposes a
+ * thin {@link assertAccess} for callers that aren't behind the
+ * `requireRole` route middleware (internal services, BullMQ
+ * handlers, the legacy assertAccess-only call sites).
+ *
+ * Project creation is layered: studio.service guarantees a personal
+ * studio exists, then project.repo.createProject seeds the project +
+ * owner row in one transaction.
  */
 
 import * as projectRepo from "./project.repo.js";
+import * as projectAuthService from "./projectAuth.service.js";
+import * as studioService from "./studio.service.js";
+import * as userRepo from "./user.repo.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "../errors.js";
-import type { ProjectEntity } from "@breatic/shared";
+import { ROLE_RANK } from "@breatic/shared";
+import type { ProjectEntity, ProjectRole } from "@breatic/shared";
 
 /**
- * Validate that a project exists and belongs to the given user.
+ * Throw if the user does not have at least `minRole` on the project.
  *
- * @param projectId - Project UUID
- * @param userId - Requesting user UUID
- * @returns The validated project entity
- * @throws NotFoundError if project does not exist or is soft-deleted
- * @throws ForbiddenError if userId does not match the project owner
+ * Defaults to `'view'` — callers that need stronger checks pass
+ * `'edit'` or `'owner'` explicitly. Routes with `requireRole`
+ * middleware do not need this redundantly, but inner services
+ * (conversation.service, BullMQ task path) call it as defense in
+ * depth.
+ *
+ * @param projectId - Project UUID from untrusted client input
+ * @param userId - Authenticated user UUID
+ * @param minRole - Minimum role required (defaults to `'view'`)
+ * @throws {@link NotFoundError} if the project does not exist or the
+ *   caller has no membership (we collapse 404 and 403-no-membership
+ *   into 404 to avoid leaking project existence to outsiders)
+ * @throws {@link ForbiddenError} if the caller's membership is below
+ *   `minRole`
  */
-async function validateOwnership(
+export async function assertAccess(
   projectId: string,
   userId: string,
-): Promise<ProjectEntity> {
-  const project = await projectRepo.getProjectById(projectId);
-  if (!project) throw new NotFoundError(t("server.error.not_found"));
-  if (project.userId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
-  return project;
+  minRole: ProjectRole = "view",
+): Promise<void> {
+  const role = await projectAuthService.loadProjectRole(userId, projectId);
+  if (role === null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  if (ROLE_RANK[role] < ROLE_RANK[minRole]) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
 }
 
 /**
- * Create a new project.
+ * Create a new project owned by the caller.
  *
- * @param userId - Owner user UUID
+ * Resolves (or lazily creates) the caller's personal studio so
+ * `projects.studio_id` and the owner row in `project_members` are
+ * filled in correctly. Returns the freshly created project.
+ *
+ * @param userId - Authenticated user UUID (becomes the project owner)
  * @param name - Project name
- * @param description - Optional project description
- * @returns The newly created project entity
+ * @param description - Optional description
  */
 export async function create(
   userId: string,
   name: string,
   description?: string,
 ): Promise<ProjectEntity> {
-  return projectRepo.createProject(userId, name, description);
+  const user = await userRepo.getUserById(userId);
+  const studio = await studioService.ensurePersonalStudio(
+    userId,
+    user?.username ?? null,
+  );
+  return projectRepo.createProject(studio.id, userId, name, description);
 }
 
 /**
- * Get a project by ID with ownership enforcement.
+ * Fetch a project the caller has at least `view` access to.
  *
- * @param projectId - Project UUID
- * @param userId - Requesting user UUID
- * @returns The project entity
- * @throws NotFoundError if project does not exist
- * @throws ForbiddenError if userId does not match the project owner
+ * Returns the entity unchanged. Routes that need to surface the
+ * caller's role to the frontend (`ProjectDetail.myRole`) should
+ * compose this with `loadProjectRole`.
+ *
+ * @throws {@link NotFoundError} on missing project / no membership
  */
 export async function get(projectId: string, userId: string): Promise<ProjectEntity> {
-  return validateOwnership(projectId, userId);
+  await assertAccess(projectId, userId, "view");
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  return project;
 }
 
 /**
- * Assert that the given user may access the given project.
+ * List projects in the caller's personal studio (V1).
  *
- * Shared entry point for REST route handlers and Collab auth hooks
- * that need to reject cross-tenant access before doing any work. A
- * thin alias over {@link get} that discards the returned entity so
- * call sites read as an assertion rather than a fetch.
- *
- * @param projectId - Project UUID from untrusted client input
- * @param userId - Authenticated user UUID from the session
- * @throws NotFoundError if project does not exist or is soft-deleted
- * @throws ForbiddenError if the user does not own the project
- */
-export async function assertAccess(
-  projectId: string,
-  userId: string,
-): Promise<void> {
-  await validateOwnership(projectId, userId);
-}
-
-/**
- * List projects for a user, ordered by most recently updated.
- *
- * @param userId - Owner user UUID
- * @param limit - Maximum number of results
- * @param offset - Pagination offset
- * @returns Array of project entities
+ * V1 personal-Studio mode: every user has exactly one studio.
+ * "Projects shared with me but owned by others" is a Studio-phase
+ * feature (see spec §16 ★ "/studio 协作中的项目入口"); not exposed
+ * here in V1.
  */
 export async function list(
   userId: string,
   limit?: number,
   offset?: number,
 ): Promise<ProjectEntity[]> {
-  return projectRepo.listProjectsByUser(userId, limit, offset);
+  const user = await userRepo.getUserById(userId);
+  const studio = await studioService.ensurePersonalStudio(
+    userId,
+    user?.username ?? null,
+  );
+  return projectRepo.listProjectsByStudio(studio.id, limit, offset);
 }
 
 /**
- * Save a canvas data snapshot to a project.
+ * Update mutable project metadata.
  *
- * @param projectId - Project UUID
- * @param userId - Requesting user UUID
- * @param canvasData - Canvas state to persist
- * @throws NotFoundError if project does not exist
- * @throws ForbiddenError if userId does not match the project owner
- */
-export async function saveCanvas(
-  projectId: string,
-  userId: string,
-  canvasData: Record<string, unknown>,
-): Promise<void> {
-  await validateOwnership(projectId, userId);
-  await projectRepo.updateCanvas(projectId, canvasData);
-}
-
-/**
- * Update mutable project metadata (name / description / thumbnail).
+ * Requires at least `edit` on the project — name / description /
+ * thumbnail are content edits, not just admin operations. The
+ * `requireRole('edit')` middleware on the PUT route enforces the
+ * same; this service-side check is defense in depth for non-route
+ * callers.
  *
- * @param projectId - Project UUID
- * @param userId - Requesting user UUID
- * @param patch - Fields to update (undefined skipped, null clears)
- * @returns The updated project entity
- * @throws NotFoundError if project does not exist or was soft-deleted
- * @throws ForbiddenError if userId does not match the project owner
+ * @throws {@link NotFoundError} if the project doesn't exist or the
+ *   caller has no membership
+ * @throws {@link ForbiddenError} if the caller is below `edit`
  */
 export async function update(
   projectId: string,
@@ -131,55 +137,44 @@ export async function update(
     thumbnailUrl?: string | null;
   },
 ): Promise<ProjectEntity> {
-  await validateOwnership(projectId, userId);
+  await assertAccess(projectId, userId, "edit");
   const updated = await projectRepo.updateProjectMeta(projectId, patch);
   if (!updated) throw new NotFoundError(t("server.error.not_found"));
   return updated;
 }
 
 /**
- * Duplicate a project — create a new project row with a fresh UUID
- * and copy every Yjs document belonging to the source project.
+ * Duplicate a project — the duplicate is owned by the caller.
  *
- * The new project belongs to the same user. Ownership of the source
- * is enforced: a user cannot duplicate another user's project even
- * if they know its UUID. (This is the same cross-tenant guard as
- * every other project-scoped route; see PR #48.)
- *
- * Asset URLs inside the duplicated Yjs blobs continue to reference
- * the original OSS / S3 objects. That is intentional — duplication
- * is cheap and does not re-upload anything. See the repo layer for
- * the full list of what is and is not carried over.
+ * The caller becomes the owner of the new project (same studio as
+ * the source). Source must be visible to the caller (any active
+ * membership counts; you can fork something you can read).
  *
  * @param sourceId - UUID of the project to duplicate
- * @param userId - Authenticated user UUID (also becomes the new
- *   project's owner)
- * @returns The freshly created project entity
- * @throws NotFoundError if the source project does not exist
- * @throws ForbiddenError if the user does not own the source project
+ * @param userId - Authenticated user UUID (becomes new project owner)
+ * @throws {@link NotFoundError} if the source project does not exist
+ *   or the caller has no membership
  */
 export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
-  await validateOwnership(sourceId, userId);
+  await assertAccess(sourceId, userId, "view");
   const copy = await projectRepo.duplicateProject(userId, sourceId);
   if (!copy) throw new NotFoundError(t("server.error.not_found"));
   return copy;
 }
 
 /**
- * Soft-delete a project after validating ownership.
+ * Soft-delete a project after verifying the caller is `owner`.
  *
- * @param projectId - Project UUID
- * @param userId - Requesting user UUID
- * @throws NotFoundError if project does not exist
- * @throws ForbiddenError if userId does not match the project owner
+ * Cascades soft delete to conversations, tasks, node history, member
+ * rows, project memories and yjs documents (all in one tx).
  */
 export async function deleteProject(
   projectId: string,
   userId: string,
 ): Promise<void> {
-  await validateOwnership(projectId, userId);
+  await assertAccess(projectId, userId, "owner");
   await projectRepo.deleteProject(projectId);
 }

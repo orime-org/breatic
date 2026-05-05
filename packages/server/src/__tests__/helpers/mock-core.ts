@@ -113,6 +113,7 @@ export const mocks = {
   },
   userRepo: {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
+    getUsersByIds: vi.fn().mockResolvedValue([]),
   },
   skillService: {
     listBuiltin: vi.fn().mockReturnValue([
@@ -128,6 +129,30 @@ export const mocks = {
     deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
     getBalance: vi.fn().mockResolvedValue(100),
     add: vi.fn().mockResolvedValue(200),
+  },
+  // v10: project-scoped permission lookup. Default = caller is owner
+  // on every project. Tests that exercise non-owner / non-member
+  // paths override per-test.
+  projectAuthService: {
+    loadProjectRole: vi.fn().mockResolvedValue("owner"),
+  },
+  projectMembersService: {
+    list: vi.fn().mockResolvedValue([]),
+    invite: vi.fn().mockResolvedValue(undefined),
+    changeRole: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  },
+  studioService: {
+    ensurePersonalStudio: vi.fn().mockResolvedValue({
+      id: "studio-1",
+      ownerUserId: "user-1",
+      name: "Personal Studio",
+    }),
+    getPersonalStudio: vi.fn().mockResolvedValue({
+      id: "studio-1",
+      ownerUserId: "user-1",
+      name: "Personal Studio",
+    }),
   },
 };
 
@@ -177,6 +202,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     textToolService: mocks.textToolService,
     modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     creditService: mocks.creditService,
+    projectAuthService: mocks.projectAuthService,
+    projectMembersService: mocks.projectMembersService,
+    studioService: mocks.studioService,
     // Agent
     getSkillRegistry: () => ({
       get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,

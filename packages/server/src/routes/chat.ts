@@ -52,7 +52,9 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   // creation, but we check here first so that every downstream call
   // (memory, history, SSE) runs against a confirmed-owned project.
   if (body.project_id) {
-    await projectService.assertAccess(body.project_id, user.id);
+    // Chat is a creative-write action (v10 §7.2.1) — view-only
+    // members cannot send chat messages or invoke skills.
+    await projectService.assertAccess(body.project_id, user.id, "edit");
   }
 
   const conversation = await conversationService.getOrCreate(
@@ -118,7 +120,9 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
 
   // Cross-tenant guard (same rationale as /chat/message)
   if (body.project_id) {
-    await projectService.assertAccess(body.project_id, user.id);
+    // Chat is a creative-write action (v10 §7.2.1) — view-only
+    // members cannot send chat messages or invoke skills.
+    await projectService.assertAccess(body.project_id, user.id, "edit");
   }
 
   const conversation = await conversationService.getOrCreate(

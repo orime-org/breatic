@@ -10,6 +10,7 @@ export type {
   PaymentEntity,
   CreditTransactionEntity,
   ProjectEntity,
+  ProjectDetail,
   MemoryContext,
   SkillMeta,
 } from "./entities.js";
@@ -22,3 +23,8 @@ export type {
   NodeStateUpdateEvent,
   NodeEvent,
 } from "./canvas-node.js";
+
+export { ROLE_RANK } from "./role.js";
+export type { ProjectRole, ProjectMember } from "./role.js";
+
+export type { Studio } from "./studio.js";

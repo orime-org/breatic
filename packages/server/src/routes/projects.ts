@@ -1,34 +1,39 @@
 /**
- * Project routes — CRUD, duplicate, and canvas snapshot.
+ * Project routes — CRUD, duplicate, and membership-aware reads.
  *
- * All endpoints require authentication and return responses wrapped
- * in the shared `{ data: ... }` envelope so the frontend API layer
- * can rely on a single unwrap shape across every route.
+ * v10 schema: ownership lives in `project_members`. Reads / mutations
+ * are gated by the `requireRole` middleware (defined in
+ * `middleware/role.ts`), which translates "this caller cannot do this"
+ * into a 403 — never a 404, to avoid leaking project existence.
  *
- * Canvas data on the project row is a legacy JSONB snapshot used by
- * `PUT /:id/canvas`. The live collaborative canvas lives in the Yjs
- * documents (`project-<id>/canvas` and `project-<id>/node/<nodeId>`),
- * which are the objects actually copied by the duplicate endpoint.
+ * The legacy `PUT /:id/canvas` snapshot endpoint is gone (v10 spec
+ * §13.2): live canvas state lives in Yjs `project-{id}/canvas-{sid}`
+ * docs, persisted by the collab service.
  */
 
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import {
-  projectCreateSchema,
-  canvasSaveSchema,
-  paginationSchema,
-} from "./schemas.js";
+import { projectCreateSchema, paginationSchema } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import { projectService } from "@breatic/core";
+import { requireRoleOnParam } from "../middleware/role.js";
+import type { AuthRoleVariables } from "../middleware/role.js";
+import { projectService, projectAuthService } from "@breatic/core";
+import { NotFoundError } from "@breatic/core";
+import { t } from "@breatic/shared";
+import type { ProjectDetail } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
 
 projects.use(requireAuth);
 
 /**
- * `POST /projects` — create a new project.
+ * `POST /projects` — create a new project owned by the caller.
+ *
+ * Resolves the caller's personal studio (creating it if missing) and
+ * inserts the owner row in `project_members` inside the same
+ * transaction as the projects insert.
  *
  * @returns `201` with `{ data: ProjectEntity }`
  */
@@ -40,8 +45,11 @@ projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
 });
 
 /**
- * `GET /projects` — list the authenticated user's projects, ordered
- * by most recently updated.
+ * `GET /projects` — list the caller's personal-studio projects.
+ *
+ * V1 personal-Studio mode: every user has one studio. Projects shared
+ * with the caller but owned by someone else (Studio-phase feature)
+ * are not exposed here yet — see spec §16 ★ "/studio 协作中的项目入口".
  *
  * @returns `200` with `{ data: ProjectEntity[] }`
  */
@@ -51,6 +59,45 @@ projects.get("/", zValidator("query", paginationSchema), async (c) => {
   const list = await projectService.list(user.id, limit, offset);
   return c.json({ data: list });
 });
+
+// ── Membership-gated reads / writes ────────────────────────────────
+//
+// Every route below this point sits behind `requireRoleOnParam('id',
+// minRole)`. The middleware resolves the caller's role on `:id` and
+// stamps it on `c.var.role` for handlers that want to surface it
+// (e.g. `GET /:id` returns `myRole` to the frontend).
+
+const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
+
+/**
+ * `GET /projects/:id` — read a project plus the caller's role.
+ *
+ * Returns a `ProjectDetail` (entity + `myRole`) so the frontend can
+ * gate UI without a second round-trip. v10 §7.2.6.
+ */
+membershipScoped.get(
+  "/:id",
+  requireRoleOnParam("id", "view"),
+  async (c) => {
+    const user = c.get("user");
+    const id = c.req.param("id");
+    const project = await projectService.get(id, user.id);
+    const role = c.get("role");
+    const detail: ProjectDetail = {
+      id: project.id,
+      studioId: project.studioId,
+      createdByUserId: project.createdByUserId,
+      name: project.name,
+      description: project.description,
+      thumbnailUrl: project.thumbnailUrl,
+      myRole: role,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+      deletedAt: project.deletedAt,
+    };
+    return c.json({ data: detail });
+  },
+);
 
 /** Body schema for `PUT /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
@@ -67,76 +114,73 @@ const projectUpdateSchema = z
 /**
  * `PUT /projects/:id` — update name / description / thumbnail.
  *
- * Accepts any subset of the mutable fields; `null` is legal for
- * `description` and `thumbnail_url` (clears the value), `undefined`
- * leaves the field unchanged.
+ * Requires `edit` (renaming etc. is content editing, not an
+ * admin-only operation). v10 §7.2.1.
  *
  * @returns `200` with `{ data: ProjectEntity }`
- * @throws `404` if the project does not exist
- * @throws `403` if the caller does not own the project
  */
-projects.put("/:id", zValidator("json", projectUpdateSchema), async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  const body = c.req.valid("json");
-  const updated = await projectService.update(id, user.id, {
-    name: body.name,
-    description: body.description,
-    thumbnailUrl: body.thumbnail_url,
-  });
-  return c.json({ data: updated });
-});
+membershipScoped.put(
+  "/:id",
+  requireRoleOnParam("id", "edit"),
+  zValidator("json", projectUpdateSchema),
+  async (c) => {
+    const user = c.get("user");
+    const id = c.req.param("id");
+    const body = c.req.valid("json");
+    const updated = await projectService.update(id, user.id, {
+      name: body.name,
+      description: body.description,
+      thumbnailUrl: body.thumbnail_url,
+    });
+    return c.json({ data: updated });
+  },
+);
 
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Copies the project row and every Yjs document (canvas + per-node
- * editors) inside a single database transaction. Conversations,
- * tasks, memory rows, and node history are NOT copied — the
- * duplicate starts with a fresh timeline. See project.service.ts
- * for the full list of what is and is not carried over.
+ * Requires `view`: anyone who can read the source can fork it. The
+ * duplicate is owned by the caller (new owner row in
+ * `project_members`).
  *
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
- * @throws `404` if the source project does not exist
- * @throws `403` if the caller does not own the source project
  */
-projects.post("/:id/duplicate", async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  const copy = await projectService.duplicate(id, user.id);
-  return c.json({ data: copy }, 201);
-});
-
-/**
- * `PUT /projects/:id/canvas` — save a canvas data JSON snapshot.
- *
- * Legacy path used by the non-Yjs snapshot flow. Live collab goes
- * through the Hocuspocus / Yjs document directly.
- */
-projects.put(
-  "/:id/canvas",
-  zValidator("json", canvasSaveSchema),
+membershipScoped.post(
+  "/:id/duplicate",
+  requireRoleOnParam("id", "view"),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");
-    const { canvas_data } = c.req.valid("json");
-    await projectService.saveCanvas(id, user.id, canvas_data);
-    return c.json({ data: { success: true } });
+    const copy = await projectService.duplicate(id, user.id);
+    return c.json({ data: copy }, 201);
   },
 );
 
 /**
  * `DELETE /projects/:id` — soft-delete a project.
  *
+ * Requires `owner` (cascades to all the project's children).
+ *
  * @returns `200` with `{ data: { success: true } }`
- * @throws `404` if the project does not exist
- * @throws `403` if the caller does not own the project
  */
-projects.delete("/:id", async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  await projectService.deleteProject(id, user.id);
-  return c.json({ data: { success: true } });
-});
+membershipScoped.delete(
+  "/:id",
+  requireRoleOnParam("id", "owner"),
+  async (c) => {
+    const user = c.get("user");
+    const id = c.req.param("id");
+    await projectService.deleteProject(id, user.id);
+    return c.json({ data: { success: true } });
+  },
+);
+
+projects.route("/", membershipScoped);
+
+// `projectAuthService` and `NotFoundError` / `t` are imported above
+// because future route additions on this surface will use them; if
+// nothing references them after a refactor, remove during cleanup.
+void projectAuthService;
+void NotFoundError;
+void t;
 
 export { projects as projectsRoute };

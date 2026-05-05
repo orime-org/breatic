@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import * as userRepo from "./user.repo.js";
+import * as studioService from "./studio.service.js";
 import { getRedis } from "../infra/redis.js";
 import { sendMail } from "../infra/mailer.js";
 import { env } from "../config/env.js";
@@ -48,6 +49,10 @@ export async function register(
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const username = email.split("@")[0];
   const user = await userRepo.createUser({ email, hashedPassword, username });
+  // Personal studio is the FK target for the user's projects (v10
+  // §6). Idempotent — also called from project.service.create as
+  // belt-and-suspenders if the register hook ever races.
+  await studioService.ensurePersonalStudio(user.id, user.username);
   logger.info({ userId: user.id, email }, "user_registered");
   return user;
 }
@@ -116,6 +121,9 @@ export async function loginOrCreateGoogle(
       user = await userRepo.createUser({ email, googleId, username: name || email.split("@")[0] });
     }
   }
+  // Ensure personal studio exists for both newly-created and linked
+  // accounts. Idempotent — also called from project.service.create.
+  await studioService.ensurePersonalStudio(user.id, user.username);
 
   // 每次 Google 登录都同步最新的昵称和头像
   const updates: Parameters<typeof userRepo.updateUser>[1] = { emailVerified: true };

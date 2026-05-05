@@ -129,7 +129,11 @@ export type NodeStateUpdatePayload = {
  * content / cover_url / errorMessage / handlingBy / width / height /
  * duration), enforced by the consumer's allowlist.
  *
- * docName is always `project-{projectId}` (single-project-doc model).
+ * docName carries the target Yjs doc. In the v10 multi-doc layout
+ * (one Canvas Space doc per project per Space), this will be
+ * `project-{projectId}/canvas-{spaceId}` once the worker rewrite in
+ * PR-C lands. PR-A+B leaves this as the pre-v10 single-doc form
+ * `project-{projectId}` because the worker hasn't migrated yet.
  *
  * Null-as-delete convention:
  *   A `null` value means "clear this field" (consumer calls Y.Map.delete).
@@ -138,7 +142,10 @@ export type NodeStateUpdatePayload = {
  */
 export interface NodeStateUpdateEvent {
   type: 'node-state-update';
-  /** Always 'project-{projectId}' (single doc model). */
+  /**
+   * Yjs doc name. Pre-v10 form `project-{projectId}` until PR-C
+   * migrates the worker to emit `project-{projectId}/canvas-{spaceId}`.
+   */
   docName: string;
   /** Target node receiving the update. */
   nodeId: string;
