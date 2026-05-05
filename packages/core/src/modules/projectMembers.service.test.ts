@@ -18,6 +18,13 @@ vi.mock("./projectMembers.repo.js", () => ({
   softDelete: vi.fn(),
 }));
 
+// Stub the Redis pub/sub helper so the unit test runs without an
+// ioredis connection. PR-C wired publishMembersChanged into every
+// successful service path (after the repo mutates).
+vi.mock("../infra/control-events.js", () => ({
+  publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+}));
+
 import * as repo from "./projectMembers.repo.js";
 import {
   invite,
