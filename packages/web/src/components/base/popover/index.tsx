@@ -101,8 +101,6 @@ const CustomPopover = ({
     open,
     onOpenChange: setOpen,
     placement: getPlacement(),
-    /** Reference may live under React Flow’s transformed viewport — `fixed` keeps portaled popovers aligned. */
-    strategy: 'fixed',
     whileElementsMounted: autoUpdate,
     middleware: [
       offset(8),

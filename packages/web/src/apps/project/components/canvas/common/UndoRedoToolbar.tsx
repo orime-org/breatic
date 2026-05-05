@@ -7,20 +7,12 @@ import Tooltip from '@/components/base/tooltip';
 interface UndoRedoToolbarProps {
   /**
    * Yjs collaborative undo/redo methods (optional).
-   * When `localUndo` / `localRedo` are not set, Yjs is used when these callbacks exist.
+   * When provided, the Yjs UndoManager is used with priority.
    */
   yjsUndo?: () => void;
   yjsRedo?: () => void;
   yjsCanUndo?: boolean;
   yjsCanRedo?: boolean;
-  /**
-   * Plain snapshot undo/redo (e.g. `new/project` canvas). When both handlers are provided,
-   * they take priority over Yjs.
-   */
-  localUndo?: () => void;
-  localRedo?: () => void;
-  localCanUndo?: boolean;
-  localCanRedo?: boolean;
   /** Whether the minimap is expanded */
   minimapOpen?: boolean;
   /** Toggle minimap visibility */
@@ -31,18 +23,14 @@ interface UndoRedoToolbarProps {
 
 /**
  * Undo/redo toolbar component.
- * Contains minimap toggle, undo, redo, zoom slider, 100% zoom, and fit-to-view.
- * Uses {@link UndoRedoToolbarProps.localUndo} when provided; otherwise Yjs when available.
+ * Contains undo, redo, zoom slider and fit-view button.
+ * Always uses Yjs UndoManager regardless of local or collaborative mode.
  */
 const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
   yjsUndo,
   yjsRedo,
   yjsCanUndo = false,
   yjsCanRedo = false,
-  localUndo,
-  localRedo,
-  localCanUndo = false,
-  localCanRedo = false,
   minimapOpen = true,
   onToggleMinimap,
   className,
@@ -52,21 +40,22 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
   const minZoom = useStore((state) => state.minZoom);
   const maxZoom = useStore((state) => state.maxZoom);
 
-  const useLocalHistory = typeof localUndo === 'function' && typeof localRedo === 'function';
-  const canUndo = useLocalHistory ? Boolean(localCanUndo) : Boolean(yjsCanUndo && yjsUndo);
-  const canRedo = useLocalHistory ? Boolean(localCanRedo) : Boolean(yjsCanRedo && yjsRedo);
+  // Always use Yjs UndoManager (local or collaborative mode).
+  // If Yjs is not initialized or methods are unavailable, undo/redo is disabled.
+  const canUndo = yjsCanUndo && !!yjsUndo;
+  const canRedo = yjsCanRedo && !!yjsRedo;
 
   const handleUndo = useCallback(() => {
-    if (!canUndo) return;
-    if (useLocalHistory) localUndo?.();
-    else yjsUndo?.();
-  }, [canUndo, useLocalHistory, localUndo, yjsUndo]);
+    if (canUndo && yjsUndo) {
+      yjsUndo();
+    }
+  }, [canUndo, yjsUndo]);
 
   const handleRedo = useCallback(() => {
-    if (!canRedo) return;
-    if (useLocalHistory) localRedo?.();
-    else yjsRedo?.();
-  }, [canRedo, useLocalHistory, localRedo, yjsRedo]);
+    if (canRedo && yjsRedo) {
+      yjsRedo();
+    }
+  }, [canRedo, yjsRedo]);
 
   const handleFitView = useCallback(() => {
     zoomTo(1);
