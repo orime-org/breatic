@@ -51,9 +51,10 @@ vi.mock("@breatic/core", () => ({
   extractPromptText: vi.fn((x: unknown) => String(x ?? "")),
 }));
 
-// @breatic/shared is used for projectDocName inside handlers.ts
+// @breatic/shared is used for canvasSpaceDocName inside handlers.ts
+// (v10 multi-doc routing: worker writes to project-{pid}/canvas-{sid}).
 vi.mock("@breatic/shared", () => ({
-  projectDocName: (id: string) => `project-${id}`,
+  canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
 
 // ── Also mock the mini-tool-registry which handlers.ts imports ──────
