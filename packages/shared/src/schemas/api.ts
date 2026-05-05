@@ -61,7 +61,13 @@ export const taskCreateSchema = z.object({
    * task types (some internal audits) may omit and pass through.
    */
   node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().optional(),
+  project_id: z.string().uuid(),
+  /**
+   * Space within the project the task targets (v10 multi-doc).
+   * Worker writes results to `project-{project_id}/canvas-{space_id}`,
+   * so this is required. Plain UUID — no FK on the server side.
+   */
+  space_id: z.string().uuid(),
   source: z.string().default("canvas"),
   /**
    * UUID v4 of the canvas node that will receive the task result.
@@ -80,7 +86,9 @@ export const understandSchema = z.object({
   node_ids: z.array(z.string()).min(1).optional(),
   model: z.string().optional(),
   prompt: z.string().optional(),
-  project_id: z.string().optional(),
+  project_id: z.string().uuid(),
+  /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
+  space_id: z.string().uuid(),
 });
 export type UnderstandInput = z.infer<typeof understandSchema>;
 

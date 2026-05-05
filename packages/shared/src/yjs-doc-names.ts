@@ -128,35 +128,3 @@ export function parseDocName(docName: string): ParsedDocName | null {
 export function isProjectScopedDocName(docName: string): boolean {
   return parseDocName(docName) !== null;
 }
-
-// ── Pre-v10 single-doc helpers ──────────────────────────────────────
-//
-// PR-A only adds the multi-doc API. The pre-v10 single-doc helpers
-// below are still in use by collab/auth.ts, collab/task-listener.ts,
-// and worker/handlers.ts because those modules emit/consume the bare
-// `project-{pid}` form and the v10 multi-doc routing rewrite is
-// scoped to PR-C. Both APIs coexist for one PR cycle. PR-C deletes
-// these as part of the collab + worker rewrite.
-
-/**
- * Build the legacy single-doc name `project-{projectId}`.
- *
- * @deprecated Pre-v10 single-doc form. Use `projectMetaDocName` or
- *   `canvasSpaceDocName` instead. Will be removed in PR-C alongside
- *   the collab + worker multi-doc routing rewrite.
- */
-export function projectDocName(projectId: string): string {
-  return `project-${projectId}`;
-}
-
-/**
- * Parse the legacy single-doc name `project-{projectId}`.
- *
- * @deprecated Pre-v10 single-doc form. Use `parseDocName` instead.
- *   Will be removed in PR-C alongside the collab + worker multi-doc
- *   routing rewrite.
- */
-export function parseProjectDocName(docName: string): string | null {
-  const match = docName.match(/^project-([^/]+)$/);
-  return match ? (match[1] ?? null) : null;
-}
