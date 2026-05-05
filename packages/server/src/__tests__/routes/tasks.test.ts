@@ -52,6 +52,11 @@ describe("Tasks routes", () => {
     });
   });
 
+  // v10: every canvas task is project + Space scoped (worker writes
+  // back to `project-{pid}/canvas-{spaceId}`). Both UUIDs are required.
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const SID = "22222222-2222-4222-9222-222222222222";
+
   describe("POST /canvas/tasks — create canvas task", () => {
     it("creates task and returns 201", async () => {
       const app = createApp();
@@ -63,6 +68,8 @@ describe("Tasks routes", () => {
           params: { prompt: "a cat" },
           model: "test-model",
           source: "canvas",
+          project_id: PID,
+          space_id: SID,
         }),
       });
 
@@ -81,6 +88,8 @@ describe("Tasks routes", () => {
           params: {},
           model: "test",
           source: "canvas",
+          project_id: PID,
+          space_id: SID,
         }),
       });
 

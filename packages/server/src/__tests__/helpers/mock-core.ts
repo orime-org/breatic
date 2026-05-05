@@ -154,6 +154,14 @@ export const mocks = {
       name: "Personal Studio",
     }),
   },
+  // v10 / PR-C: cross-process control plane (Redis pub/sub on DB2).
+  // Routes call these as side effects of CRUD; collab subscribes to
+  // the same channels and applies the meta-doc Y.Map mutations.
+  publishSpaceCreated: vi.fn().mockResolvedValue(undefined),
+  publishSpaceDeleted: vi.fn().mockResolvedValue(undefined),
+  yjsDocRepo: {
+    softDeleteByName: vi.fn().mockResolvedValue(true),
+  },
 };
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -205,6 +213,10 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     projectAuthService: mocks.projectAuthService,
     projectMembersService: mocks.projectMembersService,
     studioService: mocks.studioService,
+    publishSpaceCreated: mocks.publishSpaceCreated,
+    publishSpaceDeleted: mocks.publishSpaceDeleted,
+    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+    yjsDocRepo: mocks.yjsDocRepo,
     // Agent
     getSkillRegistry: () => ({
       get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,

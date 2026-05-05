@@ -22,12 +22,28 @@ export {
 
 import { z } from "zod";
 
+/**
+ * Shared fields every canvas-bound mini-tool / AIGC task carries:
+ * the project + Space the result should write back into, plus the
+ * target node id (always required — mini-tools bind to a node).
+ *
+ * v10 multi-doc: `space_id` is required because the worker writes
+ * to `project-{project_id}/canvas-{space_id}`. Text mini-tools
+ * (separate union below) intentionally omit these because their
+ * results stream back to the caller via SSE rather than landing
+ * on a Yjs node.
+ */
+const canvasTaskBinding = {
+  node_ids: z.array(z.string()).min(1).optional(),
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+  target_node_id: z.string().uuid(),
+} as const;
+
 // Mini-Tools: Image
 const imageToolBase = z.object({
   image: z.string(),
-  node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().optional(),
-  target_node_id: z.string().uuid(),
+  ...canvasTaskBinding,
 });
 
 export const imageToolSchema = z.discriminatedUnion("tool", [
@@ -61,13 +77,13 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
 
 // Mini-Tools: Video
 export const videoToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("upscale"), video: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("interpolate"), video: z.string(), multiplier: z.number().default(2), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), images: z.array(z.string()).optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string().optional(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("upscale"), video: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("interpolate"), video: z.string(), multiplier: z.number().default(2), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), images: z.array(z.string()).optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string().optional(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
   // Local (Worker-side FFmpeg) mini-tool — first non-vendor video op.
   // `host_node_id` identifies the mixed-editor container when the
   // request originates from a node-editor doc (Worker reads it out of
@@ -85,7 +101,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     w: z.number().positive(),
     h: z.number().positive(),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -94,7 +111,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     video: z.string().url(),
     rate: z.number().positive(),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -110,7 +128,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
       )
       .min(1),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -119,7 +138,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     video: z.string().url(),
     value: z.record(z.string(), z.number()).optional(),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -128,7 +148,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     video: z.string().url(),
     intensity: z.number().min(0).max(100),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -142,7 +163,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     // in both the UI slider and the ffmpeg util — same bounds here.
     cropPct: z.number().min(0).max(14),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -162,7 +184,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
       height: z.number().positive(),
     }),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -173,7 +196,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     intensity: z.number().min(0).max(100),
     aiEnhance: z.boolean(),
     node_ids: z.array(z.string()).min(1).optional(),
-    project_id: z.string().optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
   }),
@@ -181,11 +205,11 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
 
 // Mini-Tools: Audio
 export const audioToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration_seconds: z.number().optional(), prompt_influence: z.number().default(0.3), loop: z.boolean().default(false), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().default("Alice"), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), reference_text: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().optional(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration_seconds: z.number().optional(), prompt_influence: z.number().default(0.3), loop: z.boolean().default(false), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().default("Alice"), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), reference_text: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
 ]);
 
 // Mini-Tools: Text

@@ -46,7 +46,11 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     ? rawNodeIds.filter((x): x is string => typeof x === "string" && x.length > 0)
     : [];
   const projectId = body.project_id;
+  const spaceId = body.space_id;
 
+  // node_ids without project_id no longer happens because project_id is
+  // required in the schema, but keep the assertion as defense in depth
+  // — schemas can drift, this branch should never hit at runtime.
   if (nodeIds.length > 0 && !projectId) {
     throw new ValidationError("node_ids requires project_id");
   }
@@ -55,13 +59,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // any logged-in user who knows a victim project UUID can enqueue
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
-  if (projectId) {
-    await projectService.assertAccess(projectId, user.id, "edit");
-  }
+  await projectService.assertAccess(projectId, user.id, "edit");
 
   const task = await taskService.create(
     user.id,
     projectId,
+    spaceId,
     body.task_type,
     body.params,
     body.model,
@@ -70,13 +73,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   );
 
   // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
-  // and write result back to the Yjs canvas node via collab.
+  // and writes the result back into `project-{projectId}/canvas-{spaceId}`
+  // (v10 multi-doc). The job payload carries spaceId so the worker can
+  // compute the canvas-{spaceId} doc name without reloading the task row.
   const job = await tasksQueue.add(
     "execute-task",
     {
       taskId: task.id,
       userId: user.id,
       projectId,
+      spaceId,
       taskType: body.task_type,
       model: body.model,
       skillName: body.skill_name,
@@ -106,9 +112,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const body = c.req.valid("json");
 
   // Cross-tenant guard — see /canvas/tasks rationale.
-  if (body.project_id) {
-    await projectService.assertAccess(body.project_id, user.id, "edit");
-  }
+  await projectService.assertAccess(body.project_id, user.id, "edit");
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -119,6 +123,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const task = await taskService.create(
     user.id,
     body.project_id,
+    body.space_id,
     "understand",
     params,
     body.model,
@@ -130,6 +135,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
       taskId: task.id,
       userId: user.id,
       projectId: body.project_id,
+      spaceId: body.space_id,
       taskType: "understand",
       model: body.model,
       params,

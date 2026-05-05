@@ -24,8 +24,18 @@ import { mocks, mockQueueAdd, mockCreateQueue } from "../helpers/mock-core.js";
 
 const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
 
-/** Valid UUID for target_node_id in all "happy path" requests. */
+/** Valid UUIDs for the canvas-binding fields every mini-tool body
+ *  carries (v10: project_id + space_id + target_node_id all required). */
 const VALID_NODE_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+const VALID_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+const VALID_SPACE_ID = "22222222-2222-4222-9222-222222222222";
+
+/** Standard binding fields injected into every happy-path body. */
+const BINDING = {
+  project_id: VALID_PROJECT_ID,
+  space_id: VALID_SPACE_ID,
+  target_node_id: VALID_NODE_ID,
+};
 
 describe("Mini-tools credit pre-check (BUG-015)", () => {
   beforeEach(() => {
@@ -46,7 +56,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 
@@ -63,7 +73,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 
@@ -90,7 +100,7 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 
@@ -112,7 +122,7 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 
@@ -121,11 +131,11 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
     expect(jobPayload.source).toBe("mini_tool");
   });
 
-  it("includes projectId in BullMQ job payload (required by emitNodeStateFailed)", async () => {
+  it("includes projectId + spaceId in BullMQ job payload (worker docName computation)", async () => {
     // Regression guard for the Phase 2 bug where projectId was missing
-    // from payload. The worker computes docName = projectDocName(projectId)
-    // when emitting failure events; missing projectId throws inside the
-    // emit helper. Caught in dev smoke test (PR #16).
+    // from payload. v10 also requires spaceId — the worker computes
+    // docName = canvasSpaceDocName(projectId, spaceId) when emitting
+    // failure events; missing either throws inside the emit helper.
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
       method: "POST",
@@ -133,14 +143,14 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        project_id: "11111111-1111-1111-1111-111111111111",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 
     expect(res.status).toBe(201);
     const [, jobPayload] = mockQueueAdd.mock.calls[0] as [string, Record<string, unknown>];
-    expect(jobPayload.projectId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(jobPayload.projectId).toBe(VALID_PROJECT_ID);
+    expect(jobPayload.spaceId).toBe(VALID_SPACE_ID);
   });
 
   it("queues to 'tasks' (not 'mini-tools') so the worker picks up the job", async () => {
@@ -154,7 +164,7 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       body: JSON.stringify({
         tool: "remove-bg",
         image: "http://example.com/image.png",
-        target_node_id: VALID_NODE_ID,
+        ...BINDING,
       }),
     });
 

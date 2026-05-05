@@ -176,3 +176,37 @@ describe("project_members_one_owner_per_project", () => {
     ).resolves.toBeDefined();
   });
 });
+
+describe("tasks.space_id NOT NULL — v10 multi-doc routing", () => {
+  it("rejects task insert without space_id (worker can't compute canvas-{sid} doc name)", async () => {
+    const userId = await insertUser(`u-${(await uuid()).slice(0, 8)}@x.com`);
+    const studioId = await insertStudio(userId, "studio");
+    const projectId = await insertProject(studioId, userId, "project");
+
+    // The PG-level `space_id NOT NULL` constraint backs the v10
+    // promise that worker.handlers can always compute the
+    // canvas-{spaceId} doc to write back to. A task row without
+    // space_id would force the worker into a "no docName" branch
+    // that should never exist by design.
+    await expect(
+      sql`
+        INSERT INTO tasks (user_id, project_id, task_type, params, source)
+        VALUES (${userId}, ${projectId}, 'image', '{}'::jsonb, 'mini_tool')
+      `,
+    ).rejects.toThrow(/null value in column "space_id"/);
+  });
+
+  it("accepts task insert with space_id present", async () => {
+    const userId = await insertUser(`u-${(await uuid()).slice(0, 8)}@x.com`);
+    const studioId = await insertStudio(userId, "studio");
+    const projectId = await insertProject(studioId, userId, "project");
+    const spaceId = await uuid();
+
+    await expect(
+      sql`
+        INSERT INTO tasks (user_id, project_id, space_id, task_type, params, source)
+        VALUES (${userId}, ${projectId}, ${spaceId}, 'image', '{}'::jsonb, 'mini_tool')
+      `,
+    ).resolves.toBeDefined();
+  });
+});

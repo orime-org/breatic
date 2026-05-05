@@ -62,12 +62,14 @@ async function enqueueMiniTool(
   taskType: string,
   params: Record<string, unknown>,
   userId: string,
-  projectId?: string,
+  projectId: string,
+  spaceId: string,
   targetNodeIds: string[] = [],
 ): Promise<{ task_id: string; status: string }> {
   const task = await taskService.create(
     userId,
     projectId,
+    spaceId,
     taskType,
     params,
     undefined,
@@ -77,13 +79,16 @@ async function enqueueMiniTool(
 
   // Worker dispatcher reads `source: "mini_tool"` to route to runMiniTool.
   // Without it, the job falls through to the AIGC direct path which expects
-  // a `model` field that mini-tool requests don't provide.
+  // a `model` field that mini-tool requests don't provide. `spaceId` lets
+  // the worker compute the canvas-{spaceId} doc name when emitting
+  // NodeStateUpdateEvent (v10 multi-doc routing).
   const job = await tasksQueue.add(
     "execute-mini-tool",
     {
       taskId: task.id,
       userId,
       projectId,
+      spaceId,
       toolName,
       taskType,
       params,
@@ -113,9 +118,17 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "image", params, user.id, project_id, [target_node_id]);
+  const result = await enqueueMiniTool(
+    tool,
+    "image",
+    params,
+    user.id,
+    project_id,
+    space_id,
+    [target_node_id],
+  );
   return c.json({ data: result }, 201);
 });
 
@@ -134,9 +147,17 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
-  const result = await enqueueMiniTool(tool, "video", params, user.id, project_id, [target_node_id]);
+  const result = await enqueueMiniTool(
+    tool,
+    "video",
+    params,
+    user.id,
+    project_id,
+    space_id,
+    [target_node_id],
+  );
   return c.json({ data: result }, 201);
 });
 
@@ -156,10 +177,18 @@ miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
-  const result = await enqueueMiniTool(tool, taskType, params, user.id, project_id, [target_node_id]);
+  const result = await enqueueMiniTool(
+    tool,
+    taskType,
+    params,
+    user.id,
+    project_id,
+    space_id,
+    [target_node_id],
+  );
   return c.json({ data: result }, 201);
 });
 
