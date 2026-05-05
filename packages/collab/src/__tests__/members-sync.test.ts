@@ -16,6 +16,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import * as Y from "yjs";
+import type Redis from "ioredis";
 import type { Hocuspocus } from "@hocuspocus/server";
 import {
   membersChangedChannel,
@@ -116,7 +117,11 @@ describe("startMembersSync — members:changed", () => {
     const { hocuspocus } = buildHocuspocus(metaDoc);
     const { subscriber } = buildRedis();
 
-    startMembersSync(hocuspocus, subscriber);
+    // Cast: FakeRedis only stubs the surface members-sync touches
+    // (duplicate / psubscribe / punsubscribe / quit / EventEmitter
+    // pmessage handler). The full ioredis Redis type has 350+ other
+    // members irrelevant to this test.
+    startMembersSync(hocuspocus, subscriber as unknown as Redis);
     // Allow psubscribe callback (sync in our fake) to run.
     await Promise.resolve();
 
@@ -157,7 +162,11 @@ describe("startMembersSync — members:changed", () => {
 
     const { hocuspocus } = buildHocuspocus(metaDoc);
     const { subscriber } = buildRedis();
-    startMembersSync(hocuspocus, subscriber);
+    // Cast: FakeRedis only stubs the surface members-sync touches
+    // (duplicate / psubscribe / punsubscribe / quit / EventEmitter
+    // pmessage handler). The full ioredis Redis type has 350+ other
+    // members irrelevant to this test.
+    startMembersSync(hocuspocus, subscriber as unknown as Redis);
     await Promise.resolve();
 
     const event: MembersChangedEvent = {
@@ -188,7 +197,11 @@ describe("startMembersSync — space:created", () => {
   it("opens meta doc and writes the spaces[spaceId] entry", async () => {
     const { hocuspocus, applied, openSpy } = buildHocuspocus();
     const { subscriber } = buildRedis();
-    startMembersSync(hocuspocus, subscriber);
+    // Cast: FakeRedis only stubs the surface members-sync touches
+    // (duplicate / psubscribe / punsubscribe / quit / EventEmitter
+    // pmessage handler). The full ioredis Redis type has 350+ other
+    // members irrelevant to this test.
+    startMembersSync(hocuspocus, subscriber as unknown as Redis);
     await Promise.resolve();
 
     const event: SpaceCreatedEvent = {
@@ -229,7 +242,11 @@ describe("startMembersSync — space:deleted", () => {
   it("removes the spaces[spaceId] entry from the meta doc", async () => {
     const { hocuspocus, applied, openSpy } = buildHocuspocus();
     const { subscriber } = buildRedis();
-    startMembersSync(hocuspocus, subscriber);
+    // Cast: FakeRedis only stubs the surface members-sync touches
+    // (duplicate / psubscribe / punsubscribe / quit / EventEmitter
+    // pmessage handler). The full ioredis Redis type has 350+ other
+    // members irrelevant to this test.
+    startMembersSync(hocuspocus, subscriber as unknown as Redis);
     await Promise.resolve();
 
     // Seed an existing entry by walking through space:created first.
