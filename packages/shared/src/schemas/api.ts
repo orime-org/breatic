@@ -92,11 +92,6 @@ export const projectCreateSchema = z.object({
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 
-export const canvasSaveSchema = z.object({
-  canvas_data: z.record(z.string(), z.unknown()),
-});
-export type CanvasSaveInput = z.infer<typeof canvasSaveSchema>;
-
 // ── Payment ──────────────────────────────────────────────────────────
 
 export const checkoutSchema = z.object({

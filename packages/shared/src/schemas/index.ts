@@ -8,7 +8,6 @@ export {
   taskCreateSchema,
   understandSchema,
   projectCreateSchema,
-  canvasSaveSchema,
   checkoutSchema,
   paginationSchema,
 } from "./api.js";
@@ -21,7 +20,6 @@ export type {
   TaskCreateInput,
   UnderstandInput,
   ProjectCreateInput,
-  CanvasSaveInput,
   CheckoutInput,
   PaginationInput,
 } from "./api.js";

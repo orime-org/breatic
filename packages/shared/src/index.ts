@@ -25,6 +25,7 @@ export type {
   PaymentEntity,
   CreditTransactionEntity,
   ProjectEntity,
+  ProjectDetail,
   MemoryContext,
   SkillMeta,
   NodeState,
@@ -33,7 +34,12 @@ export type {
   CanvasNodeFields,
   NodeStateUpdateEvent,
   NodeEvent,
+  ProjectRole,
+  ProjectMember,
+  Studio,
 } from "./types/index.js";
+
+export { ROLE_RANK } from "./types/index.js";
 
 export type {
   ApiResponse,
@@ -50,7 +56,6 @@ export {
   taskCreateSchema,
   understandSchema,
   projectCreateSchema,
-  canvasSaveSchema,
   checkoutSchema,
   paginationSchema,
 } from "./schemas/index.js";
@@ -63,7 +68,6 @@ export type {
   TaskCreateInput,
   UnderstandInput,
   ProjectCreateInput,
-  CanvasSaveInput,
   CheckoutInput,
   PaginationInput,
 } from "./schemas/index.js";
@@ -71,7 +75,18 @@ export type {
 export { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "./i18n/index.js";
 export type { Locale } from "./i18n/index.js";
 
-export { projectDocName, parseProjectDocName } from "./yjs-doc-names.js";
+export {
+  projectMetaDocName,
+  canvasSpaceDocName,
+  documentSpaceDocName,
+  timelineSpaceDocName,
+  parseDocName,
+  isProjectScopedDocName,
+  // Deprecated pre-v10 single-doc helpers; PR-C deletes these.
+  projectDocName,
+  parseProjectDocName,
+} from "./yjs-doc-names.js";
+export type { DocKind, ParsedDocName } from "./yjs-doc-names.js";
 
 export {
   defaultAdjustValue,
