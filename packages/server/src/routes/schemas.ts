@@ -14,7 +14,6 @@ export {
   taskCreateSchema,
   understandSchema,
   projectCreateSchema,
-  canvasSaveSchema,
   checkoutSchema,
   paginationSchema,
 } from "@breatic/shared";

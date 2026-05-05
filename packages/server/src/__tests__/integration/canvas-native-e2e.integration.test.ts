@@ -157,6 +157,10 @@ let db: any; // typed as any to sidestep drizzle-orm version mismatch between
 // Fixture IDs — inserted once, reused across all tests
 const FIXTURE_USER_ID = "00000000-0000-0000-0000-000000000001";
 const FIXTURE_PROJECT_ID = "00000000-0000-0000-0000-000000000002";
+// v10: every project belongs to a Studio. Personal-Studio fixture so
+// the FK on projects.studio_id can be satisfied alongside the
+// existing user fixture.
+const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
 
 // ── Polling helpers ──────────────────────────────────────────────────────────
 
@@ -283,17 +287,33 @@ beforeAll(async () => {
   pgClient = postgres(DATABASE_URL, { max: 3 });
   db = drizzle(pgClient);
 
-  // 2. Insert FK fixture rows: user → project (required by tasks table FK)
+  // 2. Insert FK fixture rows: user → studio → project + owner membership
+  //    (v10: projects.studio_id NOT NULL + project_members owner row required
+  //     for any later requireRole-gated route to admit the user).
   await db.insert(schema.users).values({
     id: FIXTURE_USER_ID,
     email: "integration-test@breatic.example",
     emailVerified: true,
   }).onConflictDoNothing();
 
+  await db.insert(schema.studios).values({
+    id: FIXTURE_STUDIO_ID,
+    ownerUserId: FIXTURE_USER_ID,
+    name: "Integration Test Studio",
+  }).onConflictDoNothing();
+
   await db.insert(schema.projects).values({
     id: FIXTURE_PROJECT_ID,
-    userId: FIXTURE_USER_ID,
+    studioId: FIXTURE_STUDIO_ID,
+    createdByUserId: FIXTURE_USER_ID,
     name: "Integration Test Project",
+  }).onConflictDoNothing();
+
+  await db.insert(schema.projectMembers).values({
+    projectId: FIXTURE_PROJECT_ID,
+    userId: FIXTURE_USER_ID,
+    role: "owner",
+    addedBy: null,
   }).onConflictDoNothing();
 
   // 3. Start in-process Hocuspocus — minimal config, no PG/Redis extensions.

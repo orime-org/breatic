@@ -91,8 +91,8 @@ assets.get(
     const user = c.get("user");
     const { filename, content_type, project_id } = c.req.valid("query");
 
-    // Ownership check
-    await projectService.assertAccess(project_id, user.id);
+    // Upload is a write — edit-or-above can presign.
+    await projectService.assertAccess(project_id, user.id, "edit");
 
     const kind = detectKind(content_type);
     const key = storageKey({
@@ -192,7 +192,7 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    await projectService.assertAccess(body.project_id, user.id);
+    await projectService.assertAccess(body.project_id, user.id, "edit");
 
     await nodeHistoryService.recordUpload({
       projectId: body.project_id,
