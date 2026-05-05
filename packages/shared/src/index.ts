@@ -27,12 +27,11 @@ export type {
   ProjectEntity,
   MemoryContext,
   SkillMeta,
-  HistoryItemStatus,
-  HistoryItemSource,
-  HistoryItem,
+  NodeState,
+  HandlingActor,
   AttachRef,
   CanvasNodeFields,
-  HistoryUpdateEvent,
+  NodeStateUpdateEvent,
   NodeEvent,
 } from "./types/index.js";
 

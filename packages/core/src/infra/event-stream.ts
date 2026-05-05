@@ -41,6 +41,23 @@ export function taskEventsStreamKey(): string {
  * @param streamKey - Target stream key
  * @param payload - JSON-serializable payload object
  */
+/**
+ * JSON replacer that preserves `undefined` values as the sentinel string
+ * `"__undefined__"`. Standard `JSON.stringify` silently drops `undefined`
+ * values, which would strip `handlingBy: undefined` from
+ * `NodeStateUpdateEvent.update` and prevent the Collab consumer from
+ * calling `dataMap.delete("handlingBy")` on the node-state-update path.
+ *
+ * The consumer (`task-listener.ts`) converts `"__undefined__"` back to
+ * `undefined` before calling `dataMap.delete(key)`.
+ */
+function jsonReplacerPreserveUndefined(
+  _key: string,
+  value: unknown,
+): unknown {
+  return value === undefined ? "__undefined__" : value;
+}
+
 export async function publishToStream(
   redis: Redis,
   streamKey: string,
@@ -53,7 +70,7 @@ export async function publishToStream(
     "10000",
     "*",
     "payload",
-    JSON.stringify(payload),
+    JSON.stringify(payload, jsonReplacerPreserveUndefined),
   );
   logger.debug({ streamKey, id }, "stream_event_published");
 }

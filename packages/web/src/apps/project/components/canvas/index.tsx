@@ -96,23 +96,13 @@ const getLockedGroupIds = (nodes: Node[]): Set<string> => {
   return set;
 };
 
-/**
- * Resolve the active history item URL for a node (new schema).
- * Returns the URL of the HistoryItem referenced by `activeHistoryId`, or null.
+/** Current output URL for project canvas image nodes (1002), or null.
+ * Canvas-native schema: reads data.content directly.
  */
-const getActiveHistoryUrl = (data: Partial<CanvasWorkflowNodeData> | undefined): string | null => {
-  if (!data) return null;
-  const { activeHistoryId, history } = data;
-  if (!activeHistoryId || !Array.isArray(history)) return null;
-  const item = history.find((h) => h.id === activeHistoryId);
-  return item?.url ?? null;
-};
-
-/** Current output URL for project canvas image nodes (1002), or null. */
 const getProjectImageNodeContentUrl = (node: Node): string | null => {
   if (node.type !== '1002') return null;
   const data = node.data as Partial<CanvasWorkflowNodeData>;
-  return getActiveHistoryUrl(data);
+  return data.content ?? null;
 };
 
 /** Extract pickable content from any canvas node for mention mode (all node types). */
@@ -120,24 +110,24 @@ const getNodeContentForMention = (node: Node): { content: string; name: string; 
   const data = node.data as Partial<CanvasWorkflowNodeData> | undefined;
   const name = typeof data?.name === 'string' && data.name.trim() ? data.name : '';
   if (node.type === '1002') {
-    const url = getProjectImageNodeContentUrl(node);
+    const url = data?.content ?? null;
     if (!url) return null;
     return { content: url, name: name || 'image', resourceType: 'image' };
   }
   if (node.type === '1003') {
-    // Video URL — resolved from active history item (new schema).
-    const url = getActiveHistoryUrl(data);
+    // Video URL — read from data.content (canvas-native schema).
+    const url = data?.content ?? null;
     if (!url) return null;
     return { content: url, name: name || 'video', resourceType: 'video' };
   }
   if (node.type === '1004') {
-    // Audio URL — resolved from active history item (new schema).
-    const url = getActiveHistoryUrl(data);
+    // Audio URL — read from data.content (canvas-native schema).
+    const url = data?.content ?? null;
     if (!url) return null;
     return { content: url, name: name || 'audio', resourceType: 'audio' };
   }
   if (node.type === '1001') {
-    // TODO PR-6+: text content lives in the Yjs `prompt` Y.XmlFragment, not in
+    // TODO PR-C+: text content lives in the Yjs `prompt` Y.XmlFragment, not in
     // `data.content`. Extracting plain text for mention mode requires accessing
     // the TipTap document. Return null until that path is implemented.
     return null;

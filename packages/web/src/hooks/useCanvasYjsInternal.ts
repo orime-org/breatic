@@ -46,11 +46,28 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
     data: dataMap instanceof Y.Map
       ? {
           name: (dataMap.get('name') as string) ?? '',
-          activeHistoryId: dataMap.get('activeHistoryId') as string | undefined,
-          history: yArrayToPlainArray(dataMap.get('history')),
+          // ── State machine (canvas-native schema) ──────────────
+          state: (dataMap.get('state') as string) ?? 'idle',
+          handlingBy: dataMap.get('handlingBy') as { userId: string; username: string } | undefined,
+          errorMessage: dataMap.get('errorMessage') as string | undefined,
+          // ── Data node fields ──────────────────────────────────
+          content: dataMap.get('content') as string | undefined,
+          cover_url: dataMap.get('cover_url') as string | undefined,
+          width: dataMap.get('width') as number | undefined,
+          height: dataMap.get('height') as number | undefined,
+          duration: dataMap.get('duration') as number | undefined,
+          sourceNodeId: dataMap.get('sourceNodeId') as string | undefined,
+          operation: dataMap.get('operation') as string | undefined,
+          operationParams: dataMap.get('operationParams') as Record<string, unknown> | undefined,
+          // ── Generative node fields ────────────────────────────
+          model: dataMap.get('model') as string | undefined,
+          modelParams: dataMap.get('modelParams') as Record<string, unknown> | undefined,
+          // ── Common ───────────────────────────────────────────
           attachments: yArrayToPlainArray(dataMap.get('attachments')),
+          // ── UI-only transient signals (not in Yjs history schema) ──
+          pickState: dataMap.get('pickState') ?? undefined,
         }
-      : { name: '', history: [], attachments: [] },
+      : { name: '', state: 'idle', attachments: [] },
   };
 }
 
@@ -201,24 +218,17 @@ export function useCanvasYjsInternal(
             if (ymap instanceof Y.Map) {
               const newNode = yMapToNode(ymap, node.id);
 
-              // Toast: a history item transitions from loading → done/failed.
-              // Detect by comparing previous history array length or any newly
-              // completed item (status changed from loading to done/failed).
-              const prevHistory = (node.data?.history as Array<{ id: string; status: string }> | undefined) ?? [];
-              const nextHistory = (newNode.data?.history as Array<{ id: string; status: string; source?: string }> | undefined) ?? [];
-              for (const nextItem of nextHistory) {
-                if (nextItem.source === 'editor-mini-tool') continue;
-                if (nextItem.status === 'done' || nextItem.status === 'failed') {
-                  const prevItem = prevHistory.find((h) => h.id === nextItem.id);
-                  if (prevItem?.status === 'loading') {
-                    pushToastRef.current({
-                      nodeId: node.id,
-                      nodeName: (newNode.data?.name as string) || node.id,
-                      type: nextItem.status === 'failed' ? 'failed' : 'completed',
-                    });
-                    break; // one toast per update cycle per node
-                  }
-                }
+              // Toast: node transitions from handling → idle (completed or failed).
+              // Canvas-native schema: state machine transition, not history-array diff.
+              const prevState = (node.data as { state?: string } | undefined)?.state;
+              const nextState = (newNode.data as { state?: string } | undefined)?.state;
+              const nextErrorMessage = (newNode.data as { errorMessage?: string } | undefined)?.errorMessage;
+              if (prevState === 'handling' && nextState === 'idle') {
+                pushToastRef.current({
+                  nodeId: node.id,
+                  nodeName: (newNode.data?.name as string) || node.id,
+                  type: nextErrorMessage ? 'failed' : 'completed',
+                });
               }
 
               next.push(newNode);

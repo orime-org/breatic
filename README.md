@@ -245,8 +245,7 @@ conditions:
 - License revisions apply only prospectively — past contributions
   remain under the version in effect at commit time
 
-See [LICENSE](./LICENSE) (English, legally binding) or
-[LICENSE.zh.md](./LICENSE.zh.md) (中文译本,仅供参考).
+See [LICENSE](./LICENSE) for the full text.
 
 Commercial licensing: [licensing@orime.ai](mailto:licensing@orime.ai).
 

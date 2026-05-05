@@ -411,14 +411,8 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
   );
 
   const handleAddToInput = useCallback(() => {
-    // TODO PR-6+: node output URL is now resolved from the active history item,
-    // not from `data.content` (removed from schema). Resolve the active HistoryItem.url
-    // from `targetNodeData.history` + `targetNodeData.activeHistoryId` here.
-    const { activeHistoryId, history, name: nodeName } = targetNodeData ?? {};
-    const activeItem = Array.isArray(history) && activeHistoryId
-      ? history.find((h) => h.id === activeHistoryId)
-      : undefined;
-    const content = activeItem?.url;
+    // Canvas-native schema: node output URL is data.content directly.
+    const { content, name: nodeName } = targetNodeData ?? {};
     if (!content) return;
     const name = nodeName ?? 'File';
     let type: 'image' | 'video' | 'audio' | 'text' = 'image';
