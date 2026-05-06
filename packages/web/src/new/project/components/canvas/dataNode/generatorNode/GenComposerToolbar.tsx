@@ -4,8 +4,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, useDismiss, useFloating, FloatingPortal } from '@floating-ui/react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 import {
   AgentResourcePreviewContent,
   useAgentResourcePreviewVideoSize,

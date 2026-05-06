@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
-import { Icon } from '@/components/base/icon';
-import Slider from '@/components/base/slider';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import Slider from '@/ui/slider';
+import Tooltip from '@/ui/tooltip';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
 
 const formatPlaybackTime = (seconds: number) => {

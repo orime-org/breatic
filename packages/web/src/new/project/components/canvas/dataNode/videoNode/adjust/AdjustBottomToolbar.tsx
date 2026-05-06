@@ -1,9 +1,9 @@
 import React, { memo, useEffect, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import Slider from '@/components/base/slider';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import Tooltip from '@/components/base/tooltip';
+import Slider from '@/ui/slider';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import Tooltip from '@/ui/tooltip';
 import PlaybackPanel from '../playback/PlaybackPanel';
 import type { AdjustValue } from '@/new/imageEditor/components/adjust/AdjustBottomToolbar';
 import { defaultAdjustValue } from '@/new/imageEditor/components/adjust/AdjustBottomToolbar';

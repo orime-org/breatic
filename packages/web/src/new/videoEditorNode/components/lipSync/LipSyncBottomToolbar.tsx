@@ -1,7 +1,7 @@
 import React, { memo, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
 import PlaybackPanel from '../playback/PlaybackPanel';
 
 type LipSyncBottomToolbarProps = {

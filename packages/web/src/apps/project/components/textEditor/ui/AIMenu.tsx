@@ -25,7 +25,7 @@ import {
   RiTranslateAi,
 } from 'react-icons/ri';
 import { FaStopCircle } from 'react-icons/fa';
-import { Button } from '@/components/base/button';
+import { Button } from '@/ui/button';
 import { cn } from '@/utils/classnames';
 import { AiErrorIcon } from './TextEditorIcons';
 

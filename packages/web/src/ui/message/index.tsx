@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 /** Toast API and portal container */
 

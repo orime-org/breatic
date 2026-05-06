@@ -4,8 +4,8 @@
  */
 import React, { memo } from 'react';
 import { cn } from '@/utils/classnames';
-import { Image } from '@/components/base/image';
-import { Icon } from '@/components/base/icon';
+import { Image } from '@/ui/image';
+import { Icon } from '@/ui/icon';
 
 export interface LocalImageNodeContentProps {
   /** Image URL */

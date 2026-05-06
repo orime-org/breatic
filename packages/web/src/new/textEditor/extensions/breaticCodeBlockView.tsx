@@ -6,7 +6,7 @@ import {
   type NodeViewProps,
 } from '@tiptap/react';
 import { all, createLowlight } from 'lowlight';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 
 const CODE_LANGUAGES = [
   { value: 'plaintext', label: 'Plain text' },

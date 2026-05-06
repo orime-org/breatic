@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
-import Upload from '@/components/base/upload';
-import { message } from '@/components/base/message';
+import Upload from '@/ui/upload';
+import { message } from '@/ui/message';
 import { MediaItem } from '../../types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { getImageMeta, getVideoMeta, getAudioMeta, extractThumbWithVideoElement } from '@/utils/mediaUtils';
 
 type MediaType = 'video' | 'audio' | 'image';

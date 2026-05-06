@@ -14,9 +14,9 @@ import {
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 import { Canvas, FabricImage } from 'fabric';
 import type { LocalCanvasNodeData } from '@/new/project/types';

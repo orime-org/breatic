@@ -1,9 +1,9 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Divider from '@/components/base/divider';
-import { message } from '@/components/base/message';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Divider from '@/ui/divider';
+import { message } from '@/ui/message';
 import PlaybackPanel, { type TimelineCutMarker } from '../playback/PlaybackPanel';
 
 export type CutBottomToolbarProps = {

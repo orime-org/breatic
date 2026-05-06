@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSPr
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { selectedRect, TableMap } from '@tiptap/pm/tables';
-import Tooltip from '@/components/base/tooltip';
+import Tooltip from '@/ui/tooltip';
 import { cn } from '@/utils/classnames';
 const textColors = {
   light: {

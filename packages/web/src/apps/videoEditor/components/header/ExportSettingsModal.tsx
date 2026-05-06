@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import Dialog from '@/components/base/dialog';
+import Dialog from '@/ui/dialog';
 import ConfirmModal from '@/components/modals/ConfirmModal';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
 import { useTranslation } from 'react-i18next';
 import { LoadingDots } from './LoadingDots';
 

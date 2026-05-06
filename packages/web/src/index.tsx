@@ -9,7 +9,7 @@ import { Provider } from 'react-redux';
 import store from './store';
 import { ThemeProvider } from './components/themeProvider';
 import { GlobalLoading } from './components/loading';
-import { MessageContainer } from './components/base/message';
+import { MessageContainer } from './ui/message';
 import * as Sentry from '@sentry/react';
 
 Sentry.init({

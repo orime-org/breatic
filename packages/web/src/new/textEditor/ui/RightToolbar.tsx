@@ -1,11 +1,11 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
-import Divider from '@/components/base/divider';
-import { message } from '@/components/base/message';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Upload, { type UploadFile } from '@/components/base/upload';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
+import Divider from '@/ui/divider';
+import { message } from '@/ui/message';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Upload, { type UploadFile } from '@/ui/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';

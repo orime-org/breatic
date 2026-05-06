@@ -10,8 +10,8 @@ import {
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
-import { message } from '@/components/base/message';
-import { Icon } from '@/components/base/icon';
+import { message } from '@/ui/message';
+import { Icon } from '@/ui/icon';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';

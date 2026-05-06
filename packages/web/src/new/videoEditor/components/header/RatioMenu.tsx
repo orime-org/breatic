@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import aspectRatioIconMap from '@/apps/project/constants/aspectRatioIconMap';
 
 interface RatioMenuProps {

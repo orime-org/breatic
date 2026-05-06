@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Divider from '@/components/base/divider';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Divider from '@/ui/divider';
 export type VideoUpscaleTarget = '360p' | '480p' | '720p' | '1080p' | '4k';
 
 export type VideoInterpolateTarget = '30' | '50' | '60' | '120' | '240';

@@ -1,13 +1,13 @@
 import React, { memo, useState, useEffect } from 'react';
-import { message } from '@/components/base/message';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import { message } from '@/ui/message';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import type { RootState } from '@/store';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { type Node, type Edge } from '@xyflow/react';
 import i18n from '@/i18n';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import Loading from '@/components/loading/Loading';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';

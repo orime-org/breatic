@@ -3,10 +3,10 @@
  */
 import React, { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
-import Divider from '@/components/base/divider';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
+import Divider from '@/ui/divider';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import type { LocalTextRichTextFormatState } from './LocalTextNodeContent';
 
 export type { LocalTextRichTextFormatState } from './LocalTextNodeContent';

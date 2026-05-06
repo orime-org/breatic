@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 import Video from './Video';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
 

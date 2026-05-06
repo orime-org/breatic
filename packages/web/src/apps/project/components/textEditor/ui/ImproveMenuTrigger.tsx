@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import Tooltip from '@/components/base/tooltip';
+import Tooltip from '@/ui/tooltip';
 import {
   RiArrowDropDownLine,
   RiContractUpDownLine,

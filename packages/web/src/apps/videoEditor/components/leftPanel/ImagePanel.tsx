@@ -1,8 +1,8 @@
 import React, { useState, memo } from 'react';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
-import Tooltip from '@/components/base/tooltip';
-import { Icon } from '@/components/base/icon';
+import Tooltip from '@/ui/tooltip';
+import { Icon } from '@/ui/icon';
 import { MediaItem, TimelineClip } from '../../types';
 
 interface ImagePanelProps {

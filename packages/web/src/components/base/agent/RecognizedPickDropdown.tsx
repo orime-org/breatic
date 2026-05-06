@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import { Icon } from '@/components/base/icon';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 
 export type RecognizedPickOption = {

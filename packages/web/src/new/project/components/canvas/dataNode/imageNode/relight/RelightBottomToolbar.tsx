@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import Tooltip from '@/components/base/tooltip';
-import { Icon } from '@/components/base/icon';
-import Slider from '@/components/base/slider';
-import Switch from '@/components/base/switch';
-import TextArea from '@/components/base/textArea';
-import { Button } from '@/components/base/button';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Upload, { type UploadFile } from '@/components/base/upload';
+import Tooltip from '@/ui/tooltip';
+import { Icon } from '@/ui/icon';
+import Slider from '@/ui/slider';
+import Switch from '@/ui/switch';
+import TextArea from '@/ui/textArea';
+import { Button } from '@/ui/button';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Upload, { type UploadFile } from '@/ui/upload';
 import RelightThreeScene, { type RelightLightPreset, type RelightViewMode } from './RelightThreeScene';
 
 type RelightBottomToolbarProps = {

@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useState } from 'react';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
 
 interface CanvasCommentComposerProps {
   x: number;

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
-import { Button } from '@/components/base/button';
-import Dialog from '@/components/base/dialog';
+import { Button } from '@/ui/button';
+import Dialog from '@/ui/dialog';
 
 interface ConfirmModalProps {
   open: boolean;

@@ -13,8 +13,8 @@ import {
 } from '@floating-ui/react';
 import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
-import Divider from '@/components/base/divider';
-import { Icon } from '@/components/base/icon';
+import Divider from '@/ui/divider';
+import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';
 
 const groupPadding = 40;

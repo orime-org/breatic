@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import FontFaceObserver from 'fontfaceobserver';
-import Input from '@/components/base/input';
-import { Icon } from '@/components/base/icon';
+import Input from '@/ui/input';
+import { Icon } from '@/ui/icon';
 
 // fontchild itemsinterface（fontvariant）
 interface FontChild {

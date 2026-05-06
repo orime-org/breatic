@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo, memo } from 'react';
-import Slider from '@/components/base/slider';
-import Input from '@/components/base/input';
-import { Icon } from '@/components/base/icon';
+import Slider from '@/ui/slider';
+import Input from '@/ui/input';
+import { Icon } from '@/ui/icon';
 import { useTranslation } from 'react-i18next';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 

@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
-import Tooltip from '@/components/base/tooltip';
+import Tooltip from '@/ui/tooltip';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 interface SocialLink {
   url: string;

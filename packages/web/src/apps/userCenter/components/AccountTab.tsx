@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 import user_png from '@/assets/images/userCenter/user.png';
 import { useTranslation } from 'react-i18next';
 import { UserInfoType } from '@/store/modules/userCenter';

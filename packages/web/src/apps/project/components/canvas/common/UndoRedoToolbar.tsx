@@ -1,8 +1,8 @@
 import React, { memo, useCallback } from 'react';
 import { useViewport, useReactFlow, useStore } from '@xyflow/react';
-import Slider from '@/components/base/slider';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import Slider from '@/ui/slider';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 
 interface UndoRedoToolbarProps {
   /**

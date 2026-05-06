@@ -1,15 +1,15 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, useDismiss, useFloating, FloatingPortal } from '@floating-ui/react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 import {
   AgentResourcePreviewContent,
   useAgentResourcePreviewVideoSize,
   type AgentPreviewResource,
 } from './AgentResourcePreview';
-import Divider from '@/components/base/divider';
-import Upload, { type UploadFile } from '@/components/base/upload';
+import Divider from '@/ui/divider';
+import Upload, { type UploadFile } from '@/ui/upload';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList } from '@/hooks/useUpstreamExternalFileList';
 

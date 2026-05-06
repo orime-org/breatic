@@ -1,6 +1,6 @@
 import React from 'react';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 import AgentModelSelect from './AgentModelSelect';
 import { Agent } from './Agent';
 

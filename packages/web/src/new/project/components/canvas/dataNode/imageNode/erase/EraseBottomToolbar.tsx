@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Canvas, Circle, Path, Pattern, Rect } from 'fabric';
 import { EraserBrush } from '@erase2d/fabric';
-import Slider from '@/components/base/slider';
-import Tooltip from '@/components/base/tooltip';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import Divider from '@/components/base/divider';
+import Slider from '@/ui/slider';
+import Tooltip from '@/ui/tooltip';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import Divider from '@/ui/divider';
 import { type InpaintTool } from '../inpaint/InpaintBottomToolbar';
 
 type EraseBottomToolbarProps = {

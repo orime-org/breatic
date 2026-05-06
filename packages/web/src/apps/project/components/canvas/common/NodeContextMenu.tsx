@@ -14,8 +14,8 @@ import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
-import Divider from '@/components/base/divider';
-import { Icon } from '@/components/base/icon';
+import Divider from '@/ui/divider';
+import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';
 
 const groupPadding = 40;

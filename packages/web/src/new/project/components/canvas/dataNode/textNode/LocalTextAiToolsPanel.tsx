@@ -15,12 +15,12 @@ import {
   RiSparkling2Line,
   RiTranslateAi,
 } from 'react-icons/ri';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Tooltip from '@/components/base/tooltip';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Input from '@/components/base/input';
-import Select from '@/components/base/select';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Tooltip from '@/ui/tooltip';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Input from '@/ui/input';
+import Select from '@/ui/select';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 
 export type TextAiToolId =

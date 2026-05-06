@@ -1,8 +1,8 @@
 /** Audio node toolbar: Launch Editor | Upload | Record Audio | Info. */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
-import Divider from '@/components/base/divider';
+import { Icon } from '@/ui/icon';
+import Divider from '@/ui/divider';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 
 export interface AudioNodeToolbarProps {

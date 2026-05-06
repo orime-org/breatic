@@ -2,7 +2,7 @@
  * Lightweight WebSocket helper with heartbeat, reconnect, and optional message callback.
  */
 
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 
 let socketUrl: string = '';
 let socketQueryParams: Record<string, string | number | undefined> | undefined = undefined;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@/components/base/icon';
-import Input from '@/components/base/input';
-import Dropdown from '@/components/base/dropdown';
+import { Icon } from '@/ui/icon';
+import Input from '@/ui/input';
+import Dropdown from '@/ui/dropdown';
 import { cn } from '@/utils/classnames';
 
 const minGrid = 1;

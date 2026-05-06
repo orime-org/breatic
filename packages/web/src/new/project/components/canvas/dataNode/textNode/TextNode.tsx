@@ -12,10 +12,10 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
-import Divider from '@/components/base/divider';
-import { message } from '@/components/base/message';
+import Divider from '@/ui/divider';
+import { message } from '@/ui/message';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';

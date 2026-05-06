@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import Slider from '@/components/base/slider';
-import { Icon } from '@/components/base/icon';
+import Slider from '@/ui/slider';
+import { Icon } from '@/ui/icon';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import PreviewCanvas from './PreviewCanvas';
 

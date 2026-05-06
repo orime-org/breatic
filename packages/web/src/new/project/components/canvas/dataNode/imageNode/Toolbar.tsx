@@ -2,10 +2,10 @@
  * Top toolbar for local canvas image nodes — same callback surface as mixed-editor `Toolbar.tsx`, plus Replace.
  */
 import React from 'react';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Divider from '@/components/base/divider';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Divider from '@/ui/divider';
 
 export type ToolbarProps = {
   nodeId: string;

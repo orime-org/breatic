@@ -3,8 +3,8 @@
  */
 import { memo, type FC, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
-import { message } from '@/components/base/message';
+import { Icon } from '@/ui/icon';
+import { message } from '@/ui/message';
 
 const downloadImageFromSrc = async (src: string): Promise<void> => {
   if (!src) {

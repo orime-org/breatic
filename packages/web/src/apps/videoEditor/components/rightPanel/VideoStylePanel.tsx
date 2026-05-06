@@ -1,12 +1,12 @@
 import React, { useState, memo } from 'react';
-import Slider from '@/components/base/slider';
-import { ColorPicker } from '@/components/base/colorPicker';
-import Input from '@/components/base/input';
+import Slider from '@/ui/slider';
+import { ColorPicker } from '@/ui/colorPicker';
+import Input from '@/ui/input';
 import { useTranslation } from 'react-i18next';
 import { MediaItem } from '../../types';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import CropModal from './CropModal';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 interface VideoStylePanelProps {
   nodeId?: string;

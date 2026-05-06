@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cva } from 'class-variance-authority';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 export type DrawerPlacement = 'left' | 'right' | 'top' | 'bottom';
 

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import Slider from '@/components/base/slider';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import Tooltip from '@/components/base/tooltip';
+import Slider from '@/ui/slider';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import Tooltip from '@/ui/tooltip';
 
 export type AdjustValue = {
   exposure: number;

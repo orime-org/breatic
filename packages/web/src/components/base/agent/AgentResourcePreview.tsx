@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import Video from '@/apps/project/components/canvas/common/Video';
 import AudioWaveformPlayer from '@/apps/project/components/canvas/common/AudioWaveformPlayer';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';

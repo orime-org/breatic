@@ -11,7 +11,7 @@ import {
   useInteractions,
   FloatingPortal,
 } from '@floating-ui/react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 
 export type MenuItemType = {

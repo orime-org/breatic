@@ -1,9 +1,9 @@
 import React, { useState, useRef, memo } from 'react';
-import Select from '@/components/base/select';
-import { message } from '@/components/base/message';
-import Input from '@/components/base/input';
+import Select from '@/ui/select';
+import { message } from '@/ui/message';
+import Input from '@/ui/input';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/base/button';
+import { Button } from '@/ui/button';
 import { nanoid } from 'nanoid';
 import { ExportSettingsModal } from './ExportSettingsModal';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';

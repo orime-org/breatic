@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
-import Input from '@/components/base/input';
-import Divider from '@/components/base/divider';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
+import Input from '@/ui/input';
+import Divider from '@/ui/divider';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
 import PlaybackPanel from '../playback/PlaybackPanel';
 

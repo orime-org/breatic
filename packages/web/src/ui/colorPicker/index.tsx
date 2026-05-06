@@ -11,7 +11,7 @@ import {
 } from '@floating-ui/react';
 import { cva } from 'class-variance-authority';
 import { cn } from '@/utils/classnames';
-import Input from '@/components/base/input';
+import Input from '@/ui/input';
 import { HueSlider } from './HueSlider';
 import { SaturationValueArea } from './SaturationValueArea';
 import { AlphaSlider } from './AlphaSlider';

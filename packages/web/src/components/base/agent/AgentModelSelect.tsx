@@ -1,10 +1,10 @@
 import React, { memo, useState } from 'react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import CustomPopover from '@/components/base/popover';
-import { Tabs, type TabsItem } from '@/components/base/tabs';
-import Select, { type SelectOption } from '@/components/base/select';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import CustomPopover from '@/ui/popover';
+import { Tabs, type TabsItem } from '@/ui/tabs';
+import Select, { type SelectOption } from '@/ui/select';
 
 import claudePng from '@/assets/images/model/claude.png';
 import deepseekPng from '@/assets/images/model/deepseek.png';

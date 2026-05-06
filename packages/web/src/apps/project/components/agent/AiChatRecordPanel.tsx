@@ -18,7 +18,7 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import ProjectHeader from './ProjectHeader';
 import UserCenter from '@/apps/userCenter';
 
