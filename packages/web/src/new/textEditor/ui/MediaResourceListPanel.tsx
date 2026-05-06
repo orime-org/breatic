@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
-import { Image } from '@/components/base/image';
+import { Icon } from '@/ui/icon';
+import { Image } from '@/ui/image';
 
 /**
  * One image row: preview URL, optional display name.

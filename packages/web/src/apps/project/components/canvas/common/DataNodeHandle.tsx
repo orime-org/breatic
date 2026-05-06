@@ -11,7 +11,7 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { nanoid } from 'nanoid';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';

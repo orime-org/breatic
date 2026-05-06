@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import Tooltip from '@/components/base/tooltip';
-import { Icon } from '@/components/base/icon';
-import Divider from '@/components/base/divider';
-import { Button } from '@/components/base/button';
+import Tooltip from '@/ui/tooltip';
+import { Icon } from '@/ui/icon';
+import Divider from '@/ui/divider';
+import { Button } from '@/ui/button';
 
 export type FlipRotateBitmapOp = 'rotateMinus90' | 'rotate90' | 'flipHorizontal' | 'flipVertical';
 

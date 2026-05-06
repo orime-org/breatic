@@ -1,10 +1,10 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Upload, { type UploadFile } from '@/components/base/upload';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Upload, { type UploadFile } from '@/ui/upload';
 import PlaybackPanel from '../playback/PlaybackPanel';
 import type { EraseTrackingSegment, EraseTrackingStatus } from '../erase/EraseTrackingPanel';
 

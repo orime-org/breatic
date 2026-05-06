@@ -2,7 +2,7 @@ import React, { useState, useRef, memo, useEffect } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useWavesurfer } from '@wavesurfer/react';
 import { TimelineClip } from '../../types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 interface ClipItemProps {
   clip: TimelineClip;

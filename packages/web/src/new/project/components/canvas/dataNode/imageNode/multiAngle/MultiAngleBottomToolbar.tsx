@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import Tooltip from '@/components/base/tooltip';
-import { Icon } from '@/components/base/icon';
-import Slider from '@/components/base/slider';
-import Switch from '@/components/base/switch';
-import { Button } from '@/components/base/button';
-import TextArea from '@/components/base/textArea';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import Tooltip from '@/ui/tooltip';
+import { Icon } from '@/ui/icon';
+import Slider from '@/ui/slider';
+import Switch from '@/ui/switch';
+import { Button } from '@/ui/button';
+import TextArea from '@/ui/textArea';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import AngleEditorV3Scene, { type AngleCubeScale } from './AngleEditorV3Scene';
 
 type MultiAngleBottomToolbarProps = {

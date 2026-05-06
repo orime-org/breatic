@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { message } from '@/components/base/message';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import { message } from '@/ui/message';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import type { WorkspaceProject } from '../types';
 import { projectsApi } from '@/apis';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import TextInputModal from '@/components/modals/TextInputModal';
 

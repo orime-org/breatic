@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
-import Select from '@/components/base/select';
-import Slider from '@/components/base/slider';
-import Input from '@/components/base/input';
-import { ColorPicker } from '@/components/base/colorPicker';
-import { Button } from '@/components/base/button';
+import Select from '@/ui/select';
+import Slider from '@/ui/slider';
+import Input from '@/ui/input';
+import { ColorPicker } from '@/ui/colorPicker';
+import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { RiAlignCenter, RiAlignLeft, RiAlignRight } from 'react-icons/ri';
 import FontSelector from './FontSelector';
 import FontFaceObserver from 'fontfaceobserver';

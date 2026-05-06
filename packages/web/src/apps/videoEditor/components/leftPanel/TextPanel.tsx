@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
 import { MediaItem, TimelineClip } from '../../types';
-import { Button } from '@/components/base/button';
+import { Button } from '@/ui/button';
 
 interface TextPanelProps {
   nodeId?: string;

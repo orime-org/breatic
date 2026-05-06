@@ -1,11 +1,11 @@
 import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
-import { message } from '@/components/base/message';
-import Slider from '@/components/base/slider';
-import Tooltip from '@/components/base/tooltip';
+import { message } from '@/ui/message';
+import Slider from '@/ui/slider';
+import Tooltip from '@/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import type { TimelineClip } from '../../types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 interface PlaybackControlsProps {
   nodeId?: string;

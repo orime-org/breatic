@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Tooltip from '@/ui/tooltip';
 import { cn } from '@/utils/classnames';
 
 type UpscaleResolution = '2k' | '4k' | '8k';

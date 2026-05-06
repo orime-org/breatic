@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, useDismiss, useFloating, FloatingPortal } from '@floating-ui/react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import type { AgentComposerUpstreamItem, AgentComposerUploadItem } from './AgentComposerTabs';
 import {
   AgentResourcePreviewContent,

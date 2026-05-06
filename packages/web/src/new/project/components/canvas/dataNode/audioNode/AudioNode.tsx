@@ -4,7 +4,7 @@
 import { memo, useCallback, useRef, useState } from 'react';
 import { Position, useReactFlow, useStore, type Node, type NodeProps } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';

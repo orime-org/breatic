@@ -3,7 +3,7 @@ import { Button as HeadlessButton } from '@headlessui/react';
 import type { ButtonHTMLAttributes } from 'react';
 import type { VariantProps } from 'class-variance-authority';
 import { cva } from 'class-variance-authority';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 import './index.css';
 

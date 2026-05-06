@@ -1,6 +1,6 @@
 import React from 'react';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 
 export type ImageEditorToolMode =
   | 'inpaint'

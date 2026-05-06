@@ -1,7 +1,7 @@
 import React, { useState, useRef, memo, useEffect, useCallback, useLayoutEffect } from 'react';
-import Dialog from '@/components/base/dialog';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import Dialog from '@/ui/dialog';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
 import './CropModal.css';
 

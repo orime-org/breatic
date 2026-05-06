@@ -3,8 +3,8 @@
  * Forked for `new/project` only — same UX as main canvas `TextNodeContent`.
  */
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 import { sanitizeRichText } from '@/utils/sanitize';
 
 /**

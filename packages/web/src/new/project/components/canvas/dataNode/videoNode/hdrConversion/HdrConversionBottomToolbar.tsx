@@ -1,11 +1,11 @@
 import React, { memo, useMemo, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import Slider from '@/components/base/slider';
-import { Button } from '@/components/base/button';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Switch from '@/components/base/switch';
-import { Icon } from '@/components/base/icon';
-import Divider from '@/components/base/divider';
+import Slider from '@/ui/slider';
+import { Button } from '@/ui/button';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Switch from '@/ui/switch';
+import { Icon } from '@/ui/icon';
+import Divider from '@/ui/divider';
 import PlaybackPanel from '../playback/PlaybackPanel';
 
 type HdrOutputPreset = 'hdr10' | 'hlg' | 'dolby-vision';

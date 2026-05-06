@@ -1,7 +1,7 @@
 import type { ElementType, ReactNode } from 'react';
 import { Dialog as HeadlessDialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { Fragment, useCallback } from 'react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 
 type DialogProps = {

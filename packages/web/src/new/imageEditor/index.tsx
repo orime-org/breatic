@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, FabricImage } from 'fabric';
 import { RiAddLine, RiSubtractLine } from 'react-icons/ri';
 import { useParams } from 'react-router-dom';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import Loading from '@/components/loading/Loading';
 import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
-import Tooltip from '@/components/base/tooltip';
-import Divider from '@/components/base/divider';
+import Tooltip from '@/ui/tooltip';
+import Divider from '@/ui/divider';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import LeftHistoryPanel, { type ImageHistoryItem } from './components/LeftHistoryPanel/LeftHistoryPanel';

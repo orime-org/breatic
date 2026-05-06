@@ -1,7 +1,7 @@
 import React, { memo, useRef, useState, useEffect } from 'react';
-import { Button } from '@/components/base/button';
-import Dialog from '@/components/base/dialog';
-import Input from '@/components/base/input';
+import { Button } from '@/ui/button';
+import Dialog from '@/ui/dialog';
+import Input from '@/ui/input';
 
 interface TextInputModalProps {
   open: boolean;

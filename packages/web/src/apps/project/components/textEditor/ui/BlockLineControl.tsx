@@ -17,7 +17,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import { MdDragIndicator } from 'react-icons/md';
 import { RiAddLine, RiArrowRightSFill } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import Tooltip from '@/components/base/tooltip';
+import Tooltip from '@/ui/tooltip';
 import BlockTypeMenu from '@/apps/project/components/textEditor/formatting/BlockTypeMenu';
 import {
   breaticSlashMenuKey,

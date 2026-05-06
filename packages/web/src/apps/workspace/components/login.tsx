@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 
 /** Login prompt page for unauthenticated users. */
 const Login: React.FC = () => {

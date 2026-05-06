@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/components/base/upload';
-import { message } from '@/components/base/message';
+import { Upload } from '@/ui/upload';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
@@ -19,7 +19,7 @@ import {
   type CanvasWorkflowNodeData,
 } from '@/apps/project/components/canvas/types';
 import { Modal } from '@/components/modals/Modal';
-import { Input } from '@/components/base/input';
+import { Input } from '@/ui/input';
 import WaveSurfer from 'wavesurfer.js';
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';

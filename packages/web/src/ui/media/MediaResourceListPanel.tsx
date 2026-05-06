@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 /** Supported modalities for a row in {@link MediaResourceListPanel}. */
 export type MediaResourceListItemType = 'image' | 'video' | 'audio' | 'text' | 'file';

@@ -4,7 +4,7 @@ import { addEdge, type Edge, type Node } from '@xyflow/react';
 import type { TaskEntity } from '@breatic/shared';
 import { getTask } from '@/apis/canvas';
 import { executeVideo } from '@/apis/miniTools';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import {
   createEditorVideoNodeData,
   imageEditorVideoNodeType,

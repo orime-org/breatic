@@ -4,7 +4,7 @@ import type { InputHTMLAttributes } from 'react';
 import type { VariantProps } from 'class-variance-authority';
 import { cva } from 'class-variance-authority';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 export const inputVariants = cva(
   '',

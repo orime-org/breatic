@@ -1,8 +1,8 @@
 import React, { memo, useState, useEffect } from 'react';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import i18n from '@/i18n';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 
 /**
  * Language Selector Component

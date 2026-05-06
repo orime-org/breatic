@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RiUpload2Line, RiLinkM } from 'react-icons/ri';
-import Upload from '@/components/base/upload';
+import Upload from '@/ui/upload';
 import { cn } from '@/utils/classnames';
 
 /* ─── Event bridge ────────────────────────────────────────────────── */

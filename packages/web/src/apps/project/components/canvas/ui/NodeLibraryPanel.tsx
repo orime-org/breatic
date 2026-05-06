@@ -6,10 +6,10 @@ import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useReactFlow, type Node } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 
 // Node icon map (format: dir-name-filename, hyphen separated)
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';

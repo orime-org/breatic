@@ -1,8 +1,8 @@
 import React, { memo, useState } from 'react';
-import CustomPopover from '@/components/base/popover';
-import { Button } from '@/components/base/button';
+import CustomPopover from '@/ui/popover';
+import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import aspectRatioIconMap from '@/apps/project/constants/aspectRatioIconMap';
 import ExportPanel from './ExportPanel';
 import RatioMenu from './RatioMenu';

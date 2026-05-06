@@ -37,7 +37,7 @@ import VideoNode from './dataNode/videoNode/VideoNode';
 import AudioNode from './dataNode/audioNode/AudioNode';
 import LocalGenNode from './dataNode/generatorNode/LocalGenNode';
 import NodeLibraryPanel from './ui/NodeLibraryPanel';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import CropModal from '@/apps/videoEditor/components/rightPanel/CropModal';
 import LocalGroupNode from './common/LocalGroupNode';
 import LocalGroupToolbarPanel from './common/LocalGroupToolbarPanel';

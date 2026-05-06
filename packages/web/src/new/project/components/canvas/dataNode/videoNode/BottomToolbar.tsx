@@ -4,8 +4,8 @@
  */
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
-import { message } from '@/components/base/message';
+import { Icon } from '@/ui/icon';
+import { message } from '@/ui/message';
 
 /** Trigger browser download from a video URL or data URL */
 const downloadVideoFromSrc = async (src: string): Promise<void> => {

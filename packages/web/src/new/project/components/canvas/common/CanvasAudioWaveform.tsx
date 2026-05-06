@@ -3,8 +3,8 @@
  * Same UX as shared `AudioWaveformPlayer`.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Icon } from '@/components/base/icon';
-import Slider from '@/components/base/slider';
+import { Icon } from '@/ui/icon';
+import Slider from '@/ui/slider';
 import { useWavesurfer } from '@wavesurfer/react';
 
 const formatTime = (seconds: number) => {

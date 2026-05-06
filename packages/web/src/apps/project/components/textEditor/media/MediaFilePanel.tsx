@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { NodeSelection } from '@tiptap/pm/state';
 import { cn } from '@/utils/classnames';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 
 export const MEDIA_FILE_PANEL_EVENT = 'breatic:open-media-file-panel';
 

@@ -9,7 +9,7 @@ import {
   useInteractions,
   FloatingPortal,
 } from '@floating-ui/react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';
 
 /** Selectable node types (aligned with DataNodeHandle). */

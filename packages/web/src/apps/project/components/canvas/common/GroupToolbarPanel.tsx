@@ -6,9 +6,9 @@ import React, { memo, useMemo, useState, useEffect } from 'react';
 import { Panel, useReactFlow, useStore, type Node } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
-import { Icon } from '@/components/base/icon';
-import Dropdown from '@/components/base/dropdown';
-import Divider from '@/components/base/divider';
+import { Icon } from '@/ui/icon';
+import Dropdown from '@/ui/dropdown';
+import Divider from '@/ui/divider';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 
 const toolbarGap = 20;

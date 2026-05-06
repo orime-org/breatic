@@ -1,6 +1,6 @@
 import React, { memo, useState } from 'react';
-import { message } from '@/components/base/message';
-import { Button } from '@/components/base/button';
+import { message } from '@/ui/message';
+import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
 import { CreditsItemType } from '../types';
 

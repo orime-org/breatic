@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 import './AngleEditorV3Scene.css';
 

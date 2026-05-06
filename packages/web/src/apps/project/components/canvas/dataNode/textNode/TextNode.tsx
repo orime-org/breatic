@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, memo, useRef, useCallback } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, NodeResizer, useStore } from '@xyflow/react';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
@@ -14,7 +14,7 @@ import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
 } from '@/apps/project/components/canvas/types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import TextNodeContent, { type TextNodeContentHandle } from './TextNodeContent';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';

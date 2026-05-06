@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/components/base/upload';
-import { message } from '@/components/base/message';
+import { Upload } from '@/ui/upload';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import VideoNodeContent from './VideoNodeContent';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';

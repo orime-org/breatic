@@ -1,9 +1,9 @@
 import React, { memo, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Table, type TableColumn } from '@/components/base/table';
+import { Table, type TableColumn } from '@/ui/table';
 import { UserInfoType } from '@/store/modules/userCenter';
 import AccountTab from './AccountTab';
-import Tabs from '@/components/base/tabs';
+import Tabs from '@/ui/tabs';
 
 interface ObtainedRecordDataItemType extends Record<string, unknown> {
   obtainedTime: string;

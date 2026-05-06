@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, Fragment } fr
 import { createPortal } from 'react-dom';
 import { Transition, TransitionChild } from '@headlessui/react';
 import { cn } from '@/utils/classnames';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 import PreviewToolbar from './PreviewToolbar';
 
 export interface ImageProps {

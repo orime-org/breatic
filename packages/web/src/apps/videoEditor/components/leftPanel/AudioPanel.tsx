@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import type { TimelineClip, MediaItem } from '../../types';
 
 interface AudioPanelProps {

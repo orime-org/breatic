@@ -1,9 +1,9 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import Slider from '@/components/base/slider';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Divider from '@/components/base/divider';
+import Slider from '@/ui/slider';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Divider from '@/ui/divider';
 import PlaybackPanel from '../playback/PlaybackPanel';
 import {
   PLAYBACK_SPEED_DEFAULT,

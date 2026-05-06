@@ -1,9 +1,9 @@
 import React, { memo, useState } from 'react';
 import { cn } from '@/utils/classnames';
-import { Checkbox } from '@/components/base/checkbox';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import CustomPopover from '@/components/base/popover';
+import { Checkbox } from '@/ui/checkbox';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import CustomPopover from '@/ui/popover';
 
 export interface AgentItem {
   id: string;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import Tooltip from '@/components/base/tooltip';
+import Tooltip from '@/ui/tooltip';
 import {
   RiH1,
   RiH2,

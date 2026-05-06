@@ -1,9 +1,9 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
-import { Button } from '@/components/base/button';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import { Icon } from '@/components/base/icon';
-import Tooltip from '@/components/base/tooltip';
+import { Button } from '@/ui/button';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import { Icon } from '@/ui/icon';
+import Tooltip from '@/ui/tooltip';
 import { cn } from '@/utils/classnames';
 import PlaybackPanel from '../playback/PlaybackPanel';
 

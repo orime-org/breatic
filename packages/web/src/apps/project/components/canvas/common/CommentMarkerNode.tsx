@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReactFlow, useViewport, type NodeProps } from '@xyflow/react';
-import { Button } from '@/components/base/button';
-import { Icon } from '@/components/base/icon';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
+import { Button } from '@/ui/button';
+import { Icon } from '@/ui/icon';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 
 type CommentItem = {
   id: string;

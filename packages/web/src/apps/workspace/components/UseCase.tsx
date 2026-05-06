@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import { UseCaseItemObjType } from '@/apps/userCenter/types';
 import { projectsApi } from '@/apis';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import TextInputModal from '@/components/modals/TextInputModal';
 
 /** Static carousel row (replaces `/api/workflow/use_case/query`). */

@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import userPng from '@/assets/images/userCenter/user.png';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 

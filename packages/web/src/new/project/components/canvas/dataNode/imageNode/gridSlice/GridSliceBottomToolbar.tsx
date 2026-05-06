@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import Divider from '@/components/base/divider';
-import Tooltip from '@/components/base/tooltip';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import Divider from '@/ui/divider';
+import Tooltip from '@/ui/tooltip';
 import { cn } from '@/utils/classnames';
 import GridSliceSettings, { type GridSliceValue } from './GridSliceSettings';
 

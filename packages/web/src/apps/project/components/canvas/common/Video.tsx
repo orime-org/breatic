@@ -5,8 +5,8 @@
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
-import Slider from '@/components/base/slider';
-import { Icon } from '@/components/base/icon';
+import Slider from '@/ui/slider';
+import { Icon } from '@/ui/icon';
 
 export type VideoPlaybackSnapshot = {
   currentTime: number;

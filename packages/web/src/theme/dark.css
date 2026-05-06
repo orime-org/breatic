@@ -67,5 +67,37 @@ html[data-theme="dark"] {
   --color-node-handle-audio-node: #E8B931;
   --color-node-handle-image-node: #F19EDC;
   --color-node-handle-video-node: #6DEF70;
+
+  /* Numeric scales (dark) — mirror the light theme structure but
+     pick darker brand stops and inverted neutrals. See light.css
+     for the rationale. */
+  --brand-50:  hsl(121, 58%, 12%);
+  --brand-100: hsl(121, 58%, 18%);
+  --brand-200: hsl(121, 58%, 25%);
+  --brand-300: hsl(121, 58%, 32%);
+  --brand-400: hsl(121, 58%, 42%);
+  --brand-500: hsl(121, 58%, 50%);
+  --brand-600: hsl(121, 58%, 60%);
+  --brand-700: hsl(121, 58%, 72%);
+  --brand-800: hsl(121, 58%, 82%);
+  --brand-900: hsl(121, 58%, 92%);
+
+  --neutral-0:   #09090B;
+  --neutral-50:  #18181B;
+  --neutral-100: #27272A;
+  --neutral-200: #3F3F46;
+  --neutral-300: #52525B;
+  --neutral-400: #71717A;
+  --neutral-500: #A1A1AA;
+  --neutral-600: #D4D4D8;
+  --neutral-700: #E4E4E7;
+  --neutral-800: #F4F4F5;
+  --neutral-900: #FAFAFA;
+
+  --rounded-sm: 4px;
+  --rounded-md: 8px;
+  --rounded-lg: 12px;
+  --rounded-xl: 16px;
+  --text-scale: 1;
 }
 

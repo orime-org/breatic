@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 import type { TimelineCutMarker } from './PlaybackPanel';
 
