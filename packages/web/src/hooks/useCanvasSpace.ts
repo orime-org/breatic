@@ -1,29 +1,24 @@
 /**
- * Internal Yjs → React state bridge for CanvasDataContext.
+ * `useCanvasSpace` — React state bridge for a canvas Space's Yjs doc.
  *
- * Simple architecture: wait for sync → subscribe observeDeep →
- * incremental rebuild. No fallback, no debounce, no zombie detection.
+ * Replaces the pre-v10 `useCanvasYjsInternal` hook. Same observe-and-
+ * incremental-rebuild model, same return shape, but bound to a
+ * specific canvas-{spaceId} doc (v10 multi-doc layout) instead of the
+ * project-wide single doc.
  *
- * Requires server sync to complete before initialization (no offline
- * mode — product requires network for AIGC). This eliminates all
- * race conditions between cache and server state.
- *
- * @internal
+ * The hook reads `nodesMap` and `edgesMap` at the **top level** of the
+ * canvas-{spaceId} doc (no `canvas` wrapper Y.Map — that nesting was
+ * pre-v10).
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as Y from 'yjs';
 import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { YjsProjectManager } from '@/utils/yjsProjectManager';
+import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
 import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
 // ── Converters ─────────────────────────────────────────────────
 
-/**
- * Convert a `Y.Array<Y.Map>` to a plain-JS array by calling
- * `.toJSON()` on each item map.  Returns an empty array if the
- * value is not a Y.Array.
- */
 function yArrayToPlainArray(arr: unknown): unknown[] {
   if (!(arr instanceof Y.Array)) return [];
   return arr.toArray().map((item) => {
@@ -101,9 +96,11 @@ function readAllEdges(edgesMap: Y.Map<unknown>): Edge[] {
   return result;
 }
 
-// ── Incremental observe helpers ────────────────────────────────
+// ── Incremental observe helper ─────────────────────────────────
 
-function getAffectedNodeIds(events: Y.YEvent<Y.AbstractType<unknown>>[]): Set<string> | 'all' {
+function getAffectedNodeIds(
+  events: Y.YEvent<Y.AbstractType<unknown>>[],
+): Set<string> | 'all' {
   const ids = new Set<string>();
   for (const event of events) {
     if (event.path.length === 0) {
@@ -122,7 +119,7 @@ function getAffectedNodeIds(events: Y.YEvent<Y.AbstractType<unknown>>[]): Set<st
   return ids;
 }
 
-// ── Local overlay for ReactFlow-only state ─────────────────────
+// ── Local overlay (ReactFlow-only state) ───────────────────────
 
 interface NodeLocalState {
   selected?: boolean;
@@ -133,16 +130,24 @@ interface NodeLocalState {
 
 type PushToast = (toast: Omit<CanvasToast, 'id' | 'timestamp'>) => void;
 
-export function useCanvasYjsInternal(
-  manager: YjsProjectManager | null,
-  pushToast: PushToast,
-): {
+export interface UseCanvasSpaceResult {
   nodes: Node[];
   edges: Edge[];
   loading: boolean;
   syncError: string | null;
   applyLocalNodeChanges: (changes: NodeChange[]) => void;
-} {
+}
+
+/**
+ * @param manager - The canvas Space manager from `useSpaceManagerPool`
+ *   (or `null` while loading). Manages connection / undo for one
+ *   `project-{pid}/canvas-{spaceId}` doc.
+ * @param pushToast - Toast emitter for handling→idle state transitions.
+ */
+export function useCanvasSpace(
+  manager: CanvasSpaceManager | null,
+  pushToast: PushToast,
+): UseCanvasSpaceResult {
   const [yjsNodes, setYjsNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,16 +159,20 @@ export function useCanvasYjsInternal(
   const pushToastRef = useRef(pushToast);
   pushToastRef.current = pushToast;
 
-  // ── Wait for sync, then subscribe observeDeep ────────────────
-
   useEffect(() => {
-    if (!manager) return;
+    if (!manager) {
+      setYjsNodes([]);
+      setEdges([]);
+      yjsNodesRef.current = [];
+      setLoading(false);
+      setSyncError(null);
+      return;
+    }
 
     setLoading(true);
     setSyncError(null);
     let destroyed = false;
 
-    // Timeout: if sync doesn't complete in 15 seconds, show error
     const syncTimeout = setTimeout(() => {
       if (!destroyed && loading) {
         setSyncError('Connection timeout. Check your network and try again.');
@@ -177,14 +186,12 @@ export function useCanvasYjsInternal(
 
       const { nodesMap, edgesMap } = manager;
 
-      // Full read after sync
       const initialNodes = readAllNodes(nodesMap);
       yjsNodesRef.current = initialNodes;
       setYjsNodes(initialNodes);
       setEdges(readAllEdges(edgesMap));
       setLoading(false);
 
-      // Subscribe observeDeep — incremental updates from now on
       const onNodesDeepChange = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
         const affected = getAffectedNodeIds(events);
 
@@ -204,7 +211,6 @@ export function useCanvasYjsInternal(
 
         for (const node of prev) {
           if (!currentKeys.has(node.id)) {
-            // Deleted — clean overlay
             setLocalOverlay((m) => {
               if (!m.has(node.id)) return m;
               const copy = new Map(m);
@@ -218,8 +224,6 @@ export function useCanvasYjsInternal(
             if (ymap instanceof Y.Map) {
               const newNode = yMapToNode(ymap, node.id);
 
-              // Toast: node transitions from handling → idle (completed or failed).
-              // Canvas-native schema: state machine transition, not history-array diff.
               const prevState = (node.data as { state?: string } | undefined)?.state;
               const nextState = (newNode.data as { state?: string } | undefined)?.state;
               const nextErrorMessage = (newNode.data as { errorMessage?: string } | undefined)?.errorMessage;
@@ -235,11 +239,10 @@ export function useCanvasYjsInternal(
               rebuilt.add(node.id);
             }
           } else {
-            next.push(node); // unchanged → reuse reference
+            next.push(node);
           }
         }
 
-        // Add newly created nodes
         Array.from(affected).forEach((id) => {
           if (!rebuilt.has(id) && currentKeys.has(id)) {
             const ymap = nodesMap.get(id) as Y.Map<unknown>;
@@ -260,7 +263,6 @@ export function useCanvasYjsInternal(
       nodesMap.observeDeep(onNodesDeepChange);
       edgesMap.observeDeep(onEdgesDeepChange);
 
-      // Store cleanup for when effect re-runs
       cleanupObservers = () => {
         nodesMap.unobserveDeep(onNodesDeepChange);
         edgesMap.unobserveDeep(onEdgesDeepChange);
@@ -275,9 +277,11 @@ export function useCanvasYjsInternal(
       unsubSynced();
       if (cleanupObservers) cleanupObservers();
     };
+    // `loading` not in deps — it's read inside the timeout callback
+    // and including it would re-run the whole effect on every state
+    // tick. Same pattern as the pre-v10 useCanvasYjsInternal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manager]);
-
-  // ── Merge: yjsNodes + localOverlay → final nodes ─────────────
 
   const nodes = useMemo(() => {
     if (localOverlay.size === 0) return yjsNodes;
@@ -291,8 +295,6 @@ export function useCanvasYjsInternal(
       };
     });
   }, [yjsNodes, localOverlay]);
-
-  // ── Local changes (select, dimensions) ───────────────────────
 
   const applyLocalNodeChanges = useCallback((changes: NodeChange[]) => {
     setLocalOverlay((prev) => {
@@ -308,7 +310,10 @@ export function useCanvasYjsInternal(
         } else if (change.type === 'dimensions' && change.dimensions) {
           const existing = next.get(change.id);
           const prevMeasured = existing?.measured;
-          if (prevMeasured?.width !== change.dimensions.width || prevMeasured?.height !== change.dimensions.height) {
+          if (
+            prevMeasured?.width !== change.dimensions.width ||
+            prevMeasured?.height !== change.dimensions.height
+          ) {
             next.set(change.id, {
               ...existing,
               measured: { width: change.dimensions.width, height: change.dimensions.height },

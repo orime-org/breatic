@@ -6,6 +6,7 @@ import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
 import { LocalPendingProvider } from '@/contexts/LocalPendingProvider';
+import { ActiveCanvasSpaceProvider } from '@/contexts/ActiveCanvasSpaceContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
@@ -64,11 +65,13 @@ const ProjectPage: React.FC = () => {
   });
 
   return (
-    <CanvasDataProvider manager={yjs.manager ?? null}>
-      <LocalPendingProvider>
-        <ProjectContentBody yjs={yjs} />
-      </LocalPendingProvider>
-    </CanvasDataProvider>
+    <ActiveCanvasSpaceProvider manager={yjs.manager ?? null}>
+      <CanvasDataProvider manager={yjs.manager ?? null}>
+        <LocalPendingProvider>
+          <ProjectContentBody yjs={yjs} />
+        </LocalPendingProvider>
+      </CanvasDataProvider>
+    </ActiveCanvasSpaceProvider>
   );
 };
 
