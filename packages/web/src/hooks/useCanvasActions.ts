@@ -7,10 +7,14 @@
  * - {@link useCanvasUI} — read/write UI state (Redux)
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import * as Y from 'yjs';
-import { getCanvasYjsManager } from '@/utils/canvasYjsRef';
-import { getUserOrigin, noHistoryOrigin } from '@/utils/yjsProjectManager';
+import {
+  getUserOrigin,
+  noHistoryOrigin,
+} from '@/utils/yjsCanvasSpaceManager';
+import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+import { useActiveCanvasSpace } from '@/contexts/ActiveCanvasSpaceContext';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 import type { NodeState, HandlingActor, CanvasNodeFields, AttachRef } from '@breatic/shared';
 
@@ -21,6 +25,17 @@ function getOrigin(options?: HistoryOptions): string | symbol {
 }
 
 export function useCanvasActions() {
+  // The active canvas Space manager comes from the page-level
+  // `ActiveCanvasSpaceProvider`. We pin it on a ref so the
+  // useCallback bodies below can keep their `[]` dep arrays — they
+  // read `activeMgrRef.current` at call time and pick up the latest
+  // manager identity automatically when the user switches Spaces.
+  const activeMgr = useActiveCanvasSpace();
+  const activeMgrRef = useRef<CanvasSpaceManager | null>(activeMgr);
+  activeMgrRef.current = activeMgr;
+  const getCanvasYjsManager = (): CanvasSpaceManager | null =>
+    activeMgrRef.current;
+
   const addNode = useCallback(
     (node: Node, options?: { select?: boolean } & HistoryOptions) => {
       const mgr = getCanvasYjsManager();
