@@ -17,7 +17,8 @@
  */
 
 import * as Y from 'yjs';
-import { projectMetaDocName } from '@breatic/shared';
+// Subpath import — see comment in yjsCanvasSpaceManager.ts.
+import { projectMetaDocName } from '@breatic/shared/yjs-doc-names';
 import {
   createYjsManager,
   type YjsManager as BaseYjsManager,

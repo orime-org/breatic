@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./src/index.ts"
+    },
+    "./yjs-doc-names": {
+      "import": "./dist/yjs-doc-names.js",
+      "types": "./src/yjs-doc-names.ts"
     }
   },
   "scripts": {

@@ -18,7 +18,10 @@
  */
 
 import * as Y from 'yjs';
-import { canvasSpaceDocName } from '@breatic/shared';
+// Subpath import (not the `@breatic/shared` barrel) keeps the web
+// bundle from pulling the i18n module's `node:fs` / `node:path`
+// imports — Vite's `__vite-browser-external` rejects those.
+import { canvasSpaceDocName } from '@breatic/shared/yjs-doc-names';
 import {
   createYjsManager,
   type YjsManager as BaseYjsManager,
