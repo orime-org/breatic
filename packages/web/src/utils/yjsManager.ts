@@ -99,6 +99,15 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
   // Hocuspocus's HocuspocusProvider accepts EITHER `websocketProvider`
   // OR `url` — never both. Branch here so the type narrowing stays
   // correct on the call.
+  //
+  // Important — auto-attach behaviour (@hocuspocus/provider 3.4.4):
+  //   The constructor calls `attach()` ONLY when it had to build its
+  //   own websocket (`manageSocket = true`). When the caller passes a
+  //   shared `websocketProvider`, the provider is constructed but
+  //   never attached — so it never sends the Auth/Subscribe messages
+  //   for this doc, and the server never sees a "Client connected"
+  //   for this `name`. We must call `provider.attach()` explicitly in
+  //   that branch.
   const provider = websocketProvider
     ? new HocuspocusProvider({
         websocketProvider,
@@ -108,7 +117,7 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
         onAuthenticationFailed: ({ reason }) => {
           // Stop the infinite reconnect loop on this doc's own
           // provider; the shared socket may still be up for siblings.
-          provider.disconnect();
+          provider.detach();
           onAuthFailed?.(reason);
         },
       })
@@ -122,6 +131,12 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
           onAuthFailed?.(reason);
         },
       });
+
+  // Shared-socket branch: explicit attach. Per-socket branch:
+  // constructor already attached.
+  if (websocketProvider) {
+    provider.attach();
+  }
 
   const awareness = provider.awareness!;
 
@@ -151,6 +166,10 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
 
   const destroy = () => {
     provider.off('synced', checkSynced);
+    // `provider.destroy()` internally calls `detach()` (when shared
+    // ws) or disposes its own websocket (when manageSocket). We
+    // don't need to detach manually here; just listen for sync and
+    // tear everything down.
     provider.destroy();
     doc.destroy();
   };

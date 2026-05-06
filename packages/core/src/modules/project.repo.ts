@@ -14,6 +14,7 @@
  */
 
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../db/client.js";
 import {
   projects,
@@ -80,15 +81,31 @@ export async function listProjectsByStudio(
 }
 
 /**
+ * Drizzle transaction handle as it appears inside a `db.transaction(...)`
+ * callback. Loose typing because the underlying generic is internal
+ * to drizzle-orm and not part of the public surface.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Tx = PgTransaction<any, any, any>;
+
+/**
  * Create a new project and the corresponding owner row in
- * `project_members` inside a single transaction.
+ * `project_members`.
  *
- * The two writes must be atomic — leaving a project without an owner
- * row would make the project effectively orphaned (no member can read
- * it, including its own creator). The partial unique index in
- * `project_members` enforces "exactly one owner per active project",
- * so this transaction is the canonical place to seed it.
+ * Both writes happen on the caller-supplied `tx` so they participate
+ * in whatever larger transaction the service layer is composing
+ * (typically: project + owner row + initial Yjs meta state, all in
+ * one atomic unit so "project exists ⇒ owner exists ⇒ default Space
+ * exists" is an invariant established at creation time).
  *
+ * The owner row must land in the same transaction as the project row
+ * — leaving a project without an owner row would make the project
+ * effectively orphaned (no member can read it, including its own
+ * creator). The partial unique index in `project_members` enforces
+ * "exactly one owner per active project".
+ *
+ * @param tx - Drizzle transaction handle from a surrounding
+ *   `db.transaction(async tx => ...)` block in the service layer
  * @param studioId - Studio that the project belongs to
  * @param creatorUserId - User who created the project (becomes owner)
  * @param name - Project name
@@ -96,32 +113,31 @@ export async function listProjectsByStudio(
  * @returns The freshly created project entity
  */
 export async function createProject(
+  tx: Tx,
   studioId: string,
   creatorUserId: string,
   name: string,
   description?: string,
 ): Promise<ProjectEntity> {
-  return db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(projects)
-      .values({
-        studioId,
-        createdByUserId: creatorUserId,
-        name,
-        description,
-      })
-      .returning();
-    const project = inserted[0]!;
+  const inserted = await tx
+    .insert(projects)
+    .values({
+      studioId,
+      createdByUserId: creatorUserId,
+      name,
+      description,
+    })
+    .returning();
+  const project = inserted[0]!;
 
-    await tx.insert(projectMembers).values({
-      projectId: project.id,
-      userId: creatorUserId,
-      role: "owner",
-      addedBy: null,
-    });
-
-    return toEntity(project);
+  await tx.insert(projectMembers).values({
+    projectId: project.id,
+    userId: creatorUserId,
+    role: "owner",
+    addedBy: null,
   });
+
+  return toEntity(project);
 }
 
 /**

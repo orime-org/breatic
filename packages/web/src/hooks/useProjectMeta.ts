@@ -113,11 +113,13 @@ export function useProjectMeta(
       setSpaces([]);
       setLoading(false);
     };
-    // websocketProvider is intentionally omitted — when the parent
-    // hook swaps the shared socket, the upstream `enabled` / `token`
-    // dep will already trigger a remount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, token, wsUrl, enabled]);
+    // websocketProvider is part of the deps so that when the shared
+    // socket rotates (project change / token rotation produces a new
+    // `HocuspocusProviderWebsocket`), the meta manager is rebuilt to
+    // attach to the new socket. With `useHocuspocusSocket` returning
+    // a non-null socket on the first render (useMemo), this dep no
+    // longer causes a wasteful first-render remount.
+  }, [projectId, token, wsUrl, enabled, websocketProvider]);
 
   return useMemo(() => ({ manager, spaces, loading }), [manager, spaces, loading]);
 }

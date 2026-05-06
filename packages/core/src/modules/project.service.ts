@@ -13,14 +13,21 @@
  * owner row in one transaction.
  */
 
+import { randomUUID } from "node:crypto";
 import * as projectRepo from "./project.repo.js";
 import * as projectAuthService from "./projectAuth.service.js";
 import * as studioService from "./studio.service.js";
 import * as userRepo from "./user.repo.js";
-import { t } from "@breatic/shared";
+import * as yjsDocRepo from "./yjs-doc.repo.js";
+import { db } from "../db/client.js";
+import { encodeInitialMetaState } from "../db/yjs-bootstrap.js";
+import { t, projectMetaDocName } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "../errors.js";
 import { ROLE_RANK } from "@breatic/shared";
 import type { ProjectEntity, ProjectRole } from "@breatic/shared";
+
+/** Default Space name used at project creation. Localizable later. */
+const DEFAULT_SPACE_NAME = "Untitled";
 
 /**
  * Throw if the user does not have at least `minRole` on the project.
@@ -55,11 +62,23 @@ export async function assertAccess(
 }
 
 /**
- * Create a new project owned by the caller.
+ * Create a new project owned by the caller, seeded with one default
+ * Canvas Space so the frontend never observes an empty `meta.spaces`.
  *
- * Resolves (or lazily creates) the caller's personal studio so
- * `projects.studio_id` and the owner row in `project_members` are
- * filled in correctly. Returns the freshly created project.
+ * Atomically writes, in a single transaction:
+ *   1. `projects` row (in caller's personal studio)
+ *   2. `project_members` row (`role='owner'`)
+ *   3. `yjs_documents` row for `project-{id}/meta` containing one
+ *      Space entry of kind `canvas`
+ *
+ * If any step fails the whole transaction rolls back — the project
+ * never appears half-formed. This eliminates the pre-v10 frontend
+ * bootstrap effect that POSTed `/spaces` after first page load.
+ *
+ * Per v10 spec there are three Space kinds (canvas, document,
+ * timeline); only canvas is implemented end-to-end today, so the
+ * default seed is hardcoded `'canvas'`. Adding a `kind` parameter
+ * is additive when document/timeline come online.
  *
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param name - Project name
@@ -75,7 +94,33 @@ export async function create(
     userId,
     user?.username ?? null,
   );
-  return projectRepo.createProject(studio.id, userId, name, description);
+
+  return db.transaction(async (tx) => {
+    const project = await projectRepo.createProject(
+      tx,
+      studio.id,
+      userId,
+      name,
+      description,
+    );
+
+    const spaceId = randomUUID();
+    const initialState = encodeInitialMetaState({
+      spaceId,
+      kind: "canvas",
+      name: DEFAULT_SPACE_NAME,
+      createdBy: userId,
+      ts: Date.now(),
+    });
+
+    await yjsDocRepo.insertInitialState(
+      tx,
+      projectMetaDocName(project.id),
+      initialState,
+    );
+
+    return project;
+  });
 }
 
 /**
