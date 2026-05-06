@@ -22,6 +22,7 @@ import { Canvas, FabricImage } from 'fabric';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
+import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
 import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/LocalNodeSkeleton';
 import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import LocalImageNodeContent from './LocalImageNodeContent';
@@ -149,6 +150,9 @@ const ImageNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
   const { duplicateMediaNode } = useCanvasNodeActions();
   const showContent = useStore(zoomLevelShowContentSelector);
   const flowCanvasSelectedCount = useStore(useCallback((s) => selectFlowCanvasSelectedCount(s), []));
+  const localMultiSelectOutboundRepId = useStore(
+    useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
+  );
   const nodeFromStore = useStore(useCallback((state) => state.nodes.find((n) => n.id === id), [id]));
 
   const title = data.name?.trim() ? data.name : 'Image';
@@ -1116,6 +1120,8 @@ const ImageNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={selected && flowCanvasSelectedCount > 1}
           />
           <LocalDataNodeHandle
             type='source'
@@ -1125,6 +1131,10 @@ const ImageNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={
+              selected && flowCanvasSelectedCount > 1 && id === localMultiSelectOutboundRepId
+            }
           />
           <div className={cn('min-h-0 flex-1')}>
             {!url ? (

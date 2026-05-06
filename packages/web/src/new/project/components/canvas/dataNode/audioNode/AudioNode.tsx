@@ -9,7 +9,9 @@ import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPending
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
+import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
 import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/LocalNodeSkeleton';
+import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import CanvasAudioWaveform from '../../common/CanvasAudioWaveform';
 
 const targetHandleId = 'Audio_0_0';
@@ -22,6 +24,10 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
   const { t } = useTranslation();
   const { setNodes } = useReactFlow();
   const showContent = useStore(zoomLevelShowContentSelector);
+  const flowCanvasSelectedCount = useStore(useCallback((s) => selectFlowCanvasSelectedCount(s), []));
+  const localMultiSelectOutboundRepId = useStore(
+    useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
+  );
   const title = data.name?.trim() ? data.name : 'Audio';
   const url = data.url?.trim() ?? '';
   const [nodeHovered, setNodeHovered] = useState(false);
@@ -87,6 +93,8 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
           selected={selected}
           nodeHovered={nodeHovered}
           isInsideLockedGroup={false}
+          hideChrome={selected && flowCanvasSelectedCount > 1}
+          keepConnectableWhenHidden={selected && flowCanvasSelectedCount > 1}
         />
         <LocalDataNodeHandle
           type='source'
@@ -96,6 +104,10 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
           selected={selected}
           nodeHovered={nodeHovered}
           isInsideLockedGroup={false}
+          hideChrome={selected && flowCanvasSelectedCount > 1}
+          keepConnectableWhenHidden={
+            selected && flowCanvasSelectedCount > 1 && id === localMultiSelectOutboundRepId
+          }
         />
         <div className='flex h-full w-full flex-1 items-center justify-center overflow-hidden px-3 pb-2 pt-1'>
           {!url ? (

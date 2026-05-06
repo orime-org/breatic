@@ -14,6 +14,8 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
+  useStoreApi,
   type Connection,
   type XYPosition,
   type Edge,
@@ -41,7 +43,18 @@ import { message } from '@/components/base/message';
 import CropModal from '@/apps/videoEditor/components/rightPanel/CropModal';
 import LocalGroupNode from './common/LocalGroupNode';
 import LocalGroupToolbarPanel from './common/LocalGroupToolbarPanel';
+import LocalMultiSelectConnectProxyNode, {
+  LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID,
+  type LocalMultiSelectConnectProxyData,
+} from './common/LocalMultiSelectConnectProxyNode';
 import LocalNodeContextMenu from './common/LocalNodeContextMenu';
+import {
+  collectLocalFlowMultiSelectParallelOutboundSourceIds,
+  computeLocalFlowSelectedNodesBounds,
+  localFlowMultiSelectOutboundTypes,
+  localFlowSourceHandleIdForNodeType,
+  pickLocalFlowRightmostNode,
+} from './common/localFlowNodeSpawn';
 import NodeDragStopBinder from './flow/NodeDragStopBinder';
 import { localCropImageToObjectUrl } from './dataNode/imageNode/crop/localCropImageToObjectUrl';
 import UndoRedoToolbar from '@/apps/project/components/canvas/common/UndoRedoToolbar';
@@ -146,6 +159,8 @@ type ConnectEndMenuState = {
   fromHandleId?: string;
   toNodeId?: string;
   toHandleId?: string;
+  /** When set, {@link handleConnectEndSelect} wires every id to the new connect-end node instead of a single `fromNodeId`. */
+  multiSelectParallelSourceIds?: string[];
 } | null;
 
 type LocalContextMenuState = {
@@ -169,6 +184,7 @@ const nodeTypes: NodeTypes = {
   gen1004: LocalGenNode,
   group: LocalGroupNode,
   connectEndAnchor: ConnectEndAnchorNode,
+  localMultiSelectConnectProxy: LocalMultiSelectConnectProxyNode,
 };
 
 const edgeTypes = {
@@ -183,6 +199,36 @@ const ScreenToFlowPortBridge: FC<{ portRef: RefObject<ScreenToFlowPort | null> }
   useLayoutEffect(() => {
     portRef.current = { screenToFlowPosition };
   }, [portRef, screenToFlowPosition]);
+  return null;
+};
+
+/**
+ * Clears React Flow’s aggregate {@link https://github.com/xyflow/xyflow/issues/4841 | NodesSelection} state
+ * when selection drops from multi to single (or zero) after programmatic updates — otherwise the new node
+ * keeps a marquee-style bounds overlay and can feel stuck in “box select” mode.
+ */
+const LocalFlowNodesSelectionReset: FC = () => {
+  const store = useStoreApi();
+  const selectedCanvasCount = useStore(
+    useCallback(
+      (s: { nodes: Node[] }) =>
+        s.nodes.filter(
+          (n) =>
+            n.selected &&
+            n.type !== 'connectEndAnchor' &&
+            n.type !== 'localMultiSelectConnectProxy',
+        ).length,
+      [],
+    ),
+  );
+  const prevCountRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const prev = prevCountRef.current;
+    prevCountRef.current = selectedCanvasCount;
+    if (prev != null && prev >= 2 && selectedCanvasCount <= 1) {
+      store.setState({ nodesSelectionActive: false });
+    }
+  }, [selectedCanvasCount, store]);
   return null;
 };
 
@@ -227,6 +273,7 @@ const ProjectCanvasInner: FC = () => {
       const tempChanges: NodeChange[] = [];
       for (const c of changes) {
         const id = 'id' in c ? c.id : '';
+        if (id === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID) continue;
         if (id && tempIds.has(id)) tempChanges.push(c);
         else mainChanges.push(c);
       }
@@ -256,10 +303,36 @@ const ProjectCanvasInner: FC = () => {
     [onEdgesChange],
   );
 
+  const multiSelectProxyNodes = useMemo((): Node[] => {
+    const selected = nodes.filter((n) => n.selected && n.type !== 'connectEndAnchor');
+    if (selected.length < 2) return [];
+    const connectable = selected.filter((n) => localFlowMultiSelectOutboundTypes.has(String(n.type)));
+    if (connectable.length === 0) return [];
+    const rep = pickLocalFlowRightmostNode(connectable);
+    const hid = localFlowSourceHandleIdForNodeType(String(rep.type));
+    if (!hid) return [];
+    const b = computeLocalFlowSelectedNodesBounds(selected);
+    if (!b) return [];
+    const hit = 48;
+    return [
+      {
+        id: LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID,
+        type: 'localMultiSelectConnectProxy',
+        position: { x: b.x + b.width - hit, y: b.y + b.height / 2 - hit / 2 },
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        zIndex: 1000,
+        style: { width: hit, height: hit },
+        data: { sourceHandleId: hid, representativeNodeId: rep.id } satisfies LocalMultiSelectConnectProxyData,
+      },
+    ];
+  }, [nodes]);
+
   const reactFlowNodes = useMemo(() => {
-    if (tempConnectNodes.length === 0) return nodes;
-    return [...nodes, ...tempConnectNodes];
-  }, [nodes, tempConnectNodes]);
+    const withTemp = tempConnectNodes.length === 0 ? nodes : [...nodes, ...tempConnectNodes];
+    return multiSelectProxyNodes.length > 0 ? [...withTemp, ...multiSelectProxyNodes] : withTemp;
+  }, [nodes, tempConnectNodes, multiSelectProxyNodes]);
 
   const reactFlowEdges = useMemo(() => {
     if (tempConnectEdges.length === 0) return edges;
@@ -268,6 +341,30 @@ const ProjectCanvasInner: FC = () => {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (params.source === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID && params.target) {
+        const nodesNow = nodesRef.current;
+        const sourceIds = collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesNow);
+        const targetHandle = params.targetHandle ?? '';
+        setEdges((eds) => {
+          let next = eds;
+          for (const sourceId of sourceIds) {
+            const srcNode = nodesNow.find((n) => n.id === sourceId);
+            const sh = localFlowSourceHandleIdForNodeType(String(srcNode?.type));
+            if (!sh) continue;
+            const connectionParams: Connection = {
+              source: sourceId,
+              sourceHandle: sh,
+              target: params.target,
+              targetHandle,
+            };
+            const edgeId = `e-${connectionParams.source}-${connectionParams.sourceHandle ?? ''}-${connectionParams.target}-${connectionParams.targetHandle ?? ''}`;
+            if (next.some((e) => e.id === edgeId)) continue;
+            next = addEdge({ ...connectionParams, id: edgeId, type: 'default' }, next);
+          }
+          return next;
+        });
+        return;
+      }
       const edgeId = `e-${params.source}-${params.sourceHandle ?? ''}-${params.target}-${params.targetHandle ?? ''}`;
       setEdges((eds) => {
         if (eds.some((e) => e.id === edgeId)) return eds;
@@ -280,8 +377,10 @@ const ProjectCanvasInner: FC = () => {
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       if (connectionState.isValid) return;
-      const fromNodeId = connectionState.fromNode?.id;
+
+      const fromNode = connectionState.fromNode;
       const fromHandle = connectionState.fromHandle;
+      const fromNodeId = fromNode?.id;
       const fromHandleId =
         fromHandle != null && typeof fromHandle === 'object' && 'id' in fromHandle
           ? String((fromHandle as { id: string }).id)
@@ -339,6 +438,10 @@ const ProjectCanvasInner: FC = () => {
           isFromInput: false,
           fromNodeId,
           fromHandleId,
+          multiSelectParallelSourceIds:
+            fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID
+              ? collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesRef.current)
+              : undefined,
         });
       }
     },
@@ -372,7 +475,8 @@ const ProjectCanvasInner: FC = () => {
   const handleConnectEndSelect = useCallback(
     (paletteKind: string) => {
       if (!connectEndMenu) return;
-      const { clientX, clientY, isFromInput, fromNodeId, fromHandleId, toNodeId, toHandleId } = connectEndMenu;
+      const { clientX, clientY, isFromInput, fromNodeId, fromHandleId, toNodeId, toHandleId, multiSelectParallelSourceIds } =
+        connectEndMenu;
       if (isFromInput && (!toNodeId || !toHandleId)) return;
       if (!isFromInput && (!fromNodeId || !fromHandleId)) return;
       const anchor = isFromInput ? lastInputPanelAnchorRef.current : null;
@@ -420,7 +524,32 @@ const ProjectCanvasInner: FC = () => {
         };
 
       setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), newNode]);
-      setEdges((eds) => [...eds, newEdge as Edge]);
+      setEdges((eds) => {
+        const base = [...eds];
+        const multiOutbound =
+          !isFromInput &&
+          fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID &&
+          multiSelectParallelSourceIds &&
+          multiSelectParallelSourceIds.length > 0;
+        if (multiOutbound) {
+          const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
+          for (const sid of multiSelectParallelSourceIds) {
+            const sh = localFlowSourceHandleIdForNodeType(String(byId.get(sid)?.type));
+            if (!sh) continue;
+            const connectionParams: Connection = {
+              source: sid,
+              sourceHandle: sh,
+              target: newNodeId,
+              targetHandle: targetHandleId,
+            };
+            const edgeId = `e-${connectionParams.source}-${connectionParams.sourceHandle ?? ''}-${connectionParams.target}-${connectionParams.targetHandle ?? ''}`;
+            if (base.some((e) => e.id === edgeId)) continue;
+            base.push({ ...connectionParams, id: edgeId, type: 'default' });
+          }
+          return base;
+        }
+        return [...base, newEdge as Edge];
+      });
       setTempConnectNodes([]);
       setTempConnectEdges([]);
       setConnectEndMenu(null);
@@ -601,6 +730,7 @@ const ProjectCanvasInner: FC = () => {
         connectionRadius={20}
       >
         <ScreenToFlowPortBridge portRef={screenToFlowPortRef} />
+        <LocalFlowNodesSelectionReset />
         <NodeDragStopBinder bindRef={nodeDragStopRef} setNodes={setNodes} />
         <Background color='#d0d0d0' variant={BackgroundVariant.Dots} gap={20} size={1} />
         {minimapOpen ? <CustomMiniMap /> : null}

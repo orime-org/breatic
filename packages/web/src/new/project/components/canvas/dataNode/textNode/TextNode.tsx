@@ -19,6 +19,8 @@ import { Icon } from '@/components/base/icon';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
+import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
+import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/LocalNodeSkeleton';
 import LocalTextFormatToolbar, { localTextNodeTopToolbarShellClass } from './LocalTextFormatToolbar';
 import {
@@ -58,6 +60,10 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
   const { setNodes, getNodes } = useReactFlow();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodes = useStore(useCallback((s) => s.nodes as Node<LocalCanvasNodeData>[], []));
+  const flowCanvasSelectedCount = useStore(useCallback((s) => selectFlowCanvasSelectedCount(s), []));
+  const localMultiSelectOutboundRepId = useStore(
+    useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
+  );
   const selectedCount = nodes.filter((n) => n.selected).length;
   const nodesRef = useRef(getNodes());
   useEffect(() => {
@@ -324,6 +330,8 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={selected && flowCanvasSelectedCount > 1}
           />
           <LocalDataNodeHandle
             type='source'
@@ -333,6 +341,10 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={
+              selected && flowCanvasSelectedCount > 1 && id === localMultiSelectOutboundRepId
+            }
           />
           <div className='flex h-full flex-1 flex-col p-3'>
             {isEmpty && !hasActivated ? (

@@ -13,6 +13,8 @@ import AgentSendButton from '@/components/base/agent/AgentSendButton';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
+import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
+import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import GenComposerToolbar from './GenComposerToolbar';
 import { buildUpstreamItems, type UpstreamItem } from './upstreamItems';
 import { CANVAS_OUTPUT_PENDING_MS } from '../../common/CanvasOutputPendingProgressOverlay';
@@ -77,6 +79,10 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
 
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
+  const flowCanvasSelectedCount = useStore(useCallback((s) => selectFlowCanvasSelectedCount(s), []));
+  const localMultiSelectOutboundRepId = useStore(
+    useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
+  );
 
   const upstreamItems = useMemo(
     () => buildUpstreamItems(nodes as Node[], edges as Edge[], id),
@@ -225,6 +231,8 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
           selected={selected}
           nodeHovered={nodeHovered}
           isInsideLockedGroup={false}
+          hideChrome={selected && flowCanvasSelectedCount > 1}
+          keepConnectableWhenHidden={selected && flowCanvasSelectedCount > 1}
         />
         <LocalDataNodeHandle
           type='source'
@@ -235,6 +243,10 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
           nodeHovered={nodeHovered}
           isInsideLockedGroup={false}
           allowManualConnect={false}
+          hideChrome={selected && flowCanvasSelectedCount > 1}
+          keepConnectableWhenHidden={
+            selected && flowCanvasSelectedCount > 1 && id === localMultiSelectOutboundRepId
+          }
         />
 
         <div className='flex flex-col gap-2 p-3'>

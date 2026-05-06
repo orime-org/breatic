@@ -17,6 +17,7 @@ import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
+import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
 import { getVideoMeta, getVideoMetaFromUrl } from '@/utils/mediaUtils';
 import { cutVideoWithFfmpeg } from '@/utils/videoEditor/videoCutWithFfmpeg';
 import { speedVideoWithFfmpeg } from '@/utils/videoEditor/videoSpeedWithFfmpeg';
@@ -26,7 +27,7 @@ import { videoHdrConversionWithFfmpeg } from '@/utils/videoEditor/videoHdrConver
 import { videoSceneExtensionWithFfmpeg } from '@/utils/videoEditor/videoSceneExtensionWithFfmpeg';
 import { videoAudioDenoiseWithFfmpeg } from '@/utils/videoEditor/videoAudioDenoiseWithFfmpeg';
 import type {
-  ImageEditorPickPending, 
+  ImageEditorPickPending,
   ImageEditorPickResultBox,
   ImageEditorPickState,
   ImageFlowNodeData,
@@ -269,6 +270,9 @@ const VideoNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, data, s
   const { setCenter, getZoom, setNodes, getNodes, setEdges } = useReactFlow();
   const nodes = useStore(useCallback((s) => s.nodes as Node<LocalCanvasNodeData>[], []));
   const flowCanvasSelectedCount = useMemo(() => selectFlowCanvasSelectedCount({ nodes }), [nodes]);
+  const localMultiSelectOutboundRepId = useStore(
+    useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
+  );
   const soloFlowChrome = Boolean(selected) && flowCanvasSelectedCount === 1;
   const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
   const hostNodeId: string | null = null;
@@ -1855,6 +1859,8 @@ const VideoNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, data, s
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={selected && flowCanvasSelectedCount > 1}
           />
           <LocalDataNodeHandle
             type='source'
@@ -1864,6 +1870,10 @@ const VideoNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, data, s
             selected={selected}
             nodeHovered={nodeHovered}
             isInsideLockedGroup={false}
+            hideChrome={selected && flowCanvasSelectedCount > 1}
+            keepConnectableWhenHidden={
+              selected && flowCanvasSelectedCount > 1 && id === localMultiSelectOutboundRepId
+            }
           />
           <div className='relative min-h-0 flex-1'>
             <div
