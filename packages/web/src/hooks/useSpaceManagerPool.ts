@@ -1,18 +1,28 @@
 /**
- * `useSpaceManagerPool` — LRU pool of canvas Space Yjs managers
- * for a project (v10 spec §11.5 implementation §6.6).
+ * `useSpaceManagerPool` — LRU pool of Yjs managers, one per Space
+ * doc inside a project (v10 spec §11.5 implementation §6.6).
  *
- * V1 behaviour: keep up to N (default 5) canvas-{spaceId} managers
- * alive, sharing a single Hocuspocus websocket. When a 6th Space is
+ * V1 behaviour: keep up to N (default 5) per-Space managers alive,
+ * sharing a single Hocuspocus websocket. When an N+1th Space is
  * requested, the least-recently-used one is destroyed.
  *
- * The pool only handles `canvas` Spaces in V1. `document` and
- * `timeline` kinds are deferred to V2 — adding them is an additive
- * change to this file (kind enum + per-kind manager factory).
+ * Kind dispatch (canvas / document / timeline):
+ *   The pool exposes `getSpaceManager(spaceId, kind)` as the
+ *   primary entry point. Each kind has its own manager factory and
+ *   its own manager interface (canvas → `CanvasSpaceManager` with
+ *   `nodesMap`/`edgesMap`; document/timeline → future kinds with
+ *   their own shapes). V1 only ships canvas; document and timeline
+ *   throw {@link NotImplementedError} so the call sites get a
+ *   loud, locatable failure instead of a silent null.
+ *
+ *   `getCanvasSpace` is kept as a typed convenience alias for the
+ *   common path (returns `CanvasSpaceManager` directly without the
+ *   union widening that `getSpaceManager` necessarily has).
  */
 
 import { useCallback, useEffect, useRef } from 'react';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import type { SpaceType } from '@breatic/shared';
 import {
   createCanvasSpaceManager,
   type CanvasSpaceManager,
@@ -20,13 +30,34 @@ import {
 
 const DEFAULT_POOL_SIZE = 5;
 
+/**
+ * Thrown when the caller asks for a Space kind that has no manager
+ * factory yet. Carries the offending kind so the UI layer can surface
+ * a "Space type not yet supported" placeholder rather than crashing.
+ */
+export class NotImplementedError extends Error {
+  constructor(public readonly kind: SpaceType) {
+    super(`Space kind '${kind}' is not implemented yet`);
+    this.name = 'NotImplementedError';
+  }
+}
+
+/**
+ * Union of every per-Space manager kind. V1 only contains
+ * `CanvasSpaceManager` because document/timeline factories don't
+ * exist yet — keeping the alias here makes adding them a
+ * straightforward additive change to this module.
+ */
+export type AnySpaceManager = CanvasSpaceManager;
+
 interface PoolEntry {
-  manager: CanvasSpaceManager;
+  kind: SpaceType;
+  manager: AnySpaceManager;
   lastUsed: number;
 }
 
 export interface UseSpaceManagerPoolOptions {
-  /** Max canvas-{spaceId} docs kept alive at once. Default 5. */
+  /** Max per-Space docs kept alive at once. Default 5. */
   poolSize?: number;
   websocketProvider?: HocuspocusProviderWebsocket;
   wsUrl?: string;
@@ -36,9 +67,17 @@ export interface UseSpaceManagerPoolOptions {
 
 export interface UseSpaceManagerPoolResult {
   /**
-   * Get-or-create the canvas Space manager for `spaceId`. Calls bump
+   * Get-or-create a Space manager for `(spaceId, kind)`. Calls bump
    * the entry's lastUsed timestamp; returning the same instance for
-   * repeated calls within the LRU window.
+   * repeated calls within the LRU window. Throws
+   * {@link NotImplementedError} for unsupported kinds.
+   */
+  getSpaceManager: (spaceId: string, kind: SpaceType) => AnySpaceManager;
+  /**
+   * Typed convenience for the common canvas path. Equivalent to
+   * `getSpaceManager(spaceId, 'canvas')` but with the precise return
+   * type. Throws if the cached entry exists with a different kind
+   * (defense against UI bugs that pass a non-canvas Space here).
    */
   getCanvasSpace: (spaceId: string) => CanvasSpaceManager;
   /**
@@ -50,10 +89,10 @@ export interface UseSpaceManagerPoolResult {
 }
 
 /**
- * Build the pool. The pool is keyed by `(projectId, spaceId)`; when
- * `projectId` changes (user switched projects) the previous pool is
- * destroyed entirely so canvas-{spaceId} docs from the old project
- * don't leak into the new one.
+ * Build the pool. Keyed by `spaceId` only — the kind is asserted on
+ * each access. When `projectId` or `token` rotates the existing pool
+ * is destroyed entirely so per-Space connections from the old
+ * project/session don't leak into the new one.
  */
 export function useSpaceManagerPool(
   projectId: string | null,
@@ -99,8 +138,8 @@ export function useSpaceManagerPool(
     }
   }, [poolSize]);
 
-  const getCanvasSpace = useCallback(
-    (spaceId: string): CanvasSpaceManager => {
+  const getSpaceManager = useCallback(
+    (spaceId: string, kind: SpaceType): AnySpaceManager => {
       if (!projectId || !token) {
         throw new Error(
           'useSpaceManagerPool: projectId and token must be set before requesting a Space manager',
@@ -108,23 +147,49 @@ export function useSpaceManagerPool(
       }
       const existing = poolRef.current.get(spaceId);
       if (existing) {
-        existing.lastUsed = Date.now();
-        return existing.manager;
+        if (existing.kind !== kind) {
+          // Cached under a different kind — likely a bug in the
+          // caller; tear down the wrong entry and fall through to
+          // create a fresh one.
+          existing.manager.destroy();
+          poolRef.current.delete(spaceId);
+        } else {
+          existing.lastUsed = Date.now();
+          return existing.manager;
+        }
       }
       evictLruIfFull();
-      const manager = createCanvasSpaceManager({
-        projectId,
-        spaceId,
-        token,
-        websocketProvider,
-        wsUrl,
-        userId,
-        onAuthFailed: (reason) => onAuthFailedRef.current?.(reason),
-      });
-      poolRef.current.set(spaceId, { manager, lastUsed: Date.now() });
+
+      let manager: AnySpaceManager;
+      if (kind === 'canvas') {
+        manager = createCanvasSpaceManager({
+          projectId,
+          spaceId,
+          token,
+          websocketProvider,
+          wsUrl,
+          userId,
+          onAuthFailed: (reason) => onAuthFailedRef.current?.(reason),
+        });
+      } else {
+        // V1 ships canvas only. document/timeline factories will be
+        // added here once those Space kinds are implementable end
+        // to end (Yjs schema + server task pipeline + UI).
+        throw new NotImplementedError(kind);
+      }
+      poolRef.current.set(spaceId, { kind, manager, lastUsed: Date.now() });
       return manager;
     },
     [projectId, token, websocketProvider, wsUrl, userId, evictLruIfFull],
+  );
+
+  const getCanvasSpace = useCallback(
+    (spaceId: string): CanvasSpaceManager => {
+      const m = getSpaceManager(spaceId, 'canvas');
+      // Narrow: we asked for canvas, factory returned canvas.
+      return m;
+    },
+    [getSpaceManager],
   );
 
   const evict = useCallback((spaceId: string) => {
@@ -134,5 +199,5 @@ export function useSpaceManagerPool(
     poolRef.current.delete(spaceId);
   }, []);
 
-  return { getCanvasSpace, evict };
+  return { getSpaceManager, getCanvasSpace, evict };
 }

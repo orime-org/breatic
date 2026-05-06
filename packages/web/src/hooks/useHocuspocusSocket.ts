@@ -9,12 +9,29 @@
  * ws ceiling stays untouched even when the LRU pool keeps several
  * Space docs open at once.
  *
- * The hook owns the lifecycle: when `projectId` / `token` / `wsUrl`
- * change, the previous socket is disconnected before a new one is
- * created.
+ * Why `useMemo`, not `useState` + `useEffect`:
+ *   The pre-fix version constructed the websocket inside an effect,
+ *   which meant the FIRST render returned `null`. Sibling hooks
+ *   (`useProjectMeta`, `useSpaceManagerPool`) would then build their
+ *   per-doc providers without a shared socket, fall back to the
+ *   per-provider socket path, and never share TCP — defeating the
+ *   spec. Worse, when the websocket arrived a render later, those
+ *   providers would not be rebuilt (stale closure), so the canvas
+ *   doc's provider would attach to a useless promise of a future
+ *   socket. Constructing in `useMemo` resolves both issues: the
+ *   socket exists from the first render, and the deps array makes
+ *   the lifecycle explicit.
+ *
+ *   The constructor itself is synchronous; the TCP/WS handshake is
+ *   async but the object is immediately attachable — providers can
+ *   register listeners and they'll fire when the handshake completes.
+ *
+ * The cleanup in `useEffect` runs on unmount / dep change. The
+ * `useMemo` value rotates atomically with the deps so React always
+ * sees a fresh socket reference for the new `(projectId, token)`.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 
 export interface UseHocuspocusSocketOptions {
@@ -31,8 +48,8 @@ function resolveWsUrl(explicit?: string): string {
 }
 
 /**
- * @returns the shared websocket — `null` while the hook is disabled
- *   or before the first connection is established.
+ * @returns the shared websocket — `null` only when the hook is
+ *   disabled or the project / token isn't ready yet.
  */
 export function useHocuspocusSocket(
   projectId: string | null,
@@ -40,35 +57,25 @@ export function useHocuspocusSocket(
   options: UseHocuspocusSocketOptions = {},
 ): HocuspocusProviderWebsocket | null {
   const { enabled = true, wsUrl } = options;
-  const [socket, setSocket] = useState<HocuspocusProviderWebsocket | null>(null);
-  const socketRef = useRef<HocuspocusProviderWebsocket | null>(null);
 
-  useEffect(() => {
-    if (!enabled || !projectId || !token) {
-      socketRef.current = null;
-      setSocket(null);
-      return;
-    }
-
-    const ws = new HocuspocusProviderWebsocket({
+  const socket = useMemo<HocuspocusProviderWebsocket | null>(() => {
+    if (!enabled || !projectId || !token) return null;
+    return new HocuspocusProviderWebsocket({
       url: resolveWsUrl(wsUrl),
     });
-    socketRef.current = ws;
-    setSocket(ws);
+  }, [enabled, projectId, token, wsUrl]);
 
+  useEffect(() => {
+    if (!socket) return;
     return () => {
-      // Disconnect the shared socket. Sibling HocuspocusProvider
-      // instances that hold a reference will receive a 'disconnected'
-      // event and stop reconnecting until they re-attach to a new
-      // socket from the next render.
-      ws.disconnect();
-      // The websocket object exposes no destroy(); GC handles the rest.
-      if (socketRef.current === ws) {
-        socketRef.current = null;
-        setSocket(null);
-      }
+      // The websocket has no `destroy()` in 3.4.4 — `disconnect()` +
+      // GC is the documented teardown. Sibling HocuspocusProvider
+      // instances that still hold a reference will receive a
+      // `disconnected` event and stop reconnecting until they
+      // re-attach to a fresh socket from the next render.
+      socket.disconnect();
     };
-  }, [projectId, token, wsUrl, enabled]);
+  }, [socket]);
 
   return socket;
 }
