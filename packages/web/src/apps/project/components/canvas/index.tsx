@@ -41,7 +41,7 @@ import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput'
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { type UseYjsStoreResult } from '@/hooks/useYjsProjectStore';
+import { type UseSpaceWorkspaceResult } from '@/domain/space/useSpaceWorkspace';
 import {
   type PickPending,
   type CanvasWorkflowNodeData,
@@ -246,7 +246,7 @@ const ProjectCanvasViewportRegistrar: React.FC = () => {
 };
 
 type ProjectCanvasContentProps = {
-  yjs: UseYjsStoreResult;
+  yjs: UseSpaceWorkspaceResult;
   hotkeysDisabled?: boolean;
 };
 
@@ -910,7 +910,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
 };
 
 type ProjectCanvasProps = {
-  yjs: UseYjsStoreResult;
+  yjs: UseSpaceWorkspaceResult;
   hotkeysDisabled?: boolean;
 };
 

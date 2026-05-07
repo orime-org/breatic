@@ -15,7 +15,7 @@
 
 import { useMemo } from 'react';
 import type { ProjectRole } from '@breatic/shared';
-import { useProjectMembers } from './useProjectMembers';
+import { useProjectMembers } from '@/domain/project/useProjectMembers';
 import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 
 export interface UseUserRoleResult {

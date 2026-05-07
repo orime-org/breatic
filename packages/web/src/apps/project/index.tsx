@@ -6,10 +6,10 @@ import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
 import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
 import { LocalPendingProvider } from '@/contexts/LocalPendingProvider';
-import { ActiveCanvasSpaceProvider } from '@/contexts/ActiveCanvasSpaceContext';
+import { ActiveCanvasSpaceProvider } from '@/domain/space/ActiveCanvasSpaceContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useYjsStore } from '@/hooks/useYjsProjectStore';
+import { useSpaceWorkspace } from '@/domain/space/useSpaceWorkspace';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
@@ -50,7 +50,7 @@ const ProjectPage: React.FC = () => {
   const navigate = useNavigate();
   const sessionToken = authInfo?.state?.token ?? '';
 
-  const yjs = useYjsStore({
+  const yjs = useSpaceWorkspace({
     id: workflowId ?? '',
     token: sessionToken,
     enabled: !!workflowId && !!sessionToken,
@@ -79,7 +79,7 @@ const ProjectPage: React.FC = () => {
  * The actual project content — inside CanvasDataProvider, consumes
  * canvas data through the canvas hooks.
  */
-const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useYjsStore> }> = ({ yjs }) => {
+const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useSpaceWorkspace> }> = ({ yjs }) => {
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
