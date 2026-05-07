@@ -1,6 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import type { LocalCanvasNodeData } from '@/new/project/types';
+import type { LocalUpstreamSourceData } from '@/new/project/components/canvas/upstreamTypes';
 
 /** Upstream chip for {@link GenComposerToolbar}. */
 export type UpstreamItem = {
@@ -58,7 +57,7 @@ export function buildUpstreamItems(nodes: Node[], edges: Edge[], targetNodeId: s
       const node = byId.get(edge.source);
       if (!node || node.id === targetNodeId) return null;
 
-      const data = node.data as Partial<CanvasWorkflowNodeData> & Partial<LocalCanvasNodeData> | undefined;
+      const data = node.data as LocalUpstreamSourceData | undefined;
       const { activeHistoryId, history } = data ?? {};
       const activeItem = Array.isArray(history) && activeHistoryId
         ? history.find((h) => h.id === activeHistoryId)

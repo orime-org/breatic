@@ -63,7 +63,11 @@ const GroupNode: React.FC<NodeProps> = ({ id, selected, data }) => {
 
   return (
     <>
-      <div className='absolute inset-0 rounded-[6px] pointer-events-none' style={{ backgroundColor }} aria-hidden />
+      {/*
+        Must receive pointer events so right-clicks on empty group area hit the node (see `onNodeContextMenu` in canvas index).
+        Child nodes render above and still receive events first.
+      */}
+      <div className='absolute inset-0 rounded-[6px] pointer-events-auto' style={{ backgroundColor }} aria-hidden />
       {!locked && (
         <NodeResizer
           color={borderColor}

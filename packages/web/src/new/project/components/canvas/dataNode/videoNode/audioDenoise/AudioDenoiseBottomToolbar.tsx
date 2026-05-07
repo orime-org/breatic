@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 import Slider from '@/components/base/slider';
 import { Button } from '@/components/base/button';
 import { Icon } from '@/components/base/icon';

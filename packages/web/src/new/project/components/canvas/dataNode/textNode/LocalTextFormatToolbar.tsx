@@ -13,7 +13,7 @@ export type { LocalTextRichTextFormatState } from './LocalTextNodeContent';
 
 /** Shared outer chrome when the format strip sits alone or wraps Refine/Create in {@link TextNode}. */
 export const localTextNodeTopToolbarShellClass =
-  'pointer-events-auto flex flex-wrap items-center gap-0 rounded-[8px] border border-border-default-base bg-background-default-base px-[6px] py-[4px] shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]';
+  'pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border border-border-default-base bg-background-default-base px-3 py-[6px] shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)]';
 
 const shellClass = localTextNodeTopToolbarShellClass;
 
@@ -22,9 +22,6 @@ const actionBtnClass =
 
 export interface LocalTextFormatToolbarProps {
   formatState: LocalTextRichTextFormatState;
-  /** Empty placeholder: only Edit + Copy until the editor mounts. */
-  placeholderMode?: boolean;
-  onEditFromToolbar?: (e: React.MouseEvent) => void;
   onH1: (e: React.MouseEvent) => void;
   onH2: (e: React.MouseEvent) => void;
   onH3: (e: React.MouseEvent) => void;
@@ -32,18 +29,15 @@ export interface LocalTextFormatToolbarProps {
   onOrderedList: (e: React.MouseEvent) => void;
   onUnorderedList: (e: React.MouseEvent) => void;
   onBold: (e: React.MouseEvent) => void;
-  onCopy?: (e: React.MouseEvent) => void;
   /**
    * Omit outer bordered shell — parent renders one combined bar (e.g. with AI triggers).
-   * Trailing divider after Copy is omitted; parent inserts the separator.
+   * Trailing divider before AI triggers is inserted by the parent.
    */
   embedded?: boolean;
 }
 
 const LocalTextFormatToolbar: React.FC<LocalTextFormatToolbarProps> = ({
   formatState,
-  placeholderMode = false,
-  onEditFromToolbar,
   onH1,
   onH2,
   onH3,
@@ -51,7 +45,6 @@ const LocalTextFormatToolbar: React.FC<LocalTextFormatToolbarProps> = ({
   onOrderedList,
   onUnorderedList,
   onBold,
-  onCopy,
   embedded = false,
 }) => {
   const { t } = useTranslation();
@@ -109,51 +102,6 @@ const LocalTextFormatToolbar: React.FC<LocalTextFormatToolbarProps> = ({
     [onH1, onH2, onH3, onParagraph],
   );
 
-  if (placeholderMode) {
-    return (
-      <div className={outerClass} onMouseDown={(e) => e.stopPropagation()}>
-        <Tooltip title={t('project.toolbar.textEdit', 'Edit')} placement='top' offset={4}>
-          <button
-            type='button'
-            className={actionBtnClass}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onEditFromToolbar?.(e);
-            }}
-          >
-            <Icon name='project-launch-editor-icon' width={20} height={20} color='var(--color-icon-base)' />
-            <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>
-              {t('project.toolbar.textEdit', 'Edit')}
-            </span>
-          </button>
-        </Tooltip>
-        {onCopy ? (
-          <>
-            <Divider type='vertical' className='mx-[2px] h-[18px]' />
-            <Tooltip title={t('project.toolbar.copy', 'Copy')} placement='top' offset={4}>
-              <button
-                type='button'
-                className={actionBtnClass}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onCopy(e);
-                }}
-              >
-                <Icon name='project-copy-icon' width={16} height={16} color='var(--color-icon-base)' />
-                <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>
-                  {t('project.toolbar.copy', 'Copy')}
-                </span>
-              </button>
-            </Tooltip>
-            {!embedded ? <Divider type='vertical' className='mx-[2px] h-[18px]' /> : null}
-          </>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
     <div className={outerClass} onMouseDown={(e) => e.stopPropagation()}>
       <Tooltip title={t('project.toolbar.textBold', 'Bold')} placement='top' offset={4}>
@@ -210,7 +158,7 @@ const LocalTextFormatToolbar: React.FC<LocalTextFormatToolbarProps> = ({
           </span>
         </button>
       </Tooltip>
-      <Divider type='vertical' className='mx-[2px] h-[18px]' />
+      <Divider type='vertical' className='mx-1 h-[18px] shrink-0 self-center' />
       <Dropdown
         trigger='click'
         placement='bottom-end'
@@ -235,28 +183,7 @@ const LocalTextFormatToolbar: React.FC<LocalTextFormatToolbarProps> = ({
           </button>
         </Tooltip>
       </Dropdown>
-      {onCopy ? (
-        <>
-          <Divider type='vertical' className='mx-[2px] h-[18px]' />
-          <Tooltip title={t('project.toolbar.copy', 'Copy')} placement='top' offset={4}>
-            <button
-              type='button'
-              className={actionBtnClass}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onCopy(e);
-              }}
-            >
-              <Icon name='project-copy-icon' width={16} height={16} color='var(--color-icon-base)' />
-              <span className='whitespace-nowrap text-[14px] leading-none text-text-default-base'>
-                {t('project.toolbar.copy', 'Copy')}
-              </span>
-            </button>
-          </Tooltip>
-          {!embedded ? <Divider type='vertical' className='mx-[2px] h-[18px]' /> : null}
-        </>
-      ) : null}
+      {!embedded ? <Divider type='vertical' className='mx-1 h-[18px] shrink-0 self-center' /> : null}
     </div>
   );
 };

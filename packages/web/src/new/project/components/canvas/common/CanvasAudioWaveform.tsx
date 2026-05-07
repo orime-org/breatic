@@ -138,86 +138,93 @@ const CanvasAudioWaveform: React.FC<CanvasAudioWaveformProps> = ({
     setShowVolumeSlider(false);
   };
 
+  /** Layout matches `apps/.../AudioNodePlayer.tsx`: waveform region flex-1 + controls pinned below (no vertical centering of both together). */
   return (
-    <div className='flex flex-col rounded-lg'>
+    <div className='relative flex h-full min-h-0 w-full flex-col items-stretch overflow-hidden rounded-[8px] bg-background-default-base'>
       {label && (
-        <p className='mb-1 line-clamp-1 text-center text-[11px] font-medium text-[var(--color-text-default-secondary)]'>
+        <p className='line-clamp-1 px-3 pt-2 text-center text-[11px] font-medium text-[var(--color-text-default-secondary)]'>
           {label}
         </p>
       )}
-      <div className='flex flex-1 flex-col items-center justify-center gap-2'>
-        <div className='w-full h-[30px] rounded-lg overflow-hidden'>
-          <div ref={containerRef} className='w-full h-full' />
-        </div>
-        {showControls && (
-          <div className='nodrag flex w-full items-center gap-2'>
-            <button
-              type='button'
-              onClick={handlePlayPause}
-              className='flex-shrink-0 flex items-center justify-center w-8 h-8 text-[#383838] hover:opacity-80'
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? (
-                <Icon name='project-pause-audio-icon' width={10} height={10} color='#383838' />
-              ) : (
-                <Icon name='project-play-audio-icon' width={10} height={12} color='#383838' />
-              )}
-            </button>
-            <span className='flex-shrink-0 text-[12px] text-[#383838] font-normal tabular-nums'>
-              {formatTime(currentTime)}
-            </span>
-            <div className='flex-1 min-w-0 flex items-center' onClick={stopPropagation}>
-              <Slider
-                min={0}
-                max={100}
-                step={0.1}
-                value={progress}
-                onChange={handleProgressChange}
-                className='!m-0 w-full'
-              />
-            </div>
-            <span className='flex-shrink-0 text-[12px] text-[#383838] font-normal tabular-nums'>
-              {formatTime(duration)}
-            </span>
-            <div
-              className='relative flex-shrink-0'
-              onMouseEnter={() => setShowVolumeSlider(true)}
-              onMouseLeave={handleVolumeMouseLeave}
-            >
+      {/* Top: waveform — height/padding aligned with AudioNodePlayer */}
+      <div className='flex min-h-[80px] flex-1 items-center px-3 pb-1 pt-3' onMouseDown={stopPropagation}>
+        <div ref={containerRef} className='h-[48px] w-full' />
+      </div>
+
+      {showControls && (
+        <div className='nodrag px-3 pb-2' onMouseDown={stopPropagation}>
+          <div className='w-full'>
+            <div className='flex w-full items-center gap-2 py-1'>
               <button
                 type='button'
-                onClick={handleMuteToggle}
-                className='flex items-center justify-center w-8 h-8 text-[#757575] hover:opacity-80'
-                aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+                onClick={handlePlayPause}
+                className='flex h-8 w-8 flex-shrink-0 items-center justify-center text-[#383838] hover:opacity-80'
+                aria-label={isPlaying ? 'Pause' : 'Play'}
               >
-                {volume === 0 ? (
-                  <Icon name='project-mute-icon' width={14} height={14} color='#757575' />
+                {isPlaying ? (
+                  <Icon name='project-pause-audio-icon' width={10} height={10} color='#383838' />
                 ) : (
-                  <Icon name='project-volume-icon' width={14} height={14} color='#757575' />
+                  <Icon name='project-play-audio-icon' width={10} height={12} color='#383838' />
                 )}
               </button>
-              {showVolumeSlider && (
-                <div
-                  ref={volumePopoverRef}
-                  className='absolute bottom-full left-1/2 -translate-x-1/2 p-1.5 rounded bg-black/70'
-                >
-                  <div className='h-[60px] px-1'>
-                    <Slider
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={volume}
-                      onChange={handleVolumeChange}
-                      vertical
-                      className='!m-0 w-full'
-                    />
-                  </div>
+              <span className='flex-shrink-0 text-[12px] font-normal tabular-nums text-[#383838]'>
+                {formatTime(currentTime)}
+              </span>
+              <div className='flex h-8 min-w-0 flex-1 items-center' onClick={stopPropagation}>
+                <div className='flex w-full items-center'>
+                  <Slider
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={progress}
+                    onChange={handleProgressChange}
+                    className='nodrag !m-0 block w-full'
+                  />
                 </div>
-              )}
+              </div>
+              <span className='flex-shrink-0 text-[12px] font-normal tabular-nums text-[#383838]'>
+                {formatTime(duration)}
+              </span>
+              <div
+                className='relative flex-shrink-0 nodrag'
+                onMouseEnter={() => setShowVolumeSlider(true)}
+                onMouseLeave={handleVolumeMouseLeave}
+              >
+                <button
+                  type='button'
+                  onClick={handleMuteToggle}
+                  className='flex h-8 w-8 items-center justify-center text-[#757575] hover:opacity-80'
+                  aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+                >
+                  {volume === 0 ? (
+                    <Icon name='project-mute-icon' width={14} height={14} color='#757575' />
+                  ) : (
+                    <Icon name='project-volume-icon' width={14} height={14} color='#757575' />
+                  )}
+                </button>
+                {showVolumeSlider && (
+                  <div
+                    ref={volumePopoverRef}
+                    className='absolute bottom-full left-1/2 -translate-x-1/2 rounded bg-black/70 p-1.5 nodrag'
+                  >
+                    <div className='h-[60px] px-1'>
+                      <Slider
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={volume}
+                        onChange={handleVolumeChange}
+                        vertical
+                        className='nodrag !m-0 w-full'
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

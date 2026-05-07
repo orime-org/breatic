@@ -1,7 +1,7 @@
 /**
- * Text-node AI tool strip — UI only (no mini-tools API). Mock insert strings align with `new/textEditor/ui/AIMenu`.
+ * Text-node AI — sheet UI aligned with `new/textEditor/ui/AIMenu` (card + optional notes + Refine/Create; dropdown → phased loading).
  */
-import { memo, useCallback, useEffect, useMemo, useRef, type FC } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, type FC, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   RiArrowDropDownLine,
@@ -15,12 +15,14 @@ import {
   RiSparkling2Line,
   RiTranslateAi,
 } from 'react-icons/ri';
+import { FaStopCircle } from 'react-icons/fa';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
 import Tooltip from '@/components/base/tooltip';
 import { Button } from '@/components/base/button';
 import { Icon } from '@/components/base/icon';
 import Input from '@/components/base/input';
 import Select from '@/components/base/select';
+import { cn } from '@/utils/classnames';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 
 export type TextAiToolId =
@@ -118,6 +120,13 @@ export type LocalTextAiTriggerBarProps = Pick<
   menuPlacement?: 'top-start' | 'bottom-start';
   /** Omit bordered shell — parent renders one combined bar (see `localTextNodeTopToolbarShellClass` in `LocalTextFormatToolbar`). */
   embedded?: boolean;
+  /**
+   * Merge default field patches then start the run (canvas node: bottom uses `AIMenu`-aligned loading).
+   * When set, menu clicks do not navigate the legacy form panel.
+   */
+  onRunImmediate?: (tool: TextAiToolId) => void;
+  /** Disable dropdown triggers during phased loading. */
+  isRunning?: boolean;
 };
 
 /** Matches image `UpscaleBottomToolbar` / `MultiAngleBottomToolbar` bottom cards (border, width, padding). */
@@ -134,6 +143,138 @@ const bottomToolbarTextareaClass =
 /** Mock Run delay in `TextNode.handleMockAiRun` — overlay animation length while “loading”. */
 const TEXT_AI_RUN_OVERLAY_MS = 1250 as const;
 
+/** Outer prompt card — same classes as `AIMenu` root prompt container (see `AIMenu.tsx`). */
+const aimMenuPromptOuterClass = cn(
+  'nodrag nopan flex items-center gap-2 rounded-[12px] bg-background-default-base pl-3 pr-2',
+  'border border-border-default-base',
+  'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
+);
+
+export type TextAiRunPhase = 'thinking' | 'writing' | null;
+
+export interface LocalTextAiSheetPanelProps {
+  hasDocumentText: boolean;
+  fields: TextAiPanelFields;
+  onFieldsChange: (next: TextAiPanelFields) => void;
+  isRunning: boolean;
+  runPhase: TextAiRunPhase;
+  onCancelRun: () => void;
+}
+
+/**
+ * Bottom sheet: `AIMenu`-matched prompt shell (optional notes) + inline thinking/writing row. Refine/Create live on the top toolbar.
+ */
+export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
+  hasDocumentText,
+  fields,
+  onFieldsChange,
+  isRunning,
+  runPhase,
+  onCancelRun,
+}) => {
+  const { t } = useTranslation();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const wasLoadingRef = useRef(false);
+
+  /** After phased loading, restore focus to the notes field like `AIMenu` `user-reviewing` focus. */
+  useEffect(() => {
+    const loading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
+    if (wasLoadingRef.current && !loading) {
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      });
+    }
+    wasLoadingRef.current = loading;
+  }, [isRunning, runPhase]);
+
+  const handleSheetMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement;
+    if (el.closest('input, textarea, [contenteditable="true"], button, [role="menu"]')) return;
+    e.preventDefault();
+  }, []);
+
+  const handleStopKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onCancelRun();
+      }
+    },
+    [onCancelRun],
+  );
+
+  const showLoading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
+
+  return (
+    <div
+      className='nodrag nopan flex w-full min-w-0 max-w-[min(100vw-24px,520px)] flex-col bg-transparent'
+      onMouseDown={handleSheetMouseDown}
+    >
+      <div
+        className={cn(aimMenuPromptOuterClass, 'w-full min-w-0', showLoading ? 'justify-between' : '')}
+        style={{ minHeight: showLoading ? 56 : undefined }}
+      >
+        {showLoading ? (
+          <>
+            <div className='flex flex-1 items-center gap-2 py-3'>
+              <span className='text-[14px] font-medium text-brand-base'>
+                {runPhase === 'writing'
+                  ? t('project.textAi.aiWriting', 'AI is writing')
+                  : t('project.textAi.thinking', 'Thinking')}
+              </span>
+              <span className='inline-flex items-center gap-1 text-text-default-tertiary'>
+                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
+              </span>
+            </div>
+            <Button
+              type='default'
+              size='small'
+              shape='circle'
+              bordered={false}
+              icon={<FaStopCircle size={22} />}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onCancelRun}
+              onKeyDown={handleStopKeyDown}
+              aria-label={t('project.textAi.stopGeneration', 'Stop')}
+              className='shrink-0'
+            />
+          </>
+        ) : (
+          <div className='flex w-full min-w-0 flex-col py-2'>
+            <label className='flex flex-col gap-1'>
+              <span className='text-[12px] text-text-default-tertiary'>
+                {t('project.textAi.optionalHint', 'Optional notes')}
+              </span>
+              <textarea
+                ref={inputRef}
+                rows={2}
+                className='w-full resize-none bg-transparent text-[14px] text-text-default-base outline-none placeholder:text-text-default-tertiary'
+                placeholder={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
+                value={fields.instructions ?? ''}
+                onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+                autoComplete='off'
+                aria-label={t('project.textAi.optionalNotes', 'Optional notes')}
+              />
+            </label>
+
+            {!hasDocumentText ? (
+              <p className='mt-2 text-[12px] text-text-default-tertiary'>
+                {t('project.textAi.needBody', 'Add text in the node first, or open edit mode.')}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
   hasDocumentText,
   fields,
@@ -141,6 +282,8 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
   onFieldsChange,
   menuPlacement = 'top-start',
   embedded = false,
+  onRunImmediate,
+  isRunning = false,
 }) => {
   const { t } = useTranslation();
 
@@ -175,6 +318,25 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
   const onRefineMenuClick = useCallback(
     (key: string | number) => {
       const id = String(key) as 'polish' | 'expand' | 'summarize' | 'translate' | 'rewrite' | 'continue';
+      if (onRunImmediate) {
+        if (id === 'translate') {
+          onFieldsChange({
+            ...fields,
+            language: fields.language ?? 'English',
+            instructions: fields.instructions ?? '',
+          });
+        } else if (id === 'rewrite') {
+          onFieldsChange({
+            ...fields,
+            style: fields.style ?? 'formal',
+            instructions: fields.instructions ?? '',
+          });
+        } else {
+          onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
+        }
+        onRunImmediate(id);
+        return;
+      }
       if (id === 'translate') {
         onActiveToolChange('translate');
         onFieldsChange({
@@ -196,16 +358,21 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
       onActiveToolChange(id);
       onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
     },
-    [fields, onActiveToolChange, onFieldsChange],
+    [fields, onActiveToolChange, onFieldsChange, onRunImmediate],
   );
 
   const onCreateMenuClick = useCallback(
     (key: string | number) => {
       const id = String(key) as 'generate' | 'character' | 'storyboard' | 'script';
+      if (onRunImmediate) {
+        onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
+        onRunImmediate(id);
+        return;
+      }
       onActiveToolChange(id);
       onFieldsChange({});
     },
-    [onActiveToolChange, onFieldsChange],
+    [fields, onActiveToolChange, onFieldsChange, onRunImmediate],
   );
 
   /** Hover hints stay above the triggers so they don’t clash with the dropdown panel below. */
@@ -221,7 +388,12 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
         itemClassName='min-h-8 px-2 py-1.5'
       >
         <Tooltip title={t('project.textAi.refineMenuHint', 'Adjust existing text')} placement='top' offset={4}>
-          <button type='button' className={triggerClass} disabled={!hasDocumentText} aria-haspopup='listbox'>
+          <button
+            type='button'
+            className={triggerClass}
+            disabled={!hasDocumentText || isRunning}
+            aria-haspopup='listbox'
+          >
             <span className='max-w-[120px] truncate'>{t('project.textAi.refineMenu', 'Refine')}</span>
             <RiArrowDropDownLine size={18} className='shrink-0 text-icon-base' aria-hidden />
           </button>
@@ -238,7 +410,7 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
         itemClassName='min-h-8 px-2 py-1.5'
       >
         <Tooltip title={t('project.textAi.createGroup', 'Create')} placement='top' offset={4}>
-          <button type='button' className={triggerClass} aria-haspopup='listbox'>
+          <button type='button' className={triggerClass} disabled={isRunning} aria-haspopup='listbox'>
             <span className='max-w-[120px] truncate'>{t('project.textAi.createGroup', 'Create')}</span>
             <RiArrowDropDownLine size={18} className='shrink-0 text-icon-base' aria-hidden />
           </button>

@@ -37,6 +37,9 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  /** Playback strip is hidden until the user double-clicks the waveform area (matches product UX). */
+  const [playbackBarVisible, setPlaybackBarVisible] = useState(false);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -93,6 +96,10 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
       subscriptions.forEach((unsub) => unsub && unsub());
     };
   }, [wavesurfer]);
+
+  useEffect(() => {
+    setPlaybackBarVisible(false);
+  }, [src]);
 
   const stopPropagation = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -158,8 +165,15 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
 
   return (
     <div className='w-full h-full min-h-0 flex flex-col items-stretch justify-center overflow-hidden rounded-[8px] bg-background-default-base relative'>
-      {/* Top: waveform */}
-      <div className='flex-1 flex items-center px-3 pt-3 pb-1 min-h-[80px]' onMouseDown={stopPropagation}>
+      {/* Top: waveform — double-click toggles the bottom playback bar */}
+      <div
+        className='flex-1 flex items-center px-3 pt-3 pb-1 min-h-[80px]'
+        onMouseDown={stopPropagation}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          setPlaybackBarVisible((v) => !v);
+        }}
+      >
         <div ref={containerRef} className='w-full h-[48px]' />
       </div>
 
@@ -196,8 +210,8 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
         </div>
       )}
 
-      {/* Playback bar: play/pause, time, progress, duration, volume (selected only) */}
-      {selected && (
+      {/* Playback bar: play/pause, time, progress, duration, volume (after double-click on waveform) */}
+      {playbackBarVisible && (
         <div className='px-3 pb-2 nodrag' onMouseDown={stopPropagation}>
           <div className='w-full'>
             <div className='flex items-center w-full gap-2 py-1'>

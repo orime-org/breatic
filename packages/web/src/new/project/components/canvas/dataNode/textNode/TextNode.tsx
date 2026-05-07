@@ -1,5 +1,5 @@
 /**
- * Local text node (type `1001`) — top `NodeToolbar` (format + AI dropdowns) hides while an AI tool sheet is open; bottom sheet matches `new/textEditor` shell styling; body is chromeless.
+ * Local text node (type `1001`) — top `NodeToolbar`: format + Refine/Create; bottom card matches `AIMenu` optional-notes + loading, then restores notes input after run; body is chromeless.
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -13,7 +13,6 @@ import {
 } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
 import Divider from '@/components/base/divider';
-import { message } from '@/components/base/message';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 import { Icon } from '@/components/base/icon';
 import type { LocalCanvasNodeData } from '@/new/project/types';
@@ -25,9 +24,10 @@ import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/Lo
 import LocalTextFormatToolbar, { localTextNodeTopToolbarShellClass } from './LocalTextFormatToolbar';
 import {
   MOCK_REPLACEMENT,
-  LocalTextAiToolFormPanel,
+  LocalTextAiSheetPanel,
   LocalTextAiTriggerBar,
   type TextAiPanelFields,
+  type TextAiRunPhase,
   type TextAiToolId,
 } from './LocalTextAiToolsPanel';
 import LocalTextNodeContent, {
@@ -87,7 +87,7 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
   const prevSelectedRef = useRef(selected);
   const isEmpty = getTextFromHtml(textValue).length === 0;
   const hasDocumentText = getTextFromHtml(textValue).length > 0;
-  const [activeAiTool, setActiveAiTool] = useState<TextAiToolId | null>(null);
+  const [textAiRunPhase, setTextAiRunPhase] = useState<TextAiRunPhase>(null);
   const [aiFields, setAiFields] = useState<TextAiPanelFields>({});
   const [aiRunning, setAiRunning] = useState(false);
   const [pendingMockPlain, setPendingMockPlain] = useState<string | null>(null);
@@ -99,7 +99,7 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     if (justDeselected) {
       if (isEmpty) setHasActivated(false);
       else setContentEditingActive(false);
-      setActiveAiTool(null);
+      setTextAiRunPhase(null);
       setAiFields({});
       setAiRunning(false);
       setPendingMockPlain(null);
@@ -169,7 +169,8 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     setTimeout(() => contentRef.current?.focusEditor(), 0);
   }, []);
 
-  const isEditing = isEmpty ? hasActivated : contentEditingActive;
+  /** Same render as deselect: preview immediately (do not wait for `useEffect` to clear activation flags). */
+  const isEditing = selected && (isEmpty ? hasActivated : contentEditingActive);
 
   useEffect(() => {
     if (!isEditing || pendingMockPlain === null) return;
@@ -181,49 +182,45 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     return () => window.clearTimeout(tid);
   }, [isEditing, pendingMockPlain]);
 
-  const handleMockAiRun = useCallback((tool: TextAiToolId) => {
+  const clearMockAiTimers = useCallback(() => {
     mockRunTimersRef.current.forEach((tid) => window.clearTimeout(tid));
     mockRunTimersRef.current = [];
-    setAiRunning(true);
-    const t1 = window.setTimeout(() => {
-      const t2 = window.setTimeout(() => {
-        setHasActivated(true);
-        setContentEditingActive(true);
-        setPendingMockPlain(MOCK_REPLACEMENT[tool]);
-        setAiRunning(false);
-        setActiveAiTool(null);
-        setAiFields({});
-        mockRunTimersRef.current = [];
-      }, 550);
-      mockRunTimersRef.current.push(t2);
-    }, 700);
-    mockRunTimersRef.current.push(t1);
   }, []);
 
-  const showFloatingChrome = selected && !dragging;
-  /** Top chrome hides once an AI menu item is chosen so only the bottom input strip stays (matches TextEditor vs toolbar layering). */
-  const showTopToolbar = showFloatingChrome && selectedCount === 1 && activeAiTool === null;
-  /** Bottom: AI prompt card only after choosing a tool (same pattern as image `UpscaleBottomToolbar`). */
-  const showAiBottomForm = showFloatingChrome && selectedCount === 1 && activeAiTool !== null;
+  const handleCancelAiRun = useCallback(() => {
+    clearMockAiTimers();
+    setAiRunning(false);
+    setTextAiRunPhase(null);
+  }, [clearMockAiTimers]);
 
-  const handleCopyContentClick = useCallback(
-    async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      const text = textValue;
-      if (!getTextFromHtml(text).trim()) {
-        message.warning(t('project.toolbar.noContentToCopy', 'No content to copy'));
-        return;
-      }
-      try {
-        const plain = getTextFromHtml(text);
-        await navigator.clipboard.writeText(plain);
-        message.success(t('project.toolbar.copySuccess', 'Copied to clipboard'));
-      } catch {
-        message.error(t('project.toolbar.copyFailed', 'Copy failed'));
-      }
+  /** Phased mock aligned with `AIMenu` `runPreviewFlow`: thinking 700ms → writing 550ms → insert. */
+  const handleMockAiRun = useCallback(
+    (tool: TextAiToolId) => {
+      clearMockAiTimers();
+      setTextAiRunPhase('thinking');
+      setAiRunning(true);
+      const t1 = window.setTimeout(() => {
+        setTextAiRunPhase('writing');
+        const t2 = window.setTimeout(() => {
+          setHasActivated(true);
+          setContentEditingActive(true);
+          setPendingMockPlain(MOCK_REPLACEMENT[tool]);
+          setAiRunning(false);
+          setTextAiRunPhase(null);
+          clearMockAiTimers();
+        }, 550);
+        mockRunTimersRef.current.push(t2);
+      }, 700);
+      mockRunTimersRef.current.push(t1);
     },
-    [t, textValue],
+    [clearMockAiTimers],
   );
+
+  const showFloatingChrome = selected && !dragging;
+  /** Top bar: format; when AI is open, Refine/Create dropdowns (see `LocalTextAiTriggerBar`). */
+  const showTopToolbar = showFloatingChrome && selectedCount === 1;
+  /** Bottom: optional-notes + loading (same visibility as top chrome). */
+  const showAiBottomForm = showFloatingChrome && selectedCount === 1;
 
   const runFormat = useCallback(
     (command: string, commandValue?: string) => (e: React.MouseEvent) => {
@@ -234,17 +231,6 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     [],
   );
 
-  const handleToolbarEditClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === id })));
-      setHasActivated(true);
-      setTimeout(() => contentRef.current?.focusEditor(), 0);
-    },
-    [id, setNodes],
-  );
-
   return (
     <>
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showTopToolbar}>
@@ -253,8 +239,6 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
             <LocalTextFormatToolbar
               embedded
               formatState={floatingFormatState}
-              placeholderMode={isEmpty && !hasActivated}
-              onEditFromToolbar={handleToolbarEditClick}
               onH1={runFormat('formatBlock', 'h1')}
               onH2={runFormat('formatBlock', 'h2')}
               onH3={runFormat('formatBlock', 'h3')}
@@ -262,37 +246,35 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
               onOrderedList={runFormat('insertOrderedList')}
               onUnorderedList={runFormat('insertUnorderedList')}
               onBold={runFormat('bold')}
-              onCopy={handleCopyContentClick}
             />
             <Divider type='vertical' className='mx-[2px] h-[18px] shrink-0 self-center' />
             <LocalTextAiTriggerBar
               embedded
               hasDocumentText={hasDocumentText}
               fields={aiFields}
-              onActiveToolChange={setActiveAiTool}
+              onActiveToolChange={() => {}}
               onFieldsChange={setAiFields}
+              onRunImmediate={handleMockAiRun}
+              isRunning={aiRunning}
               menuPlacement='bottom-start'
             />
           </div>
         </div>
       </FlowNodeToolbar>
       <FlowNodeToolbar position={Position.Bottom} align='center' offset={12} isVisible={showAiBottomForm}>
-        {activeAiTool ? (
-          <div
-            className='nodrag nopan flex w-full min-w-0 flex-col bg-background-default-secondary text-text-default-base'
-            aria-label={t('project.textAi.bottomSheet', 'Text AI input')}
-          >
-            <LocalTextAiToolFormPanel
-              activeTool={activeAiTool}
-              hasDocumentText={hasDocumentText}
-              fields={aiFields}
-              onActiveToolChange={setActiveAiTool}
-              onFieldsChange={setAiFields}
-              onMockRun={handleMockAiRun}
-              isRunning={aiRunning}
-            />
-          </div>
-        ) : null}
+        <div
+          className='nodrag nopan flex w-full min-w-0 flex-col items-center bg-background-default-secondary px-2 py-2 text-text-default-base'
+          aria-label={t('project.textAi.bottomSheet', 'Text AI input')}
+        >
+          <LocalTextAiSheetPanel
+            hasDocumentText={hasDocumentText}
+            fields={aiFields}
+            onFieldsChange={setAiFields}
+            isRunning={aiRunning}
+            runPhase={textAiRunPhase}
+            onCancelRun={handleCancelAiRun}
+          />
+        </div>
       </FlowNodeToolbar>
       <div className='relative'>
         <div className='absolute left-0 right-0 top-0 min-w-0 -translate-y-full overflow-hidden text-left text-foreground/60'>
@@ -382,7 +364,6 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
                   selected={selected}
                   isEditing={isEditing}
                   onEnterEditMode={() => setContentEditingActive(true)}
-                  onCopyClick={handleCopyContentClick}
                   onBlurWithEmpty={() => setHasActivated(false)}
                   chromeless
                   onFormatStateChange={setFloatingFormatState}

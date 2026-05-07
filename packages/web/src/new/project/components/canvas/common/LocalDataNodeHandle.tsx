@@ -16,7 +16,7 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/new/project/constants/nodeIconMap';
 import {
   getLocalFlowNodeSubtitle,
   localFlowAgentNodes,
@@ -102,7 +102,9 @@ const LocalDataNodeHandle: React.FC<LocalDataNodeHandleProps> = ({
   };
 
   const showVisualChrome = !isInsideLockedGroup && !hideChrome;
-  const showHitArea = showVisualChrome || (keepConnectableWhenHidden && !isInsideLockedGroup);
+  /** No interaction chrome when manual connect is disabled (e.g. generator output — edges only via code). */
+  const showHitArea =
+    allowManualConnect && !isInsideLockedGroup && (showVisualChrome || keepConnectableWhenHidden);
   const canConnect = allowManualConnect && !isInsideLockedGroup && showHitArea;
   const showIcon = allowManualConnect && showVisualChrome && (selected || nodeHovered || handleHovered);
 
@@ -194,14 +196,14 @@ const LocalDataNodeHandle: React.FC<LocalDataNodeHandleProps> = ({
         type={type}
         position={position}
         id={handleId}
-        className='!border-none !bg-transparent'
+        className='nodrag nopan !border-none !bg-transparent'
         isConnectableStart={canConnect && type === 'source'}
         isConnectableEnd={canConnect && type === 'target'}
       >
         <div
           ref={containerRef}
           data-connect-handle-area
-          className={`absolute top-1/2 flex -translate-y-1/2 items-center justify-center transition-opacity duration-150 ${positionClass} ${
+          className={`nodrag nopan absolute top-1/2 flex -translate-y-1/2 items-center justify-center transition-opacity duration-150 ${positionClass} ${
             showHitArea
               ? 'h-[48px] w-[48px] opacity-100'
               : 'pointer-events-none h-0 min-h-0 w-0 min-w-0 overflow-hidden opacity-0'

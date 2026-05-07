@@ -1,5 +1,5 @@
 /**
- * Rich text body for local canvas text nodes (contentEditable + format + copy/@ bars).
+ * Rich text body for local canvas text nodes (contentEditable + format + @ bar).
  * Forked for `new/project` only — same UX as main canvas `TextNodeContent`.
  */
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
@@ -87,14 +87,12 @@ export interface LocalTextNodeContentProps {
   isEditing?: boolean;
   /** Enter edit mode on double-click in preview area */
   onEnterEditMode?: () => void;
-  /** Copy click (can copy content to clipboard here) */
-  onCopyClick?: (e: React.MouseEvent) => void;
   /** @ mention click */
   onMentionClick?: (e: React.MouseEvent) => void;
   /** Callback when blurred with empty content (used to restore initial placeholder state) */
   onBlurWithEmpty?: () => void;
   /**
-   * When true, omits the in-node format bar and bottom copy/@ strip — host renders them in `NodeToolbar` instead.
+   * When true, omits the in-node format bar and bottom @ strip — host renders them in `NodeToolbar` instead.
    */
   chromeless?: boolean;
   /** Called when selection changes inside the editor so the host can refresh a floating toolbar. */
@@ -143,7 +141,6 @@ const LocalTextNodeContentComponent: React.ForwardRefRenderFunction<
     selected = false,
     isEditing = false,
     onEnterEditMode,
-    onCopyClick,
     onMentionClick,
     onBlurWithEmpty,
     chromeless = false,
@@ -453,7 +450,7 @@ const LocalTextNodeContentComponent: React.ForwardRefRenderFunction<
         {!isEditing ? (
           /* Preview: read-only content display; double-click to enter editing when selected; also shows preview when not selected */
           <div
-            className='text-node-preview flex-1 min-h-0 w-full overflow-auto text-[14px] text-text-default-base rounded-[4px] cursor-grab py-0 px-0 break-words break-all [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5'
+            className='text-node-preview flex-1 min-h-0 w-full overflow-auto text-[14px] text-text-default-base rounded-[4px] cursor-pointer py-0 px-0 break-words break-all select-text [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5'
             onDoubleClick={(e) => {
               e.stopPropagation();
               onEnterEditMode?.();
@@ -492,23 +489,10 @@ const LocalTextNodeContentComponent: React.ForwardRefRenderFunction<
         )}
       </div>
 
-      {/* Bottom action bar: copy, @ — hidden in chromeless (host uses floating toolbar). */}
+      {/* Bottom action bar: @ — hidden in chromeless (host uses floating toolbar). */}
       {selected && isEditing && !chromeless && (
         <div className='flex-shrink-0 flex justify-center py-2' onMouseDown={stopPropagation}>
           <div className={toolbarBarClass}>
-            <Tooltip title='Copy' placement='top'>
-              <button
-                type='button'
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopyClick?.(e);
-                }}
-                className={toolbarBtnClass}
-                aria-label='Copy'
-              >
-                <Icon name='project-copy-icon' width={16} height={16} color='#757575' />
-              </button>
-            </Tooltip>
             <Tooltip title='@' placement='top'>
               <button
                 type='button'

@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 import PlaybackTimelineSection from './PlaybackTimelineSection';
 import PlaybackToolbar from './PlaybackToolbar';
 import {

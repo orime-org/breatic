@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReactFlow, useViewport } from '@xyflow/react';
 import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/new/project/constants/nodeIconMap';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 
 export interface LocalNodeHeaderProps {

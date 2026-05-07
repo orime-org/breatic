@@ -16,7 +16,7 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/new/project/constants/nodeIconMap';
 import {
   getLocalFlowNodeSubtitle,
   localFlowAgentNodes,

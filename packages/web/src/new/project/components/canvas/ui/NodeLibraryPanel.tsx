@@ -9,8 +9,8 @@ import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
-import { flowCenterFromCanvasPane } from '@/apps/project/components/canvas/types';
+import nodeIconMap from '@/new/project/constants/nodeIconMap';
+import { flowCenterFromCanvasPane } from '@/new/project/components/canvas/canvasPane';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 
 interface NodeGroupConfig {

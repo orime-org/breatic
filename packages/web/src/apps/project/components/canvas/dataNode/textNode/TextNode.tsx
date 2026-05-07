@@ -223,22 +223,6 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
     e.target.value = '';
   };
 
-  /** Copy node content to clipboard (keeps HTML string). */
-  const handleCopyContentClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const text = textValue;
-    if (!text.trim()) {
-      message.warning(t('project.toolbar.noContentToCopy', 'No content to copy'));
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      message.success(t('project.toolbar.copySuccess', 'Copied to clipboard'));
-    } catch {
-      message.error(t('project.toolbar.copyFailed', 'Copy failed'));
-    }
-  };
-
   const handleResize = (_: unknown, params: { width: number; height: number }) => {
     const node = nodesRef.current.find((n) => n.id === id);
     const currentStyle = (node?.style ?? {}) as Record<string, unknown>;
@@ -384,7 +368,6 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
                   selected={selected}
                   isEditing={isEditing}
                   onEnterEditMode={handleEnterEditMode}
-                  onCopyClick={handleCopyContentClick}
                   onMentionClick={(e) => {
                     e.stopPropagation();
                     const plainText = getTextFromHtml(textValue);

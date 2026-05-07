@@ -1,6 +1,5 @@
 /**
- * Video player for `new/project` canvas (video.js + bottom control bar).
- * Same behavior as the main canvas `Video` widget; scoped to this route only.
+ * Local canvas video player (video.js + bottom bar). Used only under `new/project`; does not import `apps/project`.
  */
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import videojs from 'video.js';
@@ -8,14 +7,14 @@ import 'video.js/dist/video-js.css';
 import Slider from '@/components/base/slider';
 import { Icon } from '@/components/base/icon';
 
-export type CanvasVideoPlaybackSnapshot = {
+export type VideoPlaybackSnapshot = {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
   volume: number;
 };
 
-export interface CanvasVideoProps {
+export interface VideoProps {
   /** Video URL */
   src: string;
   /** Initial playback time (seconds) */
@@ -25,7 +24,7 @@ export interface CanvasVideoProps {
   /** Whether to show the bottom control bar */
   showControlBar?: boolean;
   /** Fired when time, duration, play state, or volume changes (e.g. external editor chrome) */
-  onPlaybackUpdate?: (snapshot: CanvasVideoPlaybackSnapshot) => void;
+  onPlaybackUpdate?: (snapshot: VideoPlaybackSnapshot) => void;
   /** Container class name */
   className?: string;
   /** Container style */
@@ -36,7 +35,7 @@ export interface CanvasVideoProps {
   clipEndTime?: number;
 }
 
-export interface CanvasVideoRef {
+export interface VideoRef {
   getCurrentTime: () => number;
   getDuration: () => number;
   setCurrentTime: (seconds: number) => void;
@@ -83,7 +82,7 @@ const normalizeClipRange = (
   return { start, end, duration: end - start };
 };
 
-const CanvasVideo = forwardRef<CanvasVideoRef, CanvasVideoProps>(
+const Video = forwardRef<VideoRef, VideoProps>(
   (
     {
       src,
@@ -446,6 +445,6 @@ const CanvasVideo = forwardRef<CanvasVideoRef, CanvasVideoProps>(
   },
 );
 
-CanvasVideo.displayName = 'CanvasVideo';
+Video.displayName = 'Video';
 
-export default memo(CanvasVideo);
+export default memo(Video);

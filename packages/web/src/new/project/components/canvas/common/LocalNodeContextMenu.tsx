@@ -15,7 +15,7 @@ import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
 import Divider from '@/components/base/divider';
 import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/new/project/constants/nodeIconMap';
 
 const groupPadding = 40;
 const defaultGroupBackgroundColor = '#35C838';

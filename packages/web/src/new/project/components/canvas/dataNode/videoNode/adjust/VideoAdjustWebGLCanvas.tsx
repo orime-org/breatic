@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef } from 'react';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 import type { AdjustValue } from '@/new/imageEditor/components/adjust/AdjustBottomToolbar';
 import { adjustValueToWebglUniforms } from './adjustValueToWebglUniforms';
 

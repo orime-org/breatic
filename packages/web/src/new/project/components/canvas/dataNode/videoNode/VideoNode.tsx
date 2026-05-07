@@ -13,8 +13,9 @@ import { useTranslation } from 'react-i18next';
 import { message } from '@/components/base/message';
 import { Icon } from '@/components/base/icon';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
+import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/LocalNodeSkeleton';
 import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
-import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
+import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
 import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
@@ -273,6 +274,7 @@ const VideoNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, data, s
   const localMultiSelectOutboundRepId = useStore(
     useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
   );
+  const showContent = useStore(zoomLevelShowContentSelector);
   const soloFlowChrome = Boolean(selected) && flowCanvasSelectedCount === 1;
   const nodeFromStore = useMemo(() => nodes.find((n: Node) => n.id === id), [nodes, id]);
   const hostNodeId: string | null = null;
@@ -1882,169 +1884,177 @@ const VideoNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, data, s
               data-agent-video-viewport={id}
               onMouseDown={handleVideoViewportMouseDown}
             >
-              <div className='absolute inset-0 overflow-hidden'>
-                {videoContent ? (
-                  <Video
-                    ref={videoRef}
-                    src={videoContent}
-                    showControlBar={false}
-                    onPlaybackUpdate={syncPlaybackFromVideo ? handlePlaybackUpdate : undefined}
-                    className={`h-full w-full !rounded-none${editingMode === 'adjust' ? ' opacity-0' : ''}`}
-                  />
-                ) : nodeData?.errorInfo ? (
-                /* Task failed — node.state already flipped back to 'idle'
+              {videoContent && !showContent && editingMode === null ? (
+                <div className='absolute inset-0 overflow-hidden'>
+                  <LocalNodeSkeleton />
+                </div>
+              ) : (
+                <>
+                  <div className='absolute inset-0 overflow-hidden'>
+                    {videoContent ? (
+                      <Video
+                        ref={videoRef}
+                        src={videoContent}
+                        showControlBar={false}
+                        onPlaybackUpdate={syncPlaybackFromVideo ? handlePlaybackUpdate : undefined}
+                        className={`h-full w-full !rounded-none${editingMode === 'adjust' ? ' opacity-0' : ''}`}
+                      />
+                    ) : nodeData?.errorInfo ? (
+                    /* Task failed — node.state already flipped back to 'idle'
                  * but content/coverUrl are intentionally cleared so the
                  * user knows this tile has no result. Shows the short
                  * reason inline; no retry UI (user deletes manually). */
-                  <div
-                    role='alert'
-                    className='flex h-full w-full items-center justify-center bg-[rgba(255,74,74,0.08)] px-4 text-center text-[12px] leading-5 text-[rgba(214,40,40,0.9)]'
-                    title={nodeData.errorInfo}
-                  >
-                    <span className='line-clamp-3 break-words'>
+                      <div
+                        role='alert'
+                        className='flex h-full w-full items-center justify-center bg-[rgba(255,74,74,0.08)] px-4 text-center text-[12px] leading-5 text-[rgba(214,40,40,0.9)]'
+                        title={nodeData.errorInfo}
+                      >
+                        <span className='line-clamp-3 break-words'>
                     Failed: {nodeData.errorInfo}
-                    </span>
-                  </div>
-                ) : (
-                  <div className='flex h-full w-full min-h-0 items-center justify-center overflow-hidden rounded-[8px] bg-white'>
-                    <div
-                      className='flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2'
-                      onClick={handlePlaceholderClick}
-                      onDoubleClick={handlePlaceholderDoubleClick}
-                    >
-                      <Icon
-                        name='project-video-node-placeholder'
-                        width={48}
-                        height={48}
-                        className='text-text-default-tertiary'
-                      />
-                      <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
-                        {t('project.toolbar.videoNodePlaceholder')
-                          .split('\n')
-                          .map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
+                        </span>
                       </div>
-                    </div>
+                    ) : (
+                      <div className='flex h-full w-full min-h-0 items-center justify-center overflow-hidden rounded-[8px] bg-white'>
+                        <div
+                          className='flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2'
+                          onClick={handlePlaceholderClick}
+                          onDoubleClick={handlePlaceholderDoubleClick}
+                        >
+                          <Icon
+                            name='project-video-node-placeholder'
+                            width={48}
+                            height={48}
+                            className='text-text-default-tertiary'
+                          />
+                          <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
+                            {t('project.toolbar.videoNodePlaceholder')
+                              .split('\n')
+                              .map((line, i) => (
+                                <div key={i}>{line}</div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {editingMode === 'adjust' && videoContent ? (
+                      <VideoAdjustWebGLCanvas videoRef={videoRef} adjustValue={adjustPreviewValue} />
+                    ) : null}
+                    {editingMode === 'stabilization' && videoContent ? (
+                      <div
+                        className='pointer-events-none absolute z-[6] border border-dashed border-[#7F88FF] bg-[rgba(127,136,255,0.14)]'
+                        style={{
+                          inset: `${Math.max(STABILIZATION_CROP_MIN, Math.min(STABILIZATION_CROP_MAX, stabilizationCropPct))}%`,
+                        }}
+                      />
+                    ) : null}
+                    {editingMode === 'lipSync' && (lipSyncPhase === 'identifying' || showLipSyncTrackingPending) ? (
+                      <div className='pointer-events-none absolute inset-0 z-[7] flex items-center justify-center'>
+                        <div className='inline-flex h-[24px] items-center gap-1 rounded-full border border-white/70 bg-black/35 px-3 text-[11px] font-semibold text-white shadow-[0_2px_8px_rgba(0,0,0,0.25)]'>
+                          <span className='relative inline-flex h-3 w-3 shrink-0 animate-spin rounded-full border border-white/45 border-t-[#31C95B]' />
+                          <span>Tracking...</span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                )}
-                {editingMode === 'adjust' && videoContent ? (
-                  <VideoAdjustWebGLCanvas videoRef={videoRef} adjustValue={adjustPreviewValue} />
-                ) : null}
-                {editingMode === 'stabilization' && videoContent ? (
-                  <div
-                    className='pointer-events-none absolute z-[6] border border-dashed border-[#7F88FF] bg-[rgba(127,136,255,0.14)]'
-                    style={{
-                      inset: `${Math.max(STABILIZATION_CROP_MIN, Math.min(STABILIZATION_CROP_MAX, stabilizationCropPct))}%`,
-                    }}
-                  />
-                ) : null}
-                {editingMode === 'lipSync' && (lipSyncPhase === 'identifying' || showLipSyncTrackingPending) ? (
-                  <div className='pointer-events-none absolute inset-0 z-[7] flex items-center justify-center'>
-                    <div className='inline-flex h-[24px] items-center gap-1 rounded-full border border-white/70 bg-black/35 px-3 text-[11px] font-semibold text-white shadow-[0_2px_8px_rgba(0,0,0,0.25)]'>
-                      <span className='relative inline-flex h-3 w-3 shrink-0 animate-spin rounded-full border border-white/45 border-t-[#31C95B]' />
-                      <span>Tracking...</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              {editingMode === 'lipSync' && lipSyncPhase === 'ready' && !showLipSyncLostOverlay
-                ? lipSyncFaces.map((face) => {
-                  const left = `${face.box.cxPct - face.box.wPct / 2}%`;
-                  const top = `${face.box.cyPct - face.box.hPct / 2}%`;
-                  const widthPct = `${face.box.wPct}%`;
-                  const heightPct = `${face.box.hPct}%`;
-                  const selectedFace = selectedLipSyncFaceId === face.id;
-                  return (
-                    <button
-                      key={face.id}
-                      type='button'
-                      className={`absolute z-[7] overflow-visible border-2 border-dashed ${
+                  {editingMode === 'lipSync' && lipSyncPhase === 'ready' && !showLipSyncLostOverlay
+                    ? lipSyncFaces.map((face) => {
+                      const left = `${face.box.cxPct - face.box.wPct / 2}%`;
+                      const top = `${face.box.cyPct - face.box.hPct / 2}%`;
+                      const widthPct = `${face.box.wPct}%`;
+                      const heightPct = `${face.box.hPct}%`;
+                      const selectedFace = selectedLipSyncFaceId === face.id;
+                      return (
+                        <button
+                          key={face.id}
+                          type='button'
+                          className={`absolute z-[7] overflow-visible border-2 border-dashed ${
                       selectedFace
                         ? 'border-[#7F88FF] bg-[rgba(127,136,255,0.18)]'
                         : 'border-white/80 bg-black/20'
                     }`}
-                      style={{ left, top, width: widthPct, height: heightPct }}
-                      onClick={() => handleLipSyncFaceSelect(face.id)}
-                    >
-                      <span
-                        className={`absolute left-1/2 top-full z-[1] mt-1 inline-flex -translate-x-1/2 items-center whitespace-nowrap rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
+                          style={{ left, top, width: widthPct, height: heightPct }}
+                          onClick={() => handleLipSyncFaceSelect(face.id)}
+                        >
+                          <span
+                            className={`absolute left-1/2 top-full z-[1] mt-1 inline-flex -translate-x-1/2 items-center whitespace-nowrap rounded-[4px] px-1 py-[1px] text-[10px] font-semibold ${
                         selectedFace ? 'bg-[#7F88FF] text-white' : 'bg-black/55 text-white'
                       }`}
+                          >
+                            {face.label}_{Math.round(face.confidence * 100)}%
+                          </span>
+                        </button>
+                      );
+                    })
+                    : null}
+                  {showLipSyncLostOverlay ? (
+                    <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
+                      <button
+                        type='button'
+                        className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
+                        onClick={handleLipSyncRedetect}
                       >
-                        {face.label}_{Math.round(face.confidence * 100)}%
-                      </span>
-                    </button>
-                  );
-                })
-                : null}
-              {showLipSyncLostOverlay ? (
-                <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
-                  <button
-                    type='button'
-                    className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
-                    onClick={handleLipSyncRedetect}
-                  >
-                    <span>Tracking Lost, click</span>
-                    <span className='inline-flex h-[18px] w-[18px] items-center justify-center rounded border border-white/55'>
-                      <Icon name='videoNode-erase-selection' width={14} height={14} color='#fff' />
-                    </span>
-                    <span>to reselect</span>
-                  </button>
-                </div>
-              ) : null}
-              {quickEditPickPendingListForThis.map((pending) => (
-                <div
-                  key={pending.placeholderId}
-                  className='pointer-events-none absolute z-[7] inline-flex h-[20px] w-[92px] items-center gap-1 rounded-full border border-white/75 bg-black/35 px-2 text-[10px] font-semibold leading-none text-white shadow-[0_2px_8px_rgba(0,0,0,0.25)] backdrop-blur-[2px] -translate-x-1/2 -translate-y-1/2'
-                  style={{
-                    left: pending.overlayAnchor ? `${pending.overlayAnchor.xPct}%` : '50%',
-                    top: pending.overlayAnchor ? `${pending.overlayAnchor.yPct}%` : '50%',
-                  }}
-                >
-                  <span className='relative inline-flex h-3 w-3 shrink-0 animate-spin rounded-full border border-white/45 border-t-[#31C95B]' />
-                  <span>Identifying...</span>
-                </div>
-              ))}
-              <TrackedBoxesOverlay
-                boxes={visiblePickResultBoxes}
-                draftBox={draftBox}
-                onBoxMouseDown={handleTrackedBoxMouseDown}
-                onResizeHandleMouseDown={handleTrackedBoxResizeHandleMouseDown}
-              />
-              {editingMode === 'crop' && (
-                <CropOverlay
-                  containerWidth={currentWidth}
-                  containerHeight={currentHeight}
-                  value={cropRect}
-                  onChange={setCropRect}
-                />
-              )}
-              {editingMode === 'sceneExtension' && (
-                <SceneExtensionOverlay
-                  containerWidth={currentWidth}
-                  containerHeight={currentHeight}
-                  outerWidth={sceneExtensionSize.w}
-                  outerHeight={sceneExtensionSize.h}
-                  originX={sceneExtensionOrigin.x}
-                  originY={sceneExtensionOrigin.y}
-                  onFrameChange={handleSceneExtensionFrameChange}
-                />
-              )}
-              {trackingPhase === 'tracking' && currentTrackingStatus === 'lost' && (
-                <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
-                  <button
-                    type='button'
-                    className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
-                    onClick={requestTrackingReselect}
-                  >
-                    <span>Tracking Lost, click</span>
-                    <span className='inline-flex h-[18px] w-[18px] items-center justify-center rounded border border-white/55'>
-                      <Icon name='videoNode-erase-selection' width={14} height={14} color='#fff' />
-                    </span>
-                    <span>to reselect</span>
-                  </button>
-                </div>
+                        <span>Tracking Lost, click</span>
+                        <span className='inline-flex h-[18px] w-[18px] items-center justify-center rounded border border-white/55'>
+                          <Icon name='videoNode-erase-selection' width={14} height={14} color='#fff' />
+                        </span>
+                        <span>to reselect</span>
+                      </button>
+                    </div>
+                  ) : null}
+                  {quickEditPickPendingListForThis.map((pending) => (
+                    <div
+                      key={pending.placeholderId}
+                      className='pointer-events-none absolute z-[7] inline-flex h-[20px] w-[92px] items-center gap-1 rounded-full border border-white/75 bg-black/35 px-2 text-[10px] font-semibold leading-none text-white shadow-[0_2px_8px_rgba(0,0,0,0.25)] backdrop-blur-[2px] -translate-x-1/2 -translate-y-1/2'
+                      style={{
+                        left: pending.overlayAnchor ? `${pending.overlayAnchor.xPct}%` : '50%',
+                        top: pending.overlayAnchor ? `${pending.overlayAnchor.yPct}%` : '50%',
+                      }}
+                    >
+                      <span className='relative inline-flex h-3 w-3 shrink-0 animate-spin rounded-full border border-white/45 border-t-[#31C95B]' />
+                      <span>Identifying...</span>
+                    </div>
+                  ))}
+                  <TrackedBoxesOverlay
+                    boxes={visiblePickResultBoxes}
+                    draftBox={draftBox}
+                    onBoxMouseDown={handleTrackedBoxMouseDown}
+                    onResizeHandleMouseDown={handleTrackedBoxResizeHandleMouseDown}
+                  />
+                  {editingMode === 'crop' && (
+                    <CropOverlay
+                      containerWidth={currentWidth}
+                      containerHeight={currentHeight}
+                      value={cropRect}
+                      onChange={setCropRect}
+                    />
+                  )}
+                  {editingMode === 'sceneExtension' && (
+                    <SceneExtensionOverlay
+                      containerWidth={currentWidth}
+                      containerHeight={currentHeight}
+                      outerWidth={sceneExtensionSize.w}
+                      outerHeight={sceneExtensionSize.h}
+                      originX={sceneExtensionOrigin.x}
+                      originY={sceneExtensionOrigin.y}
+                      onFrameChange={handleSceneExtensionFrameChange}
+                    />
+                  )}
+                  {trackingPhase === 'tracking' && currentTrackingStatus === 'lost' && (
+                    <div className='absolute inset-0 z-[8] flex items-center justify-center bg-black/28'>
+                      <button
+                        type='button'
+                        className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
+                        onClick={requestTrackingReselect}
+                      >
+                        <span>Tracking Lost, click</span>
+                        <span className='inline-flex h-[18px] w-[18px] items-center justify-center rounded border border-white/55'>
+                          <Icon name='videoNode-erase-selection' width={14} height={14} color='#fff' />
+                        </span>
+                        <span>to reselect</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

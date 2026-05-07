@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Icon } from '@/components/base/icon';
 import Slider from '@/components/base/slider';
 import Tooltip from '@/components/base/tooltip';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 
 const formatPlaybackTime = (seconds: number) => {
   const s = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;

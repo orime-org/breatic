@@ -64,7 +64,11 @@ const LocalGroupNode: FC<NodeProps> = ({ id, selected, data }) => {
 
   return (
     <>
-      <div className='pointer-events-none absolute inset-0 rounded-[6px]' style={{ backgroundColor }} aria-hidden />
+      {/*
+        Hit target for context menu / drag on empty group padding.
+        `pointer-events-none` lets clicks fall through to the pane so node `onNodeContextMenu` never fires — align with GroupNode interaction expectations (see apps/project canvas).
+      */}
+      <div className='pointer-events-auto absolute inset-0 rounded-[6px]' style={{ backgroundColor }} aria-hidden />
       {!locked && (
         <NodeResizer
           color={borderColor}

@@ -5,7 +5,7 @@ import { Icon } from '@/components/base/icon';
 import Tooltip from '@/components/base/tooltip';
 import Input from '@/components/base/input';
 import Divider from '@/components/base/divider';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/new/project/components/canvas/common/CanvasVideo';
 import PlaybackPanel from '../playback/PlaybackPanel';
 
 export type SceneExtensionResolution = '1k' | '2k' | '4k';

@@ -60,12 +60,44 @@ export type LocalCanvasNodeData = {
   coverUrl?: string;
   nodeRuntimeData?: ImageEditorNodeRuntimeData;
   pickState?: ImageEditorPickState | null;
+  /**
+   * Local audio composer / generation UI state (node type `1004` new canvas).
+   * Stored in node `data` for Yjs-free local preview; production may map to `nodeRuntimeData` later.
+   */
+  audioRuntime?: AudioNodeRuntimeData;
   /** Handle metadata (same shape as production palette nodes). */
   handles?: {
     source?: { handleType: string; number: number }[];
     target?: { handleType: string; number: number }[];
   };
 };
+
+/**
+ * Audio generation mode for the local audio node composer (footer + prompt routing).
+ *
+ * - `voice-clone` / `tts` — speech; `lyrics-music` / `melody` / `sfx` — music & sound design slots.
+ */
+export type AudioGenerationMode =
+  | 'voice-clone'
+  | 'melody'
+  | 'lyrics-music'
+  | 'tts'
+  | 'sfx';
+
+/**
+ * Persisted UI fields for the audio node composer (prompts, model labels, toggles).
+ */
+export interface AudioNodeRuntimeData {
+  generationMode: AudioGenerationMode;
+  /** Single prompt / “styles” line when not in split lyric mode. */
+  stylesPrompt: string;
+  /** Secondary column for lyric-driven music modes. */
+  lyrics: string;
+  instrumental: boolean;
+  modelLabel: string;
+  voiceLabel: string;
+  languageLabel: string;
+}
 
 /** Alias used by ported mixed-editor video node logic. */
 export type ImageFlowNodeData = LocalCanvasNodeData;

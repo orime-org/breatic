@@ -1,5 +1,5 @@
 /**
- * Text node content area: rich-text editing (contentEditable div) + top format toolbar (H1/H2/H3/paragraph/unordered list/ordered list/bold) + bottom action bar (copy/@/open editor).
+ * Text node content area: rich-text editing (contentEditable div) + top format toolbar (H1/H2/H3/paragraph/unordered list/ordered list/bold) + bottom action bar (@).
  * Style reference: top toolbar light gray; bottom toolbar consistent with VideoNodeContent.
  */
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -24,8 +24,6 @@ export interface TextNodeContentProps {
   isEditing?: boolean;
   /** Enter edit mode on double-click in preview area */
   onEnterEditMode?: () => void;
-  /** Copy click (can copy content to clipboard here) */
-  onCopyClick?: (e: React.MouseEvent) => void;
   /** @ mention click */
   onMentionClick?: (e: React.MouseEvent) => void;
   /** Callback when blurred with empty content (used to restore initial placeholder state) */
@@ -68,7 +66,6 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
     selected = false,
     isEditing = false,
     onEnterEditMode,
-    onCopyClick,
     onMentionClick,
     onBlurWithEmpty,
   },
@@ -369,23 +366,10 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
         )}
       </div>
 
-      {/* Bottom action bar: copy, @, open edit; only shown when selected and in editing mode */}
+      {/* Bottom action bar: @; only shown when selected and in editing mode */}
       {selected && isEditing && (
         <div className='flex-shrink-0 flex justify-center py-2' onMouseDown={stopPropagation}>
           <div className={toolbarBarClass}>
-            <Tooltip title='Copy' placement='top'>
-              <button
-                type='button'
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopyClick?.(e);
-                }}
-                className={toolbarBtnClass}
-                aria-label='Copy'
-              >
-                <Icon name='project-copy-icon' width={16} height={16} color='#757575' />
-              </button>
-            </Tooltip>
             <Tooltip title='@' placement='top'>
               <button
                 type='button'

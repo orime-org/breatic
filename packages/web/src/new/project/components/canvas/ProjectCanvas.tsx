@@ -1,6 +1,6 @@
 /**
  * Local-only infinite canvas (React Flow) under `new/project` — no Yjs.
- * Node implementations live under `./dataNode/` (same layout as `apps/project` canvas).
+ * Canvas chrome (`CustomEdge`, connect-end menu, minimap, undo toolbar) lives under `./common/` — no `apps/project` imports.
  */
 import type { ComponentProps, FC, MouseEvent as ReactMouseEvent, RefObject } from 'react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -26,12 +26,12 @@ import {
   type OnConnectEnd,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import CustomEdge from '@/apps/project/components/canvas/common/Edge';
-import ConnectEndCommandMenu from '@/apps/project/components/canvas/common/ConnectEndCommandMenu';
+import CustomEdge from './common/CustomEdge';
+import ConnectEndCommandMenu from './common/ConnectEndCommandMenu';
 import ConnectEndAnchorNode, {
   connectEndAnchorSourceHandleId,
   connectEndAnchorTargetHandleId,
-} from '@/apps/project/components/canvas/common/ConnectEndAnchorNode';
+} from './common/ConnectEndAnchorNode';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import TextNode from './dataNode/textNode/TextNode';
 import ImageNode from './dataNode/imageNode/ImageNode';
@@ -57,12 +57,17 @@ import {
 } from './common/localFlowNodeSpawn';
 import NodeDragStopBinder from './flow/NodeDragStopBinder';
 import { localCropImageToObjectUrl } from './dataNode/imageNode/crop/localCropImageToObjectUrl';
-import UndoRedoToolbar from '@/apps/project/components/canvas/common/UndoRedoToolbar';
-import CustomMiniMap from '@/apps/project/components/canvas/common/CustomMiniMap';
+import LocalUndoRedoToolbar from './common/LocalUndoRedoToolbar';
+import CustomMiniMap from './common/CustomMiniMap';
 import CanvasHotkeys from './hotkeys/CanvasHotkeys';
 import { useFlowHistory } from './hooks/useFlowHistory';
 import { CanvasNodeActionsProvider } from './context/CanvasNodeActionsContext';
 import { CANVAS_SPAWNED_OUTPUT_GAP_PX } from './canvasSpawnLayout';
+import {
+  buildEmptyPaletteOutputData,
+  generatorOutboundHandleId,
+  paletteOutputDefaults,
+} from './dataNode/generatorNode/generatorPaletteOutput';
 
 const reactFlowDefaultViewport = { x: 0, y: 0, zoom: 0.5 } as const;
 const reactFlowPanOnDrag: [number] = [1];
@@ -93,6 +98,17 @@ const connectEndHandles: Record<
 };
 
 const generateConnectEndNodeId = (nodeType: string): string => `${nodeType}-${Date.now()}-${nanoid(5)}`;
+
+/** Locked group ids (same filtering rules as the main project canvas). */
+function getLockedLocalGroupIds(nodes: Node[]): Set<string> {
+  const set = new Set<string>();
+  for (const n of nodes) {
+    if (n.type === 'group' && (n.data as { locked?: boolean })?.locked === true) {
+      set.add(n.id);
+    }
+  }
+  return set;
+}
 
 const imageCropResultShellDefaults = { w: 300, h: 250 } as const;
 const imageCropFlowHandleId = 'Image_0_0';
@@ -500,6 +516,31 @@ const ProjectCanvasInner: FC = () => {
         data: localDataForConnectEndGeneratorNode(paletteKind),
       };
 
+      const companionOutputId = generateConnectEndNodeId(paletteKind);
+      const companionDims = paletteOutputDefaults[paletteKind];
+      const outboundGenHandle = generatorOutboundHandleId(rfType);
+      const companionNode: Node<LocalCanvasNodeData> & { zIndex?: number } = {
+        id: companionOutputId,
+        type: paletteKind,
+        position: {
+          x: position.x + defaultWidth + CANVAS_SPAWNED_OUTPUT_GAP_PX,
+          y: position.y,
+        },
+        zIndex: maxZIndex + 2,
+        style: { width: companionDims.w, height: companionDims.h },
+        selected: false,
+        data: buildEmptyPaletteOutputData(paletteKind),
+      };
+
+      const companionEdge = {
+        id: `e-${newNodeId}-${outboundGenHandle}-${companionOutputId}-${outboundGenHandle}`,
+        source: newNodeId,
+        target: companionOutputId,
+        sourceHandle: outboundGenHandle,
+        targetHandle: outboundGenHandle,
+        type: 'default' as const,
+      };
+
       const sourceHandle = handles?.source?.[0];
       const sourceHandleId = sourceHandle ? `${sourceHandle.handleType}_0_${sourceHandle.number}` : '';
       const targetHandle = handles?.target?.[0];
@@ -523,7 +564,7 @@ const ProjectCanvasInner: FC = () => {
           type: 'default' as const,
         };
 
-      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), newNode]);
+      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), newNode, companionNode]);
       setEdges((eds) => {
         const base = [...eds];
         const multiOutbound =
@@ -546,9 +587,10 @@ const ProjectCanvasInner: FC = () => {
             if (base.some((e) => e.id === edgeId)) continue;
             base.push({ ...connectionParams, id: edgeId, type: 'default' });
           }
+          base.push(companionEdge);
           return base;
         }
-        return [...base, newEdge as Edge];
+        return [...base, newEdge as Edge, companionEdge];
       });
       setTempConnectNodes([]);
       setTempConnectEdges([]);
@@ -563,8 +605,13 @@ const ProjectCanvasInner: FC = () => {
     setContextMenu(null);
   }, []);
 
+  /** Open context menu on node right-click (skip locked groups / nodes inside locked groups — same rules as main canvas). */
   const onNodeContextMenu = useCallback((e: ReactMouseEvent, node: Node) => {
     e.preventDefault();
+    const lockedIds = getLockedLocalGroupIds(nodesRef.current);
+    const isLockedGroup = node.type === 'group' && (node.data as { locked?: boolean })?.locked === true;
+    const isInsideLockedGroup = Boolean(node.parentId && lockedIds.has(node.parentId));
+    if (isLockedGroup || isInsideLockedGroup) return;
     setContextMenu({
       left: e.clientX,
       top: e.clientY,
@@ -734,13 +781,13 @@ const ProjectCanvasInner: FC = () => {
         <NodeDragStopBinder bindRef={nodeDragStopRef} setNodes={setNodes} />
         <Background color='#d0d0d0' variant={BackgroundVariant.Dots} gap={20} size={1} />
         {minimapOpen ? <CustomMiniMap /> : null}
-        <UndoRedoToolbar
+        <LocalUndoRedoToolbar
           minimapOpen={minimapOpen}
           onToggleMinimap={() => setMinimapOpen((v) => !v)}
-          localUndo={undo}
-          localRedo={redo}
-          localCanUndo={canUndo}
-          localCanRedo={canRedo}
+          undo={undo}
+          redo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
         <CanvasHotkeys canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
         <NodeLibraryPanel />
