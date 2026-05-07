@@ -40,7 +40,7 @@ packages/
 ├── core/              # 所有业务逻辑（barrel export @breatic/core）
 │   ├── modules/       #   *.repo.ts (Drizzle) + *.service.ts (逻辑)
 │   ├── agent/         #   MainAgent (AI SDK streamText), tools/, skills-loader
-│   ├── db/            #   schema.ts (15 表) + client.ts + migrations
+│   ├── db/            #   schema.ts (19 表) + client.ts + migrations
 │   ├── infra/         #   redis, pubsub, queue, session-store, storage (S3/OSS), stripe
 │   └── config/        #   env.ts, loader.ts, pricing.ts, model-catalog.ts
 ├── server/            # HTTP 壳（Hono routes + middleware，不含业务逻辑）
@@ -146,18 +146,21 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 **metadata.json 字段规范**：
 
-| 字段 | 必须 | 类型 | 说明 |
-|------|:---:|------|------|
-| `name` | ✅ | string | 唯一标识 |
-| `description` | ✅ | string | LLM 判断何时使用的描述 |
-| `scope` | ✅ | string[] | `["agent"]` / `["canvas"]` / `["agent", "canvas"]` |
-| `category` | ✅ | string | 分类（image/video/audio/tts/3d/text/understand/creative/research/default） |
-| `tools` | | string[] | 需要的 LLM 工具（默认 `[]`） |
-| `output_type` | | string | `"task_plan"` / `"canvas"` / `"inline"`（默认 `"canvas"`） |
-| `keywords` | | string[] | 搜索匹配关键词 |
-| `requires` | | object | `{ env: [...], bins: [...] }` 依赖检查 |
-| `disable_model_invocation` | | bool | 仅用户可调用（默认 `false`） |
-| `always` | | bool | 始终注入 system prompt（默认 `false`） |
+| 字段 | 必须 | 类型 | 默认 | 说明 |
+|------|:---:|------|------|------|
+| `name` | ✅ | string | — | 唯一标识 |
+| `description` | ✅ | string | — | LLM 判断何时使用的描述 |
+| `scope` | | string[] | `["agent"]` | `["agent"]` / `["canvas"]` / `["agent", "canvas"]` |
+| `category` | | string | `"default"` | 分类（image/video/audio/tts/3d/text/understand/creative/research/default） |
+| `tools` | | string[] | `[]` | 需要的 LLM 工具 |
+| `output_type` | | string | `"canvas"` | `"task_plan"` / `"canvas"` / `"inline"` |
+| `keywords` | | string[] | `[]` | 搜索匹配关键词 |
+| `requires` | | object | `{}` | `{ env: [...], bins: [...] }` 依赖检查 |
+| `disable_model_invocation` | | bool | `false` | 仅用户可调用 |
+| `always` | | bool | `false` | 始终注入 system prompt |
+| `user_invocable` | | bool | `true` | 用户可手动触发 |
+
+只有 `name` / `description` 是真正必填,其他字段在 `skills-loader.ts` 都有 default 兜底。建议显式填 `scope`/`category` 避免读代码才知行为,但缺省不会报错。
 
 禁止出现 npm 字段（version/author/license/engines/files/main）。
 
@@ -199,6 +202,18 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 - TSDoc（`@param`, `@returns`, `@throws`, `@example`），公共 API 必须有
 - TypeScript strict，禁止 `any`（用 `unknown`），禁止 `var`/`require`
 - ESLint + eslint-plugin-tsdoc 强制
+
+## Web 命名规范（`packages/web/src/`）
+
+| 文件类型 | 命名 | 例 |
+|---|---|---|
+| React 组件 `.tsx` | `PascalCase`（= export 名） | `Button.tsx` `ProjectMembersPanel.tsx` |
+| React Hook `.ts/.tsx` | `useFooBar`（= export 名） | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| 其他 `.ts`（util / data / config / store） | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| 测试 | 与主文件同名加 `.test` | `useProjectSpaces.test.ts` |
+| 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
+
+详细前端架构（layer 划分、目录结构、Yjs 集成）见 [docs/FRONTEND.md](./docs/FRONTEND.md)。
 
 # 关键规范
 

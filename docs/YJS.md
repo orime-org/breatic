@@ -423,7 +423,7 @@ looks the token up in Redis (`${env}:session:<token>`) and resolves
 the caller's `userId`, then validates that the user is a member of
 the project derived from the document name (`project-<uuid>`).
 
-On the client side (`packages/web/src/utils/yjsManager.ts`):
+On the client side (`packages/web/src/data/yjs/manager.ts`):
 
 - `token` is a **required** constructor parameter — no fallback, no
   default, no dev token. Empty token → refuse to construct.
@@ -636,9 +636,11 @@ schema will be added to this document.
 - `packages/collab/src/task-listener.ts` — consumer: reads nodesMap Y.Map, merges NodeStateUpdateEvent update
 - `packages/collab/src/event-stream.ts` — generic Stream consumer loop
 - `packages/server/src/infra/event-stream.ts` — publisher helpers
-- `packages/web/src/utils/yjsProjectManager.ts` — frontend Yjs setup (nodesMap/edgesMap init)
+- `packages/web/src/data/yjs/{canvas-space,project-meta,manager}.ts` — frontend Yjs setup (multi-doc per Space + project meta doc)
+- `packages/web/src/data/yjs/use-socket.ts` — shared HocuspocusProviderWebsocket per project
+- `packages/web/src/domain/space/{useProjectSpaces,useProjectMeta,useSpaceManagerPool}.ts` — project-level Yjs orchestrator + meta doc + per-space LRU pool
+- `packages/web/src/domain/space/ActiveCanvasSpaceContext.tsx` — active canvas Space manager context (replaces the old module-level ref)
 - `packages/web/src/hooks/useCanvasYjsInternal.ts` — Yjs observe → CanvasDataContext bridge
 - `packages/web/src/hooks/useCanvasActions.ts` — node/edge write operations → Yjs
-- `packages/web/src/utils/canvasYjsRef.ts` — module-level Yjs manager reference
-- `packages/web/src/contexts/LocalPendingProvider.tsx` — localPending React context
+- `packages/web/src/contexts/LocalPendingProvider.tsx` — localPending React context (pre-Yjs placeholder nodes)
 - `packages/web/src/apps/project/components/canvas/types.ts` — frontend UI types

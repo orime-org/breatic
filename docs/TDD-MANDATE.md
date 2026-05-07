@@ -15,8 +15,6 @@
 | [Kent Beck — Augmented Coding](https://tidyfirst.substack.com/p/augmented-coding-beyond-the-vibes) | *"Having trouble stopping AI agents from deleting tests in order to make them 'pass!'"*(cheating warning) |
 | [DEV.to case study](https://dev.to/markk40123/when-generated-tests-pass-but-miss-the-bug-a-case-of-false-confidence-from-ai-test-generation-1674) | AI 生成测试 *"asserted the wrong properties: equality on serialized outputs instead of structural invariants"* → false confidence |
 
-完整调研报告:`orime-org/breatic-inner` `research/2026-04-28-ai-era-tdd-research.md`(私有,access via security@breatic.ai)。
-
 ## 5 条硬约束(详细)
 
 ### 约束 1 — 修 bug 必须先写复现测试
@@ -223,25 +221,21 @@ DD 锁定方案后走 TDD。完整衔接见 [docs/DD-PROCESS.md](./DD-PROCESS.md
 
 **关键约束**:TDD 中发现 DD 假设错(test 无论如何写不通)→ **停下重做 DD**,不在错假设上打补丁(违反 CLAUDE.md #5)。
 
-## 衔接 audit(`bugs_list` 角色)
-
-audit 流程在私有仓库 `orime-org/breatic-inner` 维护。
+## 衔接 audit 角色
 
 ### 角色边界
 
 | 角色 | 写什么 | 不写什么 |
 |---|---|---|
-| **audit**(bugs_list) | 测试 spec(input / expected / 边界 / pass / fail / 边界条件) | 测试代码 |
-| **dev**(fix branch) | 测试代码(`*.test.ts` / `pytest`) + 实现 | spec(spec 来源 audit / human) |
+| **audit** | 测试 spec(input / expected / 边界 / pass / fail / 边界条件) | 测试代码 |
+| **dev** | 测试代码(`*.test.ts` / `pytest`) + 实现 | spec(spec 来源 audit / human) |
 
 ### 流程
 
-1. audit 在 `bugs/audit/round-N-found.md` 写 spec
-2. dev 在 breatic 仓库 fix branch 实现 + 写 test code
+1. audit 写 spec(input / expected / 边界条件)
+2. dev 在 fix branch 实现 + 写 test code
 3. audit 在 PR review 核查 test code 是否 codify spec(input/expected 一致)
-4. PR merge 后 audit 在 inner repo 关闭 BUG
-
-参考 [`breatic-inner/CLAUDE.md`](https://github.com/orime-org/breatic-inner) "L11/L13" lessons learned。
+4. PR merge 后 audit 关闭对应 BUG
 
 ## TDD 失败的处理
 
@@ -289,7 +283,5 @@ audit 流程在私有仓库 `orime-org/breatic-inner` 维护。
 - [`stryker-mutator`](https://stryker-mutator.io/) — mutation testing for JS/TS
 - [Vitest](https://vitest.dev/) / [Jest](https://jestjs.io/) — TS test framework
 
-### 内部文档
-- 调研报告:`orime-org/breatic-inner/research/2026-04-28-ai-era-tdd-research.md`(私有)
+### 项目内文档
 - DD 流程:[docs/DD-PROCESS.md](./DD-PROCESS.md)(第 10 节衔接 TDD)
-- audit 流程:`orime-org/breatic-inner/CLAUDE.md`(私有,L11/L13)
