@@ -3,7 +3,6 @@
  */
 import type { Edge, Node } from '@xyflow/react';
 import type { LocalCanvasNodeData } from '@/new/project/types';
-import { getLocalFlowNodeOuterWidth } from '../../common/localFlowNodeSpawn';
 import { CANVAS_SPAWNED_OUTPUT_GAP_PX } from '../../canvasSpawnLayout';
 
 /** React Flow shell width for generator nodes (`gen1001`–`gen1004`). */
@@ -147,58 +146,27 @@ export function findEmptyDownstreamPaletteOutput(
 }
 
 /**
- * Collects palette nodes already linked from this generator handle (same palette type as the outbound asset).
- *
- * @param getNodes - React Flow getter
- * @param getEdges - React Flow getter
- * @param generatorId - Generator id
- * @param sourceHandleId - Generator source handle id
- * @param paletteType - Palette id (`1001`–`1004`)
- */
-function listGeneratorOutboundPaletteTargets(
-  getNodes: () => Node[],
-  getEdges: () => Edge[],
-  generatorId: string,
-  sourceHandleId: string,
-  paletteType: string,
-): Node[] {
-  return getEdges()
-    .filter((e) => e.source === generatorId && e.sourceHandle === sourceHandleId)
-    .map((e) => getNodes().find((n) => n.id === e.target))
-    .filter((n): n is Node => !!n && n.type === paletteType);
-}
-
-/**
- * Flow-space position for a new palette output from {@link LocalGenNode} send: to the right of the generator
- * (first output), then each further send places the next node to the **right** of the rightmost linked output
- * (same row as the generator top — no vertical stacking).
+ * Flow-space position for a new palette output from {@link LocalGenNode} send: fixed to the right of the
+ * generator using {@link GENERATOR_NODE_WIDTH_PX} + {@link CANVAS_SPAWNED_OUTPUT_GAP_PX}. Every send reuses
+ * the same slot so new outputs stack in place (edges still attach to the new node id).
  *
  * @param generatorNode - Generator node (`getNode(generatorId)`)
- * @param getNodes - React Flow getter
- * @param getEdges - React Flow getter
- * @param generatorId - Generator id
- * @param sourceHandleId - Generator source handle id
- * @param paletteType - Palette id (`1001`–`1004`)
+ * @param _getNodes - Unused; kept for call-site stability
+ * @param _getEdges - Unused; kept for call-site stability
+ * @param _generatorId - Unused; kept for call-site stability
+ * @param _sourceHandleId - Unused; kept for call-site stability
+ * @param _paletteType - Unused; kept for call-site stability
  * @returns Top-left flow coordinates for the new output node
  */
 export function computeNextGeneratorPaletteOutputPosition(
   generatorNode: Node,
-  getNodes: () => Node[],
-  getEdges: () => Edge[],
-  generatorId: string,
-  sourceHandleId: string,
-  paletteType: string,
+  _getNodes: () => Node[],
+  _getEdges: () => Edge[],
+  _generatorId: string,
+  _sourceHandleId: string,
+  _paletteType: string,
 ): { x: number; y: number } {
   const pos = generatorNode.position;
-  const genW = getLocalFlowNodeOuterWidth(generatorNode);
-  const firstLeft = pos.x + genW + CANVAS_SPAWNED_OUTPUT_GAP_PX;
-  const targets = listGeneratorOutboundPaletteTargets(getNodes, getEdges, generatorId, sourceHandleId, paletteType);
-  if (targets.length === 0) {
-    return { x: firstLeft, y: pos.y };
-  }
-  let maxRight = pos.x;
-  for (const t of targets) {
-    maxRight = Math.max(maxRight, t.position.x + getLocalFlowNodeOuterWidth(t));
-  }
-  return { x: maxRight + CANVAS_SPAWNED_OUTPUT_GAP_PX, y: pos.y };
+  const x = pos.x + GENERATOR_NODE_WIDTH_PX + CANVAS_SPAWNED_OUTPUT_GAP_PX;
+  return { x, y: pos.y };
 }

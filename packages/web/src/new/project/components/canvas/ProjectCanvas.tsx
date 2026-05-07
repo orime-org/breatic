@@ -67,6 +67,7 @@ import { CanvasNodeActionsProvider } from './context/CanvasNodeActionsContext';
 import { CANVAS_SPAWNED_OUTPUT_GAP_PX } from './canvasSpawnLayout';
 import {
   buildEmptyPaletteOutputData,
+  GENERATOR_NODE_WIDTH_PX,
   generatorOutboundHandleId,
   paletteOutputDefaults,
 } from './dataNode/generatorNode/generatorPaletteOutput';
@@ -535,7 +536,7 @@ const ProjectCanvasInner: FC = () => {
         id: companionOutputId,
         type: paletteKind,
         position: {
-          x: position.x + defaultWidth + CANVAS_SPAWNED_OUTPUT_GAP_PX,
+          x: position.x + GENERATOR_NODE_WIDTH_PX + CANVAS_SPAWNED_OUTPUT_GAP_PX,
           y: position.y,
         },
         zIndex: maxZIndex + 2,

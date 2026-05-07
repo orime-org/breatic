@@ -1,7 +1,7 @@
 /**
  * Local text node (type `1001`) — top `NodeToolbar`: format + Refine/Create; bottom card matches `AIMenu` optional-notes + loading, then restores notes input after run; body is chromeless.
  */
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   NodeResizer,
   NodeToolbar as FlowNodeToolbar,
@@ -26,6 +26,8 @@ import {
   MOCK_REPLACEMENT,
   LocalTextAiSheetPanel,
   LocalTextAiTriggerBar,
+  TEXT_AI_REFINE_PREFLIGHT_MS,
+  isLocalTextAiRefineSheetTool,
   type TextAiPanelFields,
   type TextAiRunPhase,
   type TextAiToolId,
@@ -90,8 +92,12 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
   const [textAiRunPhase, setTextAiRunPhase] = useState<TextAiRunPhase>(null);
   const [aiFields, setAiFields] = useState<TextAiPanelFields>({});
   const [aiRunning, setAiRunning] = useState(false);
+  const [textAiSheetOpen, setTextAiSheetOpen] = useState(false);
+  const [pendingTextAiTool, setPendingTextAiTool] = useState<TextAiToolId | null>(null);
   const [pendingMockPlain, setPendingMockPlain] = useState<string | null>(null);
   const mockRunTimersRef = useRef<number[]>([]);
+  const refinePreflightTimersRef = useRef<number[]>([]);
+  const [textAiSheetPhase, setTextAiSheetPhase] = useState<'preflight' | 'form' | null>(null);
 
   useEffect(() => {
     const justDeselected = !selected && prevSelectedRef.current;
@@ -105,6 +111,11 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
       setPendingMockPlain(null);
       mockRunTimersRef.current.forEach((tid) => window.clearTimeout(tid));
       mockRunTimersRef.current = [];
+      setTextAiSheetOpen(false);
+      setPendingTextAiTool(null);
+      refinePreflightTimersRef.current.forEach((tid) => window.clearTimeout(tid));
+      refinePreflightTimersRef.current = [];
+      setTextAiSheetPhase(null);
     }
   }, [selected, isEmpty]);
 
@@ -187,11 +198,44 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     mockRunTimersRef.current = [];
   }, []);
 
-  const handleCancelAiRun = useCallback(() => {
+  /** Stops mock run; during Refine preflight, also clears timers and closes the sheet (same as fig.1 stop). */
+  const handleSheetCancelRun = useCallback(() => {
+    refinePreflightTimersRef.current.forEach((tid) => window.clearTimeout(tid));
+    refinePreflightTimersRef.current = [];
     clearMockAiTimers();
     setAiRunning(false);
     setTextAiRunPhase(null);
-  }, [clearMockAiTimers]);
+    if (textAiSheetPhase === 'preflight') {
+      setTextAiSheetOpen(false);
+      setPendingTextAiTool(null);
+      setTextAiSheetPhase(null);
+    }
+  }, [clearMockAiTimers, textAiSheetPhase]);
+
+  const handleOpenTextAiSheetPanel = useCallback((tool: TextAiToolId) => {
+    refinePreflightTimersRef.current.forEach((tid) => window.clearTimeout(tid));
+    refinePreflightTimersRef.current = [];
+    setPendingTextAiTool(tool);
+    setTextAiSheetOpen(true);
+    setTextAiSheetPhase('preflight');
+    const tid = window.setTimeout(() => {
+      setTextAiSheetPhase('form');
+    }, TEXT_AI_REFINE_PREFLIGHT_MS);
+    refinePreflightTimersRef.current.push(tid);
+  }, []);
+
+  const handleCloseTextAiSheet = useCallback(() => {
+    refinePreflightTimersRef.current.forEach((tid) => window.clearTimeout(tid));
+    refinePreflightTimersRef.current = [];
+    if (aiRunning) {
+      clearMockAiTimers();
+      setAiRunning(false);
+      setTextAiRunPhase(null);
+    }
+    setTextAiSheetOpen(false);
+    setPendingTextAiTool(null);
+    setTextAiSheetPhase(null);
+  }, [aiRunning, clearMockAiTimers]);
 
   /** Phased mock aligned with `AIMenu` `runPreviewFlow`: thinking 700ms → writing 550ms → insert. */
   const handleMockAiRun = useCallback(
@@ -216,11 +260,27 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
     [clearMockAiTimers],
   );
 
+  const submitTextAiSheetDisabled = useMemo(() => {
+    if (!pendingTextAiTool) return true;
+    if (isLocalTextAiRefineSheetTool(pendingTextAiTool)) return !hasDocumentText;
+    if (pendingTextAiTool === 'generate') return !(aiFields.instructions ?? '').trim();
+    if (pendingTextAiTool === 'character') return !(aiFields.name ?? '').trim();
+    if (pendingTextAiTool === 'storyboard') return !(aiFields.instructions ?? '').trim();
+    if (pendingTextAiTool === 'script') return !(aiFields.scene_description ?? '').trim();
+    return true;
+  }, [pendingTextAiTool, hasDocumentText, aiFields]);
+
+  const handleSubmitTextAiSheetRun = useCallback(() => {
+    if (!pendingTextAiTool || submitTextAiSheetDisabled) return;
+    handleMockAiRun(pendingTextAiTool);
+  }, [handleMockAiRun, pendingTextAiTool, submitTextAiSheetDisabled]);
+
   const showFloatingChrome = selected && !dragging;
   /** Top bar: format; when AI is open, Refine/Create dropdowns (see `LocalTextAiTriggerBar`). */
   const showTopToolbar = showFloatingChrome && selectedCount === 1;
-  /** Bottom: optional-notes + loading (same visibility as top chrome). */
-  const showAiBottomForm = showFloatingChrome && selectedCount === 1;
+  /** Bottom sheet: after Refine/Create opens sheet, or while a run is in progress. */
+  const showAiBottomForm =
+    showFloatingChrome && selectedCount === 1 && (textAiSheetOpen || aiRunning);
 
   const runFormat = useCallback(
     (command: string, commandValue?: string) => (e: React.MouseEvent) => {
@@ -254,7 +314,8 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
               fields={aiFields}
               onActiveToolChange={() => {}}
               onFieldsChange={setAiFields}
-              onRunImmediate={handleMockAiRun}
+              onRefineNotesPanel={handleOpenTextAiSheetPanel}
+              onCreateNotesPanel={handleOpenTextAiSheetPanel}
               isRunning={aiRunning}
               menuPlacement='bottom-start'
             />
@@ -272,7 +333,13 @@ const TextNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, da
             onFieldsChange={setAiFields}
             isRunning={aiRunning}
             runPhase={textAiRunPhase}
-            onCancelRun={handleCancelAiRun}
+            onCancelRun={handleSheetCancelRun}
+            sheetTool={pendingTextAiTool}
+            onSheetClose={handleCloseTextAiSheet}
+            showRunButton={textAiSheetPhase === 'form' && !!pendingTextAiTool && !aiRunning}
+            onSubmitRun={handleSubmitTextAiSheetRun}
+            submitRunDisabled={submitTextAiSheetDisabled}
+            refinePreflightLoading={textAiSheetPhase === 'preflight'}
           />
         </div>
       </FlowNodeToolbar>

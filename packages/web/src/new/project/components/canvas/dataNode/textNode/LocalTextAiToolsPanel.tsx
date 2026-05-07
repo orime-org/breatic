@@ -1,7 +1,16 @@
 /**
  * Text-node AI — sheet UI aligned with `new/textEditor/ui/AIMenu` (card + optional notes + Refine/Create; dropdown → phased loading).
  */
-import { memo, useCallback, useEffect, useMemo, useRef, type FC, type KeyboardEvent } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type FC,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   RiArrowDropDownLine,
@@ -15,7 +24,6 @@ import {
   RiSparkling2Line,
   RiTranslateAi,
 } from 'react-icons/ri';
-import { FaStopCircle } from 'react-icons/fa';
 import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
 import Tooltip from '@/components/base/tooltip';
 import { Button } from '@/components/base/button';
@@ -51,7 +59,7 @@ export const MOCK_REPLACEMENT: Record<TextAiToolId, string> = {
 };
 
 /** First toolbar dropdown: adjust existing text (includes translate / rewrite as row actions). */
-const REFINE_TOOLS: { id: 'polish' | 'expand' | 'summarize' | 'translate' | 'rewrite' | 'continue'; labelKey: string; def: string; icon: React.ReactNode }[] = [
+export const REFINE_TOOLS: { id: 'polish' | 'expand' | 'summarize' | 'translate' | 'rewrite' | 'continue'; labelKey: string; def: string; icon: React.ReactNode }[] = [
   { id: 'polish', labelKey: 'project.textAi.polish', def: 'Polish', icon: <RiSparkling2Line size={16} /> },
   { id: 'expand', labelKey: 'project.textAi.expand', def: 'Expand', icon: <RiExpandUpDownLine size={16} /> },
   { id: 'summarize', labelKey: 'project.textAi.summarize', def: 'Summarize', icon: <RiContractUpDownLine size={16} /> },
@@ -67,7 +75,7 @@ const STYLES: { key: string; labelKey: string; def: string }[] = [
   { key: 'creative', labelKey: 'project.textAi.style.creative', def: 'Creative' },
 ];
 
-const CREATE_TOOLS: { id: 'generate' | 'character' | 'storyboard' | 'script'; labelKey: string; def: string; icon: React.ReactNode }[] = [
+export const CREATE_TOOLS: { id: 'generate' | 'character' | 'storyboard' | 'script'; labelKey: string; def: string; icon: React.ReactNode }[] = [
   { id: 'generate', labelKey: 'project.textAi.generate', def: 'Generate', icon: <RiSparkling2Line size={16} /> },
   { id: 'character', labelKey: 'project.textAi.character', def: 'Character', icon: <RiGroupLine size={16} /> },
   { id: 'storyboard', labelKey: 'project.textAi.storyboard', def: 'Storyboard', icon: <RiFilmLine size={16} /> },
@@ -125,6 +133,14 @@ export type LocalTextAiTriggerBarProps = Pick<
    * When set, menu clicks do not navigate the legacy form panel.
    */
   onRunImmediate?: (tool: TextAiToolId) => void;
+  /**
+   * When set, Refine menu applies field patches then opens the bottom notes panel instead of {@link onRunImmediate}.
+   */
+  onRefineNotesPanel?: (tool: TextAiToolId) => void;
+  /**
+   * When set, Create menu opens the same bottom sheet flow as Refine (preflight pill → form), instead of {@link onRunImmediate}.
+   */
+  onCreateNotesPanel?: (tool: 'generate' | 'character' | 'storyboard' | 'script') => void;
   /** Disable dropdown triggers during phased loading. */
   isRunning?: boolean;
 };
@@ -143,6 +159,9 @@ const bottomToolbarTextareaClass =
 /** Mock Run delay in `TextNode.handleMockAiRun` — overlay animation length while “loading”. */
 const TEXT_AI_RUN_OVERLAY_MS = 1250 as const;
 
+/** Delay after choosing a Refine tool before the optional-notes form appears (same shell as {@link UpscaleBottomToolbar}). */
+export const TEXT_AI_REFINE_PREFLIGHT_MS = 1250 as const;
+
 /** Outer prompt card — same classes as `AIMenu` root prompt container (see `AIMenu.tsx`). */
 const aimMenuPromptOuterClass = cn(
   'nodrag nopan flex items-center gap-2 rounded-[12px] bg-background-default-base pl-3 pr-2',
@@ -150,7 +169,81 @@ const aimMenuPromptOuterClass = cn(
   'shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_8px_24px_rgba(12,12,13,0.12)]',
 );
 
+/** Single shell for Refine optional-notes — aligned with {@link UpscaleBottomToolbar} (wide card, one container). */
+const textRefineUnifiedShellClass =
+  'nodrag nopan pointer-events-auto flex w-[min(100vw-24px,560px)] min-w-[280px] flex-col rounded-[8px] border border-[#DBDBDB] bg-background-default-base p-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]';
+
+/** Pill loading bar (fig.1): white rounded bar, green status, dots, dark stop control. */
+const textAiLoadingPillClass =
+  'nodrag nopan flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-[#E8E8E8] bg-background-default-base px-4 py-2 shadow-[0px_1px_4px_rgba(12,12,13,0.1)]';
+
+/** Green send control — same dimensions as {@link UpscaleBottomToolbar} send. */
+const textAiUpscaleSendButtonClass =
+  '!h-[28px] !w-[52px] !min-w-[52px] !py-[2px] !pl-[16px] !pr-[12px] !bg-[#2FB344] !border-[#2FB344] hover:!bg-[#28A13D] hover:!border-[#28A13D] disabled:!bg-[#D8D8D8] disabled:!border-[#D8D8D8]';
+
+/** Default credits shown for text mini-tool until API provides a live cost. */
+export const TEXT_AI_REFINE_CREDIT_PLACEHOLDER = 120 as const;
+
+/**
+ * Fig.1 pill: white bar, green status label, gray dots, dark round stop (white square).
+ *
+ * @param props.label - Status line (e.g. “Thinking”, “AI is writing”).
+ */
+const TextAiLoadingPill: FC<{
+  label: string;
+  onStop: () => void;
+  stopAriaLabel: string;
+  /** Extra classes on the pill root (e.g. width). */
+  className?: string;
+  /** Canvas: prevent drag pan when interacting with the sheet. */
+  onRootMouseDown?: (e: ReactMouseEvent<HTMLDivElement>) => void;
+}> = ({ label, onStop, stopAriaLabel, className, onRootMouseDown }) => {
+  const handleStopKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onStop();
+      }
+    },
+    [onStop],
+  );
+
+  const loadingDots = (
+    <span className='inline-flex items-center gap-1 text-[#B8B8B8]'>
+      <span className='h-1.5 w-1.5 rounded-full bg-current opacity-90' />
+      <span className='h-1.5 w-1.5 rounded-full bg-current opacity-90' />
+      <span className='h-1.5 w-1.5 rounded-full bg-current opacity-90' />
+    </span>
+  );
+
+  return (
+    <div className={cn(textAiLoadingPillClass, className)} onMouseDown={onRootMouseDown}>
+      <div className='flex min-w-0 flex-1 items-center gap-2'>
+        <span className='truncate text-[14px] font-medium' style={{ color: '#2FB344' }}>
+          {label}
+        </span>
+        {loadingDots}
+      </div>
+      <button
+        type='button'
+        className='nodrag nopan flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#3A3A3A] transition-colors hover:bg-[#2D2D2D]'
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onStop}
+        onKeyDown={handleStopKeyDown}
+        aria-label={stopAriaLabel}
+      >
+        <span className='block h-2 w-2 rounded-[1px] bg-white' aria-hidden />
+      </button>
+    </div>
+  );
+};
+
 export type TextAiRunPhase = 'thinking' | 'writing' | null;
+
+/** Refine tools that share optional-notes + body validation in the bottom sheet. */
+export function isLocalTextAiRefineSheetTool(id: TextAiToolId): id is (typeof REFINE_TOOLS)[number]['id'] {
+  return ['polish', 'expand', 'summarize', 'translate', 'rewrite', 'continue'].includes(id);
+}
 
 export interface LocalTextAiSheetPanelProps {
   hasDocumentText: boolean;
@@ -159,6 +252,17 @@ export interface LocalTextAiSheetPanelProps {
   isRunning: boolean;
   runPhase: TextAiRunPhase;
   onCancelRun: () => void;
+  /** Active Refine or Create tool — drives title, fields, and validation. */
+  sheetTool?: TextAiToolId | null;
+  onSheetClose?: () => void;
+  /** Refine flow: primary action after optional notes */
+  showRunButton?: boolean;
+  onSubmitRun?: () => void;
+  submitRunDisabled?: boolean;
+  /** Refine flow: first-phase loading inside the same card before the notes field is shown */
+  refinePreflightLoading?: boolean;
+  /** Credits next to send (Upscale-aligned); placeholder until billing is wired */
+  refineCreditCost?: number;
 }
 
 /**
@@ -171,81 +275,264 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
   isRunning,
   runPhase,
   onCancelRun,
+  sheetTool = null,
+  onSheetClose,
+  showRunButton = false,
+  onSubmitRun,
+  submitRunDisabled = false,
+  refinePreflightLoading = false,
+  refineCreditCost = TEXT_AI_REFINE_CREDIT_PLACEHOLDER,
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const wasLoadingRef = useRef(false);
+  const formShellRef = useRef<HTMLDivElement>(null);
 
-  /** After phased loading, restore focus to the notes field like `AIMenu` `user-reviewing` focus. */
-  useEffect(() => {
-    const loading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
-    if (wasLoadingRef.current && !loading) {
-      requestAnimationFrame(() => {
-        const el = inputRef.current;
-        if (!el) return;
-        el.focus({ preventScroll: true });
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-      });
-    }
-    wasLoadingRef.current = loading;
-  }, [isRunning, runPhase]);
-
-  const handleSheetMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSheetMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     const el = e.target as HTMLElement;
     if (el.closest('input, textarea, [contenteditable="true"], button, [role="menu"]')) return;
     e.preventDefault();
   }, []);
 
-  const handleStopKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLButtonElement>) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onCancelRun();
-      }
-    },
-    [onCancelRun],
+  const showLoading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
+  const refineLoadingBlocking = refinePreflightLoading || showLoading;
+
+  const sheetDisplayTitle = useMemo(() => {
+    if (!sheetTool) return '';
+    const refineRow = REFINE_TOOLS.find((x) => x.id === sheetTool);
+    if (refineRow) return t(refineRow.labelKey, refineRow.def);
+    const createRow = CREATE_TOOLS.find((x) => x.id === sheetTool);
+    if (createRow) return t(createRow.labelKey, createRow.def);
+    return sheetTool;
+  }, [sheetTool, t]);
+
+  const styleSelectOptions = useMemo(
+    () =>
+      STYLES.map((x) => ({
+        value: x.key,
+        label: t(x.labelKey, x.def),
+      })),
+    [t],
   );
 
-  const showLoading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
+  /** Focus first field when the sheet form mounts after preflight or after an AI run phase ends. */
+  useEffect(() => {
+    const blocking = refineLoadingBlocking;
+    if (!sheetTool || blocking) return;
+    requestAnimationFrame(() => {
+      const el = (formShellRef.current?.querySelector('textarea, input') ??
+        inputRef.current) as HTMLTextAreaElement | HTMLInputElement | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text')) {
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
+    });
+  }, [sheetTool, refineLoadingBlocking]);
+
+  if (sheetTool) {
+    /** Preflight / thinking / writing: single pill only (no outer shell). */
+    if (refineLoadingBlocking) {
+      return (
+        <TextAiLoadingPill
+          className='w-[min(100vw-24px,640px)] min-w-[280px] max-w-[640px]'
+          onRootMouseDown={handleSheetMouseDown}
+          label={
+            refinePreflightLoading
+              ? t('project.textAi.thinking', 'Thinking')
+              : runPhase === 'writing'
+                ? t('project.textAi.aiWriting', 'AI is writing')
+                : t('project.textAi.thinking', 'Thinking')
+          }
+          onStop={onCancelRun}
+          stopAriaLabel={t('project.textAi.stopGeneration', 'Stop')}
+        />
+      );
+    }
+
+    return (
+      <div ref={formShellRef} className={textRefineUnifiedShellClass} onMouseDown={handleSheetMouseDown}>
+        <div className='flex items-center justify-between gap-2'>
+          <span className='truncate text-sm font-bold text-text-default-base'>{sheetDisplayTitle}</span>
+          {onSheetClose ? (
+            <Tooltip title={t('project.toolbar.exit', 'Exit')} placement='top' offset={4}>
+              <button
+                type='button'
+                className={bottomToolbarIconBtnClass}
+                onClick={onSheetClose}
+                aria-label={t('project.toolbar.exit', 'Exit')}
+              >
+                <Icon name='imageEditor-multi-angle-close-icon' width={18} height={18} color='#383838' />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+
+        <div className='mt-3 flex min-h-[52px] flex-col'>
+          {sheetTool === 'rewrite' ? (
+            <label className='mb-2 flex flex-col gap-1'>
+              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.targetStyle', 'Style')}</span>
+              <Select
+                size='middle'
+                options={styleSelectOptions}
+                value={fields.style ?? 'formal'}
+                onChange={(v) => onFieldsChange({ ...fields, style: String(v) })}
+              />
+            </label>
+          ) : null}
+
+          {isLocalTextAiRefineSheetTool(sheetTool) ? (
+            <>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-tertiary'>
+                  {t('project.textAi.optionalHint', 'Optional notes')}
+                </span>
+                <textarea
+                  ref={inputRef}
+                  rows={4}
+                  className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
+                  placeholder={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
+                  value={fields.instructions ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+                  autoComplete='off'
+                  aria-label={t('project.textAi.optionalNotes', 'Optional notes')}
+                />
+              </label>
+              {!hasDocumentText ? (
+                <p className='mt-2 text-[12px] text-text-default-tertiary'>
+                  {t('project.textAi.needBody', 'Add text in the node first, or open edit mode.')}
+                </p>
+              ) : null}
+            </>
+          ) : sheetTool === 'generate' ? (
+            <label className='flex flex-col gap-1'>
+              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.instructions', 'Instructions')} *</span>
+              <textarea
+                ref={inputRef}
+                rows={4}
+                className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
+                value={fields.instructions ?? ''}
+                onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+                autoComplete='off'
+              />
+            </label>
+          ) : sheetTool === 'character' ? (
+            <div className='flex flex-col gap-2'>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.characterName', 'Name')} *</span>
+                <Input
+                  inputType='text'
+                  value={fields.name ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, name: e.target.value })}
+                />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.traits', 'Traits')}</span>
+                <textarea
+                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
+                  value={fields.traits ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, traits: e.target.value })}
+                />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.context', 'Context')}</span>
+                <textarea
+                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
+                  value={fields.context ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, context: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : sheetTool === 'storyboard' ? (
+            <div className='flex flex-col gap-2'>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.storyboardBrief', 'Outline / brief')} *</span>
+                <textarea
+                  ref={inputRef}
+                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
+                  value={fields.instructions ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+                />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.sceneCount', 'Scene count')}</span>
+                <Input
+                  className='max-w-[120px]'
+                  inputType='number'
+                  min={1}
+                  value={fields.scene_count ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, scene_count: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : sheetTool === 'script' ? (
+            <div className='flex flex-col gap-2'>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.sceneDescription', 'Scene')} *</span>
+                <textarea
+                  ref={inputRef}
+                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
+                  value={fields.scene_description ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, scene_description: e.target.value })}
+                />
+              </label>
+              <label className='flex flex-col gap-1'>
+                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.charactersCsv', 'Characters (comma-separated)')}</span>
+                <Input
+                  inputType='text'
+                  value={fields.characters ?? ''}
+                  onChange={(e) => onFieldsChange({ ...fields, characters: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {showRunButton && onSubmitRun ? (
+            <div className='mt-3 flex items-center justify-between gap-3 px-1'>
+              <div className='min-w-0 flex-1' />
+              <div className='flex items-center gap-1'>
+                <div className='inline-flex items-center gap-1 text-[12px] font-semibold text-text-default-tertiary'>
+                  <Icon name='imageEditor-nano-banana-credit-icon' width={16} height={16} />
+                  <span>{refineCreditCost}</span>
+                </div>
+                <Tooltip title={t('project.textAi.runRefine', 'Run')} placement='top' offset={4}>
+                  <Button
+                    type='primary'
+                    size='medium'
+                    shape='round'
+                    className={cn('nodrag nopan', textAiUpscaleSendButtonClass)}
+                    icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+                    disabled={submitRunDisabled}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={onSubmitRun}
+                    aria-label={t('project.textAi.runRefine', 'Run')}
+                  />
+                </Tooltip>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       className='nodrag nopan flex w-full min-w-0 max-w-[min(100vw-24px,520px)] flex-col bg-transparent'
       onMouseDown={handleSheetMouseDown}
     >
-      <div
-        className={cn(aimMenuPromptOuterClass, 'w-full min-w-0', showLoading ? 'justify-between' : '')}
-        style={{ minHeight: showLoading ? 56 : undefined }}
-      >
-        {showLoading ? (
-          <>
-            <div className='flex flex-1 items-center gap-2 py-3'>
-              <span className='text-[14px] font-medium text-brand-base'>
-                {runPhase === 'writing'
-                  ? t('project.textAi.aiWriting', 'AI is writing')
-                  : t('project.textAi.thinking', 'Thinking')}
-              </span>
-              <span className='inline-flex items-center gap-1 text-text-default-tertiary'>
-                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
-                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
-                <span className='h-1.5 w-1.5 rounded-full bg-current opacity-60' />
-              </span>
-            </div>
-            <Button
-              type='default'
-              size='small'
-              shape='circle'
-              bordered={false}
-              icon={<FaStopCircle size={22} />}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onCancelRun}
-              onKeyDown={handleStopKeyDown}
-              aria-label={t('project.textAi.stopGeneration', 'Stop')}
-              className='shrink-0'
-            />
-          </>
-        ) : (
+      {showLoading ? (
+        <TextAiLoadingPill
+          label={
+            runPhase === 'writing'
+              ? t('project.textAi.aiWriting', 'AI is writing')
+              : t('project.textAi.thinking', 'Thinking')
+          }
+          onStop={onCancelRun}
+          stopAriaLabel={t('project.textAi.stopGeneration', 'Stop')}
+        />
+      ) : (
+        <div className={cn(aimMenuPromptOuterClass, 'w-full min-w-0')}>
           <div className='flex w-full min-w-0 flex-col py-2'>
             <label className='flex flex-col gap-1'>
               <span className='text-[12px] text-text-default-tertiary'>
@@ -269,8 +556,8 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
               </p>
             ) : null}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -283,6 +570,8 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
   menuPlacement = 'top-start',
   embedded = false,
   onRunImmediate,
+  onRefineNotesPanel,
+  onCreateNotesPanel,
   isRunning = false,
 }) => {
   const { t } = useTranslation();
@@ -318,6 +607,25 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
   const onRefineMenuClick = useCallback(
     (key: string | number) => {
       const id = String(key) as 'polish' | 'expand' | 'summarize' | 'translate' | 'rewrite' | 'continue';
+      if (onRefineNotesPanel) {
+        if (id === 'translate') {
+          onFieldsChange({
+            ...fields,
+            language: fields.language ?? 'English',
+            instructions: fields.instructions ?? '',
+          });
+        } else if (id === 'rewrite') {
+          onFieldsChange({
+            ...fields,
+            style: fields.style ?? 'formal',
+            instructions: fields.instructions ?? '',
+          });
+        } else {
+          onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
+        }
+        onRefineNotesPanel(id);
+        return;
+      }
       if (onRunImmediate) {
         if (id === 'translate') {
           onFieldsChange({
@@ -358,12 +666,17 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
       onActiveToolChange(id);
       onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
     },
-    [fields, onActiveToolChange, onFieldsChange, onRunImmediate],
+    [fields, onActiveToolChange, onFieldsChange, onRefineNotesPanel, onRunImmediate],
   );
 
   const onCreateMenuClick = useCallback(
     (key: string | number) => {
       const id = String(key) as 'generate' | 'character' | 'storyboard' | 'script';
+      if (onCreateNotesPanel) {
+        onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
+        onCreateNotesPanel(id);
+        return;
+      }
       if (onRunImmediate) {
         onFieldsChange({ ...fields, instructions: fields.instructions ?? '' });
         onRunImmediate(id);
@@ -372,7 +685,7 @@ export const LocalTextAiTriggerBar: FC<LocalTextAiTriggerBarProps> = ({
       onActiveToolChange(id);
       onFieldsChange({});
     },
-    [fields, onActiveToolChange, onFieldsChange, onRunImmediate],
+    [fields, onActiveToolChange, onFieldsChange, onCreateNotesPanel, onRunImmediate],
   );
 
   /** Hover hints stay above the triggers so they don’t clash with the dropdown panel below. */
