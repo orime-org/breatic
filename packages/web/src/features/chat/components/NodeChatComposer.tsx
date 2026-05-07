@@ -10,14 +10,14 @@ import AgentComposerTabs, {
   type AgentComposerUploadItem,
 } from '@/features/chat/components/AgentComposerTabs';
 import AgentSendButton from '@/features/chat/components/AgentSendButton';
-import { useCanvasData } from '@/contexts/CanvasDataContext';
-import { useCanvasActions } from '@/hooks/useCanvasActions';
-import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
 import {
   useProjectWorkspaceRegion,
   type PickResultBox,
   type CanvasWorkflowNodeData,
-} from '@/apps/project/components/canvas/types';
+} from '@/spaces/canvas/types';
 export type NodeChatComposerProps = {
   targetNodeId: string;
   onSend: (content: string, imageUrls?: string[]) => void;

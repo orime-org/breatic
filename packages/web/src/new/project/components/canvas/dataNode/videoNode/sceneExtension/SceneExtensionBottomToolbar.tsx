@@ -5,7 +5,7 @@ import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
 import Input from '@/ui/input';
 import Divider from '@/ui/divider';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/spaces/canvas/common/Video';
 import PlaybackPanel from '../playback/PlaybackPanel';
 
 export type SceneExtensionResolution = '1k' | '2k' | '4k';

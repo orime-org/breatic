@@ -24,12 +24,12 @@ import {
   type OnConnectEnd,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import CustomEdge from '@/apps/project/components/canvas/common/Edge';
-import ConnectEndCommandMenu from '@/apps/project/components/canvas/common/ConnectEndCommandMenu';
+import CustomEdge from '@/spaces/canvas/common/Edge';
+import ConnectEndCommandMenu from '@/spaces/canvas/common/ConnectEndCommandMenu';
 import ConnectEndAnchorNode, {
   connectEndAnchorSourceHandleId,
   connectEndAnchorTargetHandleId,
-} from '@/apps/project/components/canvas/common/ConnectEndAnchorNode';
+} from '@/spaces/canvas/common/ConnectEndAnchorNode';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import TextNode from './dataNode/textNode/TextNode';
 import ImageNode from './dataNode/imageNode/ImageNode';
@@ -44,8 +44,8 @@ import LocalGroupToolbarPanel from './common/LocalGroupToolbarPanel';
 import LocalNodeContextMenu from './common/LocalNodeContextMenu';
 import NodeDragStopBinder from './flow/NodeDragStopBinder';
 import { localCropImageToObjectUrl } from './dataNode/imageNode/crop/localCropImageToObjectUrl';
-import UndoRedoToolbar from '@/apps/project/components/canvas/common/UndoRedoToolbar';
-import CustomMiniMap from '@/apps/project/components/canvas/common/CustomMiniMap';
+import UndoRedoToolbar from '@/spaces/canvas/common/UndoRedoToolbar';
+import CustomMiniMap from '@/spaces/canvas/common/CustomMiniMap';
 import CanvasHotkeys from './hotkeys/CanvasHotkeys';
 import { useFlowHistory } from './hooks/useFlowHistory';
 import { CanvasNodeActionsProvider } from './context/CanvasNodeActionsContext';

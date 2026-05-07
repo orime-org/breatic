@@ -9,14 +9,14 @@ import Upload, { type UploadFile } from '@/ui/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
-import { useCanvasData } from '@/contexts/CanvasDataContext';
-import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/hooks/useUpstreamExternalFileList';
+import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
+import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/spaces/canvas/hooks/useUpstreamExternalFileList';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '@/store';
 import { toggleMixedEditorFavoriteAsset } from '@/store/modules/mixedEditor';
 import type { AgentComposerUploadItem } from '@/features/chat/components/AgentComposerTabs';
-import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
+import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
+import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';
 import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
 

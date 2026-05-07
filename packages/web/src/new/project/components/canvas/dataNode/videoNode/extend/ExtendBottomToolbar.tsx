@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/spaces/canvas/common/Video';
 import { Button } from '@/ui/button';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { Icon } from '@/ui/icon';

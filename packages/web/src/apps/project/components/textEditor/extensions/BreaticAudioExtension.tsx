@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { createElement, type MouseEvent as ReactMouseEvent } from 'react';
-import AudioWaveformPlayer from '@/apps/project/components/canvas/common/AudioWaveformPlayer';
+import AudioWaveformPlayer from '@/spaces/canvas/common/AudioWaveformPlayer';
 
 const BreaticAudioView = ({ node, editor, getPos }: NodeViewProps) => {
   const src = typeof node.attrs.src === 'string' ? node.attrs.src : '';

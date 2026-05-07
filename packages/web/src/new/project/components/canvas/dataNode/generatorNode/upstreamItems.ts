@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
+import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 
 /** Upstream chip for {@link GenComposerToolbar}. */

@@ -10,8 +10,8 @@ import {
 } from './AgentResourcePreview';
 import Divider from '@/ui/divider';
 import Upload, { type UploadFile } from '@/ui/upload';
-import { useCanvasData } from '@/contexts/CanvasDataContext';
-import { useUpstreamExternalFileList } from '@/hooks/useUpstreamExternalFileList';
+import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
+import { useUpstreamExternalFileList } from '@/spaces/canvas/hooks/useUpstreamExternalFileList';
 
 /** Thumbnail metadata for upstream canvas outputs. */
 export type AgentComposerUpstreamItem = {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon } from '@/ui/icon';
-import Video from '@/apps/project/components/canvas/common/Video';
-import AudioWaveformPlayer from '@/apps/project/components/canvas/common/AudioWaveformPlayer';
+import Video from '@/spaces/canvas/common/Video';
+import AudioWaveformPlayer from '@/spaces/canvas/common/AudioWaveformPlayer';
 import { getVideoMetaFromUrl } from '@/utils/mediaUtils';
 
 /** Resource modality for composer previews, chips, and @-panel rows. */
