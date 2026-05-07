@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
-import type { VideoRef } from '@/apps/project/components/canvas/common/Video';
+import type { VideoRef } from '@/spaces/canvas/common/Video';
 import { Button } from '@/ui/button';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';

@@ -13,11 +13,11 @@ import AgentComposerTabs, {
   type AgentComposerUploadItem,
 } from '@/features/chat/components/AgentComposerTabs';
 import AgentSendButton from '@/features/chat/components/AgentSendButton';
-import { useCanvasData } from '@/contexts/CanvasDataContext';
-import { useCanvasActions } from '@/hooks/useCanvasActions';
-import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
+import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
-import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
+import type { PickResultBox, CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import { Icon } from '@/ui/icon';
 // ProjectHeader is the project-page top bar (logo + title + theme picker
 // + import/export menu), not part of the chat feature. PR-E will move

@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';
-import { flowCenterFromCanvasPane } from '@/apps/project/components/canvas/types';
+import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 
 interface NodeGroupConfig {

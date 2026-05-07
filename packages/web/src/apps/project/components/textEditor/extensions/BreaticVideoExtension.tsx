@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { createElement, useEffect, useRef, useState } from 'react';
-import Video from '@/apps/project/components/canvas/common/Video';
+import Video from '@/spaces/canvas/common/Video';
 
 const MIN_VIDEO_WIDTH = 240;
 

@@ -4,11 +4,11 @@ import '@xyflow/react/dist/style.css';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
-import { useCanvasData, CanvasDataProvider } from '@/contexts/CanvasDataContext';
-import { LocalPendingProvider } from '@/contexts/LocalPendingProvider';
+import { useCanvasData, CanvasDataProvider } from '@/spaces/canvas/contexts/CanvasDataContext';
+import { LocalPendingProvider } from '@/spaces/canvas/contexts/LocalPendingProvider';
 import { ActiveCanvasSpaceProvider } from '@/domain/space/ActiveCanvasSpaceContext';
-import { useCanvasActions } from '@/hooks/useCanvasActions';
-import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
 import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
 import { useUserRole } from '@/domain/user/useUserRole';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
@@ -18,10 +18,10 @@ import { MembersPopover, MembersPanel } from '@/features/members';
 import { CreditsPill, RechargeDialog } from '@/features/credits';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import TextEditor from './components/textEditor';
-import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
+import ResizableLeftPanel from '@/spaces/canvas/view/ResizableLeftPanel';
 import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
-import ProjectCanvas from './components/canvas';
-import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
+import ProjectCanvas from '@/spaces/canvas';
+import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
 /** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
 const builtInNodeTemplateData = [

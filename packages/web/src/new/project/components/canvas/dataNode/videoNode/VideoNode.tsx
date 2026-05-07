@@ -14,7 +14,7 @@ import { message } from '@/ui/message';
 import { Icon } from '@/ui/icon';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
 import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
-import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/apps/project/components/canvas/common/Video';
+import Video, { type VideoPlaybackSnapshot, type VideoRef } from '@/spaces/canvas/common/Video';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
 import { getVideoMeta, getVideoMetaFromUrl } from '@/utils/mediaUtils';
