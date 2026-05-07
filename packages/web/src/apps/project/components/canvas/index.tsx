@@ -37,7 +37,7 @@ import ConnectEndAnchorNode, {
 import CanvasCommentComposer from './common/CanvasCommentComposer';
 import CommentMarkerNode from './common/CommentMarkerNode';
 import CanvasRightOverlayPanel from './ui/CanvasRightOverlayPanel';
-import { captureCanvasPickCaretRange } from '@/components/base/agent/AgentInput';
+import { captureCanvasPickCaretRange } from '@/features/chat/components/AgentInput';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';

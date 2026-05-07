@@ -26,7 +26,7 @@ import AudioNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
 import AudioNodePlayer from './AudioNodePlayer';
-import NodeChatComposer from '@/apps/project/components/agent/NodeChatComposer';
+import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Audio_0_0';

@@ -14,7 +14,7 @@ import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/ho
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '@/store';
 import { toggleMixedEditorFavoriteAsset } from '@/store/modules/mixedEditor';
-import type { AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
+import type { AgentComposerUploadItem } from '@/features/chat/components/AgentComposerTabs';
 import type { CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import { getProjectCanvasViewportApi } from '@/apps/project/components/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';

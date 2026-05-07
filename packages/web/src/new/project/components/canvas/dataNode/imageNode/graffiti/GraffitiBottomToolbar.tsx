@@ -7,7 +7,7 @@ import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
 import Dropdown from '@/ui/dropdown';
 import Divider from '@/ui/divider';
-import AgentComposerInput from '@/components/base/agent/AgentInput';
+import AgentComposerInput from '@/features/chat/components/AgentInput';
 
 type GraffitiTool = 'brush' | 'circle' | 'rectangle' | 'eraser';
 
