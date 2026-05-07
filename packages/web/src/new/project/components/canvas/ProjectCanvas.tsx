@@ -53,7 +53,9 @@ import {
   computeLocalFlowSelectedNodesBounds,
   localFlowMultiSelectOutboundTypes,
   localFlowSourceHandleIdForNodeType,
+  mergeMultiSelectParallelSourceIdsWithSnapshot,
   pickLocalFlowRightmostNode,
+  syncMultiSelectParallelSnapshot,
 } from './common/localFlowNodeSpawn';
 import NodeDragStopBinder from './flow/NodeDragStopBinder';
 import { localCropImageToObjectUrl } from './dataNode/imageNode/crop/localCropImageToObjectUrl';
@@ -276,6 +278,9 @@ const ProjectCanvasInner: FC = () => {
     nodesRef.current = nodes;
   }, [nodes]);
   useEffect(() => {
+    syncMultiSelectParallelSnapshot(nodes);
+  }, [nodes]);
+  useEffect(() => {
     tempConnectNodesRef.current = tempConnectNodes;
   }, [tempConnectNodes]);
   useEffect(() => {
@@ -359,7 +364,10 @@ const ProjectCanvasInner: FC = () => {
     (params: Connection) => {
       if (params.source === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID && params.target) {
         const nodesNow = nodesRef.current;
-        const sourceIds = collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesNow);
+        const sourceIds = mergeMultiSelectParallelSourceIdsWithSnapshot(
+          collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesNow),
+          nodesNow,
+        );
         const targetHandle = params.targetHandle ?? '';
         setEdges((eds) => {
           let next = eds;
@@ -447,6 +455,13 @@ const ProjectCanvasInner: FC = () => {
         };
         setTempConnectNodes([anchorNode]);
         setTempConnectEdges(addEdge(tempEdge as Connection, []));
+        const parallelSources =
+          fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID
+            ? mergeMultiSelectParallelSourceIdsWithSnapshot(
+              collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesRef.current),
+              nodesRef.current,
+            )
+            : undefined;
         setConnectEndMenu({
           clientX,
           clientY,
@@ -454,10 +469,7 @@ const ProjectCanvasInner: FC = () => {
           isFromInput: false,
           fromNodeId,
           fromHandleId,
-          multiSelectParallelSourceIds:
-            fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID
-              ? collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesRef.current)
-              : undefined,
+          multiSelectParallelSourceIds: parallelSources,
         });
       }
     },

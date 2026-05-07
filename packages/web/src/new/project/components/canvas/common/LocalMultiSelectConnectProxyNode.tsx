@@ -20,7 +20,8 @@ import nodeIconMap from '@/new/project/constants/nodeIconMap';
 import {
   getLocalFlowNodeSubtitle,
   localFlowAgentNodes,
-  localFlowPaletteMultiSelectAutoConnectTypes,
+  isLocalFlowMultiSelectParallelOutboundCandidateNode,
+  mergeMultiSelectParallelSourceIdsWithSnapshot,
   spawnLocalFlowPaletteNodeFromMultiSelectionOutbound,
 } from './localFlowNodeSpawn';
 
@@ -48,7 +49,7 @@ const LocalMultiSelectConnectProxyNode: React.FC<NodeProps<Node<LocalMultiSelect
   const paletteMultiConnectSourceIds = useStore(
     useCallback((s) => {
       const ids = selectedNodesSelector(s)
-        .filter((n) => localFlowPaletteMultiSelectAutoConnectTypes.has(String(n.type)))
+        .filter(isLocalFlowMultiSelectParallelOutboundCandidateNode)
         .map((n) => n.id);
       return Array.from(new Set(ids));
     }, []),
@@ -100,7 +101,7 @@ const LocalMultiSelectConnectProxyNode: React.FC<NodeProps<Node<LocalMultiSelect
     spawnLocalFlowPaletteNodeFromMultiSelectionOutbound({
       screenCenter: { x: centerX, y: centerY },
       newPaletteNodeType: nodeType,
-      parallelSourceNodeIds: paletteMultiConnectSourceIds,
+      parallelSourceNodeIds: mergeMultiSelectParallelSourceIdsWithSnapshot(paletteMultiConnectSourceIds, getNodes()),
       getNodes,
       setNodes,
       setEdges,

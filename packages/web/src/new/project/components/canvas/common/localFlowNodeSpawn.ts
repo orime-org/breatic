@@ -62,11 +62,20 @@ export const localFlowMultiSelectOutboundTypes = new Set<string>([
   'gen1004',
 ]);
 
+/** Agent generator node types — excluded as parallel edge sources when spawning from multi-select “+”. */
+export const localFlowGeneratorFlowTypes = new Set<string>(['gen1001', 'gen1002', 'gen1003', 'gen1004']);
+
 /**
- * Palette asset types (`1001`–`1004`) that receive parallel outbound edges when spawning from multi-selection.
- * Generator types (`gen1001`–`gen1004`) are excluded — they stay in the selection but do not auto-wire to the new node.
+ * Whether a node type may emit a parallel edge from multi-select proxy / connect-end parallel wiring.
+ * Only generator nodes (`gen1001`–`gen1004`) are excluded; all other types are candidates.
+ * Types without a resolvable source handle are skipped later via {@link localFlowSourceHandleIdForNodeType}.
+ *
+ * @param n - React Flow node (only `type` is read)
  */
-export const localFlowPaletteMultiSelectAutoConnectTypes = new Set<string>(['1001', '1002', '1003', '1004']);
+export function isLocalFlowMultiSelectParallelOutboundCandidateNode(n: Pick<Node, 'type'>): boolean {
+  const t = String(n.type);
+  return !localFlowGeneratorFlowTypes.has(t);
+}
 
 const defaultNodeData = (nodeType: string): LocalCanvasNodeData => {
   const handles = localFlowAssetHandles[nodeType] ?? {};
@@ -259,7 +268,8 @@ export interface SpawnLocalFlowPaletteFromMultiSelectionParams {
   /** Palette node type to create (`1001`–`1004`). */
   newPaletteNodeType: string;
   /**
-   * Selected palette node ids (`1001`–`1004`) that should each get `source → new node` edge (generators omitted).
+   * Selected node ids that should each get `source → new node` edge — typically every selected node except
+   * generators ({@link localFlowGeneratorFlowTypes}); callers pass ids from {@link collectLocalFlowMultiSelectParallelOutboundSourceIds}.
    */
   parallelSourceNodeIds: readonly string[];
   getNodes: () => Node[];
@@ -269,8 +279,8 @@ export interface SpawnLocalFlowPaletteFromMultiSelectionParams {
 }
 
 /**
- * Creates one new palette node to the right of `screenCenter` and connects every listed palette source to it.
- * Used by {@link LocalMultiSelectConnectProxyNode}; generators in `parallelSourceNodeIds` are ignored at edge time.
+ * Creates one new palette node to the right of `screenCenter` and connects every listed source to it.
+ * Skips generator nodes and any type without a resolved outbound handle.
  *
  * @param params - Spawn + parallel edge list
  */
@@ -320,7 +330,7 @@ export function spawnLocalFlowPaletteNodeFromMultiSelectionOutbound(
       const srcNode = byId.get(sourceId);
       if (!srcNode?.type) continue;
       const t = String(srcNode.type);
-      if (!localFlowPaletteMultiSelectAutoConnectTypes.has(t)) continue;
+      if (localFlowGeneratorFlowTypes.has(t)) continue;
       const sourceHandle = localFlowSourceHandleIdForNodeType(t);
       if (!sourceHandle) continue;
       const connectionParams: Connection = {
@@ -397,20 +407,57 @@ export function selectLocalMultiSelectOutboundRepresentativeId(state: { nodes: N
 }
 
 /**
- * Ids of selected palette nodes that should each receive an outbound edge when wiring from the multi-select proxy handle.
- * Generators (`gen1001`–`gen1004`) are never included.
+ * Ids of selected nodes that should each receive an outbound edge when wiring from the multi-select proxy handle.
+ * Generator nodes ({@link localFlowGeneratorFlowTypes}) are omitted; types without a source handle are skipped when adding edges.
  *
  * @param nodes - Current React Flow nodes
- * @returns Unique ids among the current selection (`1001`–`1004` only)
+ * @returns Unique ids among the current selection
  */
 export function collectLocalFlowMultiSelectParallelOutboundSourceIds(nodes: Node[]): string[] {
-  const ids = nodes
-    .filter(
-      (n) =>
-        n.selected &&
-        n.type !== 'connectEndAnchor' &&
-        localFlowPaletteMultiSelectAutoConnectTypes.has(String(n.type)),
-    )
-    .map((n) => n.id);
+  const ids = nodes.filter((n) => n.selected && isLocalFlowMultiSelectParallelOutboundCandidateNode(n)).map((n) => n.id);
   return Array.from(new Set(ids));
+}
+
+/**
+ * Last known parallel outbound source ids. React Flow may clear {@link Node.selected} during a drag from the
+ * multi-select proxy handle; we retain this snapshot until selection stabilizes again.
+ */
+let multiSelectParallelSnapshot: string[] | null = null;
+
+/**
+ * Updates {@link multiSelectParallelSnapshot} from the current selection. When the collected id list is empty,
+ * the previous snapshot is kept so connect-end / palette spawn can still merge upstream nodes after drag.
+ *
+ * @param nodes - Current React Flow canvas nodes (same slice used for {@link collectLocalFlowMultiSelectParallelOutboundSourceIds})
+ */
+export function syncMultiSelectParallelSnapshot(nodes: Node[]): void {
+  const live = collectLocalFlowMultiSelectParallelOutboundSourceIds(nodes);
+  if (live.length >= 2) {
+    multiSelectParallelSnapshot = live;
+    return;
+  }
+  if (live.length === 1) {
+    multiSelectParallelSnapshot = live;
+  }
+}
+
+/**
+ * Dedupes live ids with {@link multiSelectParallelSnapshot} and keeps only ids that still exist and can emit a parallel edge.
+ *
+ * @param liveIds - Fresh ids from {@link collectLocalFlowMultiSelectParallelOutboundSourceIds}
+ * @param nodes - Node list used to resolve handles and membership
+ * @returns Source node ids for parallel outbound wiring
+ */
+export function mergeMultiSelectParallelSourceIdsWithSnapshot(liveIds: string[], nodes: Node[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const snap = multiSelectParallelSnapshot ?? [];
+  const merged = Array.from(new Set([...snap, ...liveIds]));
+  return merged.filter((id) => {
+    const n = byId.get(id);
+    return (
+      n !== undefined &&
+      isLocalFlowMultiSelectParallelOutboundCandidateNode(n) &&
+      localFlowSourceHandleIdForNodeType(String(n.type)) != null
+    );
+  });
 }
