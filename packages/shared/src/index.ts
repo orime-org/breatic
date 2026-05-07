@@ -25,16 +25,31 @@ export type {
   PaymentEntity,
   CreditTransactionEntity,
   ProjectEntity,
+  ProjectDetail,
   MemoryContext,
   SkillMeta,
-  CanvasNodeState,
+  NodeState,
   HandlingActor,
-  CanvasNodeFields,
   AttachRef,
-  NodeHandlingEvent,
-  NodeCompletedEvent,
-  NodeFailedEvent,
+  CanvasNodeFields,
+  NodeStateUpdateEvent,
   NodeEvent,
+  ProjectRole,
+  ProjectMember,
+  Studio,
+  SpaceType,
+  Space,
+  MembersChangedEvent,
+  SpaceCreatedEvent,
+  SpaceDeletedEvent,
+} from "./types/index.js";
+
+export {
+  ROLE_RANK,
+  membersChangedChannel,
+  spaceCreatedChannel,
+  spaceDeletedChannel,
+  ALL_PROJECT_CHANNELS_PATTERN,
 } from "./types/index.js";
 
 export type {
@@ -52,7 +67,6 @@ export {
   taskCreateSchema,
   understandSchema,
   projectCreateSchema,
-  canvasSaveSchema,
   checkoutSchema,
   paginationSchema,
 } from "./schemas/index.js";
@@ -65,7 +79,6 @@ export type {
   TaskCreateInput,
   UnderstandInput,
   ProjectCreateInput,
-  CanvasSaveInput,
   CheckoutInput,
   PaginationInput,
 } from "./schemas/index.js";
@@ -73,8 +86,15 @@ export type {
 export { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "./i18n/index.js";
 export type { Locale } from "./i18n/index.js";
 
-export { canvasDocName, nodeEditorDocName, parseDocName } from "./yjs-doc-names.js";
-export type { ParsedDocName } from "./yjs-doc-names.js";
+export {
+  projectMetaDocName,
+  canvasSpaceDocName,
+  documentSpaceDocName,
+  timelineSpaceDocName,
+  parseDocName,
+  isProjectScopedDocName,
+} from "./yjs-doc-names.js";
+export type { DocKind, ParsedDocName } from "./yjs-doc-names.js";
 
 export {
   defaultAdjustValue,

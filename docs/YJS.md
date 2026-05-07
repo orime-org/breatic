@@ -12,31 +12,32 @@ Any change to this spec must update that file and vice versa.
 
 ## 1. Document types
 
-Breatic uses **two** flavors of Yjs documents, each backed by the
+Breatic uses **one** flavor of Yjs document per project, backed by the
 `yjs_documents` table in PostgreSQL via Hocuspocus:
 
 | Flavor | Scope | Persistence | Awareness |
 |--------|-------|-------------|-----------|
 | **Canvas** | Per-project, shared by all collaborators | `yjs_documents` | Yes (cursors, selection, online users) |
-| **Node editor** | Per-node within a project, one document per node | `yjs_documents` | Future: scoped to editor viewers only |
 
-There is **no parent-child subdoc relationship** between a canvas
-document and its node editor documents. Each is an independent Yjs
-document with its own WebSocket connection.
+There is a single Yjs document per project. Per-node editor sub-documents
+(previously `project-{id}/node/{nodeId}`) are no longer created; all node
+data lives in the single project canvas document.
+
+The TipTap text editor opens in a left panel and connects to a separate
+editor context (not a separate Yjs document). A "video editor" entry point
+on video nodes is planned (剪映/PR-style), currently in design.
 
 ## 2. Document naming
 
-Document name functions live in `packages/collab/src/schema.ts`:
+Document name function lives in `packages/collab/src/schema.ts`:
 
 ```ts
-canvasDocName(projectId)             → "project-{projectId}/canvas"
-nodeEditorDocName(projectId, nodeId) → "project-{projectId}/node/{nodeId}"
+canvasDocName(projectId) → "project-{projectId}"
 ```
 
-The naming scheme is deliberately path-like so the canvas document
-acts as a **registry** for its node editor documents: given a canvas
-node id, you can derive the editor document name without any
-explicit parent-child link.
+One document per project. The old `project-{id}/canvas` and
+`project-{id}/node/{nodeId}` naming schemes are obsolete. All canvas
+and node data shares this single document.
 
 ## 3. Canvas document shape
 
@@ -67,16 +68,23 @@ nodeMap: Y.Map
   ├── type:     string                    ← top level
   ├── position: Y.Map { x, y }           ← top level
   └── data:     Y.Map                     ← nested, matches ReactFlow node.data
-        ├── name:         string
-        ├── content:      string
-        ├── coverUrl:     string | undefined
-        ├── state:        "idle" | "handling"
-        ├── handlingBy:   Y.Map { userId, username } | undefined
-        ├── runType:      "parameter" | "sensitive"
-        ├── lastEventType: "completed" | "failed" | undefined
-        ├── params:       Y.Map<string, unknown>
-        ├── attachments:  Y.Array<Y.Map>
-        └── prompt:       Y.XmlFragment
+        ├── name:            string
+        ├── state:           "idle" | "handling"
+        ├── handlingBy:      Y.Map { userId, username } | undefined
+        ├── content:         string | undefined       ← result URL or text
+        ├── cover_url:       string | undefined       ← video first-frame
+        ├── errorMessage:    string | undefined       ← set on failure (state stays idle)
+        ├── width:           number | undefined
+        ├── height:          number | undefined
+        ├── duration:        number | undefined       ← audio/video seconds
+        ├── sourceNodeId:    string | undefined       ← origin node for derived nodes
+        ├── operation:       string | undefined       ← mini-tool operation name
+        ├── operationParams: Y.Map | undefined        ← operation-specific params
+        ├── prompt:          Y.XmlFragment            ← TipTap rich text
+        ├── model:           string | undefined
+        ├── modelParams:     Y.Map<string, unknown> | undefined
+        ├── attachments:     Y.Array<Y.Map>
+        └── childIds:        Y.Array<string>          ← ordered child node IDs (for N-output ops)
 ```
 
 **Top-level keys** (immutable after creation or frontend-owned topology):
@@ -89,17 +97,25 @@ nodeMap: Y.Map
 
 **Nested `data` Y.Map keys**:
 
-| Key | Yjs type | Description | Written by |
-|-----|----------|-------------|------------|
-| `name` | string | Display label | Frontend |
-| `state` | `"idle"` \| `"handling"` | Pipeline state | Collab (event-stream) |
-| `handlingBy` | `Y.Map { userId, username }` \| undefined | Who triggered the current handling | Collab |
-| `content` | string | Primary result: URL or text body | Collab (completed event) |
-| `coverUrl` | string \| undefined | Video first-frame cover | Collab |
-| `runType` | `"parameter"` \| `"sensitive"` | Generation run type | Frontend |
-| `prompt` | `Y.XmlFragment` | Rich text prompt with inline `@` mentions (TipTap / y-prosemirror) | Frontend |
-| `attachments` | `Y.Array<Y.Map>` | Upload pool for this node | Frontend |
-| `params` | `Y.Map<string, unknown>` | Generation parameters | Frontend |
+| Key | Yjs type | Written by | Description |
+|-----|----------|------------|-------------|
+| `name` | string | Frontend | Display label |
+| `state` | `"idle"` \| `"handling"` | Collab (event-stream) | Pipeline state |
+| `handlingBy` | `Y.Map { userId, username }` \| undefined | Collab | Who triggered the current handling |
+| `content` | string \| undefined | Collab (NodeStateUpdateEvent) | Result URL or text body |
+| `cover_url` | string \| undefined | Collab (NodeStateUpdateEvent) | Video first-frame cover |
+| `errorMessage` | string \| undefined | Collab (NodeStateUpdateEvent) | Set on failure; `state` remains `idle` |
+| `width` | number \| undefined | Collab | Output width in pixels |
+| `height` | number \| undefined | Collab | Output height in pixels |
+| `duration` | number \| undefined | Collab | Audio/video duration in seconds |
+| `sourceNodeId` | string \| undefined | Frontend | Origin node ID for derived (sibling) nodes |
+| `operation` | string \| undefined | Frontend | Mini-tool operation name |
+| `operationParams` | `Y.Map` \| undefined | Frontend | Operation-specific parameters |
+| `prompt` | `Y.XmlFragment` | Frontend | Rich text prompt with inline `@` mentions |
+| `model` | string \| undefined | Frontend | Selected AI model ID |
+| `modelParams` | `Y.Map<string, unknown>` \| undefined | Frontend | Generation parameters |
+| `attachments` | `Y.Array<Y.Map>` | Frontend | Upload pool for this node |
+| `childIds` | `Y.Array<string>` | Frontend | Ordered child node IDs for N-output operations |
 
 **prompt** is a `Y.XmlFragment` bound to a single TipTap editor
 instance when the user focuses on this node's prompt input. At most
@@ -157,56 +173,77 @@ keys and adds UI-only state that is **NOT** synced to Yjs:
 interface CanvasWorkflowNodeData {
   // ── From data Y.Map (synced) ──
   name: string;
-  content: string;
-  coverUrl?: string;
   state: 'idle' | 'handling';
   handlingBy?: { userId: string; username: string };
-  runType?: 'parameter' | 'sensitive';
+  content?: string;
+  cover_url?: string;
+  errorMessage?: string;
+  // ... other data Y.Map fields
   // ── UI-only (NOT in Yjs) ──
+  localPending?: boolean;   // node pre-created by this client, not yet in Yjs
   pickState?: PickState | null;         // image-pick-mode overlay state
   handles?: { target?: HandleConfig[]; source?: HandleConfig[] };
 }
 ```
 
+**`localPending`** is tracked by `LocalPendingProvider` (React context,
+browser-session lifetime, per-user). Nodes in this state are visible
+only to the creating client until the Yjs write round-trip confirms
+they are synced. On confirmation, `localPending` is cleared.
+```
+
 ## 4. Node state machine
 
 ```
-idle ──(user clicks generate or upload)──► handling
-handling ──(task / upload success)──► idle  (content updated)
-handling ──(task / upload failure)──► idle  (content unchanged,
-                                               failure logged in
-                                               node_history)
+idle ──(user triggers operation)──► handling
+handling ──(task success)──► idle  (content / cover_url / width / height / duration updated)
+handling ──(task failure)──► idle  (content unchanged, errorMessage set)
 ```
 
-Only two states: **`idle`** and **`handling`**.
+Only two Yjs states: **`idle`** and **`handling`**.
 
-- **No `failed` state.** Failures revert the node to `idle` with the
-  previous content intact. Failure information lives in the
-  `node_history` table (queried via
-  `GET /api/v1/canvas/nodes/:nodeId/history`).
-- **No `taskId` on the node.** Tasks can't be cancelled, so there's
-  no race between a stale task's result and a newer task — the
-  Redis lock enforces strict serialization.
-- **No error field on the node.** Display errors by joining against
-  `node_history` on the frontend.
+- **No `failed` state in Yjs.** Failures revert the node to `idle`
+  with `errorMessage` set. The error message is displayed inline on
+  the node card. Previous `content` is unchanged.
+- **`localPending`** is a third, browser-local pseudo-state tracked
+  in `LocalPendingProvider` (React context, not Yjs). A node in
+  `localPending` was pre-created by the client and is not yet
+  confirmed in the Yjs document. Once the Yjs write round-trip
+  succeeds, `localPending` is cleared and the node behaves normally.
+- **No per-node Redis lock.** Operations produce new sibling nodes
+  on the canvas (connected by edge), so concurrent operations on the
+  same source node do not race for a single mutable result slot.
+- **1:N support.** Worker payload includes `targetNodeIds: string[]`.
+  The frontend pre-creates N placeholder nodes; Worker emits one
+  `NodeStateUpdateEvent` per target node ID.
 
 ## 5. Ownership — who writes what
 
-The fundamental rule: **the frontend does not write `data.state` / `data.handlingBy` / `data.content` / `data.coverUrl`**.
+The fundamental rule: **the frontend does not write `data.state` /
+`data.handlingBy` / `data.content` / `data.cover_url` /
+`data.errorMessage` / `data.width` / `data.height` / `data.duration`**.
 
 | Field | Written by | When |
 |-------|------------|------|
 | `id`, `type` | Frontend | Node creation (immutable after) |
 | `position` | Frontend | User drags the node |
 | `data.name` | Frontend | User renames the node |
-| `data.content` | Collab (via Worker/upload events) | After generation/upload completes |
-| `data.coverUrl` | Collab (via Worker/upload events) | After video generation/upload completes |
-| `data.state` | Collab (via API/Worker events) | handling → idle on completion |
-| `data.handlingBy` | Collab (via API events) | handling (set) / completion (cleared) |
-| `data.runType` | Frontend | User changes generation mode |
+| `data.state` | Collab (via NodeStateUpdateEvent) | Transitions to/from `handling` |
+| `data.handlingBy` | Collab (via NodeStateUpdateEvent) | Set on handling start, cleared on completion |
+| `data.content` | Collab (via NodeStateUpdateEvent) | After generation completes |
+| `data.cover_url` | Collab (via NodeStateUpdateEvent) | After video generation completes |
+| `data.errorMessage` | Collab (via NodeStateUpdateEvent) | On task failure |
+| `data.width` | Collab (via NodeStateUpdateEvent) | Output dimensions (if known) |
+| `data.height` | Collab (via NodeStateUpdateEvent) | Output dimensions (if known) |
+| `data.duration` | Collab (via NodeStateUpdateEvent) | Audio/video duration |
+| `data.sourceNodeId` | Frontend | Set at node creation for derived nodes |
+| `data.operation` | Frontend | Set at node creation for mini-tool derived nodes |
+| `data.operationParams` | Frontend | Operation-specific parameters |
 | `data.prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) |
+| `data.model` | Frontend | User selects AI model |
+| `data.modelParams` | Frontend | User changes generation parameters |
 | `data.attachments` | Frontend | User uploads / deletes attach items |
-| `data.params` | Frontend | User changes generation parameters |
+| `data.childIds` | Frontend | Set when creating N-output placeholder nodes |
 | `edges` | Frontend | User creates / deletes connections |
 | Node creation / deletion | Frontend | User adds or deletes a node |
 
@@ -246,8 +283,8 @@ Key consequences:
 
 ## 6. Event flow
 
-AIGC and upload state transitions travel through a Redis Stream
-rather than direct RPC between services.
+AIGC state transitions travel through a Redis Stream rather than
+direct RPC between services.
 
 ```
 ┌─────────────┐                                    ┌─────────────┐
@@ -259,9 +296,7 @@ rather than direct RPC between services.
                  ▼                               ▼
              ┌──────────────────────────────────────┐
              │              Redis Stream             │
-             │  NodeHandlingEvent                    │
-             │  NodeCompletedEvent                   │
-             │  NodeFailedEvent                      │
+             │  NodeStateUpdateEvent                 │
              └──────────────────────────────────────┘
                              │
                              │ XREAD (durable, resume-from-last-id)
@@ -284,46 +319,38 @@ rather than direct RPC between services.
                       All connected clients
 ```
 
-### 6.1 Event types (`NodeEvent` union)
+### 6.1 Event type (`NodeStateUpdateEvent`)
+
+A single, unified event shape replaces the old three-event
+(`handling` / `completed` / `failed`) union:
 
 ```ts
-// Lock acquired, node enters handling state
-interface NodeHandlingEvent {
-  type: "handling";
+interface NodeStateUpdateEvent {
+  type: "node-state-update";
   projectId: string;
-  nodeId: string;
-  taskId: string;                       // for lock ownership verification
-  actor: { userId: string; username: string };
+  targetNodeId: string;      // single target node
+  update: Partial<CanvasNodeFields["data"]>;
+  // update is merged into the target node's data Y.Map.
+  // Allowlisted fields: state, content, cover_url, errorMessage,
+  //                     width, height, duration, handlingBy
 }
-
-// Work completed successfully
-interface NodeCompletedEvent {
-  type: "completed";
-  projectId: string;
-  nodeId: string;
-  taskId: string;                       // for lock release CAS
-  content: string;                      // new URL or text
-  cover_url?: string;                   // video first-frame, if applicable
-}
-
-// Work failed — content stays unchanged
-interface NodeFailedEvent {
-  type: "failed";
-  projectId: string;
-  nodeId: string;
-  taskId: string;                       // for lock release CAS
-}
-
-type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
 ```
+
+For **1:N operations** (e.g. a mini-tool producing multiple outputs),
+the Worker emits one `NodeStateUpdateEvent` per target node ID.
+The frontend pre-creates N placeholder nodes and passes their IDs
+to the API as `targetNodeIds: string[]`.
+
+Collab merges `update` into the target node's `data` Y.Map field by
+field — only allowlisted keys are written; unknown keys are ignored.
 
 ### 6.2 Who publishes what
 
 | Publisher | Event | When |
 |-----------|-------|------|
-| API `POST /canvas/tasks` | `handling` | Immediately after acquiring the Redis lock, before returning 201 |
-| Worker `runTask` | `completed` | Task finished and result was persisted |
-| Worker `runTask` | `failed` | Task threw an error; `node_history` gets a failed entry in parallel |
+| API `POST /canvas/tasks` | `node-state-update` (state → "handling") | Before returning 201 |
+| Worker `runTask` (success) | `node-state-update` (state → "idle" + content) | Task finished and result persisted |
+| Worker `runTask` (failure) | `node-state-update` (state → "idle" + errorMessage) | Task threw an error |
 
 > **Note**: User-initiated uploads (presigned URL flow) write directly
 > to Yjs via the frontend — they do NOT go through the Redis Stream
@@ -339,37 +366,39 @@ type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
   the consumer resumes from the saved id, so no events are lost.
 - **First boot** reads from `0-0` to replay any pending history.
 
-## 7. Concurrency — the canvas node lock
+## 7. Concurrency — no per-node lock
 
-One operation per node at a time. Enforced by Redis SETNX with a
-2-hour TTL.
+In the Phase 2 canvas-native model, **per-node Redis locks are
+removed**. Concurrent operations on the same source node are handled
+by producing new sibling nodes on the canvas rather than overwriting
+the source node in place.
 
-- **Key**: `${env}:canvas:lock:${projectId}:${nodeId}`
-- **Value**: `{ userId, username, taskId, lockedAt }` (JSON)
-- **Acquired by**: API at `POST /canvas/tasks` with taskId
-- **Released by**: Collab after processing a `completed` or `failed`
-  event — **verified via taskId CAS** (only the task that holds the
-  lock can release it, preventing forged events from stealing locks)
-- **Idempotent re-acquire**: the same user can re-enter the lock
-  (refresh the TTL) without being rejected
-- **TTL**: 2 hours, long enough for 1 GB video uploads and 10-minute
-  3D generation, short enough to recover from a crashed publisher
+The concurrency model is:
 
-Tasks without a `node_id` (agent chat creation, understand tasks)
-**skip the lock entirely** — they don't target a specific canvas
-node and don't emit node events.
+- Each operation creates one or more **new** result nodes connected
+  to the source node by an edge.
+- The source node's `state` is set to `"handling"` for the duration
+  of the operation and returns to `"idle"` on completion or failure.
+- Multiple operations can run concurrently against different result
+  placeholder nodes without contention — there is no shared mutable
+  slot to race over.
+- Category B mini-tools (backend AIGC operations) allow unlimited
+  concurrent ops per source node.
 
-### 7.1 Why a backend lock instead of Yjs conflict resolution
+Tasks without a `targetNodeId` (agent chat creation, understand
+tasks) **never touch canvas node state** — they don't emit
+`NodeStateUpdateEvent`.
 
-Yjs merges concurrent array writes deterministically (last writer
-wins on the full-array `set`), but:
+### 7.1 Why no lock is needed
 
-1. A Yjs merge can silently lose one user's `handling` state if two
-   clicks race — with nothing left on the backend to recover from.
-2. Redis is the single source of truth for "who's currently working
-   on this node" — Collab, API, and Worker all agree.
-3. The lock also gates the **Worker's side effects** (Stripe
-   deductions, AIGC provider calls), which Yjs alone can't prevent.
+The old lock existed to prevent two tasks from racing to overwrite
+the same `content` field. The new model eliminates that race by
+design: each task writes to its own new node. There is no single
+mutable `content` slot to guard.
+
+Stripe deduction idempotency is handled by `deductOnce()` on the
+payment path (not by the canvas lock), so removing the canvas lock
+has no billing-safety implications.
 
 ## 8. Sanity checks in the Collab handler
 
@@ -380,11 +409,11 @@ defends against edge cases:
   document that no client has populated yet).
 - **Node missing nested `data` Y.Map** → warn log + skip (legacy
   node created before the nested data migration).
-- **Node not found by id** → warn log + skip + release lock (node
-  was deleted mid-operation, or the event references a stale id).
+- **Node not found by id** → warn log + skip (node was deleted
+  mid-operation, or the event references a stale id).
 - **Same event re-delivered** after a Collab restart → idempotent
-  re-apply (state is already the target value, lock is already
-  released — both operations are harmless repeats).
+  re-apply (state is already the target value — the repeat write
+  is harmless).
 
 ## 8.5 WebSocket authentication
 
@@ -392,7 +421,7 @@ Every `HocuspocusProvider` connection must present a session token in
 the `token` field of the Hocuspocus `onAuthenticate` hook. The server
 looks the token up in Redis (`${env}:session:<token>`) and resolves
 the caller's `userId`, then validates that the user is a member of
-the project derived from the document name (`project-<uuid>/...`).
+the project derived from the document name (`project-<uuid>`).
 
 On the client side (`packages/web/src/utils/yjsManager.ts`):
 
@@ -435,7 +464,7 @@ Each Yjs document is persisted as an encoded binary blob in the
 
 ```
 yjs_documents(
-  name       TEXT PRIMARY KEY,   -- e.g. "project-abc/canvas"
+  name       TEXT PRIMARY KEY,   -- e.g. "project-abc"
   data       BYTEA NOT NULL,      -- Y.js binary state
   updated_at TIMESTAMPTZ DEFAULT NOW()
 )
@@ -478,7 +507,6 @@ Y.js updates over pub/sub:
 > | Purpose | Key prefix | Consumer |
 > |---------|------------|----------|
 > | Yjs cross-instance sync | `${env}:hocuspocus:*` | Hocuspocus Redis extension |
-> | Canvas node locks | `${env}:canvas:lock:*` | API + Collab |
 > | NodeEvent stream | `${env}:stream:canvas-nodes` | Collab |
 > | Stream last-id | `${env}:collab:canvas-nodes:last-id` | Collab |
 > | BullMQ task queue | `${env}:bull:*` | API + Worker |
@@ -546,129 +574,46 @@ try {
 - Mutate `data.name`, `data.prompt`, `data.attachments`, or `data.params` — frontend-owned
 - Perform many individual writes outside a single `transact` call
 
-## 11. Node editor documents (Launch Editor sub-canvas)
+## 11. Canvas-native interaction model (Phase 2)
 
-Each canvas node may have an accompanying editor document for its
-Launch Editor UI. These are **independent Yjs documents**, not
-subdocs, following the name pattern `project-{id}/node/{nodeId}`.
+In the canvas-native model, **all operations happen on the main
+canvas**. There is no separate "Launch Editor" sub-canvas for
+image/video/audio nodes.
 
-| Node type | Editor content |
-|-----------|---------------|
-| Text | TipTap rich text (`Y.XmlFragment "body"`) |
-| Image | ReactFlow sub-canvas (`Y.Map "flow" { nodes }`) |
-| Audio | ReactFlow sub-canvas |
-| Video | ReactFlow sub-canvas |
+### 11.1 Two node categories
 
-Editor documents are **lazily loaded**: the frontend connects to
-the Hocuspocus document only when the user clicks Launch Editor,
-with a loading indicator while the document hydrates. On close, the
-frontend disconnects and drops the local Y.Doc. The sub-canvas
-content persists in PostgreSQL via Hocuspocus for the next session.
+| Category | Examples | Operations |
+|----------|----------|------------|
+| **Generative nodes** | Text (1001), Image (1002), Video (1003), Audio (1004) with prompt | User writes prompt + selects model → backend AIGC task |
+| **Data nodes** | Image (1002), Video (1003), Audio (1004) holding a result asset | Mini-tools produce new sibling nodes connected by edge |
 
-Sub-canvas nodes do **not** have their own Launch Editor (no
-recursion). They use separate type codes from the main canvas
-(e.g. image layers, audio tracks). Sub-canvas type design is TBD.
+Operations on data nodes do **not** modify the source node in
+place. They create new sibling nodes on the canvas connected by an
+edge from the source to the result. The `sourceNodeId` / `operation`
+/ `operationParams` fields on the new node record where it came from.
 
-### 11.1 Mixed editor flow schema
+### 11.2 LocalPendingProvider
 
-Mixed editor (image / video / audio Launch Editor) uses a flat Y.Map:
+When the frontend creates placeholder nodes for a pending operation
+(e.g. before the backend confirms the task), those nodes are tracked
+in `LocalPendingProvider` — a React context with browser-session
+lifetime, per-user scope. They appear on the canvas immediately
+(optimistic) but are not yet in the Yjs document. On Yjs
+confirmation, `localPending` is cleared and the node becomes a
+normal Yjs node.
 
-```
-flow: Y.Map<nodeId, Y.Map>   ← flat, NO edges by design
-  each node Y.Map:
-    id:       string
-    type:     '2002' | '2003' | '2004' | 'group'
-    position: Y.Map { x, y }
-    style:    Y.Map { width, height }
-    zIndex:   number   (optional)
-    parentId: string   (optional — for group nesting)
-    extent:   unknown  (optional)
-    data:     Y.Map (ImageEditorNodeData)
-      name:       string
-      content:    string        ← URL or text body
-      state:      'idle'        ← always 'idle' in Yjs (see § 11.3)
-      runType?:   'parameter' | 'sensitive'
-      params?:    Y.Map
-      nodeRuntimeData?: per-node runtime config
-```
+### 11.3 Text editor
 
-Mixed editor has **no edges**. Cropping / variation / AI transform
-all produce sibling nodes, never directed links — the UX is "bag of
-tiles" not DAG.
+The TipTap text editor opens as a full-screen left panel. It uses
+the main canvas document's `data.prompt` (`Y.XmlFragment`) for the
+selected text node — there is no separate Yjs document for the text
+editor.
 
-### 11.2 Handling lifecycle — the X pattern
+### 11.4 Video editor (planned)
 
-Mixed editor tasks come in two flavours:
-
-- **Type A (browser-local)** — `ffmpeg.wasm` crop / speed / adjust
-  / stabilization / etc. The Web Worker is tied to the originator's
-  browser tab.
-- **Type B (backend-served)** — AI mini-tools (inpaint, super-res,
-  lip sync). Execute server-side; survive the browser.
-
-For both, the mixed editor's Yjs flow **never carries a
-`state: 'handling'` node**. Loading tiles live in the originator's
-React context (`pendingTasks` map on `MixedEditorDataContext`) —
-local to this browser tab, invisible to collaborators. On
-completion, the action hook writes a single `state: 'idle'` node
-into Yjs under `userOrigin` → one undoable "I produced this tile"
-step lands in the undo stack.
-
-**Why no handling state in Yjs**: if the originator's browser dies
-mid-task, the Web Worker dies with it and the task result is lost.
-A persisted "handling" tile in Yjs would survive as a zombie
-placeholder that every collaborator has to clean up. The X pattern
-eliminates that failure mode by design — if the browser dies, Yjs
-has nothing to be stuck on.
-
-**Cost of the X pattern**: collaborators don't see a peer's
-in-flight loading tile. They see the finished tile appear
-atomically. This is acceptable because Type A tasks are typically
-seconds, the mixed editor is primarily single-user, and "true"
-collaborative visibility would require backend task orchestration
-(violating the nuts-and-bolts fully-frontend architecture).
-
-**Closing the editor panel with pending tasks**: the React cleanup
-terminates the Web Workers and any in-flight Type A tasks are lost.
-The UI intercepts the panel-close button and prompts the user to
-confirm. See `handleToggleEditorPanel` in `apps/project/index.tsx`.
-
-### 11.3 Undo / redo in the mixed editor
-
-`Y.UndoManager` scope: `flow` Y.Map, per-user `trackedOrigins`,
-500 ms `captureTimeout`, 50-entry cap. Mirrors the main canvas
-UndoManager knobs exactly.
-
-| Action | Origin | In undo stack? |
-|--------|--------|----------------|
-| Create completed tile (resolve handling) | `mixed-user:${userId}` | ✓ — one step |
-| Delete tile (user Delete key) | `mixed-user:${userId}` | ✓ |
-| Drag tile (position changes) | `mixed-user:${userId}` | ✓ — batched by 500 ms capture |
-| Add loading pending tile (`addHandlingNode`) | — | ✗ (not in Yjs at all) |
-| Content / params / runtime data writes | `noHistoryOrigin` | ✗ |
-
-**Handling guard**: `removeNode` / `onNodesChange(remove)` no-op
-when the target id is in `pendingTasks`. ReactFlow's Delete / Backspace
-on a loading tile is silently ignored — let the task finish or the
-user explicitly cancel via the close-panel dialog.
-
-### 11.4 Apply to the host node
-
-Every mixed editor tile carries an **Apply to Node** button. It
-writes the tile's `content` to the main-canvas **host node** — the
-one the editor was launched from. Target is fixed at editor-open
-time (`hostNodeId` on `MixedEditorDataContext`) and never changes,
-even if the user then clicks a different node on the main canvas.
-
-- Main canvas write uses `useCanvasActions().updateNode(hostNodeId,
-  { data: { content, … } })` — goes into the main canvas undo stack
-  (`userOrigin`). Ctrl+Z on the main canvas reverts to the previous
-  content.
-- Apply is purely frontend: no backend task, no mini-tool call, no
-  Redis Stream event. It's a direct Yjs write from the source tile
-  to the host node.
-- Repeat clicks are allowed (overwrite semantics); each click is a
-  new undo entry.
+A dedicated video editor entry point on video nodes (剪映/PR-style
+timeline editing) is planned but currently in design. It will be
+specified as a separate section when implementation begins.
 
 ## 12. Awareness (future)
 
@@ -687,13 +632,13 @@ schema will be added to this document.
 
 ## References
 
-- `packages/shared/src/types/canvas-node.ts` — authoritative type source (CanvasNodeFields, AttachRef, NodeEvent)
-- `packages/collab/src/task-listener.ts` — consumer: reads nodesMap Y.Map, sets fields directly
+- `packages/shared/src/types/canvas-node.ts` — authoritative type source (CanvasNodeFields, AttachRef, NodeStateUpdateEvent)
+- `packages/collab/src/task-listener.ts` — consumer: reads nodesMap Y.Map, merges NodeStateUpdateEvent update
 - `packages/collab/src/event-stream.ts` — generic Stream consumer loop
 - `packages/server/src/infra/event-stream.ts` — publisher helpers
-- `packages/server/src/infra/canvas-lock.ts` — Redis SETNX node locks
 - `packages/web/src/utils/yjsProjectManager.ts` — frontend Yjs setup (nodesMap/edgesMap init)
-- `packages/web/src/hooks/useCanvasYjs.ts` — Yjs observe → Redux dispatch bridge
-- `packages/web/src/hooks/useProjectStore.ts` — node/edge write operations → Yjs
+- `packages/web/src/hooks/useCanvasYjsInternal.ts` — Yjs observe → CanvasDataContext bridge
+- `packages/web/src/hooks/useCanvasActions.ts` — node/edge write operations → Yjs
 - `packages/web/src/utils/canvasYjsRef.ts` — module-level Yjs manager reference
+- `packages/web/src/contexts/LocalPendingProvider.tsx` — localPending React context
 - `packages/web/src/apps/project/components/canvas/types.ts` — frontend UI types

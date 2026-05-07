@@ -7,6 +7,15 @@
  *
  * Frontend: imports JSON at build time via Vite @locales alias.
  * Backend: loads JSON at runtime via fs.readFileSync.
+ *
+ * **Browser-bundle safety**: this file imports `node:fs` and
+ * `node:path` at the top level for the Node-only `loadLocales()`
+ * path. Web doesn't call `loadLocales()` or `t()` at runtime — it
+ * only uses type exports from `@breatic/shared`. To keep this
+ * module out of the web bundle, the package declares
+ * `"sideEffects": false` AND web's runtime imports go through the
+ * `@breatic/shared/yjs-doc-names` subpath (not the barrel), so
+ * Rollup never has to follow `index.js → i18n/index.js`.
  */
 
 import { readFileSync, readdirSync } from "node:fs";

@@ -6,11 +6,10 @@
  * from the last processed stream id after reconnect.
  *
  * Current stream:
- *   `${env}:stream:task-events` — handling / completed / failed
- *   events published by the API (on task creation / upload lock)
- *   and by the Worker (on task completion / failure). Consumed by
- *   the Collab service and routed to the target Yjs document
- *   (main canvas or mixed editor) by the event's `docName` field.
+ *   `${env}:stream:task-events` — history-update events published
+ *   by the Worker (on task completion / failure). Consumed by the
+ *   Collab service and routed to the target Yjs document by the
+ *   event's `docName` field.
  *
  * Renamed from `${env}:stream:canvas-nodes` when node-editor
  * documents joined as additional write targets — the name now
@@ -42,6 +41,23 @@ export function taskEventsStreamKey(): string {
  * @param streamKey - Target stream key
  * @param payload - JSON-serializable payload object
  */
+/**
+ * JSON replacer that preserves `undefined` values as the sentinel string
+ * `"__undefined__"`. Standard `JSON.stringify` silently drops `undefined`
+ * values, which would strip `handlingBy: undefined` from
+ * `NodeStateUpdateEvent.update` and prevent the Collab consumer from
+ * calling `dataMap.delete("handlingBy")` on the node-state-update path.
+ *
+ * The consumer (`task-listener.ts`) converts `"__undefined__"` back to
+ * `undefined` before calling `dataMap.delete(key)`.
+ */
+function jsonReplacerPreserveUndefined(
+  _key: string,
+  value: unknown,
+): unknown {
+  return value === undefined ? "__undefined__" : value;
+}
+
 export async function publishToStream(
   redis: Redis,
   streamKey: string,
@@ -54,7 +70,7 @@ export async function publishToStream(
     "10000",
     "*",
     "payload",
-    JSON.stringify(payload),
+    JSON.stringify(payload, jsonReplacerPreserveUndefined),
   );
   logger.debug({ streamKey, id }, "stream_event_published");
 }
@@ -66,7 +82,7 @@ export async function publishToStream(
  * cannot drift from the schema the Collab consumer expects.
  *
  * @param redis - Connected ioredis instance
- * @param event - `NodeEvent` union payload (handling / completed / failed)
+ * @param event - `HistoryUpdateEvent` payload
  */
 export async function publishNodeEvent(
   redis: Redis,

@@ -16,33 +16,13 @@ import { runLocalHandler } from "./handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
-import { getRedis, getStreamRedis } from "@breatic/core";
+import { getStreamRedis } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
-import { canvasDocName, nodeEditorDocName } from "@breatic/shared";
-
-/**
- * Build the target docName for a NodeEvent.
- *
- * Mini-tool jobs triggered from a mixed-editor (node-editor) doc
- * carry `host_node_id` in their params. When present, the event must
- * target the per-node editor doc so the Collab consumer routes to the
- * mixed-editor flow schema. Otherwise the event targets the main
- * canvas doc — unchanged pre-T3 behaviour.
- */
-function resolveEventDocName(
-  projectId: string,
-  params: Record<string, unknown>,
-): string {
-  const hostNodeId = params.host_node_id;
-  if (typeof hostNodeId === "string" && hostNodeId.length > 0) {
-    return nodeEditorDocName(projectId, hostNodeId);
-  }
-  return canvasDocName(projectId);
-}
+import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/core";
@@ -67,12 +47,51 @@ export interface TaskJobData {
   taskId: string;
   taskType: string;
   userId: string;
+  /**
+   * Project the task is scoped to. Required for any task that writes
+   * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
+   * task is project + Space scoped). Optional only for legacy paths
+   * that do not bind to a canvas node — those skip
+   * `NodeStateUpdateEvent` emission entirely.
+   */
   projectId?: string;
+  /**
+   * Space within the project the task targets. v10 multi-doc: the
+   * worker writes results to `project-{projectId}/canvas-{spaceId}`.
+   * Required when `projectId` is set; canvas-bound tasks must
+   * always carry both. Producer is `server/routes/canvas.ts` /
+   * `server/routes/mini-tools.ts`.
+   */
+  spaceId?: string;
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
   source?: string;
   toolName?: string;
+  /**
+   * Target canvas node IDs to receive the result via NodeStateUpdateEvent.
+   * Length === 1 for single-output ops; length === N for multi-output ops
+   * (e.g., split image → 4 nodes). Absent for tasks not bound to any canvas
+   * node (understand, skill agents without node bindings).
+   */
+  targetNodeIds?: string[];
+}
+
+/**
+ * Resolve the Yjs canvas-doc name for a job, or return null when the
+ * job is not bound to a canvas (no projectId / no spaceId — those
+ * tasks never emit `NodeStateUpdateEvent`).
+ *
+ * Centralises the v10 multi-doc rule in one place: every site that
+ * formerly called `projectDocName(projectId)` now goes through
+ * here, guaranteeing the spaceId arrives at the doc-name builder.
+ */
+function resolveCanvasDocName(
+  projectId: string | undefined,
+  spaceId: string | undefined,
+): string | null {
+  if (!projectId || !spaceId) return null;
+  return canvasSpaceDocName(projectId, spaceId);
 }
 
 /**
@@ -101,11 +120,13 @@ export interface TaskJobData {
  * @returns Result dict on success, or a failure status marker
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, params, model, skillName, source, toolName } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
-  const redis = getRedis();
   const streamRedis = getStreamRedis();
-  const nodeIds = parseNodeIds(params);
+  // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
+  // Falls back to empty array for tasks not bound to any canvas node.
+  const nodeIds: string[] = targetNodeIds ?? [];
 
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -134,7 +155,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, "Retry not allowed after provider returned a result");
+    if (canvasDocName) {
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, "Retry not allowed after provider returned a result");
+      }
+    }
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -178,7 +203,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
+    if (canvasDocName) {
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
+      }
+    }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
 
@@ -193,7 +222,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, toolName }, msg);
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, msg);
+    if (canvasDocName) {
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, msg);
+      }
+    }
     return { failed: true, reason: "output_count_mismatch" };
   }
 
@@ -218,7 +251,11 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    await publishFailedEvent(streamRedis, projectId, nodeIds, taskId, params, errorMsg);
+    if (canvasDocName) {
+      for (const nodeId of nodeIds) {
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
+      }
+    }
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -280,20 +317,21 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
   }
 
-  // ─── Stage 4: Record history + publish completed event ────────────
-  if (projectId && nodeIds.length > 0) {
+  // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
+  if (canvasDocName && projectId && nodeIds.length > 0) {
+    const docName = canvasDocName;
     for (let i = 0; i < nodeIds.length; i++) {
       const nodeId = nodeIds[i]!;
       const out = persistedOutputs[i];
-      const content = out?.url;
-      if (typeof content !== "string") continue;
+      const url = out?.url;
+      if (typeof url !== "string") continue;
       try {
         await nodeHistoryService.recordGenerationSuccess({
           projectId,
           nodeId,
           userId,
-          content,
-          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? content : undefined),
+          content: url,
+          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? url : undefined),
           taskId,
           metadata: {
             model: (unified.extras.model as string | undefined) ?? model,
@@ -305,22 +343,16 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       } catch (err) {
         logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
       }
-    }
 
-    const eventOutputs = nodeIds.map((nodeId, i) => {
-      const out = persistedOutputs[i];
-      return {
-        nodeId,
-        content: (out?.url ?? (unified.extras.content as string | undefined)) ?? "",
-        cover_url: out?.cover_url,
-      };
-    });
-    await publishNodeEvent(streamRedis, {
-      type: "completed",
-      docName: resolveEventDocName(projectId, params),
-      taskId,
-      outputs: eventOutputs,
-    });
+      try {
+        await emitNodeStateDone(streamRedis, docName, nodeId, {
+          content: url,
+          cover_url: out?.cover_url,
+        });
+      } catch (err) {
+        logger.warn({ err, taskId, nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
+      }
+    }
   }
 
   logger.info(
@@ -328,6 +360,93 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
     "task_completed",
   );
   return result;
+}
+
+// ─── Event emit helpers ──────────────────────────────────────────────
+
+/** Content fields that may appear in a success NodeStateUpdateEvent. */
+export interface NodeStateDoneFields {
+  /** Permanent URL of the generated asset. */
+  content: string;
+  /** Optional cover/thumbnail URL (video first-frame, 3D preview, etc.). */
+  cover_url?: string;
+  /** Image / video pixel width. */
+  width?: number;
+  /** Image / video pixel height. */
+  height?: number;
+  /** Video / audio duration in seconds. */
+  duration?: number;
+}
+
+/**
+ * Publish a `node-state-update` event with state "idle" (success) for a
+ * single node.
+ *
+ * Extracted for testability. Called from Stage 4 of `runTask` after a
+ * successful persist. Errors are swallowed by the caller.
+ *
+ * `handlingBy` is explicitly set to `null` so the Collab consumer
+ * deletes the key from the node's data Y.Map (clearing the actor badge).
+ * null is used instead of undefined because JSON.stringify strips undefined.
+ *
+ * @param streamRedis - Redis client for the stream DB
+ * @param docName - Project doc name (e.g. "project-{projectId}")
+ * @param nodeId - Canvas node receiving the update
+ * @param contentFields - Content fields to write into the node's data map
+ */
+export async function emitNodeStateDone(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeId: string,
+  contentFields: NodeStateDoneFields,
+): Promise<void> {
+  await publishNodeEvent(streamRedis, {
+    type: "node-state-update",
+    docName,
+    nodeId,
+    update: {
+      state: "idle",
+      content: contentFields.content,
+      cover_url: contentFields.cover_url,
+      width: contentFields.width,
+      height: contentFields.height,
+      duration: contentFields.duration,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
+    },
+  });
+}
+
+/**
+ * Publish a `node-state-update` event with state "idle" (failure) for a
+ * single node.
+ *
+ * Exported for unit testing.
+ *
+ * @param streamRedis - Redis client for the stream DB
+ * @param docName - Project doc name (e.g. "project-{projectId}")
+ * @param nodeId - Canvas node receiving the update
+ * @param errorMessage - Human-readable error description
+ */
+export async function emitNodeStateFailed(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeId: string,
+  errorMessage: string,
+): Promise<void> {
+  await publishNodeEvent(streamRedis, {
+    type: "node-state-update",
+    docName,
+    nodeId,
+    update: {
+      state: "idle",
+      errorMessage,
+      // null survives JSON.stringify (undefined is stripped).
+      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
+      handlingBy: null,
+    },
+  });
 }
 
 // ─── Failure-path helpers ────────────────────────────────────────────
@@ -359,46 +478,7 @@ async function recordFailureHistory(
   }
 }
 
-/** Publish a `failed` NodeEvent to the task-events stream. */
-async function publishFailedEvent(
-  streamRedis: ReturnType<typeof getStreamRedis>,
-  projectId: string | undefined,
-  nodeIds: string[],
-  taskId: string,
-  params: Record<string, unknown>,
-  errorMessage: string,
-): Promise<void> {
-  if (!projectId || nodeIds.length === 0) return;
-  try {
-    await publishNodeEvent(streamRedis, {
-      type: "failed",
-      docName: resolveEventDocName(projectId, params),
-      taskId,
-      nodeIds,
-      errorMessage,
-    });
-  } catch (err) {
-    logger.warn({ err, taskId }, "Failed to publish failed NodeEvent");
-  }
-}
-
 // ── Normalisation + persistence helpers ────────────────────────────
-
-/**
- * Parse `params.node_ids` (array, 0..N).
- *
- * All mini-tool callers — single-output or multi-output — send
- * `node_ids: string[]`. N=1 is a degenerate case of the same shape.
- * Non-mini-tool tasks (understand, skill agent) may omit it entirely
- * (returns `[]`); in that case no NodeEvent is published.
- */
-function parseNodeIds(params: Record<string, unknown>): string[] {
-  const arr = params.node_ids;
-  if (Array.isArray(arr)) {
-    return arr.filter((x): x is string => typeof x === "string");
-  }
-  return [];
-}
 
 /**
  * Collapse provider / handler raw results into a unified outputs

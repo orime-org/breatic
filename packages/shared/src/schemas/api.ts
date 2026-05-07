@@ -61,8 +61,22 @@ export const taskCreateSchema = z.object({
    * task types (some internal audits) may omit and pass through.
    */
   node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().optional(),
+  project_id: z.string().uuid(),
+  /**
+   * Space within the project the task targets (v10 multi-doc).
+   * Worker writes results to `project-{project_id}/canvas-{space_id}`,
+   * so this is required. Plain UUID — no FK on the server side.
+   */
+  space_id: z.string().uuid(),
   source: z.string().default("canvas"),
+  /**
+   * UUID v4 of the canvas node that will receive the task result.
+   * Required when `node_ids` is present (single-node tasks).
+   * The worker wraps this into `targetNodeIds: [target_node_id]` in the
+   * BullMQ job payload.
+   * Omit for tasks that do not bind to a canvas node.
+   */
+  target_node_id: z.string().uuid().optional(),
 });
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
@@ -72,7 +86,9 @@ export const understandSchema = z.object({
   node_ids: z.array(z.string()).min(1).optional(),
   model: z.string().optional(),
   prompt: z.string().optional(),
-  project_id: z.string().optional(),
+  project_id: z.string().uuid(),
+  /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
+  space_id: z.string().uuid(),
 });
 export type UnderstandInput = z.infer<typeof understandSchema>;
 
@@ -83,11 +99,6 @@ export const projectCreateSchema = z.object({
   description: z.string().optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
-
-export const canvasSaveSchema = z.object({
-  canvas_data: z.record(z.string(), z.unknown()),
-});
-export type CanvasSaveInput = z.infer<typeof canvasSaveSchema>;
 
 // ── Payment ──────────────────────────────────────────────────────────
 

@@ -1,69 +1,130 @@
 /**
- * Yjs document naming conventions, shared across Collab / Worker / Web.
+ * Yjs document naming convention, shared across Collab / Worker / Web.
  *
- * `docName` is the canonical identifier for a Hocuspocus document —
- * the same string appears on the WebSocket handshake, in PostgreSQL
- * persistence rows, and in `NodeEvent.docName` on the task-events
- * Redis stream. Keep the encoding in one place so nobody drifts.
+ * v10 multi-doc layout (spec §5.3):
  *
- * Shapes:
- *   - `project-{projectId}/canvas`              → main canvas
- *   - `project-{projectId}/node/{hostNodeId}`   → per-node launch-editor
- *     sub-canvas (used by mixed-editor image/video/audio and by text
- *     editor). The two share the name pattern but differ in Y-doc
- *     internal structure — the consumer distinguishes by inspecting
- *     the loaded doc, not by the name alone.
+ *   project-{projectId}/meta              project metadata + spaces list
+ *                                         + per-user tab state + Project
+ *                                         awareness + stateless signal
+ *                                         channel
+ *   project-{projectId}/canvas-{spaceId}  Canvas Space content (nodesMap +
+ *                                         edges)
+ *   project-{projectId}/document-{spaceId}  Document Space (Tiptap; future)
+ *   project-{projectId}/timeline-{spaceId}  Timeline Space (future)
+ *
+ * The doc name is the canonical identifier — appears on the Hocuspocus
+ * WebSocket handshake, on the `yjs_documents.name` row in PostgreSQL,
+ * and on the `docName` field of NodeStateUpdateEvent on the task-events
+ * Redis stream. Keep encoding here so nobody drifts.
  */
 
-/**
- * Build the Yjs document name for a project's main canvas.
- *
- * @param projectId - Project UUID
- * @returns Document name, e.g. `"project-abc123/canvas"`
- */
-export function canvasDocName(projectId: string): string {
-  return `project-${projectId}/canvas`;
-}
+/** Recognized doc kinds in the project's Yjs space. */
+export type DocKind = "meta" | "canvas" | "document" | "timeline";
 
 /**
- * Build the Yjs document name for a node's launch-editor sub-canvas.
+ * Result of parsing a project-scoped doc name.
  *
- * @param projectId - Project UUID
- * @param nodeId - Main-canvas node ID that hosts the editor
- * @returns Document name, e.g. `"project-abc123/node/xyz"`
- */
-export function nodeEditorDocName(projectId: string, nodeId: string): string {
-  return `project-${projectId}/node/${nodeId}`;
-}
-
-/**
- * Parsed components of a Yjs document name.
- *
- * Used by the Collab task-listener to route an incoming `NodeEvent`
- * to the correct Yjs document traversal (`canvas.nodesMap` vs
- * mixed-editor `flow`).
+ * `meta` doc has no `spaceId` (one per project); space-kind docs carry
+ * a non-empty `spaceId` discriminating which space inside the project.
  */
 export type ParsedDocName =
-  | { kind: "canvas"; projectId: string }
-  | { kind: "nodeEditor"; projectId: string; nodeId: string };
+  | { projectId: string; kind: "meta"; spaceId?: undefined }
+  | { projectId: string; kind: "canvas" | "document" | "timeline"; spaceId: string };
 
 /**
- * Parse a Yjs document name back into its components.
+ * Build the meta doc name for a project.
  *
- * Returns `null` for unknown patterns — consumers stay
- * forward-compatible with future naming schemes by silently skipping
- * what they don't recognise.
+ * @param projectId - Project UUID
+ * @returns `"project-{projectId}/meta"`
+ */
+export function projectMetaDocName(projectId: string): string {
+  return `project-${projectId}/meta`;
+}
+
+/**
+ * Build the Canvas Space doc name.
  *
- * @param docName - e.g. `"project-abc/canvas"` or `"project-abc/node/xyz"`
+ * @param projectId - Project UUID
+ * @param spaceId - Space UUID (a Canvas-kind space inside the project)
+ * @returns `"project-{projectId}/canvas-{spaceId}"`
+ */
+export function canvasSpaceDocName(projectId: string, spaceId: string): string {
+  return `project-${projectId}/canvas-${spaceId}`;
+}
+
+/**
+ * Build the Document Space doc name (future kind).
+ *
+ * @param projectId - Project UUID
+ * @param spaceId - Space UUID
+ * @returns `"project-{projectId}/document-{spaceId}"`
+ */
+export function documentSpaceDocName(projectId: string, spaceId: string): string {
+  return `project-${projectId}/document-${spaceId}`;
+}
+
+/**
+ * Build the Timeline Space doc name (future kind).
+ *
+ * @param projectId - Project UUID
+ * @param spaceId - Space UUID
+ * @returns `"project-{projectId}/timeline-{spaceId}"`
+ */
+export function timelineSpaceDocName(projectId: string, spaceId: string): string {
+  return `project-${projectId}/timeline-${spaceId}`;
+}
+
+/**
+ * Parse a doc name into its constituent ids and kind.
+ *
+ * Recognizes only the four shapes built by the helpers above. Returns
+ * `null` for everything else, including:
+ *
+ *   - the obsolete single-doc form `project-{pid}` (replaced by
+ *     `meta` + per-space docs in v10)
+ *   - legacy `project-{pid}/canvas` or `project-{pid}/node/{nodeId}`
+ *     sub-paths (pre-v10 history)
+ *   - bare kind without space id (e.g. `project-{pid}/canvas`)
+ *   - unknown kinds
+ *
+ * The parser intentionally does NOT validate UUID format on the ids —
+ * that is the caller's job at the persistence/auth boundary, where it
+ * can return a structured error rather than a parse miss.
+ *
+ * @param docName - Document name string from WebSocket handshake or
+ *   persistence layer
+ * @returns Parsed structure, or `null` if the name is not recognized
  */
 export function parseDocName(docName: string): ParsedDocName | null {
-  const canvasMatch = docName.match(/^project-([^/]+)\/canvas$/);
-  if (canvasMatch) {
-    return { kind: "canvas", projectId: canvasMatch[1]! };
+  // Anchor on the project- prefix and require exactly one path segment.
+  const match = docName.match(
+    /^project-([^/]+)\/(meta|canvas|document|timeline)(?:-([^/]+))?$/,
+  );
+  if (!match) return null;
+
+  const projectId = match[1];
+  const kind = match[2] as DocKind;
+  const spaceId = match[3];
+
+  if (!projectId) return null;
+
+  if (kind === "meta") {
+    // meta doc must NOT have a `-{spaceId}` suffix.
+    if (spaceId !== undefined) return null;
+    return { projectId, kind: "meta" };
   }
-  const nodeMatch = docName.match(/^project-([^/]+)\/node\/(.+)$/);
-  if (nodeMatch) {
-    return { kind: "nodeEditor", projectId: nodeMatch[1]!, nodeId: nodeMatch[2]! };
-  }
-  return null;
+
+  // Space-kind docs MUST have a non-empty spaceId.
+  if (!spaceId) return null;
+  return { projectId, kind, spaceId };
+}
+
+/**
+ * Whether a doc name is any valid project-scoped doc.
+ *
+ * Convenience for hocuspocus auth gates and stream consumers that just
+ * need a yes/no without caring about kind/ids.
+ */
+export function isProjectScopedDocName(docName: string): boolean {
+  return parseDocName(docName) !== null;
 }

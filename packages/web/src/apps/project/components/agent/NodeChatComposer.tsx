@@ -411,9 +411,10 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
   );
 
   const handleAddToInput = useCallback(() => {
-    const content = targetNodeData?.content;
+    // Canvas-native schema: node output URL is data.content directly.
+    const { content, name: nodeName } = targetNodeData ?? {};
     if (!content) return;
-    const name = targetNodeData?.name ?? 'File';
+    const name = nodeName ?? 'File';
     let type: 'image' | 'video' | 'audio' | 'text' = 'image';
     if (targetNode?.type === '1001') type = 'text';
     else if (targetNode?.type === '1003') type = 'audio';

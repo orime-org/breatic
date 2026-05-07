@@ -7,17 +7,17 @@
  */
 import React, { useState, useEffect, memo, useRef, useCallback, useMemo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/components/base/upload';
-import { message } from '@/components/base/message';
+import { Upload } from '@/ui/upload';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
 import ImageNodeContent from './ImageNodeContent';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { getImageMeta } from '@/utils/mediaUtils';
 import { cn } from '@/utils/classnames';
+import { getImageMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type PickPending,
@@ -43,12 +43,12 @@ const recognizedOverlayPresets = [
   { key: 'tree', label: '大树', cxPct: 76, cyPct: 42, wPct: 20, hPct: 34 },
 ] as const;
 
-type ImageNodeData = Partial<CanvasWorkflowNodeData>;
+type ImageNodeData = { name?: string; content?: string; width?: number; height?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, updateNodeParams, onNodesChange } = useCanvasActions();
+  const { updateNode, setNodeContent, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -66,15 +66,18 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
 
-  /** Derived from node data: current image URL and pending upload file. */
+  /** Derived from node data: current image URL from data.content (new schema). */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as ImageNodeData | undefined;
+  const pick = nodeData?.pickState;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const pick = wf?.pickState;
-  const imageUrlFromData = typeof wf?.content === 'string' ? wf.content : '';
+  /** Direct read of data.content — no history indirection in canvas-native schema. */
+  const imageUrlFromData = nodeData?.content ?? '';
+  const isHandling = nodeData?.state === 'handling';
+  const errorMessage = nodeData?.errorMessage;
   const [imageUrl, setImageUrl] = useState(imageUrlFromData);
 
-  /** Sync local state from store image URL and dimensions when available. */
+  /** Sync local state from data.content and dimensions. */
   useEffect(() => {
     if (imageUrlFromData !== imageUrl) {
       setImageUrl(imageUrlFromData);
@@ -83,9 +86,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(null);
       setContentWidth(null);
     } else {
-      const param = wf?.params as { width?: number; height?: number } | undefined;
-      const w = param?.width;
-      const h = param?.height;
+      const w = nodeData?.width;
+      const h = nodeData?.height;
       if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
         const isLandscape = w >= h;
         if (isLandscape) {
@@ -99,7 +101,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrlFromData]);
+  }, [imageUrlFromData, nodeData?.width, nodeData?.height]);
 
   /** Compute content area size from source dimensions. */
   const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
@@ -115,7 +117,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     }
   };
 
-  /** Local file: object URL only (no OSS / workflow APIs). */
+  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -123,27 +125,17 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   }) => {
     const { file, onSuccess, onError } = options;
     setIsLoading(true);
-    const meta = await getImageMeta(file);
-    if (meta.width != null && meta.height != null) {
-      applyContentSizeFromDimensions(meta.width, meta.height);
-    }
     try {
+      const meta = await getImageMeta(file);
+      if (meta.width != null && meta.height != null) {
+        applyContentSizeFromDimensions(meta.width, meta.height);
+      }
       const resourceUrl = URL.createObjectURL(file);
-      const current = nodes.find((n: { id: string }) => n.id === id);
-      const currentData = (current?.data as Record<string, unknown>) || {};
-      const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-      void _pf;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...restData,
-          name: typeof restData.name === 'string' && restData.name ? restData.name : 'image',
-          content: resourceUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
+      setNodeContent(id, {
+        content: resourceUrl,
+        width: meta.width ?? undefined,
+        height: meta.height ?? undefined,
       });
-      updateNodeParams(id, { width: meta.width, height: meta.height });
       onSuccess(resourceUrl);
     } catch (error) {
       console.error('Upload failed:', error);
@@ -448,9 +440,23 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     className={cn(
                       'relative h-full w-full min-h-0 rounded-[8px]',
                       imagePickOverlayOverflow ? 'overflow-visible' : 'overflow-hidden',
+                      errorMessage && !isHandling && 'outline outline-2 outline-red-400',
                     )}
                     data-agent-image-viewport={id}
                   >
+                    {/* Handling overlay: shown when backend is processing this node. */}
+                    {isHandling && (
+                      <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
+                        <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
+                        <div className='text-[12px] text-white font-normal mt-2'>Processing...</div>
+                      </div>
+                    )}
+                    {/* Error badge: shown when last op failed (state === 'idle' with errorMessage). */}
+                    {errorMessage && !isHandling && (
+                      <div className='absolute top-1 right-1 z-[10] max-w-[80%] rounded px-1.5 py-0.5 text-[10px] font-medium text-white bg-red-500 leading-tight truncate' title={errorMessage}>
+                        {errorMessage}
+                      </div>
+                    )}
                     <ImageNodeContent
                       key={imageUrl}
                       src={imageUrl}
@@ -497,6 +503,12 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                         <span className='mr-1'>⏳</span>识别中...
                       </div>
                     ))}
+                  </div>
+                ) : isHandling ? (
+                  /* No content yet but backend is processing: show full-area spinner */
+                  <div className='w-full h-full flex flex-col items-center justify-center text-center'>
+                    <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
+                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Processing...</div>
                   </div>
                 ) : (
                   <Upload

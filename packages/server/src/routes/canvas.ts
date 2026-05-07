@@ -21,11 +21,7 @@ import { taskService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { getRedis, getStreamRedis } from "@breatic/core";
-import { acquireNodeLock, releaseNodeLock } from "@breatic/core";
-import { publishNodeEvent } from "@breatic/core";
-import { ConflictError, ValidationError } from "@breatic/core";
-import { canvasDocName } from "@breatic/shared";
+import { ValidationError } from "@breatic/core";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -45,14 +41,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Node lock + state broadcast require a projectId + nodeIds. Agent
-  // chat / standalone tasks without nodes just skip the lock step.
   const rawNodeIds = body.params.node_ids;
   const nodeIds = Array.isArray(rawNodeIds)
     ? rawNodeIds.filter((x): x is string => typeof x === "string" && x.length > 0)
     : [];
   const projectId = body.project_id;
+  const spaceId = body.space_id;
 
+  // node_ids without project_id no longer happens because project_id is
+  // required in the schema, but keep the assertion as defense in depth
+  // — schemas can drift, this branch should never hit at runtime.
   if (nodeIds.length > 0 && !projectId) {
     throw new ValidationError("node_ids requires project_id");
   }
@@ -61,20 +59,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // any logged-in user who knows a victim project UUID can enqueue
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
-  if (projectId) {
-    await projectService.assertAccess(projectId, user.id);
-  }
-
-  const redis = getRedis();
-  const streamRedis = getStreamRedis();
-  const actor = {
-    userId: user.id,
-    username: user.email,
-  };
+  await projectService.assertAccess(projectId, user.id, "edit");
 
   const task = await taskService.create(
     user.id,
     projectId,
+    spaceId,
     body.task_type,
     body.params,
     body.model,
@@ -82,61 +72,28 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Acquire a node lock per target nodeId with taskId so only this
-  // task can release it. All-or-nothing: if any lock fails, release
-  // the ones we already acquired and roll back the task.
-  //
-  // A cleaner long-term design is "lock first, then create task", but that
-  // requires passing a client-generated taskId through taskService.create —
-  // a bigger refactor left for a follow-up. Rollback here is the minimal
-  // fix that closes the correctness gap.
-  if (nodeIds.length > 0 && projectId) {
-    const acquiredLocks: string[] = [];
-    for (const nodeId of nodeIds) {
-      const acquired = await acquireNodeLock(redis, projectId, nodeId, actor, task.id);
-      if (acquired) {
-        acquiredLocks.push(nodeId);
-        continue;
-      }
-      // Release any locks we already got, then soft-delete + throw.
-      for (const already of acquiredLocks) {
-        await releaseNodeLock(redis, projectId, already, task.id);
-      }
-      await taskService.softDelete(task.id);
-      throw new ConflictError(
-        "Another user is currently handling one of the target nodes. Try again after they finish.",
-      );
-    }
-  }
-
+  // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
+  // and writes the result back into `project-{projectId}/canvas-{spaceId}`
+  // (v10 multi-doc). The job payload carries spaceId so the worker can
+  // compute the canvas-{spaceId} doc name without reloading the task row.
   const job = await tasksQueue.add(
     "execute-task",
     {
       taskId: task.id,
       userId: user.id,
       projectId,
+      spaceId,
       taskType: body.task_type,
       model: body.model,
       skillName: body.skill_name,
       params: body.params,
       source: body.source,
+      targetNodeIds: body.target_node_id ? [body.target_node_id] : [],
     },
     defaultJobOpts(),
   );
 
   await taskService.setJobId(task.id, job.id ?? "");
-
-  // Broadcast `handling` so every collaborator sees the nodes enter
-  // their busy state immediately — before the Worker picks up the job.
-  if (nodeIds.length > 0 && projectId) {
-    await publishNodeEvent(streamRedis, {
-      type: "handling",
-      docName: canvasDocName(projectId),
-      taskId: task.id,
-      actor,
-      nodeIds,
-    });
-  }
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });
@@ -155,9 +112,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const body = c.req.valid("json");
 
   // Cross-tenant guard — see /canvas/tasks rationale.
-  if (body.project_id) {
-    await projectService.assertAccess(body.project_id, user.id);
-  }
+  await projectService.assertAccess(body.project_id, user.id, "edit");
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -168,6 +123,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const task = await taskService.create(
     user.id,
     body.project_id,
+    body.space_id,
     "understand",
     params,
     body.model,
@@ -179,6 +135,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
       taskId: task.id,
       userId: user.id,
       projectId: body.project_id,
+      spaceId: body.space_id,
       taskType: "understand",
       model: body.model,
       params,
@@ -233,7 +190,8 @@ canvas.get(
     // of every AIGC / upload for the node, including failed-run
     // error messages. Without this check any logged-in user could
     // enumerate a victim project's history by guessing UUIDs.
-    await projectService.assertAccess(project_id, user.id);
+    // History is a read; view-or-above is enough.
+    await projectService.assertAccess(project_id, user.id, "view");
 
     const result = await nodeHistoryService.listByNode(project_id, nodeId, {
       limit,

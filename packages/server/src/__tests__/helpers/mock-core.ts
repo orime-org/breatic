@@ -38,6 +38,18 @@ const mockRedis = {
   pipeline: () => mockPipeline,
 };
 
+/** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can
+ *  assert BullMQ job payloads without needing access to the queue instance. */
+export const mockQueueAdd = vi.fn().mockResolvedValue({ id: "job-1" });
+
+/**
+ * Tracks `createQueue(name)` calls so tests can assert the queue name —
+ * regression guard for a Phase 2 wiring bug where mini-tools.ts created
+ * `"mini-tools"` queue but the worker only listens on `"tasks"`. Caught
+ * in dev smoke test (PR #16); guarded by tests now.
+ */
+export const mockCreateQueue = vi.fn();
+
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
   authService: {
@@ -101,6 +113,7 @@ export const mocks = {
   },
   userRepo: {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
+    getUsersByIds: vi.fn().mockResolvedValue([]),
   },
   skillService: {
     listBuiltin: vi.fn().mockReturnValue([
@@ -117,9 +130,38 @@ export const mocks = {
     getBalance: vi.fn().mockResolvedValue(100),
     add: vi.fn().mockResolvedValue(200),
   },
-  // Infra hooks that tests need to override. Kept stable across runs so
-  // `beforeEach` can `.mockReset()` and re-program them.
-  acquireNodeLock: vi.fn().mockResolvedValue(true),
+  // v10: project-scoped permission lookup. Default = caller is owner
+  // on every project. Tests that exercise non-owner / non-member
+  // paths override per-test.
+  projectAuthService: {
+    loadProjectRole: vi.fn().mockResolvedValue("owner"),
+  },
+  projectMembersService: {
+    list: vi.fn().mockResolvedValue([]),
+    invite: vi.fn().mockResolvedValue(undefined),
+    changeRole: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  },
+  studioService: {
+    ensurePersonalStudio: vi.fn().mockResolvedValue({
+      id: "studio-1",
+      ownerUserId: "user-1",
+      name: "Personal Studio",
+    }),
+    getPersonalStudio: vi.fn().mockResolvedValue({
+      id: "studio-1",
+      ownerUserId: "user-1",
+      name: "Personal Studio",
+    }),
+  },
+  // v10 / PR-C: cross-process control plane (Redis pub/sub on DB2).
+  // Routes call these as side effects of CRUD; collab subscribes to
+  // the same channels and applies the meta-doc Y.Map mutations.
+  publishSpaceCreated: vi.fn().mockResolvedValue(undefined),
+  publishSpaceDeleted: vi.fn().mockResolvedValue(undefined),
+  yjsDocRepo: {
+    softDeleteByName: vi.fn().mockResolvedValue(true),
+  },
 };
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -136,12 +178,13 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getRedis: () => mockRedis,
     closeRedis: () => Promise.resolve(),
     runMigrations: vi.fn(),
-    createQueue: () => ({ add: vi.fn().mockResolvedValue({ id: "job-1" }) }),
+    createQueue: (name: string) => {
+      mockCreateQueue(name);
+      return { add: mockQueueAdd };
+    },
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),
-    acquireNodeLock: mocks.acquireNodeLock,
-    releaseNodeLock: vi.fn(),
     publishNodeEvent: vi.fn(),
     getStorageAdapter: vi.fn(),
     setSession: vi.fn(),
@@ -167,6 +210,13 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     textToolService: mocks.textToolService,
     modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     creditService: mocks.creditService,
+    projectAuthService: mocks.projectAuthService,
+    projectMembersService: mocks.projectMembersService,
+    studioService: mocks.studioService,
+    publishSpaceCreated: mocks.publishSpaceCreated,
+    publishSpaceDeleted: mocks.publishSpaceDeleted,
+    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+    yjsDocRepo: mocks.yjsDocRepo,
     // Agent
     getSkillRegistry: () => ({
       get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,

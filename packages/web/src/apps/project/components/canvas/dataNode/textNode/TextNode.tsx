@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, memo, useRef, useCallback } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, NodeResizer, useStore } from '@xyflow/react';
-import { message } from '@/components/base/message';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
@@ -14,7 +14,7 @@ import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
 } from '@/apps/project/components/canvas/types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import TextNodeContent, { type TextNodeContentHandle } from './TextNodeContent';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -39,7 +39,13 @@ const sourceHandleId = 'Text_0_0';
 const defaultTextNodeWidth = 300;
 const defaultTextNodeHeight = 250;
 
-/** Node data shape aligned with {@link CanvasWorkflowNodeData}; legacy missing fields are tolerated at render time. */
+/**
+ * Node data shape as read from Yjs (new schema).
+ * Text content (`prompt`) lives in the Yjs Y.XmlFragment, not in this object.
+ * TODO PR-6+: inline text editing in TextNode must be rerouted to read/write
+ * the TipTap editor document that mirrors the `prompt` Y.XmlFragment, rather
+ * than reading/writing `data.content` (removed from schema).
+ */
 type TextNodeData = Partial<CanvasWorkflowNodeData> & { type?: string };
 
 /** Custom upload request params (aligned with base Upload customRequest; onProgress optional). */
@@ -75,7 +81,11 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
 
   const nodeData = data as TextNodeData | undefined;
   const wf = (currentNode?.data ?? nodeData) as Partial<CanvasWorkflowNodeData> | undefined;
-  const textContent = typeof wf?.content === 'string' ? wf.content : '';
+  // TODO PR-6+: text content lives in the Yjs `prompt` Y.XmlFragment, not in
+  // `data.content` (removed from schema). `textContent` should be sourced from
+  // the TipTap editor document bound to the node's prompt Y.XmlFragment.
+  // Stubbed to empty string until that migration is complete.
+  const textContent = '';
   const [nodeHovered, setNodeHovered] = useState(false);
   const [textValue, setTextValue] = useState(textContent);
   const [isUploading, setIsUploading] = useState(false);
@@ -113,14 +123,13 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
     if (!hadContent && willHaveContent && hasActivated) {
       setContentEditingActive(true);
     }
+    // TODO PR-6+: text content must be written to the Yjs `prompt` Y.XmlFragment
+    // via TipTap, not to `data.content` (removed from schema). Only `name` is
+    // written here until that migration is done.
     const cur = (nodesRef.current.find((n) => n.id === id)?.data ?? {}) as Record<string, unknown>;
     updateNode(id, {
       data: {
-        ...cur,
         name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
-        content: newValue,
-        state: 'idle',
-        runType: 'parameter',
       },
     });
   };
@@ -163,14 +172,12 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
         return;
       }
       setTextValue(parsedText);
+      // TODO PR-6+: parsed text must be inserted into the Yjs `prompt` Y.XmlFragment
+      // via TipTap. Only `name` is updated here until that migration is done.
       const cur = (nodesRef.current.find((n) => n.id === id)?.data ?? {}) as Record<string, unknown>;
       updateNode(id, {
         data: {
-          ...cur,
           name: typeof cur.name === 'string' && cur.name ? cur.name : 'text',
-          content: parsedText,
-          state: 'idle',
-          runType: 'parameter',
         },
       });
       setIsUploading(false);

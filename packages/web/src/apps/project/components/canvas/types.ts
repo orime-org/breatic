@@ -1,4 +1,12 @@
 import { createContext, useContext, type CSSProperties } from 'react';
+import type { CanvasNodeFields } from '@breatic/shared';
+
+/**
+ * The canonical Yjs `data` field shape, aliased as a named type so that
+ * `CanvasWorkflowNodeData` can `extend` it (TypeScript requires an identifier,
+ * not an inline indexed-access type, as an `extends` target).
+ */
+export type CanvasNodeData = CanvasNodeFields['data'];
 
 /** Resource modality for composer / upstream lists (not the React Flow node `type` string). */
 export type ResourceType = 'image' | 'file' | 'text' | 'audio' | 'video';
@@ -14,8 +22,6 @@ export interface HandleConfig {
   className?: string;
   label?: string;
 }
-
-export type CanvasNodeState = 'idle' | 'handling';
 
 /** Picked canvas image injected into the composer (`content` = URL or data URL). */
 export interface PickInject {
@@ -81,29 +87,53 @@ export type AgentCanvasPickResultBox = PickResultBox;
 export type AgentCanvasPickConsumeFrom = PickConsumeFrom;
 
 /**
- * Workflow canvas data node `data` shape.
+ * Canvas data node `data` shape used by ReactFlow canvas components.
  *
- * Mirrors the keys inside the nested `data` Y.Map on each canvas
- * node. Fields like `prompt` (Y.XmlFragment) are NOT included here
- * — they're accessed directly from Yjs when the node editor is
- * focused.
+ * Extends `CanvasNodeFields["data"]` from `@breatic/shared` (the canonical
+ * Yjs schema) with UI-only fields that live in React local state or as
+ * transient Yjs coordination signals, NOT part of the node-state-machine schema.
  *
- * UI-only fields (`pickState`, `handles`) live in React local state,
- * NOT in Yjs.
+ * Shared fields (from `CanvasNodeFields["data"]`, canvas-native schema):
+ * - `name`              — display label
+ * - `state`             — Yjs-shared lifecycle: 'idle' | 'handling'
+ * - `handlingBy`        — who triggered the current handling (present iff state === 'handling')
+ * - `errorMessage`      — last failure message (present when state === 'idle' + last op failed)
+ * - `content`           — primary result URL (image/video/audio/3D) or text body
+ * - `cover_url`         — video first-frame thumbnail
+ * - `width`/`height`    — pixel dimensions (image/video)
+ * - `duration`          — video/audio duration in seconds
+ * - `sourceNodeId`      — parent node id when produced by mini-tool
+ * - `operation`/`operationParams` — mini-tool provenance
+ * - `prompt`/`model`/`modelParams` — generative node fields
+ * - `childIds`          — group node child IDs
+ * - `attachments`       — per-node upload pool (AttachRef[])
+ *
+ * UI-only fields (NOT in Yjs schema):
+ * - `pickState`         — canvas-pick-mode state (stored in Yjs as transient coordination signal)
+ * - `handles`           — React Flow handle config (React local state only)
+ * - `attach`            — composer draft upload stash (React local state only)
+ * - `params`            — composer parameter overrides (React local state only)
+ *
+ * TODO PR-C+: migrate `attach` / `params` to a dedicated React context or zustand slice
+ * so they are no longer tunnelled through node.data.
  */
-export interface CanvasWorkflowNodeData {
-  name: string;
-  content: string;
-  coverUrl?: string;
-  state: CanvasNodeState;
-  handlingBy?: { userId: string; username: string };
-  runType?: 'parameter' | 'sensitive';
+export interface CanvasWorkflowNodeData extends CanvasNodeData {
   /** Present only while pick mode is active for this node; absent otherwise. */
   pickState?: PickState | null;
-  attach?: unknown;
-  prompt?: string;
-  params?: Record<string, unknown>;
+  /** UI-only — handle config from React Flow (NOT in Yjs). */
   handles?: { target?: HandleConfig[]; source?: HandleConfig[] };
+  /**
+   * UI-only — composer draft upload stash.
+   *
+   * TODO PR-C+: move to dedicated composer state.
+   */
+  attach?: unknown;
+  /**
+   * UI-only — composer parameter overrides.
+   *
+   * TODO PR-C+: move to dedicated composer state.
+   */
+  params?: Record<string, unknown>;
 }
 
 /**

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/base/button';
-import Dialog from '@/components/base/dialog';
+import { Button } from '@/ui/button';
+import Dialog from '@/ui/dialog';
 
 interface ModalProps {
   open: boolean;

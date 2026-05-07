@@ -2,7 +2,7 @@
  * Video node content area: Video (video + bottom playbar) + toolbar when selected (fullscreen, download, @, edit)
  */
 import React, { memo, useRef, useState, useEffect } from 'react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import Video, { type VideoRef } from '../../common/Video';
 import PreviewVideo from '../../common/PreviewVideo';
 

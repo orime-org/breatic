@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, memo, useMemo } from 'react';
 import { useViewport } from '@xyflow/react';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useNodeData } from '@/hooks/useNodeData';
 import nodeIconMap from '@/apps/project/constants/nodeIconMap';

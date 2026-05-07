@@ -1,5 +1,15 @@
 /**
- * Base Yjs manager: Y.Doc + @hocuspocus/provider for server sync.
+ * Base Yjs manager — Y.Doc + a single Hocuspocus provider.
+ *
+ * v10 refactor:
+ *   - Drops the pre-v6 sub-doc concept (`getSubdoc` /
+ *     `imageEditorMap`) — the v10 multi-doc layout uses one
+ *     top-level Hocuspocus doc per Space (`project-{pid}/canvas-{sid}`,
+ *     `project-{pid}/meta`, etc.). No nested subdocs anywhere.
+ *   - Accepts an optional shared `HocuspocusProviderWebsocket` so all
+ *     of a project's docs can share a single TCP connection
+ *     (spec §5.3.3). Falls back to a per-provider socket when not
+ *     supplied (used by tests / standalone calls).
  *
  * No IndexedDB — this product requires network for AIGC generation,
  * so offline editing is not supported. Single data source (server)
@@ -7,26 +17,42 @@
  */
 
 import * as Y from 'yjs';
-import { HocuspocusProvider } from '@hocuspocus/provider';
+import {
+  HocuspocusProvider,
+  type HocuspocusProviderWebsocket,
+} from '@hocuspocus/provider';
 
 export interface YjsManagerConfig {
-  docId: string;
+  /**
+   * Full Yjs document name as understood by Hocuspocus. Use the
+   * helpers from `@breatic/shared/yjs-doc-names` to build it
+   * (`projectMetaDocName(pid)` / `canvasSpaceDocName(pid, sid)` etc.)
+   * — never assemble by string concatenation here.
+   */
+  docName: string;
   /**
    * Session token used by Hocuspocus `onAuthenticate` to verify the
-   * user and enforce project ownership. Must be a real session token
-   * from the auth store — previously hardcoded to `'dev'`, which
-   * caused production reconnect loops (server rejected `dev`).
-   *
-   * Empty string means "unauthenticated"; callers should avoid
-   * constructing a manager in that case. If passed anyway, the
-   * auth failure handler will clear session + redirect to login.
+   * user and enforce project membership. Empty string means
+   * "unauthenticated"; callers should avoid constructing a manager
+   * in that case.
    */
   token: string;
+  /**
+   * Optional shared websocket (from `useHocuspocusSocket`). When
+   * provided, all of a project's docs share one TCP connection
+   * (spec §5.3.3). When omitted, the provider creates its own socket
+   * to `wsUrl`.
+   */
+  websocketProvider?: HocuspocusProviderWebsocket;
+  /**
+   * Direct WebSocket URL — only consulted when `websocketProvider`
+   * is not supplied. Defaults to same-origin `/ws` (proxied to
+   * Collab by nginx in prod and Vite in dev).
+   */
   wsUrl?: string;
   /**
    * Called when the server rejects the token (expired / invalid).
    * Should clear client session state and redirect to /login.
-   * Without this, the provider would reconnect forever.
    */
   onAuthFailed?: (reason: string) => void;
 }
@@ -39,20 +65,15 @@ export interface YjsManager {
   synced: boolean;
   /** Register a callback for when initial sync completes. Returns unsubscribe function. */
   onSynced: (cb: () => void) => () => void;
-  getSubdoc: (subdocId: string) => Y.Doc;
-  getSubdocAwareness: (subdocId: string) => HocuspocusProvider['awareness'] | undefined;
-  createSnapshot: () => Uint8Array;
   destroy: () => void;
 }
 
 /**
- * Resolve the WebSocket URL.
+ * Resolve the WebSocket URL when no shared websocket is provided.
  *
- * Default: same-origin as the page, path `/ws` — nginx (docker) or the Vite
- * dev proxy reverse-proxies `/ws` to the Collab server. This means one built
- * bundle works on any host without a rebuild.
- *
- * Tests can inject an explicit `wsUrl`; production never needs to.
+ * Default: same-origin as the page, path `/ws` — nginx (docker) or the
+ * Vite dev proxy reverse-proxies `/ws` to the Collab server. This means
+ * one built bundle works on any host without a rebuild.
  */
 function resolveWsUrl(explicit?: string): string {
   if (explicit) return explicit;
@@ -60,25 +81,62 @@ function resolveWsUrl(explicit?: string): string {
   return `${proto}//${window.location.host}/ws`;
 }
 
+/**
+ * Build a Yjs manager for a single Hocuspocus document.
+ *
+ * Most callers should not invoke this directly — use the kind-specific
+ * managers (`createCanvasSpaceManager` / `createProjectMetaManager`)
+ * which know the doc-name + content shape. This generic factory exists
+ * so future kinds (document, timeline) can plug in without rewriting
+ * the provider plumbing.
+ */
 export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
-  const { docId, token, onAuthFailed } = config;
-  const wsUrl = resolveWsUrl(config.wsUrl);
+  const { docName, token, websocketProvider, onAuthFailed } = config;
 
   const doc = new Y.Doc();
 
-  const provider = new HocuspocusProvider({
-    url: wsUrl,
-    name: docId,
-    document: doc,
-    token,
-    timeout: 10000,
-    onAuthenticationFailed: ({ reason }) => {
-      // Stop the infinite reconnect loop — the client cannot recover
-      // from an invalid token without new credentials.
-      provider.disconnect();
-      onAuthFailed?.(reason);
-    },
-  });
+  // Two construction paths: shared socket or per-provider socket.
+  // Hocuspocus's HocuspocusProvider accepts EITHER `websocketProvider`
+  // OR `url` — never both. Branch here so the type narrowing stays
+  // correct on the call.
+  //
+  // Important — auto-attach behaviour (@hocuspocus/provider 3.4.4):
+  //   The constructor calls `attach()` ONLY when it had to build its
+  //   own websocket (`manageSocket = true`). When the caller passes a
+  //   shared `websocketProvider`, the provider is constructed but
+  //   never attached — so it never sends the Auth/Subscribe messages
+  //   for this doc, and the server never sees a "Client connected"
+  //   for this `name`. We must call `provider.attach()` explicitly in
+  //   that branch.
+  const provider = websocketProvider
+    ? new HocuspocusProvider({
+        websocketProvider,
+        name: docName,
+        document: doc,
+        token,
+        onAuthenticationFailed: ({ reason }) => {
+          // Stop the infinite reconnect loop on this doc's own
+          // provider; the shared socket may still be up for siblings.
+          provider.detach();
+          onAuthFailed?.(reason);
+        },
+      })
+    : new HocuspocusProvider({
+        url: resolveWsUrl(config.wsUrl),
+        name: docName,
+        document: doc,
+        token,
+        onAuthenticationFailed: ({ reason }) => {
+          provider.disconnect();
+          onAuthFailed?.(reason);
+        },
+      });
+
+  // Shared-socket branch: explicit attach. Per-socket branch:
+  // constructor already attached.
+  if (websocketProvider) {
+    provider.attach();
+  }
 
   const awareness = provider.awareness!;
 
@@ -101,46 +159,17 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
       return () => {};
     }
     syncCallbacks.add(cb);
-    return () => { syncCallbacks.delete(cb); };
+    return () => {
+      syncCallbacks.delete(cb);
+    };
   };
-
-  // Subdoc providers
-  const subdocProviders = new Map<string, HocuspocusProvider>();
-
-  const getSubdoc = (subdocId: string): Y.Doc => {
-    let subdoc = doc.getMap<Y.Doc>('subdocs').get(subdocId) as Y.Doc | undefined;
-    if (!subdoc) {
-      const guid = `${docId}-${subdocId}`;
-      subdoc = new Y.Doc({ guid, autoLoad: true });
-      doc.getMap<Y.Doc>('subdocs').set(subdocId, subdoc);
-    }
-    if (!subdoc.isLoaded) subdoc.load();
-    if (!subdocProviders.has(subdoc.guid)) {
-      subdocProviders.set(subdoc.guid, new HocuspocusProvider({
-        url: wsUrl,
-        name: subdoc.guid,
-        document: subdoc,
-        token,
-        onAuthenticationFailed: ({ reason }) => {
-          subdocProviders.get(subdoc.guid)?.disconnect();
-          onAuthFailed?.(reason);
-        },
-      }));
-    }
-    return subdoc;
-  };
-
-  const getSubdocAwareness = (subdocId: string): HocuspocusProvider['awareness'] | undefined => {
-    const subdoc = getSubdoc(subdocId);
-    return subdocProviders.get(subdoc.guid)?.awareness ?? undefined;
-  };
-
-  const createSnapshot = (): Uint8Array => Y.encodeStateAsUpdate(doc);
 
   const destroy = () => {
-    subdocProviders.forEach((p) => p.destroy());
-    subdocProviders.clear();
     provider.off('synced', checkSynced);
+    // `provider.destroy()` internally calls `detach()` (when shared
+    // ws) or disposes its own websocket (when manageSocket). We
+    // don't need to detach manually here; just listen for sync and
+    // tear everything down.
     provider.destroy();
     doc.destroy();
   };
@@ -149,11 +178,10 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
     doc,
     provider,
     awareness,
-    get synced() { return synced; },
+    get synced() {
+      return synced;
+    },
     onSynced,
-    getSubdoc,
-    getSubdocAwareness,
-    createSnapshot,
     destroy,
   };
 };

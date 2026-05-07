@@ -85,14 +85,16 @@ server / worker / web
 
 ## 画布协作
 
-- 节点创建/布局：**前端控制**，后端只更新节点 `data` 字段
+- 节点创建/布局：**前端控制**，后端只更新节点 `data` 字段；前端独占节点 create/delete，后端只能改 state 字段
 - 画布事件：**全走 Yjs**（不走 SSE），Agent 聊天流保留 SSE
-- 并发生成冲突：**后端 Redis SETNX 锁**（`${env}:canvas:lock:{projectId}:{nodeId}` TTL 2h），前端只读 state 不写
-- 事件总线：**Redis Streams** `${env}:stream:canvas-nodes`，NodeEvent 类型（handling/completed/failed），Collab 消费后通过 `nodesMap.get(nodeId).get("data").set(field, value)` 写目标节点的嵌套 data Y.Map
-- 文档命名：`project-{id}/canvas`（画布），`project-{id}/node/{nodeId}`（节点编辑器）
-- Yjs 节点结构镜像 ReactFlow `{ id, type, position, data }`：`id/type/position` 顶层，`name/content/state/handlingBy/prompt/attachments/params` 在嵌套 `data: Y.Map` 内
+- 并发无锁：Phase 2 起每次操作在画布上产生新的兄弟节点（用 edge 连接），不再有 per-node Redis SETNX 锁；Category B mini-tool 允许同一节点并发操作
+- 事件总线：**Redis Streams** `${env}:stream:canvas-nodes`，NodeEvent 类型（`node-state-update`），Collab 消费后通过 `nodesMap.get(nodeId).get("data").set(field, value)` 更新目标节点 state/content 等字段
+- 文档命名：`project-{id}`（每项目一个 Yjs 文档；不再有 per-node 编辑器子文档）
+- Yjs 节点结构镜像 ReactFlow `{ id, type, position, data }`：`id/type/position` 顶层，`name/state/handlingBy/content/cover_url/errorMessage/width/height/duration/sourceNodeId/operation/operationParams/prompt/model/modelParams/attachments/childIds` 在嵌套 `data: Y.Map` 内
+- 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state（不入 Yjs）；失败 = `idle` + `errorMessage`
 - 前端 Yjs-first 架构：写操作直接写 Yjs，增量 observe 只重建变更节点
 - **Yjs 持久化**走 PG `yjs_documents` 表（Hocuspocus Database extension），**跨实例同步**走 Redis pub/sub（Hocuspocus Redis extension）
+- Worker 发出的事件支持 `targetNodeIds: string[]`（1:N），前端预先创建 N 个占位节点，Worker 对每个节点分别 emit 一条 NodeStateUpdateEvent
 - 完整规范见 [docs/YJS.md](./docs/YJS.md)
 
 ## 三层记忆 + Turn 压缩
@@ -140,7 +142,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 ## Skill 系统
 
-**三区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）| Editor（不用 Skill）
+**两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap，左侧全屏面板）独立运行，不使用 Skill。
 
 **metadata.json 字段规范**：
 
@@ -308,3 +310,35 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 给出不彻底方案 → 用户耗费精力识别、拆穿、重提需求。
 **这是对用户时间的犯罪**，不是工程瑕疵。
 发现自己写了补丁 → 立即撤回、重做，**不许辩护、不许找理由、不许谈工作量**。
+
+# Due Diligence (DD) — 重大决策纪律(MANDATORY)
+
+DD 是**决策前**的纪律,#1~#5 是**决策后实施**的纪律,不互替。完整流程 / 5 维度尽调 / 报告骨架见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md)。
+
+**触发条件**(任一即触发):安全模型 / 长期维护负担 / 跨包接口 / 反悔代价 > 1 周。breatic 高频场景:AIGC provider 选型 / Agent-Skill 定义 / 三层记忆 / Yjs 结构 / 积分计费。
+
+**5 步硬流程**:候选枚举 → 5 维度尽调(实测/源码/治理/安全/上游)→ 对比矩阵(每格证据可追溯)→ 推荐 + 理由 → 用户拍板。
+
+**反 DD 模式**(违规):浅表决策(star/README/"感觉")· hearsay 升格(AI 对话当 ground truth)· 假对比(候选不全)· 单点论据 · "先用 X 后续再换"(治标补丁,同 #5)。
+
+**违规成本**:未做 DD 就动手 = **违反纪律 = 当场撤回**(同 #5)。
+
+**DD vs 轻量 Research 边界**:小变化(单文件 util / 候选明显)→ Research(GitHub search / 包注册表);重大决策(满足触发任一)→ **必须 DD**。
+
+**报告位置**:`docs/dd/<YYYY-MM-DD>-<topic>.md`(公开技术选型);敏感内容(vendor / 安全模型)放团队私有 channel,不入公开仓库。
+
+# Test-Driven Development (TDD) — AI coding 时代版(MANDATORY)
+
+业界共识(Anthropic 官方 / Kent Beck):**TDD 在 AI 时代是关键纪律**,但 AI 引入"作弊 / false confidence"风险需专门防御。**完整 anti-pattern / property-based 工具 / 衔接细节见 [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md)**。DD-TDD 衔接见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) 第 10 节。
+
+**5 条硬约束**(零容忍):
+
+1. **修 bug 必须先写复现测试**(防 AI 补丁式修复 → 违反 #5)
+2. **spec 由 audit / 人写,test code 由 dev 写** —— Writer/Reviewer 反闭环(同 [Anthropic 官方](https://code.claude.com/docs/en/best-practices))
+3. **重构前测试必须 green**(防 AI 偷换语义)
+4. **禁止 AI 通过删除 / 禁用测试通过** —— Kent Beck cheating warning;CI 监控 test 总数 > 10% 下降 alert
+5. **单一 AI session 不能同时写 spec + test + 实现**(强制反闭环)
+
+**节奏**:红(具体 assertion,禁 `toBeDefined()` 等 weak assertion)→ 绿(最小实现)→ 蓝(重构 + 跑全套)。原型 / explore 阶段允许后置 test。
+
+**关键路径**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作同步)→ **100% 覆盖 + 显式 invariant + property-based**(`fast-check` / `hypothesis`)。覆盖率 < 80% 不是 hard block,**关键路径裸奔 = P0 BUG**。

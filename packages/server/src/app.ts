@@ -25,6 +25,9 @@ import { paymentRoute } from "./routes/payment.js";
 import { textToolsRoute } from "./routes/text-tools.js";
 import { modelsRoute } from "./routes/models.js";
 import { assetsRoute } from "./routes/assets.js";
+import { membersRoute } from "./routes/members.js";
+import { usersRoute } from "./routes/users.js";
+import { spacesRoute } from "./routes/spaces.js";
 
 /**
  * Create and configure the Hono application.
@@ -47,6 +50,9 @@ export function createApp(): Hono {
   app.route("/api/v1/mini-tools", miniToolsRoute);
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
+  app.route("/api/v1/projects/:pid/members", membersRoute);
+  app.route("/api/v1/projects/:pid/spaces", spacesRoute);
+  app.route("/api/v1/users", usersRoute);
   app.route("/api/v1/skills", skillsRoute);
   app.route("/api/v1/tasks", tasksRoute);
   app.route("/api/v1/payment", paymentRoute);

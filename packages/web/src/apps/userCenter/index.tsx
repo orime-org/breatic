@@ -1,5 +1,5 @@
 import React, { useEffect, memo, useState, useCallback } from 'react';
-import Dialog from '@/components/base/dialog';
+import Dialog from '@/ui/dialog';
 import UpgradeButton from './components/UpgradeButton';
 import InfoBadge from './components/InfoBadge';
 import Purchase from './components/Purchase';

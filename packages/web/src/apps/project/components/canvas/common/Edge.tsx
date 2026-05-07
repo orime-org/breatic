@@ -10,8 +10,8 @@ import {
   useStore,
   type EdgeProps,
 } from '@xyflow/react';
-import { Icon } from '@/components/base/icon';
-import { Button } from '@/components/base/button';
+import { Icon } from '@/ui/icon';
+import { Button } from '@/ui/button';
 
 const CustomEdge = ({
   id,

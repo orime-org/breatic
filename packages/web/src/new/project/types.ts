@@ -1,0 +1,88 @@
+/**
+ * Local-only node data for the canvas under `src/new/project/components/canvas`.
+ * Mirrors production `apps/project/components/canvas/dataNode` fields used by the library panel.
+ */
+
+/** Pick overlay box (mixed-editor / video erase). */
+export interface ImageEditorPickResultBox {
+  cxPct: number;
+  cyPct: number;
+  wPct: number;
+  hPct: number;
+  frameTimeSec?: number;
+  maskShape?: 'rectangle' | 'circle';
+  placeholderId?: string;
+  sourceNodeId?: string;
+  content?: string;
+  name?: string;
+}
+
+export interface ImageEditorPickPending {
+  targetNodeId: string;
+  placeholderId: string;
+  content: string;
+  name: string;
+  overlayAnchor?: { xPct: number; yPct: number };
+}
+
+export interface ImageEditorPickState {
+  fromCanvas?: boolean;
+  composerFocused?: boolean;
+  eraseMaskTool?: 'selection' | 'rectangle' | 'circle';
+  pending?: ImageEditorPickPending | null;
+  pendingList?: ImageEditorPickPending[] | null;
+  resultBoxes?: ImageEditorPickResultBox[] | null;
+  selection?: ImageEditorPickPending | null;
+  consumeFrom?: string | null;
+}
+
+export interface ImageEditorNodeRuntimeData {
+  prompt?: string;
+  upstream?: string;
+  parameter?: Record<string, unknown>;
+}
+
+export type LocalCanvasNodeData = {
+  /** When true, asset nodes show an inline loading overlay (e.g. output placeholder after local generator send). */
+  localOutputPending?: boolean;
+  /** 0–100 while pending; drives {@link CanvasOutputPendingProgressOverlay} when mini-tool work is polled (no fixed 3s mock). */
+  localOutputProgressPct?: number;
+  /** Display name above the node shell. */
+  name?: string;
+  /** Text node body (plain). */
+  text?: string;
+  /** Media URL for image / video / audio preview nodes. */
+  url?: string;
+  /** Mixed-editor parity: alternate media URL field for video flow nodes. */
+  content?: string;
+  state?: 'idle' | 'handling' | 'localPending';
+  errorInfo?: string;
+  coverUrl?: string;
+  nodeRuntimeData?: ImageEditorNodeRuntimeData;
+  pickState?: ImageEditorPickState | null;
+  /** Handle metadata (same shape as production palette nodes). */
+  handles?: {
+    source?: { handleType: string; number: number }[];
+    target?: { handleType: string; number: number }[];
+  };
+};
+
+/** Alias used by ported mixed-editor video node logic. */
+export type ImageFlowNodeData = LocalCanvasNodeData;
+
+/**
+ * @param name - Display name
+ * @param content - Video URL (also mirrored to `url` when set)
+ */
+export function createEditorVideoNodeData(name: string, content: string): ImageFlowNodeData {
+  return {
+    name,
+    content,
+    url: content || undefined,
+    state: 'idle',
+    nodeRuntimeData: {},
+  };
+}
+
+/** React Flow `type` for local canvas video nodes (library `1003`). */
+export const imageEditorVideoNodeType = '1003' as const;

@@ -1,11 +1,25 @@
 /**
  * Project repository — data access with soft delete support.
+ *
+ * v10 schema: project belongs to a Studio (the studio that pays for /
+ * houses it). Owner / role information lives in `project_members`,
+ * not on the project row. `created_by_user_id` is an immutable audit
+ * field — used only for "creator" UI display and never for
+ * permission decisions; permission lookups go through
+ * `projectAuth.loadProjectRole`.
+ *
+ * The legacy `canvas_data` JSONB snapshot was dropped: live canvas
+ * state is in Yjs documents (`project-{id}/canvas-{spaceId}`) and
+ * the `yjs_documents` table.
  */
 
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../db/client.js";
 import {
   projects,
+  studios,
+  projectMembers,
   conversations,
   nodeHistory,
   projectMemories,
@@ -19,10 +33,10 @@ import type { ProjectEntity } from "@breatic/shared";
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
   return {
     id: row.id,
-    userId: row.userId,
+    studioId: row.studioId,
+    createdByUserId: row.createdByUserId,
     name: row.name,
     description: row.description,
-    canvasData: (row.canvasData ?? {}) as Record<string, unknown>,
     thumbnailUrl: row.thumbnailUrl,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -40,44 +54,90 @@ export async function getProjectById(id: string): Promise<ProjectEntity | null> 
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** List projects for a user (excludes soft-deleted). */
-export async function listProjectsByUser(
-  userId: string,
+/**
+ * List projects in a studio (excludes soft-deleted).
+ *
+ * V1 personal-Studio mode: every user has exactly one studio, so
+ * "list my projects" maps to "list projects in my studio". The route
+ * layer resolves the user's studio id before calling this.
+ *
+ * @param studioId - Studio UUID
+ * @param limit - Page size (capped at 100)
+ * @param offset - Pagination offset
+ */
+export async function listProjectsByStudio(
+  studioId: string,
   limit = 20,
   offset = 0,
 ): Promise<ProjectEntity[]> {
   const rows = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.userId, userId), isNull(projects.deletedAt)))
+    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)))
     .orderBy(desc(projects.updatedAt))
     .limit(Math.min(limit, 100))
     .offset(offset);
   return rows.map(toEntity);
 }
 
-/** Create a new project. */
+/**
+ * Drizzle transaction handle as it appears inside a `db.transaction(...)`
+ * callback. Loose typing because the underlying generic is internal
+ * to drizzle-orm and not part of the public surface.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Tx = PgTransaction<any, any, any>;
+
+/**
+ * Create a new project and the corresponding owner row in
+ * `project_members`.
+ *
+ * Both writes happen on the caller-supplied `tx` so they participate
+ * in whatever larger transaction the service layer is composing
+ * (typically: project + owner row + initial Yjs meta state, all in
+ * one atomic unit so "project exists ⇒ owner exists ⇒ default Space
+ * exists" is an invariant established at creation time).
+ *
+ * The owner row must land in the same transaction as the project row
+ * — leaving a project without an owner row would make the project
+ * effectively orphaned (no member can read it, including its own
+ * creator). The partial unique index in `project_members` enforces
+ * "exactly one owner per active project".
+ *
+ * @param tx - Drizzle transaction handle from a surrounding
+ *   `db.transaction(async tx => ...)` block in the service layer
+ * @param studioId - Studio that the project belongs to
+ * @param creatorUserId - User who created the project (becomes owner)
+ * @param name - Project name
+ * @param description - Optional description
+ * @returns The freshly created project entity
+ */
 export async function createProject(
-  userId: string,
+  tx: Tx,
+  studioId: string,
+  creatorUserId: string,
   name: string,
   description?: string,
 ): Promise<ProjectEntity> {
-  const rows = await db
+  const inserted = await tx
     .insert(projects)
-    .values({ userId, name, description })
+    .values({
+      studioId,
+      createdByUserId: creatorUserId,
+      name,
+      description,
+    })
     .returning();
-  return toEntity(rows[0]!);
-}
+  const project = inserted[0]!;
 
-/** Update canvas data snapshot. */
-export async function updateCanvas(
-  id: string,
-  canvasData: Record<string, unknown>,
-): Promise<void> {
-  await db
-    .update(projects)
-    .set({ canvasData, updatedAt: new Date() })
-    .where(eq(projects.id, id));
+  await tx.insert(projectMembers).values({
+    projectId: project.id,
+    userId: creatorUserId,
+    role: "owner",
+    addedBy: null,
+  });
+
+  return toEntity(project);
 }
 
 /**
@@ -116,40 +176,41 @@ export async function updateProjectMeta(
  * Duplicate a project and all of its Yjs documents inside a single
  * transaction.
  *
- * Copies:
- *   - The `projects` row (new UUID, same name with " (copy)" suffix,
- *     same description / thumbnail / `canvas_data` JSONB snapshot)
- *   - Every `yjs_documents` row whose name begins with
- *     `project-<sourceId>/` — rewriting the prefix to the new UUID so
- *     `canvas` and every per-node editor document carry over
+ * Copies (with a new project UUID):
+ *   - The `projects` row (name with " (copy)" suffix, same
+ *     description / thumbnail, same `studio_id`, new
+ *     `created_by_user_id` = caller)
+ *   - One `project_members` row with `role='owner'` for the caller
+ *   - Every `yjs_documents` row whose name starts with
+ *     `project-<sourceId>/` — rewriting the prefix to the new UUID
+ *     so meta + every Canvas Space doc carries over (multi-doc
+ *     layout per v10 spec §5.3)
  *
  * Does NOT copy:
- *   - Conversations, messages, tasks, or node_history (those belong
- *     to the user's past work and a duplicate should start with a
- *     fresh timeline)
- *   - Project / user memory rows (same reasoning — memory is derived
- *     from past conversations the duplicate doesn't have)
+ *   - Conversations, messages, tasks, or node_history (these belong
+ *     to the user's past work; the duplicate starts with a fresh
+ *     timeline)
+ *   - Project / user memory rows (derived from past conversations
+ *     the duplicate doesn't have)
+ *   - `project_members` other than the owner (the duplicate is
+ *     a fresh project with the caller as the only member)
  *
  * Asset URLs inside the Yjs blobs continue to point at the original
- * OSS / S3 objects. This is intentional: we don't re-upload anything
- * on duplicate, so the copy is cheap and fast. If a later feature
- * needs truly independent storage for forks, that's a separate
- * cascade.
+ * OSS / S3 objects. Duplication is metadata-only at the storage
+ * layer; OSS de-dupes by content hash anyway.
  *
- * @param userId - Owner of the new project (must match caller at
- *   the service layer — this repo function does NOT itself check
+ * @param creatorUserId - Owner of the new project (must match caller
+ *   at the service layer — this repo function does NOT itself check
  *   ownership of the source; that happens in project.service.ts)
  * @param sourceId - UUID of the project to duplicate
  * @returns The freshly created project entity, or `null` if the
  *   source project does not exist or is soft-deleted
  */
 export async function duplicateProject(
-  userId: string,
+  creatorUserId: string,
   sourceId: string,
 ): Promise<ProjectEntity | null> {
   return db.transaction(async (tx) => {
-    // Load the source inside the transaction so we can't race a
-    // concurrent delete between fetch and copy.
     const sourceRows = await tx
       .select()
       .from(projects)
@@ -158,30 +219,27 @@ export async function duplicateProject(
     const source = sourceRows[0];
     if (!source) return null;
 
-    // Insert the new project row. The DB generates a new UUID; we
-    // read it back via .returning() to drive the Yjs copy below.
-    const [inserted] = await tx
+    const inserted = await tx
       .insert(projects)
       .values({
-        userId,
+        studioId: source.studioId,
+        createdByUserId: creatorUserId,
         name: `${source.name} (copy)`,
         description: source.description,
-        canvasData: (source.canvasData ?? {}) as Record<string, unknown>,
         thumbnailUrl: source.thumbnailUrl,
       })
       .returning();
-    if (!inserted) return null;
+    const newProject = inserted[0]!;
 
-    // Copy every Yjs document whose name starts with
-    // `project-<sourceId>/` — this covers `canvas` and every
-    // `node/<nodeId>` per-node editor doc. `substring(name from N+1)`
-    // strips the old prefix, then we concatenate the new one.
-    //
-    // `yjs_documents` is not part of the Drizzle schema (it's
-    // managed by the collab package's ensureTable) so we drop to
-    // raw SQL via `sql` template tag.
+    await tx.insert(projectMembers).values({
+      projectId: newProject.id,
+      userId: creatorUserId,
+      role: "owner",
+      addedBy: null,
+    });
+
     const oldPrefix = `project-${sourceId}/`;
-    const newPrefix = `project-${inserted.id}/`;
+    const newPrefix = `project-${newProject.id}/`;
     await tx.execute(sql`
       INSERT INTO yjs_documents (name, data, updated_at)
       SELECT ${newPrefix} || substring(name from ${oldPrefix.length + 1}),
@@ -191,7 +249,7 @@ export async function duplicateProject(
       WHERE name LIKE ${oldPrefix + "%"}
     `);
 
-    return toEntity(inserted);
+    return toEntity(newProject);
   });
 }
 
@@ -216,18 +274,19 @@ export async function duplicateProject(
  * here — see the rationale in `cascadeDeleteConversations`.
  *
  * yjs_documents is special: it has no FK to `projects`, only a string
- * `name` key shaped like `project-{id}/canvas` or `project-{id}/node/{nodeId}`.
- * We soft-delete every row whose name starts with the project prefix.
+ * `name` key shaped like `project-{id}/...` (the v10 multi-doc layout
+ * uses meta + canvas-{sid} sub-paths). We soft-delete every row whose
+ * name starts with the project prefix.
+ *
+ * project_members is also soft-deleted in this transaction so the
+ * partial unique index "one active owner per project" is freed up if
+ * the project is ever recreated under the same id (it isn't, but the
+ * invariant is principled).
  */
 export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
 
-    // Gather the project's non-deleted conversations so the cascade
-    // helper can soft-delete their attachments/memories/history in the
-    // same transaction. Skipping this (like the original BUG-031 fix
-    // did) would leak conversation_attachments / conversation_memories /
-    // memory_history_entries as orphaned "deleted_at IS NULL" rows.
     const convRows = await tx
       .select({ id: conversations.id })
       .from(conversations)
@@ -237,9 +296,6 @@ export async function deleteProject(id: string): Promise<void> {
     const convIds = convRows.map((r) => r.id);
     await cascadeDeleteConversations(tx, convIds, now);
 
-    // Most child tables have no `updatedAt` column (only `deletedAt`);
-    // only `projects` and `yjs_documents` carry `updatedAt`. Keep each
-    // update set minimal so typecheck catches a schema drift.
     await tx
       .update(nodeHistory)
       .set({ deletedAt: now })
@@ -263,6 +319,16 @@ export async function deleteProject(id: string): Promise<void> {
       );
 
     await tx
+      .update(projectMembers)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(projectMembers.projectId, id),
+          isNull(projectMembers.deletedAt),
+        ),
+      );
+
+    await tx
       .update(yjsDocuments)
       .set({ deletedAt: now })
       .where(
@@ -278,3 +344,9 @@ export async function deleteProject(id: string): Promise<void> {
       .where(eq(projects.id, id));
   });
 }
+
+// `studios` is referenced indirectly via `projects.studioId`. Re-export
+// the studios table for `studioRepo.getByOwnerUserId` patterns elsewhere.
+// Keep this module's public surface focused on `projects` though;
+// studio CRUD lives in `studio.repo.ts`.
+export { studios };

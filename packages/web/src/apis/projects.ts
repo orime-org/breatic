@@ -56,12 +56,16 @@ export const duplicate = (id: string) =>
     method: 'post',
   });
 
-/** Save a legacy canvas data JSON snapshot. */
-export const saveCanvas = (id: string, data: { canvas_data: Record<string, unknown> }) =>
-  request<ApiResponse<{ success: true }>>({
-    url: `/api/v1/projects/${id}/canvas`,
-    method: 'put',
-    data,
+/**
+ * Fetch a project's full detail (entity + the caller's role on it).
+ *
+ * The `myRole` field gates UI: view-only members see read-only chrome,
+ * non-owners hide the member-management dialog, etc.
+ */
+export const get = (id: string) =>
+  request<ApiResponse<import('@breatic/shared').ProjectDetail>>({
+    url: `/api/v1/projects/${id}`,
+    method: 'get',
   });
 
 /** Soft-delete a project. */

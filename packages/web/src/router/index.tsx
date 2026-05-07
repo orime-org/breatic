@@ -5,6 +5,7 @@ import Loading from '@/components/loading/Loading';
 const Project = lazy(() => import('@/apps/project/index'));
 const Workspace = lazy(() => import('@/apps/workspace/index'));
 const VideoEditor = lazy(() => import('@/apps/videoEditor/index'));
+const LocalProjectPage = lazy(() => import('@/new/project/index'));
 const LoginPage = lazy(() => import('@/apps/auth/LoginPage'));
 const ResetPasswordPage = lazy(() => import('@/apps/auth/ResetPasswordPage'));
 
@@ -26,6 +27,14 @@ const router = createBrowserRouter([
     element: (
       <Suspense fallback={<Loading />}>
         <Project />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/new-project',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <LocalProjectPage />
       </Suspense>
     ),
   },

@@ -1,18 +1,16 @@
 /**
  * Canvas node types shared between frontend, Collab, and server.
  *
- * These types document the Y.Map-per-node structure used in the
- * canvas Yjs document. See `docs/YJS.md` section 3 for the full
- * specification.
+ * Each project has one Yjs document containing nodesMap (Y.Map<nodeId, Y.Map>)
+ * + edgesMap (Y.Map<edgeId, Y.Map>). Node state machine: 'idle' / 'handling'
+ * (in Yjs); 'localPending' is local-only React state, never in Yjs.
  *
- * State machine:
- *   idle  -> (user clicks generate / upload)  ->  handling
- *   handling  -> (Worker / upload success)     ->  idle (content updated)
- *   handling  -> (Worker / upload failure)     ->  idle (content unchanged)
+ * See design spec at:
+ *   breatic-inner/design/2026-04-26-yjs-editor-redesign/spec.md (04-29 banner)
  */
 
-/** State of a canvas node's content pipeline. */
-export type CanvasNodeState = "idle" | "handling";
+/** Yjs-shared lifecycle. localPending is local-only and not represented here. */
+export type NodeState = 'idle' | 'handling';
 
 /** Identifies the user who triggered the current handling. */
 export interface HandlingActor {
@@ -23,8 +21,7 @@ export interface HandlingActor {
 /**
  * Attachment reference stored in a node's `attachments` Y.Array.
  *
- * Each attachment is a `Y.Map` at runtime with these keys. The
- * `id` is used inside TipTap `@` Mention nodes for reference.
+ * Each attachment is a Y.Map at runtime with these keys.
  */
 export interface AttachRef {
   id: string;
@@ -38,155 +35,123 @@ export interface AttachRef {
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
  *
- * Structure mirrors ReactFlow's `{ id, type, position, data }`:
+ * Two node categories:
+ *   - Generative: has prompt/model/modelParams; click execute → produces data node
+ *   - Data: has content/cover_url/etc.; can be source for mini-tool ops
  *
- * ```
- * nodeMap: Y.Map
- *   ├── id:       string
- *   ├── type:     string
- *   ├── position: Y.Map { x, y }
- *   └── data:     Y.Map              ← nested, matches ReactFlow
- *         ├── name:         string
- *         ├── content:      string
- *         ├── coverUrl:     string | undefined
- *         ├── state:        "idle" | "handling"
- *         ├── handlingBy:   Y.Map { userId, username } | undefined
- *         ├── runType:      "parameter" | "sensitive"
- *         ├── params:       Y.Map<string, unknown>
- *         ├── attachments:  Y.Array<Y.Map>
- *         └── prompt:       Y.XmlFragment
- * ```
- *
- * This is a documentation type — you never instantiate it.
+ * Both share the state machine and core fields. Type fields below are
+ * marked with which category they apply to.
  */
 export interface CanvasNodeFields {
-  /** Stable node ID (immutable after creation). */
+  /** Stable node ID (frontend-generated UUID v4, immutable after creation). */
   id: string;
-  /** Modality: "1001" text, "1002" image, "1003" video, "1004" audio, "group". */
+  /** Modality: '1001' text, '1002' image, '1003' video, '1004' audio, '3d', 'web', 'generative', 'group'. */
   type: string;
-  /** Canvas coordinates — Y.Map { x, y } at runtime. */
+  /** Canvas coordinates. Y.Map { x, y } at runtime. */
   position: { x: number; y: number };
-  /** Nested data — Y.Map at runtime, matches ReactFlow node.data. */
+  /** Nested data Y.Map at runtime. */
   data: {
     /** Display label. */
     name: string;
-    /** Pipeline state. */
-    state: CanvasNodeState;
-    /** Who triggered the current handling; undefined when idle. */
+
+    // ─── State machine (all node types) ─────────────────────
+    /** Yjs-shared lifecycle. */
+    state: NodeState;
+    /** Who triggered the current handling; undefined when state === 'idle'. */
     handlingBy?: HandlingActor;
-    /** Primary result: URL or text body. */
-    content: string;
-    /** Video first-frame cover URL. */
-    coverUrl?: string;
-    /** Generation run type. */
-    runType?: "parameter" | "sensitive";
+    /** Last failure message; present when state === 'idle' AND last operation failed. */
+    errorMessage?: string;
+
+    // ─── Data node fields ───────────────────────────────────
+    /** Primary result: URL (image/video/audio/3D) or text body (text/web). */
+    content?: string;
+    /** Video first-frame thumbnail; equals `content` for image. */
+    cover_url?: string;
+    /** Image / video pixel width. */
+    width?: number;
+    /** Image / video pixel height. */
+    height?: number;
+    /** Video / audio duration in seconds. */
+    duration?: number;
+    /** Source node id when this data node was produced by a mini-tool from a parent node. */
+    sourceNodeId?: string;
+    /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
+    operation?: string;
+    /** Tool input params when applicable. */
+    operationParams?: Record<string, unknown>;
+
+    // ─── Generative node fields ─────────────────────────────
     /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
-    prompt: unknown;
+    prompt?: unknown;
+    /** Model id from config/models/*.yaml. */
+    model?: string;
+    /** Model-specific params. */
+    modelParams?: Record<string, unknown>;
+
+    // ─── Group node fields ──────────────────────────────────
+    /** Child node IDs when type === 'group'. */
+    childIds?: string[];
+
+    // ─── Common ─────────────────────────────────────────────
     /** Per-node upload pool — Y.Array<Y.Map> at runtime. */
     attachments: AttachRef[];
-    /** Generation parameters — Y.Map<string, unknown> at runtime. */
-    params: Record<string, unknown>;
-    /**
-     * Last failure message. Set when a task fails (POST-side rejection or
-     * Worker-side throw); cleared automatically by the Collab consumer
-     * when the next `handling` or `completed` event lands on the node.
-     *
-     * Semantics differ by doc kind (enforced in the Collab consumer):
-     *   - Canvas: failure preserves prior `content` / `coverUrl` so the
-     *     user never loses their last successful result.
-     *   - Mixed editor flow: failure clears `content` + `coverUrl`
-     *     because the node IS the task's output — a failed mini-tool
-     *     placeholder has no valid content to retain, and there is no
-     *     retry UX for mixed-editor tiles (user deletes the node).
-     */
-    errorInfo?: string;
   };
 }
 
-// ── Event bus payloads ─────────────────────────────────────────────
+// ── Event bus payloads ────────────────────────────────────────────
 
 /**
- * `docName` identifies the target Yjs document unambiguously:
- *   - `"project-{projectId}/canvas"` — main canvas (CanvasNodeFields above)
- *   - `"project-{projectId}/node/{hostNodeId}"` — mixed editor flow
- *     (the `nodeId` on the event is then the sub-node inside that flow)
+ * Partial update payload for a NodeStateUpdateEvent.
  *
- * See `packages/collab/src/schema.ts` for the canonical builders
- * (`canvasDocName`, `nodeEditorDocName`) and parser (`parseDocName`).
+ * Mirrors `Partial<CanvasNodeFields['data']>` but allows `null` for
+ * fields that can be explicitly cleared — most importantly `handlingBy`.
+ *
+ * Why null instead of undefined:
+ *   `JSON.stringify({ handlingBy: undefined })` → `"{}"` — the key is
+ *   dropped and the Collab consumer never sees it. Using `null` preserves
+ *   the key through the JSON round-trip so the consumer can call
+ *   `dataMap.delete("handlingBy")` to clear the field.
  */
+export type NodeStateUpdatePayload = {
+  [K in keyof CanvasNodeFields['data']]?: CanvasNodeFields['data'][K] | null;
+};
 
 /**
- * Task-level event schema (unified multi-output):
+ * Worker → Collab event.
  *
- * Every task — whether it produces 1 output or N — emits a single
- * event per state transition. Consumers iterate the `nodeIds` /
- * `outputs` array; N=1 tasks are a degenerate case of the same
- * shape. This is the outcome of the T3 phase5 refactor:
- * there is no "single-output fast path" — one schema, one code path.
+ * Worker writes to canvas state via this event (never directly to Yjs).
+ * Collab consumes the event and applies `update` (NodeStateUpdatePayload)
+ * to the target node, with allowlist filtering on the receiving end.
  *
- * Examples:
- *   - `image.crop` — 1 input image → 1 output → `nodeIds: [x]`
- *   - `video.cut` — 1 input video + N segments → N outputs →
- *     `nodeIds: [x1,x2,...]` at handling,
- *     `outputs: [{nodeId:x1, content:...}, ...]` at completion
- */
-
-/** All N nodes for the task enter handling simultaneously. */
-export interface NodeHandlingEvent {
-  type: "handling";
-  docName: string;
-  /** Task ID that acquired the lock. */
-  taskId: string;
-  actor: HandlingActor;
-  /** The set of nodes this task updates on completion (N ≥ 1). */
-  nodeIds: string[];
-}
-
-/**
- * Task completed. Exactly one output per node in `nodeIds`; the
- * consumer matches them by index-parallel iteration.
- */
-export interface NodeCompletedEvent {
-  type: "completed";
-  docName: string;
-  /** Task ID that held the lock — used for verified release. */
-  taskId: string;
-  /** One entry per affected node (N ≥ 1). */
-  outputs: Array<{
-    nodeId: string;
-    content: string;
-    cover_url?: string;
-  }>;
-}
-
-/**
- * Task failed. All N nodes enter the failed state together (all-or-
- * nothing); partial success is expressed via completed + failed on
- * overlapping subsets if a handler ever needs that (not currently
- * used).
+ * Universal rule: backend can ONLY modify state fields. It cannot
+ * create or delete nodes — that's frontend's responsibility. So the
+ * `update` payload here will only carry state-field updates (state /
+ * content / cover_url / errorMessage / handlingBy / width / height /
+ * duration), enforced by the consumer's allowlist.
  *
- * Behavior on each node's `data` is doc-kind dependent (the Collab
- * consumer routes by `parseDocName(docName)`):
- *   - Canvas: `content` / `coverUrl` preserved (user's prior result
- *     stays visible); `errorInfo` set; `state` → `'idle'`.
- *   - Mixed editor flow: `content` + `coverUrl` cleared; `errorInfo`
- *     set; `state` → `'idle'`. The node becomes an explicit "failed
- *     placeholder" that the user must delete manually (no retry UI).
+ * docName carries the target Yjs doc. In the v10 multi-doc layout
+ * (one Canvas Space doc per project per Space), this will be
+ * `project-{projectId}/canvas-{spaceId}` once the worker rewrite in
+ * PR-C lands. PR-A+B leaves this as the pre-v10 single-doc form
+ * `project-{projectId}` because the worker hasn't migrated yet.
+ *
+ * Null-as-delete convention:
+ *   A `null` value means "clear this field" (consumer calls Y.Map.delete).
+ *   An absent key means "leave this field untouched".
+ *   This distinction survives the JSON round-trip; `undefined` does not.
  */
-export interface NodeFailedEvent {
-  type: "failed";
-  docName: string;
-  /** Task ID that held the lock — used for verified release. */
-  taskId: string;
-  /** All nodes affected by this failure (N ≥ 1). */
-  nodeIds: string[];
+export interface NodeStateUpdateEvent {
+  type: 'node-state-update';
   /**
-   * Human-readable failure reason. Written into each node's
-   * `data.errorInfo` by the Collab consumer. Optional — events
-   * without this field land as `errorInfo: ''`.
+   * Yjs doc name. Pre-v10 form `project-{projectId}` until PR-C
+   * migrates the worker to emit `project-{projectId}/canvas-{spaceId}`.
    */
-  errorMessage?: string;
+  docName: string;
+  /** Target node receiving the update. */
+  nodeId: string;
+  /** Partial update merged into target node's data Y.Map by Collab consumer. */
+  update: NodeStateUpdatePayload;
 }
 
-/** Union of all node state events on the task-events bus. */
-export type NodeEvent = NodeHandlingEvent | NodeCompletedEvent | NodeFailedEvent;
+/** Single union for forward-compat. */
+export type NodeEvent = NodeStateUpdateEvent;

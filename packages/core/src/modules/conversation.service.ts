@@ -76,10 +76,12 @@ export async function getOrCreate(
     return validateOwnership(conversationId, userId);
   }
 
-  // Enforce project ownership BEFORE creating the conversation so a
+  // Enforce project access BEFORE creating the conversation so a
   // failed check does not leave an orphan conversation row behind.
+  // Chat is a creative-write action — view-only members cannot
+  // open chat sessions (v10 §7.2.1).
   if (projectId) {
-    await projectService.assertAccess(projectId, userId);
+    await projectService.assertAccess(projectId, userId, "edit");
   }
 
   const title = firstMessage.slice(0, 100);

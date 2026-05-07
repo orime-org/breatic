@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/components/base/upload';
-import { message } from '@/components/base/message';
+import { Upload } from '@/ui/upload';
+import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
@@ -19,7 +19,7 @@ import {
   type CanvasWorkflowNodeData,
 } from '@/apps/project/components/canvas/types';
 import { Modal } from '@/components/modals/Modal';
-import { Input } from '@/components/base/input';
+import { Input } from '@/ui/input';
 import WaveSurfer from 'wavesurfer.js';
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';
@@ -32,7 +32,7 @@ import NodeChatComposer from '@/apps/project/components/agent/NodeChatComposer';
 const targetHandleId = 'Audio_0_0';
 const sourceHandleId = 'Audio_0_0';
 
-type AudioNodeData = Partial<CanvasWorkflowNodeData>;
+type AudioNodeData = { name?: string; content?: string; duration?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
 
 /** Maximum recording duration (ms). */
 const maxRecordingTime = 60000;
@@ -48,7 +48,7 @@ const formatTime = (seconds: number): string => {
 const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, onNodesChange } = useCanvasActions();
+  const { setNodeContent, onNodesChange } = useCanvasActions();
   const {
     openRightPanel,
     requestAddResourceToInput,
@@ -79,14 +79,17 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     return () => window.clearTimeout(timerId);
   }, [modalVisible]);
 
-  // ---------- Derived from node data: current audio URL and pending file ----------
+  // ---------- Derived from node data: current audio URL from data.content (canvas-native schema) ----------
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as AudioNodeData | undefined;
   const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
-  const audioUrlFromData = typeof wf?.content === 'string' ? wf.content : '';
+  /** Direct read of data.content — no history indirection in canvas-native schema. */
+  const audioUrlFromData = nodeData?.content ?? '';
+  const isHandling = nodeData?.state === 'handling';
+  const errorMessage = nodeData?.errorMessage;
   const [audioUrl, setAudioUrl] = useState(audioUrlFromData);
 
-  /** Sync local audio URL when store content changes. */
+  /** Sync local audio URL when data.content changes. */
   useEffect(() => {
     if (audioUrlFromData !== audioUrl) {
       setAudioUrl(audioUrlFromData);
@@ -94,7 +97,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrlFromData]);
 
-  /** Local file: object URL only (no OSS / workflow APIs). */
+  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
   const customRequest = async (options: {
     file: File;
     onSuccess: (response: unknown) => void;
@@ -104,20 +107,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     setIsLoading(true);
     try {
       const resourceUrl = URL.createObjectURL(file);
-      const current = nodes.find((n: { id: string }) => n.id === id);
-      const currentData = (current?.data as Record<string, unknown>) || {};
-      const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-      void _pf;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...restData,
-          name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
-          content: resourceUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
-      });
+      setNodeContent(id, { content: resourceUrl });
       setIsLoading(false);
       onSuccess(resourceUrl);
     } catch (error) {
@@ -204,20 +194,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
         setIsLoading(true);
         try {
           const resourceUrl = URL.createObjectURL(blob);
-          const current = nodes.find((n: { id: string }) => n.id === id);
-          const currentData = (current?.data as Record<string, unknown>) || {};
-          const { pendingFileId: _pf, nodeSelectedResultData: _legacy, ...restData } = currentData;
-          void _pf;
-          void _legacy;
-          updateNode(id, {
-            data: {
-              ...restData,
-              name: typeof restData.name === 'string' && restData.name ? restData.name : 'audio',
-              content: resourceUrl,
-              state: 'idle',
-              runType: 'parameter',
-            },
-          });
+          setNodeContent(id, { content: resourceUrl });
           setShowRecordView(false);
           setIsLoading(false);
         } catch (error) {
@@ -273,18 +250,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     setUrlValue('');
     setIsLoading(true);
     try {
-      const cur = (nodes.find((n: { id: string }) => n.id === id)?.data as Record<string, unknown>) || {};
-      const { nodeSelectedResultData: _legacy, ...rest } = cur;
-      void _legacy;
-      updateNode(id, {
-        data: {
-          ...rest,
-          name: typeof rest.name === 'string' && rest.name ? rest.name : 'audio',
-          content: trimmedUrl,
-          state: 'idle',
-          runType: 'parameter',
-        },
-      });
+      setNodeContent(id, { content: trimmedUrl });
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to set URL:', error);
@@ -467,7 +433,19 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     />
                   </div>
                 ) : audioUrl ? (
-                  <div className='w-full h-full'>
+                  <div className='relative w-full h-full'>
+                    {/* Handling overlay */}
+                    {isHandling && (
+                      <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
+                        <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
+                        <div className='text-[12px] text-white font-normal mt-2'>Processing...</div>
+                      </div>
+                    )}
+                    {errorMessage && !isHandling && (
+                      <div className='absolute top-1 right-1 z-[10] max-w-[80%] rounded px-1.5 py-0.5 text-[10px] font-medium text-white bg-red-500 leading-tight truncate' title={errorMessage}>
+                        {errorMessage}
+                      </div>
+                    )}
                     <AudioNodePlayer
                       src={audioUrl}
                       selected={selected}
@@ -480,6 +458,11 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                         openRightPanel('editor', id, undefined, true);
                       }}
                     />
+                  </div>
+                ) : isHandling ? (
+                  <div className='w-full h-full flex flex-col items-center justify-center text-center'>
+                    <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
+                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Processing...</div>
                   </div>
                 ) : (
                   <Upload

@@ -1,7 +1,7 @@
 /** Image node toolbar: Launch Editor | Upload | Info. */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 
 export interface ImageNodeToolbarProps {

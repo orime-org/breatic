@@ -5,6 +5,7 @@
  * primary keys and timestamp with timezone columns.
  */
 
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -18,6 +19,7 @@ import {
   customType,
   uniqueIndex,
   index,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -59,26 +61,108 @@ export const users = pgTable(
   ],
 );
 
-// ── 2. Projects ──────────────────────────────────────────────────────
+// ── 2. Studios ───────────────────────────────────────────────────────
+//
+// V1 = personal Studio: every user has exactly one studio row, written
+// at registration. The table exists in V1 only as a foreign-key target
+// for `projects.studio_id`; it is otherwise an empty record. Asset
+// management (`studio_assets`, `asset_models`) is deferred to V2.
+
+export const studios = pgTable(
+  "studios",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    // One personal studio per active user (V1 invariant). Partial unique
+    // index lets a previously-soft-deleted studio coexist with a fresh
+    // one if we ever recreate; not relevant for V1 but principled.
+    uniqueIndex("studios_owner_user_id_idx")
+      .on(table.ownerUserId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+// ── 3. Projects ──────────────────────────────────────────────────────
+//
+// v10 schema: project belongs to a studio (the studio that pays for /
+// houses it). Owner / role information lives in `project_members`,
+// not on the project row. `created_by_user_id` is an immutable audit
+// field — used for "creator" UI labels, never for permission decisions.
+//
+// `canvas_data` (legacy JSONB snapshot) was dropped: live canvas state
+// lives in Yjs documents (`project-{id}/canvas-{spaceId}`) and the
+// `yjs_documents` table.
 
 export const projects = pgTable(
   "projects",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
-    canvasData: jsonb("canvas_data").$type<Record<string, unknown>>().default({}),
     thumbnailUrl: text("thumbnail_url"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (table) => [index("projects_user_id_idx").on(table.userId)],
+  (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],
 );
 
-// ── 3. Conversations ─────────────────────────────────────────────────
+// ── 4. Project Members ───────────────────────────────────────────────
+//
+// Three roles: `owner` (unique per project, partial unique index) /
+// `edit` / `view`. The owner row is written in the same transaction as
+// the project insert — `addedBy` is null for that row (creator has no
+// inviter). `transfer-owner` is intentionally not implemented in V1
+// (v10 spec §7.2.5) — the partial unique index would have to be dance-
+// stepped through; deferring saves complexity for the team-Studio phase.
+
+export const projectMembers = pgTable(
+  "project_members",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    role: varchar("role", { length: 16 }).notNull(),
+    /** Null for the creator's row; set to inviter's id for invited members. */
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("project_members_user_id_idx").on(table.userId),
+    index("project_members_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    // Drizzle does not (as of 0.30) emit partial unique indexes via the
+    // table builder; see migrations/<NNNN>_studios_and_project_members.sql
+    // for the `project_members_one_owner_per_project` partial unique
+    // index that backs the "one active owner per project" invariant.
+  ],
+);
+
+// ── 5. Conversations ─────────────────────────────────────────────────
 
 /** Shape of a single message stored inline in the JSONB array. */
 export interface ConversationMessage {
@@ -114,7 +198,7 @@ export const conversations = pgTable(
   ],
 );
 
-// ── 4. Tasks ─────────────────────────────────────────────────────────
+// ── 6. Tasks ─────────────────────────────────────────────────────────
 
 export const tasks = pgTable(
   "tasks",
@@ -126,6 +210,16 @@ export const tasks = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    /**
+     * Space within the project that the task targets. v10 multi-doc:
+     * worker writes results back into `project-{projectId}/canvas-{spaceId}`,
+     * so the worker MUST know which Space's doc to open.
+     *
+     * No FK — Spaces live in the Yjs `meta` doc (not in PG), so there
+     * is no FK target. Stored as plain UUID for round-tripping through
+     * the BullMQ payload + worker handler. v10 spec impl §1.2.1.
+     */
+    spaceId: uuid("space_id").notNull(),
     taskType: varchar("task_type", { length: 50 }).notNull(),
     model: varchar("model", { length: 100 }),
     skillName: varchar("skill_name", { length: 100 }),
@@ -162,6 +256,7 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_user_id_idx").on(table.userId),
     index("tasks_project_id_idx").on(table.projectId),
+    index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
     index("tasks_status_idx").on(table.status),
   ],
@@ -256,7 +351,7 @@ export const conversationAttachments = pgTable(
   ],
 );
 
-// ── 5. Payments ──────────────────────────────────────────────────────
+// ── 7. Payments ──────────────────────────────────────────────────────
 
 export const payments = pgTable(
   "payments",
@@ -280,7 +375,7 @@ export const payments = pgTable(
   ],
 );
 
-// ── 6. Credit Transactions ───────────────────────────────────────────
+// ── 8. Credit Transactions ───────────────────────────────────────────
 
 export const creditTransactions = pgTable(
   "credit_transactions",

@@ -6,6 +6,8 @@
  * inside the server package.
  */
 
+import type { ProjectRole } from "./role.js";
+
 /** User entity (excludes hashed_password for safety). */
 export interface UserEntity {
   id: string;
@@ -59,6 +61,12 @@ export interface TaskEntity {
   id: string;
   userId: string;
   projectId: string | null;
+  /**
+   * Space within the project the task targets (v10 multi-doc).
+   * Worker writes results to `project-{projectId}/canvas-{spaceId}`,
+   * so the column is non-null. No FK — Spaces live in Yjs.
+   */
+  spaceId: string;
   taskType: string;
   model: string | null;
   skillName: string | null;
@@ -148,14 +156,50 @@ export interface CreditTransactionEntity {
   createdAt: Date;
 }
 
-/** Project entity. */
+/** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;
-  userId: string;
+  /**
+   * The Studio this project belongs to. In V1 (personal Studio) this
+   * is always the creator's personal studio; in team Studio (V2+) it
+   * may be the team's studio.
+   */
+  studioId: string;
+  /**
+   * The user who created the project. Immutable — used only for audit
+   * and "creator" UI labels. Does NOT participate in permission
+   * decisions; permission goes through `project_members.role`.
+   */
+  createdByUserId: string;
   name: string;
   description: string | null;
-  canvasData: Record<string, unknown>;
   thumbnailUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+/**
+ * Project read DTO returned by `GET /api/v1/projects/:id` (v10 §7.2.6).
+ *
+ * Shape that the frontend consumes — joins ProjectEntity with the
+ * caller's role on this project. The frontend uses `myRole` to gate
+ * UI (e.g. hide chat for view, hide member-management for non-owner).
+ */
+export interface ProjectDetail {
+  id: string;
+  studioId: string;
+  createdByUserId: string;
+  name: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  /**
+   * The requesting user's role on this project.
+   *
+   * Derived from `project_members` at request time; never persisted on
+   * the project row itself.
+   */
+  myRole: ProjectRole;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

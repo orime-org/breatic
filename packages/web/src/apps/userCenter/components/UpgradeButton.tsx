@@ -1,9 +1,9 @@
 import React, { memo, useState } from 'react';
-import Dropdown, { type MenuItemType } from '@/components/base/dropdown';
-import { Icon } from '@/components/base/icon';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import { Icon } from '@/ui/icon';
 import { UserInfoType } from '@/store/modules/userCenter';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/base/button';
+import { Button } from '@/ui/button';
 
 interface UpgradeButtonProps {
   userInfo?: UserInfoType;

@@ -27,8 +27,12 @@ export { checkInfraReady } from "./infra/connectivity-check.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";
+export {
+  publishMembersChanged,
+  publishSpaceCreated,
+  publishSpaceDeleted,
+} from "./infra/control-events.js";
 export { sendMail } from "./infra/mailer.js";
-export { acquireNodeLock, releaseNodeLock } from "./infra/canvas-lock.js";
 export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "./infra/request-context.js";
 export { getStripeClient, verifyWebhookSignature } from "./infra/stripe.js";
@@ -49,6 +53,12 @@ export * as memoryRepo from "./modules/memory.repo.js";
 export * as paymentService from "./modules/payment.service.js";
 export * as projectService from "./modules/project.service.js";
 export * as projectRepo from "./modules/project.repo.js";
+export * as yjsDocRepo from "./modules/yjs-doc.repo.js";
+export * as projectAuthService from "./modules/projectAuth.service.js";
+export * as projectMembersService from "./modules/projectMembers.service.js";
+export * as projectMembersRepo from "./modules/projectMembers.repo.js";
+export * as studioService from "./modules/studio.service.js";
+export * as studioRepo from "./modules/studio.repo.js";
 export * as skillService from "./modules/skill.service.js";
 export * as textToolService from "./modules/text-tool.service.js";
 export * as attachmentService from "./modules/conversation-attachment.service.js";

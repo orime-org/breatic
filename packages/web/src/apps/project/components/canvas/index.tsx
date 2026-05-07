@@ -96,16 +96,13 @@ const getLockedGroupIds = (nodes: Node[]): Set<string> => {
   return set;
 };
 
-/** Current output URL for project canvas image nodes (1002), or null. */
+/** Current output URL for project canvas image nodes (1002), or null.
+ * Canvas-native schema: reads data.content directly.
+ */
 const getProjectImageNodeContentUrl = (node: Node): string | null => {
   if (node.type !== '1002') return null;
-  const data = node.data as Partial<CanvasWorkflowNodeData> & {
-    nodeSelectedResultData?: { resultType?: string; content?: string };
-  };
-  if (typeof data.content === 'string' && data.content) return data.content;
-  const sd = data.nodeSelectedResultData;
-  if (sd?.resultType === 'content' && sd.content) return sd.content;
-  return null;
+  const data = node.data as Partial<CanvasWorkflowNodeData>;
+  return data.content ?? null;
 };
 
 /** Extract pickable content from any canvas node for mention mode (all node types). */
@@ -113,24 +110,27 @@ const getNodeContentForMention = (node: Node): { content: string; name: string; 
   const data = node.data as Partial<CanvasWorkflowNodeData> | undefined;
   const name = typeof data?.name === 'string' && data.name.trim() ? data.name : '';
   if (node.type === '1002') {
-    const url = getProjectImageNodeContentUrl(node);
+    const url = data?.content ?? null;
     if (!url) return null;
     return { content: url, name: name || 'image', resourceType: 'image' };
   }
   if (node.type === '1003') {
-    const url = typeof data?.content === 'string' ? data.content : '';
-    if (!url.trim()) return null;
+    // Video URL — read from data.content (canvas-native schema).
+    const url = data?.content ?? null;
+    if (!url) return null;
     return { content: url, name: name || 'video', resourceType: 'video' };
   }
   if (node.type === '1004') {
-    const url = typeof data?.content === 'string' ? data.content : '';
-    if (!url.trim()) return null;
+    // Audio URL — read from data.content (canvas-native schema).
+    const url = data?.content ?? null;
+    if (!url) return null;
     return { content: url, name: name || 'audio', resourceType: 'audio' };
   }
   if (node.type === '1001') {
-    const text = typeof data?.content === 'string' ? data.content : '';
-    if (!text.trim()) return null;
-    return { content: text, name: name || 'text', resourceType: 'text' };
+    // TODO PR-C+: text content lives in the Yjs `prompt` Y.XmlFragment, not in
+    // `data.content`. Extracting plain text for mention mode requires accessing
+    // the TipTap document. Return null until that path is implemented.
+    return null;
   }
   return null;
 };

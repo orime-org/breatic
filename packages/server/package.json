@@ -25,9 +25,18 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@breatic/collab": "workspace:*",
+    "@breatic/worker": "workspace:*",
+    "@hocuspocus/server": "^3.4.4",
+    "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^22.0.0",
+    "bullmq": "^5.30.0",
+    "drizzle-orm": "^0.43.1",
+    "postgres": "^3.4.0",
+    "testcontainers": "^11.14.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yjs": "^13.6.30"
   }
 }

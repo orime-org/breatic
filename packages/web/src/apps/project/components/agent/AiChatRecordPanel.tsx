@@ -18,11 +18,7 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
-import { useMixedEditorData } from '@/contexts/MixedEditorDataContext';
-import { useMixedEditorActions } from '@/hooks/useMixedEditorActions';
-import { imageEditorImageNodeType } from '@/apps/project/components/mixedEditor/types';
-import type { ImageEditorPickResultBox, ImageFlowNodeData } from '@/apps/project/components/mixedEditor/types';
-import { Icon } from '@/components/base/icon';
+import { Icon } from '@/ui/icon';
 import ProjectHeader from './ProjectHeader';
 import UserCenter from '@/apps/userCenter';
 
@@ -108,22 +104,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     const { nodes, edges } = useCanvasData();
     const { addNode, updateNode, onNodesChange, onEdgesChange, onConnect } = useCanvasActions();
     const { rightPanel, openRightPanel } = useCanvasUI();
-    const {
-      nodes: imageEditorNodes,
-      edges: imageEditorEdges,
-    } = useMixedEditorData();
-    const {
-      updateNode: updateImageEditorNode,
-      onEdgesChange: onImageEditorEdgesChange,
-      onConnect: onImageEditorConnect,
-    } = useMixedEditorActions();
     const nodesRef = useRef(nodes);
-    // Mirror image-editor nodes onto a ref so async callbacks (surface-
-    // removed handler, pick-recognize setTimeout) can read the latest
-    // snapshot without racing stale closures or pulling the reactive
-    // `imageEditorNodes` into every callback's dep list. Matches the
-    // nodesRef pattern above for main-canvas nodes.
-    const imageEditorNodesRef = useRef(imageEditorNodes);
     /** Active node id from the right panel or current selection; empty string shows an empty thread. */
     const selectedNode = nodes.find((n) => n.selected);
     const [activeNodeId, setActiveNodeId] = useState<string>('');
@@ -134,9 +115,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     const [inputEmpty, setInputEmpty] = useState(true);
     const lastProcessedPickInjectRef = useRef<string | null>(null);
     const processedCanvasPickIdsRef = useRef(new Set<string>());
-    const processedImageEditorPickIdsRef = useRef(new Set<string>());
     const processedCanvasMentionPickIdsRef = useRef(new Set<string>());
-    const processedImageEditorMentionPickIdsRef = useRef(new Set<string>());
     const [uploadItems, setUploadItems] = useState<AgentComposerUploadItem[]>([]);
     const uploadItemsRef = useRef<AgentComposerUploadItem[]>([]);
     uploadItemsRef.current = uploadItems;
@@ -198,10 +177,6 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     useEffect(() => {
       nodesRef.current = nodes;
     }, [nodes]);
-
-    useEffect(() => {
-      imageEditorNodesRef.current = imageEditorNodes;
-    }, [imageEditorNodes]);
 
     useEffect(() => {
       const next = rightPanel.nodeId ?? selectedNode?.id ?? '';
@@ -502,240 +477,23 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       );
     }, [nodeId, nodes, onNodesChange, openRightPanel, selectedWorkspaceRegion, updateNode]);
 
-    /**
-     * Activate image editor pick mode so the user can click an image node in the editor
-     * to reference it in the conversation (mirrors QuickEditBottomToolbar pick flow).
-     */
-    const handleImageEditorLayoutPickClick = useCallback(() => {
-      inputRef.current?.focusEditor();
-      const sourceNode = imageEditorNodes.find((n) => n.type === imageEditorImageNodeType);
-      if (!sourceNode) {
-        const imageNodeId = rightPanel.nodeId;
-        if (!imageNodeId) return;
-        const imageNode = nodes.find((n) => n.id === imageNodeId);
-        const data = imageNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-        const content = data?.content;
-        if (typeof content === 'string' && content.trim()) {
-          const name = typeof data?.name === 'string' && data.name.trim() ? data.name : 'image';
-          inputRef.current?.addResourceFromUrl(content, name, 'image');
-        }
-        return;
-      }
-      for (const n of imageEditorNodes) {
-        const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-        if (ps?.fromCanvas && n.id !== sourceNode.id) {
-          updateImageEditorNode(n.id, { data: { pickState: null } }, { history: 'skip' });
-        }
-      }
-      updateImageEditorNode(
-        sourceNode.id,
-        {
-          selected: true,
-          data: {
-            pickState: {
-              fromCanvas: true,
-              composerFocused: true,
-              pendingList: null,
-              consumeFrom: 'chatRecordPanel',
-            },
-          },
-        },
-        { history: 'skip' },
-      );
-    }, [imageEditorNodes, rightPanel.nodeId, nodes, updateImageEditorNode]);
-
-    /** Image editor pick source: the node with chatRecordPanel consume-from. */
-    const imageEditorPickSourceNode = useMemo(
-      () =>
-        imageEditorNodes.find((n) => {
-          const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-          return ps?.fromCanvas && ps.consumeFrom === 'chatRecordPanel';
-        }),
-      [imageEditorNodes],
-    );
-    const imageEditorPickSourceNodeId = imageEditorPickSourceNode?.id;
-    const imageEditorPickPendingList = useMemo(
-      () => (imageEditorPickSourceNode?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.pendingList ?? [],
-      [imageEditorPickSourceNode],
-    );
-    const imageEditorPickSelection = useMemo(
-      () => (imageEditorPickSourceNode?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.selection,
-      [imageEditorPickSourceNode],
-    );
-
-    /** Image editor mention pick source: node with consumeFrom === 'chatRecordPanelMention'. */
-    const imageEditorMentionPickSourceNode = useMemo(
-      () =>
-        imageEditorNodes.find((n) => {
-          const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-          return ps?.fromCanvas && ps.consumeFrom === 'chatRecordPanelMention';
-        }),
-      [imageEditorNodes],
-    );
-    const imageEditorMentionPickSourceNodeId = imageEditorMentionPickSourceNode?.id;
-    const imageEditorMentionPickPendingList = useMemo(
-      () =>
-        (imageEditorMentionPickSourceNode?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.pendingList ??
-        [],
-      [imageEditorMentionPickSourceNode],
-    );
-
-    /** Consume image editor pending picks → recognizing placeholder → image chip + result overlay. */
-    useEffect(() => {
-      if (!imageEditorPickSourceNodeId || imageEditorPickPendingList.length === 0) return;
-
-      for (const pending of imageEditorPickPendingList) {
-        if (processedImageEditorPickIdsRef.current.has(pending.placeholderId)) continue;
-        processedImageEditorPickIdsRef.current.add(pending.placeholderId);
-
-        const { placeholderId, content, name } = pending;
-        const recognizedLabel = defaultRecognizedLabel || name;
-
-        inputRef.current?.appendCanvasPickRecognizingPlaceholder(placeholderId);
-
-        window.setTimeout(() => {
-          const currentNodes = imageEditorNodesRef.current;
-          const source = currentNodes.find((n) => n.id === imageEditorPickSourceNodeId);
-          const sourcePs = (source?.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-          const currentList = sourcePs?.pendingList ?? [];
-          if (!currentList.some((p) => p.placeholderId === placeholderId)) {
-            processedImageEditorPickIdsRef.current.delete(placeholderId);
-            return;
-          }
-
-          inputRef.current?.replaceCanvasPickPlaceholderWithImageChip(placeholderId, content, recognizedLabel);
-          const nextList = currentList.filter((p) => p.placeholderId !== placeholderId);
-          updateImageEditorNode(
-            imageEditorPickSourceNodeId,
-            {
-              data: { pickState: { pendingList: nextList.length ? nextList : null } },
-            },
-            { history: 'skip' },
-          );
-
-          const wPct = 26;
-          const hPct = 26;
-          const rawCx = pending.overlayAnchor?.xPct ?? 50;
-          const rawCy = pending.overlayAnchor?.yPct ?? 50;
-          const halfW = wPct / 2;
-          const halfH = hPct / 2;
-          const cxPct = Math.min(100 - halfW, Math.max(halfW, rawCx));
-          const cyPct = Math.min(100 - halfH, Math.max(halfH, rawCy));
-          const picked = currentNodes.find((n) => n.id === pending.targetNodeId);
-          const prev = ((picked?.data as Partial<ImageFlowNodeData> | undefined)?.pickState?.resultBoxes ??
-            []) as ImageEditorPickResultBox[];
-          const nextBox: ImageEditorPickResultBox = {
-            cxPct,
-            cyPct,
-            wPct,
-            hPct,
-            placeholderId: pending.placeholderId,
-            sourceNodeId: imageEditorPickSourceNodeId,
-            content,
-            name: recognizedLabel,
-          };
-          updateImageEditorNode(
-            pending.targetNodeId,
-            {
-              data: { pickState: { resultBoxes: [...prev, nextBox] } },
-            },
-            { history: 'skip' },
-          );
-
-          processedImageEditorPickIdsRef.current.delete(placeholderId);
-        }, 3000);
-      }
-    }, [imageEditorPickSourceNodeId, imageEditorPickPendingList, updateImageEditorNode]);
-
-    useEffect(() => {
-      const currentPendingIds = new Set(imageEditorPickPendingList.map((p) => p.placeholderId));
-      for (const placeholderId of Array.from(processedImageEditorPickIdsRef.current)) {
-        if (currentPendingIds.has(placeholderId)) continue;
-        inputRef.current?.removeCanvasPickPlaceholder(placeholderId);
-        processedImageEditorPickIdsRef.current.delete(placeholderId);
-      }
-    }, [imageEditorPickPendingList]);
-
-    useEffect(() => {
-      if (!imageEditorPickSourceNodeId || !imageEditorPickSelection?.placeholderId || !imageEditorPickSelection.content)
-        return;
-      inputRef.current?.replaceCanvasPickChipById(
-        imageEditorPickSelection.placeholderId,
-        imageEditorPickSelection.content,
-        imageEditorPickSelection.name ?? 'image',
-        'image',
-      );
-      updateImageEditorNode(
-        imageEditorPickSourceNodeId,
-        { data: { pickState: { selection: null } } },
-        { history: 'skip' },
-      );
-    }, [imageEditorPickSourceNodeId, imageEditorPickSelection, updateImageEditorNode]);
-
-    const isImageEditorMode = selectedWorkspaceRegion === 'rightEditor' && rightPanelIsImageNode;
-    const imageEditorMainNodeId = useMemo(
-      () => imageEditorNodes.find((n) => n.type === imageEditorImageNodeType)?.id,
-      [imageEditorNodes],
-    );
-
-    const imageEditorUpstreamItems = useMemo((): AgentComposerUpstreamItem[] => {
-      if (!isImageEditorMode) return [];
-      if (!imageEditorMainNodeId) return [];
-      const inbound = imageEditorEdges.filter((e) => e.target === imageEditorMainNodeId);
-      if (!inbound.length) return [];
-      return inbound
-        .map((e) => imageEditorNodes.find((n) => n.id === e.source))
-        .filter((n): n is Node => Boolean(n))
-        .map((node) => {
-          const data = node.data as Partial<ImageFlowNodeData> | undefined;
-          const content = typeof data?.content === 'string' ? data.content : '';
-          if (!content.trim()) return null;
-          const name = typeof data?.name === 'string' && data.name.trim() ? data.name : undefined;
-          return { id: `upstream-${node.id}`, previewUrl: content, name, mediaType: 'image' as const };
-        })
-        .filter(Boolean) as AgentComposerUpstreamItem[];
-    }, [isImageEditorMode, imageEditorNodes, imageEditorEdges, imageEditorMainNodeId]);
-
     const effectiveUpstreamTargetNodeId = useMemo(() => {
-      if (isImageEditorMode) return undefined;
       if (selectedWorkspaceRegion === 'canvas') return selectedNode?.id ?? '';
       if (selectedWorkspaceRegion === 'rightEditor') return rightPanel.nodeId ?? '';
       return nodeId;
-    }, [isImageEditorMode, selectedWorkspaceRegion, selectedNode?.id, rightPanel.nodeId, nodeId]);
-
-    const handleLayoutPickClick = useMemo(() => {
-      if (selectedWorkspaceRegion === 'rightEditor' && rightPanelIsImageNode) {
-        return handleImageEditorLayoutPickClick;
-      }
-      return handleAgentLayoutPickClick;
-    }, [selectedWorkspaceRegion, rightPanelIsImageNode, handleImageEditorLayoutPickClick, handleAgentLayoutPickClick]);
+    }, [selectedWorkspaceRegion, selectedNode?.id, rightPanel.nodeId, nodeId]);
 
     const handleRemoveUpstreamItem = useCallback(
       (itemId: string) => {
         const sourceNodeId = itemId.startsWith('upstream-')
           ? itemId.slice('upstream-'.length)
           : itemId.replace(/-(image|video|audio|text|file)$/, '');
-        if (isImageEditorMode) {
-          if (!imageEditorMainNodeId) return;
-          const edgeToRemove = imageEditorEdges.find((e) => e.source === sourceNodeId && e.target === imageEditorMainNodeId);
-          if (!edgeToRemove) return;
-          onImageEditorEdgesChange([{ type: 'remove', id: edgeToRemove.id }]);
-          return;
-        }
         if (!effectiveUpstreamTargetNodeId) return;
         const edgeToRemove = edges.find((e) => e.source === sourceNodeId && e.target === effectiveUpstreamTargetNodeId);
         if (!edgeToRemove) return;
         onEdgesChange([{ type: 'remove', id: edgeToRemove.id }]);
       },
-      [
-        isImageEditorMode,
-        imageEditorMainNodeId,
-        imageEditorEdges,
-        onImageEditorEdgesChange,
-        effectiveUpstreamTargetNodeId,
-        edges,
-        onEdgesChange,
-      ],
+      [effectiveUpstreamTargetNodeId, edges, onEdgesChange],
     );
 
     /** Mention pick — canvas mode: enter pick mode without selecting the source node (no toolbar). */
@@ -767,51 +525,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       );
     }, [nodeId, nodes, openRightPanel, selectedWorkspaceRegion, updateNode]);
 
-    /** Mention pick — image editor mode: same as image editor layout pick but consumeFrom = 'chatRecordPanelMention'. */
-    const handleImageEditorMentionClick = useCallback(() => {
-      inputRef.current?.focusEditor();
-      const sourceNode = imageEditorNodes.find((n) => n.type === imageEditorImageNodeType);
-      if (!sourceNode) {
-        const imageNodeId = rightPanel.nodeId;
-        if (!imageNodeId) return;
-        const imageNode = nodes.find((n) => n.id === imageNodeId);
-        const data = imageNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-        const content = data?.content;
-        if (typeof content === 'string' && content.trim()) {
-          const name = typeof data?.name === 'string' && data.name.trim() ? data.name : 'image';
-          inputRef.current?.addResourceFromUrl(content, name, 'image');
-        }
-        return;
-      }
-      for (const n of imageEditorNodes) {
-        const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-        if (ps?.fromCanvas && n.id !== sourceNode.id) {
-          updateImageEditorNode(n.id, { data: { pickState: null } }, { history: 'skip' });
-        }
-      }
-      updateImageEditorNode(
-        sourceNode.id,
-        {
-          selected: true,
-          data: {
-            pickState: {
-              fromCanvas: true,
-              composerFocused: true,
-              pendingList: null,
-              consumeFrom: 'chatRecordPanelMention',
-            },
-          },
-        },
-        { history: 'skip' },
-      );
-    }, [imageEditorNodes, rightPanel.nodeId, nodes, updateImageEditorNode]);
-
-    const handleMentionClick = useMemo(() => {
-      if (selectedWorkspaceRegion === 'rightEditor' && rightPanelIsImageNode) {
-        return handleImageEditorMentionClick;
-      }
-      return handleCanvasMentionClick;
-    }, [selectedWorkspaceRegion, rightPanelIsImageNode, handleImageEditorMentionClick, handleCanvasMentionClick]);
+    const handleMentionClick = handleCanvasMentionClick;
 
     /** Canvas mention pick flow: create a canvas edge from the picked node to this node. */
     useEffect(() => {
@@ -836,41 +550,8 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       }
     }, [nodeId, agentCanvasPickPendingList, storedPickConsume, updateNode, onConnect]);
 
-    /** Image editor mention pick flow: create an image editor edge from the picked node to the main image node. */
-    useEffect(() => {
-      if (!imageEditorMentionPickSourceNodeId || imageEditorMentionPickPendingList.length === 0) return;
-
-      for (const pending of imageEditorMentionPickPendingList) {
-        if (processedImageEditorMentionPickIdsRef.current.has(pending.placeholderId)) continue;
-        processedImageEditorMentionPickIdsRef.current.add(pending.placeholderId);
-
-        onImageEditorConnect({
-          source: pending.targetNodeId,
-          target: imageEditorMentionPickSourceNodeId,
-          sourceHandle: null,
-          targetHandle: null,
-        });
-
-        const nextList = imageEditorMentionPickPendingList.filter((p) => p.placeholderId !== pending.placeholderId);
-        updateImageEditorNode(
-          imageEditorMentionPickSourceNodeId,
-          { data: { pickState: { pendingList: nextList.length ? nextList : null } } },
-          { history: 'skip' },
-        );
-
-        processedImageEditorMentionPickIdsRef.current.delete(pending.placeholderId);
-      }
-    }, [
-      imageEditorMentionPickSourceNodeId,
-      imageEditorMentionPickPendingList,
-      updateImageEditorNode,
-      onImageEditorConnect,
-    ]);
-
     const handleCanvasPickSurfaceRemoved = useCallback(
       (detail: AgentCanvasPickSurfaceRemovalDetail) => {
-        const imageEditorNodesForRemoval = imageEditorNodesRef.current;
-
         if (detail.surface === 'recognizing') {
           for (const n of nodes) {
             const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
@@ -881,27 +562,6 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
             const clearLegacy = legacy?.placeholderId === detail.placeholderId;
             if (nextList.length === list.length && !clearLegacy) continue;
             updateNode(
-              n.id,
-              {
-                data: {
-                  pickState: {
-                    ...(nextList.length !== list.length ? { pendingList: nextList.length ? nextList : null } : {}),
-                    ...(clearLegacy ? { pending: null } : {}),
-                  },
-                },
-              },
-              { history: 'skip' },
-            );
-          }
-          for (const n of imageEditorNodesForRemoval) {
-            const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-            if (!ps) continue;
-            const list = ps.pendingList ?? [];
-            const nextList = list.filter((p) => p.placeholderId !== detail.placeholderId);
-            const legacy = ps.pending;
-            const clearLegacy = legacy?.placeholderId === detail.placeholderId;
-            if (nextList.length === list.length && !clearLegacy) continue;
-            updateImageEditorNode(
               n.id,
               {
                 data: {
@@ -934,25 +594,8 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
             { history: 'skip' },
           );
         }
-        for (const n of imageEditorNodesForRemoval) {
-          const ps = (n.data as Partial<ImageFlowNodeData> | undefined)?.pickState;
-          const boxes = ps?.resultBoxes ?? [];
-          const nextBoxes = boxes.filter((b) => b.placeholderId !== detail.placeholderId);
-          if (nextBoxes.length === boxes.length) continue;
-          updateImageEditorNode(
-            n.id,
-            {
-              data: {
-                pickState: {
-                  resultBoxes: nextBoxes.length ? nextBoxes : null,
-                },
-              },
-            },
-            { history: 'skip' },
-          );
-        }
       },
-      [nodes, updateNode, updateImageEditorNode],
+      [nodes, updateNode],
     );
 
     return (
@@ -998,14 +641,14 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
             <AgentComposerTabs
               upstreamTargetNodeId={effectiveUpstreamTargetNodeId}
               onUpstreamItemsChange={setUpstreamItems}
-              upstreamItems={isImageEditorMode ? imageEditorUpstreamItems : upstreamItems}
+              upstreamItems={upstreamItems}
               uploadItems={uploadItems}
               onUpstreamItemClick={handleUpstreamItemClick}
               onRemoveUpstreamItem={handleRemoveUpstreamItem}
               onFilesSelected={handleComposerFiles}
               onRemoveUpload={handleRemoveUpload}
               onUploadItemClick={handleUploadItemClick}
-              onLayoutClick={handleLayoutPickClick}
+              onLayoutClick={handleAgentLayoutPickClick}
               onMentionClick={handleMentionClick}
               showTrailingActions={false}
             />

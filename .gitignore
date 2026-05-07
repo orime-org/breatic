@@ -50,3 +50,7 @@ worktrees/
 
 # TypeDoc output (generated, per-package under api-reference/)
 api-reference/
+
+# Local brainstorm/preview cache (not part of the public repo)
+.superpowers/
+.gstack/

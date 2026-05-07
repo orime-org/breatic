@@ -67,5 +67,49 @@ html[data-theme="light"] {
   --color-node-handle-audio-node: #E8B931;
   --color-node-handle-image-node: #F19EDC;
   --color-node-handle-video-node: #6DEF70;
+
+  /* ============================================================
+     Numeric scale tokens (Direction B, mock 05 alignment)
+     ------------------------------------------------------------
+     Semantic tokens above (--color-*) compose UI surfaces; these
+     numeric scales give components like RechargeDialog or
+     SharePopover direct access to a 50/100/.../900 ramp without
+     rolling their own colors. Existing components keep using the
+     semantic tokens — these are additive.
+     ============================================================ */
+  --brand-50:  hsl(121, 58%, 97%);
+  --brand-100: hsl(121, 58%, 92%);
+  --brand-200: hsl(121, 58%, 82%);
+  --brand-300: hsl(121, 58%, 70%);
+  --brand-400: hsl(121, 58%, 58%);
+  --brand-500: hsl(121, 58%, 50%);
+  --brand-600: hsl(121, 58%, 40%);
+  --brand-700: hsl(121, 58%, 32%);
+  --brand-800: hsl(121, 58%, 23%);
+  --brand-900: hsl(121, 58%, 15%);
+
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #FAFAFA;
+  --neutral-100: #F4F4F5;
+  --neutral-200: #E4E4E7;
+  --neutral-300: #D4D4D8;
+  --neutral-400: #A1A1AA;
+  --neutral-500: #71717A;
+  --neutral-600: #52525B;
+  --neutral-700: #3F3F46;
+  --neutral-800: #27272A;
+  --neutral-900: #18181B;
+
+  /* Radius scale (mock 05 §rounded). Components that want a token
+     instead of a hardcoded `rounded-md` value read these. */
+  --rounded-sm: 4px;
+  --rounded-md: 8px;
+  --rounded-lg: 12px;
+  --rounded-xl: 16px;
+
+  /* Font-size global multiplier — defaults to 1.0 so existing UI
+     is unaffected. The Tweaks debug panel (dev-only) drives this
+     to render Loud / Quiet variants. */
+  --text-scale: 1;
 }
 

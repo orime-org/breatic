@@ -45,6 +45,7 @@ export const useUpstreamExternalFileList = (
   return upstreamNodes
     .map((node) => {
       const data = node.data as Partial<CanvasWorkflowNodeData> | undefined;
+      // Canvas-native schema: resolve URL directly from data.content.
       const content = data?.content;
       if (typeof content !== 'string' || !content.trim()) return null;
 

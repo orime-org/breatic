@@ -23,6 +23,7 @@ import { mocks } from "../helpers/mock-core.js";
 
 const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
 const PROJ_UUID = "11111111-1111-4111-8111-111111111111";
+const SPACE_UUID = "33333333-3333-4333-9333-333333333333";
 const CONV_UUID = "22222222-2222-4222-8222-222222222222";
 
 beforeEach(() => {
@@ -43,6 +44,7 @@ describe("POST /canvas/tasks — project_id ownership", () => {
       headers: AUTH,
       body: JSON.stringify({
         project_id: PROJ_UUID,
+        space_id: SPACE_UUID,
         task_type: "image",
         params: { prompt: "hi", node_id: "n-1" },
         model: "test",

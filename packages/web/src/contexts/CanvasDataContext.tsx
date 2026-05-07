@@ -26,8 +26,8 @@ import {
 } from 'react';
 import { nanoid } from 'nanoid';
 import type { Node, Edge } from '@xyflow/react';
-import type { YjsProjectManager } from '@/utils/yjsProjectManager';
-import { useCanvasYjsInternal } from '@/hooks/useCanvasYjsInternal';
+import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+import { useCanvasSpace } from '@/hooks/useCanvasSpace';
 
 // ── Toast types ────────────────────────────────────────────────
 
@@ -64,7 +64,13 @@ const CanvasDataContext = createContext<CanvasDataContextValue | null>(null);
 // ── Provider ───────────────────────────────────────────────────
 
 interface CanvasDataProviderProps {
-  manager: YjsProjectManager | null;
+  /**
+   * The active canvas Space manager (v10 multi-doc — one
+   * `project-{pid}/canvas-{spaceId}` doc per Space). Comes from
+   * `useSpaceManagerPool` upstream; null while bootstrapping or
+   * between Space switches.
+   */
+  manager: CanvasSpaceManager | null;
   children: ReactNode;
 }
 
@@ -108,8 +114,8 @@ export function CanvasDataProvider({ manager, children }: CanvasDataProviderProp
     };
   }, []);
 
-  // ── Yjs → nodes/edges ──
-  const { nodes, edges, loading, syncError, applyLocalNodeChanges } = useCanvasYjsInternal(manager, pushToast);
+  // ── Yjs → nodes/edges (v10 canvas-{spaceId} doc) ──
+  const { nodes, edges, loading, syncError, applyLocalNodeChanges } = useCanvasSpace(manager, pushToast);
 
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
