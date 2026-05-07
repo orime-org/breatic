@@ -9,69 +9,33 @@ Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQ
 # 开发命令
 
 ```bash
-# 本地开发（首次或拉取新 migration 后）
-docker compose up -d postgres redis
-cp .env.dev .env                       # 首次
-pnpm db:migrate                        # 首次或有新 migration 时
-
-pnpm dev              # turbo 启动所有服务（自动先 build shared/core）
-pnpm dev:collab       # Hocuspocus (port 1234)
-pnpm dev:worker       # BullMQ Worker
-
-# Docker 全量部署
-cp .env.docker .env        # 首次，改域名和密钥
-docker compose up -d       # migrate 容器先跑，再启动 6 个服务
-
-# 质量检查
-pnpm test             # 单元测试 (mock，无需外部依赖)
-pnpm typecheck        # tsc --noEmit
-pnpm lint             # ESLint
+# 本地：首次复制 .env.dev → .env，docker 起 PG+Redis，pnpm db:migrate；之后 pnpm dev
+# Docker 全量：复制 .env.docker → .env，改域名/密钥，docker compose up -d
+pnpm dev              # turbo 跑全部服务（自动先 build shared/core，再 watch server/worker/collab）
+pnpm db:migrate       # 拉新 migration 后跑
+pnpm test / typecheck / lint
 ```
 
-> **启动行为**：服务（API/Worker/Collab）启动时先调 `checkInfraReady()` 验证 PG/Redis 可达，连不上**立即退出**并打印清晰错误（避免无声挂死）。Migration 是独立步骤（`pnpm db:migrate` 或 Docker 的 `migrate` 服务），**不绑在 dev 启动里**。
->
-> `pnpm dev` 通过 turbo `dependsOn: ["^build"]` 自动先编译 shared → core，再启动 server/worker/collab（tsup --watch / tsc --watch）。
+启动时先 `checkInfraReady()` 验证 PG/Redis 可达；连不上立即退出（避免无声挂死）。Migration 是独立步骤，不绑在 dev 启动里。
 
 # 目录结构
 
 ```
 packages/
-├── shared/            # Zod schema + TypeScript 类型 + 常量（零依赖）
-├── core/              # 所有业务逻辑（barrel export @breatic/core）
-│   ├── modules/       #   *.repo.ts (Drizzle) + *.service.ts (逻辑)
-│   ├── agent/         #   MainAgent (AI SDK streamText), tools/, skills-loader
-│   ├── db/            #   schema.ts (15 表) + client.ts + migrations
-│   ├── infra/         #   redis, pubsub, queue, session-store, storage (S3/OSS), stripe
-│   └── config/        #   env.ts, loader.ts, pricing.ts, model-catalog.ts
-├── server/            # HTTP 壳（Hono routes + middleware，不含业务逻辑）
-│   ├── routes/        #   auth, chat, canvas, mini-tools, text-tools, projects, skills, tasks, payment, health
-│   └── middleware/    #   auth, cors, logger, error-handler
-├── worker/            # BullMQ 壳 + AIGC providers
-│   ├── handlers/      #   任务执行（5 条路径）
-│   └── providers/     #   AIGC 双层架构：image/ video/ audio/ tts/ three-d/ understand/ (models/ + transports/)
-├── collab/            # Hocuspocus 独立进程
-│   └── src/           #   server, auth, persistence (PG), event-stream, task-listener, config
-└── web/               # 前端 React + ReactFlow + Yjs
-config/                # YAML 配置 (agent, collab, worker, pricing, text-tools, models/)
-agents/                # SubAgent 角色定义 (*.md, frontmatter + system prompt)
-skills/                # 内置 Skill 目录 (SKILL.md + metadata.json + scripts/)
-locales/               # 统一 i18n JSON（前后端共用，4 种语言）
-uploads/               # AIGC 生成文件本地存储（git-ignored）
+├── shared/   # Zod schema + 类型 + 常量(零依赖)
+├── core/     # 业务逻辑(barrel @breatic/core)
+│   modules/(*.repo.ts + *.service.ts) · agent/(MainAgent + skills-loader) ·
+│   db/(schema.ts 19 表) · infra/(redis/pubsub/queue/storage/stripe) · config/
+├── server/   # HTTP 壳(Hono):routes/(auth/chat/canvas/mini-tools/projects/skills/tasks/payment/health) + middleware/
+├── worker/   # BullMQ 壳:handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
+├── collab/   # Hocuspocus 独立进程:server/auth/persistence/event-stream/task-listener
+└── web/      # React + ReactFlow + Yjs(内部 layered:ui/data/domain,详见 docs/FRONTEND.md)
+config/ agents/ skills/ locales/ uploads/(git-ignored)
 ```
 
-## 包依赖方向
+**包依赖方向**:`shared(零依赖) ← core, collab(独立进程,只依赖 shared) ← server / worker / web`。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。
 
-```
-shared（零依赖）
-  ↑           ↑
-core        collab（只依赖 shared，不依赖 core）
-  ↑
-server / worker / web
-```
-
-**严格边界**：server 不 import worker，worker 不 import server。所有共享业务逻辑在 core。collab 是独立进程，只依赖 shared 类型。
-
-**Package exports**：shared/core 导出 `./dist/index.js`（行业标准），本地开发和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`（向上查找 `pnpm-workspace.yaml`），不依赖 `import.meta.dirname` 相对层级。
+**Package exports**:shared/core 导出 `./dist/index.js`(行业标准),本地和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`(向上查找 `pnpm-workspace.yaml`)。
 
 # 架构
 
@@ -85,17 +49,13 @@ server / worker / web
 
 ## 画布协作
 
-- 节点创建/布局：**前端控制**，后端只更新节点 `data` 字段；前端独占节点 create/delete，后端只能改 state 字段
-- 画布事件：**全走 Yjs**（不走 SSE），Agent 聊天流保留 SSE
-- 并发无锁：Phase 2 起每次操作在画布上产生新的兄弟节点（用 edge 连接），不再有 per-node Redis SETNX 锁；Category B mini-tool 允许同一节点并发操作
-- 事件总线：**Redis Streams** `${env}:stream:canvas-nodes`，NodeEvent 类型（`node-state-update`），Collab 消费后通过 `nodesMap.get(nodeId).get("data").set(field, value)` 更新目标节点 state/content 等字段
-- 文档命名：`project-{id}`（每项目一个 Yjs 文档；不再有 per-node 编辑器子文档）
-- Yjs 节点结构镜像 ReactFlow `{ id, type, position, data }`：`id/type/position` 顶层，`name/state/handlingBy/content/cover_url/errorMessage/width/height/duration/sourceNodeId/operation/operationParams/prompt/model/modelParams/attachments/childIds` 在嵌套 `data: Y.Map` 内
-- 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state（不入 Yjs）；失败 = `idle` + `errorMessage`
-- 前端 Yjs-first 架构：写操作直接写 Yjs，增量 observe 只重建变更节点
-- **Yjs 持久化**走 PG `yjs_documents` 表（Hocuspocus Database extension），**跨实例同步**走 Redis pub/sub（Hocuspocus Redis extension）
-- Worker 发出的事件支持 `targetNodeIds: string[]`（1:N），前端预先创建 N 个占位节点，Worker 对每个节点分别 emit 一条 NodeStateUpdateEvent
-- 完整规范见 [docs/YJS.md](./docs/YJS.md)
+- 节点 create/delete + position 由**前端独占**；后端只能改 `data` 字段（state/content 等）
+- 画布走 Yjs，Agent 聊天走 SSE。无锁：每次 mini-tool 操作产生新兄弟节点（edge 连接），不覆盖源节点
+- 事件总线：Redis Streams `${env}:stream:canvas-nodes`（`NodeStateUpdateEvent`，支持 `targetNodeIds: string[]` 1:N），Collab 消费后写 Yjs
+- 文档命名 v10 multi-doc：`project-{id}/meta`（含 spaces 列表）+ `project-{id}/canvas-{spaceId}`（每个 Canvas Space 一个）
+- 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state；失败 = `idle` + `errorMessage`
+- Yjs 持久化走 PG `yjs_documents` 表（Hocuspocus Database extension）；跨实例同步走 Redis pub/sub（Hocuspocus Redis extension）
+- 节点结构 + 字段归属 + 状态机详细规范见 [docs/YJS.md](./docs/YJS.md)
 
 ## 三层记忆 + Turn 压缩
 
@@ -142,24 +102,9 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 ## Skill 系统
 
-**两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap，左侧全屏面板）独立运行，不使用 Skill。
+**两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap）独立运行，不使用 Skill。
 
-**metadata.json 字段规范**：
-
-| 字段 | 必须 | 类型 | 说明 |
-|------|:---:|------|------|
-| `name` | ✅ | string | 唯一标识 |
-| `description` | ✅ | string | LLM 判断何时使用的描述 |
-| `scope` | ✅ | string[] | `["agent"]` / `["canvas"]` / `["agent", "canvas"]` |
-| `category` | ✅ | string | 分类（image/video/audio/tts/3d/text/understand/creative/research/default） |
-| `tools` | | string[] | 需要的 LLM 工具（默认 `[]`） |
-| `output_type` | | string | `"task_plan"` / `"canvas"` / `"inline"`（默认 `"canvas"`） |
-| `keywords` | | string[] | 搜索匹配关键词 |
-| `requires` | | object | `{ env: [...], bins: [...] }` 依赖检查 |
-| `disable_model_invocation` | | bool | 仅用户可调用（默认 `false`） |
-| `always` | | bool | 始终注入 system prompt（默认 `false`） |
-
-禁止出现 npm 字段（version/author/license/engines/files/main）。
+**metadata.json**：仅 `name` / `description` 必填；其他字段（`scope`/`category`/`tools`/`output_type`/`requires`/...）`skills-loader.ts` 都有 default 兜底（`scope` 默认 `["agent"]`，`category` 默认 `"default"`）。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 [docs/PRODUCT.md §6.2](./docs/PRODUCT.md#62-metadatajson-specification)。禁用 npm 字段（version/author/license/engines/files/main）。
 
 ## Agent Tools（9 个）
 
@@ -200,19 +145,30 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 - TypeScript strict，禁止 `any`（用 `unknown`），禁止 `var`/`require`
 - ESLint + eslint-plugin-tsdoc 强制
 
+## Web 命名规范（`packages/web/src/`）
+
+| 文件类型 | 命名 | 例 |
+|---|---|---|
+| React 组件 `.tsx` | `PascalCase`（= export 名） | `Button.tsx` `ProjectMembersPanel.tsx` |
+| React Hook `.ts/.tsx` | `useFooBar`（= export 名） | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| 其他 `.ts`（util / data / config / store） | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| 测试 | 与主文件同名加 `.test` | `useProjectSpaces.test.ts` |
+| 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
+
+详细前端架构（layer 划分、目录结构、Yjs 集成）见 [docs/FRONTEND.md](./docs/FRONTEND.md)。
+
 # 关键规范
 
-- **软删除（MANDATORY）**：所有数据库删除一律软删除，**禁止硬删除**。每张表用 `deleted_at: timestamp` 列标记；list 查询默认过滤 `deleted_at IS NULL`；所有 FK 约束为 `restrict`（硬删父记录会被数据库阻止）。例外：GDPR 删号走单独管理流程
-- **禁止 AI 作者署名（MANDATORY）**：commit 署名字段禁止 AI 工具名。强制手段：`.husky/commit-msg` + PR CI
-- **PostgreSQL**：Drizzle ORM，UUID 主键，JSONB，积分原子操作（`db.transaction()` 包裹扣费+记流水）
-- **Redis**：3 个逻辑 DB（`REDIS_URL` DB0 session/lock/rate-limit, `REDIS_QUEUE_URL` DB1 BullMQ, `REDIS_STREAM_URL` DB2 Streams+Hocuspocus pub/sub）。Key 格式 `{env}:{service}:{entity}:{id}`，禁止无 TTL。Stream MAXLEN ~ 10000
-- **Auth 安全**：登录 5 次/分钟、注册 3 次/小时、Google OAuth 10 次/分钟（Redis 滑窗限速）。NoAccount 模式仅 dev 环境可用（ENV=prod 时启动拒绝）
-- **XSS 防护**：所有 HTML 渲染走 DOMPurify `sanitizeRichText()`。粘贴内容、LLM 输出、prompt 预览均清洗
-- **Prompt 安全**：发给 AIGC 的 prompt 先经 `extractPromptText()` 去除 HTML/注释/不可见字符
-- **异常**：AppError(status, msg) → NotFound/Conflict/Validation/Forbidden/Unauthorized，Service 层抛，路由层 handler 处理
-- **SSE**：仅 Agent 聊天 + Text mini-tool，`data` 含 `userId` + `projectId`
-- **存储**：Local（默认）/ S3 / Aliyun OSS。上传走 presigned URL（`GET /assets/presign`，5 分钟过期，30 次/分钟限速），前端直传
-- **支付(积分制,非订阅)**：Stripe Checkout 一次性购买积分包(`config/pricing.yaml` 5 档),**没有会员/订阅/功能分级**——所有用户享受同一套功能,只按实际用量扣积分。积分永不过期。Webhook 幂等(CAS 原子状态转换)。Mini-tool 入队前预检余额(402)。`deductOnce()` 保证同 refKey 只扣一次。用户对象上的 `membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码不要按 tier 做 feature gate**,只按积分余额判断
+- **软删除(MANDATORY)**:所有表用 `deleted_at` 标记,FK `restrict`,list 默认过滤 `deleted_at IS NULL`。**禁止硬删除**(GDPR 删号走单独流程)
+- **禁止 AI 作者署名(MANDATORY)**:commit 署名禁 AI 工具名,`.husky/commit-msg` + PR CI 强制
+- **PostgreSQL**:Drizzle + UUID + JSONB,积分扣费走 `db.transaction()`(扣费+记流水原子)
+- **Redis 3 DB**:DB0 session/lock/rate-limit,DB1 BullMQ,DB2 Streams + Hocuspocus pub/sub。Key `{env}:{service}:{entity}:{id}`,**禁止无 TTL**,Stream MAXLEN ~10000
+- **Auth 安全**:登录 5/分,注册 3/时,Google OAuth 10/分(Redis 滑窗)。NoAccount 仅 dev,prod 启动拒绝
+- **XSS / Prompt**:HTML 渲染走 DOMPurify `sanitizeRichText()`;AIGC prompt 先经 `extractPromptText()` 去 HTML/注释/不可见字符
+- **异常**:`AppError(status, msg)` 在 Service 层抛,路由层 handler 处理(NotFound / Conflict / Validation / Forbidden / Unauthorized)
+- **SSE**:仅 Agent 聊天 + Text mini-tool,`data` 含 `userId` + `projectId`
+- **存储**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,5min 过期,30/分限速)直传
+- **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。`membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码只按积分余额判断,不做 tier feature gate**
 
 # 禁止清单
 
@@ -220,125 +176,54 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 # 编码行为准则
 
-减少常见 LLM 编码错误的行为指南。**权衡**：这些准则偏向谨慎而非速度，对简单任务可自行判断。
+减少常见 LLM 编码错误的行为指南。这些准则偏向谨慎而非速度,简单任务自行判断。
 
 ## 1. 先想再写
 
-**不要假设，不要隐藏困惑，主动暴露权衡。**
-
-- 明确说出你的假设。不确定时，先问
-- 存在多种理解时，列出选项——不要默默选一个
-- 存在更简单方案时，说出来。该推回时就推回
-- 有任何不清楚的地方，停下来，指出困惑，提问
+**不假设,不隐藏困惑,主动暴露权衡。** 假设要明说;有多种理解就列选项让用户选,不要默默选一个;有更简单方案要说出来;有不清楚的就停下来问。
 
 ## 2. 简单优先
 
-**写能解决问题的最少代码。不做推测性开发。**
-
-- 不做超出要求的功能
-- 单次使用的代码不做抽象
-- 没人要求的"灵活性"和"可配置"不加
-- 不可能发生的场景不做错误处理
-- 如果写了 200 行但 50 行就够，重写
-
-自检："一个高级工程师会说这过度复杂吗？" 如果会，简化。
+**写能解决问题的最少代码,不做推测性开发。** 不做超出要求的功能,单次使用不抽象,没人要的"灵活性 / 可配置"不加,不可能发生的场景不做错误处理。自检:"高级工程师会说这过度复杂吗?" 会就重写。
 
 ## 3. 精准修改
 
-**只改必须改的。只清理自己制造的废物。**
-
-- 不要"顺手改进"周围的代码、注释或格式
-- 不要重构没有坏的东西
-- 代码风格以项目规范为准，发现不一致时主动修正
-- 发现无关的死代码，提一下——不要删它
-- 删除**你的修改**导致无用的 import/变量/函数
-- 不要删除修改前就存在的死代码（除非被要求）
-
-检验标准：diff 中每一行改动都应直接追溯到用户的需求。
+**只改必须改的,只清理自己造的废物。** 不"顺手改进"周围的代码 / 注释 / 格式,不重构没坏的东西。发现无关死代码,提一下不要删。**你的修改**导致无用的 import/变量/函数才删。检验标准:diff 每一行都应直接追溯到用户需求。
 
 ## 4. 目标驱动执行
 
-**定义成功标准，循环直到验证通过。**
+**定义成功标准,循环直到验证通过。** 把任务转化成可验证目标("加验证"→"为非法输入写测试,然后让测试通过";"修 bug"→"写复现测试,然后让测试通过";"重构 X"→"确保重构前后测试通过")。多步任务声明简要计划:每步配验证方式。强标准让你能独立循环,弱标准("让它能跑")需要不断确认。
 
-将任务转化为可验证目标：
-- "加验证" → "为非法输入写测试，然后让测试通过"
-- "修 bug" → "写复现测试，然后让测试通过"
-- "重构 X" → "确保重构前后测试通过"
+## 5. 彻底解决，禁止补丁(MANDATORY — 零容忍)
 
-多步任务需声明简要计划：
-```
-1. [步骤] → 验证：[检查方式]
-2. [步骤] → 验证：[检查方式]
-```
+**定位根因,提彻底方案。方案不彻底 = 违规,**给出不彻底方案就是对用户时间的犯罪。
 
-强成功标准让你能独立循环。弱标准（"让它能跑"）需要不断确认。
+**硬性规则**:方案未经用户确认前不动代码;方案不唯一时(含治本/治标取舍)列选项让用户选,不自己拍板;自己拿不准必须问,不猜、不"先实现一版试试";架构有根本缺陷就提架构变更,不打补丁;已有同类模式(主 canvas / Yjs / undo)必须对齐,不发明半套。
 
-## 5. 彻底解决，禁止补丁（MANDATORY — 零容忍）
+**禁止补丁词汇**(任一即违规,立即停手):"compat shim / 兼容层 / 适配层"、"legacy mirror / 只读镜像"、"escape hatch / 全局 ref / 单例"、"临时/过渡/暂时/先这样/后续再改"、"为了不改 N 个 callsite"、"两条路径并存 / hybrid / 双写"。出现上面任意词 = 方案不彻底,回到白板重想。
 
-**定位根因、提彻底方案；禁止头疼医头、脚疼医脚。方案不彻底 = 违规。**
+**动手前三自检**(全通过才写):(1) 解决根因还是压症状?(2) 唯一解还是从多个挑了一个?(3) 是否有任一"暂时/兼容/补丁"?任一 fail 都停下来重想或问用户。
 
-### 硬性规则
-
-- **方案未经用户确认前，不动代码**
-- **方案不唯一时**（含治本/治标的取舍）：列每个选项的复杂度、回归面、架构影响，让用户选；不许自己拍板
-- **自己拿不准时**：必须问；不许猜、不许"先实现一版试试"
-- **架构有根本缺陷**：提架构变更，不在缺陷上打补丁
-- **已有同类系统的现成模式**（主 canvas / canvas Yjs / 主 canvas undo 等）：彻底方案必须对齐，不许新发明半套
-- 参考成熟产品（飞书、Google Docs 等）的做法
-
-### 明令禁止的补丁词汇
-
-一旦出现以下任意一种,立即停手,重新设计:
-
-- "作为 compat shim / 兼容层 / 适配层"（保留老 API 绕过重构）
-- "作为 legacy mirror / 只读镜像"（旧数据源副本救老代码）
-- "作为 escape hatch / 全局 ref / 单例"（绕 Context 边界）
-- "临时/过渡/暂时/先这样/后续再改"（技术债登记，不是解决方案）
-- "为了不改 XX 个 callsite / 工作量考虑"（把工作量当借口换架构妥协）
-- "两条路径并存 / hybrid / 双写"（违反单一真相源）
-
-出现上面任意词汇后的方案 = **不彻底**,不许提交给用户,必须回到白板重想到彻底为止。
-
-### 动手前三条自检（全通过才写代码）
-
-1. 在解决**根因**，还是只压症状？后者 → 停下来重想
-2. 方案是**唯一解**，还是我在多个里挑了一个？后者 → 停下来问用户
-3. 方案里有**任何一处"暂时/兼容/补丁"**？有 → 该处就是下次要返工的地方,现在重做
-
-### 违规成本
-
-给出不彻底方案 → 用户耗费精力识别、拆穿、重提需求。
-**这是对用户时间的犯罪**，不是工程瑕疵。
-发现自己写了补丁 → 立即撤回、重做，**不许辩护、不许找理由、不许谈工作量**。
+**发现自己写了补丁 → 立即撤回,不辩护、不找理由、不谈工作量。**
 
 # Due Diligence (DD) — 重大决策纪律(MANDATORY)
 
-DD 是**决策前**的纪律,#1~#5 是**决策后实施**的纪律,不互替。完整流程 / 5 维度尽调 / 报告骨架见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md)。
+**决策前的纪律**(跟决策后的 #1~#5 不互替)。完整流程见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md)。
 
-**触发条件**(任一即触发):安全模型 / 长期维护负担 / 跨包接口 / 反悔代价 > 1 周。breatic 高频场景:AIGC provider 选型 / Agent-Skill 定义 / 三层记忆 / Yjs 结构 / 积分计费。
+**触发**(任一):安全模型 / 长期维护负担 / 跨包接口 / 反悔代价 > 1 周。breatic 高频:AIGC provider 选型 / Agent-Skill 定义 / 三层记忆 / Yjs 结构 / 积分计费。
 
-**5 步硬流程**:候选枚举 → 5 维度尽调(实测/源码/治理/安全/上游)→ 对比矩阵(每格证据可追溯)→ 推荐 + 理由 → 用户拍板。
+**5 步硬流程**:候选枚举 → 5 维度尽调(实测 / 源码 / 治理 / 安全 / 上游)→ 对比矩阵(每格证据可追溯)→ 推荐 + 理由 → **用户拍板**。
 
-**反 DD 模式**(违规):浅表决策(star/README/"感觉")· hearsay 升格(AI 对话当 ground truth)· 假对比(候选不全)· 单点论据 · "先用 X 后续再换"(治标补丁,同 #5)。
+**反 DD 模式**(违规):浅表决策(star / "感觉")· hearsay(AI 对话当 ground truth)· 假对比(候选不全)· 单点论据 · "先用 X 后续再换"(同 #5 治标补丁)。**未做 DD 就动手 = 违反纪律 = 当场撤回**(同 #5)。
 
-**违规成本**:未做 DD 就动手 = **违反纪律 = 当场撤回**(同 #5)。
-
-**DD vs 轻量 Research 边界**:小变化(单文件 util / 候选明显)→ Research(GitHub search / 包注册表);重大决策(满足触发任一)→ **必须 DD**。
-
-**报告位置**:`docs/dd/<YYYY-MM-DD>-<topic>.md`(公开技术选型);敏感内容(vendor / 安全模型)放团队私有 channel,不入公开仓库。
+**轻量 vs 完整**:小变化(单文件 util / 候选明显)→ 走 GitHub search 等轻量 Research;触发条件命中 → 必须完整 DD。报告:`docs/dd/<YYYY-MM-DD>-<topic>.md`(公开技术选型);敏感内容放私有 channel。
 
 # Test-Driven Development (TDD) — AI coding 时代版(MANDATORY)
 
-业界共识(Anthropic 官方 / Kent Beck):**TDD 在 AI 时代是关键纪律**,但 AI 引入"作弊 / false confidence"风险需专门防御。**完整 anti-pattern / property-based 工具 / 衔接细节见 [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md)**。DD-TDD 衔接见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) 第 10 节。
+业界共识(Anthropic 官方 / Kent Beck):**TDD 在 AI 时代是关键纪律**,但 AI 引入"作弊 / false confidence"风险需专门防御。完整细节见 [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md)。
 
-**5 条硬约束**(零容忍):
+**5 条硬约束**(零容忍):(1) 修 bug 必须先写复现测试(违反 = 同 #5);(2) spec 由 audit / 人写,test code 由 dev 写(Writer/Reviewer 反闭环);(3) 重构前测试必须 green;(4) 禁止 AI 通过删除 / 禁用测试通过(CI 监控 test 总数 > 10% 下降 alert);(5) 单一 AI session 不能同时写 spec + test + 实现(强制反闭环)。
 
-1. **修 bug 必须先写复现测试**(防 AI 补丁式修复 → 违反 #5)
-2. **spec 由 audit / 人写,test code 由 dev 写** —— Writer/Reviewer 反闭环(同 [Anthropic 官方](https://code.claude.com/docs/en/best-practices))
-3. **重构前测试必须 green**(防 AI 偷换语义)
-4. **禁止 AI 通过删除 / 禁用测试通过** —— Kent Beck cheating warning;CI 监控 test 总数 > 10% 下降 alert
-5. **单一 AI session 不能同时写 spec + test + 实现**(强制反闭环)
+**节奏**:红(具体 assertion,禁 `toBeDefined()` 等 weak assertion)→ 绿(最小实现)→ 蓝(重构 + 跑全套)。原型/探索期允许后置 test。
 
-**节奏**:红(具体 assertion,禁 `toBeDefined()` 等 weak assertion)→ 绿(最小实现)→ 蓝(重构 + 跑全套)。原型 / explore 阶段允许后置 test。
-
-**关键路径**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作同步)→ **100% 覆盖 + 显式 invariant + property-based**(`fast-check` / `hypothesis`)。覆盖率 < 80% 不是 hard block,**关键路径裸奔 = P0 BUG**。
+**关键路径**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作)→ 100% 覆盖 + 显式 invariant + property-based(`fast-check` / `hypothesis`)。**关键路径裸奔 = P0 BUG**(覆盖率 < 80% 不是 hard block,但关键路径必须满)。

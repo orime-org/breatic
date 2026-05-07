@@ -193,18 +193,21 @@ skills/{name}/
 
 ### 6.2 metadata.json Specification
 
+Only `name` and `description` are strictly required. All other fields have runtime defaults in `skills-loader.ts`. Filling `scope` and `category` explicitly is recommended so the skill's behavior is readable from `metadata.json` alone (rather than implied by the default).
+
 | Field | Required | Type | Default | Description |
 |---|---|---|---|---|
 | `name` | yes | string | — | Unique skill identifier |
 | `description` | yes | string | — | One-line description (LLM uses this to decide when to invoke) |
-| `scope` | yes | string[] | — | Where the skill can be used: `"agent"` (multi-turn chat) and/or `"canvas"` (single Worker execution) |
-| `category` | yes | string | — | Classification: `image`, `video`, `audio`, `tts`, `3d`, `text`, `understand`, `creative`, `research`, `default` |
+| `scope` | no | string[] | `["agent"]` | Where the skill can be used: `"agent"` (multi-turn chat) and/or `"canvas"` (single Worker execution) |
+| `category` | no | string | `"default"` | Classification: `image`, `video`, `audio`, `tts`, `3d`, `text`, `understand`, `creative`, `research`, `default` |
 | `tools` | no | string[] | `[]` | LLM tools this skill needs (e.g. `["web_search", "exec"]`) |
 | `output_type` | no | string | `"canvas"` | Output format: `"task_plan"` (JSON plan), `"canvas"` (node result), `"inline"` (chat text) |
 | `keywords` | no | string[] | `[]` | Keywords for search/matching |
 | `requires` | no | object | `{}` | Dependencies: `{ "env": ["API_KEY"], "bins": ["ffmpeg"] }` |
 | `disable_model_invocation` | no | boolean | `false` | If true, only user can invoke (LLM cannot auto-select) |
 | `always` | no | boolean | `false` | If true, always included in system prompt |
+| `user_invocable` | no | boolean | `true` | Whether the user can manually trigger this skill |
 
 ### 6.3 Scope: Three Areas
 

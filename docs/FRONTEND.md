@@ -22,71 +22,97 @@
 
 ## Directory Structure
 
+The web package is organized in layers, with strict bottom-up dependency direction:
+`ui ← data ← domain ← features ← spaces ← pages ← app`. Lower layers don't import higher ones.
+
 ```
 packages/web/src/
-├── index.tsx                    # Root: Redux + Router + Sentry
-├── App.tsx                      # App shell
-├── apps/                        # Page-level components
-│   ├── project/                 # Main canvas editor
-│   │   ├── components/
-│   │   │   ├── canvas/          #   Infinite canvas (ReactFlow)
-│   │   │   └── agent/           #   AI chat panel
-│   │   └── constants/           #   Icon maps, aspect ratios
-│   ├── workspace/               # Project list, login, language
-│   └── userCenter/              # Account, purchase, upgrade
-├── components/
-│   ├── base/                    # Reusable UI (agent, button, input, select, slider, etc.)
-│   ├── loading/                 # Global loading overlay
-│   ├── modals/                  # Confirm, text input, modal
-│   ├── themeProvider/           # Dark/light theme
-│   └── lottiePlayer/            # Lottie animation
+├── index.tsx                       # Root: Redux + Router + Sentry
+├── App.tsx                         # App shell
+│
+├── ui/                             # Stateless primitives (HeadlessUI + tokens)
+│   ├── button/ checkbox/ dialog/ dropdown/ icon/ input/
+│   ├── popover/ select/ slider/ switch/ tabs/ textArea/
+│   ├── tooltip/ upload/ ...        #   ~22 subdirs, no business logic
+│
+├── data/                           # IO layer (no business semantics)
+│   ├── yjs/                        #   manager / canvas-space / project-meta /
+│   │                               #   history / use-socket
+│   ├── api/                        #   axios clients per resource:
+│   │                               #   auth / projects / chat / canvas /
+│   │                               #   mini-tools / models / payment / assets /
+│   │                               #   project-members / project-spaces / users
+│   │                               #   + request.ts (axios) + token.ts
+│   ├── stream/                     #   sse.ts (SSE for Agent chat / text mini-tool)
+│   └── storage/                    #   oss-client.ts / upload-blob.ts
+│
+├── domain/                         # Business hooks (compose data + state)
+│   ├── space/                      #   useProjectSpaces (yjs orchestrator)
+│   │                               #   useProjectMeta · useSpaceManagerPool ·
+│   │                               #   useTabState · ActiveCanvasSpaceContext
+│   ├── project/                    #   useProjectMembers
+│   └── user/                       #   useUsers · useUserRole
+│
+├── apps/                           # (transitional — being decomposed into pages/, spaces/, features/)
+│   ├── project/                    #   Main project page (canvas + chat)
+│   ├── workspace/                  #   Project list (will become /studio in PR8)
+│   ├── userCenter/                 #   User account
+│   ├── auth/                       #   Login / register
+│   └── videoEditor/                #   Video editor (will move to spaces/timeline/ in PR7)
+│
+├── components/                     # (transitional — most have moved to ui/)
+│   ├── base/agent/                 #   Chat business components (will move to features/chat/ in PR5)
+│   ├── loading/ themeProvider/ modals/ lottiePlayer/
+│
+├── hooks/                          # (transitional — canvas-specific hooks pending PR6 move)
+│   ├── useCanvasActions.ts         #   Canvas write operations → Yjs
+│   ├── useCanvasUI.ts              #   Redux UI state (panels / comment mode)
+│   ├── useCanvasYjsInternal.ts     #   Yjs observe → CanvasDataContext bridge
+│   ├── useCanvasSpace.ts           #   Active canvas Space accessor
+│   ├── useNodeData.ts              #   Node data accessor
+│   ├── useUpstreamExternalFileList.ts
+│   ├── useUserCenterStore.ts       #   Redux auth slice accessor
+│   ├── useLoading.ts               #   Global loading state
+│   └── useProjectStore.ts useVideoEditorStore.ts
+│
+├── contexts/                       # (transitional)
+│   ├── CanvasDataContext.tsx       #   nodes/edges (read cache) + toasts
+│   └── LocalPendingProvider.tsx    #   pre-Yjs placeholder nodes (pickState etc.)
+│
 ├── store/
-│   ├── index.ts                 # Redux store config
+│   ├── index.ts                    # Redux store config
 │   └── modules/
-│       ├── canvas.ts            #   Canvas UI state (panels, comment mode — NO nodes/edges)
-│       ├── imageEditor.ts       #   Legacy image editor state (no longer used for canvas-native)
-│       ├── userCenter.ts        #   Auth & user info
-│       ├── projectInfo.ts       #   Auto-save timestamp
-│       └── loading.ts           #   Global loading counter
-├── hooks/
-│   ├── useCanvasActions.ts       # Canvas write operations → Yjs
-│   ├── useCanvasUI.ts           # Canvas UI state → Redux
-│   ├── useCanvasYjsInternal.ts  # Yjs observe → CanvasDataContext (internal)
-│   ├── useYjsProjectStore.ts    # Yjs lifecycle (connect/disconnect/sync)
-│   ├── useLocalPending.ts       # LocalPendingProvider accessor (pre-Yjs placeholder nodes)
-│   ├── useUserCenterStore.ts    # User/auth state accessor
-│   ├── useNodeData.ts           # Node data accessor
-│   ├── useLoading.ts            # Global loading state
-│   └── useUpstreamExternalFileList.ts  # Upstream node file references
-├── apis/
-│   ├── auth.ts                  # register, login, logout, getMe
-│   ├── projects.ts              # list, create, update, remove
-│   ├── chat.ts                  # sendMessage(SSE), sendSkillCommand(SSE), conversations
-│   ├── canvas.ts                # createTask, understand, listTasks
-│   ├── miniTools.ts             # executeImage, executeVideo, executeAudio, executeText(SSE)
-│   ├── models.ts                # getAll (model catalog)
-│   ├── payment.ts               # getTiers, createCheckout, getHistory
-│   ├── assets.ts                # presign, uploadToPresignedUrl, reportHistory
-│   ├── index.ts                 # barrel export
-│   ├── projectApi.ts            # LEGACY — /api/workflow/* (pending migration)
-│   ├── userCenterApi.ts         # LEGACY — /api/auth/*, /api/stripe/* (pending migration)
-│   └── workspaceApi.ts          # LEGACY — /api/workflow/base/* (pending migration)
-├── utils/
-│   ├── yjsManager.ts            # Base Yjs doc + awareness + subdocs
-│   ├── yjsProjectManager.ts     # Project Yjs: nodesMap/edgesMap Y.Map + UndoManager
-│   ├── canvasYjsRef.ts          # Module-level ref to active Yjs manager
-│   ├── request.ts               # Axios interceptors + auth token
-│   ├── sse.ts                   # SSE stream helper
-│   ├── token.ts                 # Auth token persistence (localStorage)
-│   ├── websocket.ts             # WebSocket connection management
-│   ├── mediaUtils.ts            # Image/audio/video utilities
-│   └── common.ts                # Misc utilities
-├── router/index.tsx             # React Router v7 (lazy-loaded)
-├── i18n/index.ts                # i18next config
-├── locales/{en,ja,zh-CN,zh-TW}/ # Translation JSON files
-├── theme/                       # CSS custom properties (dark/light)
-└── styles/                      # Global CSS
+│       ├── canvas.ts               #   Canvas UI state (panels, comment mode — NO nodes/edges)
+│       ├── userCenter.ts           #   Auth & user info
+│       ├── projectInfo.ts          #   Auto-save timestamp
+│       └── loading.ts              #   Global loading counter
+│
+├── router/index.tsx                # React Router v7 (lazy-loaded)
+├── i18n/                           # i18next config
+├── locales/{en,ja,zh-CN,zh-TW}/    # Translation JSON files
+├── theme/                          # tailwind-vars.ts + light.css + dark.css
+│                                   #   (CSS variables: brand/neutral scales,
+│                                   #    rounded, text-scale, semantic colors)
+├── styles/                         # Global CSS
+└── utils/                          # Pure helpers
+    ├── classnames.ts sanitize.ts mediaUtils.ts websocket.ts common.ts
+    └── videoEditor/                # Video editor utilities (moves with timeline)
 ```
+
+> Files marked **transitional** are being progressively migrated into the
+> layered structure (`features/`, `spaces/`, `pages/`). The end state has
+> `apps/`, `components/base/`, `hooks/` and `contexts/` collapsed entirely
+> into the layered tree.
+
+## Naming Conventions
+
+| File type | Convention | Example |
+|---|---|---|
+| React component (`.tsx`) | `PascalCase` (= export name) | `Button.tsx` `ProjectMembersPanel.tsx` |
+| React hook (`.ts/.tsx`) | `useFooBar` (= export name) | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| Other (`.ts` — util, data, config, store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| Test | Same name as source + `.test` | `useProjectSpaces.test.ts` |
+| Directory | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
 
 ## Two Zones (Agent / Canvas)
 
@@ -194,15 +220,46 @@ packages/web/src/
 
 ### Architecture
 
+v10 multi-doc layout — each project owns one meta doc plus one doc per Space:
+
 ```
-yjsManager.ts             → Base: Y.Doc + @hocuspocus/provider (server sync only)
-yjsProjectManager.ts      → Project: sync-first init of nodesMap/edgesMap/UndoManager
-canvasYjsRef.ts            → Module-level manager ref for useCanvasActions
-CanvasDataContext.tsx       → Provider: nodes/edges (useState) + toasts
-useCanvasYjsInternal.ts    → Yjs observe → yjsNodes (NOT Redux)
-useCanvasActions.ts        → Write operations → Yjs
-useCanvasUI.ts             → Redux UI-only state (rightPanel, commentMode, etc.)
+project-{pid}/meta              ←  spaces list, per-user tab state, project meta
+project-{pid}/canvas-{spaceId}  ←  one per canvas Space (nodesMap + edges)
+project-{pid}/document-{spaceId} ←  future (TipTap)
+project-{pid}/timeline-{spaceId} ←  future (剪映-style timeline)
 ```
+
+All docs for a single project share **one** Hocuspocus websocket
+(spec §5.3.3). Canvas Space docs are kept alive in an LRU pool (default
+size 5), so switching tabs doesn't reconnect.
+
+```
+data/yjs/manager.ts            → Base: Y.Doc + @hocuspocus/provider, with explicit
+                                  attach() when sharing a websocket
+data/yjs/project-meta.ts       → Project meta doc (spaces / userStates / awareness)
+data/yjs/canvas-space.ts       → Canvas Space doc (nodesMap + edges + UndoManager)
+data/yjs/use-socket.ts         → Shared HocuspocusProviderWebsocket per project
+                                  (useMemo-built, available on first render)
+domain/space/useProjectSpaces  → Project-level orchestrator: ws + meta + pool
+domain/space/useProjectMeta    → React subscription to meta.spaces
+domain/space/useSpaceManagerPool → LRU canvas-{spaceId} doc pool
+domain/space/ActiveCanvasSpaceContext → Active canvas Space manager (replaces
+                                  the old module-level `canvasYjsRef`)
+contexts/CanvasDataContext     → Read cache: yjsNodes + toasts → ReactFlow
+hooks/useCanvasYjsInternal     → Yjs observe → CanvasDataContext bridge
+hooks/useCanvasActions         → Write ops → Yjs (nodesMap.set, etc.)
+hooks/useCanvasUI              → Redux UI-only state (rightPanel, commentMode)
+```
+
+> **Default Space seeding**: when `POST /projects` runs, the server
+> writes a precomputed initial Yjs update for `project-{pid}/meta`
+> directly into `yjs_documents` inside the same transaction. So the
+> first time a client connects to a freshly-created project's meta
+> doc, `meta.spaces` already contains a default Canvas Space — no
+> client-side bootstrap effect needed. See `core/db/yjs-bootstrap.ts`
+> for the only place outside the collab process that writes
+> `yjs_documents.data` directly (safe because no client can be
+> connected before the creating transaction commits).
 
 ### Yjs / Redux / ReactFlow 三者关系
 
@@ -245,10 +302,15 @@ select/dimensions）分开存储，`useMemo` 合并。两条路径互不干扰�
 只重建那几个节点。未受影响的节点复用旧对象引用，ReactFlow
 跳过重渲染。支持 1000+ 节点。
 
-### Canvas Yjs Structure
+### Canvas Space Yjs Structure
+
+The canvas Space doc (`project-{pid}/canvas-{spaceId}`) has nodesMap +
+edges at the **top level** — no `canvas:` wrapper map. The wrapper layer
+existed pre-v10 when one doc held all spaces; the multi-doc split made
+it redundant.
 
 ```
-canvas: Y.Map
+project-{pid}/canvas-{spaceId} (Y.Doc)
   ├── nodesMap: Y.Map<nodeId, Y.Map>   ← each node is an independent Y.Map
   └── edges:    Y.Map<edgeId, Y.Map>
 
@@ -264,6 +326,16 @@ Each node Y.Map:
         ├── attachments:  Y.Array<Y.Map>
         ├── childIds:     Y.Array<string>
         └── prompt:       Y.XmlFragment (TipTap binding)
+```
+
+The project meta doc (`project-{pid}/meta`) holds:
+
+```
+project-{pid}/meta (Y.Doc)
+  ├── projectMeta: Y.Map<string, unknown>   ← name / description
+  ├── spaces:      Y.Map<spaceId, Y.Map>    ← Tab Bar source of truth
+  │     each entry: { id, type, name, order, locked, createdAt, createdBy }
+  └── userStates:  Y.Map<userId, Y.Map>     ← per-user tab state (active spaceId etc.)
 ```
 
 The nested `data` Y.Map mirrors ReactFlow's `node.data` shape, so
@@ -414,32 +486,26 @@ Frontend imports types and Zod schemas from `@breatic/shared` — single source 
 - Ping event filtering
 - Error/close lifecycle handling
 
-### New API Files (aligned with backend /api/v1/*)
+### API Files (aligned with backend `/api/v1/*`)
 
 ```
-apis/
-├── auth.ts            # register, login, logout, getMe
-├── projects.ts        # list, create, update, remove
-├── chat.ts            # sendMessage(SSE), sendSkillCommand(SSE), conversations
-├── canvas.ts          # createTask, understand, listTasks, getTask
-├── miniTools.ts       # executeImage, executeVideo, executeAudio, executeText(SSE)
-├── models.ts          # getAll (model catalog)
-├── payment.ts         # getTiers, createCheckout, getHistory
-├── assets.ts          # presign, uploadToPresignedUrl, reportHistory
-└── index.ts           # barrel export
+data/api/
+├── auth.ts                # register / login / logout / getMe
+├── projects.ts            # list / create / update / remove / duplicate
+├── project-members.ts     # list / add / update role / remove
+├── project-spaces.ts      # POST / DELETE Space
+├── chat.ts                # sendMessage(SSE) / sendSkillCommand(SSE) / conversations
+├── canvas.ts              # createTask / understand / listTasks / getTask
+├── mini-tools.ts          # executeImage / Video / Audio / Text(SSE)
+├── models.ts              # getAll (model catalog)
+├── payment.ts             # getTiers / createCheckout / getHistory
+├── assets.ts              # presign / uploadToPresignedUrl / reportHistory
+├── users.ts               # batch GET (avatars, names)
+├── legacy-oss-stub.ts     # OSS upload stubs for the standalone /video_editor route
+├── request.ts             # axios instance + interceptors + auth token
+├── token.ts               # localStorage persistence
+└── index.ts               # barrel export
 ```
-
-### Legacy API Files (pending migration)
-
-Old files (`projectApi.ts`, `userCenterApi.ts`, `workspaceApi.ts`) still exist — 13 components reference them. Should be migrated to new APIs incrementally.
-
-
-### Legacy API Files (pending migration)
-
-3 old files still exist — 13 components reference them:
-- `projectApi.ts` → migrate to `projects.ts` + `canvas.ts`
-- `userCenterApi.ts` → migrate to `auth.ts` + `payment.ts`
-- `workspaceApi.ts` → migrate to `projects.ts`
 
 ## State Management
 
@@ -462,8 +528,8 @@ Old files (`projectApi.ts`, `userCenterApi.ts`, `workspaceApi.ts`) still exist �
 （包括 `/project/<id>` 这种深链）首次 render 就能拿到持久化的 session token。
 
 历史坑：旧实现把水合写在 `Workspace`（`/`）的 `useEffect` 里，深链直接进入项目
-页时 Redux 的 token 保持为空字符串，继而让 `useYjsStore` 的 `enabled` 判空失败，
-YjsManager 从未创建，`addNode` 静默早返回——从用户视角就是"点击添加节点无反应"。
+页时 Redux 的 token 保持为空字符串，继而让 `useProjectSpaces` 的 `enabled` 判空失败，
+manager 从未创建，`addNode` 静默早返回——从用户视角就是"点击添加节点无反应"。
 把水合下沉到 reducer 层，结构性地消除了这类耦合。
 
 ### Three Hooks
@@ -499,7 +565,7 @@ The frontend talks to the backend over **relative URLs** (`/api/*`, `/ws`, `/upl
 - The built bundle has **no host baked in** — the same `dist/` works on `localhost:8000`, `staging.example.com`, `breatic.ai`, or any preview URL.
 - Dev mode relies on Vite's `server.proxy` (in `vite.config.ts`) to forward `/api` → `localhost:3000` and `/ws` → `localhost:1234`. From the browser's view it's single-origin on `localhost:8000`.
 - Production relies on nginx (in the `web` Docker container) to reverse-proxy the same routes to the API/Collab containers. Same single-origin model.
-- WebSocket URLs can't be purely relative (the `new WebSocket()` constructor requires a full URL), so `utils/yjsManager.ts` and `utils/websocket.ts` build them at runtime from `window.location.protocol` + `window.location.host`.
+- WebSocket URLs can't be purely relative (the `new WebSocket()` constructor requires a full URL), so `data/yjs/use-socket.ts` (the shared Hocuspocus websocket) and `utils/websocket.ts` (the misc ws helper) build them at runtime from `window.location.protocol` + `window.location.host`.
 
 The upshot: changing deployment domains requires zero frontend rebuild; the only constraint is that frontend and backend must share one reverse proxy, which they always do in breatic's architecture.
 

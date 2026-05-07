@@ -134,7 +134,7 @@
 - **跟设计 doc / PR 一起 commit**(**不进 git = 没真正 DD 完**)
 - **每个论断必须可追溯到具体证据**(commit hash / issue 链接 / log / 实测产物路径)
 - DD 报告完成后,在相关 PR description 中 link 到 DD 报告
-- audit role 在 PR review 时核查 DD 是否合规(详见 [breatic-inner CLAUDE.md L13](https://github.com/orime-org/breatic-inner) audit enforcement 章节)
+- audit role 在 PR review 时核查 DD 是否合规
 
 ## 7. 违规成本
 
@@ -257,10 +257,8 @@ DD 锁定方案 → TDD 写代码(红 → 绿 → 蓝)→ 关键路径 100% + in
 
 ## 衔接到 audit 流程
 
-audit role(`bugs_list` 分支 / `breatic-inner` 仓库)对 DD 的核查机制:
+audit role 对 DD 的核查机制:
 
 - 任何 PR / commit 改动满足 DD 触发条件之一时,audit 必须核查 PR description 是否含 DD 报告引用
-- 无 DD 报告 → 记入 BUGS.md 流程类条目(类 R9 BUG-188 history rewrite 零 disclosure)
+- 无 DD 报告 → 记入 BUGS.md 流程类条目
 - audit 不替 dev 写 DD,只 catch 缺失
-
-具体核查机制详见 [breatic-inner CLAUDE.md](https://github.com/orime-org/breatic-inner)(私有,access 申请 security@breatic.ai)。

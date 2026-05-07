@@ -9,9 +9,10 @@ The AI-native operating system for content creators — a unified workspace wher
 - [docs/PRODUCT.md](./docs/PRODUCT.md) — Product design, three-panel layout, collaboration model, execution modes, API overview, AI model catalog (~50 models across 6 modalities)
 - [docs/DEPLOY.md](./docs/DEPLOY.md) — Deployment guide (Docker Compose + nginx, configuration, troubleshooting)
 - [docs/ROADMAP.md](./docs/ROADMAP.md) — Development roadmap (Backend, Frontend, DevOps)
-- [docs/FRONTEND.md](./docs/FRONTEND.md) — Frontend architecture (React, ReactFlow, Yjs, state management)
-- [docs/YJS.md](./docs/YJS.md) — Yjs document structure spec (canvas + node editor docs, state machine, event flow, concurrency)
-- [docs/WORKTREE.md](./docs/WORKTREE.md) — Optional parallel worktree workflow for multi-session development
+- [docs/FRONTEND.md](./docs/FRONTEND.md) — Frontend architecture (React, ReactFlow, Yjs, layered structure, naming)
+- [docs/YJS.md](./docs/YJS.md) — Yjs document structure spec (multi-doc per Space, state machine, event flow, concurrency)
+- [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) — Due Diligence process for major decisions
+- [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md) — Test-Driven Development discipline (AI-era mandate)
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guide, commit conventions, commit author policy
 
 ## Tech Stack
