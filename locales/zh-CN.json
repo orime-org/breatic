@@ -682,5 +682,45 @@
         "logout": "退出登录"
       }
     }
+  },
+  "members": {
+    "popover": {
+      "title": "项目成员",
+      "invite": "邀请新成员",
+      "manage": "管理协作者",
+      "remove": "移除",
+      "self_label": "(你)"
+    },
+    "panel": {
+      "title": "协作者管理",
+      "subtitle": "管理项目成员及其权限",
+      "invite_section": "邀请新协作者",
+      "invite_placeholder": "邮箱或用户 ID",
+      "invite_button": "邀请",
+      "list_count": "成员 ({{count}})",
+      "list_note": "所有者永久绑定项目创建者",
+      "confirm_remove": "确认移除此协作者?",
+      "done": "完成"
+    },
+    "role": {
+      "owner": "所有者",
+      "edit": "编辑",
+      "view": "只读"
+    }
+  },
+  "credits": {
+    "pill": {
+      "aria_label": "积分余额"
+    },
+    "dialog": {
+      "title": "购买积分",
+      "balance_label": "当前余额",
+      "note": "积分永不过期 · 一次性购买",
+      "per100_unit": "/100 积分",
+      "cta_select": "选择",
+      "loading": "加载价格中…",
+      "no_tiers": "暂无可用积分包",
+      "checkout_failed": "创建支付失败,请重试"
+    }
   }
 }

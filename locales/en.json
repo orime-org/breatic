@@ -682,5 +682,45 @@
         "logout": "Logout"
       }
     }
+  },
+  "members": {
+    "popover": {
+      "title": "Members",
+      "invite": "Invite member",
+      "manage": "Manage members",
+      "remove": "Remove",
+      "self_label": "(you)"
+    },
+    "panel": {
+      "title": "Member management",
+      "subtitle": "Manage project members and roles",
+      "invite_section": "Invite collaborator",
+      "invite_placeholder": "Email or user ID",
+      "invite_button": "Invite",
+      "list_count": "Members ({{count}})",
+      "list_note": "Owner is permanently bound to project creator",
+      "confirm_remove": "Remove this collaborator?",
+      "done": "Done"
+    },
+    "role": {
+      "owner": "Owner",
+      "edit": "Editor",
+      "view": "Viewer"
+    }
+  },
+  "credits": {
+    "pill": {
+      "aria_label": "Credit balance"
+    },
+    "dialog": {
+      "title": "Buy credits",
+      "balance_label": "Current balance",
+      "note": "Credits never expire · One-time purchase",
+      "per100_unit": "/100 credits",
+      "cta_select": "Select",
+      "loading": "Loading pricing…",
+      "no_tiers": "No pricing available",
+      "checkout_failed": "Checkout failed, please try again"
+    }
   }
 }

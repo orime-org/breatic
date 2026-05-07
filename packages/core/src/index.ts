@@ -2,8 +2,13 @@
  * @breatic/core — shared backend runtime.
  *
  * All business logic, infrastructure, agent capabilities, and
- * configuration. Imported by @breatic/server, @breatic/worker,
- * and @breatic/collab.
+ * configuration. Imported by @breatic/server and @breatic/worker.
+ *
+ * @breatic/collab intentionally does NOT depend on this package —
+ * it's a deliberately lightweight Hocuspocus process and reaches
+ * for ioredis / postgres-js directly to avoid pulling in the full
+ * core dependency graph (drizzle / openrouter / etc). See
+ * `packages/collab/src/auth.ts` for the rationale.
  */
 
 // ── Database ─────────────────────────────────────────────────────
