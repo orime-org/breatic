@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
 import Divider from '@/ui/divider';
-import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
+import RecognizedPickDropdown from '@/features/chat/components/RecognizedPickDropdown';
 import { RiAddLine, RiSubtractLine } from 'react-icons/ri';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';

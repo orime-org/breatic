@@ -6,7 +6,7 @@ import Tooltip from '@/ui/tooltip';
 import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
 import Divider from '@/ui/divider';
-import AgentComposerInput from '@/components/base/agent/AgentInput';
+import AgentComposerInput from '@/features/chat/components/AgentInput';
 
 export type InpaintTool = 'brush' | 'circle' | 'rectangle' | 'eraser';
 

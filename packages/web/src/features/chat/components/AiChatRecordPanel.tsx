@@ -2,24 +2,28 @@ import React, { memo, useCallback, useEffect, useImperativeHandle, useRef, useSt
 import { nanoid } from 'nanoid';
 import dayjs from 'dayjs';
 import { type Node } from '@xyflow/react';
-import AgentMessage from '@/components/base/agent/AgentMessage';
+import AgentMessage from '@/features/chat/components/AgentMessage';
 import AgentInput, {
   type AgentCanvasPickSurfaceRemovalDetail,
   type AgentComposerInputHandle,
   type AgentResourceType,
-} from '@/components/base/agent/AgentInput';
+} from '@/features/chat/components/AgentInput';
 import AgentComposerTabs, {
   type AgentComposerUpstreamItem,
   type AgentComposerUploadItem,
-} from '@/components/base/agent/AgentComposerTabs';
-import AgentSendButton from '@/components/base/agent/AgentSendButton';
+} from '@/features/chat/components/AgentComposerTabs';
+import AgentSendButton from '@/features/chat/components/AgentSendButton';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/apps/project/components/canvas/types';
 import { Icon } from '@/ui/icon';
-import ProjectHeader from './ProjectHeader';
+// ProjectHeader is the project-page top bar (logo + title + theme picker
+// + import/export menu), not part of the chat feature. PR-E will move
+// it into a proper full-width TopBar; for now we reach across the
+// apps/project boundary to keep AiChatRecordPanel self-contained.
+import ProjectHeader from '@/apps/project/components/agent/ProjectHeader';
 import UserCenter from '@/apps/userCenter';
 
 /** Title bar metadata for the chat record panel layout. */

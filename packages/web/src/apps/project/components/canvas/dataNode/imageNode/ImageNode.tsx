@@ -27,8 +27,8 @@ import {
 import NodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
-import NodeChatComposer from '@/apps/project/components/agent/NodeChatComposer';
-import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
+import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
+import RecognizedPickDropdown from '@/features/chat/components/RecognizedPickDropdown';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Image_0_0';

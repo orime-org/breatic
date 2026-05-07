@@ -6,8 +6,8 @@ import Tooltip from '@/ui/tooltip';
 import AgentComposerInput, {
   type AgentCanvasPickSurfaceRemovalDetail,
   type AgentComposerInputHandle,
-} from '@/components/base/agent/AgentInput';
-import AgentComposerTabs, { type AgentComposerUploadItem } from '@/components/base/agent/AgentComposerTabs';
+} from '@/features/chat/components/AgentInput';
+import AgentComposerTabs, { type AgentComposerUploadItem } from '@/features/chat/components/AgentComposerTabs';
 import PlaybackPanel from '../playback/PlaybackPanel';
 
 type QuickEditBottomToolbarProps = {

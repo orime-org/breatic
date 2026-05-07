@@ -4,12 +4,12 @@ import { cn } from '@/utils/classnames';
 import AgentInput, {
   type AgentCanvasPickSurfaceRemovalDetail,
   type AgentComposerInputHandle,
-} from '@/components/base/agent/AgentInput';
+} from '@/features/chat/components/AgentInput';
 import AgentComposerTabs, {
   type AgentComposerUpstreamItem,
   type AgentComposerUploadItem,
-} from '@/components/base/agent/AgentComposerTabs';
-import AgentSendButton from '@/components/base/agent/AgentSendButton';
+} from '@/features/chat/components/AgentComposerTabs';
+import AgentSendButton from '@/features/chat/components/AgentSendButton';
 import { useCanvasData } from '@/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';

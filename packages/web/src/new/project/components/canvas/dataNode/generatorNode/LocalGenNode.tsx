@@ -8,8 +8,8 @@ import { nanoid } from 'nanoid';
 import { cn } from '@/utils/classnames';
 import AgentComposerInput, {
   type AgentComposerInputHandle,
-} from '@/components/base/agent/AgentInput';
-import AgentSendButton from '@/components/base/agent/AgentSendButton';
+} from '@/features/chat/components/AgentInput';
+import AgentSendButton from '@/features/chat/components/AgentSendButton';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';

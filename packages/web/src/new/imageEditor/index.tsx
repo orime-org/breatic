@@ -4,7 +4,7 @@ import { RiAddLine, RiSubtractLine } from 'react-icons/ri';
 import { useParams } from 'react-router-dom';
 import { Icon } from '@/ui/icon';
 import Loading from '@/components/loading/Loading';
-import RecognizedPickDropdown from '@/components/base/agent/RecognizedPickDropdown';
+import RecognizedPickDropdown from '@/features/chat/components/RecognizedPickDropdown';
 import Tooltip from '@/ui/tooltip';
 import Divider from '@/ui/divider';
 import { useCanvasData } from '@/contexts/CanvasDataContext';

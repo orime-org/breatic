@@ -19,7 +19,7 @@ import { CreditsPill, RechargeDialog } from '@/features/credits';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
-import AiChatRecordPanel from './components/agent/AiChatRecordPanel';
+import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
 import ProjectCanvas from './components/canvas';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from './components/canvas/types';
 

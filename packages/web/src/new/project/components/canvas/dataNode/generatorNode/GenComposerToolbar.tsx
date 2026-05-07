@@ -10,7 +10,7 @@ import {
   AgentResourcePreviewContent,
   useAgentResourcePreviewVideoSize,
   type AgentPreviewResource,
-} from '@/components/base/agent/AgentResourcePreview';
+} from '@/features/chat/components/AgentResourcePreview';
 import type { UpstreamItem } from './upstreamItems';
 
 export type { UpstreamItem };

@@ -22,7 +22,7 @@ import NodeHeader from '../../common/NodeHeader';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
 import TextNodeToolbar from './NodeToolbar';
-import NodeChatComposer from '@/apps/project/components/agent/NodeChatComposer';
+import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
 
 /** Extract plain text from HTML to check emptiness (same rule as TextNodeContent). */
 const getTextFromHtml = (html: string): string => {
