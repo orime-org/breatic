@@ -9,7 +9,7 @@ import { LocalPendingProvider } from '@/contexts/LocalPendingProvider';
 import { ActiveCanvasSpaceProvider } from '@/domain/space/ActiveCanvasSpaceContext';
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
-import { useSpaceWorkspace } from '@/domain/space/useSpaceWorkspace';
+import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
@@ -50,7 +50,7 @@ const ProjectPage: React.FC = () => {
   const navigate = useNavigate();
   const sessionToken = authInfo?.state?.token ?? '';
 
-  const yjs = useSpaceWorkspace({
+  const yjs = useProjectSpaces({
     id: workflowId ?? '',
     token: sessionToken,
     enabled: !!workflowId && !!sessionToken,
@@ -79,7 +79,7 @@ const ProjectPage: React.FC = () => {
  * The actual project content — inside CanvasDataProvider, consumes
  * canvas data through the canvas hooks.
  */
-const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useSpaceWorkspace> }> = ({ yjs }) => {
+const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }> = ({ yjs }) => {
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
