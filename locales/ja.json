@@ -682,5 +682,45 @@
         "logout": "ログアウト"
       }
     }
+  },
+  "members": {
+    "popover": {
+      "title": "メンバー",
+      "invite": "メンバー招待",
+      "manage": "メンバー管理",
+      "remove": "削除",
+      "self_label": "(あなた)"
+    },
+    "panel": {
+      "title": "メンバー管理",
+      "subtitle": "権限を含めたメンバー管理",
+      "invite_section": "新規メンバーを招待",
+      "invite_placeholder": "メールまたはユーザー ID",
+      "invite_button": "招待",
+      "list_count": "メンバー ({{count}})",
+      "list_note": "オーナーは作成者に固定",
+      "confirm_remove": "このメンバーを削除しますか?",
+      "done": "完了"
+    },
+    "role": {
+      "owner": "オーナー",
+      "edit": "編集",
+      "view": "閲覧"
+    }
+  },
+  "credits": {
+    "pill": {
+      "aria_label": "クレジット残高"
+    },
+    "dialog": {
+      "title": "クレジット購入",
+      "balance_label": "現在の残高",
+      "note": "無期限 · 一括購入",
+      "per100_unit": "/100 クレジット",
+      "cta_select": "選択",
+      "loading": "価格を読み込み中…",
+      "no_tiers": "購入可能なパッケージがありません",
+      "checkout_failed": "決済の作成に失敗しました"
+    }
   }
 }

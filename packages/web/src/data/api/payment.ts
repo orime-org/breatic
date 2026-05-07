@@ -5,17 +5,36 @@
 import { request, type CustomAxiosRequestConfig } from '@/data/api/request';
 import type { PaymentEntity, ApiResponse, PaginatedResponse, CheckoutInput } from '@breatic/shared';
 
-/** Pricing tier from the backend. */
+/**
+ * Pricing tier from the backend `GET /payment/tiers` response.
+ *
+ * Sourced from `config/pricing.yaml` (5 tiers in V1). The endpoint
+ * returns a bare array (NOT wrapped in `ApiResponse<...>`); the type
+ * below mirrors the actual JSON shape.
+ */
 export interface PricingTier {
+  /** Tier identifier — used as the `tier` field on `POST /payment/checkout`. */
   name: string;
+  /** Credits granted on successful payment. */
   credits: number;
-  price_usd: number;
-  stripe_price_id: string;
+  /** Price in the smallest currency unit (cents for USD). Display
+   *  with `priceCents / 100` for the dollar amount. */
+  priceCents: number;
+  /** ISO 4217, lowercased — typically `"usd"`. */
+  currency: string;
+  /** Pre-rendered marketing description from the config. */
+  description: string;
 }
 
-/** Get available pricing tiers. */
+/**
+ * Get available pricing tiers.
+ *
+ * Returns a bare `PricingTier[]` (no `ApiResponse` envelope) — this
+ * endpoint pre-dates the envelope convention. Caller should treat
+ * the response as the array directly.
+ */
 export const getTiers = () =>
-  request<ApiResponse<PricingTier[]>>({
+  request<PricingTier[]>({
     url: '/api/v1/payment/tiers',
     method: 'get',
   });

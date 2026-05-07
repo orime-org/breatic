@@ -10,8 +10,12 @@ import { ActiveCanvasSpaceProvider } from '@/domain/space/ActiveCanvasSpaceConte
 import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
+import { useUserRole } from '@/domain/user/useUserRole';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
+import * as authApi from '@/data/api/auth';
+import { MembersPopover, MembersPanel } from '@/features/members';
+import { CreditsPill, RechargeDialog } from '@/features/credits';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';
@@ -88,6 +92,36 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
   const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
   const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
+  // PR4-A: project-level features (members + credits) overlay state.
+  // The pill / popover sit absolute-positioned in the canvas region
+  // until PR-E lifts them into the proper full-width TopBar.
+  const [membersPanelOpen, setMembersPanelOpen] = useState(false);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Resolve the caller's userId once on mount (the redux user-info
+  // slice doesn't store `id` today). useUserRole below depends on it.
+  // Backend returns `ApiResponse<UserEntity>` and the axios interceptor
+  // unwraps the envelope to `{ data: UserEntity }` — see
+  // `data/api/request.ts`.
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .getMe()
+      .then((res) => {
+        if (cancelled) return;
+        const id = (res as unknown as { data?: { id?: string } })?.data?.id ?? null;
+        setCurrentUserId(id);
+      })
+      .catch(() => {
+        // Auth interceptor handles 401; on transient failures we
+        // simply don't get a userId and gating defaults to "view".
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const metaProvider = yjs.metaManager?.provider ?? null;
+  const { role: myRole } = useUserRole(yjs.projectId, currentUserId, metaProvider);
 
   const panelNode = rightPanel.nodeId ? nodes.find((n) => n.id === rightPanel.nodeId) : undefined;
   const panelNodeType = String(panelNode?.type ?? '');
@@ -161,7 +195,32 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
 
   return (
     <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
-      <div className='flex flex-col w-screen h-screen overflow-hidden'>
+      <div className='flex flex-col w-screen h-screen overflow-hidden relative'>
+        {/* PR4-A overlay: members + credits (temporary canvas-region
+            placement; full-width TopBar lift happens in PR-E). */}
+        <div className='pointer-events-none absolute right-3 top-3 z-30 flex items-center gap-2'>
+          <div className='pointer-events-auto'>
+            <MembersPopover
+              projectId={yjs.projectId}
+              metaProvider={metaProvider}
+              myRole={myRole}
+              onOpenPanel={() => setMembersPanelOpen(true)}
+            />
+          </div>
+          <div className='pointer-events-auto'>
+            <CreditsPill onClick={() => setRechargeOpen(true)} />
+          </div>
+        </div>
+
+        <MembersPanel
+          open={membersPanelOpen}
+          onClose={() => setMembersPanelOpen(false)}
+          projectId={yjs.projectId}
+          metaProvider={metaProvider}
+          myRole={myRole}
+        />
+        <RechargeDialog open={rechargeOpen} onClose={() => setRechargeOpen(false)} />
+
         <Group orientation='horizontal' className='flex-1 min-h-0 flex'>
           {chatPanelVisible && (
             <>

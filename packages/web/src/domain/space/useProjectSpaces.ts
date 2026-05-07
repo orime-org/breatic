@@ -33,6 +33,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
+import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 import { useHocuspocusSocket } from '@/data/yjs/use-socket';
 import { useProjectMeta } from './useProjectMeta';
 import { useSpaceManagerPool } from './useSpaceManagerPool';
@@ -55,10 +56,18 @@ export interface UseProjectSpacesOptions {
 export interface UseProjectSpacesResult {
   /** Active canvas Space manager — null while connecting or between switches. */
   manager: CanvasSpaceManager | null;
+  /**
+   * Project meta-doc manager — used by features that listen to the
+   * `members:changed` stateless invalidate signal (e.g. project members
+   * cache). Null while the meta-doc is being constructed.
+   */
+  metaManager: ProjectMetaManager | null;
   /** True between mount and first canvas Space being ready. */
   yjsLoading: boolean;
   /** Read-only flag mirroring the input — kept for upstream wiring. */
   yjsEnabled: boolean;
+  /** Project UUID, normalized — null when the hook is disabled. */
+  projectId: string | null;
 }
 
 export const useProjectSpaces = (options: UseProjectSpacesOptions): UseProjectSpacesResult => {
@@ -70,7 +79,7 @@ export const useProjectSpaces = (options: UseProjectSpacesOptions): UseProjectSp
   const socket = useHocuspocusSocket(projectId, token, { enabled, wsUrl });
 
   // 2. Meta doc — drives the Tab Bar + stateless invalidate channel.
-  const { spaces, loading: metaLoading } = useProjectMeta(projectId, token, {
+  const { manager: metaManager, spaces, loading: metaLoading } = useProjectMeta(projectId, token, {
     enabled,
     websocketProvider: socket ?? undefined,
     wsUrl,
@@ -110,7 +119,9 @@ export const useProjectSpaces = (options: UseProjectSpacesOptions): UseProjectSp
 
   return {
     manager: activeManager,
+    metaManager,
     yjsLoading,
     yjsEnabled: !!projectId,
+    projectId,
   };
 };
