@@ -12,8 +12,8 @@ import * as Y from 'yjs';
 import {
   getUserOrigin,
   noHistoryOrigin,
-} from '@/utils/yjsCanvasSpaceManager';
-import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+} from '@/data/yjs/canvas-space';
+import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 import { useActiveCanvasSpace } from '@/contexts/ActiveCanvasSpaceContext';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 import type { NodeState, HandlingActor, CanvasNodeFields, AttachRef } from '@breatic/shared';

@@ -6,11 +6,11 @@ import Purchase from './components/Purchase';
 import Account from './components/Account';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { googleLogout } from '@react-oauth/google';
-import { removeToken, getToken } from '@/utils/token';
+import { removeToken, getToken } from '@/data/api/token';
 import { useTranslation } from 'react-i18next';
 import { UserInfoType } from '@/store/modules/userCenter';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
-import * as authApi from '@/apis/auth';
+import * as authApi from '@/data/api/auth';
 
 const DEFAULT_USER_INFO: UserInfoType = {
   name: '',

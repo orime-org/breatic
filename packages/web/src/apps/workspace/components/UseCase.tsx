@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { message } from '@/ui/message';
 import { UseCaseItemObjType } from '@/apps/userCenter/types';
-import { projectsApi } from '@/apis';
+import { projectsApi } from '@/data/api';
 import { Icon } from '@/ui/icon';
 import TextInputModal from '@/components/modals/TextInputModal';
 

@@ -2,8 +2,8 @@
  * Mini-tools API — image/video/audio/text tool execution.
  */
 
-import { request } from '@/utils/request';
-import { sse } from '@/utils/sse';
+import { request } from '@/data/api/request';
+import { sse } from '@/data/stream/sse';
 import type { TaskEntity, ApiResponse } from '@breatic/shared';
 
 /** Execute an image mini-tool (async via Worker). */

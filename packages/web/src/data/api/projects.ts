@@ -2,7 +2,7 @@
  * Projects API — CRUD for creative projects.
  */
 
-import { request, type CustomAxiosRequestConfig } from '@/utils/request';
+import { request, type CustomAxiosRequestConfig } from '@/data/api/request';
 import type { ProjectEntity, ApiResponse, ProjectCreateInput } from '@breatic/shared';
 
 /**

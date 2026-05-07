@@ -11,7 +11,7 @@
  * `document` / `timeline` until those kinds ship.
  */
 
-import { request } from '@/utils/request';
+import { request } from '@/data/api/request';
 import type { ApiResponse, SpaceType } from '@breatic/shared';
 
 /**

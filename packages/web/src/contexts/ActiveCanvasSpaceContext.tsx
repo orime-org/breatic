@@ -14,7 +14,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react';
-import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 
 const ActiveCanvasSpaceContext = createContext<CanvasSpaceManager | null>(null);
 

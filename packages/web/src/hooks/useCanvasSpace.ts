@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as Y from 'yjs';
 import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 import type { CanvasToast } from '@/contexts/CanvasDataContext';
 
 // ── Converters ─────────────────────────────────────────────────

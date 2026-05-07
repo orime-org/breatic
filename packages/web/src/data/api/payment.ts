@@ -2,7 +2,7 @@
  * Payment API — pricing tiers, Stripe checkout, transaction history.
  */
 
-import { request, type CustomAxiosRequestConfig } from '@/utils/request';
+import { request, type CustomAxiosRequestConfig } from '@/data/api/request';
 import type { PaymentEntity, ApiResponse, PaginatedResponse, CheckoutInput } from '@breatic/shared';
 
 /** Pricing tier from the backend. */

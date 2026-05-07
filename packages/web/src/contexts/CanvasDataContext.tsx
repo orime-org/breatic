@@ -26,7 +26,7 @@ import {
 } from 'react';
 import { nanoid } from 'nanoid';
 import type { Node, Edge } from '@xyflow/react';
-import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
+import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 import { useCanvasSpace } from '@/hooks/useCanvasSpace';
 
 // ── Toast types ────────────────────────────────────────────────

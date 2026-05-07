@@ -2,7 +2,7 @@
  * Auth API — register, login, logout, current user.
  */
 
-import { request, type CustomAxiosRequestConfig } from '@/utils/request';
+import { request, type CustomAxiosRequestConfig } from '@/data/api/request';
 import type { UserEntity, ApiResponse, RegisterInput, LoginInput } from '@breatic/shared';
 
 /** Register a new account. */

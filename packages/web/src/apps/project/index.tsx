@@ -11,7 +11,7 @@ import { useCanvasActions } from '@/hooks/useCanvasActions';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useYjsStore } from '@/hooks/useYjsProjectStore';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
-import { removeToken } from '@/utils/token';
+import { removeToken } from '@/data/api/token';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import TextEditor from './components/textEditor';
 import ResizableLeftPanel from './components/canvas/ui/ResizableLeftPanel';

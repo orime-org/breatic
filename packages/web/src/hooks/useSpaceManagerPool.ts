@@ -26,7 +26,7 @@ import type { SpaceType } from '@breatic/shared';
 import {
   createCanvasSpaceManager,
   type CanvasSpaceManager,
-} from '@/utils/yjsCanvasSpaceManager';
+} from '@/data/yjs/canvas-space';
 
 const DEFAULT_POOL_SIZE = 5;
 

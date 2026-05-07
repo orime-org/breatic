@@ -8,8 +8,8 @@ import { nanoid } from 'nanoid';
 import { ExportSettingsModal } from './ExportSettingsModal';
 import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
 import { useProjectStore } from '@/hooks/useProjectStore';
-import { getOssStsApi, uploadFileSuccessApi } from '@/apis/projectApi';
-import { createOssClient } from '@/utils/ossClient';
+import { getOssStsApi, uploadFileSuccessApi } from '@/data/api/legacy-oss-stub';
+import { createOssClient } from '@/data/storage/oss-client';
 import { generateVideoThumbnail, dataURLtoBlob } from '@/utils/mediaUtils';
 
 interface ExportPanelProps {

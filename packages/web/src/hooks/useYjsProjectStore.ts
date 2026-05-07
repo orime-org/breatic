@@ -32,8 +32,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import type { CanvasSpaceManager } from '@/utils/yjsCanvasSpaceManager';
-import { useHocuspocusSocket } from './useHocuspocusSocket';
+import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
+import { useHocuspocusSocket } from '@/data/yjs/use-socket';
 import { useProjectMeta } from './useProjectMeta';
 import { useSpaceManagerPool } from './useSpaceManagerPool';
 

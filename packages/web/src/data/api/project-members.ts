@@ -6,7 +6,7 @@
  * with stateless-message-driven cache invalidation.
  */
 
-import { request } from '@/utils/request';
+import { request } from '@/data/api/request';
 import type { ApiResponse, ProjectMember, ProjectRole } from '@breatic/shared';
 
 /** List active members of a project (any current member can read). */

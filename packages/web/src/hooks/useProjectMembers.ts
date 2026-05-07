@@ -19,8 +19,8 @@
 
 import { useEffect, useState } from 'react';
 import type { ProjectMember } from '@breatic/shared';
-import type { ProjectMetaManager } from '@/utils/yjsProjectMetaManager';
-import * as projectMembersApi from '@/apis/projectMembers';
+import type { ProjectMetaManager } from '@/data/yjs/project-meta';
+import * as projectMembersApi from '@/data/api/project-members';
 
 interface CacheEntry {
   inFlight: Promise<ProjectMember[]> | null;

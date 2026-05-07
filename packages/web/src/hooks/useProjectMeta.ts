@@ -20,7 +20,7 @@ import type { Space, SpaceType } from '@breatic/shared';
 import {
   createProjectMetaManager,
   type ProjectMetaManager,
-} from '@/utils/yjsProjectMetaManager';
+} from '@/data/yjs/project-meta';
 
 export interface UseProjectMetaOptions {
   enabled?: boolean;

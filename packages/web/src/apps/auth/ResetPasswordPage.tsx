@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import * as authApi from '@/apis/auth';
+import * as authApi from '@/data/api/auth';
 
 export default function ResetPasswordPage() {
   const { t } = useTranslation();

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { message } from '@/ui/message';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import type { WorkspaceProject } from '../types';
-import { projectsApi } from '@/apis';
+import { projectsApi } from '@/data/api';
 import { Icon } from '@/ui/icon';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import TextInputModal from '@/components/modals/TextInputModal';
