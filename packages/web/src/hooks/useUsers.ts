@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { batchGet, type UserDisplay } from '@/apis/users';
+import { batchGet, type UserDisplay } from '@/data/api/users';
 
 const TTL_MS = 60 * 60 * 1000; // 1 hour
 

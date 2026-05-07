@@ -2,7 +2,7 @@
  * Models API — AIGC model catalog.
  */
 
-import { request } from '@/utils/request';
+import { request } from '@/data/api/request';
 
 /** Model tier for frontend display filtering. */
 export type ModelTier = 'recommended' | 'optional' | 'internal';

@@ -2,7 +2,7 @@
  * Canvas API — AIGC task creation and understand.
  */
 
-import { request } from '@/utils/request';
+import { request } from '@/data/api/request';
 import type { TaskEntity, ApiResponse, PaginatedResponse, TaskCreateInput, UnderstandInput } from '@breatic/shared';
 
 /** Create an AIGC generation task. */

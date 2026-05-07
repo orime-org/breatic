@@ -8,7 +8,7 @@
  *   4. reportHistory() → record in node_history (async, best-effort)
  */
 
-import { request, type CustomAxiosRequestConfig } from '@/utils/request';
+import { request, type CustomAxiosRequestConfig } from '@/data/api/request';
 import type { ApiResponse } from '@breatic/shared';
 
 /** Presign result — upload URL + permanent file URL. */

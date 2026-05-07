@@ -2,8 +2,8 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { nanoid } from 'nanoid';
 import { addEdge, type Edge, type Node } from '@xyflow/react';
 import type { TaskEntity } from '@breatic/shared';
-import { getTask } from '@/apis/canvas';
-import { executeVideo } from '@/apis/miniTools';
+import { getTask } from '@/data/api/canvas';
+import { executeVideo } from '@/data/api/mini-tools';
 import { message } from '@/ui/message';
 import {
   createEditorVideoNodeData,

@@ -2,8 +2,8 @@
  * Chat API — Agent conversation via SSE.
  */
 
-import { sse } from '@/utils/sse';
-import { request } from '@/utils/request';
+import { sse } from '@/data/stream/sse';
+import { request } from '@/data/api/request';
 import type { ConversationEntity, ApiResponse, PaginatedResponse, ChatMessageInput, SkillCommandInput } from '@breatic/shared';
 
 /** Send a chat message and receive SSE stream. */

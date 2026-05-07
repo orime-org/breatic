@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { getToken, removeToken } from './token';
-import { logout as logoutApi } from '@/apis/auth';
+import { logout as logoutApi } from '@/data/api/auth';
 import { googleLogout } from '@react-oauth/google';
 import store from '@/store';
 import { incrementLoading, decrementLoading } from '@/store/modules/loading';

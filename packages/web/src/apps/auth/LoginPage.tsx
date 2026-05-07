@@ -11,8 +11,8 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useTranslation } from 'react-i18next';
-import * as authApi from '@/apis/auth';
-import { setToken } from '@/utils/token';
+import * as authApi from '@/data/api/auth';
+import { setToken } from '@/data/api/token';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 
 type Tab = 'login' | 'register' | 'forgot';

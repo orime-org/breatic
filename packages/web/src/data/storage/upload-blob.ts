@@ -10,7 +10,7 @@
  * the node's `content` field in Yjs.
  */
 
-import { presign, uploadToPresignedUrl } from '@/apis/assets';
+import { presign, uploadToPresignedUrl } from '@/data/api/assets';
 
 export interface UploadBlobContext {
   /** File name hint (extension kept by the backend for key generation). */

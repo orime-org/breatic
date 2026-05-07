@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import type { ProjectMetaManager } from '@/utils/yjsProjectMetaManager';
+import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 
 export interface TabState {
   lastActiveTabId: string | null;

@@ -26,7 +26,7 @@ import {
   createYjsManager,
   type YjsManager as BaseYjsManager,
   type YjsManagerConfig,
-} from './yjsManager';
+} from "./manager";
 
 /** Transactions tagged with this origin are excluded from UndoManager. */
 export const noHistoryOrigin = Symbol('no-history');

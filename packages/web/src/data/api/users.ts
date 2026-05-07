@@ -6,7 +6,7 @@
  * member. Backed by `GET /api/v1/users?ids=`.
  */
 
-import { request } from '@/utils/request';
+import { request } from '@/data/api/request';
 import type { ApiResponse } from '@breatic/shared';
 
 /** Public display fields returned by the batch endpoint. */
