@@ -134,6 +134,11 @@ genuinely need hard delete, open an issue for discussion first.
 - **Immutability by default**. Prefer new objects over mutation.
 - **Error handling at every layer**. No bare `catch` — either handle
   specifically or re-throw.
+- **Web import paths** (`packages/web/src/`): prefer `@/` alias for
+  any cross-directory import. ESLint warns on parent-relative
+  imports (`../*`) today; existing code is grandfathered, the full
+  migration to all-`@/` (web + backend) happens in the final audit
+  PR. Same-directory `./X` imports are fine.
 
 See [CLAUDE.md](./CLAUDE.md) for the full project specification.
 

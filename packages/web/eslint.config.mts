@@ -119,6 +119,26 @@ export default [
       // Other
       curly: 'off',
       'linebreak-style': ['off', 'unix'],
+
+      // Import path style — prefer @/ alias over parent-relative paths.
+      // Today this is `warn` so existing code (~159 cross-directory
+      // relative imports as of PR6) doesn't break CI. New code should
+      // use @/ for any cross-directory import. Same-directory `./X`
+      // remains acceptable per project naming convention.
+      // Full migration to派 1 (everything @/, error-level enforced
+      // across web + 4 backend packages) happens in PR9 (task #97).
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['../*', '../../*', '../../../*', '../../../../*'],
+              message:
+                'Use @/ alias instead of parent-relative imports. tsconfig.json paths.@/* → src/*.',
+            },
+          ],
+        },
+      ],
     },
   },
   {
