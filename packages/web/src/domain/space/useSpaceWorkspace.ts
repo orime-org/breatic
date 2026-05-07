@@ -1,5 +1,5 @@
 /**
- * `useYjsStore(options)` — top-level Yjs orchestrator for the
+ * `useSpaceWorkspace(options)` — top-level Yjs orchestrator for the
  * project page (v10 multi-doc).
  *
  * Replaces the pre-v10 single-doc store. Owns:
@@ -37,7 +37,7 @@ import { useHocuspocusSocket } from '@/data/yjs/use-socket';
 import { useProjectMeta } from './useProjectMeta';
 import { useSpaceManagerPool } from './useSpaceManagerPool';
 
-export interface UseYjsStoreOptions {
+export interface UseSpaceWorkspaceOptions {
   /** Project UUID from the URL. Empty/undefined disables the hook. */
   id: string;
   /** Session token (Bearer). Empty disables the hook. */
@@ -52,7 +52,7 @@ export interface UseYjsStoreOptions {
   onAuthFailed?: (reason: string) => void;
 }
 
-export interface UseYjsStoreResult {
+export interface UseSpaceWorkspaceResult {
   /** Active canvas Space manager — null while connecting or between switches. */
   manager: CanvasSpaceManager | null;
   /** True between mount and first canvas Space being ready. */
@@ -61,7 +61,7 @@ export interface UseYjsStoreResult {
   yjsEnabled: boolean;
 }
 
-export const useYjsStore = (options: UseYjsStoreOptions): UseYjsStoreResult => {
+export const useSpaceWorkspace = (options: UseSpaceWorkspaceOptions): UseSpaceWorkspaceResult => {
   const { id, token, wsUrl, enabled = true, onAuthFailed } = options;
 
   const projectId = enabled && id && token ? id : null;
