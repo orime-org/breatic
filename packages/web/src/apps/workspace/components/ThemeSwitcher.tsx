@@ -1,7 +1,7 @@
 import React, { memo, useEffect } from 'react';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { Icon } from '@/ui/icon';
-import '@/apps/project/components/agent/ProjectHeader.css';
+import '@/features/top-bar/components/ProjectHeader.css';
 
 type ThemeMode = 'system' | 'dark' | 'light';
 
