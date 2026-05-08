@@ -722,5 +722,44 @@
       "no_tiers": "No pricing available",
       "checkout_failed": "Checkout failed, please try again"
     }
+  },
+  "spaces": {
+    "tab": {
+      "new": "New canvas",
+      "drawer": "All canvases",
+      "close": "Close tab",
+      "rename": "Rename",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "lock": "Lock",
+      "unlock": "Unlock",
+      "kind_canvas": "Canvas",
+      "kind_document": "Document",
+      "kind_timeline": "Timeline"
+    },
+    "drawer": {
+      "title": "All Spaces",
+      "count": "total",
+      "tag_open": "Open",
+      "tag_active": "Active",
+      "nodes_count": "{{count}} nodes",
+      "confirm_delete": "Delete this space?",
+      "new_canvas": "New canvas",
+      "new_document": "New document",
+      "new_timeline": "New timeline"
+    },
+    "new_dialog": {
+      "title": "New space",
+      "subtitle": "Pick a kind and give it a name.",
+      "name_label": "Name",
+      "name_placeholder": "e.g. Scene v3",
+      "create": "Create",
+      "cancel": "Cancel",
+      "placeholder_kind_unsupported": "{{kind}} spaces are not yet supported in V1."
+    },
+    "placeholder": {
+      "title": "Coming soon",
+      "description": "The {{kind}} space type will be available in a future release."
+    }
   }
 }

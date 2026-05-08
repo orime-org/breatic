@@ -19,12 +19,10 @@ import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import { Icon } from '@/ui/icon';
-// ProjectHeader is the project-page top bar (logo + title + theme picker
-// + import/export menu), not part of the chat feature. PR-E will move
-// it into a proper full-width TopBar; for now we reach across the
-// apps/project boundary to keep AiChatRecordPanel self-contained.
-import ProjectHeader from '@/apps/project/components/agent/ProjectHeader';
-import UserCenter from '@/apps/userCenter';
+// PR-Y2 lifted ProjectHeader (logo / title / import-export) and the
+// UserCenter widget (account / credits) into the full-width
+// `features/top-bar`. The chat panel header is now reduced to chat-
+// specific affordances (New conversation, History).
 
 /** Title bar metadata for the chat record panel layout. */
 export const panelTitle = {
@@ -604,12 +602,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
 
     return (
       <div className='flex flex-col h-full min-h-0' {...rest}>
-        <div className='h-[56px] flex flex-nowrap items-center justify-between gap-2 w-full shrink-0 p-2 border-b border-border-default-base bg-background-default-base'>
-          <ProjectHeader
-            projectName={projectName}
-            onProjectNameCommit={onProjectNameCommit}
-            className='min-w-0 max-w-[220px]'
-          />
+        <div className='h-12 flex flex-nowrap items-center justify-end gap-1 w-full shrink-0 px-2 border-b border-border-default-base bg-background-default-base'>
           <button
             type='button'
             className='shrink-0 flex items-center justify-center w-8 h-8 rounded hover:bg-background-default-secondary transition-colors'
@@ -624,7 +617,6 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
           >
             <Icon name='project-chat-header-history-icon' width={24} height={24} color='var(--color-icon-secondary)' />
           </button>
-          <UserCenter className='shrink-0' hideInfoBadge={!showUserCenterInfoBadge} hideUpgradeButtonText />
         </div>
         <div ref={scrollContainerRef} className='flex-1 min-h-0 overflow-auto px-4 py-4 flex flex-col gap-4'>
           {messageList.length === 0 ? (

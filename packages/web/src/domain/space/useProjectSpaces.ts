@@ -38,6 +38,8 @@ import { useHocuspocusSocket } from '@/data/yjs/use-socket';
 import { useProjectMeta } from './useProjectMeta';
 import { useSpaceManagerPool } from './useSpaceManagerPool';
 
+import type { Space } from '@breatic/shared';
+
 export interface UseProjectSpacesOptions {
   /** Project UUID from the URL. Empty/undefined disables the hook. */
   id: string;
@@ -51,10 +53,27 @@ export interface UseProjectSpacesOptions {
    * clear local session + redirect to /login.
    */
   onAuthFailed?: (reason: string) => void;
+  /**
+   * Tab Bar (`spaces/_shell`) drives this. When provided, the hook
+   * opens that Space's manager via the LRU pool; when undefined, the
+   * fallback "first canvas Space in `meta.spaces`" applies (legacy
+   * pre-Tab-Bar behavior).
+   *
+   * If the id refers to a non-canvas kind (document/timeline), the
+   * `manager` field stays null — only canvas Spaces have a runtime
+   * implementation today; the shell renders a placeholder for the
+   * other kinds.
+   */
+  activeSpaceId?: string | null;
 }
 
 export interface UseProjectSpacesResult {
-  /** Active canvas Space manager — null while connecting or between switches. */
+  /**
+   * Manager for the **active canvas Space**. Null when:
+   *   - the hook is loading
+   *   - the active space is non-canvas (document/timeline) — render a placeholder
+   *   - there are no canvas spaces yet
+   */
   manager: CanvasSpaceManager | null;
   /**
    * Project meta-doc manager — used by features that listen to the
@@ -62,6 +81,12 @@ export interface UseProjectSpacesResult {
    * cache). Null while the meta-doc is being constructed.
    */
   metaManager: ProjectMetaManager | null;
+  /** All spaces in this project — Tab Bar source of truth. */
+  spaces: Space[];
+  /** Currently active spaceId — derived from `activeSpaceId` or first canvas. */
+  activeSpaceId: string | null;
+  /** Currently active space row (for kind / name lookup). */
+  activeSpace: Space | null;
   /** True between mount and first canvas Space being ready. */
   yjsLoading: boolean;
   /** Read-only flag mirroring the input — kept for upstream wiring. */
@@ -71,7 +96,7 @@ export interface UseProjectSpacesResult {
 }
 
 export const useProjectSpaces = (options: UseProjectSpacesOptions): UseProjectSpacesResult => {
-  const { id, token, wsUrl, enabled = true, onAuthFailed } = options;
+  const { id, token, wsUrl, enabled = true, onAuthFailed, activeSpaceId: activeSpaceIdInput } = options;
 
   const projectId = enabled && id && token ? id : null;
 
@@ -93,33 +118,53 @@ export const useProjectSpaces = (options: UseProjectSpacesOptions): UseProjectSp
     onAuthFailed,
   });
 
-  // 4. Pick the first Canvas Space as the active one. Tab Bar UI
-  //    (PR-E) will replace this with `useTabState`-driven selection.
-  //    We filter to canvas because that's the only renderable kind
-  //    in V1; document/timeline entries in `meta.spaces` are tracked
-  //    but skipped until their UI ships.
+  // 4. Resolve active spaceId.
+  //    - When the Tab Bar (`spaces/_shell`) passes an explicit
+  //      `activeSpaceId`, honor it (validate against meta.spaces so a
+  //      stale id from `meta.userStates` doesn't try to open a deleted
+  //      space).
+  //    - Otherwise fall back to the first canvas Space in `meta.spaces`
+  //      (legacy single-Space behaviour, kept for callers that haven't
+  //      adopted the shell yet).
   const activeSpaceId = useMemo<string | null>(() => {
+    if (activeSpaceIdInput) {
+      const exists = spaces.some((s) => s.id === activeSpaceIdInput);
+      if (exists) return activeSpaceIdInput;
+      // Fall through to first-canvas fallback when the id is stale.
+    }
     const firstCanvas = spaces.find((s) => s.type === 'canvas');
     return firstCanvas?.id ?? null;
-  }, [spaces]);
+  }, [activeSpaceIdInput, spaces]);
+
+  const activeSpace = useMemo<Space | null>(() => {
+    if (!activeSpaceId) return null;
+    return spaces.find((s) => s.id === activeSpaceId) ?? null;
+  }, [activeSpaceId, spaces]);
 
   const [activeManager, setActiveManager] = useState<CanvasSpaceManager | null>(null);
 
   useEffect(() => {
-    if (!activeSpaceId || !projectId) {
+    // Only canvas Spaces have a runtime manager today. Document /
+    // timeline are listed in `meta.spaces` (Tab Bar shows them) but
+    // they don't have a Yjs document type wired up yet — the shell
+    // renders a placeholder for those kinds.
+    if (!activeSpaceId || !projectId || activeSpace?.type !== 'canvas') {
       setActiveManager(null);
       return;
     }
     setActiveManager(getCanvasSpace(activeSpaceId));
     // The pool itself owns lifecycle / LRU eviction; we never destroy here.
-  }, [projectId, activeSpaceId, getCanvasSpace]);
+  }, [projectId, activeSpaceId, activeSpace?.type, getCanvasSpace]);
 
   const yjsLoading =
-    !!projectId && (metaLoading || activeManager === null);
+    !!projectId && (metaLoading || (activeSpace?.type === 'canvas' && activeManager === null));
 
   return {
     manager: activeManager,
     metaManager,
+    spaces,
+    activeSpaceId,
+    activeSpace,
     yjsLoading,
     yjsEnabled: !!projectId,
     projectId,

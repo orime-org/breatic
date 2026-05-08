@@ -722,5 +722,44 @@
       "no_tiers": "暂无可用积分包",
       "checkout_failed": "创建支付失败,请重试"
     }
+  },
+  "spaces": {
+    "tab": {
+      "new": "新建画布",
+      "drawer": "所有画布",
+      "close": "关闭",
+      "rename": "重命名",
+      "duplicate": "复制",
+      "delete": "删除",
+      "lock": "锁定",
+      "unlock": "解锁",
+      "kind_canvas": "画布",
+      "kind_document": "文档",
+      "kind_timeline": "时间线"
+    },
+    "drawer": {
+      "title": "所有 Space",
+      "count": "个",
+      "tag_open": "已打开",
+      "tag_active": "当前",
+      "nodes_count": "{{count}} 节点",
+      "confirm_delete": "确认删除此 Space?",
+      "new_canvas": "新建画布",
+      "new_document": "新建文档",
+      "new_timeline": "新建时间线"
+    },
+    "new_dialog": {
+      "title": "新建 Space",
+      "subtitle": "选择类型,给它起个名字。",
+      "name_label": "名称",
+      "name_placeholder": "如 场景 v3",
+      "create": "创建",
+      "cancel": "取消",
+      "placeholder_kind_unsupported": "{{kind}} 类型 Space 暂未支持。"
+    },
+    "placeholder": {
+      "title": "即将上线",
+      "description": "{{kind}} 类型的 Space 将在未来版本中支持。"
+    }
   }
 }

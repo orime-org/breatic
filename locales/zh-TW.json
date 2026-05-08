@@ -722,5 +722,44 @@
       "no_tiers": "暫無可用點數包",
       "checkout_failed": "建立付款失敗,請重試"
     }
+  },
+  "spaces": {
+    "tab": {
+      "new": "新增畫布",
+      "drawer": "所有畫布",
+      "close": "關閉",
+      "rename": "重新命名",
+      "duplicate": "複製",
+      "delete": "刪除",
+      "lock": "鎖定",
+      "unlock": "解鎖",
+      "kind_canvas": "畫布",
+      "kind_document": "文件",
+      "kind_timeline": "時間軸"
+    },
+    "drawer": {
+      "title": "所有 Space",
+      "count": "個",
+      "tag_open": "已開啟",
+      "tag_active": "目前",
+      "nodes_count": "{{count}} 節點",
+      "confirm_delete": "確認刪除此 Space?",
+      "new_canvas": "新增畫布",
+      "new_document": "新增文件",
+      "new_timeline": "新增時間軸"
+    },
+    "new_dialog": {
+      "title": "新增 Space",
+      "subtitle": "選擇類型並取個名字。",
+      "name_label": "名稱",
+      "name_placeholder": "如 場景 v3",
+      "create": "建立",
+      "cancel": "取消",
+      "placeholder_kind_unsupported": "{{kind}} 類型 Space 暫未支援。"
+    },
+    "placeholder": {
+      "title": "即將上線",
+      "description": "{{kind}} 類型的 Space 將在未來版本支援。"
+    }
   }
 }
