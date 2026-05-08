@@ -722,5 +722,44 @@
       "no_tiers": "購入可能なパッケージがありません",
       "checkout_failed": "決済の作成に失敗しました"
     }
+  },
+  "spaces": {
+    "tab": {
+      "new": "新規キャンバス",
+      "drawer": "全キャンバス",
+      "close": "閉じる",
+      "rename": "名前変更",
+      "duplicate": "複製",
+      "delete": "削除",
+      "lock": "ロック",
+      "unlock": "ロック解除",
+      "kind_canvas": "キャンバス",
+      "kind_document": "ドキュメント",
+      "kind_timeline": "タイムライン"
+    },
+    "drawer": {
+      "title": "すべての Space",
+      "count": "個",
+      "tag_open": "開いた",
+      "tag_active": "現在",
+      "nodes_count": "{{count}} ノード",
+      "confirm_delete": "この Space を削除しますか?",
+      "new_canvas": "新規キャンバス",
+      "new_document": "新規ドキュメント",
+      "new_timeline": "新規タイムライン"
+    },
+    "new_dialog": {
+      "title": "新規 Space",
+      "subtitle": "種類を選んで名前を付けてください。",
+      "name_label": "名前",
+      "name_placeholder": "例: シーン v3",
+      "create": "作成",
+      "cancel": "キャンセル",
+      "placeholder_kind_unsupported": "{{kind}} はまだサポートされていません。"
+    },
+    "placeholder": {
+      "title": "近日公開",
+      "description": "{{kind}} タイプの Space は今後のリリースで対応予定です。"
+    }
   }
 }

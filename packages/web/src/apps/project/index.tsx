@@ -14,13 +14,12 @@ import { useUserRole } from '@/domain/user/useUserRole';
 import { useUserCenterStore } from '@/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import * as authApi from '@/data/api/auth';
-import { MembersPopover, MembersPanel } from '@/features/members';
-import { CreditsPill, RechargeDialog } from '@/features/credits';
+import { TopBar } from '@/features/top-bar';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
 import TextEditor from '@/spaces/document';
 import ResizableLeftPanel from '@/spaces/canvas/view/ResizableLeftPanel';
 import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
-import ProjectCanvas from '@/spaces/canvas';
+import { SpaceShell } from '@/spaces/_shell';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
 /** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
@@ -92,11 +91,8 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
   const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
   const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
-  // PR4-A: project-level features (members + credits) overlay state.
-  // The pill / popover sit absolute-positioned in the canvas region
-  // until PR-E lifts them into the proper full-width TopBar.
-  const [membersPanelOpen, setMembersPanelOpen] = useState(false);
-  const [rechargeOpen, setRechargeOpen] = useState(false);
+  // PR-Y2: members + credits no longer floats as an overlay; the
+  // full-width `TopBar` (features/top-bar) houses them now.
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Resolve the caller's userId once on mount (the redux user-info
@@ -195,32 +191,14 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
 
   return (
     <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
-      <div className='flex flex-col w-screen h-screen overflow-hidden relative'>
-        {/* PR4-A overlay: members + credits (temporary canvas-region
-            placement; full-width TopBar lift happens in PR-E). */}
-        <div className='pointer-events-none absolute right-3 top-3 z-30 flex items-center gap-2'>
-          <div className='pointer-events-auto'>
-            <MembersPopover
-              projectId={yjs.projectId}
-              metaProvider={metaProvider}
-              myRole={myRole}
-              onOpenPanel={() => setMembersPanelOpen(true)}
-            />
-          </div>
-          <div className='pointer-events-auto'>
-            <CreditsPill onClick={() => setRechargeOpen(true)} />
-          </div>
-        </div>
-
-        <MembersPanel
-          open={membersPanelOpen}
-          onClose={() => setMembersPanelOpen(false)}
+      <div className='flex flex-col w-screen h-screen overflow-hidden'>
+        <TopBar
           projectId={yjs.projectId}
           metaProvider={metaProvider}
           myRole={myRole}
+          projectName={workflowName}
+          onProjectNameCommit={setWorkflowName}
         />
-        <RechargeDialog open={rechargeOpen} onClose={() => setRechargeOpen(false)} />
-
         <Group orientation='horizontal' className='flex-1 min-h-0 flex'>
           {chatPanelVisible && (
             <>
@@ -352,7 +330,11 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
                     </button>
                   </Tooltip>
                 </div>
-                <ProjectCanvas yjs={yjs} hotkeysDisabled={selectedWorkspaceRegion === 'rightEditor'} />
+                <SpaceShell
+                  yjs={yjs}
+                  userId={currentUserId}
+                  hotkeysDisabled={selectedWorkspaceRegion === 'rightEditor'}
+                />
               </div>
             </Panel>
           )}
