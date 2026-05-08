@@ -118,3 +118,31 @@ export function createEditorVideoNodeData(name: string, content: string): ImageF
 
 /** React Flow `type` for local canvas video nodes (library `1003`). */
 export const imageEditorVideoNodeType = '1003' as const;
+
+/** React Flow `type` for local canvas audio nodes (library `1004`). */
+export const imageEditorAudioNodeType = '1004' as const;
+
+const defaultEditorAudioRuntime = (): AudioNodeRuntimeData => ({
+  generationMode: 'tts',
+  stylesPrompt: '',
+  lyrics: '',
+  instrumental: false,
+  modelLabel: 'Minimax Speech 02 hd',
+  voiceLabel: '沉稳高管',
+  languageLabel: '中文-普通话',
+});
+
+/**
+ * @param name - Display name
+ * @param url - Audio URL (`url` and `content` mirror video nodes)
+ */
+export function createEditorAudioNodeData(name: string, url: string): LocalCanvasNodeData {
+  return {
+    name,
+    url: url || undefined,
+    content: url || undefined,
+    state: 'idle',
+    audioRuntime: defaultEditorAudioRuntime(),
+    nodeRuntimeData: {},
+  };
+}

@@ -23,6 +23,8 @@ export type SpeedBottomToolbarProps = {
   isPlaying: boolean;
   volume: number;
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
+  /** Audio nodes: waveform timeline instead of ruler-only preview. */
+  audioOnly?: boolean;
   onClose: () => void;
   onSave?: (payload: { playbackRate: number }) => void;
 };
@@ -47,6 +49,7 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
   isPlaying,
   volume,
   fullscreenTargetRef,
+  audioOnly = false,
   onClose,
   onSave,
 }) => {
@@ -84,7 +87,8 @@ const SpeedBottomToolbar: React.FC<SpeedBottomToolbarProps> = ({
           fullscreenTargetRef={fullscreenTargetRef}
           playbackRate={playbackRate}
           onPlaybackRateChange={setPlaybackRate}
-          hideFilmstripAndWaveform
+          audioOnly={audioOnly}
+          hideFilmstripAndWaveform={!audioOnly}
         />
         <div
           className='nodrag nopan pointer-events-auto flex h-[40px] items-center gap-1 rounded-[8px] border border-[#DBDBDB] bg-background-default-base px-[12px] py-[4px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'

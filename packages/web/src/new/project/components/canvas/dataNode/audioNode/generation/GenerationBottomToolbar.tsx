@@ -1,7 +1,7 @@
 /**
  * Generator-style dock below the audio node — single card ({@link LocalGenNode} parity): title bar, upstream strip, prompt, footer controls.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
 import { Button } from '@/components/base/button';
@@ -51,6 +51,20 @@ const MODE_ITEMS: Array<{ key: AudioGenerationMode; label: string }> = [
 
 const DEMO_VOICES = ['沉稳高管', '创新设计师', '温柔客服'];
 
+const MODEL_OPTIONS = ['Minimax Speech 02 hd'] as const;
+
+const LANGUAGE_OPTIONS = ['中文-普通话', 'English'] as const;
+
+/** Legacy persisted label without hyphen — maps to menu key. */
+const normalizeLanguageLabel = (label: string): string =>
+  label === '中文普通话' ? '中文-普通话' : label;
+
+/** Popover stacks above menus — nested dropdowns must float higher than {@link CustomPopover}. */
+const NESTED_DROPDOWN_FLOATING_CLASS = 'z-[650]';
+
+const nestedDropdownSurfaceClass =
+  'rounded-[8px] border border-border-default-base shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]';
+
 const inputShellClass =
   'nodrag nopan w-full resize-none rounded-[4px] border-0 bg-transparent px-2 py-2 text-[13px] leading-snug text-text-default-base outline-none placeholder:text-text-default-tertiary focus:ring-0';
 
@@ -85,6 +99,64 @@ const GenerationBottomToolbar: React.FC<GenerationBottomToolbarProps> = ({
 }) => {
   const { t } = useTranslation();
   const [modelPanelOpen, setModelPanelOpen] = useState(false);
+  /** Voice row preview via Web Speech API until real sample URLs exist. */
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  /**
+   * Invalidates stale `utterance.onend` / `onerror` after {@link SpeechSynthesis.cancel}
+   * or starting another preview — avoids wiping state when switching voices.
+   */
+  const voicePreviewGenRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      voicePreviewGenRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!modelPanelOpen && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      voicePreviewGenRef.current += 1;
+      setPreviewingVoice(null);
+    }
+  }, [modelPanelOpen]);
+
+  const toggleVoicePreview = useCallback(
+    (voiceName: string) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+      if (previewingVoice === voiceName) {
+        window.speechSynthesis.cancel();
+        voicePreviewGenRef.current += 1;
+        setPreviewingVoice(null);
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+      voicePreviewGenRef.current += 1;
+      const gen = voicePreviewGenRef.current;
+
+      const utterance = new SpeechSynthesisUtterance(`这是${voiceName}音色的试听示例。`);
+      utterance.lang = 'zh-CN';
+      utterance.onend = () => {
+        if (voicePreviewGenRef.current === gen) {
+          setPreviewingVoice(null);
+        }
+      };
+      utterance.onerror = () => {
+        if (voicePreviewGenRef.current === gen) {
+          setPreviewingVoice(null);
+        }
+      };
+
+      setPreviewingVoice(voiceName);
+      window.speechSynthesis.speak(utterance);
+    },
+    [previewingVoice],
+  );
 
   const modeMenuItems: MenuItemType[] = useMemo(
     () =>
@@ -93,6 +165,29 @@ const GenerationBottomToolbar: React.FC<GenerationBottomToolbarProps> = ({
         label: (
           <span className='text-[13px] font-medium text-text-default-base'>{m.label}</span>
         ),
+      })),
+    [],
+  );
+
+  const modelMenuItems: MenuItemType[] = useMemo(
+    () =>
+      MODEL_OPTIONS.map((label) => ({
+        key: label,
+        label: (
+          <span className='flex items-center gap-2 text-[13px] font-medium text-text-default-base'>
+            <span className='text-[18px] leading-none'>〰️</span>
+            {label}
+          </span>
+        ),
+      })),
+    [],
+  );
+
+  const languageMenuItems: MenuItemType[] = useMemo(
+    () =>
+      LANGUAGE_OPTIONS.map((label) => ({
+        key: label,
+        label: <span className='text-[13px] font-medium text-text-default-base'>{label}</span>,
       })),
     [],
   );
@@ -108,9 +203,11 @@ const GenerationBottomToolbar: React.FC<GenerationBottomToolbarProps> = ({
       ? 'Enter text to synthesize…'
       : 'Describe style, mood, instruments, reference…';
 
+  const resolvedLanguageLabel = normalizeLanguageLabel(languageLabel);
+
   /** Footer pill copy — compact “Minimax 中文 沉稳高管” style (model + language token + voice). */
   const footerModelSummary = (() => {
-    const langShort = languageLabel.includes('中文') ? '中文' : languageLabel;
+    const langShort = resolvedLanguageLabel.includes('中文') ? '中文' : resolvedLanguageLabel;
     return `${modelLabel} ${langShort} ${voiceLabel}`.replace(/\s+/g, ' ').trim();
   })();
 
@@ -118,49 +215,97 @@ const GenerationBottomToolbar: React.FC<GenerationBottomToolbarProps> = ({
     <div className='w-[300px] rounded-[12px] border border-[var(--color-border-default-base)] bg-background-default-base p-4 shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.18)]'>
       <div className='pb-3 text-[13px] font-semibold leading-snug text-text-default-base'>Select a Model</div>
       <label className='mb-2 block text-[11px] font-medium text-text-default-tertiary'>Model</label>
-      <button
-        type='button'
-        className='mb-3 flex w-full items-center justify-between rounded-[8px] border border-border-default-base bg-background-default-secondary px-2 py-2 text-left text-[13px] text-text-default-base'
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={() => onModelLabel('Minimax Speech 02 hd')}
+      <Dropdown
+        trigger='click'
+        placement='bottom-start'
+        offset={6}
+        items={modelMenuItems}
+        selectedKeys={[modelLabel]}
+        referenceClassName='block w-full'
+        floatingClassName={NESTED_DROPDOWN_FLOATING_CLASS}
+        popupClassName={nestedDropdownSurfaceClass}
+        itemClassName='min-h-8 px-2 py-1.5'
+        onClick={(key) => onModelLabel(key)}
       >
-        <span className='flex min-w-0 items-center gap-2'>
-          <span className='text-[18px] leading-none'>〰️</span>
-          <span className='truncate'>{modelLabel}</span>
-        </span>
-        <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
-      </button>
+        <button
+          type='button'
+          className='nodrag nopan mb-3 flex w-full items-center justify-between rounded-[8px] border border-border-default-base bg-background-default-secondary px-2 py-2 text-left text-[13px] text-text-default-base'
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <span className='flex min-w-0 items-center gap-2'>
+            <span className='text-[18px] leading-none'>〰️</span>
+            <span className='truncate'>{modelLabel}</span>
+          </span>
+          <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
+        </button>
+      </Dropdown>
       <label className='mb-2 block text-[11px] font-medium text-text-default-tertiary'>Language</label>
-      <button
-        type='button'
-        className='mb-3 flex w-full items-center justify-between rounded-[8px] border border-border-default-base bg-background-default-secondary px-2 py-2 text-left text-[13px] text-text-default-base'
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={() => onLanguageLabel('中文-普通话')}
+      <Dropdown
+        trigger='click'
+        placement='bottom-start'
+        offset={6}
+        items={languageMenuItems}
+        selectedKeys={[resolvedLanguageLabel]}
+        referenceClassName='block w-full'
+        floatingClassName={NESTED_DROPDOWN_FLOATING_CLASS}
+        popupClassName={nestedDropdownSurfaceClass}
+        itemClassName='min-h-8 px-2 py-1.5'
+        onClick={(key) => onLanguageLabel(key)}
       >
-        <span className='truncate'>{languageLabel}</span>
-        <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
-      </button>
+        <button
+          type='button'
+          className='nodrag nopan mb-3 flex w-full items-center justify-between rounded-[8px] border border-border-default-base bg-background-default-secondary px-2 py-2 text-left text-[13px] text-text-default-base'
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <span className='truncate'>{resolvedLanguageLabel}</span>
+          <Icon name='base-chevron-down-icon' width={10} height={10} color='var(--color-icon-base)' />
+        </button>
+      </Dropdown>
       <div className='text-[11px] font-medium text-text-default-tertiary'>Voice</div>
       <ul className='mt-1 max-h-[160px] overflow-auto'>
         {DEMO_VOICES.map((name) => (
           <li key={name}>
-            <button
-              type='button'
+            <div
               className={cn(
-                'flex w-full items-center gap-2 rounded-[8px] px-2 py-2 text-left text-[13px] transition-colors',
+                'grid w-full grid-cols-[20px_minmax(0,1fr)] items-center gap-2 rounded-[8px] px-2 py-2 text-[13px] transition-colors',
                 voiceLabel === name ? 'bg-background-default-secondary font-medium' : 'hover:bg-background-default-secondary',
               )}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => {
-                onVoiceLabel(name);
-                setModelPanelOpen(false);
-              }}
             >
-              <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-default-base bg-background-default-base'>
-                <Icon name='project-play-audio-icon' width={14} height={14} color='var(--color-icon-base)' />
-              </span>
-              <span className='truncate text-text-default-base'>{name}</span>
-            </button>
+              <button
+                type='button'
+                className='nodrag nopan flex size-5 shrink-0 items-center justify-center justify-self-start border-0 bg-transparent p-0 hover:opacity-80'
+                aria-label={
+                  previewingVoice === name
+                    ? t('project.audio.pauseVoicePreview', 'Pause preview')
+                    : t('project.audio.playVoicePreview', 'Play preview')
+                }
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleVoicePreview(name);
+                }}
+              >
+                <Icon
+                  name={
+                    previewingVoice === name ? 'project-voice-preview-pause-icon' : 'project-voice-preview-play-icon'
+                  }
+                  width={20}
+                  height={20}
+                  color='var(--color-icon-base)'
+                />
+              </button>
+              <button
+                type='button'
+                className='nodrag nopan min-w-0 truncate text-left leading-none text-text-default-base'
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  onVoiceLabel(name);
+                  setModelPanelOpen(false);
+                }}
+              >
+                {name}
+              </button>
+            </div>
           </li>
         ))}
       </ul>

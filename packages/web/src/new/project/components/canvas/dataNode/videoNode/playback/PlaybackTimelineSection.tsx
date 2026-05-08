@@ -40,6 +40,8 @@ export type PlaybackTimelineSectionProps = {
   onActivateCutMarker?: (id: string) => void;
   onRemoveCutMarker?: (id: string) => void;
   hideFilmstripAndWaveform?: boolean;
+  /** Ruler + single waveform row only (no video/filmstrip strip). */
+  audioOnly?: boolean;
 };
 
 const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
@@ -55,6 +57,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
   onActivateCutMarker,
   onRemoveCutMarker,
   hideFilmstripAndWaveform = false,
+  audioOnly = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const timelineOuterRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +134,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    if (hideFilmstripAndWaveform) {
+    if (hideFilmstripAndWaveform || audioOnly) {
       setFirstFrameUrl('');
       return;
     }
@@ -172,7 +175,7 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
       video.removeAttribute('src');
       video.load();
     };
-  }, [hideFilmstripAndWaveform, mediaSrc]);
+  }, [audioOnly, hideFilmstripAndWaveform, mediaSrc]);
 
   const getProgressPctFromClientX = useCallback((clientX: number) => {
     const scroller = scrollRef.current;
@@ -337,6 +340,24 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
           </div>
           {hideFilmstripAndWaveform ? (
             <div ref={waveformRef} className='hidden h-0 w-0 overflow-hidden' aria-hidden />
+          ) : audioOnly ? (
+            <div className='relative mt-1.5 h-[30px] w-full' onMouseDown={(e) => e.stopPropagation()}>
+              {timelineSegments.map((segment) => (
+                <div
+                  key={`wave-bg-${segment.key}`}
+                  className='pointer-events-none absolute bottom-0 top-0 rounded-[4px] bg-background-neutral-secondary-hover'
+                  style={{ left: `${segment.startPct}%`, width: `${segment.widthPct}%` }}
+                />
+              ))}
+              <div ref={waveformRef} className='absolute inset-0 z-[1] h-full w-full px-1' />
+              {sortedCutMarkers.map((marker) => (
+                <span
+                  key={`wave-cut-${marker.id}`}
+                  className='pointer-events-none absolute bottom-0 top-0 z-[2] w-[2px] -translate-x-1/2 bg-[#E8E8E8]'
+                  style={{ left: `${marker.progressPct}%` }}
+                />
+              ))}
+            </div>
           ) : (
             <>
               <div className='relative mt-1 h-8 w-full'>
@@ -349,11 +370,11 @@ const PlaybackTimelineSection: React.FC<PlaybackTimelineSectionProps> = ({
                       width: `${segment.widthPct}%`,
                       ...(firstFrameUrl
                         ? {
-                            backgroundImage: `url(${firstFrameUrl})`,
-                            backgroundRepeat: 'repeat-x',
-                            backgroundSize: 'auto 100%',
-                            backgroundPosition: 'left center',
-                          }
+                          backgroundImage: `url(${firstFrameUrl})`,
+                          backgroundRepeat: 'repeat-x',
+                          backgroundSize: 'auto 100%',
+                          backgroundPosition: 'left center',
+                        }
                         : undefined),
                     }}
                   />

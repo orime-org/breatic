@@ -15,6 +15,10 @@ export type CutBottomToolbarProps = {
   isPlaying: boolean;
   volume: number;
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
+  /** Audio nodes: ruler + waveform only (no filmstrip). */
+  audioOnly?: boolean;
+  /** `stem` / `split` relabel chrome for audio (same cut UX). */
+  variant?: 'cut' | 'stem' | 'split';
   onClose: () => void;
   onSave?: (payload: { cutMarkers: TimelineCutMarker[]; segments: Array<{ start: number; end: number }> }) => void;
 };
@@ -31,6 +35,8 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
   isPlaying,
   volume,
   fullscreenTargetRef,
+  audioOnly = false,
+  variant = 'cut',
   onClose,
   onSave,
 }) => {
@@ -96,6 +102,7 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
           isPlaying={isPlaying}
           volume={volume}
           fullscreenTargetRef={fullscreenTargetRef}
+          audioOnly={audioOnly}
           cutModeEnabled
           cutMarkers={cutMarkers}
           activeCutMarkerId={activeCutMarkerId}
@@ -109,8 +116,15 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className={cutLabelClass}>
-            <Icon name='videoNode-cut' width={20} height={20} color='var(--color-icon-base)' />
-            <span className='whitespace-nowrap text-[14px] font-medium leading-none text-text-default-base'>Cut</span>
+            <Icon
+              name={variant === 'split' ? 'videoNode-crop' : 'videoNode-cut'}
+              width={20}
+              height={20}
+              color='var(--color-icon-base)'
+            />
+            <span className='whitespace-nowrap text-[14px] font-medium leading-none text-text-default-base'>
+              {variant === 'stem' ? 'Stem' : variant === 'split' ? 'Split / Trim' : 'Cut'}
+            </span>
           </div>
           <Divider type='vertical' className='mx-2 h-[18px] bg-[#D0D0D0]' />
           <button
@@ -141,7 +155,9 @@ const CutBottomToolbar: React.FC<CutBottomToolbarProps> = ({
           <button
             type='button'
             className={iconBtnClass}
-            aria-label='Close cut mode'
+            aria-label={
+              variant === 'stem' ? 'Close stem mode' : variant === 'split' ? 'Close split trim mode' : 'Close cut mode'
+            }
             onClick={onClose}
           >
             <Icon name='imageEditor-multi-angle-close-icon' width={20} height={20} color='var(--color-icon-base)' />

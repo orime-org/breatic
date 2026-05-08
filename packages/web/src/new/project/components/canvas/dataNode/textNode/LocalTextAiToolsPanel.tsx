@@ -10,7 +10,9 @@ import {
   type FC,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
   RiArrowDropDownLine,
@@ -245,6 +247,182 @@ export function isLocalTextAiRefineSheetTool(id: TextAiToolId): id is (typeof RE
   return ['polish', 'expand', 'summarize', 'translate', 'rewrite', 'continue'].includes(id);
 }
 
+/** Localized toolbar title for any text AI tool (Refine + Create). */
+export function getTextAiToolDisplayTitle(tool: TextAiToolId, t: TFunction): string {
+  const refineRow = REFINE_TOOLS.find((x) => x.id === tool);
+  if (refineRow) return t(refineRow.labelKey, refineRow.def);
+  const createRow = CREATE_TOOLS.find((x) => x.id === tool);
+  if (createRow) return t(createRow.labelKey, createRow.def);
+  return tool;
+}
+
+/** Menu icon for sheet / form header — matches Refine/Create dropdown rows. */
+export function getTextAiToolHeaderIcon(tool: TextAiToolId): ReactNode | null {
+  const refineRow = REFINE_TOOLS.find((x) => x.id === tool);
+  if (refineRow) return refineRow.icon;
+  const createRow = CREATE_TOOLS.find((x) => x.id === tool);
+  if (createRow) return createRow.icon;
+  return null;
+}
+
+export type TextAiToolSheetFormFieldsProps = {
+  tool: TextAiToolId;
+  fields: TextAiPanelFields;
+  onFieldsChange: (next: TextAiPanelFields) => void;
+  hasDocumentText: boolean;
+  styleSelectOptions: Array<{ value: string; label: string }>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  /** Legacy panel disables inputs while mock run is in progress; canvas sheet hides the form instead. */
+  fieldsDisabled?: boolean;
+};
+
+/**
+ * Shared body fields for every text AI tool — used by {@link LocalTextAiSheetPanel} and {@link LocalTextAiToolFormPanel}
+ * so Refine and Create flows share one implementation.
+ */
+export const TextAiToolSheetFormFields: FC<TextAiToolSheetFormFieldsProps> = ({
+  tool,
+  fields,
+  onFieldsChange,
+  hasDocumentText,
+  styleSelectOptions,
+  inputRef,
+  fieldsDisabled = false,
+}) => {
+  const { t } = useTranslation();
+  const ariaToolTitle = useMemo(() => getTextAiToolDisplayTitle(tool, t), [tool, t]);
+
+  return (
+    <>
+      {tool === 'rewrite' ? (
+        <label className='mb-2 flex flex-col gap-1'>
+          <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.targetStyle', 'Style')}</span>
+          <Select
+            size='middle'
+            options={styleSelectOptions}
+            value={fields.style ?? 'formal'}
+            onChange={(v) => onFieldsChange({ ...fields, style: String(v) })}
+            disabled={fieldsDisabled}
+          />
+        </label>
+      ) : null}
+
+      {isLocalTextAiRefineSheetTool(tool) ? (
+        <>
+          <label className='flex flex-col gap-1'>
+            <textarea
+              ref={inputRef}
+              rows={4}
+              className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
+              placeholder={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
+              value={fields.instructions ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+              autoComplete='off'
+              disabled={fieldsDisabled}
+              aria-label={ariaToolTitle}
+            />
+          </label>
+          {!hasDocumentText ? (
+            <p className='mt-2 text-[12px] text-text-default-tertiary'>
+              {t('project.textAi.needBody', 'Add text in the node first, or open edit mode.')}
+            </p>
+          ) : null}
+        </>
+      ) : tool === 'generate' ? (
+        <label className='flex flex-col gap-1'>
+          <textarea
+            ref={inputRef}
+            rows={4}
+            className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
+            placeholder={t('project.textAi.generatePlaceholder', 'Describe what to generate…')}
+            value={fields.instructions ?? ''}
+            onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+            autoComplete='off'
+            disabled={fieldsDisabled}
+            aria-label={ariaToolTitle}
+          />
+        </label>
+      ) : tool === 'character' ? (
+        <div className='flex flex-col gap-2'>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.characterName', 'Name')} *</span>
+            <Input
+              inputType='text'
+              value={fields.name ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, name: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.traits', 'Traits')}</span>
+            <textarea
+              className={`${bottomToolbarTextareaClass} min-h-[72px]`}
+              value={fields.traits ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, traits: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.context', 'Context')}</span>
+            <textarea
+              className={`${bottomToolbarTextareaClass} min-h-[72px]`}
+              value={fields.context ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, context: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+        </div>
+      ) : tool === 'storyboard' ? (
+        <div className='flex flex-col gap-2'>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.storyboardBrief', 'Outline / brief')} *</span>
+            <textarea
+              ref={inputRef}
+              className={`${bottomToolbarTextareaClass} min-h-[96px]`}
+              value={fields.instructions ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.sceneCount', 'Scene count')}</span>
+            <Input
+              className='max-w-[120px]'
+              inputType='number'
+              min={1}
+              value={fields.scene_count ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, scene_count: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+        </div>
+      ) : tool === 'script' ? (
+        <div className='flex flex-col gap-2'>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.sceneDescription', 'Scene')} *</span>
+            <textarea
+              ref={inputRef}
+              className={`${bottomToolbarTextareaClass} min-h-[96px]`}
+              value={fields.scene_description ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, scene_description: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+          <label className='flex flex-col gap-1'>
+            <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.charactersCsv', 'Characters (comma-separated)')}</span>
+            <Input
+              inputType='text'
+              value={fields.characters ?? ''}
+              onChange={(e) => onFieldsChange({ ...fields, characters: e.target.value })}
+              disabled={fieldsDisabled}
+            />
+          </label>
+        </div>
+      ) : null}
+    </>
+  );
+};
+
 export interface LocalTextAiSheetPanelProps {
   hasDocumentText: boolean;
   fields: TextAiPanelFields;
@@ -296,14 +474,8 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
   const showLoading = isRunning && (runPhase === 'thinking' || runPhase === 'writing');
   const refineLoadingBlocking = refinePreflightLoading || showLoading;
 
-  const sheetDisplayTitle = useMemo(() => {
-    if (!sheetTool) return '';
-    const refineRow = REFINE_TOOLS.find((x) => x.id === sheetTool);
-    if (refineRow) return t(refineRow.labelKey, refineRow.def);
-    const createRow = CREATE_TOOLS.find((x) => x.id === sheetTool);
-    if (createRow) return t(createRow.labelKey, createRow.def);
-    return sheetTool;
-  }, [sheetTool, t]);
+  const sheetDisplayTitle = sheetTool ? getTextAiToolDisplayTitle(sheetTool, t) : '';
+  const sheetTitleIcon = sheetTool ? getTextAiToolHeaderIcon(sheetTool) : null;
 
   const styleSelectOptions = useMemo(
     () =>
@@ -353,7 +525,14 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
     return (
       <div ref={formShellRef} className={textRefineUnifiedShellClass} onMouseDown={handleSheetMouseDown}>
         <div className='flex items-center justify-between gap-2'>
-          <span className='truncate text-sm font-bold text-text-default-base'>{sheetDisplayTitle}</span>
+          <div className='inline-flex min-w-0 items-center gap-1.5'>
+            {sheetTitleIcon ? (
+              <span className='flex shrink-0 text-icon-base' aria-hidden>
+                {sheetTitleIcon}
+              </span>
+            ) : null}
+            <span className='truncate text-sm font-bold text-text-default-base'>{sheetDisplayTitle}</span>
+          </div>
           {onSheetClose ? (
             <Tooltip title={t('project.toolbar.exit', 'Exit')} placement='top' offset={4}>
               <button
@@ -369,123 +548,14 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
         </div>
 
         <div className='mt-3 flex min-h-[52px] flex-col'>
-          {sheetTool === 'rewrite' ? (
-            <label className='mb-2 flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.targetStyle', 'Style')}</span>
-              <Select
-                size='middle'
-                options={styleSelectOptions}
-                value={fields.style ?? 'formal'}
-                onChange={(v) => onFieldsChange({ ...fields, style: String(v) })}
-              />
-            </label>
-          ) : null}
-
-          {isLocalTextAiRefineSheetTool(sheetTool) ? (
-            <>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-tertiary'>
-                  {t('project.textAi.optionalHint', 'Optional notes')}
-                </span>
-                <textarea
-                  ref={inputRef}
-                  rows={4}
-                  className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
-                  placeholder={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
-                  value={fields.instructions ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                  autoComplete='off'
-                  aria-label={t('project.textAi.optionalNotes', 'Optional notes')}
-                />
-              </label>
-              {!hasDocumentText ? (
-                <p className='mt-2 text-[12px] text-text-default-tertiary'>
-                  {t('project.textAi.needBody', 'Add text in the node first, or open edit mode.')}
-                </p>
-              ) : null}
-            </>
-          ) : sheetTool === 'generate' ? (
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.instructions', 'Instructions')} *</span>
-              <textarea
-                ref={inputRef}
-                rows={4}
-                className={cn(bottomToolbarTextareaClass, 'min-h-[96px]')}
-                value={fields.instructions ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                autoComplete='off'
-              />
-            </label>
-          ) : sheetTool === 'character' ? (
-            <div className='flex flex-col gap-2'>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.characterName', 'Name')} *</span>
-                <Input
-                  inputType='text'
-                  value={fields.name ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, name: e.target.value })}
-                />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.traits', 'Traits')}</span>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
-                  value={fields.traits ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, traits: e.target.value })}
-                />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.context', 'Context')}</span>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
-                  value={fields.context ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, context: e.target.value })}
-                />
-              </label>
-            </div>
-          ) : sheetTool === 'storyboard' ? (
-            <div className='flex flex-col gap-2'>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.storyboardBrief', 'Outline / brief')} *</span>
-                <textarea
-                  ref={inputRef}
-                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                  value={fields.instructions ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.sceneCount', 'Scene count')}</span>
-                <Input
-                  className='max-w-[120px]'
-                  inputType='number'
-                  min={1}
-                  value={fields.scene_count ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, scene_count: e.target.value })}
-                />
-              </label>
-            </div>
-          ) : sheetTool === 'script' ? (
-            <div className='flex flex-col gap-2'>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.sceneDescription', 'Scene')} *</span>
-                <textarea
-                  ref={inputRef}
-                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                  value={fields.scene_description ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, scene_description: e.target.value })}
-                />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.charactersCsv', 'Characters (comma-separated)')}</span>
-                <Input
-                  inputType='text'
-                  value={fields.characters ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, characters: e.target.value })}
-                />
-              </label>
-            </div>
-          ) : null}
+          <TextAiToolSheetFormFields
+            tool={sheetTool}
+            fields={fields}
+            onFieldsChange={onFieldsChange}
+            hasDocumentText={hasDocumentText}
+            styleSelectOptions={styleSelectOptions}
+            inputRef={inputRef}
+          />
 
           {showRunButton && onSubmitRun ? (
             <div className='mt-3 flex items-center justify-between gap-3 px-1'>
@@ -535,9 +605,6 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
         <div className={cn(aimMenuPromptOuterClass, 'w-full min-w-0')}>
           <div className='flex w-full min-w-0 flex-col py-2'>
             <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-tertiary'>
-                {t('project.textAi.optionalHint', 'Optional notes')}
-              </span>
               <textarea
                 ref={inputRef}
                 rows={2}
@@ -546,7 +613,7 @@ export const LocalTextAiSheetPanel: FC<LocalTextAiSheetPanelProps> = ({
                 value={fields.instructions ?? ''}
                 onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
                 autoComplete='off'
-                aria-label={t('project.textAi.optionalNotes', 'Optional notes')}
+                aria-label={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
               />
             </label>
 
@@ -769,21 +836,8 @@ export const LocalTextAiToolFormPanel: FC<LocalTextAiToolFormPanelProps> = ({
     [t],
   );
 
-  const toolTitle = useMemo(() => {
-    const map: Record<TextAiToolId, string> = {
-      polish: t('project.textAi.polish', 'Polish'),
-      expand: t('project.textAi.expand', 'Expand'),
-      summarize: t('project.textAi.summarize', 'Summarize'),
-      translate: t('project.textAi.translate', 'Translate'),
-      rewrite: t('project.textAi.rewrite', 'Rewrite'),
-      continue: t('project.textAi.continue', 'Continue'),
-      generate: t('project.textAi.generate', 'Generate'),
-      character: t('project.textAi.character', 'Character'),
-      storyboard: t('project.textAi.storyboard', 'Storyboard'),
-      script: t('project.textAi.script', 'Script'),
-    };
-    return map[activeTool];
-  }, [activeTool, t]);
+  const toolTitle = useMemo(() => getTextAiToolDisplayTitle(activeTool, t), [activeTool, t]);
+  const toolHeaderIcon = useMemo(() => getTextAiToolHeaderIcon(activeTool), [activeTool]);
 
   const canRun = useMemo(() => {
     if (isRunning) return false;
@@ -817,14 +871,13 @@ export const LocalTextAiToolFormPanel: FC<LocalTextAiToolFormPanelProps> = ({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className='relative z-0 flex flex-col gap-2'>
-        <div className='flex items-center justify-between gap-1 px-1 pb-1'>
-          <div className='inline-flex min-w-0 items-center gap-1'>
-            <Icon
-              name='project-excalidraw-top-quick-edit-icon'
-              width={18}
-              height={18}
-              color='var(--color-icon-base)'
-            />
+        <div className='flex items-center justify-between gap-2 px-1 pb-1'>
+          <div className='inline-flex min-w-0 items-center gap-1.5'>
+            {toolHeaderIcon ? (
+              <span className='flex shrink-0 text-icon-base' aria-hidden>
+                {toolHeaderIcon}
+              </span>
+            ) : null}
             <span className='truncate text-sm font-bold text-text-default-base'>{toolTitle}</span>
           </div>
           <Tooltip title={t('project.toolbar.exit', 'Exit')} placement='top' offset={4}>
@@ -840,149 +893,37 @@ export const LocalTextAiToolFormPanel: FC<LocalTextAiToolFormPanelProps> = ({
           </Tooltip>
         </div>
 
-        {activeTool === 'rewrite' ? (
-          <label className='flex flex-col gap-1'>
-            <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.targetStyle', 'Style')}</span>
-            <Select
-              size='middle'
-              options={styleSelectOptions}
-              value={fields.style ?? 'formal'}
-              onChange={(v) => onFieldsChange({ ...fields, style: String(v) })}
-              disabled={isRunning}
-            />
-          </label>
-        ) : null}
+        <TextAiToolSheetFormFields
+          tool={activeTool}
+          fields={fields}
+          onFieldsChange={onFieldsChange}
+          hasDocumentText={hasDocumentText}
+          styleSelectOptions={styleSelectOptions}
+          fieldsDisabled={isRunning}
+        />
 
-        {['polish', 'expand', 'summarize', 'continue', 'translate', 'rewrite'].includes(activeTool) ? (
-          <label className='flex flex-col gap-1'>
-            <span className='text-[12px] text-text-default-tertiary'>
-              {t('project.textAi.optionalHint', 'Optional notes')}
-            </span>
-            <div className='flex'>
-              <textarea
-                className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                placeholder={t('project.textAi.instructionsPlaceholder', 'Extra instructions…')}
-                value={fields.instructions ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                disabled={isRunning}
-              />
+        <div className='mt-3 flex items-center justify-between gap-3 px-1'>
+          <div className='min-w-0 flex-1' />
+          <div className='flex items-center gap-1'>
+            <div className='inline-flex items-center gap-1 text-[12px] font-semibold text-text-default-tertiary'>
+              <Icon name='imageEditor-nano-banana-credit-icon' width={16} height={16} />
+              <span>{TEXT_AI_REFINE_CREDIT_PLACEHOLDER}</span>
             </div>
-          </label>
-        ) : null}
-
-        {activeTool === 'generate' ? (
-          <label className='flex flex-col gap-1'>
-            <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.instructions', 'Instructions')} *</span>
-            <div className='flex'>
-              <textarea
-                className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                value={fields.instructions ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                disabled={isRunning}
+            <Tooltip title={t('project.textAi.runRefine', 'Run')} placement='top' offset={4}>
+              <Button
+                type='primary'
+                size='medium'
+                shape='round'
+                className={cn('nodrag nopan', textAiUpscaleSendButtonClass)}
+                icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+                disabled={!canRun}
+                loading={isRunning}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleRun}
+                aria-label={t('project.textAi.runRefine', 'Run')}
               />
-            </div>
-          </label>
-        ) : null}
-
-        {activeTool === 'character' ? (
-          <div className='flex flex-col gap-2'>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.characterName', 'Name')} *</span>
-              <Input
-                inputType='text'
-                value={fields.name ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, name: e.target.value })}
-                disabled={isRunning}
-              />
-            </label>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.traits', 'Traits')}</span>
-              <div className='flex'>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
-                  value={fields.traits ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, traits: e.target.value })}
-                  disabled={isRunning}
-                />
-              </div>
-            </label>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.context', 'Context')}</span>
-              <div className='flex'>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[72px]`}
-                  value={fields.context ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, context: e.target.value })}
-                  disabled={isRunning}
-                />
-              </div>
-            </label>
+            </Tooltip>
           </div>
-        ) : null}
-
-        {activeTool === 'storyboard' ? (
-          <div className='flex flex-col gap-2'>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.storyboardBrief', 'Outline / brief')} *</span>
-              <div className='flex'>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                  value={fields.instructions ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, instructions: e.target.value })}
-                  disabled={isRunning}
-                />
-              </div>
-            </label>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.sceneCount', 'Scene count')}</span>
-              <Input
-                className='max-w-[120px]'
-                inputType='number'
-                min={1}
-                value={fields.scene_count ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, scene_count: e.target.value })}
-                disabled={isRunning}
-              />
-            </label>
-          </div>
-        ) : null}
-
-        {activeTool === 'script' ? (
-          <div className='flex flex-col gap-2'>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-secondary'>{t('project.textAi.sceneDescription', 'Scene')} *</span>
-              <div className='flex'>
-                <textarea
-                  className={`${bottomToolbarTextareaClass} min-h-[96px]`}
-                  value={fields.scene_description ?? ''}
-                  onChange={(e) => onFieldsChange({ ...fields, scene_description: e.target.value })}
-                  disabled={isRunning}
-                />
-              </div>
-            </label>
-            <label className='flex flex-col gap-1'>
-              <span className='text-[12px] text-text-default-tertiary'>{t('project.textAi.charactersCsv', 'Characters (comma-separated)')}</span>
-              <Input
-                inputType='text'
-                value={fields.characters ?? ''}
-                onChange={(e) => onFieldsChange({ ...fields, characters: e.target.value })}
-                disabled={isRunning}
-              />
-            </label>
-          </div>
-        ) : null}
-
-        {!hasDocumentText && ['polish', 'expand', 'summarize', 'translate', 'rewrite', 'continue'].includes(activeTool) ? (
-          <p className='text-[12px] text-text-default-tertiary'>{t('project.textAi.needBody', 'Add text in the node first, or open edit mode.')}</p>
-        ) : null}
-
-        <div className='mt-3 flex justify-end gap-2 px-1'>
-          <Button type='default' size='small' onClick={() => onActiveToolChange(null)} disabled={isRunning}>
-            {t('project.textAi.cancel', 'Cancel')}
-          </Button>
-          <Button type='primary' size='small' onClick={handleRun} disabled={!canRun} loading={isRunning}>
-            {t('project.textAi.run', 'Run')}
-          </Button>
         </div>
       </div>
       {isRunning ? <CanvasOutputPendingProgressOverlay durationMs={TEXT_AI_RUN_OVERLAY_MS} /> : null}

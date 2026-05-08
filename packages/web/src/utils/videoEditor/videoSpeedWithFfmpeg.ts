@@ -1,61 +1,5 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
-
-const ffmpegCoreBaseUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-const ffmpegLoadTimeoutMs = 30000;
-const ffmpegFetchTimeoutMs = 30000;
-const ffmpegExecTimeoutMs = 120000;
-
-let ffmpegInstance: FFmpeg | null = null;
-let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
-
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  try {
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => {
-        reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
-      }, timeoutMs);
-    });
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
-};
-
-const ensureFfmpegLoaded = async (): Promise<FFmpeg> => {
-  if (ffmpegInstance) return ffmpegInstance;
-  if (!ffmpegLoadPromise) {
-    ffmpegLoadPromise = (async () => {
-      const ffmpeg = new FFmpeg();
-      const coreURL = await withTimeout(
-        toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.js`, 'text/javascript'),
-        ffmpegLoadTimeoutMs,
-        'Loading ffmpeg core script',
-      );
-      const wasmURL = await withTimeout(
-        toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.wasm`, 'application/wasm'),
-        ffmpegLoadTimeoutMs,
-        'Loading ffmpeg wasm binary',
-      );
-      const workerURL = await withTimeout(
-        toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.worker.js`, 'text/javascript'),
-        ffmpegLoadTimeoutMs,
-        'Loading ffmpeg worker',
-      );
-      await withTimeout(ffmpeg.load({ coreURL, wasmURL, workerURL }), ffmpegLoadTimeoutMs, 'Initializing ffmpeg');
-      ffmpegInstance = ffmpeg;
-      return ffmpeg;
-    })();
-  }
-  try {
-    return await ffmpegLoadPromise;
-  } catch (error) {
-    ffmpegLoadPromise = null;
-    ffmpegInstance = null;
-    throw error;
-  }
-};
+import { fetchFile } from '@ffmpeg/util';
+import { ensureFfmpegLoaded, ffmpegExecTimeoutMs, fetchMediaBlob, withTimeout } from './ffmpegWasmShared';
 
 const toAtempoFilter = (speed: number): string => {
   if (speed <= 0) return 'atempo=1.0';
@@ -82,9 +26,7 @@ export const speedVideoWithFfmpeg = async (videoSrc: string, speed: number): Pro
   if (Math.abs(normalizedSpeed - 1) <= 1e-6) return videoSrc;
 
   const ffmpeg = await ensureFfmpegLoaded();
-  const response = await withTimeout(fetch(videoSrc), ffmpegFetchTimeoutMs, 'Fetching source video');
-  if (!response.ok) throw new Error(`Failed to fetch source video: ${response.status}`);
-  const inputBlob = await response.blob();
+  const inputBlob = await fetchMediaBlob(videoSrc);
   const inputName = `speed-input-${Date.now()}.mp4`;
   const outputName = `speed-output-${Date.now()}.mp4`;
 

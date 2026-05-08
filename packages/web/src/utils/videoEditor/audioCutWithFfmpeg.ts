@@ -1,7 +1,6 @@
 import { fetchFile } from '@ffmpeg/util';
+import type { VideoCutSegment } from './videoCutWithFfmpeg';
 import { ensureFfmpegLoaded, ffmpegExecTimeoutMs, fetchMediaBlob, withTimeout } from './ffmpegWasmShared';
-
-export type VideoCutSegment = { start: number; end: number };
 
 const normalizeSegments = (segments: VideoCutSegment[]): VideoCutSegment[] => {
   const normalized: VideoCutSegment[] = [];
@@ -16,28 +15,38 @@ const normalizeSegments = (segments: VideoCutSegment[]): VideoCutSegment[] => {
 
 const toFfmpegTime = (seconds: number): string => seconds.toFixed(3);
 
+function inputSuffixFromBlob(blob: Blob): string {
+  const t = blob.type ?? '';
+  if (t.includes('wav')) return '.wav';
+  if (t.includes('mpeg') || t.includes('mp3')) return '.mp3';
+  if (t.includes('ogg')) return '.ogg';
+  if (t.includes('webm')) return '.webm';
+  if (t.includes('mp4') || t.includes('m4a')) return '.m4a';
+  return '.bin';
+}
+
 /**
- * Splits a source video into independent clip files using ffmpeg.wasm.
+ * Splits a source audio file into segments using ffmpeg.wasm (AAC in `.m4a` containers).
  *
- * Returns object URLs for each clip in segment order.
+ * @returns Object URLs for each segment in order.
  */
-export const cutVideoWithFfmpeg = async (
-  videoSrc: string,
+export const cutAudioWithFfmpeg = async (
+  audioSrc: string,
   segments: VideoCutSegment[],
 ): Promise<string[]> => {
   const normalizedSegments = normalizeSegments(segments);
-  if (!videoSrc || normalizedSegments.length === 0) return [];
+  if (!audioSrc || normalizedSegments.length === 0) return [];
 
   const ffmpeg = await ensureFfmpegLoaded();
-  const inputBlob = await fetchMediaBlob(videoSrc);
-  const inputName = `cut-input-${Date.now()}.mp4`;
+  const inputBlob = await fetchMediaBlob(audioSrc);
+  const inputName = `audio-cut-in-${Date.now()}${inputSuffixFromBlob(inputBlob)}`;
   await ffmpeg.writeFile(inputName, await fetchFile(inputBlob));
 
   const outputUrls: string[] = [];
   try {
     for (let index = 0; index < normalizedSegments.length; index += 1) {
       const segment = normalizedSegments[index];
-      const outputName = `cut-output-${Date.now()}-${index + 1}.mp4`;
+      const outputName = `audio-cut-out-${Date.now()}-${index + 1}.m4a`;
       const duration = Math.max(0.001, segment.end - segment.start);
 
       try {
@@ -49,14 +58,13 @@ export const cutVideoWithFfmpeg = async (
             inputName,
             '-t',
             toFfmpegTime(duration),
-            '-c',
+            '-vn',
+            '-c:a',
             'copy',
-            '-movflags',
-            '+faststart',
             outputName,
           ]),
           ffmpegExecTimeoutMs,
-          `Cutting clip ${index + 1}`,
+          `Cutting audio clip ${index + 1} (copy)`,
         );
       } catch {
         await withTimeout(
@@ -67,31 +75,25 @@ export const cutVideoWithFfmpeg = async (
             inputName,
             '-t',
             toFfmpegTime(duration),
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '23',
+            '-vn',
             '-c:a',
             'aac',
-            '-movflags',
-            '+faststart',
+            '-b:a',
+            '192k',
             outputName,
           ]),
           ffmpegExecTimeoutMs,
-          `Re-encoding clip ${index + 1}`,
+          `Cutting audio clip ${index + 1} (encode)`,
         );
       }
 
       const outputData = await ffmpeg.readFile(outputName);
       if (!(outputData instanceof Uint8Array)) {
-        throw new Error('ffmpeg returned invalid clip data');
+        throw new Error('ffmpeg returned invalid audio clip data');
       }
-      const bytes = outputData;
-      const safeBuffer = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(safeBuffer).set(bytes);
-      const outputBlob = new Blob([safeBuffer], { type: 'video/mp4' });
+      const safeBuffer = new ArrayBuffer(outputData.byteLength);
+      new Uint8Array(safeBuffer).set(outputData);
+      const outputBlob = new Blob([safeBuffer], { type: 'audio/mp4' });
       outputUrls.push(URL.createObjectURL(outputBlob));
       await ffmpeg.deleteFile(outputName);
     }

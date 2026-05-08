@@ -18,6 +18,8 @@ export type ExtendBottomToolbarProps = {
   isPlaying?: boolean;
   volume?: number;
   fullscreenTargetRef?: React.RefObject<HTMLElement | null>;
+  /** Audio nodes: waveform timeline instead of ruler-only preview. */
+  audioOnly?: boolean;
   onClose: () => void;
   onSend?: (payload: { durationSec: VideoExtendDurationSec; prompt: string }) => void;
 };
@@ -38,6 +40,7 @@ const ExtendBottomToolbar: React.FC<ExtendBottomToolbarProps> = ({
   isPlaying = false,
   volume = 1,
   fullscreenTargetRef,
+  audioOnly = false,
   onClose,
   onSend,
 }) => {
@@ -71,7 +74,8 @@ const ExtendBottomToolbar: React.FC<ExtendBottomToolbarProps> = ({
           isPlaying={isPlaying}
           volume={volume}
           fullscreenTargetRef={fullscreenTargetRef}
-          hideFilmstripAndWaveform
+          audioOnly={audioOnly}
+          hideFilmstripAndWaveform={!audioOnly}
         />
         <div
           className='w-[430px] rounded-[8px] border border-[#DBDBDB] bg-background-default-base p-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'

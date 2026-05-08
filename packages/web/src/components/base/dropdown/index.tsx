@@ -36,6 +36,10 @@ export type DropdownProps = {
   strategy?: Strategy;
   /** Portal root container. Defaults to document.body. */
   getPopupContainer?: () => HTMLElement;
+  /** Extra classes for the trigger wrapper (e.g. `block w-full` for full-width triggers). */
+  referenceClassName?: string;
+  /** Extra classes for the floating menu layer (e.g. higher z-index when nested in modals). */
+  floatingClassName?: string;
   children: ReactNode;
 };
 
@@ -57,6 +61,8 @@ const Dropdown: FC<DropdownProps> = ({
   offset = 8,
   strategy = 'absolute',
   getPopupContainer,
+  referenceClassName,
+  floatingClassName,
   children,
 }) => {
   const [localOpen, setLocalOpen] = useState(false);
@@ -159,7 +165,7 @@ const Dropdown: FC<DropdownProps> = ({
     <>
       <div
         ref={refs.setReference}
-        className='inline-block'
+        className={cn('inline-block', referenceClassName)}
         {...getReferenceProps({
           onClick: () => {
             if (isClickTrigger) {
@@ -178,7 +184,7 @@ const Dropdown: FC<DropdownProps> = ({
             visibility: open ? 'visible' : 'hidden',
             pointerEvents: open ? 'auto' : 'none',
           }}
-          className='z-[500]'
+          className={cn('z-[500]', floatingClassName)}
           {...getFloatingProps()}
         >
           <div
