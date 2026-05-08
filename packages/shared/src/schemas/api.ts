@@ -50,34 +50,56 @@ export type SkillCommandInput = z.infer<typeof skillCommandSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
-export const taskCreateSchema = z.object({
-  task_type: z.string(),
-  model: z.string().optional(),
-  skill_name: z.string().optional(),
-  params: z.record(z.string(), z.unknown()),
-  /**
-   * Result nodes this task will update on completion (1..N).
-   * Mini-tools / AIGC tasks always bind to at least one node; other
-   * task types (some internal audits) may omit and pass through.
-   */
-  node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().uuid(),
-  /**
-   * Space within the project the task targets (v10 multi-doc).
-   * Worker writes results to `project-{project_id}/canvas-{space_id}`,
-   * so this is required. Plain UUID — no FK on the server side.
-   */
-  space_id: z.string().uuid(),
-  source: z.string().default("canvas"),
-  /**
-   * UUID v4 of the canvas node that will receive the task result.
-   * Required when `node_ids` is present (single-node tasks).
-   * The worker wraps this into `targetNodeIds: [target_node_id]` in the
-   * BullMQ job payload.
-   * Omit for tasks that do not bind to a canvas node.
-   */
-  target_node_id: z.string().uuid().optional(),
-});
+export const taskCreateSchema = z
+  .object({
+    task_type: z.string(),
+    model: z.string().optional(),
+    skill_name: z.string().optional(),
+    params: z.record(z.string(), z.unknown()),
+    /**
+     * Result nodes this task will update on completion (1..N).
+     * Mini-tools / AIGC tasks always bind to at least one node; other
+     * task types (some internal audits) may omit and pass through.
+     */
+    node_ids: z.array(z.string()).min(1).optional(),
+    project_id: z.string().uuid(),
+    /**
+     * Space within the project the task targets (v10 multi-doc).
+     * Worker writes results to `project-{project_id}/canvas-{space_id}`,
+     * so this is required. Plain UUID — no FK on the server side.
+     */
+    space_id: z.string().uuid(),
+    source: z.string().default("canvas"),
+    /**
+     * UUID v4 of the canvas node that will receive the task result.
+     * Required when `node_ids` is present (single-node tasks).
+     * The worker wraps this into `targetNodeIds: [target_node_id]` in the
+     * BullMQ job payload.
+     * Omit for tasks that do not bind to a canvas node.
+     */
+    target_node_id: z.string().uuid().optional(),
+    /**
+     * Execution mode (spec §10.13 generative dual-button + §10.15 lock):
+     *
+     *   - `append` (default): create a new sibling result node. No lock
+     *     contention because the new node has its own UUID.
+     *   - `overwrite`: replace the existing `target_node_id` node's data.
+     *     Requires `target_node_id`. The server SETNX-locks the node so
+     *     concurrent overwrites are rejected with `ConflictLocked` 409
+     *     (spec §10.15.3 two-tier check).
+     */
+    mode: z.enum(["append", "overwrite"]).default("append"),
+  })
+  .superRefine((val, ctx) => {
+    if (val.mode === "overwrite" && !val.target_node_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "target_node_id is required when mode is 'overwrite' (spec §10.15.3)",
+        path: ["target_node_id"],
+      });
+    }
+  });
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
 export const understandSchema = z.object({
