@@ -1,6 +1,7 @@
 import type { ElementType, ReactNode } from 'react';
 import { Dialog as HeadlessDialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { Fragment, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
 
@@ -35,6 +36,7 @@ const Dialog = ({
   width,
   style,
 }: DialogProps) => {
+  const { t } = useTranslation();
   const close = useCallback(() => onClose?.(), [onClose]);
 
   return (
@@ -74,7 +76,7 @@ const Dialog = ({
                     type='button'
                     onClick={close}
                     className='absolute right-4 top-4 z-10 flex items-center justify-center rounded p-1 text-[var(--color-text-default-tertiary)] hover:bg-[var(--color-background-default-secondary)] hover:text-[var(--color-text-default-base)]'
-                    aria-label='Close'
+                    aria-label={t('common.close', 'Close')}
                   >
                     <Icon name='base-close-icon' width={16} height={16} />
                   </button>

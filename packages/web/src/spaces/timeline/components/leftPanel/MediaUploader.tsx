@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Upload from '@/ui/upload';
 import { message } from '@/ui/message';
 import { MediaItem } from '../../types';
@@ -45,6 +46,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
   onUploadStart,
   onUploadEnd,
 }) => {
+  const { t } = useTranslation();
   const beforeUpload = () => true;
 
   const createMediaItem = async (type: MediaType, url: string, file: File): Promise<UploadResult> => {
@@ -118,7 +120,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
       onSuccess?.(objectUrl);
     } catch (error) {
       console.error('File upload error:', error);
-      message.error('文件处理失败');
+      message.error(t('mediaUploader.fileProcessFailed', 'File processing failed'));
       onError?.(error as Error);
     } finally {
       onUploadEnd?.(type);

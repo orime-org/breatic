@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { Transition, TransitionChild } from '@headlessui/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
@@ -51,6 +52,7 @@ const Image: React.FC<ImageProps> = ({
   onError,
   onClick,
 }) => {
+  const { t } = useTranslation();
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const previewImgRef = useRef<HTMLImageElement>(null);
@@ -221,7 +223,7 @@ const Image: React.FC<ImageProps> = ({
                 shape='circle'
                 bordered={false}
                 className='absolute right-4 top-4 z-20 !w-10 !h-10 !p-[2px] !bg-black/50 !hover:!bg-black/70'
-                aria-label='Close preview'
+                aria-label={t('image.closePreview', 'Close preview')}
                 icon={<Icon name='base-close-icon' width={16} height={16} color='#ffffff' />}
               />
 

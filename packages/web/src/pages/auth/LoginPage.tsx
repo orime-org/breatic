@@ -129,7 +129,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className='text-center'>
           <h1 className='text-2xl font-bold text-text-default-base'>Breatic</h1>
-          <p className='text-sm text-text-default-tertiary mt-1'>AI Creative Platform</p>
+          <p className='text-sm text-text-default-tertiary mt-1'>{t('auth.tagline', 'AI Creative Platform')}</p>
         </div>
 
         {/* Tab switcher */}

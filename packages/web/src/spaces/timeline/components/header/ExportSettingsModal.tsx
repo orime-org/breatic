@@ -120,10 +120,10 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                 100%
               </div>
               <div className='mb-2 text-lg text-gray-900'>
-                上传中
+                {t('export.uploading', 'Uploading')}
                 <LoadingDots />
               </div>
-              <div className='text-sm text-gray-500'>正在上传到服务器...</div>
+              <div className='text-sm text-gray-500'>{t('export.uploadingToServer', 'Uploading to server...')}</div>
             </>
           ) : (
             // comment

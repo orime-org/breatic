@@ -3,6 +3,7 @@
  * Style consistent with UploadedPanel / Generated.
  */
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Image } from '@/ui/image';
 import { Icon } from '@/ui/icon';
@@ -47,6 +48,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
   imageCursorClassName = 'cursor-grab',
   hideFloatingToolbar = false,
 }) => {
+  const { t } = useTranslation();
   const stopPropagation = (e: React.MouseEvent) => e.stopPropagation();
 
   const showBar = !hideFloatingToolbar && selected && !isInsideLockedGroup;
@@ -83,7 +85,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
                 onPreviewChange?.(true);
               }}
               className={btnClass}
-              aria-label='Fullscreen'
+              aria-label={t('common.fullscreen', 'Fullscreen')}
             >
               <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='var(--color-icon-secondary)' />
             </button>
@@ -94,7 +96,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
                 onDownloadClick?.(e);
               }}
               className={btnClass}
-              aria-label='Download'
+              aria-label={t('common.download', 'Download')}
             >
               <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
             </button>
@@ -105,7 +107,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
                 onMentionClick?.(e);
               }}
               className={btnClass}
-              aria-label='Mention'
+              aria-label={t('common.mention', 'Mention')}
             >
               <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
             </button>

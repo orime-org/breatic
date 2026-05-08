@@ -2,6 +2,7 @@
  * Video node content area: Video (video + bottom playbar) + toolbar when selected (fullscreen, download, @, edit)
  */
 import React, { memo, useRef, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Video, { type VideoRef } from '../../common/Video';
 import PreviewVideo from '../../common/PreviewVideo';
@@ -30,6 +31,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
   onMentionClick,
   onEditClick,
 }) => {
+  const { t } = useTranslation();
   const videoRef = useRef<VideoRef>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenInitialTime, setFullscreenInitialTime] = useState<number | undefined>(undefined);
@@ -98,7 +100,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
                 handleFullscreen();
               }}
               className={toolbarBtnClass}
-              aria-label='Fullscreen'
+              aria-label={t('common.fullscreen', 'Fullscreen')}
             >
               <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='var(--color-icon-secondary)' />
             </button>
@@ -110,7 +112,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
                 onDownloadClick?.(e);
               }}
               className={toolbarBtnClass}
-              aria-label='Download'
+              aria-label={t('common.download', 'Download')}
             >
               <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
             </button>
@@ -121,7 +123,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
                 onMentionClick?.(e);
               }}
               className={toolbarBtnClass}
-              aria-label='Mention'
+              aria-label={t('common.mention', 'Mention')}
             >
               <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
             </button>
@@ -133,7 +135,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
                   onEditClick(e);
                 }}
                 className={toolbarBtnClass}
-                aria-label='Edit'
+                aria-label={t('common.edit', 'Edit')}
               >
                 <Icon name='project-thunderbolt-icon' width={16} height={16} color='var(--color-icon-secondary)' />
               </button>

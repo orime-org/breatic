@@ -94,6 +94,32 @@
     "confirm_plan": "Confirm & Generate",
     "new_chat": "New Chat"
   },
+  "chat": {
+    "modelSelect": {
+      "selectAModel": "Select a Model",
+      "quality": "Quality",
+      "aspectRatio": "Aspect Ratio",
+      "ariaLabel": "Select model"
+    },
+    "composer": {
+      "focusEditor": "Focus editor",
+      "mentionUpstream": "Mention upstream",
+      "upstreamResource": "Upstream resource",
+      "removeUpstream": "Remove upstream",
+      "upload": "Upload",
+      "uploadFiles": "Upload files",
+      "attachment": "Attachment",
+      "removeUpload": "Remove upload",
+      "addToInput": "Add to input"
+    },
+    "panel": {
+      "newConversation": "New conversation",
+      "history": "History"
+    },
+    "recognizedPick": {
+      "fallback": "Recognized result"
+    }
+  },
   "canvas": {
     "new_project": "New Project",
     "generating": "Generating...",
@@ -108,7 +134,72 @@
     "ratio11": "1:1",
     "youtube": "YouTube Ads",
     "tiktok": "TikTok, YouTube Shorts",
-    "instagram": "Instagram, Facebook Posts"
+    "instagram": "Instagram, Facebook Posts",
+    "toolbar": {
+      "openMinimap": "Open minimap",
+      "closeMinimap": "Close minimap",
+      "undoTooltip": "Undo (Ctrl+Z)",
+      "redoTooltip": "Redo (Shift+Ctrl+Z)",
+      "fitToView": "Fit to view"
+    },
+    "comment": {
+      "composerPlaceholder": "Enter your comment...",
+      "replyPlaceholder": "Reply to discussion...",
+      "send": "Send comment",
+      "timeJustNow": "Just now",
+      "timeMinutesAgo": "{{count}} minutes ago",
+      "timeHoursAgo": "{{count}} hours ago",
+      "timeEarlier": "Earlier"
+    },
+    "handle": {
+      "agentNodes": "Agent Nodes",
+      "nodeText": "Text",
+      "nodeImage": "Image",
+      "nodeVideo": "Video",
+      "nodeAudio": "Audio",
+      "subtitleText": "Loads/Creates text content",
+      "subtitleImage": "Loads/Generates images",
+      "subtitleVideo": "Loads/Generates video clips",
+      "subtitleAudio": "Loads/Creates audio content"
+    },
+    "node": {
+      "processing": "Processing...",
+      "image": {
+        "loading": "Loading Image...",
+        "uploadFailed": "Image upload failed"
+      },
+      "video": {
+        "loading": "Loading Video...",
+        "uploadFailed": "Video upload failed"
+      },
+      "audio": {
+        "uploadFailed": "Audio upload failed",
+        "recordingUploadFailed": "Recording upload failed"
+      }
+    },
+    "upstream": {
+      "text": "Text",
+      "file": "File"
+    },
+    "rightPanel": {
+      "collapse": "Collapse panel",
+      "share": "Share",
+      "background": "Background",
+      "pageSummary": "Page Summary"
+    },
+    "overlay": {
+      "input": "Input"
+    },
+    "pickMode": {
+      "clickHereOrPress": "Click here or press",
+      "toExit": "to exit"
+    },
+    "textToolbar": {
+      "paragraph": "Paragraph",
+      "orderedList": "Ordered list",
+      "unorderedList": "Unordered list",
+      "bold": "Bold"
+    }
   },
   "editor": {
     "label": "Editor",
@@ -123,7 +214,8 @@
     "generate": "Generate",
     "character": "Character",
     "storyboard": "Storyboard",
-    "script": "Script"
+    "script": "Script",
+    "comingSoon": "Editor coming soon"
   },
   "payment": {
     "buy_credits": "Buy Credits",
@@ -139,7 +231,8 @@
     "password": "Password",
     "forgot_password": "Forgot Password?",
     "or_continue_with": "Or continue with",
-    "google": "Google"
+    "google": "Google",
+    "tagline": "AI Creative Platform"
   },
   "breatic_slogan": "AI Makes Creativity Visible",
   "about_us": "About Us",
@@ -340,7 +433,12 @@
     "next": "Next",
     "appTitle": "Video Editor",
     "backToWorkbench": "Back to Workbench",
-    "syncData": "Sync Data"
+    "syncData": "Sync Data",
+    "copy": "Copy",
+    "download": "Download",
+    "mention": "Mention",
+    "fullscreen": "Fullscreen",
+    "edit": "Edit"
   },
   "export": {
     "title": "Export",
@@ -388,7 +486,17 @@
     "exportImage": "Export Image",
     "exportingImage": "You can download the image to your device.",
     "exportingVideo": "You can download the video to your device.",
-    "exportingAudio": "Audio exported successfully. You can download the audio to your device."
+    "exportingAudio": "Audio exported successfully. You can download the audio to your device.",
+    "uploading": "Uploading",
+    "uploadingToServer": "Uploading to server...",
+    "message": {
+      "workflowIdMissing": "Workflow ID is missing, upload skipped",
+      "failedGetResource": "Failed to get resource URL",
+      "fileUploadFailed": "File upload failed",
+      "imageBackendSoon": "Image export will be provided by backend soon.",
+      "videoBackendSoon": "Video export will be provided by backend soon.",
+      "audioBackendSoon": "Audio export will be provided by backend soon."
+    }
   },
   "fontSelector": {
     "title": "Font",
@@ -761,5 +869,38 @@
       "title": "Coming soon",
       "description": "The {{kind}} space type will be available in a future release."
     }
+  },
+  "image": {
+    "flipVertical": "Flip vertical",
+    "flipHorizontal": "Flip horizontal",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "closePreview": "Close preview"
+  },
+  "upload": {
+    "uploading": "Uploading…",
+    "error": "Error",
+    "preview": "Preview",
+    "removeFile": "Remove file",
+    "failed": "Upload failed",
+    "complete": "Upload complete",
+    "fileInput": "File input"
+  },
+  "media": {
+    "noItems": "No items"
+  },
+  "document": {
+    "editorComingSoon": "Text editor coming soon",
+    "imageDialog": {
+      "insertImage": "Insert Image",
+      "upload": "Upload",
+      "embedUrl": "Embed URL",
+      "dropOrBrowse": "Drop image here or click to browse"
+    }
+  },
+  "mediaUploader": {
+    "fileProcessFailed": "File processing failed"
   }
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TextEditorProps } from './types';
 import 'highlight.js/styles/github-dark.css';
 import '@/spaces/document/editor.css';
@@ -14,9 +15,10 @@ import '@/spaces/document/editor.css';
  * was deleted in PR-5. Until PR-6 lands, text nodes show a placeholder.
  */
 const TextEditor = ({ nodeId: _nodeId }: TextEditorProps) => {
+  const { t } = useTranslation();
   return (
     <div className='flex h-full w-full flex-col items-center justify-center gap-3 bg-background-default-secondary text-text-default-tertiary'>
-      <span className='text-sm'>Text editor coming soon</span>
+      <span className='text-sm'>{t('document.editorComingSoon', 'Text editor coming soon')}</span>
     </div>
   );
 };

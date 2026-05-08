@@ -9,27 +9,28 @@ import {
   useInteractions,
   FloatingPortal,
 } from '@floating-ui/react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 
 /** Selectable node types (aligned with DataNodeHandle). */
 const agentNodes = [
-  { type: '1001', label: 'Text' },
-  { type: '1002', label: 'Image' },
-  { type: '1003', label: 'Video' },
-  { type: '1004', label: 'Audio' },
+  { type: '1001', labelKey: 'canvas.handle.nodeText' },
+  { type: '1002', labelKey: 'canvas.handle.nodeImage' },
+  { type: '1003', labelKey: 'canvas.handle.nodeVideo' },
+  { type: '1004', labelKey: 'canvas.handle.nodeAudio' },
 ] as const;
 
-const getNodeSubtitle = (templateType: string): string => {
+const getNodeSubtitle = (templateType: string, t: (key: string) => string): string => {
   switch (templateType) {
     case '1001':
-      return 'Loads/Creates text content';
+      return t('canvas.handle.subtitleText');
     case '1002':
-      return 'Loads/Generates images';
+      return t('canvas.handle.subtitleImage');
     case '1003':
-      return 'Loads/Generates video clips';
+      return t('canvas.handle.subtitleVideo');
     case '1004':
-      return 'Loads/Creates audio content';
+      return t('canvas.handle.subtitleAudio');
     default:
       return '';
   }
@@ -57,6 +58,7 @@ const ConnectEndCommandMenu: React.FC<ConnectEndCommandMenuProps> = ({
   onClose,
   onPanelPositionChange,
 }) => {
+  const { t } = useTranslation();
   const floatingRef = useRef<HTMLDivElement>(null);
   const virtualRef = useRef({
     getBoundingClientRect: (): DOMRect => new DOMRect(left, top, 0, 0),
@@ -114,7 +116,7 @@ const ConnectEndCommandMenu: React.FC<ConnectEndCommandMenuProps> = ({
       data-testid='connect-end-command-menu'
       {...getFloatingProps()}
     >
-      <div className='text-xs font-medium text-text-default-base mb-2 px-2'>Agent Nodes</div>
+      <div className='text-xs font-medium text-text-default-base mb-2 px-2'>{t('canvas.handle.agentNodes')}</div>
       <div className='flex flex-col gap-0.5'>
         {agentNodes.map((asset) => {
           const iconName = nodeIconMap[asset.type];
@@ -135,10 +137,10 @@ const ConnectEndCommandMenu: React.FC<ConnectEndCommandMenuProps> = ({
               )}
               <div className='flex flex-col justify-center min-w-0 flex-1'>
                 <span className='text-xs font-medium leading-4 text-text-default-base truncate'>
-                  {asset.label}
+                  {t(asset.labelKey)}
                 </span>
                 <span className='text-[10px] leading-3 text-text-default-tertiary truncate'>
-                  {getNodeSubtitle(asset.type)}
+                  {getNodeSubtitle(asset.type, t)}
                 </span>
               </div>
             </div>

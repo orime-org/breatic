@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
 import dayjs from 'dayjs';
 import { type Node } from '@xyflow/react';
@@ -103,6 +104,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     },
     ref,
   ) => {
+    const { t } = useTranslation();
     const { nodes, edges } = useCanvasData();
     const { addNode, updateNode, onNodesChange, onEdgesChange, onConnect } = useCanvasActions();
     const { rightPanel, openRightPanel } = useProjectLayout();
@@ -606,14 +608,14 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
           <button
             type='button'
             className='shrink-0 flex items-center justify-center w-8 h-8 rounded hover:bg-background-default-secondary transition-colors'
-            aria-label='New conversation'
+            aria-label={t('chat.panel.newConversation', 'New conversation')}
           >
             <Icon name='project-chat-header-tool-icon' width={27} height={25} color='var(--color-icon-secondary)' />
           </button>
           <button
             type='button'
             className='shrink-0 flex items-center justify-center w-8 h-8 rounded hover:bg-background-default-secondary transition-colors'
-            aria-label='History'
+            aria-label={t('chat.panel.history', 'History')}
           >
             <Icon name='project-chat-header-history-icon' width={24} height={24} color='var(--color-icon-secondary)' />
           </button>

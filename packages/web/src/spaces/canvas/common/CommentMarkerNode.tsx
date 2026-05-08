@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReactFlow, useViewport, type NodeProps } from '@xyflow/react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui/button';
 import { Icon } from '@/ui/icon';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
@@ -16,18 +17,19 @@ type CommentMarkerData = {
   text?: string;
 };
 
-const formatCommentTime = (createdAt: number): string => {
+const formatCommentTime = (createdAt: number, t: (key: string, opts?: Record<string, unknown>) => string): string => {
   const diffMs = Date.now() - createdAt;
-  if (diffMs < 60 * 1000) return '刚刚';
+  if (diffMs < 60 * 1000) return t('canvas.comment.timeJustNow');
   const mins = Math.floor(diffMs / (60 * 1000));
-  if (mins < 60) return `${mins}分钟前`;
+  if (mins < 60) return t('canvas.comment.timeMinutesAgo', { count: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}小时前`;
-  return '更早';
+  if (hours < 24) return t('canvas.comment.timeHoursAgo', { count: hours });
+  return t('canvas.comment.timeEarlier');
 };
 
 /** Lightweight comment marker node shown as a circular avatar chip on canvas. */
 const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
+  const { t } = useTranslation();
   const { deleteElements, setNodes } = useReactFlow();
   const { zoom } = useViewport();
   const markerData = (data ?? {}) as CommentMarkerData;
@@ -263,7 +265,7 @@ const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
                     <div className='flex min-w-0 items-center gap-1'>
                       <span className='truncate text-[14px] font-semibold text-text-default-base'>{item.username}</span>
                       <span className='shrink-0 text-xs text-text-default-tertiary'>
-                        {formatCommentTime(item.createdAt)}
+                        {formatCommentTime(item.createdAt, t)}
                       </span>
                     </div>
                   </div>
@@ -341,7 +343,7 @@ const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
                   handleSendReply();
                 }
               }}
-              placeholder='回复讨论...'
+              placeholder={t('canvas.comment.replyPlaceholder')}
               className='h-[96px] w-full resize-none border-none bg-transparent px-0 pt-0 text-[13px] text-text-default-base outline-none placeholder:text-text-default-tertiary'
             />
             <div className='pointer-events-auto absolute bottom-[6px] right-[2px] flex items-center gap-2 pr-2'>
@@ -356,7 +358,7 @@ const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
                 onClick={handleSendReply}
                 icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
                 className='!h-[28px] w-[52px] shrink-0 !border-brand-base !bg-brand-base !py-[2px] !pl-[16px] !pr-[12px] hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
-                aria-label='Send comment'
+                aria-label={t('canvas.comment.send')}
               />
             </div>
           </div>

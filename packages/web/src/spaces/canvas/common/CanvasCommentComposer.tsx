@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui/button';
 import { Icon } from '@/ui/icon';
 
@@ -10,6 +11,7 @@ interface CanvasCommentComposerProps {
 }
 
 const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onCancel, onSend }) => {
+  const { t } = useTranslation();
   const maxChars = 200;
   const [value, setValue] = useState('');
   const charCount = value.length;
@@ -51,7 +53,7 @@ const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onC
           maxLength={maxChars}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={handleTextareaKeyDown}
-          placeholder='输入你的评论...'
+          placeholder={t('canvas.comment.composerPlaceholder')}
           className='h-[96px] w-full resize-none border-none bg-transparent px-0 pt-0 text-[13px] text-text-default-base outline-none placeholder:text-text-default-tertiary'
         />
         <div className='pointer-events-auto absolute bottom-[6px] right-[2px] flex items-center gap-2 pr-2'>
@@ -66,7 +68,7 @@ const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onC
             icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
             onClick={handleSend}
             className='!h-[28px] w-[52px] shrink-0 !border-brand-base !bg-brand-base !py-[2px] !pl-[16px] !pr-[12px] hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
-            aria-label='Send comment'
+            aria-label={t('canvas.comment.send')}
           />
         </div>
       </div>

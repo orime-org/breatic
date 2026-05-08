@@ -219,7 +219,7 @@ const GroupToolbarPanel: React.FC = () => {
               className='w-5 h-5 rounded-full border border-[var(--color-border-default-base)] shrink-0'
               style={displayBgColor === 'transparent' ? transparentCheckerStyle : { backgroundColor: displayBgColor }}
             />
-            <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>Background Color</span>
+            <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>{t('project.toolbar.backgroundColor', 'Background Color')}</span>
           </button>
         </Dropdown>
 
@@ -240,7 +240,7 @@ const GroupToolbarPanel: React.FC = () => {
               color='var(--color-icon-secondary)'
             />
             <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
-              {selection.canGroup ? t('project.toolbar.group', 'Group') : 'Ungroup'}
+              {selection.canGroup ? t('project.toolbar.group', 'Group') : t('project.toolbar.ungroup', 'Ungroup')}
             </span>
           </button>
         )}

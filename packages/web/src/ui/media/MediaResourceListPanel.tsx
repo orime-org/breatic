@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Icon } from '@/ui/icon';
 
@@ -48,10 +49,12 @@ function MediaResourceListPanelComponent({
   showStatusDot = false,
   onClose,
   items,
-  emptyText = 'No items',
+  emptyText,
   onItemClick,
   className,
 }: MediaResourceListPanelProps) {
+  const { t } = useTranslation();
+  const resolvedEmptyText = emptyText ?? t('media.noItems', 'No items');
   if (!open) return null;
 
   return (
@@ -73,7 +76,7 @@ function MediaResourceListPanelComponent({
         <button
           type='button'
           className='flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-icon-base transition-colors hover:bg-background-default-base-hover'
-          aria-label='Close'
+          aria-label={t('common.close', 'Close')}
           onClick={onClose}
         >
           <Icon name='base-close-icon' width={14} height={14} />
@@ -82,7 +85,7 @@ function MediaResourceListPanelComponent({
 
       <div className='min-h-0 flex-1 overflow-y-auto p-2'>
         {items.length === 0 ? (
-          <div className='py-8 text-center text-xs text-text-default-tertiary'>{emptyText}</div>
+          <div className='py-8 text-center text-xs text-text-default-tertiary'>{resolvedEmptyText}</div>
         ) : (
           <ul className='flex flex-col gap-2'>
             {items.map((item) => (

@@ -3,6 +3,7 @@
  * Style reference: top toolbar light gray; bottom toolbar consistent with VideoNodeContent.
  */
 import React, { memo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
 import { sanitizeRichText } from '@/utils/sanitize';
@@ -74,6 +75,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
   },
   ref,
 ) => {
+  const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
   const editableAreaRef = useRef<HTMLDivElement>(null);
   const lastEmittedRef = useRef<string>('\u200b'); // Placeholder to ensure value is synced on first mount
@@ -255,12 +257,12 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 />
               </button>
             </Tooltip>
-            <Tooltip title='Paragraph' placement='top'>
+            <Tooltip title={t('canvas.textToolbar.paragraph', 'Paragraph')} placement='top'>
               <button
                 type='button'
                 className={`${toolbarBtnClass} ${formatState.block === 'p' ? formatBtnActiveClass : ''}`}
                 onMouseDown={exec('formatBlock', 'p')}
-                aria-label='Paragraph'
+                aria-label={t('canvas.textToolbar.paragraph', 'Paragraph')}
               >
                 <Icon
                   name='project-paragraph-icon'
@@ -270,12 +272,12 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 />
               </button>
             </Tooltip>
-            <Tooltip title='Ordered list' placement='top'>
+            <Tooltip title={t('canvas.textToolbar.orderedList', 'Ordered list')} placement='top'>
               <button
                 type='button'
                 className={`${toolbarBtnClass} ${formatState.orderedList ? formatBtnActiveClass : ''}`}
                 onMouseDown={exec('insertOrderedList')}
-                aria-label='Ordered list'
+                aria-label={t('canvas.textToolbar.orderedList', 'Ordered list')}
               >
                 <Icon
                   name='project-list-ordered-icon'
@@ -285,12 +287,12 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 />
               </button>
             </Tooltip>
-            <Tooltip title='Unordered list' placement='top'>
+            <Tooltip title={t('canvas.textToolbar.unorderedList', 'Unordered list')} placement='top'>
               <button
                 type='button'
                 className={`${toolbarBtnClass} ${formatState.unorderedList ? formatBtnActiveClass : ''}`}
                 onMouseDown={exec('insertUnorderedList')}
-                aria-label='Unordered list'
+                aria-label={t('canvas.textToolbar.unorderedList', 'Unordered list')}
               >
                 <Icon
                   name='project-list-unordered-icon'
@@ -300,12 +302,12 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 />
               </button>
             </Tooltip>
-            <Tooltip title='Bold' placement='top'>
+            <Tooltip title={t('canvas.textToolbar.bold', 'Bold')} placement='top'>
               <button
                 type='button'
                 className={`${toolbarBtnClass} ${formatState.bold ? formatBtnActiveClass : ''}`}
                 onMouseDown={exec('bold')}
-                aria-label='Bold'
+                aria-label={t('canvas.textToolbar.bold', 'Bold')}
               >
                 <Icon
                   name='project-bold-icon'
@@ -373,7 +375,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
       {selected && isEditing && (
         <div className='flex-shrink-0 flex justify-center py-2' onMouseDown={stopPropagation}>
           <div className={toolbarBarClass}>
-            <Tooltip title='Copy' placement='top'>
+            <Tooltip title={t('common.copy', 'Copy')} placement='top'>
               <button
                 type='button'
                 onClick={(e) => {
@@ -381,7 +383,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   onCopyClick?.(e);
                 }}
                 className={toolbarBtnClass}
-                aria-label='Copy'
+                aria-label={t('common.copy', 'Copy')}
               >
                 <Icon name='project-copy-icon' width={16} height={16} color='var(--color-icon-secondary)' />
               </button>
@@ -394,7 +396,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   onMentionClick?.(e);
                 }}
                 className={toolbarBtnClass}
-                aria-label='Mention'
+                aria-label={t('common.mention', 'Mention')}
               >
                 <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
               </button>
