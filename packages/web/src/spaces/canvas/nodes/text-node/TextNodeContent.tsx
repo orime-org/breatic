@@ -34,7 +34,7 @@ export interface TextNodeContentProps {
 
 const toolbarBarClass = 'flex items-center gap-[2px] rounded-[4px] p-[4px] nodrag bg-background-default-secondary';
 const toolbarBtnClass =
-  'flex h-[22px] min-w-[22px] px-1.5 items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5 text-[12px] font-medium';
+  'flex h-[22px] min-w-[22px] px-1.5 items-center justify-center rounded-[4px] text-text-default-secondary hover:bg-black/5 text-[12px] font-medium';
 const formatBtnActiveClass = '!text-[var(--color-text-default-base)]';
 const formatBarClass =
   'flex items-center justify-center gap-[2px] rounded-[4px] bg-background-default-secondary p-[4px] nodrag';
@@ -221,7 +221,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-h1-icon'
                   width={10}
                   height={10}
-                  color={formatState.block === 'h1' ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.block === 'h1' ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -236,7 +236,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-h2-icon'
                   width={12}
                   height={12}
-                  color={formatState.block === 'h2' ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.block === 'h2' ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -251,7 +251,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-h3-icon'
                   width={12}
                   height={12}
-                  color={formatState.block === 'h3' ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.block === 'h3' ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -266,7 +266,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-paragraph-icon'
                   width={10}
                   height={10}
-                  color={formatState.block === 'p' ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.block === 'p' ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -281,7 +281,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-list-ordered-icon'
                   width={10}
                   height={10}
-                  color={formatState.orderedList ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.orderedList ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -296,7 +296,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-list-unordered-icon'
                   width={10}
                   height={10}
-                  color={formatState.unorderedList ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.unorderedList ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -311,7 +311,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                   name='project-bold-icon'
                   width={10}
                   height={10}
-                  color={formatState.bold ? 'var(--color-text-default-base)' : '#757575'}
+                  color={formatState.bold ? 'var(--color-text-default-base)' : 'var(--color-icon-secondary)'}
                 />
               </button>
             </Tooltip>
@@ -383,7 +383,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 className={toolbarBtnClass}
                 aria-label='Copy'
               >
-                <Icon name='project-copy-icon' width={16} height={16} color='#757575' />
+                <Icon name='project-copy-icon' width={16} height={16} color='var(--color-icon-secondary)' />
               </button>
             </Tooltip>
             <Tooltip title='@' placement='top'>
@@ -396,7 +396,7 @@ const TextNodeContentComponent: React.ForwardRefRenderFunction<TextNodeContentHa
                 className={toolbarBtnClass}
                 aria-label='Mention'
               >
-                <Icon name='project-chat-mention-icon' width={15} height={15} color='#757575' />
+                <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
               </button>
             </Tooltip>
           </div>

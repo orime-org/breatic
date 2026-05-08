@@ -19,7 +19,7 @@ export interface AudioNodePlayerProps {
 
 const toolbarBarClass = 'flex items-center gap-[2px] rounded-[4px] bg-white/80 p-[4px] shadow-sm nodrag';
 const toolbarBtnClass =
-  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
+  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-text-default-secondary hover:bg-black/5';
 
 const formatTime = (seconds: number) => {
   const s = Math.floor(seconds);
@@ -49,7 +49,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
   const { wavesurfer } = useWavesurfer({
     container: containerRef,
     url: src,
-    waveColor: '#B3B3B3',
+    waveColor: 'var(--color-text-disabled-base)',
     progressColor: '#262626',
     cursorColor: 'transparent',
     barWidth: 2,
@@ -178,7 +178,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                 className={toolbarBtnClass}
                 aria-label='Download'
               >
-                <Icon name='project-chat-download-icon' width={20} height={20} color='#757575' />
+                <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
               </button>
               <button
                 type='button'
@@ -189,7 +189,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                 className={toolbarBtnClass}
                 aria-label='Mention'
               >
-                <Icon name='project-chat-mention-icon' width={15} height={15} color='#757575' />
+                <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
               </button>
             </div>
           </div>
@@ -204,16 +204,16 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
               <button
                 type='button'
                 onClick={handlePlayPause}
-                className='flex-shrink-0 flex items-center justify-center w-8 h-8 nodrag text-[#383838] hover:opacity-80'
+                className='flex-shrink-0 flex items-center justify-center w-8 h-8 nodrag text-icon-base hover:opacity-80'
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
-                  <Icon name='project-pause-audio-icon' width={10} height={10} color='#383838' />
+                  <Icon name='project-pause-audio-icon' width={10} height={10} color='var(--color-icon-base)' />
                 ) : (
-                  <Icon name='project-play-audio-icon' width={10} height={12} color='#383838' />
+                  <Icon name='project-play-audio-icon' width={10} height={12} color='var(--color-icon-base)' />
                 )}
               </button>
-              <span className='flex-shrink-0 text-[12px] text-[#383838] font-normal tabular-nums'>
+              <span className='flex-shrink-0 text-[12px] text-icon-base font-normal tabular-nums'>
                 {formatTime(currentTime)}
               </span>
               <div className='flex-1 min-w-0 h-8 flex items-center' onClick={stopPropagation}>
@@ -228,7 +228,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                   />
                 </div>
               </div>
-              <span className='flex-shrink-0 text-[12px] text-[#383838] font-normal tabular-nums'>
+              <span className='flex-shrink-0 text-[12px] text-icon-base font-normal tabular-nums'>
                 {formatTime(duration)}
               </span>
               <div
@@ -239,13 +239,13 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                 <button
                   type='button'
                   onClick={handleMuteToggle}
-                  className='flex items-center justify-center w-8 h-8 nodrag text-[#757575] hover:opacity-80'
+                  className='flex items-center justify-center w-8 h-8 nodrag text-text-default-secondary hover:opacity-80'
                   aria-label={volume === 0 ? 'Unmute' : 'Mute'}
                 >
                   {volume === 0 ? (
-                    <Icon name='project-mute-icon' width={14} height={14} color='#757575' />
+                    <Icon name='project-mute-icon' width={14} height={14} color='var(--color-icon-secondary)' />
                   ) : (
-                    <Icon name='project-volume-icon' width={14} height={14} color='#757575' />
+                    <Icon name='project-volume-icon' width={14} height={14} color='var(--color-icon-secondary)' />
                   )}
                 </button>
                 {showVolumeSlider && (

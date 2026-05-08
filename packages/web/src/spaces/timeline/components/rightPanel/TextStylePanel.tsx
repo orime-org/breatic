@@ -35,11 +35,11 @@ interface TextStylePanelProps {
 const sliderClass = 'nodrag nopan !w-full';
 const sliderBaseProps = {
   activeColor: '#5A5A5A',
-  inactiveColor: '#E3E3E3',
+  inactiveColor: 'var(--color-background-neutral-tertiary)',
   trackHeight: 6,
   thumbWidth: 20,
   thumbHeight: 16,
-  thumbColor: '#B3B3B3',
+  thumbColor: 'var(--color-text-disabled-base)',
 } as const;
 const DEFAULT_FONT_WEIGHT_OPTION = { value: 'default', label: 'Regular' };
 

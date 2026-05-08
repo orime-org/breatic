@@ -34,7 +34,7 @@ const itemThumbClass =
   'relative aspect-square w-full overflow-hidden rounded-[8px] border border-[var(--color-border-default-base)] bg-[var(--color-background-default-secondary)]';
 const itemHoverBarClass = 'flex items-center gap-[2px] rounded-[4px] bg-white/80 p-[4px] shadow-sm';
 const itemHoverBtnClass =
-  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
+  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-text-default-secondary hover:bg-black/5';
 const itemFavoriteBtnClass =
   'absolute right-1 top-1 z-20 flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-white/85 shadow-sm transition-colors hover:bg-white';
 
@@ -139,7 +139,7 @@ function MediaResourceListPanelComponent({
                           name='project-image-editor-media-favorite-icon'
                           width={13}
                           height={13}
-                          color={favorited ? '#E8A317' : '#757575'}
+                          color={favorited ? '#E8A317' : 'var(--color-icon-secondary)'}
                           className={cn(!favorited && 'opacity-55')}
                         />
                       </button>
@@ -166,7 +166,7 @@ function MediaResourceListPanelComponent({
                                 onItemAddClick(item);
                               }}
                             >
-                              <Icon name='project-plus-icon' width={14} height={14} color='#757575' />
+                              <Icon name='project-plus-icon' width={14} height={14} color='var(--color-icon-secondary)' />
                             </button>
                           ) : null}
                           {onItemDownloadClick ? (
@@ -179,7 +179,7 @@ function MediaResourceListPanelComponent({
                                 onItemDownloadClick(item);
                               }}
                             >
-                              <Icon name='project-chat-download-icon' width={20} height={20} color='#757575' />
+                              <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
                             </button>
                           ) : null}
                         </div>

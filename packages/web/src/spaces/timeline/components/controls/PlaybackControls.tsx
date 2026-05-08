@@ -559,11 +559,11 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           onChange={handleScaleChange}
           className={`${sliderClass} mx-2 w-32 m-0 flex-shrink-0`}
           activeColor='#5A5A5A'
-          inactiveColor='#E3E3E3'
+          inactiveColor='var(--color-background-neutral-tertiary)'
           trackHeight={6}
           thumbWidth={20}
           thumbHeight={16}
-          thumbColor='#B3B3B3'
+          thumbColor='var(--color-text-disabled-base)'
         />
         <Tooltip title={t('playbackControls.zoomIn') || 'Zoom In'} placement='top'>
           <div

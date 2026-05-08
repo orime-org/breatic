@@ -33,7 +33,7 @@ export interface ImageNodeContentProps {
 }
 
 const barClass = 'flex items-center gap-[2px] rounded-[4px] bg-white/80 p-[4px] shadow-sm nodrag';
-const btnClass = 'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
+const btnClass = 'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-text-default-secondary hover:bg-black/5';
 
 const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
   src,
@@ -85,7 +85,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
               className={btnClass}
               aria-label='Fullscreen'
             >
-              <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='#757575' />
+              <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='var(--color-icon-secondary)' />
             </button>
             <button
               type='button'
@@ -96,7 +96,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
               className={btnClass}
               aria-label='Download'
             >
-              <Icon name='project-chat-download-icon' width={20} height={20} color='#757575' />
+              <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
             </button>
             <button
               type='button'
@@ -107,7 +107,7 @@ const ImageNodeContent: React.FC<ImageNodeContentProps> = ({
               className={btnClass}
               aria-label='Mention'
             >
-              <Icon name='project-chat-mention-icon' width={15} height={15} color='#757575' />
+              <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
             </button>
           </div>
         </div>

@@ -431,7 +431,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
         <div className='flex-1 min-h-0 flex flex-col gap-[12px]'>
           {historyRecords.length === 0 ? (
             <div className='flex-1 min-h-[200px] flex flex-col items-center justify-center gap-3 py-10 px-4 text-center'>
-              <Icon name='project-node-runs-empty-icon' width={30} height={27} color='#B3B3B3' />
+              <Icon name='project-node-runs-empty-icon' width={30} height={27} color='var(--color-text-disabled-base)' />
               <div className='text-[14px] font-semibold text-text-default-tertiary'>
                 {t('project.canvas.noRunsYet', 'No runs yet')}
               </div>
@@ -474,7 +474,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                       className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] text-text-on-button-base font-semibold ${
                         isSuccess
                           ? 'bg-[#199A1B]  border border-[#199A1B]/25'
-                          : 'bg-[#EC221F] border border-[#EC221F]/25'
+                          : 'bg-background-error-base border border-background-error-base/25'
                       }`}
                     >
                       {isSuccess ? 'Success' : 'Failed'}
@@ -503,7 +503,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                     <div className='p-[12px]'>
                       <div className='flex items-center justify-between gap-2'>
                         <div
-                          className={`text-[12px] font-semibold shrink-0 ${isSuccess ? 'text-text-default-secondary' : 'text-[#EC221F]'}`}
+                          className={`text-[12px] font-semibold shrink-0 ${isSuccess ? 'text-text-default-secondary' : 'text-text-status-error'}`}
                         >
                           {isSuccess ? 'Output' : 'Failed'}
                         </div>

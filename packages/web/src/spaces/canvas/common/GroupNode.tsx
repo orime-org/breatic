@@ -8,6 +8,7 @@ import { NodeResizer } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 
+/* PR9-A: hex literal kept intentionally — `toRgba08` below parses hex digits, so a CSS var token would not work here. */
 const defaultGroupBackgroundColor = '#35C838';
 const defaultGroupBgRgba = 'rgba(34, 41, 51, 0.8)';
 

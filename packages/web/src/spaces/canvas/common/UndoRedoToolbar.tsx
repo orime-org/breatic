@@ -120,11 +120,11 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
               max={maxZoom}
               step={0.01}
               activeColor='#5A5A5A'
-              inactiveColor='#E3E3E3'
+              inactiveColor='var(--color-background-neutral-tertiary)'
               trackHeight={6}
               thumbWidth={20}
               thumbHeight={16}
-              thumbColor='#B3B3B3'
+              thumbColor='var(--color-text-disabled-base)'
               showValueTooltipOnDrag
               formatTooltip={(value) => `${Math.round(value * 100)}%`}
               onChange={(value) => zoomTo(value)}

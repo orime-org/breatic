@@ -19,6 +19,8 @@ import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 
 const groupPadding = 40;
+/* PR9-A: hex literal kept intentionally — value is stored in node `data.backgroundColor` and parsed
+   by `toRgba08` in GroupNode, which expects hex digits. Don't replace with a theme token. */
 const defaultGroupBackgroundColor = '#35C838';
 
 const ASSET_HANDLES: Record<
