@@ -13,7 +13,8 @@ import NodeHeader from '../../common/NodeHeader';
 import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -49,13 +50,8 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
   const { setNodeContent, onNodesChange } = useCanvasActions();
-  const {
-    openRightPanel,
-    requestAddResourceToInput,
-    openCanvasOverlayPanel,
-    closeCanvasOverlayPanel,
-    canvasOverlayPanel,
-  } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
+  const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const [nodeHovered, setNodeHovered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -451,11 +447,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                       selected={selected}
                       onMentionClick={(e) => {
                         e.stopPropagation();
-                        if (audioUrl) {
-                          const nameFromUrl = audioUrl.split('/').pop()?.split('?')[0] || 'audio';
-                          requestAddResourceToInput({ url: audioUrl, name: nameFromUrl, type: 'audio' });
-                        }
-                        openRightPanel('editor', id, undefined, true);
+                        openRightPanel('editor', id);
                       }}
                     />
                   </div>

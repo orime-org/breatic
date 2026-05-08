@@ -9,7 +9,8 @@ import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -60,13 +61,8 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
   const { updateNode, onNodesChange } = useCanvasActions();
-  const {
-    openRightPanel,
-    requestAddResourceToInput,
-    openCanvasOverlayPanel,
-    closeCanvasOverlayPanel,
-    canvasOverlayPanel,
-  } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
+  const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodesRef = useRef(nodes);
   useEffect(() => {
@@ -387,17 +383,7 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
                   onCopyClick={handleCopyContentClick}
                   onMentionClick={(e) => {
                     e.stopPropagation();
-                    const plainText = getTextFromHtml(textValue);
-                    if (plainText) {
-                      const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      requestAddResourceToInput({
-                        url,
-                        name: plainText.length > 20 ? plainText.slice(0, 20) + '…' : plainText || 'Text',
-                        type: 'text',
-                      });
-                    }
-                    openRightPanel('editor', id, undefined, true);
+                    openRightPanel('editor', id);
                   }}
                   onBlurWithEmpty={() => setHasActivated(false)}
                 />

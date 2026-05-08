@@ -15,7 +15,8 @@ import ImageNodeContent from './ImageNodeContent';
 import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import { getImageMeta } from '@/utils/mediaUtils';
 import {
@@ -49,13 +50,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
   const { updateNode, setNodeContent, onNodesChange } = useCanvasActions();
-  const {
-    openRightPanel,
-    requestAddResourceToInput,
-    openCanvasOverlayPanel,
-    closeCanvasOverlayPanel,
-    canvasOverlayPanel,
-  } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
+  const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const [isLoading, setIsLoading] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -217,15 +213,9 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
   // TODO: replaced by presigned URL upload hook
 
-  /** Mention action: add resource to side input and open right editor panel. */
   const handleMentionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = imageUrl || imageUrlFromData;
-    if (url) {
-      const nameFromUrl = url.split('/').pop()?.split('?')[0] || 'image';
-      requestAddResourceToInput({ url, name: nameFromUrl, type: 'image' });
-    }
-    openRightPanel('editor', id, undefined, true);
+    openRightPanel('editor', id);
   };
 
   /** Download current image. */

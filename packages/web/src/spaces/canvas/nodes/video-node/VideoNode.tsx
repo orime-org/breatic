@@ -14,7 +14,8 @@ import { Icon } from '@/ui/icon';
 import VideoNodeContent from './VideoNodeContent';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import { getVideoMeta } from '@/utils/mediaUtils';
 import {
@@ -40,13 +41,8 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
   const { setNodeContent, onNodesChange } = useCanvasActions();
-  const {
-    openRightPanel,
-    requestAddResourceToInput,
-    openCanvasOverlayPanel,
-    closeCanvasOverlayPanel,
-    canvasOverlayPanel,
-  } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
+  const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const [nodeHovered, setNodeHovered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -138,12 +134,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
   const handleMentionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = videoUrl || videoUrlFromData || '';
-    if (url) {
-      const nameFromUrl = url.split('/').pop()?.split('?')[0] || 'video';
-      requestAddResourceToInput({ url, name: nameFromUrl, type: 'video' });
-    }
-    openRightPanel('editor', id, undefined, true);
+    openRightPanel('editor', id);
   };
 
   const selectedCount = nodes.filter((n: { selected?: boolean }) => n.selected).length;

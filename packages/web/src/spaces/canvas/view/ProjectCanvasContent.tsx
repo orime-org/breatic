@@ -64,7 +64,7 @@ import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasVi
 import { captureCanvasPickCaretRange } from '@/features/chat/components/AgentInput';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { type UseProjectSpacesResult } from '@/domain/space/useProjectSpaces';
 import {
   type PickPending,
