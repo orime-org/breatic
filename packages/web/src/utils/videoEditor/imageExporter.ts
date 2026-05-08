@@ -4,7 +4,7 @@
  * 提供将当前帧导出为PNG/JPG图片的功能
  */
 
-import type { MediaItem, TimelineClip } from '@/apps/videoEditor/types';
+import type { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 
 /**
  * 异步加载图片

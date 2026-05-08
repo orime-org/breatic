@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { isInTable, selectedRect, type TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
-import { selectCellsInclusiveRect } from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
+import { selectCellsInclusiveRect } from '@/spaces/document/table/tableSelectionHelpers';
 
 type TableRect = ReturnType<typeof selectedRect>;
 

@@ -44,7 +44,7 @@ import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
 import { openImageFilePanel } from '../media/ImageFilePanel';
 import { openMediaFilePanel } from '../media/MediaFilePanel';
-import { BlockHighlightIcon } from '../ui/TextEditorIcons';
+import { BlockHighlightIcon } from '../view/TextEditorIcons';
 import { SlashTableSizePicker } from './SlashTableSizePicker';
 import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
 

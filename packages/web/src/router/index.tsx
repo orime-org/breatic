@@ -4,7 +4,7 @@ import Loading from '@/components/loading/Loading';
 
 const Project = lazy(() => import('@/apps/project/index'));
 const Workspace = lazy(() => import('@/apps/workspace/index'));
-const VideoEditor = lazy(() => import('@/apps/videoEditor/index'));
+const VideoEditor = lazy(() => import('@/spaces/timeline/index'));
 const LocalProjectPage = lazy(() => import('@/new/project/index'));
 const LoginPage = lazy(() => import('@/apps/auth/LoginPage'));
 const ResetPasswordPage = lazy(() => import('@/apps/auth/ResetPasswordPage'));

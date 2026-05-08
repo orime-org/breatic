@@ -14,7 +14,7 @@ import { TableMap } from '@tiptap/pm/tables';
 import {
   isMediaLikeBlockType,
   mediaBlockSupportsTextAlign,
-} from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
+} from '@/spaces/document/shared/MediaBlockTypes';
 import {
   RiDeleteBin6Line,
   RiSparkling2Fill,
@@ -45,17 +45,17 @@ import {
   RiCheckLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
-import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../ui/TextEditorIcons';
+import { TextColorPalettePanel } from '@/spaces/document/formatting/TextColorSelect';
+import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../view/TextEditorIcons';
 import {
   decreaseBlockIndent,
   increaseBlockIndent,
-} from '@/apps/project/components/textEditor/extensions/BlockIndentExtension';
+} from '@/spaces/document/extensions/BlockIndentExtension';
 import {
   selectWholeTable,
   setWholeTableVerticalAlign,
-} from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
-import { getTextEditorBridgeStorage } from '@/apps/project/components/textEditor/extensions/TextEditorBridgeExtension';
+} from '@/spaces/document/table/tableSelectionHelpers';
+import { getTextEditorBridgeStorage } from '@/spaces/document/extensions/TextEditorBridgeExtension';
 
 /** Same horizontal alignment as row/column handle menus (`cell.attrs.align`). */
 function setTableAllCellsAlign(editor: Editor, tableStart: number, align: 'left' | 'center' | 'right'): boolean {

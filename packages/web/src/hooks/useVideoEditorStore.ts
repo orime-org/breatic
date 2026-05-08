@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { shallowEqual, useDispatch, useSelector } from 'react-redux';
 import type { RootState } from '@/store';
-import type { MediaItem, TimelineClip } from '@/apps/videoEditor/types';
+import type { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import {
   addVideoEditorClip,
   addVideoEditorMediaItem,

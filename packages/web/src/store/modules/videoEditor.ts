@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { MediaItem, TimelineClip } from '@/apps/videoEditor/types';
+import type { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 
 const HISTORY_LIMIT = 80;
 
