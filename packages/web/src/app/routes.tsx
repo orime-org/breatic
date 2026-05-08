@@ -5,7 +5,6 @@ import Loading from '@/app/shell/loading/Loading';
 const Project = lazy(() => import('@/pages/project/Page'));
 const Workspace = lazy(() => import('@/pages/studio/Page'));
 const VideoEditor = lazy(() => import('@/spaces/timeline/index'));
-const LocalProjectPage = lazy(() => import('@/new/project/index'));
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/auth/ResetPasswordPage'));
 
@@ -27,14 +26,6 @@ const router = createBrowserRouter([
     element: (
       <Suspense fallback={<Loading />}>
         <Project />
-      </Suspense>
-    ),
-  },
-  {
-    path: '/new-project',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <LocalProjectPage />
       </Suspense>
     ),
   },
