@@ -39,14 +39,14 @@ import {
   RiPaletteLine,
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
-import { TextColorPalettePanel } from '@/apps/project/components/textEditor/formatting/TextColorSelect';
-import { BlockIndentAlignIcon } from '@/apps/project/components/textEditor/ui/TextEditorIcons';
+import { TextColorPalettePanel } from '@/spaces/document/formatting/TextColorSelect';
+import { BlockIndentAlignIcon } from '@/spaces/document/view/TextEditorIcons';
 import {
   setColumnVerticalAlign,
   setRowVerticalAlign,
   selectTableColumn,
   selectTableRow,
-} from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
+} from '@/spaces/document/table/tableSelectionHelpers';
 
 function addTableRowAtEnd(editor: Editor): boolean {
   try {

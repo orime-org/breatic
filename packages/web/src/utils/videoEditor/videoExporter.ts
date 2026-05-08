@@ -10,7 +10,7 @@
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import { MediaItem, TimelineClip } from '@/apps/videoEditor/types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 
 /** Shared FFmpeg singleton instance. */
 let ffmpegInstance: FFmpeg | null = null;

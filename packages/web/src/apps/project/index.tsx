@@ -17,7 +17,7 @@ import * as authApi from '@/data/api/auth';
 import { MembersPopover, MembersPanel } from '@/features/members';
 import { CreditsPill, RechargeDialog } from '@/features/credits';
 import EditorComingSoonPlaceholder from '@/components/EditorComingSoonPlaceholder';
-import TextEditor from './components/textEditor';
+import TextEditor from '@/spaces/document';
 import ResizableLeftPanel from '@/spaces/canvas/view/ResizableLeftPanel';
 import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
 import ProjectCanvas from '@/spaces/canvas';

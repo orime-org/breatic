@@ -18,20 +18,20 @@ import { MdDragIndicator } from 'react-icons/md';
 import { RiAddLine, RiArrowRightSFill } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import Tooltip from '@/ui/tooltip';
-import BlockTypeMenu from '@/apps/project/components/textEditor/formatting/BlockTypeMenu';
+import BlockTypeMenu from '@/spaces/document/formatting/BlockTypeMenu';
 import {
   breaticSlashMenuKey,
   closeBreaticSlashMenu,
   openBreaticSlashMenu,
-} from '@/apps/project/components/textEditor/slash/SlashMenuPlugin';
+} from '@/spaces/document/slash/SlashMenuPlugin';
 import {
   headingFoldArrowVisible,
   headingFoldKey,
   toggleHeadingFold,
-} from '@/apps/project/components/textEditor/extensions/HeadingFoldExtension';
-import { isMediaLikeBlockType } from '@/apps/project/components/textEditor/shared/MediaBlockTypes';
-import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/apps/project/components/textEditor/extensions/FormatBubbleSuppressExtension';
-import { selectWholeTable } from '@/apps/project/components/textEditor/table/tableSelectionHelpers';
+} from '@/spaces/document/extensions/HeadingFoldExtension';
+import { isMediaLikeBlockType } from '@/spaces/document/shared/MediaBlockTypes';
+import { BREATIC_SUPPRESS_FORMAT_BUBBLE_META } from '@/spaces/document/extensions/FormatBubbleSuppressExtension';
+import { selectWholeTable } from '@/spaces/document/table/tableSelectionHelpers';
 
 interface BlockLineControlProps {
   editor: Editor;
