@@ -8,7 +8,7 @@ import { useCanvasData, CanvasDataProvider } from '@/spaces/canvas/contexts/Canv
 import { LocalPendingProvider } from '@/spaces/canvas/contexts/LocalPendingProvider';
 import { ActiveCanvasSpaceProvider } from '@/domain/space/ActiveCanvasSpaceContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { ProjectLayoutProvider, useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
 import { useUserRole } from '@/domain/user/useUserRole';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
@@ -22,41 +22,18 @@ import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
 import { SpaceShell } from '@/spaces/_shell';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
-/** Local node library metadata (replaces `/api/workflow/node/query` for palette). */
-const builtInNodeTemplateData = [
-  { template_type: '1001', template_name: 'Text' },
-  { template_type: '1002', template_name: 'Image' },
-  { template_type: '1003', template_name: 'Video' },
-  { template_type: '1004', template_name: 'Audio' },
-  { template_type: '6001', template_name: 'Video editor' },
-] as const;
-
 /** Outer shell — owns Yjs manager + wraps children in CanvasDataProvider. */
 const ProjectPage: React.FC = () => {
-  const { projectId: projectIdParam } = useParams<{ projectId: string }>();
-  const routeProjectId = projectIdParam ?? undefined;
-  const { workflowId, setWorkflowId, setNodeTemplateData } = useCanvasUI();
-
-  useEffect(() => {
-    if (routeProjectId && routeProjectId !== workflowId) {
-      setWorkflowId(routeProjectId);
-    }
-  }, [routeProjectId, workflowId, setWorkflowId]);
-
-  useEffect(() => {
-    if (!workflowId) return;
-    setNodeTemplateData([...builtInNodeTemplateData]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId]);
+  const { projectId: routeProjectId } = useParams<{ projectId: string }>();
 
   const { authInfo } = useUserCenterStore();
   const navigate = useNavigate();
   const sessionToken = authInfo?.state?.token ?? '';
 
   const yjs = useProjectSpaces({
-    id: workflowId ?? '',
+    id: routeProjectId ?? '',
     token: sessionToken,
-    enabled: !!workflowId && !!sessionToken,
+    enabled: !!routeProjectId && !!sessionToken,
     onAuthFailed: useCallback((reason: string) => {
       // Session expired or token rejected — clear client state and
       // redirect to login. Without this, HocuspocusProvider would
@@ -68,13 +45,15 @@ const ProjectPage: React.FC = () => {
   });
 
   return (
-    <ActiveCanvasSpaceProvider manager={yjs.manager ?? null}>
-      <CanvasDataProvider manager={yjs.manager ?? null}>
-        <LocalPendingProvider>
-          <ProjectContentBody yjs={yjs} />
-        </LocalPendingProvider>
-      </CanvasDataProvider>
-    </ActiveCanvasSpaceProvider>
+    <ProjectLayoutProvider>
+      <ActiveCanvasSpaceProvider manager={yjs.manager ?? null}>
+        <CanvasDataProvider manager={yjs.manager ?? null}>
+          <LocalPendingProvider>
+            <ProjectContentBody yjs={yjs} />
+          </LocalPendingProvider>
+        </CanvasDataProvider>
+      </ActiveCanvasSpaceProvider>
+    </ProjectLayoutProvider>
   );
 };
 
@@ -85,7 +64,7 @@ const ProjectPage: React.FC = () => {
 const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }> = ({ yjs }) => {
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
-  const { rightPanel, openRightPanel, closeRightPanel } = useCanvasUI();
+  const { rightPanel, openRightPanel, closeRightPanel } = useProjectLayout();
   const [workflowName, setWorkflowName] = useState<string>('');
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
@@ -147,7 +126,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
       return;
     }
     exitCanvasPickMode();
-    openRightPanel('editor', rightPanel.nodeId, undefined, true);
+    openRightPanel('editor', rightPanel.nodeId);
     setSelectedWorkspaceRegion('rightEditor');
   };
 

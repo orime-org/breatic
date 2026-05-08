@@ -8,12 +8,12 @@
 import { useCallback } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { useTranslation } from 'react-i18next';
 
 export function CanvasToastStack() {
   const { toasts, dismissToast } = useCanvasData();
-  const { openRightPanel } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
   const reactFlow = useReactFlow();
   const { t } = useTranslation();
 

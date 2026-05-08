@@ -12,7 +12,7 @@ import AgentComposerTabs, {
 import AgentSendButton from '@/features/chat/components/AgentSendButton';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import {
   useProjectWorkspaceRegion,
   type PickResultBox,
@@ -28,7 +28,7 @@ const defaultRecognizedLabel = '山脉';
 const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSend, className }) => {
   const { nodes, edges } = useCanvasData();
   const { updateNode, onNodesChange, onEdgesChange, onConnect } = useCanvasActions();
-  const { openRightPanel } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
   const workspaceRegion = useProjectWorkspaceRegion();
   const inputRef = useRef<AgentComposerInputHandle>(null);
   const [uploadItems, setUploadItems] = useState<AgentComposerUploadItem[]>([]);
@@ -425,7 +425,7 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
   const handleMentionClick = useCallback(() => {
     inputRef.current?.focusEditor();
     if (workspaceRegion !== 'canvas') {
-      openRightPanel('editor', targetNodeId, undefined, true);
+      openRightPanel('editor', targetNodeId);
     }
     for (const n of nodes) {
       const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
@@ -458,7 +458,7 @@ const NodeChatComposer: React.FC<NodeChatComposerProps> = ({ targetNodeId, onSen
     // Ensure the composer has a caret before enabling pick mode.
     inputRef.current?.focusEditor();
     if (workspaceRegion !== 'canvas') {
-      openRightPanel('editor', targetNodeId, undefined, true);
+      openRightPanel('editor', targetNodeId);
     }
     for (const n of nodes) {
       const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;

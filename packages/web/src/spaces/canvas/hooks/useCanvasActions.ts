@@ -1,10 +1,13 @@
 /**
  * Canvas write operations — all writes go directly to Yjs.
  *
- * Extracted from `useProjectStore` as part of the three-hook split:
- * - {@link useCanvasData} — read nodes/edges/toasts (Context)
+ * Sibling hooks/contexts:
+ * - `useCanvasData` — read nodes/edges/toasts (Context)
  * - **useCanvasActions** — write nodes/edges (Yjs)
- * - {@link useCanvasUI} — read/write UI state (Redux)
+ * - `useCanvasUI` (CanvasUIContext) — canvas-only UI state
+ *   (overlay panel, comment mode)
+ * - `useProjectLayout` (ProjectLayoutContext) — project page right
+ *   editor panel state (cross-Space)
  */
 
 import { useCallback, useRef } from 'react';

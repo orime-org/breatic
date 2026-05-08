@@ -4,12 +4,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { Icon } from '@/ui/icon';
 import { Image } from '@/ui/image';
 import Divider from '@/ui/divider';
 import { message } from '@/ui/message';
-import type { ResourceTypeForInput } from '@/store/modules/canvas';
+import type { ResourceType } from '@/spaces/canvas/types';
 import Video from '@/spaces/canvas/common/Video';
 import { sanitizeRichText } from '@/utils/sanitize';
 import AudioWaveformPlayer from '@/spaces/canvas/common/AudioWaveformPlayer';
@@ -226,7 +226,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
     },
   ];
 
-  const getResourceTypeForInput = (recordType: HistoryRecordType): ResourceTypeForInput => {
+  const getResourceType = (recordType: HistoryRecordType): ResourceType => {
     switch (recordType) {
       case HistoryRecordType.Image:
         return 'image';
@@ -241,7 +241,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
     }
   };
 
-  const getResourceTypeForInputByNodeType = (nodeType?: string): ResourceTypeForInput | null => {
+  const getResourceTypeByNodeType = (nodeType?: string): ResourceType | null => {
     // Data node type mapping (see `src/apps/project/index.tsx` nodeTypes)
     switch (nodeType) {
       case '1001':
@@ -257,7 +257,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
     }
   };
 
-  const targetNodeResourceType = getResourceTypeForInputByNodeType(node?.type as string | undefined);
+  const targetNodeResourceType = getResourceTypeByNodeType(node?.type as string | undefined);
   const isTargetNodeSelected = !!node?.selected;
 
   const downloadImageFromUrl = async (url: string) => {
@@ -320,7 +320,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
 
   const parseFirstResourceFromContent = (
     htmlOrText: string,
-  ): { url: string; type: ResourceTypeForInput; name: string } | null => {
+  ): { url: string; type: ResourceType; name: string } | null => {
     if (!htmlOrText || !htmlOrText.includes('data-resource=')) return null;
     try {
       const doc = new DOMParser().parseFromString(htmlOrText, 'text/html');
@@ -331,7 +331,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
       if (!url.trim()) return null;
 
       const typeAttr = span.getAttribute('data-resource-type') ?? '';
-      let type: ResourceTypeForInput = 'file';
+      let type: ResourceType = 'file';
       if (
         typeAttr === 'image' ||
         typeAttr === 'video' ||
@@ -388,7 +388,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
 
   const handleReplaceOutputToNodeContentClick = (payload: {
     nodeId: string;
-    nodeType: ResourceTypeForInput;
+    nodeType: ResourceType;
     outputContent: string;
     parsedFirstResource: ReturnType<typeof parseFirstResourceFromContent>;
   }) => {
@@ -458,9 +458,9 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
             const hasOutputContent = !!outputContent?.trim();
             const hasInputContent = !!inputContent?.trim();
 
-            const resourceTypeForInput = getResourceTypeForInput(record.type);
+            const resourceTypeForInput = getResourceType(record.type);
             const parsedFirstResource = parseFirstResourceFromContent(outputContent);
-            const effectiveResourceTypeForInput = parsedFirstResource?.type ?? resourceTypeForInput;
+            const effectiveResourceType = parsedFirstResource?.type ?? resourceTypeForInput;
 
             return (
               <div
@@ -531,7 +531,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                                 !hasOutputContent ||
                                 !isTargetNodeSelected ||
                                 !targetNodeResourceType ||
-                                targetNodeResourceType !== effectiveResourceTypeForInput
+                                targetNodeResourceType !== effectiveResourceType
                               }
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -539,13 +539,13 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                                 if (
                                   !isTargetNodeSelected ||
                                   !targetNodeResourceType ||
-                                  targetNodeResourceType !== effectiveResourceTypeForInput
+                                  targetNodeResourceType !== effectiveResourceType
                                 )
                                   return;
                                 if (!node?.id) return;
                                 handleReplaceOutputToNodeContentClick({
                                   nodeId: node.id,
-                                  nodeType: effectiveResourceTypeForInput,
+                                  nodeType: effectiveResourceType,
                                   outputContent,
                                   parsedFirstResource,
                                 });

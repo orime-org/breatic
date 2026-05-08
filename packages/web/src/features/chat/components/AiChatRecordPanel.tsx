@@ -15,7 +15,7 @@ import AgentComposerTabs, {
 import AgentSendButton from '@/features/chat/components/AgentSendButton';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import EmptyChatRecordState from './EmptyChatRecordState';
 import type { PickResultBox, CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import { Icon } from '@/ui/icon';
@@ -105,7 +105,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
   ) => {
     const { nodes, edges } = useCanvasData();
     const { addNode, updateNode, onNodesChange, onEdgesChange, onConnect } = useCanvasActions();
-    const { rightPanel, openRightPanel } = useCanvasUI();
+    const { rightPanel, openRightPanel } = useProjectLayout();
     const nodesRef = useRef(nodes);
     /** Active node id from the right panel or current selection; empty string shows an empty thread. */
     const selectedNode = nodes.find((n) => n.selected);
@@ -450,7 +450,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       // Canvas is the active region: enable on-canvas pick mode only; do not open the right editor
       // (which would switch focus to the image editor for image nodes).
       if (selectedWorkspaceRegion !== 'canvas') {
-        openRightPanel('editor', nodeId, undefined, true);
+        openRightPanel('editor', nodeId);
       }
       for (const n of nodes) {
         const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
@@ -503,7 +503,7 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
       if (!nodeId) return;
       inputRef.current?.focusEditor();
       if (selectedWorkspaceRegion !== 'canvas') {
-        openRightPanel('editor', nodeId, undefined, true);
+        openRightPanel('editor', nodeId);
       }
       for (const n of nodes) {
         const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;

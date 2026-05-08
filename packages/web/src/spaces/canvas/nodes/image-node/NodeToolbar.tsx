@@ -2,7 +2,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 
 export interface ImageNodeToolbarProps {
   nodeId: string;
@@ -19,11 +19,11 @@ const ImageNodeToolbar: React.FC<ImageNodeToolbarProps> = ({
   onTakePhotoClick,
 }) => {
   const { t } = useTranslation();
-  const { openRightPanel } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
 
   const handleEditorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    openRightPanel('editor', nodeId, undefined, true);
+    openRightPanel('editor', nodeId);
   };
 
   const roundedClass = 'rounded-[8px]';

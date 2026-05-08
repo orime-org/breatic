@@ -19,6 +19,7 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import { CanvasToastStack } from '@/spaces/canvas/view/CanvasToastStack';
 import ProjectCanvasContent from '@/spaces/canvas/view/ProjectCanvasContent';
+import { CanvasUIProvider } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { type UseProjectSpacesResult } from '@/domain/space/useProjectSpaces';
 
 type ProjectCanvasProps = {
@@ -28,7 +29,9 @@ type ProjectCanvasProps = {
 
 const ProjectCanvas: React.FC<ProjectCanvasProps> = ({ yjs, hotkeysDisabled }) => (
   <ReactFlowProvider>
-    <ProjectCanvasContent yjs={yjs} hotkeysDisabled={hotkeysDisabled} />
+    <CanvasUIProvider>
+      <ProjectCanvasContent yjs={yjs} hotkeysDisabled={hotkeysDisabled} />
+    </CanvasUIProvider>
     <CanvasToastStack />
   </ReactFlowProvider>
 );

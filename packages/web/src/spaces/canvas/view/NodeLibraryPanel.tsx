@@ -4,7 +4,7 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { useReactFlow, type Node } from '@xyflow/react';
@@ -14,6 +14,15 @@ import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 // Node icon map (format: dir-name-filename, hyphen separated)
 import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
+
+/** Built-in node palette metadata (was server-driven via /api/workflow/node/query). */
+const builtInNodeTemplateData = [
+  { template_type: '1001', template_name: 'Text' },
+  { template_type: '1002', template_name: 'Image' },
+  { template_type: '1003', template_name: 'Video' },
+  { template_type: '1004', template_name: 'Audio' },
+  { template_type: '6001', template_name: 'Video editor' },
+] as const;
 
 
 /** Node group config displayed in the sidebar */
@@ -257,7 +266,7 @@ const NodeLibraryPanel: React.FC = () => {
 
   const { nodes } = useCanvasData();
   const { addNode } = useCanvasActions();
-  const { nodeTemplateData, commentMode: canvasCommentMode, setCanvasCommentMode, closeCanvasCommentComposer } = useCanvasUI();
+  const { canvasCommentMode, setCanvasCommentMode, closeCanvasCommentComposer } = useCanvasUI();
   const { screenToFlowPosition } = useReactFlow();
 
   const { t } = useTranslation();
@@ -320,10 +329,10 @@ const NodeLibraryPanel: React.FC = () => {
     });
   };
 
-  /** Rebuild menu items when template data changes */
+  /** Rebuild menu items when locale changes (template data is module-level constant). */
   useEffect(() => {
     const map = new Map(
-      (nodeTemplateData as NodeTemplateDetail[])
+      (builtInNodeTemplateData as readonly NodeTemplateDetail[])
         .filter((item): item is NodeTemplateDetail => 'template_type' in item && !!item.template_type)
         .map((item) => [item.template_type!, item]),
     );
@@ -358,7 +367,7 @@ const NodeLibraryPanel: React.FC = () => {
       },
     ];
     setNodeGroups(groups);
-  }, [nodeTemplateData, t]);
+  }, [t]);
 
   /** Build dropdown menu items for a node group */
   const buildDropdownItems = (group: NodeGroupConfig): MenuItemType[] => {

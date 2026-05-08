@@ -3,7 +3,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Divider from '@/ui/divider';
-import { useCanvasUI } from '@/spaces/canvas/hooks/useCanvasUI';
+import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 
 export interface AudioNodeToolbarProps {
   nodeId: string;
@@ -26,11 +26,11 @@ const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
   onInfoClick,
 }) => {
   const { t } = useTranslation();
-  const { openRightPanel } = useCanvasUI();
+  const { openRightPanel } = useProjectLayout();
 
   const handleEditorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    openRightPanel('editor', nodeId, undefined, true);
+    openRightPanel('editor', nodeId);
   };
   const handleRecordToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
