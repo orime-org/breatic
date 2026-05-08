@@ -3,7 +3,7 @@ import { useViewport } from '@xyflow/react';
 import { Icon } from '@/ui/icon';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useNodeData } from '@/spaces/canvas/hooks/useNodeData';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
 interface NodeHeaderProps {

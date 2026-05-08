@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Dialog from '@/ui/dialog';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import * as paymentApi from '@/data/api/payment';
 import type { PricingTier } from '@/data/api/payment';
 import { cn } from '@/utils/classnames';

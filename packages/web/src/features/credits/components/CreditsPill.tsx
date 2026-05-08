@@ -17,7 +17,7 @@
 
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import { cn } from '@/utils/classnames';
 
 const LOW_THRESHOLD = 100;

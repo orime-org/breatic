@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, FabricImage } from 'fabric';
-import Loading from '@/components/loading/Loading';
+import Loading from '@/app/shell/loading/Loading';
 
 interface FabricEditorCanvasProps {
   imageSrc: string;

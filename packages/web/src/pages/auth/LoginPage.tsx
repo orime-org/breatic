@@ -13,7 +13,7 @@ import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useTranslation } from 'react-i18next';
 import * as authApi from '@/data/api/auth';
 import { setToken } from '@/data/api/token';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 
 type Tab = 'login' | 'register' | 'forgot';
 

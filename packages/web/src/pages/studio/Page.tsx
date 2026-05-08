@@ -3,13 +3,13 @@ import { FloatButton } from '@/ui/floatButton';
 import dayjs from 'dayjs';
 import WorkspaceSider from './components/WorkspaceSider';
 import UseCase from './components/UseCase';
-import UserCenter from '@/apps/userCenter';
+import UserCenter from '@/pages/user-center';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import LanguageMap from './components/LanguageMap';
 import RecentProjects, { RecentProjectsRef } from './components/RecentProjects';
 import Login from './components/login';
 import { Icon } from '@/ui/icon';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 
 const Workspace: React.FC = () => {
   const { authInfo, authRequired } = useUserCenterStore();

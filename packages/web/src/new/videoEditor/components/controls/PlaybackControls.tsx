@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { message } from '@/ui/message';
 import Slider from '@/ui/slider';
 import Tooltip from '@/ui/tooltip';

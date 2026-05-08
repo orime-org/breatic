@@ -14,7 +14,7 @@ import { nanoid } from 'nanoid';
 import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import type { Node } from '@xyflow/react';
 
 const containerSize = 48;

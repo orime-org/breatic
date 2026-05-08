@@ -22,7 +22,7 @@
 import { memo, useState } from 'react';
 import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 import type { ProjectRole } from '@breatic/shared';
-import UserCenter from '@/apps/userCenter';
+import UserCenter from '@/pages/user-center';
 import { MembersPopover, MembersPanel } from '@/features/members';
 import { CreditsPill, RechargeDialog } from '@/features/credits';
 import ProjectHeader from './ProjectHeader';

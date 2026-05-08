@@ -5,8 +5,8 @@ import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import type { WorkspaceProject } from '../types';
 import { projectsApi } from '@/data/api';
 import { Icon } from '@/ui/icon';
-import ConfirmModal from '@/components/modals/ConfirmModal';
-import TextInputModal from '@/components/modals/TextInputModal';
+import ConfirmModal from '@/app/shell/modals/ConfirmModal';
+import TextInputModal from '@/app/shell/modals/TextInputModal';
 
 export interface RecentProjectsRef {
   loadMore: () => void;

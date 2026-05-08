@@ -12,7 +12,7 @@ import { nanoid } from 'nanoid';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 
 // Node icon map (format: dir-name-filename, hyphen separated)
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
 
 

@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
 import { MediaItem } from '../../types';
 import TextStylePanel from './TextStylePanel';

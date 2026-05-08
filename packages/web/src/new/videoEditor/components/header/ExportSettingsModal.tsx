@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Dialog from '@/ui/dialog';
-import ConfirmModal from '@/components/modals/ConfirmModal';
+import ConfirmModal from '@/app/shell/modals/ConfirmModal';
 import { Button } from '@/ui/button';
 import { Icon } from '@/ui/icon';
 import { useTranslation } from 'react-i18next';

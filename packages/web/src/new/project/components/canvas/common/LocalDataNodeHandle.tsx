@@ -17,7 +17,7 @@ import {
 } from '@floating-ui/react';
 import { nanoid } from 'nanoid';
 import { Icon } from '@/ui/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 
 const containerSize = 48;

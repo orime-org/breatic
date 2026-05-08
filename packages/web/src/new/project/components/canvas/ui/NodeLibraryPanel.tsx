@@ -9,7 +9,7 @@ import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
 import type { LocalCanvasNodeData } from '@/new/project/types';
 

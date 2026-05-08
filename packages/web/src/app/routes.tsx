@@ -1,13 +1,13 @@
 import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import Loading from '@/components/loading/Loading';
+import Loading from '@/app/shell/loading/Loading';
 
-const Project = lazy(() => import('@/apps/project/index'));
-const Workspace = lazy(() => import('@/apps/workspace/index'));
+const Project = lazy(() => import('@/pages/project/Page'));
+const Workspace = lazy(() => import('@/pages/studio/Page'));
 const VideoEditor = lazy(() => import('@/spaces/timeline/index'));
 const LocalProjectPage = lazy(() => import('@/new/project/index'));
-const LoginPage = lazy(() => import('@/apps/auth/LoginPage'));
-const ResetPasswordPage = lazy(() => import('@/apps/auth/ResetPasswordPage'));
+const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/auth/ResetPasswordPage'));
 
 const router = createBrowserRouter([
   {

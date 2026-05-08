@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { ROLE_RANK, type ProjectMember, type ProjectRole } from '@breatic/shared';
 import { useProjectMembers } from '@/domain/project/useProjectMembers';
 import { useUsers } from '@/domain/user/useUsers';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 import * as projectMembersApi from '@/data/api/project-members';
 import { __invalidateProjectMembersCache } from '@/domain/project/useProjectMembers';

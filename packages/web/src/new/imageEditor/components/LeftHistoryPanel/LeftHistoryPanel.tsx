@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import Loading from '@/components/loading/Loading';
+import Loading from '@/app/shell/loading/Loading';
 
 export type ImageHistoryItem = {
   id: string;

@@ -3,7 +3,7 @@ import CustomPopover from '@/ui/popover';
 import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import aspectRatioIconMap from '@/apps/project/constants/aspectRatioIconMap';
+import aspectRatioIconMap from '@/pages/project/constants/aspectRatioIconMap';
 import ExportPanel from './ExportPanel';
 import RatioMenu from './RatioMenu';
 

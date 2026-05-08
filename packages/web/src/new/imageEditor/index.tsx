@@ -3,7 +3,7 @@ import { Canvas, FabricImage } from 'fabric';
 import { RiAddLine, RiSubtractLine } from 'react-icons/ri';
 import { useParams } from 'react-router-dom';
 import { Icon } from '@/ui/icon';
-import Loading from '@/components/loading/Loading';
+import Loading from '@/app/shell/loading/Loading';
 import RecognizedPickDropdown from '@/features/chat/components/RecognizedPickDropdown';
 import Tooltip from '@/ui/tooltip';
 import Divider from '@/ui/divider';

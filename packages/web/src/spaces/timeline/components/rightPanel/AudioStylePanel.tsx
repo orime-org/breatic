@@ -3,7 +3,7 @@ import Slider from '@/ui/slider';
 import Input from '@/ui/input';
 import { Icon } from '@/ui/icon';
 import { useTranslation } from 'react-i18next';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 
 const defaultVolume = 100;
 

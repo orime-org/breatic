@@ -16,7 +16,7 @@ import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import Divider from '@/ui/divider';
 import { Icon } from '@/ui/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 
 const groupPadding = 40;
 const defaultGroupBackgroundColor = '#35C838';
