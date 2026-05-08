@@ -1,7 +1,7 @@
 import React from 'react';
 import type { TextEditorProps } from './types';
 import 'highlight.js/styles/github-dark.css';
-import '@/styles/editor.css';
+import '@/spaces/document/editor.css';
 
 /**
  * TextEditor entry.
