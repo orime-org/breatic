@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
 import {
   addEdge,
@@ -107,6 +108,7 @@ export type ProjectCanvasContentProps = {
 };
 
 const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkeysDisabled = false }) => {
+  const { t } = useTranslation();
   const { nodes, edges, applyLocalNodeChanges } = useCanvasData();
   const {
     onNodesChange,
@@ -664,9 +666,9 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
             className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
             onClick={exitAgentCanvasPickMode}
           >
-            <span>Click here or press</span>
+            <span>{t('canvas.pickMode.clickHereOrPress', 'Click here or press')}</span>
             <span className='rounded border border-white/55 px-1 text-[10px]'>ESC</span>
-            <span>to exit</span>
+            <span>{t('canvas.pickMode.toExit', 'to exit')}</span>
           </button>
         </div>
       )}

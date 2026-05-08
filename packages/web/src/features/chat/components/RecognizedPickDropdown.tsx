@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { Icon } from '@/ui/icon';
 import { cn } from '@/utils/classnames';
@@ -15,21 +16,23 @@ type RecognizedPickDropdownProps = {
 };
 
 const RecognizedPickDropdown: React.FC<RecognizedPickDropdownProps> = ({ currentLabel, options, onSelect }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const recognizedFallback = t('chat.recognizedPick.fallback', 'Recognized result');
   const menuItems = useMemo<MenuItemType[]>(
     () =>
       options.map((item) => ({
         key: item.key,
-        label: item.label?.trim() || '识别结果',
+        label: item.label?.trim() || recognizedFallback,
       })),
-    [options],
+    [options, recognizedFallback],
   );
 
   const currentLabelTrimmed = currentLabel?.trim() ?? '';
   const matchedOption = options.find((item) => item.label === currentLabelTrimmed);
   const fallbackOption = options[0];
   const selectedKey = matchedOption?.key ?? fallbackOption?.key;
-  const selectedLabel = matchedOption?.label ?? fallbackOption?.label ?? '识别结果';
+  const selectedLabel = matchedOption?.label ?? fallbackOption?.label ?? recognizedFallback;
 
   return (
     <div

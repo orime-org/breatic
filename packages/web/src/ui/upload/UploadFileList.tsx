@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import type { UploadFile, UploadListType } from './index';
 
@@ -16,6 +17,7 @@ export const UploadFileList = ({
   onRemove,
   listType = 'text',
 }: UploadFileListProps) => {
+  const { t } = useTranslation();
   const handleRemove = useCallback(
     (file: UploadFile, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -45,11 +47,11 @@ export const UploadFileList = ({
             ) : (
               <div className='w-full h-full flex items-center justify-center text-text-default-tertiary'>
                 {file.status === 'uploading' ? (
-                  <div className='text-xs'>Uploading…</div>
+                  <div className='text-xs'>{t('upload.uploading', 'Uploading…')}</div>
                 ) : file.status === 'error' ? (
-                  <div className='text-xs text-red-500'>Error</div>
+                  <div className='text-xs text-red-500'>{t('upload.error', 'Error')}</div>
                 ) : (
-                  <div className='text-xs'>Preview</div>
+                  <div className='text-xs'>{t('upload.preview', 'Preview')}</div>
                 )}
               </div>
             )}
@@ -62,13 +64,13 @@ export const UploadFileList = ({
               type='button'
               className='absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white text-xs flex items-center justify-center hover:bg-black/70'
               onClick={(e) => handleRemove(file, e)}
-              aria-label='Remove file'
+              aria-label={t('upload.removeFile', 'Remove file')}
             >
               ×
             </button>
             {file.status === 'error' && (
               <div className='absolute inset-0 bg-red-500/20 flex items-center justify-center'>
-                <div className='text-red-500 text-xs'>Upload failed</div>
+                <div className='text-red-500 text-xs'>{t('upload.failed', 'Upload failed')}</div>
               </div>
             )}
           </div>
@@ -108,14 +110,14 @@ export const UploadFileList = ({
               <div className='text-xs text-red-500 mt-1'>{file.error.message}</div>
             )}
             {file.status === 'done' && (
-              <div className='text-xs text-green-500 mt-1'>Upload complete</div>
+              <div className='text-xs text-green-500 mt-1'>{t('upload.complete', 'Upload complete')}</div>
             )}
           </div>
           <button
             type='button'
             className='flex-shrink-0 w-6 h-6 rounded text-text-default-secondary hover:text-text-default-base hover:bg-background-default-tertiary flex items-center justify-center'
             onClick={(e) => handleRemove(file, e)}
-            aria-label='Remove file'
+            aria-label={t('upload.removeFile', 'Remove file')}
           >
             ×
           </button>

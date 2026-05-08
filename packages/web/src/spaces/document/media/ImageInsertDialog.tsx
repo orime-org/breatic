@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RiUpload2Line, RiLinkM } from 'react-icons/ri';
+import { useTranslation } from 'react-i18next';
 import Upload from '@/ui/upload';
 import { cn } from '@/utils/classnames';
 
@@ -23,6 +24,7 @@ export const openImageDialog = (resolve: ResolveFn): void => {
 type Tab = 'upload' | 'url';
 
 const ImageInsertDialog = () => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('upload');
   const [url, setUrl] = useState('');
@@ -66,24 +68,26 @@ const ImageInsertDialog = () => {
       <div className='w-[440px] overflow-hidden rounded-[2px] border border-border-default-base bg-background-default-base shadow-[0_16px_48px_var(--color-shadow-overlay)]'>
         {/* Header */}
         <div className='px-5 pt-5 pb-3'>
-          <h3 className='text-[14px] font-semibold text-text-default-base'>Insert Image</h3>
+          <h3 className='text-[14px] font-semibold text-text-default-base'>{t('document.imageDialog.insertImage', 'Insert Image')}</h3>
         </div>
 
         {/* Tabs */}
         <div className='flex border-b border-border-default-base px-5'>
-          {(['upload', 'url'] as const).map((t) => (
+          {(['upload', 'url'] as const).map((tabKey) => (
             <button
-              key={t}
+              key={tabKey}
               type='button'
-              onClick={() => setTab(t)}
+              onClick={() => setTab(tabKey)}
               className={cn(
                 'mr-5 -mb-px border-b-2 pb-2.5 text-[13px] font-medium transition-colors',
-                tab === t
+                tab === tabKey
                   ? 'border-brand-base text-brand-base'
                   : 'border-transparent text-text-default-tertiary hover:text-text-default-base',
               )}
             >
-              {t === 'upload' ? 'Upload' : 'Embed URL'}
+              {tabKey === 'upload'
+                ? t('document.imageDialog.upload', 'Upload')
+                : t('document.imageDialog.embedUrl', 'Embed URL')}
             </button>
           ))}
         </div>
@@ -112,7 +116,7 @@ const ImageInsertDialog = () => {
               <div className='flex flex-col items-center justify-center gap-3'>
                 <RiUpload2Line size={24} className='text-text-default-tertiary' />
                 <div>
-                  <p className='text-[13px] text-text-default-base'>Drop image here or click to browse</p>
+                  <p className='text-[13px] text-text-default-base'>{t('document.imageDialog.dropOrBrowse', 'Drop image here or click to browse')}</p>
                   <p className='mt-0.5 text-center text-[12px] text-text-default-tertiary'>PNG, JPG, GIF, WebP</p>
                 </div>
               </div>

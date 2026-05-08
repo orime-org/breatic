@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, useDismiss, useFloating, FloatingPortal } from '@floating-ui/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
@@ -201,6 +202,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
   multiple = true,
   disabled = false,
 }) => {
+  const { t } = useTranslation();
   const { nodes, edges } = useCanvasData();
   const lastNotifiedUpstreamSignatureRef = useRef<string>('');
   const [stripPreview, setStripPreview] = useState<{
@@ -395,11 +397,11 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
       )}
     >
       <div className='flex min-w-0 flex-1 flex-wrap items-center gap-1.5'>
-        <Tooltip title='Focus editor' placement='top' offset={4}>
+        <Tooltip title={t('chat.composer.focusEditor', 'Focus editor')} placement='top' offset={4}>
           <button
             type='button'
             className={squareBtnClass}
-            aria-label='Focus editor'
+            aria-label={t('chat.composer.focusEditor', 'Focus editor')}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -411,11 +413,11 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
         </Tooltip>
 
         {showMention ? (
-          <Tooltip title='Mention' placement='top' offset={4}>
+          <Tooltip title={t('common.mention', 'Mention')} placement='top' offset={4}>
             <button
               type='button'
               className={squareBtnClass}
-              aria-label='Mention upstream'
+              aria-label={t('chat.composer.mentionUpstream', 'Mention upstream')}
               onMouseDown={stopPropagationMouseDown}
               onClick={onMentionClick}
             >
@@ -430,7 +432,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
               <div key={item.id} className='flex'>
                 <div
                   className={cn(thumbShellClass, 'cursor-pointer group')}
-                  aria-label={item.name ?? 'Upstream resource'}
+                  aria-label={item.name ?? t('chat.composer.upstreamResource', 'Upstream resource')}
                   data-item-id={item.id}
                   onMouseDown={stopPropagationMouseDown}
                   onClick={handleUpstreamItemClick}
@@ -447,7 +449,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
                       data-item-id={item.id}
                       onMouseDown={stopPropagationMouseDown}
                       onClick={handleRemoveUpstreamItemClick}
-                      aria-label='Remove upstream'
+                      aria-label={t('chat.composer.removeUpstream', 'Remove upstream')}
                     >
                       <Icon name='base-close-icon' width={10} height={10} color='#fff' />
                     </button>
@@ -470,11 +472,11 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
           fileList={[]}
           onChange={handleUploadChange}
         >
-          <Tooltip title='Upload' placement='top' offset={4}>
+          <Tooltip title={t('chat.composer.upload', 'Upload')} placement='top' offset={4}>
             <button
               type='button'
               className={squareBtnClass}
-              aria-label='Upload files'
+              aria-label={t('chat.composer.uploadFiles', 'Upload files')}
               disabled={disabled}
               onMouseDown={stopPropagationMouseDown}
             >
@@ -489,7 +491,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
               <div key={item.id} className='flex'>
                 <div
                   className={cn(thumbShellClass, 'cursor-pointer group')}
-                  aria-label={item.name ?? 'Attachment'}
+                  aria-label={item.name ?? t('chat.composer.attachment', 'Attachment')}
                   data-item-id={item.id}
                   onMouseDown={stopPropagationMouseDown}
                   onClick={handleUploadItemClick}
@@ -506,7 +508,7 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
                       data-item-id={item.id}
                       onMouseDown={stopPropagationMouseDown}
                       onClick={handleRemoveUploadClick}
-                      aria-label='Remove upload'
+                      aria-label={t('chat.composer.removeUpload', 'Remove upload')}
                     >
                       <Icon name='base-close-icon' width={10} height={10} color='#fff' />
                     </button>
@@ -523,11 +525,11 @@ const AgentComposerTabsComponent: React.FC<AgentComposerTabsProps> = ({
           {showTrailingDivider ? (
             <Divider type='vertical' className='h-auto shrink-0 self-stretch bg-[var(--color-border-default-base)]' />
           ) : null}
-          <Tooltip title='Add to input' placement='top' offset={4} triggerClassName='self-start'>
+          <Tooltip title={t('chat.composer.addToInput', 'Add to input')} placement='top' offset={4} triggerClassName='self-start'>
             <button
               type='button'
               className={squareBtnClass}
-              aria-label='Add to input'
+              aria-label={t('chat.composer.addToInput', 'Add to input')}
               onMouseDown={stopPropagationMouseDown}
               onClick={onTrailingClick}
             >

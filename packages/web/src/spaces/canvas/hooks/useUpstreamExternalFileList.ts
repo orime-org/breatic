@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Node, Edge } from '@xyflow/react';
 import type { CanvasWorkflowNodeData, ResourceType } from '@/spaces/canvas/types';
 
@@ -7,14 +8,6 @@ export interface UpstreamExternalFileItem {
   type: ResourceType;
   content?: string;
 }
-
-const fallbackNameByType: Record<ResourceType, string> = {
-  image: 'image',
-  video: 'video',
-  audio: 'audio',
-  text: '文本',
-  file: '文件',
-};
 
 const getResourceTypeByNodeType = (nodeType: Node['type']): ResourceType => {
   switch (nodeType) {
@@ -36,6 +29,15 @@ export const useUpstreamExternalFileList = (
   edges: Edge[],
   targetId: string,
 ): UpstreamExternalFileItem[] => {
+  const { t } = useTranslation();
+  const fallbackNameByType: Record<ResourceType, string> = {
+    image: 'image',
+    video: 'video',
+    audio: 'audio',
+    text: t('canvas.upstream.text', 'Text'),
+    file: t('canvas.upstream.file', 'File'),
+  };
+
   const inboundEdges = edges.filter((e) => e.target === targetId);
   if (!inboundEdges.length) return [];
 
@@ -61,7 +63,10 @@ export const useUpstreamExternalFileList = (
       }
 
       const displayName = typeof data?.name === 'string' && data.name.trim() ? data.name : '';
-      const name = type === 'text' ? '文本' : displayName || nameFromUrl || fallbackNameByType[type] || '文件';
+      const name =
+        type === 'text'
+          ? fallbackNameByType.text
+          : displayName || nameFromUrl || fallbackNameByType[type] || fallbackNameByType.file;
 
       return {
         uid: `${node.id}-${type}`,

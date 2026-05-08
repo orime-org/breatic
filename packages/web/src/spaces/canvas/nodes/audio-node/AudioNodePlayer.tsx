@@ -3,6 +3,7 @@
  * Playback controls follow the same style as VideoNodeContent.
  */
 import React, { memo, useRef, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import Slider from '@/ui/slider';
 import { useWavesurfer } from '@wavesurfer/react';
@@ -35,6 +36,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
   onDownloadClick,
   onMentionClick,
 }) => {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -176,7 +178,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                   onDownloadClick?.(e);
                 }}
                 className={toolbarBtnClass}
-                aria-label='Download'
+                aria-label={t('common.download', 'Download')}
               >
                 <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
               </button>
@@ -187,7 +189,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
                   onMentionClick?.(e);
                 }}
                 className={toolbarBtnClass}
-                aria-label='Mention'
+                aria-label={t('common.mention', 'Mention')}
               >
                 <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
               </button>

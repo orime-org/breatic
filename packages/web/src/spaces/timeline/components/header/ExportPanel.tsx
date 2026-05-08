@@ -155,7 +155,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     }
 
     if (!workflowId) {
-      message.warning('Workflow ID is missing, upload skipped');
+      message.warning(t('export.message.workflowIdMissing', 'Workflow ID is missing, upload skipped'));
       return null;
     }
 
@@ -210,7 +210,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       });
 
       if (!successResponse?.data?.resource_url) {
-        message.warning('Failed to get resource URL');
+        message.warning(t('export.message.failedGetResource', 'Failed to get resource URL'));
         return null;
       }
 
@@ -224,7 +224,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       return resourceUrl;
     } catch (error) {
       console.error('Upload failed:', error);
-      message.error('File upload failed');
+      message.error(t('export.message.fileUploadFailed', 'File upload failed'));
       return null;
     } finally {
       setIsUploading(false);
@@ -310,7 +310,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   const exportAsImage = async () => {
     setIsExporting(false);
     setExportProgress(0);
-    message.warning('Image export will be provided by backend soon.');
+    message.warning(t('export.message.imageBackendSoon', 'Image export will be provided by backend soon.'));
   };
 
   // Export video.
@@ -318,20 +318,20 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
     // Local video export is removed; video export will be handled by backend pipeline.
     setIsExporting(false);
     setExportProgress(0);
-    message.warning('Video export will be provided by backend soon.');
+    message.warning(t('export.message.videoBackendSoon', 'Video export will be provided by backend soon.'));
   };
 
   // Export audio.
   const exportAsAudio = async () => {
     setIsExporting(false);
     setExportProgress(0);
-    message.warning('Audio export will be provided by backend soon.');
+    message.warning(t('export.message.audioBackendSoon', 'Audio export will be provided by backend soon.'));
   };
 
   // Handle export button click.
   const handleExport = async () => {
     if (clips.length === 0) {
-      message.warning('No content to export');
+      message.warning(t('message.noContentToExport', 'No content to export'));
       return;
     }
 

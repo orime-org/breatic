@@ -94,6 +94,32 @@
     "confirm_plan": "确认并生成",
     "new_chat": "新对话"
   },
+  "chat": {
+    "modelSelect": {
+      "selectAModel": "选择模型",
+      "quality": "质量",
+      "aspectRatio": "宽高比",
+      "ariaLabel": "选择模型"
+    },
+    "composer": {
+      "focusEditor": "聚焦编辑器",
+      "mentionUpstream": "提及上游节点",
+      "upstreamResource": "上游资源",
+      "removeUpstream": "移除上游",
+      "upload": "上传",
+      "uploadFiles": "上传文件",
+      "attachment": "附件",
+      "removeUpload": "移除附件",
+      "addToInput": "添加到输入框"
+    },
+    "panel": {
+      "newConversation": "新建对话",
+      "history": "历史"
+    },
+    "recognizedPick": {
+      "fallback": "识别结果"
+    }
+  },
   "canvas": {
     "new_project": "新建项目",
     "generating": "生成中...",
@@ -108,7 +134,72 @@
     "ratio11": "1:1",
     "youtube": "YouTube 广告",
     "tiktok": "TikTok, YouTube Shorts",
-    "instagram": "Instagram, Facebook 帖子"
+    "instagram": "Instagram, Facebook 帖子",
+    "toolbar": {
+      "openMinimap": "打开缩略图",
+      "closeMinimap": "关闭缩略图",
+      "undoTooltip": "撤销 (Ctrl+Z)",
+      "redoTooltip": "重做 (Shift+Ctrl+Z)",
+      "fitToView": "适合窗口"
+    },
+    "comment": {
+      "composerPlaceholder": "输入你的评论...",
+      "replyPlaceholder": "回复讨论...",
+      "send": "发送评论",
+      "timeJustNow": "刚刚",
+      "timeMinutesAgo": "{{count}} 分钟前",
+      "timeHoursAgo": "{{count}} 小时前",
+      "timeEarlier": "更早"
+    },
+    "handle": {
+      "agentNodes": "Agent 节点",
+      "nodeText": "文本",
+      "nodeImage": "图片",
+      "nodeVideo": "视频",
+      "nodeAudio": "音频",
+      "subtitleText": "加载/创建文本内容",
+      "subtitleImage": "加载/生成图片",
+      "subtitleVideo": "加载/生成视频片段",
+      "subtitleAudio": "加载/创建音频内容"
+    },
+    "node": {
+      "processing": "处理中...",
+      "image": {
+        "loading": "加载图片中...",
+        "uploadFailed": "图片上传失败"
+      },
+      "video": {
+        "loading": "加载视频中...",
+        "uploadFailed": "视频上传失败"
+      },
+      "audio": {
+        "uploadFailed": "音频上传失败",
+        "recordingUploadFailed": "录音上传失败"
+      }
+    },
+    "upstream": {
+      "text": "文本",
+      "file": "文件"
+    },
+    "rightPanel": {
+      "collapse": "折叠面板",
+      "share": "分享",
+      "background": "背景",
+      "pageSummary": "页面摘要"
+    },
+    "overlay": {
+      "input": "输入"
+    },
+    "pickMode": {
+      "clickHereOrPress": "点击此处或按",
+      "toExit": "退出"
+    },
+    "textToolbar": {
+      "paragraph": "段落",
+      "orderedList": "有序列表",
+      "unorderedList": "无序列表",
+      "bold": "加粗"
+    }
   },
   "editor": {
     "label": "编辑器",
@@ -123,7 +214,8 @@
     "generate": "生成",
     "character": "角色",
     "storyboard": "分镜",
-    "script": "剧本"
+    "script": "剧本",
+    "comingSoon": "编辑器即将上线"
   },
   "payment": {
     "buy_credits": "购买积分",
@@ -139,7 +231,8 @@
     "password": "密码",
     "forgot_password": "忘记密码？",
     "or_continue_with": "或通过以下方式继续",
-    "google": "Google"
+    "google": "Google",
+    "tagline": "AI 创意平台"
   },
   "breatic_slogan": "AI让创意可见",
   "about_us": "关于我们",
@@ -340,7 +433,12 @@
     "next": "下一步",
     "appTitle": "视频编辑器",
     "backToWorkbench": "返回工作台",
-    "syncData": "同步数据"
+    "syncData": "同步数据",
+    "copy": "复制",
+    "download": "下载",
+    "mention": "提及",
+    "fullscreen": "全屏",
+    "edit": "编辑"
   },
   "export": {
     "title": "导出",
@@ -388,7 +486,17 @@
     "exportImage": "导出图片",
     "exportingImage": "您可以将图片下载到您的设备。",
     "exportingVideo": "您可以将视频下载到您的设备。",
-    "exportingAudio": "音频已成功导出，您可以将音频下载到您的设备。"
+    "exportingAudio": "音频已成功导出，您可以将音频下载到您的设备。",
+    "uploading": "上传中",
+    "uploadingToServer": "正在上传到服务器...",
+    "message": {
+      "workflowIdMissing": "工作流 ID 缺失，已跳过上传",
+      "failedGetResource": "获取资源 URL 失败",
+      "fileUploadFailed": "文件上传失败",
+      "imageBackendSoon": "图片导出功能将由后端提供，敬请期待。",
+      "videoBackendSoon": "视频导出功能将由后端提供，敬请期待。",
+      "audioBackendSoon": "音频导出功能将由后端提供，敬请期待。"
+    }
   },
   "fontSelector": {
     "title": "字体",
@@ -761,5 +869,38 @@
       "title": "即将上线",
       "description": "{{kind}} 类型的 Space 将在未来版本中支持。"
     }
+  },
+  "image": {
+    "flipVertical": "垂直翻转",
+    "flipHorizontal": "水平翻转",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转",
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "closePreview": "关闭预览"
+  },
+  "upload": {
+    "uploading": "上传中…",
+    "error": "错误",
+    "preview": "预览",
+    "removeFile": "移除文件",
+    "failed": "上传失败",
+    "complete": "上传完成",
+    "fileInput": "文件输入"
+  },
+  "media": {
+    "noItems": "暂无内容"
+  },
+  "document": {
+    "editorComingSoon": "文本编辑器即将上线",
+    "imageDialog": {
+      "insertImage": "插入图片",
+      "upload": "上传",
+      "embedUrl": "嵌入 URL",
+      "dropOrBrowse": "拖入图片或点击选择"
+    }
+  },
+  "mediaUploader": {
+    "fileProcessFailed": "文件处理失败"
   }
 }

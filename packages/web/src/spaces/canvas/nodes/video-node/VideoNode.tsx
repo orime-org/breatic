@@ -124,7 +124,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       onSuccess(resourceUrl);
     } catch (error) {
       console.error('Upload failed:', error);
-      message.warning('Video upload failed');
+      message.warning(t('canvas.node.video.uploadFailed', 'Video upload failed'));
       setIsLoading(false);
       onError(error as Error);
     }
@@ -246,7 +246,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
             ) : isLoading ? (
               <div className='w-full h-full flex flex-col items-center justify-center text-center'>
                 <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Loading Video...</div>
+                <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.video.loading', 'Loading Video...')}</div>
               </div>
             ) : (
               <div className={cn(
@@ -259,7 +259,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     {isHandling && (
                       <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
                         <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
-                        <div className='text-[12px] text-white font-normal mt-2'>Processing...</div>
+                        <div className='text-[12px] text-white font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
                       </div>
                     )}
                     {errorMessage && !isHandling && (
@@ -272,7 +272,7 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                 ) : isHandling ? (
                   <div className='w-full h-full flex flex-col items-center justify-center text-center'>
                     <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>Processing...</div>
+                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
                   </div>
                 ) : (
                   <Upload

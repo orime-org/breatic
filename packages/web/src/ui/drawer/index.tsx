@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cva } from 'class-variance-authority';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Icon } from '@/ui/icon';
 
@@ -109,6 +110,7 @@ const Drawer: React.FC<DrawerProps> = ({
   fixedHeight = false,
   onLeftEdgeButtonClick,
 }) => {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!open) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -294,7 +296,7 @@ const Drawer: React.FC<DrawerProps> = ({
                     type='button'
                     onClick={onClose}
                     className='ml-4 flex items-center justify-center rounded p-1 text-[var(--color-text-default-tertiary)] hover:bg-[var(--color-background-default-secondary)] hover:text-[var(--color-text-default-base)]'
-                    aria-label='Close'
+                    aria-label={t('common.close', 'Close')}
                   >
                     <Icon name='base-close-icon' width={16} height={16} />
                   </button>

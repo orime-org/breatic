@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import userPng from '@/assets/images/userCenter/user.png';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
@@ -28,6 +29,7 @@ const CanvasBlankRightPanel: React.FC<CanvasBlankRightPanelProps> = ({
   backgroundColor = defaultBgValue,
   onBackgroundChange,
 }) => {
+  const { t } = useTranslation();
   const selectedBgIndex = Math.max(
     0,
     backgroundColors.findIndex((c) => c.value === backgroundColor),
@@ -44,7 +46,7 @@ const CanvasBlankRightPanel: React.FC<CanvasBlankRightPanelProps> = ({
             type='button'
             onClick={onRequestCollapse}
             className='flex h-8 w-8 items-center justify-center rounded hover:bg-[var(--color-background-default-secondary)] transition-colors'
-            aria-label='Collapse panel'
+            aria-label={t('canvas.rightPanel.collapse', 'Collapse panel')}
           >
             <Icon name='project-collapse-panel-icon' width={20} height={16} color='var(--color-icon-base)' />
           </button>
@@ -76,7 +78,7 @@ const CanvasBlankRightPanel: React.FC<CanvasBlankRightPanelProps> = ({
           <button
             type='button'
             className='flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded hover:bg-[var(--color-background-default-secondary)] transition-colors'
-            aria-label='Share'
+            aria-label={t('canvas.rightPanel.share', 'Share')}
           >
             <Icon name='project-share-icon' width={18} height={20} color='var(--color-icon-secondary)' />
           </button>
@@ -86,7 +88,7 @@ const CanvasBlankRightPanel: React.FC<CanvasBlankRightPanelProps> = ({
       {/* Background color selection */}
       <div className='shrink-0 border-b border-[var(--color-border-default-base)] px-4 py-4'>
         <div className='flex items-center justify-between gap-2'>
-          <span className='text-[14px] font-medium text-[var(--color-text-default-base)] shrink-0'>Background</span>
+          <span className='text-[14px] font-medium text-[var(--color-text-default-base)] shrink-0'>{t('canvas.rightPanel.background', 'Background')}</span>
           <div className='flex items-center gap-1'>
             {backgroundColors.map((item, index) => (
               <button
@@ -109,7 +111,7 @@ const CanvasBlankRightPanel: React.FC<CanvasBlankRightPanelProps> = ({
       {/* Page Summary */}
       <div className='flex flex-1 min-h-0 flex-col'>
         <div className='shrink-0 border-b border-[var(--color-border-default-base)] px-4 pt-4 pb-2'>
-          <div className='text-[14px] font-medium text-[var(--color-text-default-base)]'>Page Summary</div>
+          <div className='text-[14px] font-medium text-[var(--color-text-default-base)]'>{t('canvas.rightPanel.pageSummary', 'Page Summary')}</div>
         </div>
         <div className='flex-1 min-h-[120px] px-4 py-4 bg-[var(--color-background-default-base)]' />
       </div>

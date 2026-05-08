@@ -1,5 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import { useViewport, useReactFlow, useStore } from '@xyflow/react';
+import { useTranslation } from 'react-i18next';
 import Slider from '@/ui/slider';
 import { Icon } from '@/ui/icon';
 import Tooltip from '@/ui/tooltip';
@@ -35,6 +36,7 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
   onToggleMinimap,
   className,
 }) => {
+  const { t } = useTranslation();
   const { zoom } = useViewport();
   const { zoomTo, fitView } = useReactFlow();
   const minZoom = useStore((state) => state.minZoom);
@@ -74,7 +76,7 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
       {/* Left button group */}
       <div className='flex items-center gap-2 flex items-center justify-between'>
         {/* Minimap toggle */}
-        <Tooltip title={minimapOpen ? 'Close minimap' : 'Open minimap'} placement='top'>
+        <Tooltip title={minimapOpen ? t('canvas.toolbar.closeMinimap') : t('canvas.toolbar.openMinimap')} placement='top'>
           <div
             className={`flex items-center justify-center w-6 h-6 rounded cursor-pointer relative ${minimapOpen ? 'bg-white' : 'bg-transparent'}`}
             style={{ width: 24, height: 24 }}
@@ -93,7 +95,7 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
         {minimapOpen && (
           <>
             {/* Undo button */}
-            <Tooltip title='Undo (Ctrl+Z)' placement='top'>
+            <Tooltip title={t('canvas.toolbar.undoTooltip')} placement='top'>
               <div
                 className={`flex items-center justify-center w-6 h-6 p-0 border-0 bg-transparent cursor-pointer relative ${canUndo ? 'text-icon-secondary' : 'text-icon-tertiary cursor-not-allowed'}`}
                 onClick={handleUndo}
@@ -103,7 +105,7 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
             </Tooltip>
 
             {/* Redo button */}
-            <Tooltip title='Redo (Shift+Ctrl+Z)' placement='top'>
+            <Tooltip title={t('canvas.toolbar.redoTooltip')} placement='top'>
               <div
                 className={`flex items-center justify-center w-6 h-6 p-0 border-0 bg-transparent cursor-pointer relative ${canRedo ? 'text-icon-secondary' : 'text-icon-tertiary cursor-not-allowed'}`}
                 onClick={handleRedo}
@@ -139,7 +141,7 @@ const UndoRedoToolbar: React.FC<UndoRedoToolbarProps> = ({
               </div>
             </Tooltip>
 
-            <Tooltip title='Fit to view' placement='top'>
+            <Tooltip title={t('canvas.toolbar.fitToView')} placement='top'>
               <div
                 className='flex items-center justify-center w-6 h-6 p-0 border-0 bg-transparent cursor-pointer relative'
                 onClick={handleFitToView}

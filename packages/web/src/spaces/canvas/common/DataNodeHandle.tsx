@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position, useConnection, useReactFlow } from '@xyflow/react';
+import { useTranslation } from 'react-i18next';
 import {
   autoUpdate,
   flip,
@@ -25,10 +26,10 @@ const defaultNodeHeight = 250;
 
 /** Base asset nodes (consistent with NodeContextMenu / right-click add node) */
 const agentNodes = [
-  { type: '1001', label: 'Text' },
-  { type: '1002', label: 'Image' },
-  { type: '1003', label: 'Video' },
-  { type: '1004', label: 'Audio' },
+  { type: '1001', labelKey: 'canvas.handle.nodeText' },
+  { type: '1002', labelKey: 'canvas.handle.nodeImage' },
+  { type: '1003', labelKey: 'canvas.handle.nodeVideo' },
+  { type: '1004', labelKey: 'canvas.handle.nodeAudio' },
 ] as const;
 
 const assetHandles: Record<string, { target?: { handleType: string; number: number }[] }> = {
@@ -38,16 +39,16 @@ const assetHandles: Record<string, { target?: { handleType: string; number: numb
   '1004': { target: [{ handleType: 'Audio', number: 0 }] },
 };
 
-const getNodeSubtitle = (templateType: string): string => {
+const getNodeSubtitle = (templateType: string, t: (key: string) => string): string => {
   switch (templateType) {
     case '1001':
-      return 'Loads/Creates text content';
+      return t('canvas.handle.subtitleText');
     case '1002':
-      return 'Loads/Generates images';
+      return t('canvas.handle.subtitleImage');
     case '1003':
-      return 'Loads/Generates video clips';
+      return t('canvas.handle.subtitleVideo');
     case '1004':
-      return 'Loads/Creates audio content';
+      return t('canvas.handle.subtitleAudio');
     default:
       return '';
   }
@@ -77,6 +78,7 @@ const DataNodeHandle: React.FC<DataNodeHandleProps> = ({
   nodeHovered,
   isInsideLockedGroup = false,
 }) => {
+  const { t } = useTranslation();
   const { nodes } = useCanvasData();
   const { onConnect, addNode } = useCanvasActions();
   const { screenToFlowPosition } = useReactFlow();
@@ -245,7 +247,7 @@ const DataNodeHandle: React.FC<DataNodeHandleProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             {...getFloatingProps()}
           >
-            <div className='text-xs font-medium text-text-default-base mb-2 px-2'>Agent Nodes</div>
+            <div className='text-xs font-medium text-text-default-base mb-2 px-2'>{t('canvas.handle.agentNodes')}</div>
             <div className='flex flex-col gap-0.5'>
               {agentNodes.map((asset) => {
                 const iconName = nodeIconMap[asset.type];
@@ -259,10 +261,10 @@ const DataNodeHandle: React.FC<DataNodeHandleProps> = ({
                     {iconName && <Icon name={iconName} width={20} height={20} color='var(--color-icon-base)' />}
                     <div className='flex flex-col justify-center min-w-0 flex-1'>
                       <span className='text-xs font-medium leading-4 text-text-default-base truncate'>
-                        {asset.label}
+                        {t(asset.labelKey)}
                       </span>
                       <span className='text-[10px] leading-3 text-text-default-tertiary truncate'>
-                        {getNodeSubtitle(asset.type)}
+                        {getNodeSubtitle(asset.type, t)}
                       </span>
                     </div>
                   </div>

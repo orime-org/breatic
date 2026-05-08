@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, DragEvent } from 'react';
 import { cva } from 'class-variance-authority';
+import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
 import { cn } from '@/utils/classnames';
 import { UploadFileList } from './UploadFileList';
@@ -81,6 +82,7 @@ const Upload = ({
   showUploadList = true,
   dragger = false,
 }: UploadProps) => {
+  const { t } = useTranslation();
   const [internalFileList, setInternalFileList] = useState<UploadFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isControlled = controlledFileList !== undefined;
@@ -262,7 +264,7 @@ const Upload = ({
         disabled={disabled}
         onChange={handleInputChange}
         className='hidden'
-        aria-label='File input'
+        aria-label={t('upload.fileInput', 'File input')}
       />
       {renderUploadTrigger()}
       {showUploadList && fileList.length > 0 && (

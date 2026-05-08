@@ -94,6 +94,32 @@
     "confirm_plan": "確認して生成",
     "new_chat": "新しいチャット"
   },
+  "chat": {
+    "modelSelect": {
+      "selectAModel": "モデルを選択",
+      "quality": "品質",
+      "aspectRatio": "アスペクト比",
+      "ariaLabel": "モデルを選択"
+    },
+    "composer": {
+      "focusEditor": "エディターにフォーカス",
+      "mentionUpstream": "上流ノードを参照",
+      "upstreamResource": "上流リソース",
+      "removeUpstream": "上流を削除",
+      "upload": "アップロード",
+      "uploadFiles": "ファイルをアップロード",
+      "attachment": "添付ファイル",
+      "removeUpload": "添付を削除",
+      "addToInput": "入力欄に追加"
+    },
+    "panel": {
+      "newConversation": "新しい会話",
+      "history": "履歴"
+    },
+    "recognizedPick": {
+      "fallback": "認識結果"
+    }
+  },
   "canvas": {
     "new_project": "新規プロジェクト",
     "generating": "生成中...",
@@ -108,7 +134,72 @@
     "ratio11": "1:1",
     "youtube": "YouTube広告",
     "tiktok": "TikTok、YouTube Shorts",
-    "instagram": "Instagram、Facebook投稿"
+    "instagram": "Instagram、Facebook投稿",
+    "toolbar": {
+      "openMinimap": "ミニマップを開く",
+      "closeMinimap": "ミニマップを閉じる",
+      "undoTooltip": "元に戻す (Ctrl+Z)",
+      "redoTooltip": "やり直し (Shift+Ctrl+Z)",
+      "fitToView": "ビューに合わせる"
+    },
+    "comment": {
+      "composerPlaceholder": "コメントを入力...",
+      "replyPlaceholder": "ディスカッションに返信...",
+      "send": "コメントを送信",
+      "timeJustNow": "たった今",
+      "timeMinutesAgo": "{{count}} 分前",
+      "timeHoursAgo": "{{count}} 時間前",
+      "timeEarlier": "それ以前"
+    },
+    "handle": {
+      "agentNodes": "Agent ノード",
+      "nodeText": "テキスト",
+      "nodeImage": "画像",
+      "nodeVideo": "動画",
+      "nodeAudio": "オーディオ",
+      "subtitleText": "テキスト内容を読み込み/作成",
+      "subtitleImage": "画像を読み込み/生成",
+      "subtitleVideo": "動画クリップを読み込み/生成",
+      "subtitleAudio": "オーディオ内容を読み込み/作成"
+    },
+    "node": {
+      "processing": "処理中...",
+      "image": {
+        "loading": "画像を読み込み中...",
+        "uploadFailed": "画像のアップロードに失敗"
+      },
+      "video": {
+        "loading": "動画を読み込み中...",
+        "uploadFailed": "動画のアップロードに失敗"
+      },
+      "audio": {
+        "uploadFailed": "オーディオのアップロードに失敗",
+        "recordingUploadFailed": "録音のアップロードに失敗"
+      }
+    },
+    "upstream": {
+      "text": "テキスト",
+      "file": "ファイル"
+    },
+    "rightPanel": {
+      "collapse": "パネルを折りたたむ",
+      "share": "共有",
+      "background": "背景",
+      "pageSummary": "ページ概要"
+    },
+    "overlay": {
+      "input": "入力"
+    },
+    "pickMode": {
+      "clickHereOrPress": "ここをクリックするか",
+      "toExit": "を押して終了"
+    },
+    "textToolbar": {
+      "paragraph": "段落",
+      "orderedList": "番号付きリスト",
+      "unorderedList": "箇条書き",
+      "bold": "太字"
+    }
   },
   "editor": {
     "label": "エディター",
@@ -123,7 +214,8 @@
     "generate": "生成",
     "character": "キャラクター",
     "storyboard": "絵コンテ",
-    "script": "脚本"
+    "script": "脚本",
+    "comingSoon": "エディターはまもなく公開"
   },
   "payment": {
     "buy_credits": "クレジット購入",
@@ -139,7 +231,8 @@
     "password": "パスワード",
     "forgot_password": "パスワードを忘れた？",
     "or_continue_with": "または以下で続ける",
-    "google": "Google"
+    "google": "Google",
+    "tagline": "AI クリエイティブプラットフォーム"
   },
   "breatic_slogan": "AIで創造性を可視化",
   "about_us": "私たちについて",
@@ -340,7 +433,12 @@
     "next": "次へ",
     "appTitle": "ビデオエディター",
     "backToWorkbench": "ワークベンチに戻る",
-    "syncData": "データを保存"
+    "syncData": "データを保存",
+    "copy": "コピー",
+    "download": "ダウンロード",
+    "mention": "メンション",
+    "fullscreen": "全画面",
+    "edit": "編集"
   },
   "export": {
     "title": "エクスポート",
@@ -388,7 +486,17 @@
     "exportImage": "画像をエクスポート",
     "exportingImage": "画像をデバイスにダウンロードできます。",
     "exportingVideo": "動画をデバイスにダウンロードできます。",
-    "exportingAudio": "オーディオのエクスポートが完了しました。オーディオをデバイスにダウンロードできます。"
+    "exportingAudio": "オーディオのエクスポートが完了しました。オーディオをデバイスにダウンロードできます。",
+    "uploading": "アップロード中",
+    "uploadingToServer": "サーバーへアップロード中...",
+    "message": {
+      "workflowIdMissing": "ワークフロー ID が見つかりません。アップロードをスキップしました",
+      "failedGetResource": "リソース URL の取得に失敗しました",
+      "fileUploadFailed": "ファイルのアップロードに失敗しました",
+      "imageBackendSoon": "画像のエクスポートは近日中にバックエンドで提供されます。",
+      "videoBackendSoon": "動画のエクスポートは近日中にバックエンドで提供されます。",
+      "audioBackendSoon": "オーディオのエクスポートは近日中にバックエンドで提供されます。"
+    }
   },
   "fontSelector": {
     "title": "フォント",
@@ -761,5 +869,38 @@
       "title": "近日公開",
       "description": "{{kind}} タイプの Space は今後のリリースで対応予定です。"
     }
+  },
+  "image": {
+    "flipVertical": "上下反転",
+    "flipHorizontal": "左右反転",
+    "rotateLeft": "左に回転",
+    "rotateRight": "右に回転",
+    "zoomOut": "縮小",
+    "zoomIn": "拡大",
+    "closePreview": "プレビューを閉じる"
+  },
+  "upload": {
+    "uploading": "アップロード中…",
+    "error": "エラー",
+    "preview": "プレビュー",
+    "removeFile": "ファイルを削除",
+    "failed": "アップロードに失敗",
+    "complete": "アップロード完了",
+    "fileInput": "ファイル入力"
+  },
+  "media": {
+    "noItems": "アイテムなし"
+  },
+  "document": {
+    "editorComingSoon": "テキストエディターはまもなく公開",
+    "imageDialog": {
+      "insertImage": "画像を挿入",
+      "upload": "アップロード",
+      "embedUrl": "URL を埋め込む",
+      "dropOrBrowse": "ここに画像をドロップまたはクリックして参照"
+    }
+  },
+  "mediaUploader": {
+    "fileProcessFailed": "ファイル処理に失敗しました"
   }
 }

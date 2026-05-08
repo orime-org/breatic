@@ -94,6 +94,32 @@
     "confirm_plan": "確認並生成",
     "new_chat": "新對話"
   },
+  "chat": {
+    "modelSelect": {
+      "selectAModel": "選擇模型",
+      "quality": "品質",
+      "aspectRatio": "寬高比",
+      "ariaLabel": "選擇模型"
+    },
+    "composer": {
+      "focusEditor": "聚焦編輯器",
+      "mentionUpstream": "提及上游節點",
+      "upstreamResource": "上游資源",
+      "removeUpstream": "移除上游",
+      "upload": "上傳",
+      "uploadFiles": "上傳檔案",
+      "attachment": "附件",
+      "removeUpload": "移除附件",
+      "addToInput": "加到輸入框"
+    },
+    "panel": {
+      "newConversation": "新建對話",
+      "history": "歷史"
+    },
+    "recognizedPick": {
+      "fallback": "識別結果"
+    }
+  },
   "canvas": {
     "new_project": "新建專案",
     "generating": "生成中...",
@@ -108,7 +134,72 @@
     "ratio11": "1:1",
     "youtube": "YouTube 廣告",
     "tiktok": "TikTok、YouTube Shorts",
-    "instagram": "Instagram、Facebook 貼文"
+    "instagram": "Instagram、Facebook 貼文",
+    "toolbar": {
+      "openMinimap": "開啟縮圖",
+      "closeMinimap": "關閉縮圖",
+      "undoTooltip": "復原 (Ctrl+Z)",
+      "redoTooltip": "重做 (Shift+Ctrl+Z)",
+      "fitToView": "符合視窗"
+    },
+    "comment": {
+      "composerPlaceholder": "輸入你的評論...",
+      "replyPlaceholder": "回覆討論...",
+      "send": "傳送評論",
+      "timeJustNow": "剛剛",
+      "timeMinutesAgo": "{{count}} 分鐘前",
+      "timeHoursAgo": "{{count}} 小時前",
+      "timeEarlier": "更早"
+    },
+    "handle": {
+      "agentNodes": "Agent 節點",
+      "nodeText": "文字",
+      "nodeImage": "圖片",
+      "nodeVideo": "影片",
+      "nodeAudio": "音訊",
+      "subtitleText": "載入/建立文字內容",
+      "subtitleImage": "載入/生成圖片",
+      "subtitleVideo": "載入/生成影片片段",
+      "subtitleAudio": "載入/建立音訊內容"
+    },
+    "node": {
+      "processing": "處理中...",
+      "image": {
+        "loading": "正在載入圖片...",
+        "uploadFailed": "圖片上傳失敗"
+      },
+      "video": {
+        "loading": "正在載入影片...",
+        "uploadFailed": "影片上傳失敗"
+      },
+      "audio": {
+        "uploadFailed": "音訊上傳失敗",
+        "recordingUploadFailed": "錄音上傳失敗"
+      }
+    },
+    "upstream": {
+      "text": "文字",
+      "file": "檔案"
+    },
+    "rightPanel": {
+      "collapse": "折疊面板",
+      "share": "分享",
+      "background": "背景",
+      "pageSummary": "頁面摘要"
+    },
+    "overlay": {
+      "input": "輸入"
+    },
+    "pickMode": {
+      "clickHereOrPress": "點擊此處或按",
+      "toExit": "退出"
+    },
+    "textToolbar": {
+      "paragraph": "段落",
+      "orderedList": "有序清單",
+      "unorderedList": "無序清單",
+      "bold": "粗體"
+    }
   },
   "editor": {
     "label": "編輯器",
@@ -123,7 +214,8 @@
     "generate": "生成",
     "character": "角色",
     "storyboard": "分鏡",
-    "script": "劇本"
+    "script": "劇本",
+    "comingSoon": "編輯器即將上線"
   },
   "payment": {
     "buy_credits": "購買積分",
@@ -139,7 +231,8 @@
     "password": "密碼",
     "forgot_password": "忘記密碼？",
     "or_continue_with": "或透過以下方式繼續",
-    "google": "Google"
+    "google": "Google",
+    "tagline": "AI 創意平台"
   },
   "breatic_slogan": "AI讓創意可見",
   "about_us": "關於我們",
@@ -340,7 +433,12 @@
     "next": "下一步",
     "appTitle": "影片編輯器",
     "backToWorkbench": "返回工作臺",
-    "syncData": "同步數據"
+    "syncData": "同步數據",
+    "copy": "複製",
+    "download": "下載",
+    "mention": "提及",
+    "fullscreen": "全螢幕",
+    "edit": "編輯"
   },
   "export": {
     "title": "匯出",
@@ -388,7 +486,17 @@
     "exportImage": "匯出圖片",
     "exportingImage": "您可以將圖片下載到您的裝置。",
     "exportingVideo": "您可以將影片下載到您的裝置。",
-    "exportingAudio": "音訊已成功匯出，您可以將音訊下載到您的裝置。"
+    "exportingAudio": "音訊已成功匯出，您可以將音訊下載到您的裝置。",
+    "uploading": "上傳中",
+    "uploadingToServer": "正在上傳到伺服器...",
+    "message": {
+      "workflowIdMissing": "工作流 ID 遺失，已略過上傳",
+      "failedGetResource": "取得資源 URL 失敗",
+      "fileUploadFailed": "檔案上傳失敗",
+      "imageBackendSoon": "圖片匯出功能將由後端提供，敬請期待。",
+      "videoBackendSoon": "影片匯出功能將由後端提供，敬請期待。",
+      "audioBackendSoon": "音訊匯出功能將由後端提供，敬請期待。"
+    }
   },
   "fontSelector": {
     "title": "字型",
@@ -761,5 +869,38 @@
       "title": "即將上線",
       "description": "{{kind}} 類型的 Space 將在未來版本支援。"
     }
+  },
+  "image": {
+    "flipVertical": "垂直翻轉",
+    "flipHorizontal": "水平翻轉",
+    "rotateLeft": "向左旋轉",
+    "rotateRight": "向右旋轉",
+    "zoomOut": "縮小",
+    "zoomIn": "放大",
+    "closePreview": "關閉預覽"
+  },
+  "upload": {
+    "uploading": "上傳中…",
+    "error": "錯誤",
+    "preview": "預覽",
+    "removeFile": "移除檔案",
+    "failed": "上傳失敗",
+    "complete": "上傳完成",
+    "fileInput": "檔案輸入"
+  },
+  "media": {
+    "noItems": "暫無內容"
+  },
+  "document": {
+    "editorComingSoon": "文字編輯器即將上線",
+    "imageDialog": {
+      "insertImage": "插入圖片",
+      "upload": "上傳",
+      "embedUrl": "嵌入 URL",
+      "dropOrBrowse": "拖入圖片或點擊瀏覽"
+    }
+  },
+  "mediaUploader": {
+    "fileProcessFailed": "檔案處理失敗"
   }
 }

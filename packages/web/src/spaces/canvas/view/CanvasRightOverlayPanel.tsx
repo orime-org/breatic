@@ -285,7 +285,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
     const { content, showImageOutput, recordIndex } = opts;
     const text = content ?? '';
     if (!text.trim()) {
-      message.warning('No content to download');
+      message.warning(t('project.toolbar.noContentToDownload', 'No content to download'));
       return;
     }
 
@@ -295,7 +295,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
         await downloadImageFromUrl(firstResourceFromHtml.url);
       } catch (err) {
         console.error('Failed to download image:', err);
-        message.warning('Download failed');
+        message.warning(t('project.toolbar.downloadFailed', 'Download failed'));
       }
       return;
     }
@@ -305,7 +305,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
         await downloadImageFromUrl(text);
       } catch (err) {
         console.error('Failed to download image:', err);
-        message.warning('Download failed');
+        message.warning(t('project.toolbar.downloadFailed', 'Download failed'));
       }
       return;
     }
@@ -314,7 +314,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
       await downloadTextAsFile(text, `output-${recordIndex}.txt`);
     } catch (err) {
       console.error('Failed to download text:', err);
-      message.warning('Download failed');
+      message.warning(t('project.toolbar.downloadFailed', 'Download failed'));
     }
   };
 
@@ -573,7 +573,7 @@ const CanvasRightOverlayPanel: React.FC<CanvasRightOverlayPanelProps> = ({ onClo
                     <Divider />
                     <div className='p-[12px]'>
                       <div className='flex items-center justify-between gap-2'>
-                        <div className='text-[12px] font-semibold text-text-default-secondary'>Input</div>
+                        <div className='text-[12px] font-semibold text-text-default-secondary'>{t('canvas.overlay.input', 'Input')}</div>
                         <button
                           type='button'
                           disabled={!hasInputContent}

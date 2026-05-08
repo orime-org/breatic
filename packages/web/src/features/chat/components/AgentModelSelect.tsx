@@ -1,4 +1,5 @@
 import React, { memo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/classnames';
 import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
@@ -63,13 +64,14 @@ const ModelSection: React.FC<{
   modelValue: string;
   setModelValue: (v: string) => void;
 }> = ({ modelValue, setModelValue }) => {
+  const { t } = useTranslation();
   const selectOptions: SelectOption[] = modelOptions.map((opt) => ({
     value: opt.id,
     label: opt.label,
   }));
 
   const renderLabel = (option: SelectOption | undefined) => {
-    if (!option) return 'Select a Model';
+    if (!option) return t('chat.modelSelect.selectAModel', 'Select a Model');
     const matched = modelOptions.find((m) => m.id === option.value);
     return (
       <span className='flex h-full items-center gap-2 leading-none'>
@@ -105,7 +107,7 @@ const ModelSection: React.FC<{
 
   return (
     <div className='flex flex-col gap-2'>
-      <span className='text-text-default-base text-xs font-medium'>Select a Model</span>
+      <span className='text-text-default-base text-xs font-medium'>{t('chat.modelSelect.selectAModel', 'Select a Model')}</span>
       <Select
         options={selectOptions}
         value={modelValue}
@@ -139,6 +141,7 @@ const QualitySection: React.FC<{
   qualityValue: string;
   setQualityValue: (v: string) => void;
 }> = ({ qualityValue, setQualityValue }) => {
+  const { t } = useTranslation();
   const qualityItems: TabsItem[] = qualityOptions.map((opt) => ({
     value: opt.id,
     label: (
@@ -151,7 +154,7 @@ const QualitySection: React.FC<{
   const qualitySelectedIndex = qualityOptions.findIndex((o) => o.id === qualityValue);
   return (
     <div className='flex flex-col gap-2'>
-      <span className='text-text-default-base text-xs'>Quality</span>
+      <span className='text-text-default-base text-xs'>{t('chat.modelSelect.quality', 'Quality')}</span>
       <Tabs
         items={qualityItems}
         selectedIndex={qualitySelectedIndex >= 0 ? qualitySelectedIndex : 0}
@@ -167,6 +170,7 @@ const AspectSection: React.FC<{
   aspectValue: string;
   setAspectValue: (v: string) => void;
 }> = ({ aspectValue, setAspectValue }) => {
+  const { t } = useTranslation();
   const aspectItems: TabsItem[] = aspectOptions.map((opt) => ({
     value: opt.id,
     label: (
@@ -179,7 +183,7 @@ const AspectSection: React.FC<{
   const aspectSelectedIndex = aspectOptions.findIndex((o) => o.id === aspectValue);
   return (
     <div className='flex flex-col gap-2'>
-      <span className='text-text-default-base text-xs'>Aspect Ratio</span>
+      <span className='text-text-default-base text-xs'>{t('chat.modelSelect.aspectRatio', 'Aspect Ratio')}</span>
       <Tabs
         items={aspectItems}
         selectedIndex={aspectSelectedIndex >= 0 ? aspectSelectedIndex : 0}
@@ -228,6 +232,7 @@ const AgentModelSelectComponent: React.FC<ModelSelectProps> = ({
   onOpenChange,
   className,
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [localModelValue, setLocalModelValue] = useState('gemini');
   const [localQualityValue, setLocalQualityValue] = useState('2k');
@@ -284,7 +289,7 @@ const AgentModelSelectComponent: React.FC<ModelSelectProps> = ({
           shape='round'
           disabled={disabled}
           className={cn('px-3 !h-[28px] max-w-[140px] min-w-0 overflow-hidden', className)}
-          aria-label='Select model'
+          aria-label={t('chat.modelSelect.ariaLabel', 'Select model')}
           icon={
             selectedModel ? (
               <img

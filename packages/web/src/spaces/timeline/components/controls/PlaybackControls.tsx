@@ -93,7 +93,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     );
 
     if (validClips.length === 0) {
-      message.warning('请将播放头移动到片段内部以进行分割');
+      message.warning(t('message.movePlayheadToSplit'));
       return;
     }
 
@@ -205,7 +205,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     );
 
     if (validClips.length === 0) {
-      message.warning('请将播放头移动到片段内部以进行分割');
+      message.warning(t('message.movePlayheadToSplit'));
       return;
     }
 
@@ -247,7 +247,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     );
 
     if (validClips.length === 0) {
-      message.warning('请将播放头移动到片段内部以进行分割');
+      message.warning(t('message.movePlayheadToSplit'));
       return;
     }
 

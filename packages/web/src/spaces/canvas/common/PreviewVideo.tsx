@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
 import Video from './Video';
@@ -46,6 +47,7 @@ const calculateDisplaySize = (videoWidth: number, videoHeight: number): { width:
  * Video preview modal: overlay + centered video frame, using Video internally
  */
 const PreviewVideo: React.FC<PreviewVideoProps> = ({ open, src, onClose, initialTime, autoPlay = false }) => {
+  const { t } = useTranslation();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
 
   const handleClose = useCallback(() => {
@@ -98,7 +100,7 @@ const PreviewVideo: React.FC<PreviewVideoProps> = ({ open, src, onClose, initial
         shape='circle'
         bordered={false}
         className='absolute right-4 top-4 z-20 !w-10 !h-10 !p-[2px] !bg-black/50 backdrop-blur-sm !hover:!bg-black/70'
-        aria-label='Close'
+        aria-label={t('common.close', 'Close')}
         icon={<Icon name='base-close-icon' width={16} height={16} color='#ffffff' />}
       />
       {effectiveSize ? (
