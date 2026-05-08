@@ -22,6 +22,10 @@ import { taskService } from "@breatic/core";
 import { creditService } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { publishNodeEvent } from "@breatic/core";
+import {
+  verifyCanvasNodeLock,
+  releaseCanvasNodeLock,
+} from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -75,6 +79,17 @@ export interface TaskJobData {
    * node (understand, skill agents without node bindings).
    */
   targetNodeIds?: string[];
+  /**
+   * Execution mode (spec §10.13 / §10.15). When `'overwrite'`, the server
+   * already SETNX-locked the (single) target node before enqueuing this
+   * job. The worker must:
+   *   1. Verify the lock value still matches `taskId` before publishing
+   *      results (TTL-expiry / reclaim defense, spec §10.15.5).
+   *   2. Release the lock in `finally` (compare-and-delete via the helper).
+   *
+   * Defaults to `'append'` (no lock) for legacy tasks without the field.
+   */
+  mode?: "append" | "overwrite";
 }
 
 /**
@@ -119,7 +134,61 @@ function resolveCanvasDocName(
  * @param job - BullMQ job with TaskJobData payload
  * @returns Result dict on success, or a failure status marker
  */
+/**
+ * Public entry called by the BullMQ worker. Wraps {@link runTaskBody} with
+ * a lock-management envelope:
+ *
+ *   - Computes `lockTargetNodeId` (only set when `mode='overwrite'` AND the
+ *     job binds to exactly one canvas node — the lock granularity is per-node).
+ *   - Always releases the lock in `finally`, regardless of how the body
+ *     exits. The release is compare-and-delete (see `releaseCanvasNodeLock`),
+ *     so it's a no-op if the TTL already expired or another task reclaimed
+ *     the node.
+ *
+ * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 异常路径
+ * (Worker crash → finally block del lock; if that also fails, the TTL is
+ * the safety net).
+ */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
+  const { taskId, projectId, targetNodeIds, mode } = job.data;
+  const lockTargetNodeId =
+    mode === "overwrite" &&
+    projectId &&
+    targetNodeIds &&
+    targetNodeIds.length === 1
+      ? targetNodeIds[0]!
+      : null;
+
+  try {
+    return await runTaskBody(job, lockTargetNodeId);
+  } finally {
+    if (lockTargetNodeId && projectId) {
+      try {
+        await releaseCanvasNodeLock(projectId, lockTargetNodeId, taskId);
+      } catch (err) {
+        // Don't propagate — release is best-effort. The TTL on the lock
+        // (CANVAS_LOCK_TTL_SECONDS = 7200s) bounds the worst case.
+        logger.warn(
+          { err, taskId, projectId, nodeId: lockTargetNodeId },
+          "release_canvas_lock_failed_will_ttl",
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Internal task execution body. Same logic as the original `runTask`, but
+ * extracted so the public {@link runTask} wrapper can manage the canvas-node
+ * lock lifecycle without indenting this body inside a `try`.
+ *
+ * @param lockTargetNodeId - Non-null when this task holds an overwrite lock
+ *   and should verify ownership before publishing the success event.
+ */
+async function runTaskBody(
+  job: Job<TaskJobData>,
+  lockTargetNodeId: string | null,
+): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
@@ -319,6 +388,29 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
 
   // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
   if (canvasDocName && projectId && nodeIds.length > 0) {
+    // ★ B1 (spec §10.15.5): verify the canvas-node lock is still ours
+    // before publishing the success event. The TTL might have expired and
+    // someone else reclaimed the node — in that case, our result must NOT
+    // overwrite their in-flight handling state. Mark this task failed and
+    // skip publish; the lock holder will eventually publish their own result.
+    if (lockTargetNodeId) {
+      const stillOwn = await verifyCanvasNodeLock(
+        projectId,
+        lockTargetNodeId,
+        taskId,
+      );
+      if (!stillOwn) {
+        logger.warn(
+          { taskId, nodeId: lockTargetNodeId, projectId },
+          "canvas_lock_lost_discarding_result",
+        );
+        await taskService.markFailed(
+          taskId,
+          "Canvas-node lock no longer held; result discarded (spec §10.15.5)",
+        );
+        return { failed: true, reason: "lock_lost" };
+      }
+    }
     const docName = canvasDocName;
     for (let i = 0; i < nodeIds.length; i++) {
       const nodeId = nodeIds[i]!;

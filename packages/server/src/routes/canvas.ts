@@ -18,10 +18,19 @@ import {
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import { taskService } from "@breatic/core";
+import { userRepo } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
 import { projectService } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { ValidationError } from "@breatic/core";
+import {
+  ValidationError,
+  ConflictLockedError,
+  acquireCanvasNodeLock,
+  readCanvasNodeLockHolder,
+  publishNodeEvent,
+  getStreamRedis,
+} from "@breatic/core";
+import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -47,6 +56,8 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     : [];
   const projectId = body.project_id;
   const spaceId = body.space_id;
+  const mode = body.mode;
+  const targetNodeId = body.target_node_id;
 
   // node_ids without project_id no longer happens because project_id is
   // required in the schema, but keep the assertion as defense in depth
@@ -72,10 +83,83 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
+  // Spec §10.13 + §10.15: `mode='overwrite'` claims an exclusive Redis
+  // lock on the target node so concurrent overwrites can't both win. The
+  // schema's `superRefine` already guarantees `target_node_id` is present
+  // when mode is 'overwrite'; the assertion below is defense in depth.
+  if (mode === "overwrite") {
+    if (!targetNodeId) {
+      // Should never reach here; schema validation rejects this case.
+      throw new ValidationError(
+        "target_node_id is required for overwrite mode",
+      );
+    }
+    const acquired = await acquireCanvasNodeLock(
+      projectId,
+      targetNodeId,
+      task.id,
+    );
+    if (!acquired) {
+      // Lock held by another in-flight task. Look up the holder so the
+      // client can render a meaningful toast (spec §10.15.3).
+      const holderTaskId = await readCanvasNodeLockHolder(
+        projectId,
+        targetNodeId,
+      );
+      const holderTask = holderTaskId
+        ? await taskService.getByIdInternal(holderTaskId)
+        : null;
+      const holder = holderTask
+        ? await userRepo.getUserById(holderTask.userId)
+        : null;
+      // Roll back our just-created task so it doesn't sit in pending forever.
+      await taskService.markFailed(
+        task.id,
+        "Lock held by another task; aborted",
+      );
+      throw new ConflictLockedError({
+        holdingBy: holderTask?.userId ?? null,
+        // UserEntity exposes `username` (nullable) — fall back through email
+        // → generic label so the toast always has *something* to show.
+        holdingByName: holder?.username ?? holder?.email ?? "someone",
+        taskId: holderTaskId,
+        startedAt: holderTask?.startedAt?.getTime() ?? Date.now(),
+        // Conservative default; refined per-model in a follow-up PR.
+        estimatedSeconds: 30,
+      });
+    }
+    // Lock acquired. Publish a `state='handling'` event right away so
+    // collaborators see the node enter handling without waiting for the
+    // worker to start (spec §10.15.4 协作可见性).
+    try {
+      await publishNodeEvent(getStreamRedis(), {
+        type: "node-state-update",
+        docName: canvasSpaceDocName(projectId, spaceId),
+        nodeId: targetNodeId,
+        update: {
+          state: "handling",
+          handlingBy: {
+            userId: user.id,
+            // Username is nullable on UserEntity; fall back to email so the
+            // collaborator-avatar tooltip always renders something.
+            username: user.username ?? user.email,
+          },
+        },
+      });
+    } catch (err) {
+      // Stream publish failure is non-fatal — the worker will publish the
+      // result later. The lock is already held, so the protocol is safe.
+      // We log for observability but do not throw.
+      console.warn("[canvas /tasks] handling-state publish failed", err);
+    }
+  }
+
   // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
   // and writes the result back into `project-{projectId}/canvas-{spaceId}`
   // (v10 multi-doc). The job payload carries spaceId so the worker can
   // compute the canvas-{spaceId} doc name without reloading the task row.
+  // `mode` rides along so the worker knows whether to verify + release
+  // the canvas-node lock on completion.
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -88,7 +172,8 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       skillName: body.skill_name,
       params: body.params,
       source: body.source,
-      targetNodeIds: body.target_node_id ? [body.target_node_id] : [],
+      targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      mode,
     },
     defaultJobOpts(),
   );

@@ -86,6 +86,18 @@ export {
   NotFoundError,
   ForbiddenError,
   ConflictError,
+  ConflictLockedError,
   ValidationError,
   UnauthorizedError,
 } from "./errors.js";
+export type { ConflictLockedDetail } from "./errors.js";
+
+// Canvas node Redis lock (spec §10.15.2)
+export {
+  CANVAS_LOCK_TTL_SECONDS,
+  canvasNodeLockKey,
+  acquireCanvasNodeLock,
+  readCanvasNodeLockHolder,
+  verifyCanvasNodeLock,
+  releaseCanvasNodeLock,
+} from "./infra/canvas-lock.js";
