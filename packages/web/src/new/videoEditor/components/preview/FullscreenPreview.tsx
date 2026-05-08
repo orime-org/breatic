@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import Slider from '@/ui/slider';
 import { Icon } from '@/ui/icon';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import PreviewCanvas from './PreviewCanvas';
 
 interface FullscreenPreviewProps {

@@ -18,7 +18,7 @@ import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
 } from '@/spaces/canvas/types';
-import { Modal } from '@/components/modals/Modal';
+import { Modal } from '@/app/shell/modals/Modal';
 import { Input } from '@/ui/input';
 import WaveSurfer from 'wavesurfer.js';
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';

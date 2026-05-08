@@ -10,7 +10,7 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { Icon } from '@/ui/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
+import nodeIconMap from '@/pages/project/constants/nodeIconMap';
 
 /** Selectable node types (aligned with DataNodeHandle). */
 const agentNodes = [

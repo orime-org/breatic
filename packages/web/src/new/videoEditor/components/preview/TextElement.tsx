@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, memo, useState, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { TimelineClip } from '../../types';
 
 interface TextElementProps {

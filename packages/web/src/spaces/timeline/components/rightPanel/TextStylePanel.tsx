@@ -5,7 +5,7 @@ import Input from '@/ui/input';
 import { ColorPicker } from '@/ui/colorPicker';
 import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { Icon } from '@/ui/icon';
 import { RiAlignCenter, RiAlignLeft, RiAlignRight } from 'react-icons/ri';
 import FontSelector from './FontSelector';

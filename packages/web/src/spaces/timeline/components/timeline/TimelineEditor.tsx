@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback, memo } from '
 import { DndContext, DragEndEvent, DragStartEvent, DragMoveEvent, closestCenter, Modifier, useDroppable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
 import Selecto from 'react-selecto';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { MediaItem, TimelineClip } from '../../types';
 import TimelineScale from './TimelineScale';
 import TimelineTracks from './TimelineTracks';

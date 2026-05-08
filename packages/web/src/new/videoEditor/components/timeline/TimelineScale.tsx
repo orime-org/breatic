@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useMemo, memo } from 'react';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 
 interface TimelineScaleProps {
   /* * tick (>0)， 5 5 sec tick */

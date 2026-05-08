@@ -1,6 +1,6 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getToken, removeToken } from '@/data/api/token';
-import router from '@/router';
+import router from '@/app/routes';
 
 export interface SSEConfig {
   url: string;

@@ -1,6 +1,6 @@
 import React, { useMemo, memo, useRef, useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { TimelineClip } from '../../types';
 import ClipItem from './ClipItem';
 

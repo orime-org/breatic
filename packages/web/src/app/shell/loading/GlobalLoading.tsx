@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLoading } from '@/hooks/useLoading';
+import { useLoading } from '@/app/hooks/useLoading';
 import Loading from './Loading';
 
 /** Shows `<Loading />` while Redux global loading count is greater than zero */

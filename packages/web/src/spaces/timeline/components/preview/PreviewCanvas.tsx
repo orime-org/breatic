@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, memo, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import Selecto from 'react-selecto';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { MediaItem, TimelineClip } from '../../types';
 import VideoElement from './VideoElement';
 import ImageElement from './ImageElement';

@@ -4,11 +4,11 @@ import '@/index.css';
 import '@/i18n';
 import 'virtual:svg-icons-register';
 import { RouterProvider } from 'react-router-dom';
-import router from './router';
+import router from '@/app/routes';
 import { Provider } from 'react-redux';
 import store from './store';
-import { ThemeProvider } from './components/themeProvider';
-import { GlobalLoading } from './components/loading';
+import { ThemeProvider } from '@/app/shell/themeProvider';
+import { GlobalLoading } from '@/app/shell/loading';
 import { MessageContainer } from './ui/message';
 import * as Sentry from '@sentry/react';
 

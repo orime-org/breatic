@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect } from 'react';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import i18n from '@/i18n';
 import { Icon } from '@/ui/icon';
 

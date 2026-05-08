@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, memo, startTransition } from 'react
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
-import { useUserCenterStore } from '@/hooks/useUserCenterStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
+import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import TopBar from './components/header/TopBar';
 import Toolbar from './components/leftPanel/Toolbar';
 import LeftPanel from './components/leftPanel/LeftPanel';

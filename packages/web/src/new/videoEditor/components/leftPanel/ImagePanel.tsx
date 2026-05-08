@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { useVideoEditorStore } from '@/hooks/useVideoEditorStore';
+import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
 import Tooltip from '@/ui/tooltip';
 import { Icon } from '@/ui/icon';

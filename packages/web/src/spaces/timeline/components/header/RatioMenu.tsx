@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import aspectRatioIconMap from '@/apps/project/constants/aspectRatioIconMap';
+import aspectRatioIconMap from '@/pages/project/constants/aspectRatioIconMap';
 
 interface RatioMenuProps {
   onRatioChange: (ratio: string) => void;

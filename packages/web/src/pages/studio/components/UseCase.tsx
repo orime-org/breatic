@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { message } from '@/ui/message';
-import { UseCaseItemObjType } from '@/apps/userCenter/types';
+import { UseCaseItemObjType } from '@/pages/user-center/types';
 import { projectsApi } from '@/data/api';
 import { Icon } from '@/ui/icon';
-import TextInputModal from '@/components/modals/TextInputModal';
+import TextInputModal from '@/app/shell/modals/TextInputModal';
 
 /** Static carousel row (replaces `/api/workflow/use_case/query`). */
 const STATIC_USE_CASES: UseCaseItemObjType[] = [
