@@ -141,9 +141,9 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
       /* Waveform styles */
-      waveColor: '#B3B3B3',
+      waveColor: 'var(--color-text-disabled-base)',
       progressColor: '#262626',
-      cursorColor: '#EC221F',
+      cursorColor: 'var(--color-text-status-error)',
       cursorWidth: 2,
       barWidth: 2,
       barRadius: 0,
@@ -395,7 +395,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                           }}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          <Icon name='project-microphone-icon' width={56} height={56} color='#B3B3B3' />
+                          <Icon name='project-microphone-icon' width={56} height={56} color='var(--color-text-disabled-base)' />
                         </div>
                         <div className='text-[14px] font-semibold text-text-default-secondary mb-[24px] mt-[10px]'>
                           {t('project.toolbar.clickToStartRecord')}

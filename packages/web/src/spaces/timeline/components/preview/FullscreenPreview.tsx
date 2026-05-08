@@ -185,11 +185,11 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({
                 onChange={onTimeChange}
                 className={`${sliderClass} fullscreen-controls-slider`}
                 activeColor='#5A5A5A'
-                inactiveColor='#E3E3E3'
+                inactiveColor='var(--color-background-neutral-tertiary)'
                 trackHeight={6}
                 thumbWidth={20}
                 thumbHeight={16}
-                thumbColor='#B3B3B3'
+                thumbColor='var(--color-text-disabled-base)'
               />
             </div>
             <div className='w-px h-4 bg-white/40 shrink-0 self-center' aria-hidden />

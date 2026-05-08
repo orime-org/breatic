@@ -30,7 +30,7 @@ const WorkspaceSider: React.FC = () => {
         <Tooltip title={t('workspace.home_tooltip')} placement='right'>
           <div
             onClick={() => handleLinkClick('/')}
-            className='flex items-center justify-center w-6 h-6 cursor-pointer text-[#35C838] hover:text-[#6DEF70]'
+            className='flex items-center justify-center w-6 h-6 cursor-pointer text-brand-base hover:text-[#6DEF70]'
           >
             <Icon name='workspace-logo' width={24} height={24} color='var(--bg-brand-base)' />
           </div>
@@ -42,7 +42,7 @@ const WorkspaceSider: React.FC = () => {
               <div
                 key={link.url}
                 onClick={() => handleLinkClick(link.url)}
-                className='flex items-center justify-center w-[18px] h-[18px] cursor-pointer hover:text-[#35C838]'
+                className='flex items-center justify-center w-[18px] h-[18px] cursor-pointer hover:text-brand-base'
               >
                 <Icon name={link.iconName} width={18} height={18} color='var(--bg-icon-base)' />
               </div>

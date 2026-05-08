@@ -4,6 +4,9 @@ import { useEditorState } from '@tiptap/react';
 import { selectedRect, TableMap } from '@tiptap/pm/tables';
 import Tooltip from '@/ui/tooltip';
 import { cn } from '@/utils/classnames';
+
+/* PR9-A: hex literals kept intentionally — user-pickable color palette swatches.
+   Don't replace with theme tokens. */
 const textColors = {
   light: {
     gray: '#9b9a97',

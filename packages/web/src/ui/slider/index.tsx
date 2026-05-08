@@ -63,7 +63,7 @@ const Slider = ({
   }, [thumbWidth]);
   const [tooltipLayout, setTooltipLayout] = useState<{ left: number; arrowLeft: number } | null>(null);
 
-  const active = activeColor ?? 'var(--slider-active, #383838)';
+  const active = activeColor ?? 'var(--slider-active, var(--color-icon-base))';
   const inactive = inactiveColor ?? 'var(--slider-inactive, #e5e7eb)';
 
   const useFillFromZero = Boolean(fillFromZero && min < 0 && max > 0 && !vertical);

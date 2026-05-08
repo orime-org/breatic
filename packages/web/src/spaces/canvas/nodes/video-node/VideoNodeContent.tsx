@@ -21,7 +21,7 @@ export interface VideoNodeContentProps {
 
 const toolbarBarClass = 'flex items-center gap-[2px] rounded-[4px] bg-white/80 p-[4px] shadow-sm nodrag';
 const toolbarBtnClass =
-  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-[#757575] hover:bg-black/5';
+  'flex h-[22px] w-[22px] items-center justify-center rounded-[4px] text-text-default-secondary hover:bg-black/5';
 
 const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
   src,
@@ -100,7 +100,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
               className={toolbarBtnClass}
               aria-label='Fullscreen'
             >
-              <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='#757575' />
+              <Icon name='project-chat-fullscreen-icon' width={12} height={12} color='var(--color-icon-secondary)' />
             </button>
             <button
               type='button'
@@ -112,7 +112,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
               className={toolbarBtnClass}
               aria-label='Download'
             >
-              <Icon name='project-chat-download-icon' width={20} height={20} color='#757575' />
+              <Icon name='project-chat-download-icon' width={20} height={20} color='var(--color-icon-secondary)' />
             </button>
             <button
               type='button'
@@ -123,7 +123,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
               className={toolbarBtnClass}
               aria-label='Mention'
             >
-              <Icon name='project-chat-mention-icon' width={15} height={15} color='#757575' />
+              <Icon name='project-chat-mention-icon' width={15} height={15} color='var(--color-icon-secondary)' />
             </button>
             {onEditClick && (
               <button
@@ -135,7 +135,7 @@ const VideoNodeContent: React.FC<VideoNodeContentProps> = ({
                 className={toolbarBtnClass}
                 aria-label='Edit'
               >
-                <Icon name='project-thunderbolt-icon' width={16} height={16} color='#757575' />
+                <Icon name='project-thunderbolt-icon' width={16} height={16} color='var(--color-icon-secondary)' />
               </button>
             )}
           </div>

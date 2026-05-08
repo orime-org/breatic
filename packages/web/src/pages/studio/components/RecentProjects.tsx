@@ -206,8 +206,8 @@ const RecentProjects = forwardRef<RecentProjectsRef, RecentProjectsProps>(({ sta
       {
         key: 'delete-project',
         label: (
-          <div className='flex items-center gap-1 p-1 text-xs font-bold text-[#EC221F]'>
-            <Icon name='workspace-content-delete' width={24} height={24} color='#EC221F' />
+          <div className='flex items-center gap-1 p-1 text-xs font-bold text-text-status-error'>
+            <Icon name='workspace-content-delete' width={24} height={24} color='var(--color-text-status-error)' />
             {t('workspace.delete_project')}
           </div>
         ),

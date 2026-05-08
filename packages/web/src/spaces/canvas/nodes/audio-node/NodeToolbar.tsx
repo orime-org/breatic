@@ -88,7 +88,7 @@ const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
             name='project-microphone-icon'
             width={14}
             height={14}
-            color={showRecordView ? '#EC221F' : iconColor}
+            color={showRecordView ? 'var(--color-text-status-error)' : iconColor}
           />
           <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
             {showRecordView ? t('project.toolbar.exitRecording') : 'Record Audio'}
