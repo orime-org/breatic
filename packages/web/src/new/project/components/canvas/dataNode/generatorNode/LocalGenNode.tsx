@@ -1,16 +1,16 @@
 /**
- * Local canvas “agent generator” node: chat-style composer (toolbar + prompt + send) created from
- * connect-end {@link ConnectEndCommandMenu}. React Flow types: `gen1001`–`gen1004`.
+ * Local canvas generator node (`gen1001`–`gen1004`): composer + {@link GeneratorModelFooter} (mode dropdown only on audio).
+ * Created from connect-end {@link ConnectEndCommandMenu}.
  */
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addEdge, Position, useReactFlow, useStore, type Edge, type Node, type NodeProps } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import { cn } from '@/utils/classnames';
 import AgentComposerInput, {
   type AgentComposerInputHandle,
 } from '@/components/base/agent/AgentInput';
-import AgentSendButton from '@/components/base/agent/AgentSendButton';
-import type { LocalCanvasNodeData } from '@/new/project/types';
+import type { ImageEditorNodeRuntimeData, LocalCanvasNodeData } from '@/new/project/types';
+import type { MenuItemType } from '@/components/base/dropdown';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
 import LocalNodeSkeleton, { zoomLevelShowContentSelector } from '../../common/LocalNodeSkeleton';
@@ -19,6 +19,9 @@ import { selectFlowCanvasSelectedCount } from '../../flow/flowCanvasSelection';
 import GenComposerToolbar from './GenComposerToolbar';
 import { buildUpstreamItems, type UpstreamItem } from './upstreamItems';
 import { CANVAS_OUTPUT_PENDING_MS } from '../../common/CanvasOutputPendingProgressOverlay';
+import GeneratorModelFooter from './GeneratorModelFooter';
+import AudioGenerationModelSettingsPanel from './AudioGenerationModelSettingsPanel';
+import SimpleModelPickerPanel from './SimpleModelPickerPanel';
 import {
   buildPendingPaletteOutputData,
   computeNextGeneratorPaletteOutputPosition,
@@ -29,11 +32,40 @@ import {
   paletteOutputDefaults,
   paletteTypeFromGeneratorFlowType,
 } from './generatorPaletteOutput';
+import {
+  AUDIO_GENERATOR_MODE_ITEMS,
+  AUDIO_MODEL_OPTIONS_BY_MODE,
+  defaultModelLabelForAudioMode,
+  normalizeAudioGeneratorCategoryKey,
+} from './audioGeneratorStaticModels';
 
 function parseGeneratorKind(flowType: string): keyof typeof generatorHandleIds | null {
   if (flowType in generatorHandleIds) return flowType as keyof typeof generatorHandleIds;
   return null;
 }
+
+const TEXT_MODEL_OPTIONS = ['Gemini 2K', 'GPT-4o'] as const;
+const IMAGE_MODEL_OPTIONS = ['Nano Banana', 'Flux dev'] as const;
+const VIDEO_MODEL_OPTIONS = ['Kling 1.5', 'Minimax Video'] as const;
+
+/** Legacy persisted label without hyphen — maps to menu key. */
+const normalizeLanguageLabel = (label: string): string =>
+  label === '中文普通话' ? '中文-普通话' : label;
+
+function defaultCategoryKey(kind: keyof typeof generatorHandleIds): string {
+  if (kind === 'gen1004') return 'tts';
+  if (kind === 'gen1001') return 'chat';
+  return 'gen';
+}
+
+function defaultModelLabel(kind: keyof typeof generatorHandleIds): string {
+  if (kind === 'gen1001') return 'Gemini 2K';
+  if (kind === 'gen1002') return 'Nano Banana';
+  if (kind === 'gen1003') return 'Kling 1.5';
+  return 'Minimax Speech 02 hd';
+}
+
+const CREDIT_ESTIMATE = 120;
 
 const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, data, selected }) => {
   const { setNodes, setEdges, getEdges, getNode, getNodes } = useReactFlow();
@@ -55,9 +87,116 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
 
   const title = data.name?.trim() ? data.name : (kind ? generatorTitleByFlowType[kind] : 'Generator');
 
+  const nrd = data.nodeRuntimeData ?? {};
+  const categoryKey = useMemo(() => {
+    const raw = nrd.generatorCategoryKey ?? (kind ? defaultCategoryKey(kind) : 'chat');
+    if (kind === 'gen1004') return normalizeAudioGeneratorCategoryKey(String(raw));
+    return String(raw);
+  }, [kind, nrd.generatorCategoryKey]);
+  const modelLabel = nrd.modelLabel ?? (kind ? defaultModelLabel(kind) : 'Gemini 2K');
+  const voiceLabel = nrd.voiceLabel ?? '创新设计师';
+  const languageLabel = nrd.languageLabel ?? '中文-普通话';
+
+  const patchRuntime = useCallback(
+    (patch: Partial<ImageEditorNodeRuntimeData>) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== id) return n;
+          const prev = (n.data ?? {}) as LocalCanvasNodeData;
+          const nodeRuntimeData = { ...prev.nodeRuntimeData, ...patch };
+          return { ...n, data: { ...prev, nodeRuntimeData } };
+        }),
+      );
+    },
+    [id, setNodes],
+  );
+
   const [nodeHovered, setNodeHovered] = useState(false);
   const inputRef = useRef<AgentComposerInputHandle>(null);
   const [inputEmpty, setInputEmpty] = useState(true);
+  const [modelPanelOpen, setModelPanelOpen] = useState(false);
+
+  const categoryMenuItems: MenuItemType[] = useMemo(() => {
+    if (kind !== 'gen1004') return [];
+    return AUDIO_GENERATOR_MODE_ITEMS.map((m) => ({
+      key: m.key,
+      label: <span className='text-[13px] font-medium text-text-default-base'>{m.label}</span>,
+    }));
+  }, [kind]);
+
+  const categoryDisplayLabel = useMemo(() => {
+    if (kind !== 'gen1004') return '';
+    return AUDIO_GENERATOR_MODE_ITEMS.find((x) => x.key === categoryKey)?.label ?? 'TTS';
+  }, [kind, categoryKey]);
+
+  const audioModeResolved = useMemo(
+    () => (kind === 'gen1004' ? normalizeAudioGeneratorCategoryKey(String(categoryKey)) : null),
+    [kind, categoryKey],
+  );
+
+  const audioFooterSummary = useMemo(() => {
+    if (kind === 'gen1004' && audioModeResolved && audioModeResolved !== 'tts') {
+      return modelLabel;
+    }
+    const lang = normalizeLanguageLabel(languageLabel);
+    const langShort = lang.includes('中文') ? '中文' : lang;
+    return `${modelLabel} ${langShort} ${voiceLabel}`.replace(/\s+/g, ' ').trim();
+  }, [audioModeResolved, kind, languageLabel, modelLabel, voiceLabel]);
+
+  const modelPillSummary = kind === 'gen1004' ? audioFooterSummary : modelLabel;
+
+  const simpleModelOptions = useMemo(() => {
+    if (!kind) return [];
+    if (kind === 'gen1001') return [...TEXT_MODEL_OPTIONS];
+    if (kind === 'gen1002') return [...IMAGE_MODEL_OPTIONS];
+    if (kind === 'gen1003') return [...VIDEO_MODEL_OPTIONS];
+    return [];
+  }, [kind]);
+
+  useEffect(() => {
+    if (kind !== 'gen1004' || !audioModeResolved) return;
+    const allowed = AUDIO_MODEL_OPTIONS_BY_MODE[audioModeResolved];
+    if (!allowed.includes(modelLabel)) {
+      patchRuntime({ modelLabel: defaultModelLabelForAudioMode(audioModeResolved) });
+    }
+  }, [audioModeResolved, kind, modelLabel, patchRuntime]);
+
+  const modelPanelContent = useMemo(() => {
+    if (!kind) return null;
+    if (kind === 'gen1004' && audioModeResolved) {
+      return (
+        <AudioGenerationModelSettingsPanel
+          modelOptions={[...AUDIO_MODEL_OPTIONS_BY_MODE[audioModeResolved]]}
+          showVoiceAndLanguage={audioModeResolved === 'tts'}
+          modelLabel={modelLabel}
+          voiceLabel={voiceLabel}
+          languageLabel={languageLabel}
+          onModelLabel={(v) => patchRuntime({ modelLabel: v })}
+          onVoiceLabel={(v) => patchRuntime({ voiceLabel: v })}
+          onLanguageLabel={(v) => patchRuntime({ languageLabel: v })}
+          onVoiceCommit={() => setModelPanelOpen(false)}
+        />
+      );
+    }
+    return (
+      <SimpleModelPickerPanel
+        options={simpleModelOptions}
+        selected={modelLabel}
+        onSelect={(v) => {
+          patchRuntime({ modelLabel: v });
+          setModelPanelOpen(false);
+        }}
+      />
+    );
+  }, [
+    audioModeResolved,
+    kind,
+    languageLabel,
+    modelLabel,
+    patchRuntime,
+    simpleModelOptions,
+    voiceLabel,
+  ]);
 
   const handleRemoveUpstreamItem = useCallback(
     (item: UpstreamItem) => {
@@ -180,6 +319,17 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
     }
   }, [data.nodeRuntimeData?.prompt]);
 
+  const onCategorySelect = useCallback(
+    (key: string) => {
+      const mode = normalizeAudioGeneratorCategoryKey(key);
+      patchRuntime({
+        generatorCategoryKey: mode,
+        modelLabel: defaultModelLabelForAudioMode(mode),
+      });
+    },
+    [patchRuntime],
+  );
+
   return (
     <div className='relative' style={{ width: GENERATOR_NODE_WIDTH_PX }}>
       <div className='absolute left-0 right-0 top-0 min-w-0 -translate-y-full overflow-hidden text-left text-foreground/60'>
@@ -187,7 +337,6 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
       </div>
       <div
         className={cn(
-          // `outline` can be clipped under the canvas `contain: paint`; `ring-inset` matches other nodes’ selected chrome.
           'relative flex min-h-0 flex-col rounded-[8px] bg-background-default-base pointer-events-auto ring-2 ring-inset ring-offset-0',
           selected ? 'ring-border-utilities-selected' : 'ring-transparent',
         )}
@@ -243,7 +392,19 @@ const LocalGenNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type
                 />
               </div>
               <div className='nodrag nopan'>
-                <AgentSendButton disabled={inputEmpty} onClick={handleSendClick} />
+                <GeneratorModelFooter
+                  showCategoryDropdown={kind === 'gen1004'}
+                  categoryMenuItems={categoryMenuItems}
+                  categoryDisplayLabel={categoryDisplayLabel}
+                  onCategorySelect={onCategorySelect}
+                  modelPillSummary={modelPillSummary}
+                  modelPanelOpen={modelPanelOpen}
+                  onModelPanelOpenChange={setModelPanelOpen}
+                  modelPanelContent={modelPanelContent}
+                  creditEstimate={CREDIT_ESTIMATE}
+                  sendDisabled={inputEmpty}
+                  onSend={handleSendClick}
+                />
               </div>
             </>
           ) : (

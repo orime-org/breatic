@@ -47,6 +47,11 @@ export type LocalAudioFlowActions = {
     options?: { nameSuffix?: string; state?: 'idle' | 'localPending' },
   ) => string | null;
   resolveAudioResultNode: (nodeId: string, nextAudioSrc: string, options?: { state?: 'idle' | 'localPending' }) => void;
+  /**
+   * One `setNodes` — adds a `1004` tile to the right already holding `audioUrl` (no pending overlay).
+   * Prefer this over placeholder + delayed resolve to avoid React 18 batching races with timers.
+   */
+  addResolvedAudioOutputRight: (sourceNodeId: string, audioUrl: string, nameSuffix: string) => string | null;
   createCutAudioResultNodesRight: (
     sourceNodeId: string,
     payload: { segments: Array<{ start: number; end: number }>; cutMarkers?: Array<{ id: string; progressPct: number }> },
@@ -198,6 +203,49 @@ export function useLocalAudioFlowActions(
     [setNodes],
   );
 
+  const addResolvedAudioOutputRight = useCallback(
+    (sourceNodeId: string, audioUrl: string, nameSuffix: string): string | null => {
+      const trimmed = audioUrl?.trim();
+      if (!trimmed) return null;
+      const allNodes = readAllNodesSnapshot();
+      const source = allNodes.find((n) => n.id === sourceNodeId);
+      if (!source) return null;
+
+      const prev = (source.data ?? {}) as LocalCanvasNodeData;
+      const sourceName = typeof prev.name === 'string' && prev.name.trim() ? prev.name.trim() : 'Audio';
+      const sourceStyle = (source.style ?? {}) as { width?: number; height?: number };
+      const copyW = typeof sourceStyle.width === 'number' ? sourceStyle.width : audioFlowDefaultWidth;
+      const copyH = typeof sourceStyle.height === 'number' ? sourceStyle.height : audioFlowDefaultHeight;
+      const nodeId = `audio-flow-${nanoid(12)}`;
+      const x = source.position.x + copyW + CANVAS_SPAWNED_OUTPUT_GAP_PX;
+      const y = source.position.y;
+      const suffix = nameSuffix.trim() ? nameSuffix.trim() : 'copy';
+
+      const node: Node<LocalCanvasNodeData> = {
+        id: nodeId,
+        type: imageEditorAudioNodeType,
+        position: { x, y },
+        style: { width: copyW, height: copyH },
+        data: {
+          ...createEditorAudioNodeData(`${sourceName} (${suffix})`, trimmed),
+          state: 'idle',
+          handles: prev.handles ?? defaultAudioHandles,
+          localOutputPending: false,
+          localOutputProgressPct: undefined,
+          errorInfo: undefined,
+        },
+      };
+
+      setNodes((nds) => {
+        const top = maxZIndex(nds);
+        return [...nds.map((n) => ({ ...n, selected: false })), { ...node, zIndex: top + 1, selected: true }];
+      });
+      appendSpawnEdge(sourceNodeId, nodeId);
+      return nodeId;
+    },
+    [appendSpawnEdge, readAllNodesSnapshot, setNodes],
+  );
+
   const createCutAudioResultNodesRight = useCallback(
     (
       sourceNodeId: string,
@@ -227,6 +275,53 @@ export function useLocalAudioFlowActions(
       const startY = source.position.y;
       const resultIds: string[] = [];
 
+      const pickClipSrc = (index: number): string => {
+        if (Array.isArray(nextAudioSrc)) {
+          return nextAudioSrc[index] ?? nextAudioSrc[nextAudioSrc.length - 1] ?? '';
+        }
+        return typeof nextAudioSrc === 'string' ? nextAudioSrc : '';
+      };
+
+      const resolveInline = delayMs <= 0;
+
+      const buildClipNodeData = (
+        clipIndex: number,
+        segment: { start: number; end: number },
+        segmentCount: number,
+      ): LocalCanvasNodeData => {
+        const src = pickClipSrc(clipIndex);
+        const resolved = resolveInline && Boolean(src);
+        return {
+          ...createEditorAudioNodeData(`${sourceName} (clip ${clipIndex + 1})`, resolved ? src : ''),
+          ...(resolved
+            ? {
+                url: src,
+                content: src,
+                state: 'idle' as const,
+                errorInfo: undefined,
+                localOutputPending: false,
+                localOutputProgressPct: undefined,
+              }
+            : {
+                url: '',
+                content: '',
+                state: 'localPending' as const,
+                localOutputPending: true,
+              }),
+          handles: data.handles ?? defaultAudioHandles,
+          nodeRuntimeData: {
+            parameter: {
+              cutMarkers: payload.cutMarkers ?? [],
+              cutSegments: normalizedSegments,
+              cutSegment: segment,
+              cutSegmentIndex: clipIndex,
+              cutSegmentCount: segmentCount,
+              cutSourceNodeId: sourceNodeId,
+            },
+          },
+        };
+      };
+
       if (normalizedSegments.length === 1) {
         const onlySegment = normalizedSegments[0];
         const nodeId = `audio-flow-${nanoid(12)}`;
@@ -240,24 +335,7 @@ export function useLocalAudioFlowActions(
             style: { width: copyW, height: copyH },
             zIndex: top + 1,
             selected: true,
-            data: {
-              ...createEditorAudioNodeData(`${sourceName} (clip 1)`, ''),
-              state: 'localPending',
-              url: '',
-              content: '',
-              localOutputPending: true,
-              handles: data.handles ?? defaultAudioHandles,
-              nodeRuntimeData: {
-                parameter: {
-                  cutMarkers: payload.cutMarkers ?? [],
-                  cutSegments: normalizedSegments,
-                  cutSegment: onlySegment,
-                  cutSegmentIndex: 0,
-                  cutSegmentCount: 1,
-                  cutSourceNodeId: sourceNodeId,
-                },
-              },
-            },
+            data: buildClipNodeData(0, onlySegment, 1),
           };
           return [...nds.map((n) => ({ ...n, selected: false })), pushed];
         });
@@ -289,24 +367,7 @@ export function useLocalAudioFlowActions(
             parentId: groupId,
             position: { x: groupPadding, y: groupPadding + index * (copyH + spacingY) },
             style: { width: copyW, height: copyH },
-            data: {
-              ...createEditorAudioNodeData(`${sourceName} (clip ${index + 1})`, ''),
-              state: 'localPending',
-              url: '',
-              content: '',
-              localOutputPending: true,
-              handles: data.handles ?? defaultAudioHandles,
-              nodeRuntimeData: {
-                parameter: {
-                  cutMarkers: payload.cutMarkers ?? [],
-                  cutSegments: normalizedSegments,
-                  cutSegment: segment,
-                  cutSegmentIndex: index,
-                  cutSegmentCount: normalizedSegments.length,
-                  cutSourceNodeId: sourceNodeId,
-                },
-              },
-            },
+            data: buildClipNodeData(index, segment, normalizedSegments.length),
           };
         });
         setNodes((nds) => {
@@ -327,17 +388,17 @@ export function useLocalAudioFlowActions(
         resultIds.forEach((rid) => appendSpawnEdge(sourceNodeId, rid));
       }
 
+      if (resolveInline) return;
+
       window.setTimeout(() => {
         setNodes((nds) => {
           const baseTop = maxZIndex(nds);
           let next = nds.map((n) => ({ ...n, selected: false }));
-          resultIds.forEach((nodeId, index) => {
-            const nextSrc = Array.isArray(nextAudioSrc)
-              ? nextAudioSrc[index] ?? nextAudioSrc[nextAudioSrc.length - 1] ?? ''
-              : nextAudioSrc;
+          resultIds.forEach((clipNodeId, index) => {
+            const nextSrc = pickClipSrc(index);
             if (!nextSrc) return;
             next = next.map((n) => {
-              if (n.id !== nodeId) return n;
+              if (n.id !== clipNodeId) return n;
               return {
                 ...n,
                 zIndex: baseTop + 1 + index,
@@ -367,6 +428,7 @@ export function useLocalAudioFlowActions(
     updateNodeData,
     createAudioPlaceholderNodeRight,
     resolveAudioResultNode,
+    addResolvedAudioOutputRight,
     createCutAudioResultNodesRight,
   };
 }

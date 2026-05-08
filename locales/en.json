@@ -231,6 +231,7 @@
       "layoutGrid": "Grid layout",
       "layoutHorizontal": "Horizontal layout",
       "backgroundColor": "Background color",
+      "synthesis": "Synthesis",
       "expand": "Expand",
       "collapse": "Collapse"
     },

@@ -1,5 +1,5 @@
 /**
- * Audio node top toolbar — image-node-style actions only (Replace + mini-tools). Upstream strip lives in {@link GenerationBottomToolbar}.
+ * Audio node top toolbar — image-node-style actions (Replace + mini-tools). Playback track lives on {@link AudioNode} bottom toolbar (same pattern as video).
  */
 import React from 'react';
 import { Icon } from '@/components/base/icon';

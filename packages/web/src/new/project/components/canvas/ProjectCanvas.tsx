@@ -456,13 +456,16 @@ const ProjectCanvasInner: FC = () => {
         };
         setTempConnectNodes([anchorNode]);
         setTempConnectEdges(addEdge(tempEdge as Connection, []));
-        const parallelSources =
-          fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID
-            ? mergeMultiSelectParallelSourceIdsWithSnapshot(
-              collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesRef.current),
-              nodesRef.current,
-            )
-            : undefined;
+        const mergedParallel = mergeMultiSelectParallelSourceIdsWithSnapshot(
+          collectLocalFlowMultiSelectParallelOutboundSourceIds(nodesRef.current),
+          nodesRef.current,
+        );
+        let parallelSources: string[] | undefined;
+        if (fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID) {
+          parallelSources = mergedParallel.length > 0 ? mergedParallel : undefined;
+        } else if (mergedParallel.length >= 2 && mergedParallel.includes(fromNodeId)) {
+          parallelSources = mergedParallel;
+        }
         setConnectEndMenu({
           clientX,
           clientY,
@@ -582,9 +585,11 @@ const ProjectCanvasInner: FC = () => {
         const base = [...eds];
         const multiOutbound =
           !isFromInput &&
-          fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID &&
+          fromNodeId != null &&
           multiSelectParallelSourceIds &&
-          multiSelectParallelSourceIds.length > 0;
+          multiSelectParallelSourceIds.length > 0 &&
+          (fromNodeId === LOCAL_MULTI_SELECT_CONNECT_PROXY_NODE_ID ||
+            multiSelectParallelSourceIds.includes(fromNodeId));
         if (multiOutbound) {
           const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
           for (const sid of multiSelectParallelSourceIds) {

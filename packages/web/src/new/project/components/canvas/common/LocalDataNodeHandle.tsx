@@ -16,12 +16,8 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/new/project/constants/nodeIconMap';
-import {
-  getLocalFlowNodeSubtitle,
-  localFlowAgentNodes,
-  spawnLocalFlowPaletteNodeConnected,
-} from './localFlowNodeSpawn';
+import { spawnLocalFlowPaletteNodeConnected } from './localFlowNodeSpawn';
+import AgentNodesMenuRows from './AgentNodesMenuRows';
 
 const containerSize = 48;
 const iconSize = 24;
@@ -230,33 +226,13 @@ const LocalDataNodeHandle: React.FC<LocalDataNodeHandleProps> = ({
           <div
             ref={refs.setFloating}
             style={floatingStyles}
-            className='z-[1000] min-w-[220px] rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg'
+            className='z-[1000] min-w-[260px] rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg'
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             {...getFloatingProps()}
           >
             <div className='mb-2 px-2 text-xs font-medium text-text-default-base'>Agent Nodes</div>
-            <div className='flex flex-col gap-0.5'>
-              {localFlowAgentNodes.map((asset) => {
-                const iconName = nodeIconMap[asset.type];
-                return (
-                  <div
-                    key={asset.type}
-                    role='button'
-                    className='flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-[4px] px-2 py-1.5 text-left transition-colors hover:bg-background-default-secondary'
-                    onClick={() => handleAddNode(asset.type)}
-                  >
-                    {iconName ? <Icon name={iconName} width={20} height={20} color='var(--color-icon-base)' /> : null}
-                    <div className='flex min-w-0 flex-1 flex-col justify-center'>
-                      <span className='truncate text-xs font-medium leading-4 text-text-default-base'>{asset.label}</span>
-                      <span className='truncate text-[10px] leading-3 text-text-default-tertiary'>
-                        {getLocalFlowNodeSubtitle(asset.type)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <AgentNodesMenuRows keyboardActive={menuOpen} onSelectType={handleAddNode} />
           </div>
         </FloatingPortal>
       )}

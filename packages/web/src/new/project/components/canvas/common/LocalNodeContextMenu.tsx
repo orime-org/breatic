@@ -16,6 +16,7 @@ import copy from 'copy-to-clipboard';
 import Divider from '@/components/base/divider';
 import { Icon } from '@/components/base/icon';
 import nodeIconMap from '@/new/project/constants/nodeIconMap';
+import { useAgentNodesKeyboardShortcuts } from './useAgentNodesKeyboardShortcuts';
 
 const groupPadding = 40;
 const defaultGroupBackgroundColor = '#35C838';
@@ -625,7 +626,7 @@ const LocalNodeContextMenu: FC<LocalNodeContextMenuProps> = ({
     {
       key: 'addText',
       label: 'Add Text Node',
-      shortcut: null,
+      shortcut: 'Q',
       disabled: false,
       onClick: () => addNodeAtPosition('1001'),
       icon: nodeIconMap['1001'],
@@ -633,26 +634,26 @@ const LocalNodeContextMenu: FC<LocalNodeContextMenuProps> = ({
     {
       key: 'addImage',
       label: 'Add Image Node',
-      shortcut: null,
+      shortcut: 'W',
       disabled: false,
       onClick: () => addNodeAtPosition('1002'),
       icon: nodeIconMap['1002'],
     },
     {
-      key: 'addAudio',
-      label: 'Add Audio Node',
-      shortcut: null,
-      disabled: false,
-      onClick: () => addNodeAtPosition('1004'),
-      icon: nodeIconMap['1004'],
-    },
-    {
       key: 'addVideo',
       label: 'Add Video Node',
-      shortcut: null,
+      shortcut: 'E',
       disabled: false,
       onClick: () => addNodeAtPosition('1003'),
       icon: nodeIconMap['1003'],
+    },
+    {
+      key: 'addAudio',
+      label: 'Add Audio Node',
+      shortcut: 'R',
+      disabled: false,
+      onClick: () => addNodeAtPosition('1004'),
+      icon: nodeIconMap['1004'],
     },
   ];
 
@@ -741,13 +742,15 @@ const LocalNodeContextMenu: FC<LocalNodeContextMenuProps> = ({
 
   const menuItems = isPaneMenu ? paneMenuItems : nodeMenuItems;
 
+  useAgentNodesKeyboardShortcuts(open && isPaneMenu, addNodeAtPosition);
+
   if (!open) return null;
 
   const menuContent = (
     <div
       ref={refs.setFloating}
       style={floatingStyles}
-      className='z-[1000] min-w-[200px] overflow-hidden rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg flex flex-col gap-1'
+      className='z-[1000] min-w-[240px] overflow-hidden rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg flex flex-col gap-1'
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       {...getFloatingProps()}

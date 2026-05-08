@@ -1,5 +1,5 @@
 /**
- * Local audio node (type `1004`) — shell shows waveform / placeholder only; mini-tools + generation live in {@link FlowNodeToolbar} (same pattern as image node bottom bar).
+ * Local audio node (type `1004`) — waveform in-card; mini-tools on top; playback track below when selected (same idea as {@link VideoNode}).
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -7,7 +7,6 @@ import {
   Position,
   useReactFlow,
   useStore,
-  type Edge,
   type Node,
   type NodeProps,
 } from '@xyflow/react';
@@ -15,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/base/icon';
 import { message } from '@/components/base/message';
 import CanvasOutputPendingProgressOverlay from '../../common/CanvasOutputPendingProgressOverlay';
-import type { AudioGenerationMode, AudioNodeRuntimeData, LocalCanvasNodeData } from '@/new/project/types';
+import type { LocalCanvasNodeData } from '@/new/project/types';
 import LocalNodeHeader from '../../common/LocalNodeHeader';
 import LocalDataNodeHandle from '../../common/LocalDataNodeHandle';
 import { selectLocalMultiSelectOutboundRepresentativeId } from '../../common/localFlowNodeSpawn';
@@ -25,7 +24,8 @@ import CanvasAudio from '../../common/CanvasAudio';
 import CanvasAudioWaveform from '../../common/CanvasAudioWaveform';
 import type { VideoPlaybackSnapshot, VideoRef } from '../../common/CanvasVideo';
 import PlaybackPanel, { type TimelineCutMarker } from '../videoNode/playback/PlaybackPanel';
-import { cutAudioWithFfmpeg } from '@/utils/videoEditor/audioCutWithFfmpeg';
+import { cutAudioSegments } from '@/utils/videoEditor/audioCutSegments';
+import { preloadAudioUrl } from '@/utils/videoEditor/preloadAudioUrl';
 import { speedAudioWithFfmpeg } from '@/utils/videoEditor/audioSpeedWithFfmpeg';
 import type { VideoExtendDurationSec } from '../videoNode/extend/ExtendBottomToolbar';
 import { useLocalAudioFlowActions } from './useLocalAudioFlowActions';
@@ -33,9 +33,7 @@ import CutBottomToolbar from '../videoNode/cut/CutBottomToolbar';
 import ExtendBottomToolbar from '../videoNode/extend/ExtendBottomToolbar';
 import SpeedBottomToolbar from '../videoNode/speed/SpeedBottomToolbar';
 import AudioDenoiseBottomToolbar from '../videoNode/audioDenoise/AudioDenoiseBottomToolbar';
-import { buildUpstreamItems } from '../generatorNode/upstreamItems';
 import Toolbar from './Toolbar';
-import GenerationBottomToolbar from './generation/GenerationBottomToolbar';
 import AudioNormalizeBottomToolbar from './AudioNormalizeBottomToolbar';
 import AudioEnhanceBottomToolbar from './AudioEnhanceBottomToolbar';
 import AudioFadeBottomToolbar from './AudioFadeBottomToolbar';
@@ -55,7 +53,10 @@ const sourceHandleId = 'Audio_0_0';
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
-/** Primary + “More” mini-edit flows — hide default playback/generation chrome while active (same idea as {@link VideoNode} `editingMode`). */
+/** Bottom playback toolbar offset from node — slightly larger than video so the track clears the card (was overlapping when stacked with generation UI). */
+const audioPlaybackToolbarBottomOffset = 20;
+
+/** Primary + “More” mini-edit flows — hide default playback chrome while active (same idea as {@link VideoNode} `editingMode`). */
 type AudioQuickEditMode =
   | 'stem'
   | 'extend'
@@ -74,22 +75,12 @@ type AudioQuickEditMode =
   | 'pitchShift'
   | null;
 
-const defaultAudioRuntime = (): AudioNodeRuntimeData => ({
-  generationMode: 'tts',
-  stylesPrompt: '',
-  lyrics: '',
-  instrumental: false,
-  modelLabel: 'Minimax Speech 02 hd',
-  voiceLabel: '沉稳高管',
-  languageLabel: '中文-普通话',
-});
-
 const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, data, selected }) => {
   const { t } = useTranslation();
   const { setNodes, setEdges, getNodes } = useReactFlow();
   const showContent = useStore(zoomLevelShowContentSelector);
   const nodes = useStore(useCallback((s) => s.nodes as Node<LocalCanvasNodeData>[], []));
-  const edges = useStore(useCallback((s) => s.edges as Edge[], []));
+  const nodeFromStore = useMemo(() => nodes.find((n) => n.id === id), [nodes, id]);
   const flowCanvasSelectedCount = useStore(useCallback((s) => selectFlowCanvasSelectedCount(s), []));
   const localMultiSelectOutboundRepId = useStore(
     useCallback((s) => selectLocalMultiSelectOutboundRepresentativeId(s), []),
@@ -97,10 +88,21 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
 
   const title = data.name?.trim() ? data.name : 'Audio';
   const url = data.url?.trim() ?? '';
-  const ar = useMemo(
-    () => ({ ...defaultAudioRuntime(), ...(data.audioRuntime ?? {}) }),
-    [data.audioRuntime],
-  );
+
+  /** Keep React Flow node `style` in sync with the visible shell so `NodeToolbar` stays centered at any zoom (same as {@link ImageNode} / {@link VideoNode}). */
+  useEffect(() => {
+    const st = (nodeFromStore?.style ?? {}) as { width?: unknown; height?: unknown };
+    const sw = typeof st.width === 'number' && Number.isFinite(st.width) ? st.width : -1;
+    const sh = typeof st.height === 'number' && Number.isFinite(st.height) ? st.height : -1;
+    if (sw === defaultNodeWidth && sh === defaultNodeHeight) return;
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== id) return n;
+        const prevStyle = (n.style ?? {}) as Record<string, unknown>;
+        return { ...n, style: { ...prevStyle, width: defaultNodeWidth, height: defaultNodeHeight } };
+      }),
+    );
+  }, [id, nodeFromStore?.style, setNodes]);
 
   const [nodeHovered, setNodeHovered] = useState(false);
   const nodeFrameRef = useRef<HTMLDivElement | null>(null);
@@ -111,18 +113,14 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
     isPlaying: false,
     volume: 1,
   });
-  /** Collapsible generator dock below the node — reopen after close via chip; resets when selection clears. */
-  const [audioGenPanelOpen, setAudioGenPanelOpen] = useState(true);
   const [audioQuickEditMode, setAudioQuickEditMode] = useState<AudioQuickEditMode>(null);
   const [normalizeAmount, setNormalizeAmount] = useState(70);
   const [denoiseIntensity, setDenoiseIntensity] = useState(50);
   const [isAudioCutSaving, setIsAudioCutSaving] = useState(false);
   const [isAudioSpeedSaving, setIsAudioSpeedSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedCount = nodes.filter((n) => n.selected).length;
-  const upstreamItems = useMemo(() => buildUpstreamItems(nodes, edges, id), [nodes, edges, id]);
 
   const getNodesSnapshot = useCallback(() => getNodes() as Node<LocalCanvasNodeData>[], [getNodes]);
 
@@ -133,20 +131,6 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
     createCutAudioResultNodesRight,
   } = useLocalAudioFlowActions(getNodesSnapshot, setNodes, setEdges);
 
-  const patchAudioRuntime = useCallback(
-    (patch: Partial<AudioNodeRuntimeData>) => {
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id !== id) return n;
-          const prev = (n.data ?? {}) as LocalCanvasNodeData;
-          const nextAr = { ...defaultAudioRuntime(), ...(prev.audioRuntime ?? {}), ...patch };
-          return { ...n, data: { ...prev, audioRuntime: nextAr } };
-        }),
-      );
-    },
-    [id, setNodes],
-  );
-
   const handlePlaybackUpdate = useCallback((snapshot: VideoPlaybackSnapshot) => {
     setPlayback(snapshot);
   }, []);
@@ -156,10 +140,6 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
       setPlayback({ currentTime: 0, duration: 0, isPlaying: false, volume: 1 });
     }
   }, [url]);
-
-  useEffect(() => {
-    if (!selected) setAudioGenPanelOpen(true);
-  }, [selected]);
 
   useEffect(() => {
     if (!selected) setAudioQuickEditMode(null);
@@ -215,17 +195,31 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
   const closeAudioQuickEdit = useCallback(() => setAudioQuickEditMode(null), []);
 
   /**
-   * Local canvas: spawn an output audio tile to the right, then fill it with the same URL (no worker yet).
+   * Mini-tool Send (local preview): placeholder + loading overlay → preload asset → show waveform on new node.
    */
   const spawnAudioOutputCopy = useCallback(
-    (nameSuffix: string) => {
-      if (!url) return;
+    async (nameSuffix: string): Promise<boolean> => {
+      if (!url) return false;
       const placeholderId = createAudioPlaceholderNodeRight(id, { nameSuffix, state: 'localPending' });
-      if (!placeholderId) return;
+      if (!placeholderId) return false;
       closeAudioQuickEdit();
-      window.setTimeout(() => resolveAudioResultNode(placeholderId, url, { state: 'idle' }), 280);
+      try {
+        await preloadAudioUrl(url);
+        resolveAudioResultNode(placeholderId, url, { state: 'idle' });
+        return true;
+      } catch {
+        removeNode(placeholderId);
+        return false;
+      }
     },
-    [closeAudioQuickEdit, createAudioPlaceholderNodeRight, id, resolveAudioResultNode, url],
+    [
+      closeAudioQuickEdit,
+      createAudioPlaceholderNodeRight,
+      id,
+      removeNode,
+      resolveAudioResultNode,
+      url,
+    ],
   );
 
   const handleAudioCutSave = useCallback(
@@ -233,22 +227,18 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
       if (!url || isAudioCutSaving) return;
       setIsAudioCutSaving(true);
       try {
-        const clipSources = await cutAudioWithFfmpeg(url, payload.segments);
+        const clipSources = await cutAudioSegments(url, payload.segments);
         if (clipSources.length === 0) return;
-        createCutAudioResultNodesRight(id, payload, clipSources, 200);
+        /** `0` = write clip URLs in the same `setNodes` pass (avoids pending-overlay + timer races). */
+        createCutAudioResultNodesRight(id, payload, clipSources, 0);
         closeAudioQuickEdit();
       } catch {
-        message.error(
-          t(
-            'project.toolbar.audioCutExportFailed',
-            'Could not split audio in the browser. Try a smaller file or a different format.',
-          ),
-        );
+        /* Web Audio decode + ffmpeg trim both failed for this asset — avoid noisy toast; user can retry after export. */
       } finally {
         setIsAudioCutSaving(false);
       }
     },
-    [closeAudioQuickEdit, createCutAudioResultNodesRight, id, isAudioCutSaving, t, url],
+    [closeAudioQuickEdit, createCutAudioResultNodesRight, id, isAudioCutSaving, url],
   );
 
   const handleAudioSpeedSave = useCallback(
@@ -478,42 +468,10 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
     setAudioQuickEditMode('pitchShift');
   }, [audioQuickEditMode, url, warnNeedAudioFirst]);
 
-  const focusComposer = useCallback(() => {
-    composerRef.current?.focus();
-  }, []);
-
-  const handleRemoveUpstreamItem = useCallback(
-    (item: { sourceNodeId: string }) => {
-      const edge = edges.find((e) => e.source === item.sourceNodeId && e.target === id);
-      if (!edge) return;
-      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-    },
-    [edges, id, setEdges],
-  );
-
-  const canSend =
-    (ar.stylesPrompt ?? '').trim().length > 0 || (ar.lyrics ?? '').trim().length > 0;
-
-  const handleSend = useCallback(() => {
-    if (!canSend || !url) return;
-    const suffix =
-      (ar.stylesPrompt ?? '').trim().slice(0, 24) ||
-      (ar.lyrics ?? '').trim().slice(0, 24) ||
-      'generate';
-    spawnAudioOutputCopy(suffix);
-    message.success(
-      t(
-        'project.toolbar.audioSendLocalPreviewTile',
-        'Added an output audio node to the right (local preview — generation is not dispatched to the worker).',
-      ),
-    );
-  }, [ar.lyrics, ar.stylesPrompt, canSend, spawnAudioOutputCopy, t, url]);
-
-  const creditEstimate = 120;
-
   const showFloatingChrome = selected && selectedCount === 1;
   const soloChrome = showFloatingChrome;
-  const showDefaultBottomChrome = showFloatingChrome && audioQuickEditMode === null;
+  const showDefaultBottomChrome =
+    showFloatingChrome && audioQuickEditMode === null && Boolean(url);
   const showQuickEditChrome = soloChrome && audioQuickEditMode !== null && Boolean(url);
 
   return (
@@ -539,59 +497,24 @@ const AudioNode: React.FC<NodeProps<Node<LocalCanvasNodeData>>> = ({ id, type, d
           onPitchShift={openPitchShift}
         />
       </FlowNodeToolbar>
-      <FlowNodeToolbar position={Position.Bottom} align='center' offset={12} isVisible={showDefaultBottomChrome}>
+
+      <FlowNodeToolbar
+        position={Position.Bottom}
+        align='center'
+        offset={audioPlaybackToolbarBottomOffset}
+        isVisible={showDefaultBottomChrome}
+      >
         <div className='flex flex-col items-center gap-1' onMouseDown={(e) => e.stopPropagation()}>
-          {url ? (
-            <PlaybackPanel
-              audioOnly
-              videoRef={audioRef}
-              mediaSrc={url}
-              currentTime={playback.currentTime}
-              duration={playback.duration}
-              isPlaying={playback.isPlaying}
-              volume={playback.volume}
-              fullscreenTargetRef={nodeFrameRef}
-            />
-          ) : null}
-          {audioGenPanelOpen ? (
-            <GenerationBottomToolbar
-              panelTitle={t('project.toolbar.audioGenerationPanelTitle', 'Audio generation')}
-              upstreamItems={upstreamItems}
-              onRemoveUpstreamItem={handleRemoveUpstreamItem}
-              onFocusComposer={focusComposer}
-              onClose={() => setAudioGenPanelOpen(false)}
-              generationMode={(ar.generationMode ?? 'tts') as AudioGenerationMode}
-              stylesPrompt={ar.stylesPrompt ?? ''}
-              lyrics={ar.lyrics ?? ''}
-              instrumental={ar.instrumental ?? false}
-              onStylesChange={(v: string) => patchAudioRuntime({ stylesPrompt: v })}
-              onLyricsChange={(v: string) => patchAudioRuntime({ lyrics: v })}
-              onInstrumentalChange={(v: boolean) => patchAudioRuntime({ instrumental: v })}
-              stylesTextAreaRef={composerRef}
-              modelLabel={ar.modelLabel ?? defaultAudioRuntime().modelLabel!}
-              voiceLabel={ar.voiceLabel ?? defaultAudioRuntime().voiceLabel!}
-              languageLabel={ar.languageLabel ?? defaultAudioRuntime().languageLabel!}
-              creditEstimate={creditEstimate}
-              canSend={canSend}
-              onGenerationMode={(mode: AudioGenerationMode) => patchAudioRuntime({ generationMode: mode })}
-              onModelLabel={(label: string) => patchAudioRuntime({ modelLabel: label })}
-              onVoiceLabel={(label: string) => patchAudioRuntime({ voiceLabel: label })}
-              onLanguageLabel={(label: string) => patchAudioRuntime({ languageLabel: label })}
-              onSend={handleSend}
-            />
-          ) : (
-            <button
-              type='button'
-              className='pointer-events-auto flex items-center gap-2 rounded-[8px] border border-[var(--color-border-default-base)] bg-background-default-base px-3 py-2 text-[13px] font-medium text-text-default-base shadow-[0px_1px_4px_0px_rgba(12,12,13,0.05),0px_1px_8px_1px_rgba(12,12,13,0.05)] transition-colors hover:bg-background-default-base-hover'
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setAudioGenPanelOpen(true)}
-            >
-              <span className='inline-flex rotate-180'>
-                <Icon name='base-chevron-down-icon' width={12} height={12} color='var(--color-icon-base)' />
-              </span>
-              {t('project.toolbar.audioGenerationReopen', 'Audio tools')}
-            </button>
-          )}
+          <PlaybackPanel
+            audioOnly
+            videoRef={audioRef}
+            mediaSrc={url}
+            currentTime={playback.currentTime}
+            duration={playback.duration}
+            isPlaying={playback.isPlaying}
+            volume={playback.volume}
+            fullscreenTargetRef={nodeFrameRef}
+          />
         </div>
       </FlowNodeToolbar>
 

@@ -49,6 +49,7 @@ export const cutAudioWithFfmpeg = async (
       const outputName = `audio-cut-out-${Date.now()}-${index + 1}.m4a`;
       const duration = Math.max(0.001, segment.end - segment.start);
 
+      let outputUsed = outputName;
       try {
         await withTimeout(
           ffmpeg.exec([
@@ -58,7 +59,8 @@ export const cutAudioWithFfmpeg = async (
             inputName,
             '-t',
             toFfmpegTime(duration),
-            '-vn',
+            '-map',
+            '0:a:0?',
             '-c:a',
             'copy',
             outputName,
@@ -67,35 +69,63 @@ export const cutAudioWithFfmpeg = async (
           `Cutting audio clip ${index + 1} (copy)`,
         );
       } catch {
-        await withTimeout(
-          ffmpeg.exec([
-            '-ss',
-            toFfmpegTime(segment.start),
-            '-i',
-            inputName,
-            '-t',
-            toFfmpegTime(duration),
-            '-vn',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '192k',
-            outputName,
-          ]),
-          ffmpegExecTimeoutMs,
-          `Cutting audio clip ${index + 1} (encode)`,
-        );
+        try {
+          await withTimeout(
+            ffmpeg.exec([
+              '-ss',
+              toFfmpegTime(segment.start),
+              '-i',
+              inputName,
+              '-t',
+              toFfmpegTime(duration),
+              '-map',
+              '0:a:0?',
+              '-c:a',
+              'aac',
+              '-b:a',
+              '192k',
+              outputName,
+            ]),
+            ffmpegExecTimeoutMs,
+            `Cutting audio clip ${index + 1} (aac)`,
+          );
+        } catch {
+          const wavName = `audio-cut-out-${Date.now()}-${index + 1}.wav`;
+          await withTimeout(
+            ffmpeg.exec([
+              '-ss',
+              toFfmpegTime(segment.start),
+              '-i',
+              inputName,
+              '-t',
+              toFfmpegTime(duration),
+              '-map',
+              '0:a:0?',
+              '-acodec',
+              'pcm_s16le',
+              wavName,
+            ]),
+            ffmpegExecTimeoutMs,
+            `Cutting audio clip ${index + 1} (wav)`,
+          );
+          await ffmpeg.deleteFile(outputName).catch(() => undefined);
+          outputUsed = wavName;
+        }
       }
 
-      const outputData = await ffmpeg.readFile(outputName);
+      const outputData = await ffmpeg.readFile(outputUsed);
       if (!(outputData instanceof Uint8Array)) {
         throw new Error('ffmpeg returned invalid audio clip data');
       }
+      if (outputData.byteLength === 0) {
+        throw new Error('ffmpeg produced an empty audio clip');
+      }
       const safeBuffer = new ArrayBuffer(outputData.byteLength);
       new Uint8Array(safeBuffer).set(outputData);
-      const outputBlob = new Blob([safeBuffer], { type: 'audio/mp4' });
+      const mime = outputUsed.endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
+      const outputBlob = new Blob([safeBuffer], { type: mime });
       outputUrls.push(URL.createObjectURL(outputBlob));
-      await ffmpeg.deleteFile(outputName);
+      await ffmpeg.deleteFile(outputUsed);
     }
   } finally {
     await ffmpeg.deleteFile(inputName).catch(() => undefined);

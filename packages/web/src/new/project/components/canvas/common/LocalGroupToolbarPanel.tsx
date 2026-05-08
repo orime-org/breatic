@@ -1,14 +1,24 @@
 /**
  * Group toolbar for the local-only canvas — same UX as {@link ../../../../apps/project/components/canvas/common/GroupToolbarPanel}
  * (multi-select → group, single group → background / ungroup / lock), wired to `useReactFlow` instead of Yjs.
+ * Multi-select of ≥2 video nodes (`1003`) also shows **Synthesis**: spawns a **video** node (`1003`) to the right with pending overlay, wires each source video in.
  */
-import React, { memo, useMemo, useState, useEffect } from 'react';
-import { Panel, useReactFlow, useStore, type Node } from '@xyflow/react';
+import React, { memo, useMemo, useState, useEffect, useCallback } from 'react';
+import { Panel, useReactFlow, useStore, type Edge, type Node } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
+import { RiMovie2Line } from 'react-icons/ri';
 import { Icon } from '@/components/base/icon';
 import Dropdown from '@/components/base/dropdown';
 import Divider from '@/components/base/divider';
+import type { LocalCanvasNodeData } from '@/new/project/types';
+import { CANVAS_SPAWNED_OUTPUT_GAP_PX } from '../canvasSpawnLayout';
+import {
+  buildPendingPaletteOutputData,
+  paletteOutputDefaults,
+} from '../dataNode/generatorNode/generatorPaletteOutput';
+import { message } from '@/components/base/message';
+import { concatVideosWithFfmpeg } from '@/utils/videoEditor/concatVideosWithFfmpeg';
 
 const toolbarGap = 20;
 const toolbarHeight = 40;
@@ -38,9 +48,12 @@ const backgroundColorOptions: { value: string }[] = [
 const selectedNodesSelector = (state: { nodes: Node[] }) =>
   state.nodes.filter((n) => n.selected && n.type !== 'connectEndAnchor');
 
+const VIDEO_NODE_TYPE = '1003';
+const videoFlowHandleId = 'Video_0_0';
+
 const LocalGroupToolbarPanel: React.FC = () => {
   const { t } = useTranslation();
-  const { getViewport, getNodesBounds, getNodes, setNodes } = useReactFlow();
+  const { getViewport, getNodesBounds, getNodes, setNodes, setEdges } = useReactFlow();
   const selectedNodes = useStore(selectedNodesSelector);
 
   const selection = useMemo(() => {
@@ -53,6 +66,12 @@ const LocalGroupToolbarPanel: React.FC = () => {
     }
     return { show: false, canGroup: false, isGroup: false, collapsed: false };
   }, [selectedNodes]);
+
+  /** Multi-select of two or more video asset nodes only — drives “Synthesis” spawn. */
+  const canVideoSynthesis =
+    selection.canGroup &&
+    selectedNodes.length >= 2 &&
+    selectedNodes.every((node) => node.type === VIDEO_NODE_TYPE);
 
   const position = useMemo(() => {
     if (!selection.show || selectedNodes.length === 0) return null;
@@ -169,6 +188,116 @@ const LocalGroupToolbarPanel: React.FC = () => {
     );
   };
 
+  const handleVideoSynthesis = useCallback(() => {
+    if (!canVideoSynthesis) return;
+
+    const orderedSources = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
+    const sourceUrls = orderedSources
+      .map((vn) => {
+        const d = (vn.data ?? {}) as LocalCanvasNodeData;
+        return (d.url ?? d.content ?? '').trim();
+      })
+      .filter(Boolean);
+
+    if (sourceUrls.length !== orderedSources.length) {
+      message.warning(
+        t(
+          'project.toolbar.synthesisMissingUrl',
+          'Each selected video must have media loaded (upload or visible URL) before merging.',
+        ),
+      );
+      return;
+    }
+
+    const bounds = getNodesBounds(selectedNodes);
+    const all = getNodes();
+    const maxZ = all.reduce((max, n) => Math.max(max, (n as Node & { zIndex?: number }).zIndex ?? 0), 0);
+    const newId = `${VIDEO_NODE_TYPE}-syn-${Date.now()}-${nanoid(5)}`;
+    const { w, h } = paletteOutputDefaults[VIDEO_NODE_TYPE];
+    const pendingData: LocalCanvasNodeData = {
+      ...buildPendingPaletteOutputData(VIDEO_NODE_TYPE),
+      name: t('project.toolbar.synthesisVideoName', 'Synthesized video'),
+      handles: {
+        target: [{ handleType: 'Video', number: 0 }],
+        source: [{ handleType: 'Video', number: 0 }],
+      },
+    };
+    const newNode: Node<LocalCanvasNodeData> & { zIndex?: number } = {
+      id: newId,
+      type: VIDEO_NODE_TYPE,
+      position: {
+        x: bounds.x + bounds.width + CANVAS_SPAWNED_OUTPUT_GAP_PX,
+        y: bounds.y,
+      },
+      style: { width: w, height: h },
+      data: pendingData,
+      selected: true,
+      zIndex: maxZ + 1,
+    };
+
+    setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), newNode]);
+
+    const newEdges: Edge[] = selectedNodes.map((vn) => ({
+      id: `e-syn-${vn.id}-${newId}-${nanoid(4)}`,
+      source: vn.id,
+      sourceHandle: videoFlowHandleId,
+      target: newId,
+      targetHandle: videoFlowHandleId,
+      type: 'default',
+    }));
+    setEdges((eds) => [...eds, ...newEdges]);
+
+    void (async () => {
+      try {
+        const outUrl = await concatVideosWithFfmpeg(sourceUrls);
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== newId) return n;
+            const prev = (n.data ?? {}) as LocalCanvasNodeData;
+            return {
+              ...n,
+              data: {
+                ...prev,
+                url: outUrl,
+                content: outUrl,
+                localOutputPending: false,
+                errorInfo: undefined,
+              },
+            };
+          }),
+        );
+      } catch {
+        message.error(
+          t(
+            'project.toolbar.synthesisFailed',
+            'Could not merge videos in the browser (format, size, or network). Try smaller clips or matching formats.',
+          ),
+        );
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== newId) return n;
+            const prev = (n.data ?? {}) as LocalCanvasNodeData;
+            return {
+              ...n,
+              data: {
+                ...prev,
+                localOutputPending: false,
+              },
+            };
+          }),
+        );
+      }
+    })();
+  }, [
+    canVideoSynthesis,
+    getNodes,
+    getNodesBounds,
+    selectedNodes,
+    setEdges,
+    setNodes,
+    t,
+  ]);
+
   if (!selection.show || !position) return null;
 
   return (
@@ -229,6 +358,26 @@ const LocalGroupToolbarPanel: React.FC = () => {
             <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>Background Color</span>
           </button>
         </Dropdown>
+
+        {canVideoSynthesis ? (
+          <>
+            <Divider type='vertical' className='h-[18px] mx-1 flex-shrink-0' />
+            <button
+              type='button'
+              className='h-7 px-2 flex items-center gap-1.5 rounded-[4px] cursor-pointer hover:bg-background-default-base-hover'
+              title={t('project.toolbar.synthesis', 'Synthesis')}
+              onClick={handleVideoSynthesis}
+            >
+              <RiMovie2Line
+                className='size-4 shrink-0 text-[var(--color-icon-secondary)]'
+                aria-hidden
+              />
+              <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
+                {t('project.toolbar.synthesis', 'Synthesis')}
+              </span>
+            </button>
+          </>
+        ) : null}
 
         <Divider type='vertical' className='h-[18px] mx-1 flex-shrink-0' />
 

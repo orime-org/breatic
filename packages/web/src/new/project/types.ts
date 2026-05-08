@@ -40,6 +40,17 @@ export interface ImageEditorNodeRuntimeData {
   prompt?: string;
   upstream?: string;
   parameter?: Record<string, unknown>;
+  /**
+   * Local `gen1001`–`gen1004` footer: category dropdown key (e.g. audio `tts`, text `chat`).
+   * Replaces agent-only UI — pairs with {@link modelLabel} / voice / language for the model pill.
+   */
+  generatorCategoryKey?: string;
+  /** Primary model name in the footer pill (all generator kinds). */
+  modelLabel?: string;
+  /** Audio generator: voice name in the pill summary. */
+  voiceLabel?: string;
+  /** Audio generator: language label in the pill summary. */
+  languageLabel?: string;
 }
 
 export type LocalCanvasNodeData = {

@@ -12,11 +12,19 @@ const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
 export const localFlowAgentNodes = [
-  { type: '1001', label: 'Text' },
-  { type: '1002', label: 'Image' },
-  { type: '1003', label: 'Video' },
-  { type: '1004', label: 'Audio' },
+  { type: '1001', label: 'Text', shortcut: 'Q' },
+  { type: '1002', label: 'Image', shortcut: 'W' },
+  { type: '1003', label: 'Video', shortcut: 'E' },
+  { type: '1004', label: 'Audio', shortcut: 'R' },
 ] as const;
+
+/** Maps {@link KeyboardEvent.code} to palette id `1001`–`1004` for quick agent-node selection. */
+export const agentNodeShortcutCodeToType: Readonly<Record<string, string>> = {
+  KeyQ: '1001',
+  KeyW: '1002',
+  KeyE: '1003',
+  KeyR: '1004',
+};
 
 export const localFlowAssetHandles: Record<string, { target?: { handleType: string; number: number }[] }> = {
   '1001': { target: [{ handleType: 'Text', number: 0 }] },

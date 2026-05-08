@@ -9,31 +9,7 @@ import {
   useInteractions,
   FloatingPortal,
 } from '@floating-ui/react';
-import { Icon } from '@/components/base/icon';
-import nodeIconMap from '@/apps/project/constants/nodeIconMap';
-
-/** Selectable node types (aligned with DataNodeHandle). */
-const agentNodes = [
-  { type: '1001', label: 'Text' },
-  { type: '1002', label: 'Image' },
-  { type: '1003', label: 'Video' },
-  { type: '1004', label: 'Audio' },
-] as const;
-
-const getNodeSubtitle = (templateType: string): string => {
-  switch (templateType) {
-    case '1001':
-      return 'Loads/Creates text content';
-    case '1002':
-      return 'Loads/Generates images';
-    case '1003':
-      return 'Loads/Generates video clips';
-    case '1004':
-      return 'Loads/Creates audio content';
-    default:
-      return '';
-  }
-};
+import AgentNodesMenuRows from '@/new/project/components/canvas/common/AgentNodesMenuRows';
 
 export interface ConnectEndCommandMenuProps {
   open: boolean;
@@ -108,43 +84,14 @@ const ConnectEndCommandMenu: React.FC<ConnectEndCommandMenuProps> = ({
     <div
       ref={(el) => { refs.setFloating(el); floatingRef.current = el; }}
       style={floatingStyles}
-      className='z-[1000] min-w-[220px] rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg'
+      className='z-[1000] min-w-[260px] rounded-[8px] bg-[var(--color-background-default-base)] p-2 shadow-lg'
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       data-testid='connect-end-command-menu'
       {...getFloatingProps()}
     >
       <div className='text-xs font-medium text-text-default-base mb-2 px-2'>Agent Nodes</div>
-      <div className='flex flex-col gap-0.5'>
-        {agentNodes.map((asset) => {
-          const iconName = nodeIconMap[asset.type];
-          return (
-            <div
-              key={asset.type}
-              role='button'
-              className='flex w-full min-h-9 items-center gap-3 rounded-[4px] px-2 py-1.5 text-left cursor-pointer hover:bg-background-default-secondary transition-colors'
-              onClick={() => onSelect(asset.type)}
-            >
-              {iconName && (
-                <Icon
-                  name={iconName}
-                  width={20}
-                  height={20}
-                  color='var(--color-icon-base)'
-                />
-              )}
-              <div className='flex flex-col justify-center min-w-0 flex-1'>
-                <span className='text-xs font-medium leading-4 text-text-default-base truncate'>
-                  {asset.label}
-                </span>
-                <span className='text-[10px] leading-3 text-text-default-tertiary truncate'>
-                  {getNodeSubtitle(asset.type)}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <AgentNodesMenuRows keyboardActive={open} onSelectType={onSelect} />
     </div>
   );
 
