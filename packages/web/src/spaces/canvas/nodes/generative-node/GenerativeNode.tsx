@@ -27,9 +27,11 @@
  *   - Picker keyboard navigation (↑↓ + Enter) .......................... F12
  */
 import React, { memo, useCallback, useMemo, useState } from 'react';
+import * as Y from 'yjs';
 import { type NodeProps, Position } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import NodeHeader from '../../common/NodeHeader';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
@@ -38,6 +40,8 @@ import {
   type ReferenceSuggestionItem,
 } from '@/features/prompt-editor';
 import '@/features/prompt-editor/prompt-editor.css';
+import Dropdown, { type MenuItemType } from '@/ui/dropdown';
+import { createTask } from '@/data/api/canvas';
 
 const GENERATIVE_NODE_WIDTH = 480;
 const GENERATIVE_NODE_HEIGHT = 320;
@@ -70,6 +74,18 @@ interface DerivedReference {
 }
 
 /**
+ * Strip `<…>` tags from the prompt fragment's stringification.
+ * F3 uses this as a quick path for the `params.prompt` field that
+ * goes into POST `/api/tasks`; the full chip-aware extraction (where
+ * each chip serializes to its `ChipSnapshot`) lands with F12 polish
+ * once the chat panel reuses the prompt-editor module.
+ */
+function extractPromptPlainText(fragment: unknown): string {
+  if (!(fragment instanceof Y.XmlFragment)) return '';
+  return fragment.toString().replace(/<[^>]+>/g, '').trim();
+}
+
+/**
  * Map ReactFlow node `type` codes to the spec's narrower
  * `sourceNodeType` enum used by chips / references. Anything that's
  * not a recognized data / generative node falls back to 'text' for
@@ -94,7 +110,14 @@ function mapNodeTypeToSourceType(
 
 const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
   const { nodes, edges } = useCanvasData();
-  const { updateNode, onEdgesChange } = useCanvasActions();
+  const {
+    updateNode,
+    onEdgesChange,
+    addAppendVersion,
+    addAppendVersionAsPrimary,
+    setPrimaryDownstreamEdge,
+  } = useCanvasActions();
+  const mgr = useActiveCanvasSpace();
   const wf = data as Partial<CanvasWorkflowNodeData> | undefined;
 
   const outputType = (wf?.outputType ?? 'image') as GenerativeOutputType;
@@ -163,13 +186,218 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
     [id, updateNode],
   );
 
-  const handleNewVersionClick = useCallback(() => {
-    // F3: POST /api/tasks { mode: 'append', targetId: <new sibling> }.
-  }, []);
+  /**
+   * Resolve the primary downstream node by walking outgoing edges
+   * (spec §10.13.5 v13 — at most one edge per source has
+   * `data.isPrimary === true`). Returns `null` when the rule is
+   * satisfied vacuously (no primary set), letting the ↻ button fall
+   * back to "✨ 新建".
+   */
+  const primaryDownstream = useMemo<
+    | { edgeId: string; targetNodeId: string; name: string; locked: boolean }
+    | null
+  >(() => {
+    const primaryEdge = edges.find(
+      (e) =>
+        e.source === id &&
+        (e.data as { isPrimary?: boolean } | undefined)?.isPrimary === true,
+    );
+    if (!primaryEdge) return null;
+    const target = nodes.find((n) => n.id === primaryEdge.target);
+    if (!target) return null;
+    const targetData = target.data as Partial<CanvasWorkflowNodeData> | undefined;
+    return {
+      edgeId: primaryEdge.id,
+      targetNodeId: target.id,
+      name: targetData?.name || target.id,
+      locked: Boolean(targetData?.locked),
+    };
+  }, [edges, nodes, id]);
 
+  /**
+   * All outgoing edges — material for the ↻ ▾ dropdown so the user
+   * can switch primary downstream without selecting an edge directly
+   * (spec §10.13.5 — single-input UI).
+   */
+  const outgoingChoices = useMemo<
+    Array<{
+      edgeId: string;
+      targetNodeId: string;
+      name: string;
+      locked: boolean;
+      isPrimary: boolean;
+    }>
+  >(() => {
+    const out: Array<{
+      edgeId: string;
+      targetNodeId: string;
+      name: string;
+      locked: boolean;
+      isPrimary: boolean;
+    }> = [];
+    for (const e of edges) {
+      if (e.source !== id) continue;
+      const target = nodes.find((n) => n.id === e.target);
+      if (!target) continue;
+      const targetData = target.data as Partial<CanvasWorkflowNodeData> | undefined;
+      out.push({
+        edgeId: e.id,
+        targetNodeId: target.id,
+        name: targetData?.name || target.id,
+        locked: Boolean(targetData?.locked),
+        isPrimary: Boolean((e.data as { isPrimary?: boolean } | undefined)?.isPrimary),
+      });
+    }
+    return out;
+  }, [edges, nodes, id]);
+
+  /**
+   * Extract the plain-text prompt off the node's `data.prompt`
+   * Y.XmlFragment so we can submit it to `/api/tasks`. F3 uses a
+   * naive `toString()` + tag-strip — chip serialization (ChipSnapshot
+   * objects per spec §10.13.2) lands when F12 polishes the chat
+   * panel and shares the extraction with both surfaces.
+   */
+  const getCurrentPromptText = useCallback((): string => {
+    if (!mgr) return '';
+    const nodeMap = mgr.nodesMap.get(id);
+    if (!(nodeMap instanceof Y.Map)) return '';
+    const dataMap = nodeMap.get('data');
+    if (!(dataMap instanceof Y.Map)) return '';
+    return extractPromptPlainText(dataMap.get('prompt'));
+  }, [mgr, id]);
+
+  /**
+   * ▶ 新增版本 — atomic create new sibling asset + non-primary
+   * edge, then POST `/api/tasks` with `mode: 'append'`.
+   */
+  const handleNewVersionClick = useCallback(() => {
+    if (!mgr || isPromptEmpty) return;
+    const { assetNodeId } = addAppendVersion(id);
+    const promptText = getCurrentPromptText();
+    void createTask({
+      task_type: outputType,
+      project_id: mgr.projectId,
+      space_id: mgr.spaceId,
+      target_node_id: assetNodeId,
+      node_ids: [assetNodeId],
+      mode: 'append',
+      source: 'canvas',
+      params: { prompt: promptText, kind, ...(wf?.params ?? {}) },
+      ...(wf?.model ? { model: wf.model } : {}),
+    }).catch((err) => {
+      // F3 keeps error handling minimal (toast etc. lands when the
+      // node-level error UI follows §10.13.7's failure path). Log
+      // here so dev sees what went wrong; production toast in F4.
+      console.error('[GenerativeNode] createTask append failed', err);
+    });
+  }, [
+    mgr,
+    isPromptEmpty,
+    addAppendVersion,
+    id,
+    getCurrentPromptText,
+    outputType,
+    kind,
+    wf?.params,
+    wf?.model,
+  ]);
+
+  /**
+   * ↻ 更新 (or ✨ 新建 when there's no primary) — branch per
+   * spec §10.13.4:
+   *  - has unlocked primary  → POST overwrite to primary target
+   *  - no primary            → atomic create + set primary, POST append
+   *  - primary locked        → button is disabled (caller doesn't reach here)
+   */
   const handleUpdatePrimaryClick = useCallback(() => {
-    // F3: POST /api/tasks { mode: 'overwrite', targetId: <primary downstream> }.
-  }, []);
+    if (!mgr || isPromptEmpty) return;
+    const promptText = getCurrentPromptText();
+
+    if (primaryDownstream) {
+      if (primaryDownstream.locked) return;
+      void createTask({
+        task_type: outputType,
+        project_id: mgr.projectId,
+        space_id: mgr.spaceId,
+        target_node_id: primaryDownstream.targetNodeId,
+        node_ids: [primaryDownstream.targetNodeId],
+        mode: 'overwrite',
+        source: 'canvas',
+        params: { prompt: promptText, kind, ...(wf?.params ?? {}) },
+        ...(wf?.model ? { model: wf.model } : {}),
+      }).catch((err) => {
+        console.error('[GenerativeNode] createTask overwrite failed', err);
+      });
+      return;
+    }
+
+    // Degenerate "✨ 新建" — atomically create the first asset
+    // child + primary edge, then post the append task.
+    const { assetNodeId } = addAppendVersionAsPrimary(id);
+    void createTask({
+      task_type: outputType,
+      project_id: mgr.projectId,
+      space_id: mgr.spaceId,
+      target_node_id: assetNodeId,
+      node_ids: [assetNodeId],
+      mode: 'append',
+      source: 'canvas',
+      params: { prompt: promptText, kind, ...(wf?.params ?? {}) },
+      ...(wf?.model ? { model: wf.model } : {}),
+    }).catch((err) => {
+      console.error('[GenerativeNode] createTask append-as-primary failed', err);
+    });
+  }, [
+    mgr,
+    isPromptEmpty,
+    primaryDownstream,
+    addAppendVersionAsPrimary,
+    id,
+    getCurrentPromptText,
+    outputType,
+    kind,
+    wf?.params,
+    wf?.model,
+  ]);
+
+  /**
+   * ↻ ▾ dropdown — pick which outgoing edge becomes primary, or
+   * clear primary entirely. The first item is the "no primary" reset
+   * (spec §10.13.5 v13). Locked targets get a 🔒 marker but stay
+   * pickable — locking only blocks overwrite, not the assignment.
+   */
+  const primaryDropdownItems = useMemo<MenuItemType[]>(() => {
+    const items: MenuItemType[] = [
+      {
+        key: '__none__',
+        label: `${primaryDownstream === null ? '●' : '○'} 无主下游(↻ 退化为新建)`,
+      },
+    ];
+    if (outgoingChoices.length > 0) {
+      items.push({ key: '__divider__', label: '', type: 'divider' });
+      for (const c of outgoingChoices) {
+        const marker = c.isPrimary ? '●' : '○';
+        const lock = c.locked ? ' 🔒' : '';
+        items.push({
+          key: c.edgeId,
+          label: `${marker} ${c.name}${lock}`,
+        });
+      }
+    }
+    return items;
+  }, [outgoingChoices, primaryDownstream]);
+
+  const handleDropdownClick = useCallback(
+    (key: string) => {
+      if (key === '__none__') {
+        setPrimaryDownstreamEdge(id, null);
+      } else if (key !== '__divider__') {
+        setPrimaryDownstreamEdge(id, key);
+      }
+    },
+    [setPrimaryDownstreamEdge, id],
+  );
 
   return (
     <>
@@ -293,19 +521,49 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
             className='h-7 px-3 rounded-md text-[12px] border border-border-default-secondary bg-background-default-base hover:bg-background-default-secondary disabled:opacity-50 disabled:cursor-not-allowed'
             disabled={isPromptEmpty}
             onClick={handleNewVersionClick}
-            title={isPromptEmpty ? 'Enter a prompt first' : 'Create new sibling version (F3)'}
+            title={isPromptEmpty ? 'Enter a prompt first' : 'Create a new sibling version (does not change primary downstream)'}
           >
             ▶ 新增版本
           </button>
-          <button
-            type='button'
-            className='h-7 px-3 rounded-md text-[12px] bg-background-default-secondary text-text-default-primary hover:bg-background-default-base-hover disabled:opacity-50 disabled:cursor-not-allowed'
-            disabled={isPromptEmpty}
-            onClick={handleUpdatePrimaryClick}
-            title={isPromptEmpty ? 'Enter a prompt first' : 'Update primary downstream (F3)'}
-          >
-            ↻ 更新
-          </button>
+          {/* ↻ button + ▾ primary picker — spec §10.13.4 / §10.13.5 v13 */}
+          <div className='flex items-stretch'>
+            <button
+              type='button'
+              className='h-7 px-3 rounded-l-md text-[12px] bg-background-default-secondary text-text-default-primary hover:bg-background-default-base-hover disabled:opacity-50 disabled:cursor-not-allowed'
+              disabled={
+                isPromptEmpty ||
+                (primaryDownstream !== null && primaryDownstream.locked)
+              }
+              onClick={handleUpdatePrimaryClick}
+              title={
+                isPromptEmpty
+                  ? 'Enter a prompt first'
+                  : primaryDownstream === null
+                    ? 'No primary downstream — clicking creates one (✨ 新建)'
+                    : primaryDownstream.locked
+                      ? `${primaryDownstream.name} is locked. Unlock first or pick a different primary in ▾.`
+                      : `Overwrite ${primaryDownstream.name}`
+              }
+            >
+              {primaryDownstream === null
+                ? '✨ 新建'
+                : `↻ 更新 ${primaryDownstream.name}${primaryDownstream.locked ? ' 🔒' : ''}`}
+            </button>
+            <Dropdown
+              items={primaryDropdownItems}
+              trigger='click'
+              onClick={handleDropdownClick}
+              placement='bottom-end'
+            >
+              <button
+                type='button'
+                className='h-7 px-2 rounded-r-md text-[12px] bg-background-default-secondary text-text-default-primary hover:bg-background-default-base-hover border-l border-border-default-secondary'
+                title='Pick primary downstream'
+              >
+                ▾
+              </button>
+            </Dropdown>
+          </div>
         </div>
       </div>
     </>

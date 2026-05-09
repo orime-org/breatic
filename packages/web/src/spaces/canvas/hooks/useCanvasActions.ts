@@ -29,6 +29,18 @@ function getOrigin(options?: HistoryOptions): string | symbol {
 }
 
 /**
+ * ReactFlow node type code by generative `outputType`. The atomic
+ * three-body create (spec §10.13.7) drops a sibling asset node of
+ * this type next to the generative source.
+ */
+const ASSET_TYPE_BY_OUTPUT: Record<'text' | 'image' | 'video' | 'audio', string> = {
+  text: '1001',
+  image: '1002',
+  video: '1003',
+  audio: '1004',
+};
+
+/**
  * Write spec/v13 audit metadata onto a fresh node's data Y.Map.
  *
  * Centralized here so every node-creation entrypoint (addNode /
@@ -45,6 +57,101 @@ function stampAuditFields(
   dataMap.set('createdAt', data?.createdAt ?? Date.now());
   dataMap.set('createdBy', data?.createdBy ?? currentUserId);
   dataMap.set('locked', data?.locked ?? false);
+}
+
+// ── Generative reference rail sync helpers (spec §10.13.3 v13) ────
+//
+// All helpers below MUST be called inside an existing
+// `mgr.doc.transact()` — they don't open their own transaction. The
+// caller batches the edge mutation + references sync into one atomic
+// op so collaborators never see a half-state where the rail row and
+// the actual edge disagree.
+
+/** Result codes used by tests / callers when a sync was a no-op. */
+type RefSyncResult = 'synced' | 'target-not-generative' | 'missing';
+
+/**
+ * Add a `{ refId, sourceNodeId, addedAt }` row to the target
+ * generative node's `references` Y.Array. Idempotent: if a row for
+ * this `sourceNodeId` already exists, do nothing (handles duplicate
+ * connect events without producing duplicate rail chips).
+ */
+function addReferenceRowIfGenerative(
+  mgr: CanvasSpaceManager,
+  sourceNodeId: string,
+  targetNodeId: string,
+): RefSyncResult {
+  const targetNodeMap = mgr.nodesMap.get(targetNodeId);
+  if (!(targetNodeMap instanceof Y.Map)) return 'missing';
+  if (targetNodeMap.get('type') !== 'generative') return 'target-not-generative';
+  const dataMap = targetNodeMap.get('data');
+  if (!(dataMap instanceof Y.Map)) return 'missing';
+
+  let refsArr = dataMap.get('references');
+  if (!(refsArr instanceof Y.Array)) {
+    refsArr = new Y.Array();
+    dataMap.set('references', refsArr);
+  }
+  const arr = refsArr as Y.Array<Y.Map<unknown>>;
+
+  // Dedupe by sourceNodeId — same upstream connecting twice (rare;
+  // happens when an edge is removed and re-added) reuses the row.
+  for (let i = 0; i < arr.length; i++) {
+    const row = arr.get(i);
+    if (row instanceof Y.Map && row.get('sourceNodeId') === sourceNodeId) {
+      return 'synced';
+    }
+  }
+
+  const row = new Y.Map();
+  row.set('refId', crypto.randomUUID());
+  row.set('sourceNodeId', sourceNodeId);
+  row.set('addedAt', Date.now());
+  arr.push([row]);
+  return 'synced';
+}
+
+/**
+ * Remove the rail row whose `sourceNodeId` matches. No-op when the
+ * row isn't present (already cleaned up by an earlier sync).
+ */
+function removeReferenceRowIfGenerative(
+  mgr: CanvasSpaceManager,
+  sourceNodeId: string,
+  targetNodeId: string,
+): RefSyncResult {
+  const targetNodeMap = mgr.nodesMap.get(targetNodeId);
+  if (!(targetNodeMap instanceof Y.Map)) return 'missing';
+  if (targetNodeMap.get('type') !== 'generative') return 'target-not-generative';
+  const dataMap = targetNodeMap.get('data');
+  if (!(dataMap instanceof Y.Map)) return 'missing';
+
+  const refsArr = dataMap.get('references');
+  if (!(refsArr instanceof Y.Array)) return 'synced';
+  const arr = refsArr as Y.Array<Y.Map<unknown>>;
+
+  for (let i = 0; i < arr.length; i++) {
+    const row = arr.get(i);
+    if (row instanceof Y.Map && row.get('sourceNodeId') === sourceNodeId) {
+      arr.delete(i, 1);
+      return 'synced';
+    }
+  }
+  return 'synced';
+}
+
+/**
+ * Read the source / target ids off an edge Y.Map. Returns `null` when
+ * either side is missing — defensive against malformed edges, rare
+ * but possible when a doc is hydrated mid-write.
+ */
+function readEdgeEndpoints(
+  edgeMap: Y.Map<unknown>,
+): { sourceId: string; targetId: string } | null {
+  const sourceId = edgeMap.get('source');
+  const targetId = edgeMap.get('target');
+  if (typeof sourceId !== 'string' || typeof targetId !== 'string') return null;
+  return { sourceId, targetId };
 }
 
 export function useCanvasActions() {
@@ -218,6 +325,16 @@ export function useCanvasActions() {
       mgr.doc.transact(() => {
         for (const change of changes) {
           if (change.type === 'remove') {
+            // Sync references BEFORE deleting the edge — once we delete
+            // the edge map the endpoint info is gone and we can't tell
+            // which generative node lost an upstream.
+            const edgeMap = mgr.edgesMap.get(change.id);
+            if (edgeMap instanceof Y.Map) {
+              const ends = readEdgeEndpoints(edgeMap);
+              if (ends) {
+                removeReferenceRowIfGenerative(mgr, ends.sourceId, ends.targetId);
+              }
+            }
             mgr.edgesMap.delete(change.id);
           }
         }
@@ -239,12 +356,16 @@ export function useCanvasActions() {
         edgeMap.set('target', connection.target);
         if (connection.sourceHandle) edgeMap.set('sourceHandle', connection.sourceHandle);
         if (connection.targetHandle) edgeMap.set('targetHandle', connection.targetHandle);
-        // v13: every new edge starts as non-primary. F3 will flip the
-        // flag atomically when the user picks a primary downstream.
+        // v13: every new edge starts as non-primary. The user picks a
+        // primary downstream explicitly via the ↻ ▾ dropdown.
         const dataMap = new Y.Map();
         dataMap.set('isPrimary', false);
         edgeMap.set('data', dataMap);
         mgr.edgesMap.set(edgeId, edgeMap);
+
+        // Sync the reference rail when target is a generative node
+        // (spec §10.13.3 — connections are the single source of truth).
+        addReferenceRowIfGenerative(mgr, connection.source, connection.target);
       }, getUserOrigin());
     },
     [],
@@ -256,7 +377,22 @@ export function useCanvasActions() {
       if (!mgr?.synced) return;
 
       mgr.doc.transact(() => {
+        // Bulk replace: clear every existing edge AND every generative
+        // node's references rail, then rebuild from `next`. We can't
+        // diff incrementally because callers like clipboard-paste pass
+        // a totally new edge set with no relationship to the old one.
         mgr.edgesMap.forEach((_val, key) => mgr.edgesMap.delete(key));
+        mgr.nodesMap.forEach((nodeMap) => {
+          if (!(nodeMap instanceof Y.Map)) return;
+          if (nodeMap.get('type') !== 'generative') return;
+          const dataMap = nodeMap.get('data');
+          if (!(dataMap instanceof Y.Map)) return;
+          const refs = dataMap.get('references');
+          if (refs instanceof Y.Array && refs.length > 0) {
+            refs.delete(0, refs.length);
+          }
+        });
+
         for (const edge of next) {
           const edgeMap = new Y.Map();
           edgeMap.set('id', edge.id);
@@ -271,6 +407,7 @@ export function useCanvasActions() {
           dataMap.set('isPrimary', Boolean(callerIsPrimary));
           edgeMap.set('data', dataMap);
           mgr.edgesMap.set(edge.id, edgeMap);
+          addReferenceRowIfGenerative(mgr, edge.source, edge.target);
         }
       }, getUserOrigin());
     },
@@ -372,20 +509,27 @@ export function useCanvasActions() {
   );
 
   /**
-   * Create a generative node (spec §10.13 v13).
+   * Create a generative node + its initial primary asset child + the
+   * primary edge — atomic three-body op per spec §10.13.7 v13.
    *
-   * Generative nodes are always `idle` — executing is a local button
-   * loading state (UX only) until F3 wires the atomic create flow.
-   * Each execute click eventually produces a new asset child node;
-   * F2 only renders the shell. `outputType` is fixed at creation:
-   * changing modality means deleting + creating a new node.
+   * The spec requires a generative node to land with at least one
+   * downstream so the user can immediately ▶ generate / ↻ regenerate
+   * without extra wiring. This hook does it all in one Yjs
+   * transaction so collaborators never see a half-state (e.g. a
+   * generative node whose first regenerate target hasn't been
+   * created yet).
+   *
+   * `outputType` is fixed at creation; changing modality means
+   * deleting + creating a new generative node. The asset child's
+   * type is derived from `outputType` (image → '1002', video →
+   * '1003', audio → '1004', text → '1001').
    *
    * @param opts.outputType - Asset modality this node will produce.
    * @param opts.kind - Sub-task variant (image: 文生图/图生图; audio: music/tts/旋律/环境音; …).
    * @param opts.model - Optional initial model id from config/models/*.yaml.
    * @param opts.params - Optional model-specific params.
-   * @param opts.position - Canvas coordinates (defaults to 0,0).
-   * @returns The new node's UUID v4 id.
+   * @param opts.position - Canvas coordinates of the generative node (defaults to 0,0). The asset child sits at +540px right (generative width 480 + 60px gap, spec §10.13.7).
+   * @returns The trio of ids the caller may need for downstream UX (selection, focus, navigation).
    */
   const createGenerativeNode = useCallback(
     (opts: {
@@ -394,48 +538,280 @@ export function useCanvasActions() {
       model?: string;
       params?: Record<string, unknown>;
       position?: { x: number; y: number };
-    }): string => {
+    }): { generativeNodeId: string; assetNodeId: string; primaryEdgeId: string } => {
       const mgr = getCanvasYjsManager();
-      const nodeId = crypto.randomUUID();
-      if (!mgr?.synced) return nodeId;
+      const generativeNodeId = crypto.randomUUID();
+      const assetNodeId = crypto.randomUUID();
+      const primaryEdgeId = `e-${generativeNodeId}-${assetNodeId}-primary`;
+      if (!mgr?.synced) return { generativeNodeId, assetNodeId, primaryEdgeId };
+
+      const userId = getCurrentUserId();
+      const genX = opts.position?.x ?? 0;
+      const genY = opts.position?.y ?? 0;
+      // Asset child sits to the right of the generative node — width
+      // 480 (GENERATIVE_NODE_WIDTH constant) + 60px gap = 540px.
+      const assetX = genX + 540;
+      const assetY = genY;
+
+      mgr.doc.transact(() => {
+        // ── (a) generative node ──────────────────────────────
+        const genMap = new Y.Map();
+        genMap.set('id', generativeNodeId);
+        genMap.set('type', 'generative');
+        const genPos = new Y.Map();
+        genPos.set('x', genX);
+        genPos.set('y', genY);
+        genMap.set('position', genPos);
+
+        const genData = new Y.Map();
+        genData.set('name', '');
+        stampAuditFields(genData, undefined, userId);
+        genData.set('state', 'idle');
+        genData.set('attachments', new Y.Array<AttachRef>());
+        genData.set('outputType', opts.outputType);
+        genData.set('kind', opts.kind);
+        genData.set('prompt', new Y.XmlFragment());
+        // F3: references rail Y.Array now lives in Yjs (sync'd in
+        // onConnect / onEdgesChange / setEdges / deleteNodeAndEdges).
+        genData.set('references', new Y.Array());
+        if (opts.model !== undefined) genData.set('model', opts.model);
+        if (opts.params !== undefined) genData.set('params', opts.params);
+        genMap.set('data', genData);
+        mgr.nodesMap.set(generativeNodeId, genMap);
+
+        // ── (b) initial asset child ──────────────────────────
+        const assetType = ASSET_TYPE_BY_OUTPUT[opts.outputType];
+        const assetMap = new Y.Map();
+        assetMap.set('id', assetNodeId);
+        assetMap.set('type', assetType);
+        const assetPos = new Y.Map();
+        assetPos.set('x', assetX);
+        assetPos.set('y', assetY);
+        assetMap.set('position', assetPos);
+
+        const assetData = new Y.Map();
+        assetData.set('name', `${opts.outputType} v1`);
+        stampAuditFields(assetData, undefined, userId);
+        assetData.set('state', 'idle');
+        assetData.set('attachments', new Y.Array<AttachRef>());
+        assetData.set('sourceNodeId', generativeNodeId);
+        assetMap.set('data', assetData);
+        mgr.nodesMap.set(assetNodeId, assetMap);
+
+        // ── (c) primary edge ─────────────────────────────────
+        const edgeMap = new Y.Map();
+        edgeMap.set('id', primaryEdgeId);
+        edgeMap.set('source', generativeNodeId);
+        edgeMap.set('target', assetNodeId);
+        const edgeData = new Y.Map();
+        edgeData.set('isPrimary', true);
+        edgeMap.set('data', edgeData);
+        mgr.edgesMap.set(primaryEdgeId, edgeMap);
+
+        // No reference rail sync needed — the edge target (asset) is
+        // not a generative node, so it has no reference rail.
+      }, getUserOrigin());
+
+      return { generativeNodeId, assetNodeId, primaryEdgeId };
+    },
+    [],
+  );
+
+  /**
+   * Atomically swap the primary downstream of a generative node
+   * (spec §10.13.5 v13). At most one outgoing edge per source can
+   * carry `data.isPrimary === true`; this helper enforces that
+   * invariant in a single transaction so collaborators never see
+   * a moment when zero or two edges are primary.
+   *
+   * @param generativeNodeId - The source node whose outgoing edges are reshuffled.
+   * @param primaryEdgeId - The new primary edge id, or `null` to clear (no primary downstream — the ↻ button degrades to ✨新建).
+   */
+  const setPrimaryDownstreamEdge = useCallback(
+    (generativeNodeId: string, primaryEdgeId: string | null): void => {
+      const mgr = getCanvasYjsManager();
+      if (!mgr?.synced) return;
+
+      mgr.doc.transact(() => {
+        mgr.edgesMap.forEach((edgeMap, edgeId) => {
+          if (!(edgeMap instanceof Y.Map)) return;
+          if (edgeMap.get('source') !== generativeNodeId) return;
+          const dataMap = edgeMap.get('data');
+          if (dataMap instanceof Y.Map) {
+            dataMap.set('isPrimary', edgeId === primaryEdgeId);
+          } else {
+            // Older edges without a `data` map — bring them up to v13
+            // shape so the invariant holds going forward.
+            const newData = new Y.Map();
+            newData.set('isPrimary', edgeId === primaryEdgeId);
+            edgeMap.set('data', newData);
+          }
+        });
+      }, getUserOrigin());
+    },
+    [],
+  );
+
+  /**
+   * ▶ 新增版本 — create a new sibling asset node connected to the
+   * generative node by a non-primary edge (spec §10.13.4 v13).
+   *
+   * The user invokes this when they want to keep the existing
+   * primary downstream untouched and produce another version.
+   * The new edge is **not** primary; the user can later promote it
+   * via the ↻ ▾ dropdown.
+   *
+   * @param generativeNodeId - The source generative node.
+   * @returns The new asset node id + edge id (caller posts to /api/tasks with `target_node_id: assetNodeId`).
+   */
+  const addAppendVersion = useCallback(
+    (generativeNodeId: string): { assetNodeId: string; edgeId: string } => {
+      const mgr = getCanvasYjsManager();
+      const assetNodeId = crypto.randomUUID();
+      const edgeId = `e-${generativeNodeId}-${assetNodeId}-${crypto.randomUUID().slice(0, 8)}`;
+      if (!mgr?.synced) return { assetNodeId, edgeId };
+
+      const genMap = mgr.nodesMap.get(generativeNodeId);
+      if (!(genMap instanceof Y.Map)) return { assetNodeId, edgeId };
+      const genData = genMap.get('data');
+      if (!(genData instanceof Y.Map)) return { assetNodeId, edgeId };
+
+      const outputType =
+        (genData.get('outputType') as 'text' | 'image' | 'video' | 'audio' | undefined) ?? 'image';
+      const assetType = ASSET_TYPE_BY_OUTPUT[outputType];
+      // Stagger versions vertically below the primary asset slot so
+      // they don't pile up. We can't read the live ReactFlow node
+      // positions from inside the Yjs world cheaply; the caller
+      // (GenerativeNode) ought to override `position` once a layout
+      // pass is in place. F3 simple stagger: count existing outgoing
+      // edges and offset by 100 * count.
+      let outgoingCount = 0;
+      mgr.edgesMap.forEach((edgeMap) => {
+        if (edgeMap instanceof Y.Map && edgeMap.get('source') === generativeNodeId) {
+          outgoingCount++;
+        }
+      });
+
+      const genPos = genMap.get('position');
+      const baseX = genPos instanceof Y.Map ? ((genPos.get('x') as number) ?? 0) : 0;
+      const baseY = genPos instanceof Y.Map ? ((genPos.get('y') as number) ?? 0) : 0;
+      const assetX = baseX + 540;
+      const assetY = baseY + outgoingCount * 100;
 
       const userId = getCurrentUserId();
       mgr.doc.transact(() => {
-        const nodeMap = new Y.Map();
-        nodeMap.set('id', nodeId);
-        nodeMap.set('type', 'generative');
-        const pos = new Y.Map();
-        pos.set('x', opts.position?.x ?? 0);
-        pos.set('y', opts.position?.y ?? 0);
-        nodeMap.set('position', pos);
+        const assetMap = new Y.Map();
+        assetMap.set('id', assetNodeId);
+        assetMap.set('type', assetType);
+        const assetPos = new Y.Map();
+        assetPos.set('x', assetX);
+        assetPos.set('y', assetY);
+        assetMap.set('position', assetPos);
 
-        const dataMap = new Y.Map();
-        dataMap.set('name', '');
-        stampAuditFields(dataMap, undefined, userId);
-        dataMap.set('state', 'idle');
-        dataMap.set('attachments', new Y.Array<AttachRef>());
-        dataMap.set('outputType', opts.outputType);
-        dataMap.set('kind', opts.kind);
-        // Generative node prompt is a Y.XmlFragment for TipTap rich text;
-        // F2 mockup uses a plain textarea but the fragment is created
-        // upfront so collaborators see the same Yjs shape regardless of
-        // which editor surface is mounted.
-        dataMap.set('prompt', new Y.XmlFragment());
-        // `references` is intentionally NOT initialized here. F2 derives
-        // the rail UI directly from incoming edges + nodes lookup, which
-        // is enough for the visual; the Yjs `references` Y.Array (with
-        // addedAt + ordering) is owned by F3 along with the edge↔refs
-        // bidirectional sync. Writing an empty Y.Array here would leave
-        // a field nobody reads or writes, which is exactly the
-        // "symptom moved" pattern — so we don't.
-        if (opts.model !== undefined) dataMap.set('model', opts.model);
-        if (opts.params !== undefined) dataMap.set('params', opts.params);
-        nodeMap.set('data', dataMap);
+        const assetData = new Y.Map();
+        assetData.set('name', `${outputType} v${outgoingCount + 1}`);
+        stampAuditFields(assetData, undefined, userId);
+        assetData.set('state', 'idle');
+        assetData.set('attachments', new Y.Array<AttachRef>());
+        assetData.set('sourceNodeId', generativeNodeId);
+        assetMap.set('data', assetData);
+        mgr.nodesMap.set(assetNodeId, assetMap);
 
-        mgr.nodesMap.set(nodeId, nodeMap);
+        const edgeMap = new Y.Map();
+        edgeMap.set('id', edgeId);
+        edgeMap.set('source', generativeNodeId);
+        edgeMap.set('target', assetNodeId);
+        const edgeData = new Y.Map();
+        edgeData.set('isPrimary', false);
+        edgeMap.set('data', edgeData);
+        mgr.edgesMap.set(edgeId, edgeMap);
       }, getUserOrigin());
 
-      return nodeId;
+      return { assetNodeId, edgeId };
+    },
+    [],
+  );
+
+  /**
+   * ↻ degenerate "✨ 新建" path (spec §10.13.4 v13) — invoked when
+   * the user clicks ↻ but the generative node has no primary
+   * downstream. Same as {@link addAppendVersion} but the new edge
+   * is set as the primary, and any other outgoing edges are demoted
+   * to non-primary in the same transaction (defensive — no other
+   * edge should be primary either, but enforce the invariant).
+   *
+   * @param generativeNodeId - The source generative node.
+   * @returns The new asset node id + edge id.
+   */
+  const addAppendVersionAsPrimary = useCallback(
+    (generativeNodeId: string): { assetNodeId: string; edgeId: string } => {
+      const mgr = getCanvasYjsManager();
+      const assetNodeId = crypto.randomUUID();
+      const edgeId = `e-${generativeNodeId}-${assetNodeId}-${crypto.randomUUID().slice(0, 8)}`;
+      if (!mgr?.synced) return { assetNodeId, edgeId };
+
+      const genMap = mgr.nodesMap.get(generativeNodeId);
+      if (!(genMap instanceof Y.Map)) return { assetNodeId, edgeId };
+      const genData = genMap.get('data');
+      if (!(genData instanceof Y.Map)) return { assetNodeId, edgeId };
+
+      const outputType =
+        (genData.get('outputType') as 'text' | 'image' | 'video' | 'audio' | undefined) ?? 'image';
+      const assetType = ASSET_TYPE_BY_OUTPUT[outputType];
+
+      let outgoingCount = 0;
+      mgr.edgesMap.forEach((edgeMap) => {
+        if (edgeMap instanceof Y.Map && edgeMap.get('source') === generativeNodeId) {
+          outgoingCount++;
+        }
+      });
+
+      const genPos = genMap.get('position');
+      const baseX = genPos instanceof Y.Map ? ((genPos.get('x') as number) ?? 0) : 0;
+      const baseY = genPos instanceof Y.Map ? ((genPos.get('y') as number) ?? 0) : 0;
+      const assetX = baseX + 540;
+      const assetY = baseY + outgoingCount * 100;
+
+      const userId = getCurrentUserId();
+      mgr.doc.transact(() => {
+        // Demote all existing outgoing edges to non-primary, then add
+        // the new edge as primary. Single transaction → invariant
+        // (≤ 1 primary per source) holds at every observable moment.
+        mgr.edgesMap.forEach((edgeMap) => {
+          if (!(edgeMap instanceof Y.Map)) return;
+          if (edgeMap.get('source') !== generativeNodeId) return;
+          const dataMap = edgeMap.get('data');
+          if (dataMap instanceof Y.Map) dataMap.set('isPrimary', false);
+        });
+
+        const assetMap = new Y.Map();
+        assetMap.set('id', assetNodeId);
+        assetMap.set('type', assetType);
+        const assetPos = new Y.Map();
+        assetPos.set('x', assetX);
+        assetPos.set('y', assetY);
+        assetMap.set('position', assetPos);
+
+        const assetData = new Y.Map();
+        assetData.set('name', `${outputType} v${outgoingCount + 1}`);
+        stampAuditFields(assetData, undefined, userId);
+        assetData.set('state', 'idle');
+        assetData.set('attachments', new Y.Array<AttachRef>());
+        assetData.set('sourceNodeId', generativeNodeId);
+        assetMap.set('data', assetData);
+        mgr.nodesMap.set(assetNodeId, assetMap);
+
+        const edgeMap = new Y.Map();
+        edgeMap.set('id', edgeId);
+        edgeMap.set('source', generativeNodeId);
+        edgeMap.set('target', assetNodeId);
+        const edgeData = new Y.Map();
+        edgeData.set('isPrimary', true);
+        edgeMap.set('data', edgeData);
+        mgr.edgesMap.set(edgeId, edgeMap);
+      }, getUserOrigin());
+
+      return { assetNodeId, edgeId };
     },
     [],
   );
@@ -509,6 +885,15 @@ export function useCanvasActions() {
             const src = edgeMap.get('source') as string;
             const tgt = edgeMap.get('target') as string;
             if (src === nodeId || tgt === nodeId) {
+              // Sync references rail before deleting the edge:
+              //  - if `tgt` is a generative node and `src !== nodeId`,
+              //    that generative loses a real upstream → drop row
+              //  - if `src` is a generative node, `tgt` was an asset
+              //    child being deleted alongside; no rail to sync (the
+              //    generative isn't the target of the edge)
+              if (tgt !== nodeId) {
+                removeReferenceRowIfGenerative(mgr, src, tgt);
+              }
               mgr.edgesMap.delete(edgeId);
             }
           }
@@ -612,5 +997,9 @@ export function useCanvasActions() {
     deleteNodeAndEdges,
     setNodeState,
     setNodeError,
+    // Generative dual-button + primary downstream (spec §10.13.4 / §10.13.5)
+    setPrimaryDownstreamEdge,
+    addAppendVersion,
+    addAppendVersionAsPrimary,
   };
 }
