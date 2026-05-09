@@ -48,10 +48,10 @@ export const users = pgTable(
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
     credits: doublePrecision("credits").default(0).notNull(),
-    // Breatic is credits-only (see docs/PRODUCT.md § 8.4). No subscription
-    // tiers, no membership levels — every user has the same feature set
-    // and pays per-use by deducting credits. The old `membership_type` /
-    // `membership_expires_at` columns were removed in 0010_* migration.
+    // Breatic is credits-only. No subscription tiers, no membership
+    // levels — every user has the same feature set and pays per-use by
+    // deducting credits. The old `membership_type` / `membership_expires_at`
+    // columns were removed in the 0010_* migration.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

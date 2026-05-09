@@ -42,7 +42,7 @@ packages/
 ├── server/   # HTTP 壳(Hono):routes/(auth/chat/canvas/mini-tools/projects/skills/tasks/payment/health) + middleware/
 ├── worker/   # BullMQ 壳:handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
 ├── collab/   # Hocuspocus 独立进程:server/auth/persistence/event-stream/task-listener
-└── web/      # React + ReactFlow + Yjs(内部 layered:ui/data/domain,详见 docs/FRONTEND.md)
+└── web/      # React + ReactFlow + Yjs(内部 layered:ui/data/domain)
 config/ agents/ skills/ locales/ uploads/(git-ignored)
 ```
 
@@ -68,7 +68,7 @@ config/ agents/ skills/ locales/ uploads/(git-ignored)
 - 文档命名 v10 multi-doc：`project-{id}/meta`（含 spaces 列表）+ `project-{id}/canvas-{spaceId}`（每个 Canvas Space 一个）
 - 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state；失败 = `idle` + `errorMessage`
 - Yjs 持久化走 PG `yjs_documents` 表（Hocuspocus Database extension）；跨实例同步走 Redis pub/sub（Hocuspocus Redis extension）
-- 节点结构 + 字段归属 + 状态机详细规范见 [docs/YJS.md](./docs/YJS.md)
+- 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
 ## 三层记忆 + Turn 压缩
 
@@ -117,7 +117,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 **两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap）独立运行，不使用 Skill。
 
-**metadata.json**：仅 `name` / `description` 必填；其他字段（`scope`/`category`/`tools`/`output_type`/`requires`/...）`skills-loader.ts` 都有 default 兜底（`scope` 默认 `["agent"]`，`category` 默认 `"default"`）。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 [docs/PRODUCT.md §6.2](./docs/PRODUCT.md#62-metadatajson-specification)。禁用 npm 字段（version/author/license/engines/files/main）。
+**metadata.json**：仅 `name` / `description` 必填；其他字段（`scope`/`category`/`tools`/`output_type`/`requires`/...）`skills-loader.ts` 都有 default 兜底（`scope` 默认 `["agent"]`，`category` 默认 `"default"`）。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 `packages/core/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段（version/author/license/engines/files/main）。
 
 ## Agent Tools（9 个）
 
@@ -168,7 +168,7 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 | 测试 | 与主文件同名加 `.test` | `useProjectSpaces.test.ts` |
 | 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
 
-详细前端架构（layer 划分、目录结构、Yjs 集成）见 [docs/FRONTEND.md](./docs/FRONTEND.md)。
+前端 layered 架构以 `packages/web/src/{ui,data,domain,features,spaces,pages,app}/` 目录组织，下层不 import 上层（严格单向依赖）。
 
 # 关键规范
 
