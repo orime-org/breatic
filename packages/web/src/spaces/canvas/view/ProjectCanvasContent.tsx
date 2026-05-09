@@ -60,7 +60,7 @@ import ConnectEndAnchorNode, {
 } from '@/spaces/canvas/common/ConnectEndAnchorNode';
 import CanvasCommentComposer from '@/spaces/canvas/common/CanvasCommentComposer';
 import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
-import NodeLibraryPanel from '@/spaces/canvas/view/NodeLibraryPanel';
+import { LeftFloatingMenu } from '@/features/canvas-left-menu';
 import CanvasRightOverlayPanel from '@/spaces/canvas/view/CanvasRightOverlayPanel';
 import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasViewportRegistrar';
 import { captureCanvasPickCaretRange } from '@/features/chat/components/AgentInput';
@@ -720,7 +720,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
           yjsCanRedo={yjsAny.canRedo}
           disabled={hotkeysDisabled}
         />
-        <NodeLibraryPanel />
+        <LeftFloatingMenu />
         <GroupToolbarPanel />
         {minimapOpen && <CustomMiniMap />}
         <UndoRedoToolbar
