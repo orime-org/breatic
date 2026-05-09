@@ -121,7 +121,7 @@ describe("CanvasNodeFields", () => {
     expect(node.data.sourceNodeId).toBe("node-0");
   });
 
-  it("accepts a generative node with prompt/model/modelParams populated", () => {
+  it("accepts a generative node with prompt/model/params populated", () => {
     const node: CanvasNodeFields = {
       id: "node-3",
       type: "generative",
@@ -135,8 +135,10 @@ describe("CanvasNodeFields", () => {
         handlingBy: { userId: "u1", username: "alice" },
         attachments: [],
         prompt: "a painting of a sunset",
+        outputType: "image",
+        kind: "文生图",
         model: "flux-dev",
-        modelParams: { steps: 30, guidance: 7.5 },
+        params: { steps: 30, guidance: 7.5 },
       },
     };
     expect(node.data.state).toBe("handling");

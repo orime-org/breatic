@@ -104,7 +104,7 @@ export type AgentCanvasPickConsumeFrom = PickConsumeFrom;
  * - `duration`          — video/audio duration in seconds
  * - `sourceNodeId`      — parent node id when produced by mini-tool
  * - `operation`/`operationParams` — mini-tool provenance
- * - `prompt`/`model`/`modelParams` — generative node fields
+ * - `outputType`/`kind`/`prompt`/`references`/`model`/`params` — generative node fields
  * - `childIds`          — group node child IDs
  * - `attachments`       — per-node upload pool (AttachRef[])
  *

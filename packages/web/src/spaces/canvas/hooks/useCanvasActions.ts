@@ -372,22 +372,27 @@ export function useCanvasActions() {
   );
 
   /**
-   * Create a generative node (prompt + model + params, no content).
+   * Create a generative node (spec §10.13 v13).
    *
-   * Generative nodes are always `idle` — executing is a local button loading state (UX only).
-   * Each execute click produces a new data node child.
+   * Generative nodes are always `idle` — executing is a local button
+   * loading state (UX only) until F3 wires the atomic create flow.
+   * Each execute click eventually produces a new asset child node;
+   * F2 only renders the shell. `outputType` is fixed at creation:
+   * changing modality means deleting + creating a new node.
    *
-   * @param opts.prompt - Optional initial prompt text (stored in the data field).
-   * @param opts.model - Model id from config/models/*.yaml.
-   * @param opts.modelParams - Model-specific params.
+   * @param opts.outputType - Asset modality this node will produce.
+   * @param opts.kind - Sub-task variant (image: 文生图/图生图; audio: music/tts/旋律/环境音; …).
+   * @param opts.model - Optional initial model id from config/models/*.yaml.
+   * @param opts.params - Optional model-specific params.
    * @param opts.position - Canvas coordinates (defaults to 0,0).
    * @returns The new node's UUID v4 id.
    */
   const createGenerativeNode = useCallback(
     (opts: {
-      prompt?: string;
+      outputType: 'text' | 'image' | 'video' | 'audio';
+      kind: string;
       model?: string;
-      modelParams?: Record<string, unknown>;
+      params?: Record<string, unknown>;
       position?: { x: number; y: number };
     }): string => {
       const mgr = getCanvasYjsManager();
@@ -409,10 +414,22 @@ export function useCanvasActions() {
         stampAuditFields(dataMap, undefined, userId);
         dataMap.set('state', 'idle');
         dataMap.set('attachments', new Y.Array<AttachRef>());
-        // Generative node prompt is a Y.XmlFragment for TipTap rich text
+        dataMap.set('outputType', opts.outputType);
+        dataMap.set('kind', opts.kind);
+        // Generative node prompt is a Y.XmlFragment for TipTap rich text;
+        // F2 mockup uses a plain textarea but the fragment is created
+        // upfront so collaborators see the same Yjs shape regardless of
+        // which editor surface is mounted.
         dataMap.set('prompt', new Y.XmlFragment());
+        // `references` is intentionally NOT initialized here. F2 derives
+        // the rail UI directly from incoming edges + nodes lookup, which
+        // is enough for the visual; the Yjs `references` Y.Array (with
+        // addedAt + ordering) is owned by F3 along with the edge↔refs
+        // bidirectional sync. Writing an empty Y.Array here would leave
+        // a field nobody reads or writes, which is exactly the
+        // "symptom moved" pattern — so we don't.
         if (opts.model !== undefined) dataMap.set('model', opts.model);
-        if (opts.modelParams !== undefined) dataMap.set('modelParams', opts.modelParams);
+        if (opts.params !== undefined) dataMap.set('params', opts.params);
         nodeMap.set('data', dataMap);
 
         mgr.nodesMap.set(nodeId, nodeMap);
