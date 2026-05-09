@@ -26,6 +26,7 @@ import {
   type CanvasWorkflowNodeData,
 } from '@/spaces/canvas/types';
 import NodeToolbar from './NodeToolbar';
+import { NodeFloatMenu, IMAGE_TOOLS } from '@/features/mini-tools';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
 import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
@@ -364,6 +365,15 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
             onTakePhotoClick={handleToolbarInfoClick}
           />
         </div>
+      </FlowNodeToolbar>
+      {/* Mini-tool float menu: only when the node has an asset to operate on. */}
+      <FlowNodeToolbar
+        position={Position.Top}
+        align='center'
+        offset={8}
+        isVisible={showTopToolbar && Boolean(displayImageUrl)}
+      >
+        <NodeFloatMenu nodeId={id} tools={IMAGE_TOOLS} />
       </FlowNodeToolbar>
       <div
         className='relative w-0 min-w-0'

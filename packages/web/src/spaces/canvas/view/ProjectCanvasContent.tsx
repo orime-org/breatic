@@ -61,6 +61,9 @@ import ConnectEndAnchorNode, {
 import CanvasCommentComposer from '@/spaces/canvas/common/CanvasCommentComposer';
 import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
 import { LeftFloatingMenu } from '@/features/canvas-left-menu';
+import { BottomToolbar, useMiniTool } from '@/features/mini-tools';
+import { executeImage } from '@/data/api/mini-tools';
+import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import CanvasRightOverlayPanel from '@/spaces/canvas/view/CanvasRightOverlayPanel';
 import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasViewportRegistrar';
 import { captureCanvasPickCaretRange } from '@/features/chat/components/AgentInput';
@@ -119,7 +122,10 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     addNode,
     setEdges,
     updateNode,
+    createDataNode,
   } = useCanvasActions();
+  const { clear: clearMiniTool } = useMiniTool();
+  const activeMgr = useActiveCanvasSpace();
   const {
     canvasOverlayPanel,
     closeCanvasOverlayPanel,
@@ -654,6 +660,88 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     canRedo?: boolean;
   };
 
+  /**
+   * Mini-tool Apply handler. Three steps in one user action:
+   *   1. Spawn a new sibling asset node (idle, with operation +
+   *      operationParams stamped) at +360px right of the source so
+   *      the layout doesn't overlap.
+   *   2. Connect source → sibling with a non-primary edge so the
+   *      lineage is visible on the canvas (matches mockup §10.13).
+   *   3. POST `/api/v1/mini-tools/image` with target_node_id =
+   *      sibling. The Worker drives state transitions
+   *      (idle → handling → idle/error) via NodeStateUpdateEvent
+   *      → Hocuspocus → Yjs, so the frontend doesn't manually flip
+   *      `state` here.
+   *
+   * F4-framework only handles Category B (backend) tools. Picking a
+   * Category A tool today still calls this handler — the request
+   * will 4xx since the server schema covers Category B only — which
+   * is fine: F4-categoryA will route Category A through an in-browser
+   * canvas op instead of going to the network.
+   */
+  const handleMiniToolApply = useCallback(
+    ({
+      nodeId,
+      toolId,
+      values,
+    }: {
+      nodeId: string;
+      toolId: string;
+      values: Record<string, unknown>;
+    }) => {
+      if (!activeMgr) return;
+      const sourceNode = nodesRef.current.find((n) => n.id === nodeId);
+      if (!sourceNode) return;
+      const sourceData = sourceNode.data as { content?: string } | undefined;
+      const imageUrl = sourceData?.content;
+      if (!imageUrl) return;
+
+      const targetNodeId = createDataNode({
+        type: '1002',
+        sourceNodeId: nodeId,
+        position: {
+          x: sourceNode.position.x + 360,
+          y: sourceNode.position.y + 80,
+        },
+        data: {
+          name: toolId,
+          operation: toolId,
+          operationParams: values,
+        },
+      });
+
+      const edgeId = `e-${nodeId}-${targetNodeId}`;
+      setEdges([
+        ...edgesRef.current,
+        {
+          id: edgeId,
+          source: nodeId,
+          target: targetNodeId,
+          sourceHandle: 'Image_0_0',
+          targetHandle: 'Image_0_0',
+        },
+      ]);
+
+      void executeImage({
+        tool: toolId,
+        image: imageUrl,
+        project_id: activeMgr.projectId,
+        space_id: activeMgr.spaceId,
+        target_node_id: targetNodeId,
+        node_ids: [targetNodeId],
+        ...values,
+      }).catch((err) => {
+        // F4-framework: console for dev. Toast UI lands when the
+        // canvas-level error surface is unified (F8 ViewportToolbar
+        // is one candidate spot for a global mini-tool toast).
+        console.error('[mini-tool] executeImage failed', err);
+      });
+
+      clearMiniTool();
+    },
+    [activeMgr, createDataNode, setEdges, clearMiniTool],
+  );
+
   return (
     <div
       data-project-canvas-flow-root
@@ -755,6 +843,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         />
       </ReactFlow>
 
+      <BottomToolbar onApply={handleMiniToolApply} />
       {canvasOverlayPanel.open && (
         <div className='absolute top-[10px] right-[10px] bottom-[10px] z-10 pointer-events-auto'>
           <CanvasRightOverlayPanel onClose={closeCanvasOverlayPanel} />
