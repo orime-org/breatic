@@ -77,6 +77,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     projectId,
     spaceId,
     body.task_type,
+    mode,
     body.params,
     body.model,
     body.skill_name,
@@ -205,11 +206,14 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
     prompt: body.prompt,
   };
 
+  // Understand tasks transcribe / analyze a media URL into a result node;
+  // they always produce a new node ('append'), no overwrite semantics.
   const task = await taskService.create(
     user.id,
     body.project_id,
     body.space_id,
     "understand",
+    "append",
     params,
     body.model,
   );
@@ -224,6 +228,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
       taskType: "understand",
       model: body.model,
       params,
+      mode: "append" as const,
     },
     defaultJobOpts(),
   );

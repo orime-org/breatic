@@ -48,6 +48,7 @@ describe("POST /canvas/tasks — project_id ownership", () => {
         task_type: "image",
         params: { prompt: "hi", node_id: "n-1" },
         model: "test",
+        mode: "append",
       }),
     });
     expect(res.status).toBe(403);

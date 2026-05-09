@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "mode" varchar(16) NOT NULL;

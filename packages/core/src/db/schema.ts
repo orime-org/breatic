@@ -221,6 +221,18 @@ export const tasks = pgTable(
      */
     spaceId: uuid("space_id").notNull(),
     taskType: varchar("task_type", { length: 50 }).notNull(),
+    /**
+     * Execution mode (spec §10.13 + §10.15).
+     *
+     * - `append`: produces a new sibling node. No lock — the new nodeId
+     *   is freshly generated, no contention possible.
+     * - `overwrite`: replaces an existing node's data. Server SETNX-locks
+     *   the target node; concurrent overwrites get 409 ConflictLocked.
+     *
+     * Required (no default) — every task creator must declare intent
+     * explicitly. Mini-tools and AIGC direct flows pass `'append'`.
+     */
+    mode: varchar("mode", { length: 16 }).notNull(),
     model: varchar("model", { length: 100 }),
     skillName: varchar("skill_name", { length: 100 }),
     status: varchar("status", { length: 20 }).default("pending").notNull(),

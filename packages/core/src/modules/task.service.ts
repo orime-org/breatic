@@ -18,6 +18,9 @@ import type { TaskEntity } from "@breatic/shared";
  * @param spaceId - Space within the project (required; the Worker writes
  *   results back to `project-{projectId}/canvas-{spaceId}` — v10 multi-doc)
  * @param taskType - Task type identifier (e.g. "image", "audio")
+ * @param mode - Required execution mode (spec §10.13 / §10.15):
+ *   `'append'` (new sibling node) or `'overwrite'` (replace target's data;
+ *   caller must hold the canvas-node Redis lock first).
  * @param params - Task parameters
  * @param model - Optional model name
  * @param skillName - Optional skill to execute
@@ -29,6 +32,7 @@ export async function create(
   projectId: string | undefined,
   spaceId: string,
   taskType: string,
+  mode: "append" | "overwrite",
   params: Record<string, unknown>,
   model?: string,
   skillName?: string,
@@ -39,6 +43,7 @@ export async function create(
     projectId,
     spaceId,
     taskType,
+    mode,
     params,
     model,
     skillName,
