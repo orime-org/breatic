@@ -11,6 +11,7 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { ProjectLayoutProvider, useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
 import { useUserRole } from '@/domain/user/useUserRole';
+import { CurrentUserIdProvider } from '@/domain/user/CurrentUserContext';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import * as authApi from '@/data/api/auth';
@@ -169,6 +170,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   }, [isResizingRightEditor]);
 
   return (
+    <CurrentUserIdProvider value={currentUserId}>
     <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
       <div className='flex flex-col w-screen h-screen overflow-hidden'>
         <TopBar
@@ -320,6 +322,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
         </Group>
       </div>
     </ProjectWorkspaceRegionContext.Provider>
+    </CurrentUserIdProvider>
   );
 };
 

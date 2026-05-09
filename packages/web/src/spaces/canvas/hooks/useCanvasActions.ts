@@ -18,6 +18,7 @@ import {
 } from '@/data/yjs/canvas-space';
 import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
+import { useCurrentUserId } from '@/domain/user/CurrentUserContext';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 import type { NodeState, HandlingActor, CanvasNodeFields, AttachRef } from '@breatic/shared';
 
@@ -25,6 +26,25 @@ type HistoryOptions = { history?: 'default' | 'skip' };
 
 function getOrigin(options?: HistoryOptions): string | symbol {
   return options?.history === 'skip' ? noHistoryOrigin : getUserOrigin();
+}
+
+/**
+ * Write spec/v13 audit metadata onto a fresh node's data Y.Map.
+ *
+ * Centralized here so every node-creation entrypoint (addNode /
+ * setNodes / createDataNode / createGenerativeNode) stamps the same
+ * three fields the same way. Caller-supplied data overrides the
+ * defaults, e.g. a duplicate-node clone may keep the original
+ * `createdAt` to preserve provenance.
+ */
+function stampAuditFields(
+  dataMap: Y.Map<unknown>,
+  data: Partial<CanvasNodeFields['data']> | undefined,
+  currentUserId: string,
+): void {
+  dataMap.set('createdAt', data?.createdAt ?? Date.now());
+  dataMap.set('createdBy', data?.createdBy ?? currentUserId);
+  dataMap.set('locked', data?.locked ?? false);
 }
 
 export function useCanvasActions() {
@@ -39,12 +59,20 @@ export function useCanvasActions() {
   const getCanvasYjsManager = (): CanvasSpaceManager | null =>
     activeMgrRef.current;
 
+  // Pinned on a ref for the same reason as the manager — keeps the
+  // useCallback dep arrays empty while still observing user-id changes.
+  const currentUserId = useCurrentUserId();
+  const currentUserIdRef = useRef<string | null>(currentUserId);
+  currentUserIdRef.current = currentUserId;
+  const getCurrentUserId = (): string => currentUserIdRef.current ?? '';
+
   const addNode = useCallback(
     (node: Node, options?: { select?: boolean } & HistoryOptions) => {
       const mgr = getCanvasYjsManager();
       if (!mgr?.synced) return;
 
       const origin = getOrigin(options);
+      const userId = getCurrentUserId();
       mgr.doc.transact(() => {
         const nodeMap = new Y.Map();
         nodeMap.set('id', node.id);
@@ -56,6 +84,7 @@ export function useCanvasActions() {
 
         const dataMap = new Y.Map();
         dataMap.set('name', node.data?.name ?? '');
+        stampAuditFields(dataMap, node.data as Partial<CanvasNodeFields['data']> | undefined, userId);
         // Canvas-native schema: state machine, no history array
         dataMap.set('state', (node.data?.state as string) ?? 'idle');
         dataMap.set('attachments', new Y.Array());
@@ -151,6 +180,7 @@ export function useCanvasActions() {
       if (!mgr?.synced) return;
 
       const origin = getOrigin(options);
+      const userId = getCurrentUserId();
       mgr.doc.transact(() => {
         mgr.nodesMap.forEach((_val, key) => mgr.nodesMap.delete(key));
         for (const node of next) {
@@ -164,6 +194,7 @@ export function useCanvasActions() {
 
           const dataMap = new Y.Map();
           dataMap.set('name', node.data?.name ?? '');
+          stampAuditFields(dataMap, node.data as Partial<CanvasNodeFields['data']> | undefined, userId);
           // Canvas-native schema: state machine, no history array
           dataMap.set('state', (node.data?.state as string) ?? 'idle');
           dataMap.set('attachments', new Y.Array());
@@ -208,6 +239,11 @@ export function useCanvasActions() {
         edgeMap.set('target', connection.target);
         if (connection.sourceHandle) edgeMap.set('sourceHandle', connection.sourceHandle);
         if (connection.targetHandle) edgeMap.set('targetHandle', connection.targetHandle);
+        // v13: every new edge starts as non-primary. F3 will flip the
+        // flag atomically when the user picks a primary downstream.
+        const dataMap = new Y.Map();
+        dataMap.set('isPrimary', false);
+        edgeMap.set('data', dataMap);
         mgr.edgesMap.set(edgeId, edgeMap);
       }, getUserOrigin());
     },
@@ -228,6 +264,12 @@ export function useCanvasActions() {
           edgeMap.set('target', edge.target);
           if (edge.sourceHandle) edgeMap.set('sourceHandle', edge.sourceHandle);
           if (edge.targetHandle) edgeMap.set('targetHandle', edge.targetHandle);
+          // Preserve `isPrimary` from caller-supplied edge.data when present
+          // (e.g. duplicate / undo); otherwise default to non-primary.
+          const callerIsPrimary = (edge.data as { isPrimary?: boolean } | undefined)?.isPrimary;
+          const dataMap = new Y.Map();
+          dataMap.set('isPrimary', Boolean(callerIsPrimary));
+          edgeMap.set('data', dataMap);
           mgr.edgesMap.set(edge.id, edgeMap);
         }
       }, getUserOrigin());
@@ -296,6 +338,7 @@ export function useCanvasActions() {
       const nodeId = crypto.randomUUID();
       if (!mgr?.synced) return nodeId;
 
+      const userId = getCurrentUserId();
       mgr.doc.transact(() => {
         const nodeMap = new Y.Map();
         nodeMap.set('id', nodeId);
@@ -307,6 +350,7 @@ export function useCanvasActions() {
 
         const dataMap = new Y.Map();
         dataMap.set('name', opts.data?.name ?? '');
+        stampAuditFields(dataMap, opts.data, userId);
         dataMap.set('state', 'idle');
         dataMap.set('attachments', new Y.Array<AttachRef>());
         if (opts.data?.content !== undefined) dataMap.set('content', opts.data.content);
@@ -350,6 +394,7 @@ export function useCanvasActions() {
       const nodeId = crypto.randomUUID();
       if (!mgr?.synced) return nodeId;
 
+      const userId = getCurrentUserId();
       mgr.doc.transact(() => {
         const nodeMap = new Y.Map();
         nodeMap.set('id', nodeId);
@@ -361,6 +406,7 @@ export function useCanvasActions() {
 
         const dataMap = new Y.Map();
         dataMap.set('name', '');
+        stampAuditFields(dataMap, undefined, userId);
         dataMap.set('state', 'idle');
         dataMap.set('attachments', new Y.Array<AttachRef>());
         // Generative node prompt is a Y.XmlFragment for TipTap rich text
@@ -390,6 +436,8 @@ export function useCanvasActions() {
       sourceNodeId: string;
       targetNodeId: string;
       label?: string;
+      /** When true, marks this edge as the primary downstream (spec §10.13.2 v13). Default false. */
+      isPrimary?: boolean;
     }): string => {
       const mgr = getCanvasYjsManager();
       const edgeId = `e-${opts.sourceNodeId}-${opts.targetNodeId}-${crypto.randomUUID().slice(0, 8)}`;
@@ -401,6 +449,9 @@ export function useCanvasActions() {
         edgeMap.set('source', opts.sourceNodeId);
         edgeMap.set('target', opts.targetNodeId);
         if (opts.label !== undefined) edgeMap.set('label', opts.label);
+        const dataMap = new Y.Map();
+        dataMap.set('isPrimary', Boolean(opts.isPrimary));
+        edgeMap.set('data', dataMap);
         mgr.edgesMap.set(edgeId, edgeMap);
       }, getUserOrigin());
 

@@ -41,6 +41,12 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
     data: dataMap instanceof Y.Map
       ? {
           name: (dataMap.get('name') as string) ?? '',
+          // ── Audit / lifecycle metadata (v13) ──────────────────
+          // Pre-v13 nodes won't have these set; reader fallbacks
+          // give them sentinel defaults so type stays well-formed.
+          createdAt: (dataMap.get('createdAt') as number) ?? 0,
+          createdBy: (dataMap.get('createdBy') as string) ?? '',
+          locked: (dataMap.get('locked') as boolean) ?? false,
           // ── State machine (canvas-native schema) ──────────────
           state: (dataMap.get('state') as string) ?? 'idle',
           handlingBy: dataMap.get('handlingBy') as { userId: string; username: string } | undefined,
@@ -62,17 +68,23 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
           // ── UI-only transient signals (not in Yjs history schema) ──
           pickState: dataMap.get('pickState') ?? undefined,
         }
-      : { name: '', state: 'idle', attachments: [] },
+      : { name: '', createdAt: 0, createdBy: '', locked: false, state: 'idle', attachments: [] },
   };
 }
 
 function yMapToEdge(edgeMap: Y.Map<unknown>, id: string): Edge {
+  // v13: edges may carry a data Y.Map with `isPrimary` for generative
+  // primary-downstream tracking (spec §10.13.2 / §10.13.5). Pre-v13
+  // edges have no `data` map; reader treats them as `isPrimary: false`.
+  const dataMap = edgeMap.get('data') as Y.Map<unknown> | undefined;
+  const isPrimary = dataMap instanceof Y.Map ? Boolean(dataMap.get('isPrimary')) : false;
   return {
     id,
     source: (edgeMap.get('source') as string) ?? '',
     target: (edgeMap.get('target') as string) ?? '',
     sourceHandle: edgeMap.get('sourceHandle') as string | undefined,
     targetHandle: edgeMap.get('targetHandle') as string | undefined,
+    data: { isPrimary },
   };
 }
 

@@ -79,6 +79,9 @@ describe("CanvasNodeFields", () => {
       position: { x: 100, y: 200 },
       data: {
         name: "Image Node",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
         state: "idle",
         attachments: [],
       },
@@ -95,6 +98,9 @@ describe("CanvasNodeFields", () => {
       position: { x: 50, y: 50 },
       data: {
         name: "Result Image",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
         state: "idle",
         attachments: [],
         handlingBy: undefined,
@@ -122,6 +128,9 @@ describe("CanvasNodeFields", () => {
       position: { x: 0, y: 0 },
       data: {
         name: "Generate Art",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
         state: "handling",
         handlingBy: { userId: "u1", username: "alice" },
         attachments: [],
@@ -142,6 +151,9 @@ describe("CanvasNodeFields", () => {
       position: { x: 0, y: 0 },
       data: {
         name: "My Group",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
         state: "idle",
         attachments: [],
         childIds: ["node-1", "node-2"],
@@ -150,9 +162,32 @@ describe("CanvasNodeFields", () => {
     expect(node.data.childIds).toEqual(["node-1", "node-2"]);
   });
 
+  it("locked defaults to false (still required) and createdAt/createdBy are required", () => {
+    // v13: audit fields are mandatory on every node creation, not optional.
+    // Reader-side fallbacks handle pre-v13 docs; type definition stays strict.
+    const node: CanvasNodeFields = {
+      id: "node-locked",
+      type: "1002",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "Locked node",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: true,
+        state: "idle",
+        attachments: [],
+      },
+    };
+    expect(node.data.locked).toBe(true);
+    expect(node.data.createdBy).toBe("user-1");
+  });
+
   it("removed data fields no longer compile", () => {
     const data: CanvasNodeFields["data"] = {
       name: "x",
+      createdAt: 1714492800000,
+      createdBy: "user-1",
+      locked: false,
       state: "idle",
       attachments: [],
     };

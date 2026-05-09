@@ -32,6 +32,7 @@ export type {
   HandlingActor,
   AttachRef,
   CanvasNodeFields,
+  CanvasEdgeData,
   NodeStateUpdateEvent,
   NodeEvent,
   ProjectRole,
