@@ -22,3 +22,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Playwright (smoke tests + browser binaries)
+/test-results
+/playwright-report
+/playwright/.cache
+/playwright/.auth
+/blob-report
