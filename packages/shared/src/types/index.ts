@@ -20,6 +20,7 @@ export type {
   HandlingActor,
   AttachRef,
   CanvasNodeFields,
+  CanvasEdgeData,
   NodeStateUpdateEvent,
   NodeEvent,
 } from "./canvas-node.js";

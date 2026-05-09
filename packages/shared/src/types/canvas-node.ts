@@ -54,6 +54,14 @@ export interface CanvasNodeFields {
     /** Display label. */
     name: string;
 
+    // ─── Audit / lifecycle metadata (v13, all node types) ─────
+    /** Creation time as epoch ms. Set once at node creation; never updated. */
+    createdAt: number;
+    /** User id who created the node. Set once at creation; never updated. */
+    createdBy: string;
+    /** When true, mini-tools / Worker writes / accidental deletes are blocked (spec §10.13.6). */
+    locked: boolean;
+
     // ─── State machine (all node types) ─────────────────────
     /** Yjs-shared lifecycle. */
     state: NodeState;
@@ -155,3 +163,19 @@ export interface NodeStateUpdateEvent {
 
 /** Single union for forward-compat. */
 export type NodeEvent = NodeStateUpdateEvent;
+
+// ── Edge schema (v13) ──────────────────────────────────────────────
+
+/**
+ * Per-edge data fields stored under `edgeMap.data` (a Y.Map at runtime).
+ *
+ * `isPrimary` is meaningful only on a generative node's outgoing edges:
+ * at most one such edge per source carries `isPrimary: true` and marks
+ * the "primary downstream" the next regenerate updates in place
+ * (spec §10.13.2 / §10.13.5). Non-generative edges should leave it
+ * absent (or `false`); the invariant is enforced by frontend writers.
+ */
+export interface CanvasEdgeData {
+  /** Marks the primary-downstream edge from a generative node. At most 1 true per source node. */
+  isPrimary?: boolean;
+}
