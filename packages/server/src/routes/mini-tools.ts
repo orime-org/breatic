@@ -66,11 +66,15 @@ async function enqueueMiniTool(
   spaceId: string,
   targetNodeIds: string[] = [],
 ): Promise<{ task_id: string; status: string }> {
+  // Mini-tools always create a new sibling result node (the caller
+  // pre-allocates `target_node_id` as a fresh UUID), so mode is
+  // unconditionally 'append'. No SETNX lock — fresh nodeId can't conflict.
   const task = await taskService.create(
     userId,
     projectId,
     spaceId,
     taskType,
+    "append",
     params,
     undefined,
     undefined,
@@ -94,6 +98,7 @@ async function enqueueMiniTool(
       params,
       source: "mini_tool",
       targetNodeIds,
+      mode: "append" as const,
     },
     defaultJobOpts(),
   );

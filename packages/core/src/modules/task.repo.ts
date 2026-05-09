@@ -17,6 +17,7 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     projectId: row.projectId,
     spaceId: row.spaceId,
     taskType: row.taskType,
+    mode: row.mode as "append" | "overwrite",
     model: row.model,
     skillName: row.skillName,
     status: row.status,
@@ -86,6 +87,12 @@ export async function createTask(data: {
    */
   spaceId: string;
   taskType: string;
+  /**
+   * Required (spec §10.13 + §10.15). `'append'` for new-sibling flows,
+   * `'overwrite'` for in-place replacement (caller must hold the
+   * canvas-node Redis lock before reaching here).
+   */
+  mode: "append" | "overwrite";
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
@@ -98,6 +105,7 @@ export async function createTask(data: {
       projectId: data.projectId,
       spaceId: data.spaceId,
       taskType: data.taskType,
+      mode: data.mode,
       params: data.params,
       model: data.model,
       skillName: data.skillName,

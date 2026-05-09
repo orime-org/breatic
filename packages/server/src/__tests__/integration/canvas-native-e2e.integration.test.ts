@@ -426,6 +426,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
+      mode: "append",
       source: "mini_tool",
       params: {},
     }).returning();
@@ -442,6 +443,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      mode: "append" as const,
     }, { attempts: 1 });
 
     // Wait for task to complete in DB
@@ -507,6 +509,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
+      mode: "append",
       source: "mini_tool",
       params: {},
     }).returning();
@@ -522,6 +525,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      mode: "append" as const,
     }, { attempts: 1 }); // 1 attempt so it fails fast without retries
 
     // Wait for task DB status → failed
@@ -591,6 +595,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       projectId: FIXTURE_PROJECT_ID,
       spaceId: FIXTURE_SPACE_ID,
       taskType: "image",
+      mode: "append",
       source: "mini_tool",
       params: {},
     }).returning();
@@ -606,6 +611,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "multi-angle",
       params: {},
       targetNodeIds: nodeIds,
+      mode: "append" as const,
     }, { attempts: 1 });
 
     // Wait for task to complete

@@ -79,16 +79,18 @@ export const taskCreateSchema = z
      */
     target_node_id: z.string().uuid().optional(),
     /**
-     * Execution mode (spec §10.13 generative dual-button + §10.15 lock):
+     * Execution mode (spec §10.13 generative dual-button + §10.15 lock).
+     * Required — every caller must declare intent explicitly.
      *
-     *   - `append` (default): create a new sibling result node. No lock
-     *     contention because the new node has its own UUID.
+     *   - `append`: create a new sibling result node. No lock contention
+     *     because the new node has its own UUID. Mini-tools / AIGC direct
+     *     flows always use this.
      *   - `overwrite`: replace the existing `target_node_id` node's data.
      *     Requires `target_node_id`. The server SETNX-locks the node so
      *     concurrent overwrites are rejected with `ConflictLocked` 409
      *     (spec §10.15.3 two-tier check).
      */
-    mode: z.enum(["append", "overwrite"]).default("append"),
+    mode: z.enum(["append", "overwrite"]),
   })
   .superRefine((val, ctx) => {
     if (val.mode === "overwrite" && !val.target_node_id) {

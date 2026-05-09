@@ -70,6 +70,7 @@ describe("Tasks routes", () => {
           source: "canvas",
           project_id: PID,
           space_id: SID,
+          mode: "append",
         }),
       });
 
@@ -90,6 +91,7 @@ describe("Tasks routes", () => {
           source: "canvas",
           project_id: PID,
           space_id: SID,
+          mode: "append",
         }),
       });
 

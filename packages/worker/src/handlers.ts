@@ -80,16 +80,19 @@ export interface TaskJobData {
    */
   targetNodeIds?: string[];
   /**
-   * Execution mode (spec §10.13 / §10.15). When `'overwrite'`, the server
-   * already SETNX-locked the (single) target node before enqueuing this
-   * job. The worker must:
-   *   1. Verify the lock value still matches `taskId` before publishing
-   *      results (TTL-expiry / reclaim defense, spec §10.15.5).
-   *   2. Release the lock in `finally` (compare-and-delete via the helper).
+   * Execution mode (spec §10.13 / §10.15). Required — producer (server
+   * routes) must always declare intent.
    *
-   * Defaults to `'append'` (no lock) for legacy tasks without the field.
+   * When `'overwrite'`, the server already SETNX-locked the (single)
+   * target node before enqueuing this job. The worker:
+   *   1. Verifies the lock value still matches `taskId` before publishing
+   *      results (TTL-expiry / reclaim defense, spec §10.15.5).
+   *   2. Releases the lock in `finally` (compare-and-delete via the helper).
+   *
+   * `'append'` flows skip the lock entirely (the new sibling has a fresh
+   * UUID, no contention possible).
    */
-  mode?: "append" | "overwrite";
+  mode: "append" | "overwrite";
 }
 
 /**

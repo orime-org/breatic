@@ -68,6 +68,13 @@ export interface TaskEntity {
    */
   spaceId: string;
   taskType: string;
+  /**
+   * Execution mode — `'append'` (new sibling) or `'overwrite'` (replace
+   * existing target). Required at task creation; the worker uses this to
+   * decide whether to verify + release the canvas-node Redis lock
+   * (spec §10.13 / §10.15).
+   */
+  mode: "append" | "overwrite";
   model: string | null;
   skillName: string | null;
   status: string;
