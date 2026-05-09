@@ -1,13 +1,19 @@
 /**
  * Image input node (ImageNode)
- * - Supports local image upload
- * - Uses default height when empty; adapts by image ratio when content exists
- * - Shows NodeToolbar when selected (Editor / Upload / Take photo)
- * - Local preview via blob URLs (no upload API)
+ *
+ * Asset content lands in `data.content` via either:
+ *   - Left menu upload (F5 — `useUploadFiles` → permanent S3/OSS URL)
+ *   - Mini-tool sibling (F4 — Worker writes via NodeStateUpdateEvent)
+ *   - Generative downstream (F3 — Worker writes via NodeStateUpdateEvent)
+ *
+ * Per-node `customRequest` upload + Upload component + hidden file
+ * input were removed in F5. Empty image nodes now show an
+ * informational placeholder pointing the user at the left menu;
+ * replacement is intentional create-sibling-then-delete (matches the
+ * v13 "no-lock, every action makes a sibling" pattern).
  */
-import React, { useState, useEffect, memo, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/ui/upload';
 import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
@@ -18,7 +24,6 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
-import { getImageMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type PickPending,
@@ -50,14 +55,10 @@ type ImageNodeData = { name?: string; content?: string; width?: number; height?:
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, setNodeContent, onNodesChange } = useCanvasActions();
+  const { updateNode, onNodesChange } = useCanvasActions();
   const { openRightPanel } = useProjectLayout();
   const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
-  const [isLoading, setIsLoading] = useState(false);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  /** During replacement upload, record the starting imageUrl to avoid stale onload closing loading too early. */
-  const imageUrlWhenUploadStartedRef = useRef<string>('');
   const [previewVisible, setPreviewVisible] = useState(false);
   /** Content area size derived from image ratio: portrait fixed width, landscape fixed height. */
   const [contentHeight, setContentHeight] = useState<number | null>(null);
@@ -100,90 +101,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrlFromData, nodeData?.width, nodeData?.height]);
 
-  /** Compute content area size from source dimensions. */
-  const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
-    if (naturalWidth <= 0) return;
-    const isLandscape = naturalWidth >= naturalHeight;
-    if (isLandscape) {
-      const h = Math.max(Math.round(defaultNodeWidth * (naturalHeight / naturalWidth)), defaultNodeHeight);
-      setContentHeight(h);
-      setContentWidth(Math.round(h * (naturalWidth / naturalHeight)));
-    } else {
-      setContentWidth(defaultNodeWidth);
-      setContentHeight(Math.round(defaultNodeWidth * (naturalHeight / naturalWidth)));
-    }
-  };
-
-  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
-  const customRequest = async (options: {
-    file: File;
-    onSuccess: (response: unknown) => void;
-    onError: (error: Error) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    setIsLoading(true);
-    try {
-      const meta = await getImageMeta(file);
-      if (meta.width != null && meta.height != null) {
-        applyContentSizeFromDimensions(meta.width, meta.height);
-      }
-      const resourceUrl = URL.createObjectURL(file);
-      setNodeContent(id, {
-        content: resourceUrl,
-        width: meta.width ?? undefined,
-        height: meta.height ?? undefined,
-      });
-      onSuccess(resourceUrl);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      message.warning(t('canvas.node.image.uploadFailed', 'Image upload failed'));
-      setIsLoading(false);
-      onError(error as Error);
-    }
-  };
-
-  /** Close loading after image preload completes for the newly uploaded URL only. */
-  useEffect(() => {
-    if (!imageUrl || !isLoading) return;
-    if (imageUrl === imageUrlWhenUploadStartedRef.current) return;
-    const img = document.createElement('img');
-    img.onload = () => setIsLoading(false);
-    img.onerror = () => setIsLoading(false);
-    img.src = imageUrl;
-    return () => {
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [imageUrl, isLoading]);
-
-  /** Update imageUrl immediately on upload success for consistent refresh behavior. */
-  const handleUploadSuccess = (response: unknown) => {
-    const url = typeof response === 'string' ? response : '';
-    if (url) setImageUrl(url);
-  };
-
-  /** Wrap customRequest to sync local imageUrl before forwarding success callback. */
-  const customRequestWithSync = (options: {
-    file: File;
-    onProgress?: (percent: number) => void;
-    onSuccess: (response: unknown) => void;
-    onError: (error: Error) => void;
-  }) => {
-    customRequest({
-      file: options.file,
-      onSuccess: (res) => {
-        handleUploadSuccess(res);
-        options.onSuccess(res);
-      },
-      onError: options.onError,
-    });
-  };
-
-  /** Toolbar Upload: trigger the same upload flow used inside the node. */
-  const handleToolbarUploadClick = () => {
-    uploadInputRef.current?.click();
-  };
-
   const handleToolbarInfoClick = () => {
     const isCurrentNodePanelOpen = canvasOverlayPanel.open && canvasOverlayPanel.nodeId === id;
     if (isCurrentNodePanelOpen) {
@@ -193,26 +110,11 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     openCanvasOverlayPanel(id);
   };
 
-  const handleToolbarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    imageUrlWhenUploadStartedRef.current = imageUrl;
-    setIsLoading(true);
-    customRequestWithSync({
-      file,
-      onSuccess: () => {},
-      onError: () => {},
-    });
-  };
-
   /** Placeholder click: stop propagation and select this node. */
   const handlePlaceholderClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onNodesChange(nodes.map((n: { id: string }) => ({ type: 'select' as const, id: n.id, selected: n.id === id })));
   };
-
-  // TODO: replaced by presigned URL upload hook
 
   const handleMentionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -349,19 +251,10 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   /** Open the right chat panel as image editor (resource list + resizable editor area). */
   return (
     <>
-      <input
-        ref={uploadInputRef}
-        type='file'
-        accept='.png,.jpg,.jpeg,.webp,.tiff'
-        className='hidden'
-        onChange={handleToolbarFileChange}
-      />
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showTopToolbar}>
         <div className='rounded-[8px] pointer-events-auto' onMouseDown={(e) => e.stopPropagation()}>
           <NodeToolbar
             nodeId={id}
-            isUploading={isLoading}
-            onUploadClick={handleToolbarUploadClick}
             onTakePhotoClick={handleToolbarInfoClick}
           />
         </div>
@@ -423,11 +316,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           <div className={cn('flex-1 min-h-0', imagePickOverlayOverflow && 'overflow-visible')}>
             {!showContent ? (
               <NodeSkeleton />
-            ) : isLoading ? (
-              <div className='w-full h-full flex flex-col items-center justify-center text-center'>
-                <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.image.loading', 'Loading Image...')}</div>
-              </div>
             ) : (
               <div
                 className={cn(
@@ -511,35 +399,20 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
                   </div>
                 ) : (
-                  <Upload
-                    customRequest={customRequest}
-                    showUploadList={false}
-                    accept='.png,.jpg,.jpeg,.webp,.tiff'
-                    className='w-full h-full'
+                  <div
+                    className='w-full h-full flex flex-col items-center justify-center cursor-default gap-2'
+                    onClick={handlePlaceholderClick}
                   >
-                    <div
-                      className='w-full h-full flex flex-col items-center justify-center cursor-pointer gap-2 h-full'
-                      onClick={handlePlaceholderClick}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        uploadInputRef.current?.click();
-                      }}
-                    >
-                      <Icon
-                        name='project-image-node-placeholder'
-                        width={42}
-                        height={42}
-                        className='text-text-default-tertiary'
-                      />
-                      <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
-                        {t('project.toolbar.imageNodePlaceholder')
-                          .split('\n')
-                          .map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
-                      </div>
+                    <Icon
+                      name='project-image-node-placeholder'
+                      width={42}
+                      height={42}
+                      className='text-text-default-tertiary'
+                    />
+                    <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
+                      {t('canvas.node.image.emptyHint', '点左侧菜单"上传"添加素材')}
                     </div>
-                  </Upload>
+                  </div>
                 )}
               </div>
             )}

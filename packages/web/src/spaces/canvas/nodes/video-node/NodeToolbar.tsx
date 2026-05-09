@@ -1,24 +1,22 @@
-/** Video node toolbar: Launch Editor | Upload | Info. */
+/**
+ * Video node toolbar — Launch Editor | Info.
+ *
+ * The Upload button was removed in F5 because uploads now flow
+ * through `LeftFloatingMenu` only (single canonical entry point).
+ */
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 
 export interface VideoNodeToolbarProps {
   nodeId: string;
-  /** Disable Upload while uploading. */
-  isUploading?: boolean;
-  onUploadClick?: () => void;
   onShootVideoClick?: () => void;
 }
 
 const VideoNodeToolbar: React.FC<VideoNodeToolbarProps> = ({
   nodeId,
-  isUploading = false,
-  onUploadClick,
   onShootVideoClick,
 }) => {
-  const { t } = useTranslation();
   const { openRightPanel } = useProjectLayout();
 
   const handleEditorClick = (e: React.MouseEvent) => {
@@ -48,21 +46,6 @@ const VideoNodeToolbar: React.FC<VideoNodeToolbarProps> = ({
           <Icon name='project-launch-editor-icon' width={20} height={20} color={iconColor} />
           <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
             Lanch Editor
-          </span>
-        </div>
-      </div>
-
-      {/* Middle: Upload */}
-      <div className={`${areaClass} ${roundedClass} ${toolbarAreaClass} gap-0`}>
-        <div
-          role='button'
-          tabIndex={isUploading ? -1 : 0}
-          className={`h-7 px-2 flex items-center gap-1.5 rounded-[4px] ${isUploading ? 'cursor-not-allowed opacity-50' : `cursor-pointer ${btnHoverClass}`}`}
-          onClick={(e) => { e.stopPropagation(); if (!isUploading) onUploadClick?.(); }}
-        >
-          <Icon name='project-upload-icon' width={16} height={16} color={iconColor} />
-          <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
-            {t('project.toolbar.upload', 'Upload')}
           </span>
         </div>
       </div>

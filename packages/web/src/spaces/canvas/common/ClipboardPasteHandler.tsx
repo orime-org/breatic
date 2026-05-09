@@ -60,7 +60,15 @@ const createTextNode = (
   };
 };
 
-/** Builds an image node for upload. */
+/**
+ * Builds an image node for upload.
+ *
+ * TODO (F5-followup): the `_file` arg is dropped on the floor — clipboard
+ * paste of an image creates an empty node with no content. Wire through
+ * `useUploadFiles.uploadOne` + `setNodeContent` so the pasted blob lands
+ * in permanent storage. Pre-F5 this was broken too; F5 doesn't regress
+ * the behavior, but cleanup is owed.
+ */
 const createImageNodeForUpload = (
   position: { x: number; y: number },
   nodeId: string,

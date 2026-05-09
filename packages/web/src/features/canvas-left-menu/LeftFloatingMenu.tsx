@@ -17,11 +17,14 @@
  * The visibility gate is the parent's responsibility; this component
  * always renders when mounted.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Icon } from '@/ui/icon';
 import { useReactFlow } from '@xyflow/react';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
+import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
+import { message } from '@/ui/message';
+import { useUploadFiles, NODE_TYPE_BY_KIND } from '@/features/upload';
 import {
   NodesLibraryPanel,
   type GenerativeOutputType,
@@ -31,16 +34,27 @@ type ActivePanel = 'nodes' | null;
 
 interface LeftFloatingMenuProps {
   /**
-   * Click stub for the upload menu item (F5 wires the real flow).
-   * Defaults to a console message + transparent no-op when omitted.
-   */
-  onUploadClick?: () => void;
-  /**
    * Click stub for the annotate menu item (F6 wires the real flow).
    * Defaults to a console message + transparent no-op when omitted.
    */
   onAnnotateClick?: () => void;
 }
+
+/**
+ * MIME-pattern accept string for the hidden file input behind the
+ * upload button. Mirrors the kinds the server's `presign` route can
+ * classify into a viable asset node type — image / video / audio.
+ * Documents and arbitrary `file/*` are filtered at the dialog level
+ * so the user can't pick something we'd reject after upload.
+ */
+const UPLOAD_ACCEPT = 'image/*,video/*,audio/*';
+
+/**
+ * Per-batch fan-out offset so multiple files dropped together don't
+ * stack on top of each other at viewport center. 64 px diagonal gives
+ * the user an obvious cascade without pushing later files off-screen.
+ */
+const BATCH_OFFSET_STEP = 64;
 
 /**
  * Per-{@link GenerativeOutputType} default `kind` matching the
@@ -68,12 +82,14 @@ const BOTTOM_ITEMS = [
 ] as const;
 
 export function LeftFloatingMenu({
-  onUploadClick,
   onAnnotateClick,
 }: LeftFloatingMenuProps) {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const { screenToFlowPosition } = useReactFlow();
-  const { createGenerativeNode } = useCanvasActions();
+  const { createGenerativeNode, createDataNode } = useCanvasActions();
+  const activeMgr = useActiveCanvasSpace();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const { upload, uploading } = useUploadFiles();
 
   /**
    * Atomic three-body create at the viewport center (spec §10.13.7
@@ -98,6 +114,63 @@ export function LeftFloatingMenu({
     [screenToFlowPosition, createGenerativeNode],
   );
 
+  /**
+   * Run uploads through the canonical hook, then drop one
+   * `createDataNode` per result at viewport center (cascaded by
+   * `BATCH_OFFSET_STEP` so a 5-file drop doesn't stack invisibly).
+   * Server-classified `kind` decides the node type — anything the
+   * frontend can't host (document / file) skips with a per-file
+   * warning, so a mixed batch still lands the supported items.
+   */
+  const handleUploadFiles = useCallback(
+    async (files: File[]) => {
+      if (!activeMgr) return;
+      if (files.length === 0) return;
+      try {
+        const results = await upload(files, { projectId: activeMgr.projectId });
+        const center = flowCenterFromCanvasPane(
+          screenToFlowPosition,
+          { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+        );
+        results.forEach((r, idx) => {
+          const nodeType = NODE_TYPE_BY_KIND[r.kind];
+          if (!nodeType) {
+            message.warning(`暂不支持的文件类型: ${r.file.name}`);
+            return;
+          }
+          createDataNode({
+            type: nodeType,
+            position: {
+              x: center.x + idx * BATCH_OFFSET_STEP,
+              y: center.y + idx * BATCH_OFFSET_STEP,
+            },
+            data: {
+              name: r.file.name,
+              content: r.fileUrl,
+              ...(r.width !== undefined ? { width: r.width } : {}),
+              ...(r.height !== undefined ? { height: r.height } : {}),
+              ...(r.duration !== undefined ? { duration: r.duration } : {}),
+            },
+          });
+        });
+      } catch (err) {
+        console.error('[LeftFloatingMenu] upload failed', err);
+        message.error('上传失败,请重试');
+      }
+    },
+    [activeMgr, upload, screenToFlowPosition, createDataNode],
+  );
+
+  const handleUploadInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const list = e.target.files;
+      e.target.value = '';
+      if (!list) return;
+      handleUploadFiles(Array.from(list));
+    },
+    [handleUploadFiles],
+  );
+
   const handleTopClick = useCallback(
     (item: (typeof TOP_ITEMS)[number]) => {
       if ('panel' in item && item.panel) {
@@ -106,14 +179,8 @@ export function LeftFloatingMenu({
       }
       if ('action' in item) {
         if (item.action === 'upload') {
-          if (onUploadClick) {
-            onUploadClick();
-          } else {
-            // F5 will wire the real flow; until then a console hint
-            // tells dev which task picks this up. No toast — no
-            // user-visible affordance for a not-yet-built feature.
-            console.info('[LeftFloatingMenu] upload click — F5 not yet wired');
-          }
+          if (uploading) return;
+          uploadInputRef.current?.click();
           return;
         }
         if (item.action === 'annotate') {
@@ -126,7 +193,7 @@ export function LeftFloatingMenu({
         }
       }
     },
-    [onUploadClick, onAnnotateClick],
+    [onAnnotateClick, uploading],
   );
 
   const handlePlaceholderClick = useCallback((label: string) => {
@@ -140,6 +207,14 @@ export function LeftFloatingMenu({
 
   return (
     <>
+      <input
+        ref={uploadInputRef}
+        type='file'
+        multiple
+        accept={UPLOAD_ACCEPT}
+        className='hidden'
+        onChange={handleUploadInputChange}
+      />
       <div className='absolute top-1/2 -translate-y-1/2 left-3 w-[52px] bg-background-default-base border border-border-default-secondary rounded-lg shadow-md flex flex-col items-center py-1.5 gap-0.5 z-30 pointer-events-auto'>
         {TOP_ITEMS.map((it) => {
           const isActive = 'panel' in it && it.panel && activePanel === it.key;

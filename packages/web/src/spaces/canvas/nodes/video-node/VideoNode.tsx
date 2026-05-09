@@ -1,13 +1,17 @@
 /**
  * Video input node (VideoNode)
- * - Supports video upload and video URL input (mp4/mov)
- * - Shows NodeToolbar on selection
- * - Local preview via blob URL after upload
+ *
+ * Asset content lands in `data.content` via either:
+ *   - Left menu upload (F5 — `useUploadFiles` → permanent S3/OSS URL)
+ *   - Mini-tool sibling (F4 — Worker writes via NodeStateUpdateEvent)
+ *   - Generative downstream (F3 — Worker writes via NodeStateUpdateEvent)
+ *
+ * Per-node `customRequest` upload + Upload component + hidden file
+ * input were removed in F5. Empty video nodes now show an
+ * informational placeholder pointing the user at the left menu.
  */
-import React, { useState, useEffect, memo, useRef } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/ui/upload';
-import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
 import { Icon } from '@/ui/icon';
@@ -17,7 +21,6 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
-import { getVideoMeta } from '@/utils/mediaUtils';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -40,13 +43,11 @@ type VideoNodeData = { name?: string; content?: string; cover_url?: string; widt
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { setNodeContent, onNodesChange } = useCanvasActions();
+  const { onNodesChange } = useCanvasActions();
   const { openRightPanel } = useProjectLayout();
   const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
   const [nodeHovered, setNodeHovered] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
   /** Content area size derived from video ratio (same rule as ImageNode). */
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
@@ -87,51 +88,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoUrlFromData, nodeData?.width, nodeData?.height]);
 
-  /** Compute content area size from source dimensions (same as ImageNode). */
-  const applyContentSizeFromDimensions = (naturalWidth: number, naturalHeight: number) => {
-    if (naturalWidth <= 0) return;
-    const isLandscape = naturalWidth >= naturalHeight;
-    if (isLandscape) {
-      const h = Math.max(Math.round(defaultNodeWidth * (naturalHeight / naturalWidth)), defaultNodeHeight);
-      setContentHeight(h);
-      setContentWidth(Math.round(h * (naturalWidth / naturalHeight)));
-    } else {
-      setContentWidth(defaultNodeWidth);
-      setContentHeight(Math.round(defaultNodeWidth * (naturalHeight / naturalWidth)));
-    }
-  };
-
-  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
-  const customRequest = async (options: {
-    file: File;
-    onSuccess: (response: unknown) => void;
-    onError: (error: Error) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    setIsLoading(true);
-    try {
-      const meta = await getVideoMeta(file);
-      if (meta.width != null && meta.height != null) {
-        applyContentSizeFromDimensions(meta.width, meta.height);
-      }
-      const resourceUrl = URL.createObjectURL(file);
-      setNodeContent(id, {
-        content: resourceUrl,
-        width: meta.width ?? undefined,
-        height: meta.height ?? undefined,
-      });
-      setIsLoading(false);
-      onSuccess(resourceUrl);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      message.warning(t('canvas.node.video.uploadFailed', 'Video upload failed'));
-      setIsLoading(false);
-      onError(error as Error);
-    }
-  };
-
-  // TODO: replaced by presigned URL upload hook
-
   const handleMentionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     openRightPanel('editor', id);
@@ -144,11 +100,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const showToolbar = selected && selectedCount === 1 && !dragging && !isInsideLockedGroup;
   const showBottomNodeChatComposer = showToolbar && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
 
-  /** Toolbar Upload: trigger the same upload flow as node content area. */
-  const handleToolbarUploadClick = () => {
-    uploadInputRef.current?.click();
-  };
-
   const handleToolbarInfoClick = () => {
     const isCurrentNodePanelOpen = canvasOverlayPanel.open && canvasOverlayPanel.nodeId === id;
     if (isCurrentNodePanelOpen) {
@@ -156,17 +107,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       return;
     }
     openCanvasOverlayPanel(id);
-  };
-
-  const handleToolbarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    customRequest({
-      file,
-      onSuccess: () => {},
-      onError: () => {},
-    });
   };
 
   /** Placeholder click: stop propagation and select current node. */
@@ -183,19 +123,10 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
   return (
     <>
-      <input
-        ref={uploadInputRef}
-        type='file'
-        accept='.mp4,.mov'
-        className='hidden'
-        onChange={handleToolbarFileChange}
-      />
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showToolbar}>
         <div className='rounded-[8px] pointer-events-auto' onMouseDown={(e) => e.stopPropagation()}>
           <VideoNodeToolbar
             nodeId={id}
-            isUploading={isLoading}
-            onUploadClick={handleToolbarUploadClick}
             onShootVideoClick={handleToolbarInfoClick}
           />
         </div>
@@ -243,11 +174,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           <div className='flex-1 min-h-0'>
             {!showContent ? (
               <NodeSkeleton />
-            ) : isLoading ? (
-              <div className='w-full h-full flex flex-col items-center justify-center text-center'>
-                <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.video.loading', 'Loading Video...')}</div>
-              </div>
             ) : (
               <div className={cn(
                 'w-full h-full min-h-0 flex items-center justify-center overflow-hidden rounded-[8px]',
@@ -275,35 +201,20 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
                   </div>
                 ) : (
-                  <Upload
-                    customRequest={customRequest}
-                    showUploadList={false}
-                    accept='.mp4,.mov'
-                    className='w-full h-full'
+                  <div
+                    className='w-full h-full flex flex-col items-center justify-center cursor-default gap-2'
+                    onClick={handlePlaceholderClick}
                   >
-                    <div
-                      className='w-full h-full flex flex-col items-center justify-center cursor-pointer gap-2 h-full'
-                      onClick={handlePlaceholderClick}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        uploadInputRef.current?.click();
-                      }}
-                    >
-                      <Icon
-                        name='project-video-node-placeholder'
-                        width={48}
-                        height={48}
-                        className='text-text-default-tertiary'
-                      />
-                      <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
-                        {t('project.toolbar.videoNodePlaceholder')
-                          .split('\n')
-                          .map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
-                      </div>
+                    <Icon
+                      name='project-video-node-placeholder'
+                      width={48}
+                      height={48}
+                      className='text-text-default-tertiary'
+                    />
+                    <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
+                      {t('canvas.node.video.emptyHint', '点左侧菜单"上传"添加素材')}
                     </div>
-                  </Upload>
+                  </div>
                 )}
               </div>
             )}
