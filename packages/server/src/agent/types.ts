@@ -19,6 +19,14 @@ export const SSEEventType = {
   AGENT_THINKING: "agent_thinking",
   AGENT_ASK: "agent_ask",
 
+  // Interaction tools (spec §10.18.4 v13) — Agent rich output protocol.
+  // LLM calls these "tools" not for execution but as structured-data
+  // carriers; the frontend identifies tool_call.name and renders the
+  // matching UI component (ChoicePicker / CanvasActionButton / SearchResultsGrid).
+  AGENT_CHOICE: "agent_choice",                  // ask_user_choice
+  AGENT_CANVAS_ACTION: "agent_canvas_action",    // propose_canvas_action
+  AGENT_SEARCH_RESULTS: "agent_search_results",  // show_search_results
+
   // System
   ERROR: "error",
 } as const;

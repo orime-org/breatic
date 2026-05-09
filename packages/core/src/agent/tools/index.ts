@@ -6,10 +6,13 @@
 import type { Tool } from "ai";
 
 import { askUser } from "./ask-user.js";
+import { askUserChoice } from "./ask-user-choice.js";
 import { editFileTool } from "./edit-file.js";
 import { runScript } from "./run-script.js";
 import { listDirTool } from "./list-dir.js";
+import { proposeCanvasAction } from "./propose-canvas-action.js";
 import { readFileTool } from "./read-file.js";
+import { showSearchResults } from "./show-search-results.js";
 import { webFetch } from "./web-fetch.js";
 import { webSearch } from "./web-search.js";
 import { writeFileTool } from "./write-file.js";
@@ -25,6 +28,13 @@ const TOOL_MAP: Readonly<Record<string, Tool>> = {
   web_search: webSearch,
   web_fetch: webFetch,
   ask_user_question: askUser,
+  // Interaction tools (spec/07 §10.18.4 v13). LLM calls these to send
+  // structured payloads the frontend renders as UI components, not for
+  // execution. main-agent detects sentinel-prefixed results and yields
+  // matching SSE events.
+  ask_user_choice: askUserChoice,
+  propose_canvas_action: proposeCanvasAction,
+  show_search_results: showSearchResults,
   spawn: spawnTool,
 } as const;
 
@@ -68,10 +78,13 @@ export function buildToolSet(
 
 export {
   askUser,
+  askUserChoice,
   editFileTool,
   runScript,
   listDirTool,
+  proposeCanvasAction,
   readFileTool,
+  showSearchResults,
   spawnTool,
   webFetch,
   webSearch,

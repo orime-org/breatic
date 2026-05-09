@@ -29,6 +29,31 @@ import { compressForContext } from "../agent/message-compressor.js";
 import { getAgentConfig } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
 import { ForbiddenError, NotFoundError } from "@breatic/core";
+import type { ChatAttachedChip } from "@breatic/shared";
+
+/**
+ * Format the user's attached canvas chips as a structured prelude to
+ * the chat message (spec/07 §10.18.2 v13 — chat 消息级 snapshot).
+ *
+ * Chips are independent C1 copies fixed at attach-time on the frontend;
+ * here we serialize them into a prose section the LLM sees alongside
+ * the user's plain text. The LLM receives one combined user message:
+ * the context block followed by the user's raw text. When chips is
+ * empty (default for non-v13 clients) this is a no-op pass-through.
+ */
+function formatChipsForLLM(
+  chips: readonly ChatAttachedChip[],
+  message: string,
+): string {
+  if (!chips || chips.length === 0) return message;
+  const sections = chips
+    .map(
+      (c) =>
+        `### ${c.name}(类型:${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
+    )
+    .join("\n\n");
+  return `## 用户附加的 Space 内容(snapshot,后续节点改不影响这些)\n\n${sections}\n\n## 用户消息\n\n${message}`;
+}
 
 const chat = new Hono<{ Variables: AuthVariables }>();
 
@@ -78,12 +103,18 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
+  // Spec §10.18.2 v13: attach chips into the user message before the
+  // LLM call. Chips are pre-frozen C1 snapshots (deep copies from the
+  // frontend at attach time), so subsequent canvas mutations don't
+  // affect the chat history.
+  const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
+
   return stream(c, async (s) => {
     await runWithContext(
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
       async () => {
         const agent = new MainAgent();
-        for await (const event of agent.chat(body.message, body.resource_list)) {
+        for await (const event of agent.chat(messageWithChips, body.resource_list)) {
           await s.write(serializeSSE(event));
         }
       },
