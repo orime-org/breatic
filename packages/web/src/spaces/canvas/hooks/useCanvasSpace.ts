@@ -61,8 +61,11 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
           operation: dataMap.get('operation') as string | undefined,
           operationParams: dataMap.get('operationParams') as Record<string, unknown> | undefined,
           // ── Generative node fields ────────────────────────────
+          outputType: dataMap.get('outputType') as 'text' | 'image' | 'video' | 'audio' | undefined,
+          kind: dataMap.get('kind') as string | undefined,
           model: dataMap.get('model') as string | undefined,
-          modelParams: dataMap.get('modelParams') as Record<string, unknown> | undefined,
+          params: dataMap.get('params') as Record<string, unknown> | undefined,
+          references: yArrayToPlainArray(dataMap.get('references')),
           // ── Common ───────────────────────────────────────────
           attachments: yArrayToPlainArray(dataMap.get('attachments')),
           // ── UI-only transient signals (not in Yjs history schema) ──

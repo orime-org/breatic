@@ -69,6 +69,9 @@ nodeMap: Y.Map
   ├── position: Y.Map { x, y }           ← top level
   └── data:     Y.Map                     ← nested, matches ReactFlow node.data
         ├── name:            string
+        ├── createdAt:       number                   ← v13: epoch ms, set once at creation
+        ├── createdBy:       string                   ← v13: userId, set once at creation
+        ├── locked:          boolean                  ← v13: locks node against mini-tool / Worker / accidental delete
         ├── state:           "idle" | "handling"
         ├── handlingBy:      Y.Map { userId, username } | undefined
         ├── content:         string | undefined       ← result URL or text
@@ -80,9 +83,12 @@ nodeMap: Y.Map
         ├── sourceNodeId:    string | undefined       ← origin node for derived nodes
         ├── operation:       string | undefined       ← mini-tool operation name
         ├── operationParams: Y.Map | undefined        ← operation-specific params
-        ├── prompt:          Y.XmlFragment            ← TipTap rich text
+        ├── outputType:      string | undefined       ← v13 generative: 'text' | 'image' | 'video' | 'audio'
+        ├── kind:            string | undefined       ← v13 generative: sub-task variant
+        ├── prompt:          Y.XmlFragment            ← TipTap rich text (generative)
+        ├── references:      Y.Array<Y.Map> | undef.  ← v13 generative: reference rail rows (mirrors incoming edges)
         ├── model:           string | undefined
-        ├── modelParams:     Y.Map<string, unknown> | undefined
+        ├── params:          Y.Map<string, unknown> | undefined  ← v13 generative: model params (renamed from modelParams)
         ├── attachments:     Y.Array<Y.Map>
         └── childIds:        Y.Array<string>          ← ordered child node IDs (for N-output ops)
 ```
@@ -100,6 +106,9 @@ nodeMap: Y.Map
 | Key | Yjs type | Written by | Description |
 |-----|----------|------------|-------------|
 | `name` | string | Frontend | Display label |
+| `createdAt` | number (epoch ms) | Frontend (creation) | **v13** Audit: when the node was created. Set once at creation; never updated |
+| `createdBy` | string (userId) | Frontend (creation) | **v13** Audit: who created the node. Set once at creation; never updated |
+| `locked` | boolean | Frontend | **v13** When `true`, mini-tool writes / Worker writes / accidental deletes are blocked (spec §10.13.6). Default `false` |
 | `state` | `"idle"` \| `"handling"` | Collab (event-stream) | Pipeline state |
 | `handlingBy` | `Y.Map { userId, username }` \| undefined | Collab | Who triggered the current handling |
 | `content` | string \| undefined | Collab (NodeStateUpdateEvent) | Result URL or text body |
@@ -111,9 +120,12 @@ nodeMap: Y.Map
 | `sourceNodeId` | string \| undefined | Frontend | Origin node ID for derived (sibling) nodes |
 | `operation` | string \| undefined | Frontend | Mini-tool operation name |
 | `operationParams` | `Y.Map` \| undefined | Frontend | Operation-specific parameters |
-| `prompt` | `Y.XmlFragment` | Frontend | Rich text prompt with inline `@` mentions |
+| `outputType` | `"text"` \| `"image"` \| `"video"` \| `"audio"` \| undefined | Frontend (creation) | **v13 generative-only** Asset modality the node produces. Set once at creation |
+| `kind` | string \| undefined | Frontend | **v13 generative-only** Sub-task variant (image: 文生图/图生图; audio: music/tts/旋律/环境音; …) |
+| `prompt` | `Y.XmlFragment` | Frontend | Rich text prompt with inline `@` mentions (generative). The Tiptap editor binding lives in F12; the F2 mockup uses a local-only textarea and does not write the fragment yet |
+| `references` | `Y.Array<Y.Map>` \| undefined | Frontend | **v13 generative-only** Reference rail rows. Mirrors the node's incoming edges (single source of truth — sync owned by F3). Each row carries `{ refId, sourceNodeId, addedAt }`; display fields (`sourceNodeName`, `thumbnail`) are derived live from the upstream node |
 | `model` | string \| undefined | Frontend | Selected AI model ID |
-| `modelParams` | `Y.Map<string, unknown>` \| undefined | Frontend | Generation parameters |
+| `params` | `Y.Map<string, unknown>` \| undefined | Frontend | **v13** Generation parameters (renamed from `modelParams` in v13 to align with spec §10.13.2) |
 | `attachments` | `Y.Array<Y.Map>` | Frontend | Upload pool for this node |
 | `childIds` | `Y.Array<string>` | Frontend | Ordered child node IDs for N-output operations |
 
@@ -149,6 +161,7 @@ destroyed. The OSS/S3 object at the URL is never deleted.
 | `"1002"` | Image node |
 | `"1003"` | Video node |
 | `"1004"` | Audio node |
+| `"generative"` | **v13** Generative node (prompt + references + model → produces asset child via F3 atomic create) |
 | `"group"` | Group node (container for other nodes) |
 
 ### 3.3 edges
@@ -162,6 +175,13 @@ destroyed. The OSS/S3 object at the URL is never deleted.
 | `target` | string | Target node ID |
 | `sourceHandle` | string \| undefined | Source handle ID |
 | `targetHandle` | string \| undefined | Target handle ID |
+| `data` | `Y.Map` \| undefined | **v13** Per-edge data Y.Map. Currently holds `isPrimary?: boolean` |
+
+**v13 edge data fields** (under `data` Y.Map):
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `isPrimary` | boolean \| undefined | **Generative-only.** Marks the primary downstream edge from a generative source (spec §10.13.2 / §10.13.5). Per generative source node at most one outgoing edge has `isPrimary: true`; the invariant is enforced by frontend writers (F3 atomic primary swap). Pre-v13 edges have no `data` map; readers fall back to `false` |
 
 ### 3.4 Frontend UI-only extensions
 
@@ -228,6 +248,9 @@ The fundamental rule: **the frontend does not write `data.state` /
 | `id`, `type` | Frontend | Node creation (immutable after) |
 | `position` | Frontend | User drags the node |
 | `data.name` | Frontend | User renames the node |
+| `data.createdAt` | Frontend | Node creation (immutable after) |
+| `data.createdBy` | Frontend | Node creation (immutable after) |
+| `data.locked` | Frontend | User toggles the lock (F9) |
 | `data.state` | Collab (via NodeStateUpdateEvent) | Transitions to/from `handling` |
 | `data.handlingBy` | Collab (via NodeStateUpdateEvent) | Set on handling start, cleared on completion |
 | `data.content` | Collab (via NodeStateUpdateEvent) | After generation completes |
@@ -239,12 +262,16 @@ The fundamental rule: **the frontend does not write `data.state` /
 | `data.sourceNodeId` | Frontend | Set at node creation for derived nodes |
 | `data.operation` | Frontend | Set at node creation for mini-tool derived nodes |
 | `data.operationParams` | Frontend | Operation-specific parameters |
-| `data.prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) |
+| `data.outputType` | Frontend | Generative node creation (immutable after) |
+| `data.kind` | Frontend | User changes sub-task variant in the pill bar |
+| `data.prompt` | Frontend | User types in the prompt editor (Y.XmlFragment ops) — F12 wires this; F2 mockup is local-only |
+| `data.references` | Frontend | F3 sync writes rows when incoming edges connect/disconnect |
 | `data.model` | Frontend | User selects AI model |
-| `data.modelParams` | Frontend | User changes generation parameters |
+| `data.params` | Frontend | User changes generation parameters |
 | `data.attachments` | Frontend | User uploads / deletes attach items |
 | `data.childIds` | Frontend | Set when creating N-output placeholder nodes |
 | `edges` | Frontend | User creates / deletes connections |
+| `edges[].data.isPrimary` | Frontend | F3 atomic primary swap on generative source nodes |
 | Node creation / deletion | Frontend | User adds or deletes a node |
 
 ## 5.1 Undo / redo

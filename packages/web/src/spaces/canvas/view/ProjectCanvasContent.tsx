@@ -44,6 +44,7 @@ import TextNode from '@/spaces/canvas/nodes/text-node/TextNode';
 import ImageNode from '@/spaces/canvas/nodes/image-node/ImageNode';
 import VideoNode from '@/spaces/canvas/nodes/video-node/VideoNode';
 import AudioNode from '@/spaces/canvas/nodes/audio-node/AudioNode';
+import GenerativeNode from '@/spaces/canvas/nodes/generative-node/GenerativeNode';
 import CustomEdge from '@/spaces/canvas/common/Edge';
 import GroupNode from '@/spaces/canvas/common/GroupNode';
 import ClipboardPasteHandler from '@/spaces/canvas/common/ClipboardPasteHandler';
@@ -93,6 +94,7 @@ const nodeTypes: NodeTypes = {
   '1002': ImageNode,
   '1003': VideoNode,
   '1004': AudioNode,
+  generative: GenerativeNode,
   group: GroupNode,
   connectEndAnchor: ConnectEndAnchorNode,
   commentMarker: CommentMarkerNode as unknown as NodeTypes[string],

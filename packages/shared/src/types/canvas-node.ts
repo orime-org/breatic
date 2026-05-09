@@ -32,11 +32,81 @@ export interface AttachRef {
   uploadedAt: string;
 }
 
+// ── Generative node helpers (v13) ─────────────────────────────────
+
+/** Source node modality for references / chip snapshots. */
+export type GenerativeRefSourceType = 'image' | 'video' | 'audio' | 'text' | 'generative';
+
+/**
+ * One row in a generative node's reference rail (spec §10.13.2 v13).
+ *
+ * The rail is the **single source of truth** for the node's incoming
+ * edges: adding/removing a row also adds/removes the matching edge,
+ * and connecting/disconnecting an edge syncs the rail. Display fields
+ * (`sourceNodeName`, `thumbnail`) are *live* — they reflect the upstream
+ * node as it currently is; if the user wants a frozen copy, they @-insert
+ * the reference into the prompt, which captures a `ChipSnapshot`.
+ */
+export interface ReferenceItem {
+  /** Stable id for this row; not the source node id. */
+  refId: string;
+  /** Upstream node currently connected to this slot. */
+  sourceNodeId: string;
+  sourceNodeType: GenerativeRefSourceType;
+  /** Live name of the upstream node; updates as the upstream is renamed. */
+  sourceNodeName: string;
+  /** Live thumbnail / preview URL when available. */
+  thumbnail?: string;
+  /** When the row was added (epoch ms). */
+  addedAt: number;
+}
+
+/**
+ * Frozen snapshot of a reference at the moment the user @-inserts it
+ * into the prompt (spec §10.13.2 v13). After capture the snapshot is
+ * independent — renaming the upstream, deleting the reference rail
+ * row, or even deleting the upstream node leaves the chip intact. The
+ * `sourceNodeId` field is kept only for "jump to source" UX and the
+ * delete-confirmation flow when a user removes the upstream.
+ */
+export interface ChipSnapshot {
+  /** Unique id for this chip; each @-insertion produces a new id even when the source is the same. */
+  chipId: string;
+  /** Upstream node at capture time (may now be deleted/renamed; chip remains valid). */
+  sourceNodeId: string;
+  sourceNodeType: GenerativeRefSourceType;
+  /** Frozen display name from the moment of capture. */
+  snapshotName: string;
+  snapshotThumbnail?: string;
+  /** Frozen content excerpt at capture time (text body, URL, etc.). */
+  snapshotContent?: string;
+  /** When the snapshot was taken (epoch ms). */
+  capturedAt: number;
+}
+
+/** One inline run in a {@link PromptDoc} — either plain text or an atomic chip. */
+export type PromptInline =
+  | { type: 'text'; text: string }
+  | { type: 'chip'; attrs: ChipSnapshot };
+
+/**
+ * Serialized prompt body. At runtime stored as a Y.XmlFragment in the
+ * generative node's data Y.Map under key `prompt` (so collaborators see
+ * keystrokes via y-prosemirror). The plain shape mirrors the Tiptap /
+ * ProseMirror document so the editor can render it directly. The F2
+ * mockup uses a textarea and projects chips to plain `@name` text;
+ * the full Tiptap implementation will preserve the inline-atom shape.
+ */
+export interface PromptDoc {
+  type: 'doc';
+  content: PromptInline[];
+}
+
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
  *
  * Two node categories:
- *   - Generative: has prompt/model/modelParams; click execute → produces data node
+ *   - Generative: has outputType/kind/prompt/references/model/params; click execute → produces data node
  *   - Data: has content/cover_url/etc.; can be source for mini-tool ops
  *
  * Both share the state machine and core fields. Type fields below are
@@ -89,12 +159,31 @@ export interface CanvasNodeFields {
     operationParams?: Record<string, unknown>;
 
     // ─── Generative node fields ─────────────────────────────
+    /**
+     * Asset modality this generative node produces. Set once at creation;
+     * never updated (changing modality means deleting + creating a new node).
+     */
+    outputType?: 'text' | 'image' | 'video' | 'audio';
+    /**
+     * Sub-task variant within an `outputType` (spec §10.13.1 v13).
+     *  - image: '文生图' / '图生图'
+     *  - audio: 'music' / 'tts' / '旋律' / '环境音'
+     *  - video / text / 3d: single kind, value still required for forward compat.
+     */
+    kind?: string;
     /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
     prompt?: unknown;
+    /**
+     * Reference rail rows — Y.Array of Y.Map at runtime, plain
+     * {@link ReferenceItem}[] when read through `yMapToNode`. Mirrors the
+     * node's incoming edges; see {@link ReferenceItem} for the bidirectional
+     * sync rules.
+     */
+    references?: ReferenceItem[];
     /** Model id from config/models/*.yaml. */
     model?: string;
-    /** Model-specific params. */
-    modelParams?: Record<string, unknown>;
+    /** Model-specific params (spec §10.13.2 v13). */
+    params?: Record<string, unknown>;
 
     // ─── Group node fields ──────────────────────────────────
     /** Child node IDs when type === 'group'. */

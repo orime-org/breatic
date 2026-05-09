@@ -21,6 +21,11 @@ export type {
   AttachRef,
   CanvasNodeFields,
   CanvasEdgeData,
+  GenerativeRefSourceType,
+  ReferenceItem,
+  ChipSnapshot,
+  PromptInline,
+  PromptDoc,
   NodeStateUpdateEvent,
   NodeEvent,
 } from "./canvas-node.js";
