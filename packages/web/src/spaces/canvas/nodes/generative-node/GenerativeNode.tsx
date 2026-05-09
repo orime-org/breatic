@@ -4,30 +4,40 @@
  * Layout (top to bottom):
  *   [60px]  Reference rail   — chip strip + [+] button; chips are derived
  *                              from incoming edges, not from a Yjs field.
- *   [200px] Prompt area      — textarea mockup. The full Tiptap editor with
- *                              inline-atom chips is owned by F12; F2 stops at
- *                              a local-only textarea (intentionally NOT
- *                              persisted — prompt persistence ships with F12).
+ *   [flex]  Prompt area      — Tiptap editor bound to the node's
+ *                              `data.prompt` Y.XmlFragment via
+ *                              @tiptap/extension-collaboration. Atom
+ *                              `chip` nodes capture frozen
+ *                              ChipSnapshot via @-trigger picker
+ *                              (#136). Implementation lives in
+ *                              `features/prompt-editor/` for reuse
+ *                              with the future ChatPanel (F12, no
+ *                              Collaboration extension there).
  *   [60px]  Pill bar         — kind dropdown / model stub / credit stub /
  *                              ▶ 新增版本 / ↻ 更新. The two execute buttons
  *                              are visual-only here; their onClick logic
  *                              (atomic create, primary-edge bookkeeping,
  *                              POST /tasks) is owned by F3.
  *
- * Out of scope for F2 (handled by referenced tasks):
+ * Out of scope (handled by referenced tasks):
  *   - References Y.Array persistence + edge↔refs sync .................. F3
  *   - Atomic three-body create (generative + asset + primary edge) ..... F3
  *   - POST /api/tasks on click ......................................... F3
- *   - Tiptap inline-atom chip editor + Y.XmlFragment write-through ..... F12
  *   - Primary edge visual (brand colour + animated arrow) .............. F10
+ *   - Picker keyboard navigation (↑↓ + Enter) .......................... F12
  */
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { type NodeProps, Position } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import NodeHeader from '../../common/NodeHeader';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
+import {
+  PromptEditor,
+  type ReferenceSuggestionItem,
+} from '@/features/prompt-editor';
+import '@/features/prompt-editor/prompt-editor.css';
 
 const GENERATIVE_NODE_WIDTH = 480;
 const GENERATIVE_NODE_HEIGHT = 320;
@@ -54,8 +64,32 @@ const sourceHandleId = 'Generative_0_0';
 interface DerivedReference {
   edgeId: string;
   sourceNodeId: string;
+  sourceNodeType: ReferenceSuggestionItem['sourceNodeType'];
   name: string;
   thumbnail?: string;
+}
+
+/**
+ * Map ReactFlow node `type` codes to the spec's narrower
+ * `sourceNodeType` enum used by chips / references. Anything that's
+ * not a recognized data / generative node falls back to 'text' for
+ * display purposes (the picker label still uses the live name).
+ */
+function mapNodeTypeToSourceType(
+  type: string | undefined,
+): ReferenceSuggestionItem['sourceNodeType'] {
+  switch (type) {
+    case '1002':
+      return 'image';
+    case '1003':
+      return 'video';
+    case '1004':
+      return 'audio';
+    case 'generative':
+      return 'generative';
+    default:
+      return 'text';
+  }
 }
 
 const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
@@ -81,6 +115,7 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
       out.push({
         edgeId: edge.id,
         sourceNodeId: upstream.id,
+        sourceNodeType: mapNodeTypeToSourceType(upstream.type),
         name: upstreamData?.name || upstream.id,
         thumbnail: upstreamData?.cover_url || upstreamData?.content,
       });
@@ -88,41 +123,27 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
     return out;
   }, [edges, nodes, id]);
 
-  // Local prompt state. NOT persisted — F12 lands the Tiptap editor
-  // wired to the `prompt` Y.XmlFragment that createGenerativeNode
-  // already initializes. Until then this textarea is a visual stub
-  // for laying out the three-segment shell.
-  const [promptText, setPromptText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   /**
-   * Mockup picker: clicking a chip in the rail inserts `@name ` at
-   * the textarea cursor. The full @-trigger keyboard flow ships with
-   * the Tiptap editor in F12; here we accept a tap-driven equivalent
-   * because it exercises the same data flow (rail → prompt) without
-   * pulling in keystroke handling.
+   * Same list shaped for the prompt editor's `@`-trigger picker.
+   * Mirrors {@link ReferenceSuggestionItem} so {@link PromptEditor}
+   * can capture the right `ChipSnapshot` fields when the user picks
+   * one (spec §10.13.2 v13).
    */
-  const insertReferenceAtCursor = useCallback(
-    (name: string) => {
-      const ta = textareaRef.current;
-      if (!ta) {
-        setPromptText((prev) => `${prev}@${name} `);
-        return;
-      }
-      const start = ta.selectionStart ?? promptText.length;
-      const end = ta.selectionEnd ?? promptText.length;
-      const insertion = `@${name} `;
-      const next = promptText.slice(0, start) + insertion + promptText.slice(end);
-      setPromptText(next);
-      // Restore caret to right after the inserted mention.
-      requestAnimationFrame(() => {
-        ta.focus();
-        const caret = start + insertion.length;
-        ta.setSelectionRange(caret, caret);
-      });
-    },
-    [promptText],
+  const referenceSuggestions: ReferenceSuggestionItem[] = useMemo(
+    () =>
+      incomingRefs.map((r) => ({
+        refId: r.edgeId,
+        sourceNodeId: r.sourceNodeId,
+        sourceNodeType: r.sourceNodeType,
+        sourceNodeName: r.name,
+        thumbnail: r.thumbnail,
+      })),
+    [incomingRefs],
   );
+
+  // PromptEditor flips this on every Tiptap update; pill-bar buttons
+  // disable when the prompt is empty (spec §10.13.4 v13).
+  const [isPromptEmpty, setIsPromptEmpty] = useState(true);
 
   const handleRemoveReference = useCallback(
     (edgeId: string) => {
@@ -149,8 +170,6 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
   const handleUpdatePrimaryClick = useCallback(() => {
     // F3: POST /api/tasks { mode: 'overwrite', targetId: <primary downstream> }.
   }, []);
-
-  const isPromptEmpty = promptText.trim().length === 0;
 
   return (
     <>
@@ -205,9 +224,8 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
             incomingRefs.map((ref) => (
               <div
                 key={ref.edgeId}
-                className='shrink-0 group relative flex items-center gap-1.5 px-2 h-9 rounded-md bg-background-default-secondary cursor-pointer hover:bg-background-default-base-hover'
-                onClick={() => insertReferenceAtCursor(ref.name)}
-                title={`Insert @${ref.name} into prompt`}
+                className='shrink-0 group relative flex items-center gap-1.5 px-2 h-9 rounded-md bg-background-default-secondary'
+                title={`@${ref.name} — type "@" in the prompt to insert as chip`}
               >
                 {ref.thumbnail && /^(https?:|data:)/i.test(ref.thumbnail) ? (
                   <img src={ref.thumbnail} alt='' className='w-5 h-5 rounded object-cover' />
@@ -233,17 +251,16 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
           )}
         </div>
 
-        {/* ── Prompt area (flex) ────────────────────────────────────── */}
+        {/* ── Prompt area (flex) — Tiptap editor bound to Y.XmlFragment ── */}
         <div
-          className='flex-1 px-3 py-2 nodrag'
+          className='flex-1 px-3 py-2 nodrag overflow-auto'
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <textarea
-            ref={textareaRef}
-            className='w-full h-full resize-none border-0 outline-none bg-transparent text-[14px] text-text-default-primary placeholder:text-text-default-tertiary'
-            placeholder='Describe what you want… click a reference chip to insert @mention'
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
+          <PromptEditor
+            nodeId={id}
+            references={referenceSuggestions}
+            onEmptyChange={setIsPromptEmpty}
+            placeholder='Describe what you want — type @ to insert a reference chip'
           />
         </div>
 
