@@ -56,6 +56,14 @@ export interface CanvasSpaceManagerConfig
 
 export interface CanvasSpaceManager {
   doc: Y.Doc;
+  /** The project this Space lives under — needed by callers (e.g. F3
+   * GenerativeNode) that POST `/api/tasks` and have to include
+   * `project_id` + `space_id`. Surfaced here because no other context
+   * carries the pair; `useProjectSpaces` knows them but components
+   * deep in the canvas tree consume `useActiveCanvasSpace` instead. */
+  projectId: string;
+  /** The Space this manager is bound to — see `projectId` JSDoc. */
+  spaceId: string;
   /** Y.Map<nodeId, Y.Map> — top-level on the canvas-{spaceId} doc. */
   nodesMap: Y.Map<unknown>;
   /** Y.Map<edgeId, Y.Map> — top-level on the canvas-{spaceId} doc. */
@@ -179,6 +187,8 @@ export const createCanvasSpaceManager = (
 
   return {
     doc,
+    projectId,
+    spaceId,
     nodesMap,
     edgesMap,
     awareness: base.awareness,
