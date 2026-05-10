@@ -1,0 +1,23 @@
+/**
+ * F10 — primary edge animation.
+ *
+ * Marching-ants stroke for edges with `data.isPrimary === true`.
+ * Wired by the `breatic-edge-primary` className we set on
+ * `BaseEdge`'s path. Non-primary edges stay solid (no animation).
+ *
+ * The keyframe matches ReactFlow's built-in `.animated` rule so
+ * the visual cadence feels native to the rest of the canvas.
+ */
+@keyframes breatic-edge-dashdraw {
+  from {
+    stroke-dashoffset: 10;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.breatic-edge-primary {
+  stroke-dasharray: 5;
+  animation: breatic-edge-dashdraw 0.5s linear infinite;
+}
