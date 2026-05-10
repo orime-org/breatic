@@ -18,6 +18,8 @@
 export { default as AiChatRecordPanel } from './components/AiChatRecordPanel';
 export { default as NodeChatComposer } from './components/NodeChatComposer';
 export { default as EmptyChatRecordState } from './components/EmptyChatRecordState';
+export { default as ChatComposer } from './components/ChatComposer';
+export type { ChatChip, ChatChipKind } from './components/ChatComposer';
 
 // Lower-level building blocks. Most callers should import the
 // panel / composer above; these are exposed for the rare deep
