@@ -20,6 +20,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { CanvasToastStack } from '@/spaces/canvas/view/CanvasToastStack';
 import ProjectCanvasContent from '@/spaces/canvas/view/ProjectCanvasContent';
 import { CanvasUIProvider } from '@/spaces/canvas/contexts/CanvasUIContext';
+import { LocalPendingProvider } from '@/spaces/canvas/contexts/LocalPendingProvider';
 import { MiniToolProvider } from '@/features/mini-tools';
 import { type UseProjectSpacesResult } from '@/domain/space/useProjectSpaces';
 
@@ -31,9 +32,11 @@ type ProjectCanvasProps = {
 const ProjectCanvas: React.FC<ProjectCanvasProps> = ({ yjs, hotkeysDisabled }) => (
   <ReactFlowProvider>
     <CanvasUIProvider>
-      <MiniToolProvider>
-        <ProjectCanvasContent yjs={yjs} hotkeysDisabled={hotkeysDisabled} />
-      </MiniToolProvider>
+      <LocalPendingProvider>
+        <MiniToolProvider>
+          <ProjectCanvasContent yjs={yjs} hotkeysDisabled={hotkeysDisabled} />
+        </MiniToolProvider>
+      </LocalPendingProvider>
     </CanvasUIProvider>
     <CanvasToastStack />
   </ReactFlowProvider>

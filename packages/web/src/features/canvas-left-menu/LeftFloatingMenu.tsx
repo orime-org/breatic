@@ -4,8 +4,8 @@
  *
  * Six items in two groups. Top group is the active creator surface:
  *   ① 节点库 — toggles {@link NodesLibraryPanel} (creates generative nodes)
- *   ② 上传   — opens the system file picker (F5; this PR stubs to a toast)
- *   ③ 批注   — drops an AnnotationNode at the viewport center (F6; stub)
+ *   ② 上传   — opens the system file picker (F5)
+ *   ③ 批注   — drops an AnnotationNode composer at viewport center (F6)
  *
  * Bottom group is placeholder / "coming soon":
  *   ④ Studio 资产 — V2
@@ -25,6 +25,7 @@ import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import { message } from '@/ui/message';
 import { useUploadFiles, NODE_TYPE_BY_KIND } from '@/features/upload';
+import { useAnnotationActions } from '@/features/annotation';
 import {
   NodesLibraryPanel,
   type GenerativeOutputType,
@@ -32,13 +33,12 @@ import {
 
 type ActivePanel = 'nodes' | null;
 
-interface LeftFloatingMenuProps {
-  /**
-   * Click stub for the annotate menu item (F6 wires the real flow).
-   * Defaults to a console message + transparent no-op when omitted.
-   */
-  onAnnotateClick?: () => void;
-}
+/**
+ * LeftFloatingMenu currently takes no props — every action wires
+ * itself directly through hooks (file picker via `useUploadFiles`,
+ * annotate via `useAnnotationActions`). Previous prop-drilling stubs
+ * (`onAnnotateClick`) were dropped in F6 to avoid dead code paths.
+ */
 
 /**
  * MIME-pattern accept string for the hidden file input behind the
@@ -81,15 +81,14 @@ const BOTTOM_ITEMS = [
   { key: 'feedback', icon: 'base-message' as const, label: '反馈 / 客服(敬请期待)' },
 ] as const;
 
-export function LeftFloatingMenu({
-  onAnnotateClick,
-}: LeftFloatingMenuProps) {
+export function LeftFloatingMenu() {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const { screenToFlowPosition } = useReactFlow();
   const { createGenerativeNode, createDataNode } = useCanvasActions();
   const activeMgr = useActiveCanvasSpace();
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const { upload, uploading } = useUploadFiles();
+  const { dropAnnotation, pendingAnnotation } = useAnnotationActions();
 
   /**
    * Atomic three-body create at the viewport center (spec §10.13.7
@@ -184,16 +183,15 @@ export function LeftFloatingMenu({
           return;
         }
         if (item.action === 'annotate') {
-          if (onAnnotateClick) {
-            onAnnotateClick();
-          } else {
-            console.info('[LeftFloatingMenu] annotate click — F6 not yet wired');
-          }
+          // The hook itself enforces the lock (returns null when one
+          // is already pending); the disabled state on the button is
+          // visual only.
+          dropAnnotation();
           return;
         }
       }
     },
-    [onAnnotateClick, uploading],
+    [uploading, dropAnnotation],
   );
 
   const handlePlaceholderClick = useCallback((label: string) => {
@@ -218,19 +216,30 @@ export function LeftFloatingMenu({
       <div className='absolute top-1/2 -translate-y-1/2 left-3 w-[52px] bg-background-default-base border border-border-default-secondary rounded-lg shadow-md flex flex-col items-center py-1.5 gap-0.5 z-30 pointer-events-auto'>
         {TOP_ITEMS.map((it) => {
           const isActive = 'panel' in it && it.panel && activePanel === it.key;
+          // Per-item disabled gate. Today: the upload button locks
+          // while a previous batch is still in flight; the annotate
+          // button locks while a composer is open. Both are
+          // additionally enforced inside the click handler / hook —
+          // this is just the visual mirror.
+          const isDisabled =
+            ('action' in it && it.action === 'upload' && uploading) ||
+            ('action' in it && it.action === 'annotate' && pendingAnnotation !== null);
           return (
             <button
               key={it.key}
               type='button'
+              disabled={isDisabled}
               onClick={() => handleTopClick(it)}
               data-panel-trigger={'panel' in it && it.panel ? it.key : undefined}
               title={it.label}
               className={
                 btnBase +
                 ' ' +
-                (isActive
-                  ? 'bg-brand-500 text-white hover:bg-brand-600 shadow-sm'
-                  : 'text-text-default-secondary hover:bg-background-default-secondary hover:text-text-default-primary')
+                (isDisabled
+                  ? 'cursor-not-allowed opacity-50 text-text-default-tertiary'
+                  : isActive
+                    ? 'bg-brand-500 text-white hover:bg-brand-600 shadow-sm'
+                    : 'text-text-default-secondary hover:bg-background-default-secondary hover:text-text-default-primary')
               }
             >
               <Icon name={it.icon} width={18} height={18} />

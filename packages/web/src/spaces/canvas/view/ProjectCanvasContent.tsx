@@ -62,6 +62,11 @@ import CanvasCommentComposer from '@/spaces/canvas/common/CanvasCommentComposer'
 import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
 import { LeftFloatingMenu } from '@/features/canvas-left-menu';
 import { BottomToolbar, useMiniTool } from '@/features/mini-tools';
+import {
+  AnnotationNode,
+  AnnotationComposer,
+  ANNOTATION_NODE_TYPE,
+} from '@/features/annotation';
 import { executeImage } from '@/data/api/mini-tools';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import CanvasRightOverlayPanel from '@/spaces/canvas/view/CanvasRightOverlayPanel';
@@ -101,6 +106,7 @@ const nodeTypes: NodeTypes = {
   group: GroupNode,
   connectEndAnchor: ConnectEndAnchorNode,
   commentMarker: CommentMarkerNode as unknown as NodeTypes[string],
+  [ANNOTATION_NODE_TYPE]: AnnotationNode,
 };
 
 const edgeTypes = {
@@ -844,6 +850,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       </ReactFlow>
 
       <BottomToolbar onApply={handleMiniToolApply} />
+      <AnnotationComposer />
       {canvasOverlayPanel.open && (
         <div className='absolute top-[10px] right-[10px] bottom-[10px] z-10 pointer-events-auto'>
           <CanvasRightOverlayPanel onClose={closeCanvasOverlayPanel} />
