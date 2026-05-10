@@ -20,6 +20,20 @@ export { default as NodeChatComposer } from './components/NodeChatComposer';
 export { default as EmptyChatRecordState } from './components/EmptyChatRecordState';
 export { default as ChatComposer } from './components/ChatComposer';
 export type { ChatChip, ChatChipKind } from './components/ChatComposer';
+export { default as AgentChoicePicker } from './components/AgentChoicePicker';
+export { default as AgentSearchResultsGrid } from './components/AgentSearchResultsGrid';
+export { default as AgentCanvasActionButton } from './components/AgentCanvasActionButton';
+export { default as AgentToolMessage } from './components/AgentToolMessage';
+export type {
+  AgentToolName,
+  AgentToolCall,
+  AgentChoiceOption,
+  AgentSearchHit,
+  AgentProposedNode,
+  AgentToolArgsAskUserChoice,
+  AgentToolArgsShowSearchResults,
+  AgentToolArgsProposeCanvasAction,
+} from './components/agent-tool-types';
 
 // Lower-level building blocks. Most callers should import the
 // panel / composer above; these are exposed for the rare deep
