@@ -14,6 +14,12 @@ import AgentComposerTabs, {
   type AgentComposerUploadItem,
 } from '@/features/chat/components/AgentComposerTabs';
 import AgentSendButton from '@/features/chat/components/AgentSendButton';
+import AgentToolMessage from '@/features/chat/components/AgentToolMessage';
+import type {
+  AgentToolCall,
+  AgentChoiceOption,
+  AgentSearchHit,
+} from '@/features/chat/components/agent-tool-types';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
@@ -40,6 +46,13 @@ export type MessageItem = {
   loading?: boolean;
   /** Optional image attachments shown in a horizontal row. */
   imageUrls?: string[];
+  /**
+   * Inline rich-output tool call surfaced by the agent (F13). When
+   * set, the message renders the matching `AgentToolMessage` widget
+   * (ChoicePicker / SearchResultsGrid / CanvasActionButton) below
+   * the text body.
+   */
+  toolCall?: AgentToolCall;
 };
 
 /** Placeholder messages until messages are loaded per `nodeId` from the API. */
@@ -114,6 +127,24 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
     const [activeNodeId, setActiveNodeId] = useState<string>('');
     const nodeId = activeNodeId;
     const [messageList, setMessageList] = useState<MessageItem[]>(initialMessageList);
+    /**
+     * Per-message tool-call UI state (F13 / F14). Indexed by `MessageItem.id`:
+     *
+     *   - `choiceByMessageId` — once the user picks an option in an
+     *     `ask_user_choice` block, the rest disable + the picker
+     *     locks. Persisted across rerenders so scrolling away and
+     *     back doesn't reset the lock.
+     *   - `appliedActionByMessageId` — once the user clicks "Add to
+     *     canvas" on a `propose_canvas_action`, the button flips to
+     *     "已加到画布" and re-clicks no-op (prevents double-spawn).
+     *
+     * Local React state — chat is per-user (memory `project_chat_private_no_yjs`)
+     * so the lock state isn't shared with collaborators. A future
+     * "save chat history" feature would fold these into the
+     * persisted message instead.
+     */
+    const [choiceByMessageId, setChoiceByMessageId] = useState<Record<string, string>>({});
+    const [appliedActionByMessageId, setAppliedActionByMessageId] = useState<Record<string, boolean>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<AgentComposerInputHandle>(null);
     const [inputEmpty, setInputEmpty] = useState(true);
@@ -624,14 +655,56 @@ const AiChatRecordPanelComponent = forwardRef<AiChatRecordPanelHandle, AiChatRec
           {messageList.length === 0 ? (
             <EmptyChatRecordState />
           ) : (
-            messageList.map((msg) => (
-              <AgentMessage
-                key={msg.id}
-                role={msg.type}
-                senderName={msg.senderName}
-                content={msg.loading ? 'loading...' : msg.content}
-              />
-            ))
+            messageList.map((msg) => {
+              const textContent = msg.loading ? 'loading...' : msg.content;
+              const toolCall = msg.toolCall;
+              // F14 — when the assistant attaches a `toolCall`, render the
+              // matching AgentToolMessage widget (ChoicePicker /
+              // SearchResultsGrid / CanvasActionButton) underneath the
+              // text body. The text + tool live in one bubble so the
+              // user reads them as one unit.
+              const composedContent = toolCall ? (
+                <>
+                  {textContent ? (
+                    <div>{textContent}</div>
+                  ) : null}
+                  <AgentToolMessage
+                    toolCall={toolCall}
+                    selectedChoiceId={choiceByMessageId[msg.id]}
+                    applied={appliedActionByMessageId[msg.id] === true}
+                    onSelectChoice={(option: AgentChoiceOption) => {
+                      setChoiceByMessageId((prev) =>
+                        prev[msg.id] ? prev : { ...prev, [msg.id]: option.id },
+                      );
+                      // Backend send: see F14 follow-up. Today the lock
+                      // alone is the visible affordance; replying with
+                      // the choice is owed when the chat backend
+                      // streams replies.
+                    }}
+                    onAddSearchHit={(_hit: AgentSearchHit) => {
+                      // Backend wiring (presigned-url + createDataNode)
+                      // owed by the same F14 follow-up. The button
+                      // exists so the UX is testable end-to-end now.
+                    }}
+                    onApplyCanvasAction={() => {
+                      setAppliedActionByMessageId((prev) =>
+                        prev[msg.id] ? prev : { ...prev, [msg.id]: true },
+                      );
+                    }}
+                  />
+                </>
+              ) : (
+                textContent
+              );
+              return (
+                <AgentMessage
+                  key={msg.id}
+                  role={msg.type}
+                  senderName={msg.senderName}
+                  content={composedContent}
+                />
+              );
+            })
           )}
         </div>
         <div className='flex-shrink-0 p-4 pt-0'>
