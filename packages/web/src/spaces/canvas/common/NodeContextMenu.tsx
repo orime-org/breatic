@@ -14,6 +14,11 @@ import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import {
+  getLockedGroupIds,
+  isNodeLocked,
+  isNodeLockable,
+} from '@/spaces/canvas/common/lock-helpers';
 import Divider from '@/ui/divider';
 import { Icon } from '@/ui/icon';
 import nodeIconMap from '@/pages/project/constants/nodeIconMap';
@@ -114,7 +119,7 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
 
   const { getNodes, getEdges, getNodesBounds, screenToFlowPosition } = useReactFlow();
   const { nodes } = useCanvasData();
-  const { onNodesChange, onEdgesChange, addNode, onConnect, setNodes } = useCanvasActions();
+  const { onNodesChange, onEdgesChange, addNode, onConnect, setNodes, updateNode } = useCanvasActions();
 
   const selectedNodes = getNodes().filter((n) => n.selected);
   const groupSelection = useMemo(() => {
@@ -603,8 +608,21 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
     if (targetNodes.length === 0) return;
     const allNodes = getNodes();
     const currentEdges = getEdges();
-    const nodeIdsToRemove = new Set<string>(targetNodes.map((n) => n.id));
-    targetNodes.forEach((n) => {
+    // F9 — defensive filter: skip any target that's locked even if
+    // the caller forgot to gate. The menu UX disables Delete when
+    // any target is locked, but Cut (which delegates here) also
+    // depends on this guard for "delete the unlocked items only,
+    // keep locked ones in place".
+    const lockedGroupIdsForDelete = getLockedGroupIds(allNodes);
+    const deletableTargets = targetNodes.filter(
+      (n) => !isNodeLocked(n, lockedGroupIdsForDelete),
+    );
+    if (deletableTargets.length === 0) {
+      onClose();
+      return;
+    }
+    const nodeIdsToRemove = new Set<string>(deletableTargets.map((n) => n.id));
+    deletableTargets.forEach((n) => {
       if (n.type === 'group') {
         allNodes.forEach((node) => {
           if (node.parentId === n.id) nodeIdsToRemove.add(node.id);
@@ -621,6 +639,37 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
 
   const isPaneMenu = contextNodeId === null;
   const showNodeActions = contextNodeId !== null || getTargetNodesForAction().length > 0;
+
+  // F9 — lock state for the menu's lock-toggle item + delete-gating.
+  // Computed once per render; the action handlers call
+  // `getTargetNodesForAction()` again at click time so post-render
+  // selection changes are still reflected accurately (cheap).
+  const lockTargetSnapshot = getTargetNodesForAction();
+  const allNodesNow = getNodes();
+  const lockedGroupIdsNow = useMemo(() => getLockedGroupIds(allNodesNow), [allNodesNow]);
+  const targetsLockedNow = lockTargetSnapshot.some((n) => isNodeLocked(n, lockedGroupIdsNow));
+  const targetsAllLockable = lockTargetSnapshot.every(isNodeLockable);
+  const lockableTargetsCount = lockTargetSnapshot.filter(isNodeLockable).length;
+  const showLockToggle = lockableTargetsCount > 0 && targetsAllLockable;
+  // Mixed selection (some locked + some unlocked) defaults to "Lock"
+  // — clicking flips every target to locked, which feels like the
+  // less-destructive default of the two.
+  const lockToggleLabel = targetsLockedNow ? 'Unlock' : 'Lock';
+
+  const handleToggleLock = () => {
+    const targets = getTargetNodesForAction().filter(isNodeLockable);
+    if (targets.length === 0) return;
+    // Same direction for all targets in one action — avoids the
+    // confusing "some flipped, some didn't" outcome when applying
+    // to a mixed selection.
+    const nextLocked = !targets.every((n) =>
+      isNodeLocked(n, lockedGroupIdsNow),
+    );
+    targets.forEach((n) => {
+      updateNode(n.id, { data: { locked: nextLocked } });
+    });
+    onClose();
+  };
 
   const itemBase =
     'flex w-full min-h-8 items-center justify-between gap-3 rounded-[4px] px-2 py-[4px] text-xs text-text-default-base';
@@ -719,8 +768,11 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
       key: 'cut',
       label: 'Cut',
       shortcut: 'Ctrl + x',
-      disabled: !showNodeActions,
-      onClick: () => showNodeActions && handleCut(),
+      // Cut = copy + delete; delete-on-locked is a no-op in the
+      // handler, but the menu UX gates Cut so users see the lock is
+      // protecting their content rather than getting a silent partial.
+      disabled: !showNodeActions || targetsLockedNow,
+      onClick: () => showNodeActions && !targetsLockedNow && handleCut(),
       icon: 'project-cut-icon',
     },
     {
@@ -756,12 +808,31 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
       icon: 'project-ungroup-icon',
     },
     { type: 'divider' },
+    // Lock toggle — hidden for non-lockable types (annotation per
+    // spec §10.13.6). When the mixed-target case kicks in, clicking
+    // applies the same direction to every target (see
+    // `handleToggleLock`).
+    ...(showLockToggle
+      ? ([
+          {
+            key: 'lock',
+            label: lockToggleLabel,
+            shortcut: null,
+            disabled: false,
+            onClick: handleToggleLock,
+            icon: targetsLockedNow ? 'project-unlock-icon' : 'project-lock-icon',
+          } as MenuItemRow,
+        ] as const)
+      : ([] as const)),
     {
       key: 'delete',
+      // F9 — locked nodes block accidental delete. The user has to
+      // unlock first; the menu makes this obvious by greying out
+      // Delete and the unlock toggle sits one row above.
       label: 'Delete',
       shortcut: 'backspace/del',
-      disabled: !showNodeActions,
-      onClick: () => showNodeActions && handleDelete(),
+      disabled: !showNodeActions || targetsLockedNow,
+      onClick: () => showNodeActions && !targetsLockedNow && handleDelete(),
       icon: 'project-delete-icon',
     },
   ];

@@ -27,16 +27,10 @@ export const getGroupBounds = (groupNode: Node) => {
   };
 };
 
-/** Collect ids of locked group nodes. */
-export const getLockedGroupIds = (nodes: Node[]): Set<string> => {
-  const set = new Set<string>();
-  nodes.forEach((n: Node) => {
-    if (n.type === 'group' && (n.data as { locked?: boolean })?.locked === true) {
-      set.add(n.id);
-    }
-  });
-  return set;
-};
+// `getLockedGroupIds` is now re-exported from lock-helpers below
+// so callers that already import it from this module keep working
+// while the canonical implementation lives in one place.
+export { getLockedGroupIds, isNodeLocked, isNodeLockable } from '@/spaces/canvas/common/lock-helpers';
 
 /**
  * Current output URL for project canvas image nodes (1002), or null.
