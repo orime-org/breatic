@@ -19,7 +19,8 @@ import { TopBar } from '@/features/top-bar';
 import EditorComingSoonPlaceholder from '@/app/shell/EditorComingSoonPlaceholder';
 import TextEditor from '@/spaces/document';
 import ResizableLeftPanel from '@/spaces/canvas/view/ResizableLeftPanel';
-import AiChatRecordPanel from "@/features/chat/components/AiChatRecordPanel";
+import ChatPanel from "@/features/chat/components/ChatPanel";
+import { ChipsPickProvider } from "@/features/chat/contexts/ChipsPickContext";
 import { SpaceShell } from '@/spaces/_shell';
 import { ProjectWorkspaceRegionContext, type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
@@ -172,6 +173,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   return (
     <CurrentUserIdProvider value={currentUserId}>
     <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
+    <ChipsPickProvider>
       <div className='flex flex-col w-screen h-screen overflow-hidden'>
         <TopBar
           projectId={yjs.projectId}
@@ -191,11 +193,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
                 className='bg-background-default-secondary flex flex-col min-w-0 shrink-0'
               >
                 <div className='h-full min-h-0 flex flex-col border-r border-border-default-base'>
-                  <AiChatRecordPanel
-                    projectName={workflowName}
-                    onProjectNameCommit={setWorkflowName}
-                    selectedWorkspaceRegion={selectedWorkspaceRegion}
-                  />
+                  <ChatPanel />
                 </div>
               </Panel>
               {showChatSeparator ? (
@@ -321,6 +319,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
           )}
         </Group>
       </div>
+    </ChipsPickProvider>
     </ProjectWorkspaceRegionContext.Provider>
     </CurrentUserIdProvider>
   );

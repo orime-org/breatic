@@ -18,6 +18,10 @@
 export { default as AiChatRecordPanel } from './components/AiChatRecordPanel';
 export { default as NodeChatComposer } from './components/NodeChatComposer';
 export { default as EmptyChatRecordState } from './components/EmptyChatRecordState';
+export { default as ChatPanel } from './components/ChatPanel';
+export { ChipsPickProvider, useChipsPick } from './contexts/ChipsPickContext';
+export { useChatStream } from './use-chat-stream';
+export type { ChatStreamMessage } from './use-chat-stream';
 export { default as ChatComposer } from './components/ChatComposer';
 export type { ChatChip, ChatChipKind } from './components/ChatComposer';
 export { default as AgentChoicePicker } from './components/AgentChoicePicker';

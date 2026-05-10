@@ -62,6 +62,7 @@ import CanvasCommentComposer from '@/spaces/canvas/common/CanvasCommentComposer'
 import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
 import { LeftFloatingMenu } from '@/features/canvas-left-menu';
 import { BottomToolbar, useMiniTool } from '@/features/mini-tools';
+import { useChipsPick } from '@/features/chat/contexts/ChipsPickContext';
 import {
   AnnotationNode,
   AnnotationComposer,
@@ -131,6 +132,10 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     createDataNode,
   } = useCanvasActions();
   const { clear: clearMiniTool } = useMiniTool();
+  // B.1 chips pick: when ChatPanel asks for a node selection, the
+  // next `onNodeClick` should hand the id back via this context
+  // (instead of falling through to v12 pickState branches).
+  const chipsPick = useChipsPick();
   const activeMgr = useActiveCanvasSpace();
   const {
     canvasOverlayPanel,
@@ -537,6 +542,17 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
   );
 
   const onNodeClick = (e: React.MouseEvent, node: Node) => {
+    // B.1 chip pick — handled before any v12 pickState branches so
+    // chip-from-canvas is fully decoupled from the legacy
+    // canvas-pick-into-editor flow (#135 will retire that). Locked
+    // groups + their descendants are still off-limits to keep
+    // accidental chip targets from a non-interactive surface.
+    if (chipsPick.pickMode) {
+      if (node.parentId && lockedGroupIdsForSelectable.has(node.parentId)) return;
+      e.stopPropagation();
+      chipsPick.pickNode(node.id);
+      return;
+    }
     if (agentCanvasPickEditingNodeId) {
       if (node.parentId && lockedGroupIdsForSelectable.has(node.parentId)) return;
       if (isMentionPickMode) {
