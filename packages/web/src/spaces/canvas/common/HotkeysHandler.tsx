@@ -2,6 +2,10 @@ import { useRef, useEffect, useCallback, type RefObject } from 'react';
 import { useReactFlow, type Node, type Edge } from '@xyflow/react';
 import KeyController, { type KeyControllerEvent } from 'keycon';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import {
+  getLockedGroupIds,
+  isNodeLocked,
+} from '@/spaces/canvas/common/lock-helpers';
 import { nanoid } from 'nanoid';
 
 /** Builds a new unique node id from type prefix, timestamp, and random suffix. */
@@ -53,25 +57,11 @@ type AnyNode = Node & {
   zIndex?: number;
 };
 
-/** IDs of group nodes with `data.locked === true`. */
-const getLockedGroupIds = (nodes: AnyNode[]): Set<string> => {
-  const set = new Set<string>();
-  nodes.forEach((n) => {
-    if (n.type === 'group' && (n.data as { locked?: boolean } | undefined)?.locked === true) {
-      set.add(n.id);
-    }
-  });
-  return set;
-};
-
-/** True if the node is a locked group or a descendant of one. */
-const isNodeLocked = (node: AnyNode, lockedGroupIds: Set<string>): boolean => {
-  if (node.type === 'group' && (node.data as { locked?: boolean } | undefined)?.locked === true) {
-    return true;
-  }
-  const parentId = node.parentId ?? node.parentNode;
-  return !!parentId && lockedGroupIds.has(parentId);
-};
+// `getLockedGroupIds` and `isNodeLocked` now live in
+// `@/spaces/canvas/common/lock-helpers` so the v13 lock predicate
+// (any node with `data.locked === true`, plus locked-group
+// descendants) stays in lock-step across HotkeysHandler,
+// NodeContextMenu, and ProjectCanvasContent.
 
 interface HotkeysHandlerProps {
   /** Yjs undo handler */

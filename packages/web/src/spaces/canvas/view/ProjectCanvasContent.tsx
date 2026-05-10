@@ -413,12 +413,51 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
 
   const lockedGroupIdsForSelectable = useMemo(() => getLockedGroupIds(nodes), [nodes]);
   const nodesWithSelectable = useMemo(() => {
-    if (lockedGroupIdsForSelectable.size === 0) return nodes;
+    // Compute lock state once per node and apply two effects:
+    //   - Group-locking still cascades selection-blocking to
+    //     descendants (legacy behavior).
+    //   - Per-node `data.locked` adds a subtle dashed amber outline
+    //     so users can see what's locked without right-clicking
+    //     each one. The outline is rendered via ReactFlow's node
+    //     style rather than the per-node component to keep the
+    //     visual single-sourced (every modality's *Node.tsx would
+    //     otherwise need its own lock indicator).
+    const anyLockedGroup = lockedGroupIdsForSelectable.size > 0;
     return nodes.map((n: Node) => {
-      const isLockedGroup = n.type === 'group' && (n.data as { locked?: boolean })?.locked === true;
-      const isInsideLockedGroup = n.parentId && lockedGroupIdsForSelectable.has(n.parentId);
-      if (isLockedGroup || isInsideLockedGroup) return { ...n, selectable: false };
-      return n;
+      const isLockedGroup =
+        n.type === 'group' &&
+        (n.data as { locked?: boolean })?.locked === true;
+      const isInsideLockedGroup =
+        n.parentId !== undefined && lockedGroupIdsForSelectable.has(n.parentId);
+      const isSelfLocked =
+        (n.data as { locked?: boolean })?.locked === true;
+      // Group-locked descendants stay non-selectable to match
+      // legacy UX (selection inside a locked group is moot).
+      const nextSelectable = isLockedGroup || isInsideLockedGroup ? false : undefined;
+      // Highlight per-node locks visually. Locked groups already
+      // have their own lock chrome via GroupNode; only highlight
+      // non-group locked nodes here to avoid double indication.
+      const lockOutlineStyle =
+        isSelfLocked && n.type !== 'group'
+          ? {
+              outline: '2px dashed rgb(245, 158, 11)',
+              outlineOffset: '4px',
+              borderRadius: '8px',
+            }
+          : undefined;
+      if (
+        nextSelectable === undefined &&
+        !lockOutlineStyle &&
+        !anyLockedGroup
+      ) {
+        return n;
+      }
+      const next: Node = { ...n };
+      if (nextSelectable === false) next.selectable = false;
+      if (lockOutlineStyle) {
+        next.style = { ...(n.style ?? {}), ...lockOutlineStyle };
+      }
+      return next;
     });
   }, [nodes, lockedGroupIdsForSelectable]);
 
