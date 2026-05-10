@@ -14,8 +14,22 @@ import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/sp
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '@/store';
 import { toggleMixedEditorFavoriteAsset } from '@/store/modules/mixedEditor';
-import type { AgentComposerUploadItem } from '@/features/chat/components/AgentComposerTabs';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
+
+/**
+ * Local copy of the v12 `AgentComposerTabs.AgentComposerUploadItem`
+ * shape — the chat-side type was deleted in B.2 along with the rest
+ * of the v12 chat composer files. RightToolbar still uses this shape
+ * to read the canvas node's `data.attach` array; redeclaring it here
+ * keeps RightToolbar self-contained instead of holding a one-import
+ * dependency on the deleted module.
+ */
+type AgentComposerUploadItem = {
+  id: string;
+  type: 'image' | 'file' | 'text' | 'audio' | 'video';
+  previewUrl?: string;
+  name?: string;
+};
 import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';
 import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';

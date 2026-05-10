@@ -1,18 +1,18 @@
 /**
  * TopBar — full-width chrome at the top of the project page.
  *
- * Replaces the pre-PR-Y2 layout where:
- *   - The leaf-icon dropdown + project title lived inside the
- *     chat-panel's 56px header (`AiChatRecordPanel`).
- *   - The members + credits pills floated as an absolute-positioned
- *     overlay above the canvas (PR4-A).
+ * Replaces the pre-PR-Y2 layout where the leaf-icon dropdown +
+ * project title lived inside the chat-panel's 56px header, and
+ * the members + credits pills floated as an absolute-positioned
+ * overlay above the canvas (PR4-A).
  *
  * Now both groups sit in one horizontal bar that spans the entire
  * project page width, mirroring mock 05's structure: logo + title
  * on the left, member / credit / account widgets on the right.
  *
- * The chat-panel's header is now reduced to chat-specific affordances
- * (New conversation, History) — see `AiChatRecordPanel`.
+ * The chat panel's header is now reduced to chat-specific
+ * affordances (New conversation, History) — see B.1 `ChatPanel`
+ * (B.2 deleted the v12 `AiChatRecordPanel`).
  *
  * `userId` flows in for `MembersPopover` (which derives `myRole` via
  * `useUserRole`). `metaProvider` from `useProjectSpaces` powers the

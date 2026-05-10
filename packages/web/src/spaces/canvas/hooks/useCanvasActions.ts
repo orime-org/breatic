@@ -233,10 +233,9 @@ export function useCanvasActions() {
           if (!(dataMap instanceof Y.Map)) return;
 
           if (data.name !== undefined) dataMap.set('name', data.name);
-          // pickState: canvas-pick-mode state stored in Yjs so collaborators
-          // can observe pick mode activation. Not part of the history schema but
-          // kept as a transient coordination signal.
-          if ('pickState' in data) dataMap.set('pickState', data.pickState ?? null);
+          // B.2 — `pickState` write path retired with the v12 chat
+          // composer. Today's chips pick state (B.1) is per-user
+          // React state in `ChipsPickContext`, never written to Yjs.
           // Do not persist old fields (state/content/coverUrl/runType) which are removed.
         }
       }, origin);

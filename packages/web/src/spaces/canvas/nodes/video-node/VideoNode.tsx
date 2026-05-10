@@ -21,14 +21,9 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
-import {
-  shouldHideNodeChatComposerForChatRecordCanvasPick,
-  type CanvasWorkflowNodeData,
-} from '@/spaces/canvas/types';
 import VideoNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
-import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Video_0_0';
@@ -38,7 +33,7 @@ const sourceHandleId = 'Video_0_0';
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
-type VideoNodeData = { name?: string; content?: string; cover_url?: string; width?: number; height?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
+type VideoNodeData = { name?: string; content?: string; cover_url?: string; width?: number; height?: number; state?: string; errorMessage?: string };
 
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
@@ -55,7 +50,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   /** Derived from node data: current video URL from data.content (canvas-native schema). */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as VideoNodeData | undefined;
-  const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
   /** Direct read: cover_url for thumbnail, content for playback URL. */
   const videoUrlFromData = nodeData?.content ?? '';
   const isHandling = nodeData?.state === 'handling';
@@ -98,7 +92,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const isInsideLockedGroup =
     parentNode?.type === 'group' && (parentNode.data as { locked?: boolean })?.locked === true;
   const showToolbar = selected && selectedCount === 1 && !dragging && !isInsideLockedGroup;
-  const showBottomNodeChatComposer = showToolbar && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
 
   const handleToolbarInfoClick = () => {
     const isCurrentNodePanelOpen = canvasOverlayPanel.open && canvasOverlayPanel.nodeId === id;
@@ -113,12 +106,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const handlePlaceholderClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onNodesChange(nodes.map((n: { id: string }) => ({ type: 'select' as const, id: n.id, selected: n.id === id })));
-  };
-
-  const handleChatInputSend = (content: string, imageUrls?: string[]) => {
-    // eslint-disable-next-line no-console
-    console.log('VideoNode ChatInput send:', { nodeId: id, content, imageUrls });
-    // TODO: Wire to the ChatMessage list bound to this node.
   };
 
   return (
@@ -221,14 +208,6 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           </div>
         </div>
       </div>
-      {/* Bottom FlowNodeToolbar: show a floating ChatInput below when selected. */}
-      <FlowNodeToolbar position={Position.Bottom} align='center' offset={20} isVisible={showBottomNodeChatComposer}>
-        <NodeChatComposer
-          className='w-[526px] min-h-[160px] pointer-events-auto rounded-[16px]'
-          onSend={handleChatInputSend}
-          targetNodeId={id}
-        />
-      </FlowNodeToolbar>
     </>
   );
 };
