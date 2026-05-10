@@ -51,7 +51,7 @@ import ClipboardPasteHandler from '@/spaces/canvas/common/ClipboardPasteHandler'
 import HotkeysHandler from '@/spaces/canvas/common/HotkeysHandler';
 import GroupToolbarPanel from '@/spaces/canvas/common/GroupToolbarPanel';
 import CustomMiniMap from '@/spaces/canvas/common/CustomMiniMap';
-import UndoRedoToolbar from '@/spaces/canvas/common/UndoRedoToolbar';
+import { ViewportToolbar } from '@/features/viewport-toolbar';
 import NodeContextMenu from '@/spaces/canvas/common/NodeContextMenu';
 import ConnectEndCommandMenu from '@/spaces/canvas/common/ConnectEndCommandMenu';
 import ConnectEndAnchorNode, {
@@ -147,6 +147,14 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
   const edgesRef = useRef(edges);
   const lastInputPanelAnchorRef = useRef<{ x: number; y: number } | null>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
+  /**
+   * Snap-to-grid is local UI state — it's a per-user editor
+   * preference, not a collaborative property of the canvas
+   * (other collaborators don't need to see "snap is on for me").
+   * 16 px grid matches the v13 mockup; ReactFlow reads
+   * `snapToGrid` + `snapGrid` props below.
+   */
+  const [snapEnabled, setSnapEnabled] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [connectEndMenu, setConnectEndMenu] = useState<ConnectEndMenuState>(null);
   const [tempConnectNodes, setTempConnectNodes] = useState<Node[]>([]);
@@ -794,6 +802,8 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         disableKeyboardA11y={true}
         minZoom={0.2}
         maxZoom={2}
+        snapToGrid={snapEnabled}
+        snapGrid={[16, 16]}
         proOptions={reactFlowProOptions}
         className='relative z-[1] origin-[0px_0px] backface-hidden antialiased'
         style={reactFlowStyle}
@@ -817,13 +827,11 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         <LeftFloatingMenu />
         <GroupToolbarPanel />
         {minimapOpen && <CustomMiniMap />}
-        <UndoRedoToolbar
-          yjsUndo={yjsAny.undo}
-          yjsRedo={yjsAny.redo}
-          yjsCanUndo={yjsAny.canUndo}
-          yjsCanRedo={yjsAny.canRedo}
-          minimapOpen={minimapOpen}
-          onToggleMinimap={() => setMinimapOpen((v) => !v)}
+        <ViewportToolbar
+          showMiniMap={minimapOpen}
+          onToggleMiniMap={() => setMinimapOpen((v) => !v)}
+          snapEnabled={snapEnabled}
+          onToggleSnap={() => setSnapEnabled((v) => !v)}
         />
         <NodeContextMenu
           open={!!contextMenu}
