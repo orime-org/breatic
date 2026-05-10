@@ -25,17 +25,24 @@ export interface PresignResult {
  * For cloud storage (S3/OSS): uploadUrl is a presigned PUT to cloud.
  * For local storage: uploadUrl is PUT /assets/local-upload/:key on
  * this server.
+ *
+ * Type cast: the axios response interceptor in `request.ts` returns
+ * `response.data` (the parsed HTTP body) so the actual resolved value
+ * is `ApiResponse<PresignResult>` — but axios's static `request<T>`
+ * still types it as `AxiosResponse<T>`. The cast restores the
+ * runtime contract so callers can read `.data` as `PresignResult`
+ * without TypeScript griping.
  */
 export const presign = (
   params: { filename: string; content_type: string; project_id: string },
   needGlobalLoading = false,
-) =>
+): Promise<ApiResponse<PresignResult>> =>
   request<ApiResponse<PresignResult>>({
     url: '/api/v1/assets/presign',
     method: 'get',
     params,
     needGlobalLoading,
-  } as CustomAxiosRequestConfig);
+  } as CustomAxiosRequestConfig) as unknown as Promise<ApiResponse<PresignResult>>;
 
 /**
  * Upload a file to the presigned URL.

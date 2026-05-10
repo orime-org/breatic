@@ -1,12 +1,17 @@
 /**
  * Audio input node (AudioNode)
- * - Supports audio upload, audio URL input, and recording
- * - Shows NodeToolbar on selection
- * - Uses WaveSurfer + RecordPlugin for recording and waveform
+ *
+ * Asset content lands in `data.content` via either:
+ *   - Left menu upload (F5 — `useUploadFiles` → permanent S3/OSS URL)
+ *   - In-node Record Audio (F5 — wavesurfer captured blob → uploadOne
+ *     → permanent URL written via setNodeContent)
+ *   - Mini-tool sibling / generative downstream (Worker writes)
+ *
+ * Per-node `customRequest` upload + Upload component + hidden file
+ * input were removed in F5.
  */
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
-import { Upload } from '@/ui/upload';
 import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
 import NodeHeader from '../../common/NodeHeader';
@@ -15,6 +20,8 @@ import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
+import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
+import { uploadOne } from '@/features/upload';
 import {
   shouldHideNodeChatComposerForChatRecordCanvasPick,
   type CanvasWorkflowNodeData,
@@ -52,8 +59,10 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { setNodeContent, onNodesChange } = useCanvasActions();
   const { openRightPanel } = useProjectLayout();
   const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
+  const activeMgr = useActiveCanvasSpace();
   const showContent = useStore(zoomLevelShowContentSelector);
   const [nodeHovered, setNodeHovered] = useState(false);
+  /** True while the in-node recording is being uploaded to permanent storage. */
   const [isLoading, setIsLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [urlValue, setUrlValue] = useState('');
@@ -64,7 +73,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const recordPluginRef = useRef<RecordPlugin | null>(null);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   /** Auto-focus URL input after modal opens (wait for transition mount). */
   useEffect(() => {
@@ -92,29 +100,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrlFromData]);
-
-  /** Local file: object URL — writes content directly to node data (canvas-native schema). */
-  const customRequest = async (options: {
-    file: File;
-    onSuccess: (response: unknown) => void;
-    onError: (error: Error) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    setIsLoading(true);
-    try {
-      const resourceUrl = URL.createObjectURL(file);
-      setNodeContent(id, { content: resourceUrl });
-      setIsLoading(false);
-      onSuccess(resourceUrl);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      message.warning(t('canvas.node.audio.uploadFailed', 'Audio upload failed'));
-      setIsLoading(false);
-      onError(error as Error);
-    }
-  };
-
-  // TODO: replaced by presigned URL upload hook
 
   /** Stop recording; upload is triggered by RecordPlugin record-end. */
   const handleStopRecording = () => {
@@ -189,13 +174,26 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
         setRecordingTime(0);
         setIsLoading(true);
         try {
-          const resourceUrl = URL.createObjectURL(blob);
-          setNodeContent(id, { content: resourceUrl });
+          if (!activeMgr) {
+            throw new Error('canvas space not ready');
+          }
+          // Wrap as a File so `uploadOne` can extract a filename for
+          // the server's content-disposition + key derivation. The
+          // mimeType matches what RecordPlugin's MediaRecorder uses.
+          const filename = `recording-${Date.now()}.webm`;
+          const file = new File([blob], filename, {
+            type: blob.type || 'audio/webm',
+          });
+          const result = await uploadOne(file, { projectId: activeMgr.projectId });
+          setNodeContent(id, {
+            content: result.fileUrl,
+            ...(result.duration !== undefined ? { duration: result.duration } : {}),
+          });
           setShowRecordView(false);
-          setIsLoading(false);
         } catch (error) {
           console.error('Recording upload failed:', error);
           message.warning(t('canvas.node.audio.recordingUploadFailed', 'Recording upload failed'));
+        } finally {
           setIsLoading(false);
         }
       }),
@@ -280,12 +278,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const showToolbar = selected && selectedCount === 1 && !dragging && !isInsideLockedGroup;
   const showBottomNodeChatComposer = showToolbar && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
 
-  /** Open right chat panel as audio editor (resource list + resizable editor area). */
-  /** Toolbar Upload: trigger hidden file input. */
-  const handleToolbarUploadClick = () => {
-    uploadInputRef.current?.click();
-  };
-
   const handleToolbarInfoClick = () => {
     const isCurrentNodePanelOpen = canvasOverlayPanel.open && canvasOverlayPanel.nodeId === id;
     if (isCurrentNodePanelOpen) {
@@ -293,18 +285,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       return;
     }
     openCanvasOverlayPanel(id);
-  };
-
-  /** Hidden file input change handler uses customRequest. */
-  const handleToolbarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    customRequest({
-      file,
-      onSuccess: () => {},
-      onError: () => {},
-    });
   };
 
   /** Placeholder click: stop propagation and select current node. */
@@ -321,22 +301,12 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
 
   return (
     <>
-      <input
-        ref={uploadInputRef}
-        type='file'
-        accept='.mp3,.ogg,.wav,.webm'
-        className='hidden'
-        aria-hidden
-        onChange={handleToolbarFileChange}
-      />
       <FlowNodeToolbar position={Position.Top} align='center' offset={40} isVisible={showToolbar}>
         <div className='rounded-[8px] pointer-events-auto' onMouseDown={(e) => e.stopPropagation()}>
           <AudioNodeToolbar
             nodeId={id}
-            isUploading={isLoading}
             showRecordView={showRecordView}
             onRecordToggle={() => setShowRecordView(!showRecordView)}
-            onUploadClick={handleToolbarUploadClick}
             onInfoClick={handleToolbarInfoClick}
           />
         </div>
@@ -457,35 +427,20 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
                   </div>
                 ) : (
-                  <Upload
-                    customRequest={customRequest}
-                    showUploadList={false}
-                    accept='.mp3,.ogg,.wav,.webm'
-                    className='w-full h-full'
+                  <div
+                    className='w-full h-full flex flex-col items-center justify-center cursor-default gap-2'
+                    onClick={handlePlaceholderClick}
                   >
-                    <div
-                      className='w-full h-full flex flex-col items-center justify-center cursor-pointer gap-2 h-full'
-                      onClick={handlePlaceholderClick}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        uploadInputRef.current?.click();
-                      }}
-                    >
-                      <Icon
-                        name='project-audio-node-placeholder'
-                        width={32}
-                        height={42}
-                        className='text-text-default-tertiary'
-                      />
-                      <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
-                        {t('project.toolbar.audioNodePlaceholder')
-                          .split('\n')
-                          .map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
-                      </div>
+                    <Icon
+                      name='project-audio-node-placeholder'
+                      width={32}
+                      height={42}
+                      className='text-text-default-tertiary'
+                    />
+                    <div className='text-center text-[12px] font-normal text-text-default-tertiary'>
+                      {t('canvas.node.audio.emptyHint', '点左侧菜单"上传"或工具栏"录音"')}
                     </div>
-                  </Upload>
+                  </div>
                 )}
               </div>
             )}

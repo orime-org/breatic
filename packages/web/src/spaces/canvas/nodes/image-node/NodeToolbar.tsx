@@ -1,24 +1,25 @@
-/** Image node toolbar: Launch Editor | Upload | Info. */
+/**
+ * Image node toolbar — Launch Editor | Info.
+ *
+ * The Upload button was removed in F5 because uploads now flow
+ * through `LeftFloatingMenu` only (single canonical entry point;
+ * no more per-node `customRequest`). To replace an asset, the user
+ * deletes the node and re-uploads — matches the v13 "no-lock,
+ * every action makes a sibling" pattern.
+ */
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 
 export interface ImageNodeToolbarProps {
   nodeId: string;
-  /** Disable Upload while uploading. */
-  isUploading?: boolean;
-  onUploadClick?: () => void;
   onTakePhotoClick?: () => void;
 }
 
 const ImageNodeToolbar: React.FC<ImageNodeToolbarProps> = ({
   nodeId,
-  isUploading = false,
-  onUploadClick,
   onTakePhotoClick,
 }) => {
-  const { t } = useTranslation();
   const { openRightPanel } = useProjectLayout();
 
   const handleEditorClick = (e: React.MouseEvent) => {
@@ -48,21 +49,6 @@ const ImageNodeToolbar: React.FC<ImageNodeToolbarProps> = ({
           <Icon name='project-launch-editor-icon' width={20} height={20} color={iconColor} />
           <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
             Lanch Editor
-          </span>
-        </div>
-      </div>
-
-      {/* Middle: Upload */}
-      <div className={`${areaClass} ${roundedClass} ${toolbarAreaClass} gap-0`}>
-        <div
-          role='button'
-          tabIndex={isUploading ? -1 : 0}
-          className={`h-7 px-2 flex items-center gap-1.5 rounded-[4px] ${isUploading ? 'cursor-not-allowed opacity-50' : `cursor-pointer ${btnHoverClass}`}`}
-          onClick={(e) => { e.stopPropagation(); if (!isUploading) onUploadClick?.(); }}
-        >
-          <Icon name='project-upload-icon' width={16} height={16} color={iconColor} />
-          <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
-            {t('project.toolbar.upload', 'Upload')}
           </span>
         </div>
       </div>

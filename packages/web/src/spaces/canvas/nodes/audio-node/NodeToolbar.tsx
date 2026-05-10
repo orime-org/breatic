@@ -1,28 +1,30 @@
-/** Audio node toolbar: Launch Editor | Upload | Record Audio | Info. */
+/**
+ * Audio node toolbar — Launch Editor | Record Audio | Info.
+ *
+ * The Upload button was removed in F5 because uploads now flow
+ * through `LeftFloatingMenu` only. The Record Audio path stays
+ * (it's a node-local capture flow, not file ingest) — recordings
+ * land via `useUploadFiles.uploadOne` per record-end so the URL
+ * written to Yjs is permanent S3/OSS, not a blob URL.
+ */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import Divider from '@/ui/divider';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 
 export interface AudioNodeToolbarProps {
   nodeId: string;
-  /** Disable Upload while uploading. */
-  isUploading?: boolean;
   showRecordView: boolean;
   onRecordToggle: () => void;
   onPausePlayer?: () => void;
-  onUploadClick?: () => void;
   onInfoClick?: () => void;
 }
 
 const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
   nodeId,
-  isUploading = false,
   showRecordView,
   onRecordToggle,
   onPausePlayer,
-  onUploadClick,
   onInfoClick,
 }) => {
   const { t } = useTranslation();
@@ -64,20 +66,8 @@ const AudioNodeToolbar: React.FC<AudioNodeToolbarProps> = ({
         </div>
       </div>
 
-      {/* Middle: Upload | Record Audio */}
+      {/* Middle: Record Audio */}
       <div className={`${areaClass} ${roundedClass} ${toolbarAreaClass} gap-0`}>
-        <div
-          role='button'
-          tabIndex={isUploading ? -1 : 0}
-          className={`h-7 px-2 flex items-center gap-1.5 rounded-[4px] ${isUploading ? 'cursor-not-allowed opacity-50' : `cursor-pointer ${btnHoverClass}`}`}
-          onClick={(e) => { e.stopPropagation(); if (!isUploading) onUploadClick?.(); }}
-        >
-          <Icon name='project-upload-icon' width={16} height={16} color={iconColor} />
-          <span className='text-[12px] font-medium text-text-default-base whitespace-nowrap'>
-            {t('project.toolbar.upload', 'Upload')}
-          </span>
-        </div>
-        <Divider type='vertical' className='h-[18px] mx-1 flex-shrink-0' />
         <div
           role='button'
           tabIndex={0}
