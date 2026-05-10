@@ -63,6 +63,10 @@ import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
 import { LeftFloatingMenu } from '@/features/canvas-left-menu';
 import { BottomToolbar, useMiniTool } from '@/features/mini-tools';
 import { useChipsPick } from '@/features/chat/contexts/ChipsPickContext';
+// B.2 — pickState integration (agentCanvasPickEditingNodeId / mention
+// mode / canvas-pick recognized boxes) is gone. v13 chip pick goes
+// through ChipsPickContext above; recognized boxes were a v12 demo
+// affordance the spec dropped.
 import {
   AnnotationNode,
   AnnotationComposer,
@@ -72,21 +76,14 @@ import { executeImage } from '@/data/api/mini-tools';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import CanvasRightOverlayPanel from '@/spaces/canvas/view/CanvasRightOverlayPanel';
 import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasViewportRegistrar';
-import { captureCanvasPickCaretRange } from '@/features/chat/components/AgentInput';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { type UseProjectSpacesResult } from '@/domain/space/useProjectSpaces';
-import {
-  type PickPending,
-  type CanvasWorkflowNodeData,
-} from '@/spaces/canvas/types';
+import { type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import {
   getGroupBounds,
   getLockedGroupIds,
-  getProjectImageNodeContentUrl,
-  getNodeContentForMention,
-  getAgentCanvasPickOverlayAnchorFromClick,
   connectEndHandles,
   generateConnectEndNodeId,
   defaultNodeWidthByType,
@@ -146,7 +143,6 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     openCanvasCommentComposer,
     closeCanvasCommentComposer,
   } = useCanvasUI();
-  const [agentCanvasPickEditingNodeId, setAgentCanvasPickEditingNodeId] = useState<string | null>(null);
   const { getIntersectingNodes, getNodes, screenToFlowPosition } = useReactFlow();
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -174,56 +170,6 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
-
-  useEffect(() => {
-    const source = nodes.find(
-      (n) => (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.fromCanvas === true,
-    );
-    if (source && agentCanvasPickEditingNodeId !== source.id) {
-      setAgentCanvasPickEditingNodeId(source.id);
-      return;
-    }
-    if (!agentCanvasPickEditingNodeId) return;
-    const editing = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
-    const stillPicking =
-      editing && (editing.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.fromCanvas === true;
-    if (!stillPicking) {
-      setAgentCanvasPickEditingNodeId(null);
-    }
-  }, [nodes, agentCanvasPickEditingNodeId]);
-
-  const agentCanvasPickEditMode = agentCanvasPickEditingNodeId != null;
-
-  const isMentionPickMode = useMemo(() => {
-    if (!agentCanvasPickEditingNodeId) return false;
-    const source = nodes.find((n) => n.id === agentCanvasPickEditingNodeId);
-    const consumeFrom = (source?.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.consumeFrom;
-    return consumeFrom === 'chatRecordPanelMention' || consumeFrom === 'nodeComposerMention';
-  }, [agentCanvasPickEditingNodeId, nodes]);
-
-  const exitAgentCanvasPickMode = useCallback(() => {
-    if (!agentCanvasPickEditingNodeId) return;
-    const sourceId = agentCanvasPickEditingNodeId;
-    const list = nodesRef.current;
-    updateNode(sourceId, { data: { pickState: null } }, { history: 'skip' });
-    for (const n of list) {
-      const boxes = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.resultBoxes;
-      if (boxes?.length) {
-        updateNode(n.id, { data: { pickState: null } }, { history: 'skip' });
-      }
-    }
-  }, [agentCanvasPickEditingNodeId, updateNode]);
-
-  useEffect(() => {
-    if (!agentCanvasPickEditMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      exitAgentCanvasPickMode();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [agentCanvasPickEditMode, exitAgentCanvasPickMode]);
 
   /** Handle edge reconnect with latest edge snapshot (avoid stale closure). */
   const onReconnect = useCallback(
@@ -466,60 +412,10 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     });
   }, [nodes, lockedGroupIdsForSelectable]);
 
-  /** Set of node ids already connected as upstream sources of the pick-source node (for mention mode). */
-  const existingMentionUpstreamIds = useMemo(() => {
-    if (!isMentionPickMode || !agentCanvasPickEditingNodeId) return new Set<string>();
-    return new Set(edges.filter((e) => e.target === agentCanvasPickEditingNodeId).map((e) => e.source));
-  }, [isMentionPickMode, agentCanvasPickEditingNodeId, edges]);
-
   const reactFlowNodes = useMemo(() => {
-    if (!agentCanvasPickEditMode || !agentCanvasPickEditingNodeId) {
-      if (tempConnectNodes.length === 0) return nodesWithSelectable;
-      return [...nodesWithSelectable, ...tempConnectNodes];
-    }
-    const mapPickModeNode = (node: Node): Node => {
-      const isActivePickSource = node.id === agentCanvasPickEditingNodeId;
-      const contentUrl = node.type === '1002' ? getProjectImageNodeContentUrl(node) : null;
-      const alreadyLinked = isMentionPickMode && existingMentionUpstreamIds.has(node.id);
-      const isSelectableImageTarget = isMentionPickMode
-        ? Boolean(getNodeContentForMention(node)) && !isActivePickSource && !alreadyLinked
-        : node.type === '1002' && Boolean(contentUrl);
-      const isHighlighted = isActivePickSource || isSelectableImageTarget;
-      const pointerEvents: React.CSSProperties['pointerEvents'] = isHighlighted ? 'auto' : 'none';
-      const cursor: React.CSSProperties['cursor'] = isHighlighted
-        ? isSelectableImageTarget
-          ? 'pointer'
-          : 'default'
-        : 'not-allowed';
-      const pickRing = isSelectableImageTarget ? '0 0 0 2px rgba(151, 160, 255, 0.35)' : undefined;
-      // In mention mode the source node is highlighted but not "selected" so its toolbar stays hidden.
-      const showAsSelected = isActivePickSource && !isMentionPickMode;
-      return {
-        ...node,
-        selected: showAsSelected,
-        selectable: showAsSelected,
-        draggable: false,
-        focusable: isHighlighted,
-        style: {
-          ...(node.style ?? {}),
-          pointerEvents,
-          cursor,
-          opacity: isHighlighted ? 1 : alreadyLinked ? 0.4 : 0.28,
-          filter: isHighlighted ? 'none' : 'saturate(0.2) brightness(0.6)',
-          transition: 'opacity 160ms ease, filter 160ms ease, box-shadow 200ms ease',
-          boxShadow: pickRing ?? (node.style as { boxShadow?: string } | undefined)?.boxShadow,
-        },
-      };
-    };
-    return [...nodesWithSelectable.map(mapPickModeNode), ...tempConnectNodes.map(mapPickModeNode)];
-  }, [
-    agentCanvasPickEditMode,
-    agentCanvasPickEditingNodeId,
-    isMentionPickMode,
-    existingMentionUpstreamIds,
-    nodesWithSelectable,
-    tempConnectNodes,
-  ]);
+    if (tempConnectNodes.length === 0) return nodesWithSelectable;
+    return [...nodesWithSelectable, ...tempConnectNodes];
+  }, [nodesWithSelectable, tempConnectNodes]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -528,9 +424,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       const yjsChanges: NodeChange[] = [];
       for (const c of changes) {
         if (c.type === 'select' || c.type === 'dimensions') {
-          if (!(agentCanvasPickEditingNodeId && c.type === 'select')) {
-            localChanges.push(c);
-          }
+          localChanges.push(c);
         } else {
           yjsChanges.push(c);
         }
@@ -538,7 +432,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       if (localChanges.length) applyLocalNodeChanges(localChanges);
       if (yjsChanges.length) onNodesChange(yjsChanges);
     },
-    [agentCanvasPickEditingNodeId, onNodesChange, applyLocalNodeChanges],
+    [onNodesChange, applyLocalNodeChanges],
   );
 
   const onNodeClick = (e: React.MouseEvent, node: Node) => {
@@ -551,67 +445,6 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       if (node.parentId && lockedGroupIdsForSelectable.has(node.parentId)) return;
       e.stopPropagation();
       chipsPick.pickNode(node.id);
-      return;
-    }
-    if (agentCanvasPickEditingNodeId) {
-      if (node.parentId && lockedGroupIdsForSelectable.has(node.parentId)) return;
-      if (isMentionPickMode) {
-        // Mention mode: all node types with content are valid targets (except the source itself or already-linked nodes).
-        const sourceId = agentCanvasPickEditingNodeId;
-        if (node.id === sourceId) return;
-        if (existingMentionUpstreamIds.has(node.id)) return;
-        const nodeContent = getNodeContentForMention(node);
-        if (!nodeContent) return;
-        const sourceNode = nodes.find((n) => n.id === sourceId);
-        const sourceData = sourceNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-        if (!sourceData?.pickState?.composerFocused) return;
-        const prevPendingList: PickPending[] = sourceData.pickState?.pendingList ?? [];
-        const placeholderId = nanoid();
-        captureCanvasPickCaretRange(placeholderId, sourceId);
-        const nextPending: PickPending = {
-          targetNodeId: node.id,
-          placeholderId,
-          content: nodeContent.content,
-          name: nodeContent.name,
-          resourceType: nodeContent.resourceType,
-        };
-        updateNode(sourceId, {
-          data: { pickState: { pendingList: [...prevPendingList, nextPending] } },
-        });
-        return;
-      }
-      if (node.type === '1002') {
-        const targetEl = e.target as HTMLElement | null;
-        const hitImageViewport = Boolean(targetEl?.closest(`[data-agent-image-viewport="${node.id}"]`));
-        if (!hitImageViewport) return;
-        const url = getProjectImageNodeContentUrl(node);
-        if (url) {
-          const nameFromUrl = url.split('/').pop()?.split('?')[0] || 'image';
-          const sourceId = agentCanvasPickEditingNodeId;
-          const overlayAnchor = getAgentCanvasPickOverlayAnchorFromClick(e, node.id);
-          const sourceNode = nodes.find((n) => n.id === sourceId);
-          const sourceData = sourceNode?.data as Partial<CanvasWorkflowNodeData> | undefined;
-          const composerFocused = Boolean(sourceData?.pickState?.composerFocused);
-          if (!composerFocused) return;
-          const prevPendingList: PickPending[] = sourceData?.pickState?.pendingList ?? [];
-          const placeholderId = nanoid();
-          captureCanvasPickCaretRange(placeholderId, sourceId);
-          const nextPending: PickPending = {
-            targetNodeId: node.id,
-            placeholderId,
-            content: url,
-            name: nameFromUrl,
-            ...(overlayAnchor ? { overlayAnchor } : {}),
-          };
-          updateNode(sourceId, {
-            data: {
-              pickState: {
-                pendingList: [...prevPendingList, nextPending],
-              },
-            },
-          });
-        }
-      }
       return;
     }
     if (node.parentId && lockedGroupIdsForSelectable.has(node.parentId)) return;
@@ -650,7 +483,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
 
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
-      if (!canvasCommentMode || agentCanvasPickEditMode) return;
+      if (!canvasCommentMode) return;
       const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       openCanvasCommentComposer({
         clientX: event.clientX + 12,
@@ -661,7 +494,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       setContextMenu(null);
       setConnectEndMenu(null);
     },
-    [agentCanvasPickEditMode, canvasCommentMode, openCanvasCommentComposer, screenToFlowPosition],
+    [canvasCommentMode, openCanvasCommentComposer, screenToFlowPosition],
   );
 
   const handleCommentComposerSend = useCallback(
@@ -815,22 +648,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     <div
       data-project-canvas-flow-root
       className='relative h-full w-full bg-background-default-secondary'
-      style={{ cursor: agentCanvasPickEditMode ? 'not-allowed' : 'default' }}
     >
-      {agentCanvasPickEditMode && <div className='pointer-events-none absolute inset-0 z-0 bg-black/35' />}
-      {agentCanvasPickEditMode && (
-        <div className='pointer-events-none absolute inset-x-0 top-3 z-[20] flex justify-center'>
-          <button
-            type='button'
-            className='pointer-events-auto inline-flex h-9 items-center gap-2 rounded-md border border-white/40 bg-black/50 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/65'
-            onClick={exitAgentCanvasPickMode}
-          >
-            <span>{t('canvas.pickMode.clickHereOrPress', 'Click here or press')}</span>
-            <span className='rounded border border-white/55 px-1 text-[10px]'>ESC</span>
-            <span>{t('canvas.pickMode.toExit', 'to exit')}</span>
-          </button>
-        </div>
-      )}
       <ReactFlow
         nodes={reactFlowNodes}
         edges={reactFlowEdges}
@@ -847,7 +665,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         defaultViewport={reactFlowDefaultViewport}
-        selectionOnDrag={!agentCanvasPickEditMode}
+        selectionOnDrag
         panOnDrag={reactFlowPanOnDrag}
         panOnScroll
         zoomOnScroll={false}
@@ -863,9 +681,9 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         className='relative z-[1] origin-[0px_0px] backface-hidden antialiased'
         style={reactFlowStyle}
         onlyRenderVisibleElements={true}
-        nodesDraggable={!agentCanvasPickEditMode}
-        nodesConnectable={!agentCanvasPickEditMode}
-        elementsSelectable={!agentCanvasPickEditMode}
+        nodesDraggable
+        nodesConnectable
+        elementsSelectable
         selectNodesOnDrag={false}
         connectionRadius={20}
       >

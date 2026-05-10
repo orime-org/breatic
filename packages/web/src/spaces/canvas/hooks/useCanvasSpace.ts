@@ -68,8 +68,11 @@ function yMapToNode(nodeMap: Y.Map<unknown>, id: string): Node {
           references: yArrayToPlainArray(dataMap.get('references')),
           // ── Common ───────────────────────────────────────────
           attachments: yArrayToPlainArray(dataMap.get('attachments')),
-          // ── UI-only transient signals (not in Yjs history schema) ──
-          pickState: dataMap.get('pickState') ?? undefined,
+          // B.2 — `pickState` is no longer read into the local
+          // snapshot. The v12 canvas-pick-into-editor flow that
+          // depended on it has been retired; new chip pick state
+          // (B.1) lives in `ChipsPickContext` as per-user React
+          // state, never round-trips through Yjs.
         }
       : { name: '', createdAt: 0, createdBy: '', locked: false, state: 'idle', attachments: [] },
   };

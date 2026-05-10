@@ -6,13 +6,14 @@
  *   - Mini-tool sibling (F4 — Worker writes via NodeStateUpdateEvent)
  *   - Generative downstream (F3 — Worker writes via NodeStateUpdateEvent)
  *
- * Per-node `customRequest` upload + Upload component + hidden file
- * input were removed in F5. Empty image nodes now show an
- * informational placeholder pointing the user at the left menu;
- * replacement is intentional create-sibling-then-delete (matches the
- * v13 "no-lock, every action makes a sibling" pattern).
+ * v12 cleanup (B.2): removed the per-node `NodeChatComposer` bottom
+ * toolbar, the `pickState`-driven canvas-pick-into-editor recognition
+ * pills + `RecognizedPickDropdown` overlays. v13 model is
+ * session-based chat in the left `ChatPanel` with chips referencing
+ * canvas nodes through `ChipsPickContext` (B.1) — no per-node chat
+ * composer, no Yjs-backed pick state.
  */
-import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
 import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
@@ -24,18 +25,10 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
-import {
-  shouldHideNodeChatComposerForChatRecordCanvasPick,
-  type PickPending,
-  type PickResultBox,
-  type CanvasWorkflowNodeData,
-} from '@/spaces/canvas/types';
 import NodeToolbar from './NodeToolbar';
 import { NodeFloatMenu, IMAGE_TOOLS } from '@/features/mini-tools';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
-import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
-import RecognizedPickDropdown from '@/features/chat/components/RecognizedPickDropdown';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Image_0_0';
@@ -44,18 +37,20 @@ const sourceHandleId = 'Image_0_0';
 /** Default node size when empty; portrait fixes width, landscape fixes height. */
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
-const recognizedOverlayPresets = [
-  { key: 'mountain', label: '山脉', cxPct: 28, cyPct: 24, wPct: 32, hPct: 26 },
-  { key: 'river', label: '河流', cxPct: 56, cyPct: 62, wPct: 38, hPct: 20 },
-  { key: 'tree', label: '大树', cxPct: 76, cyPct: 42, wPct: 20, hPct: 34 },
-] as const;
 
-type ImageNodeData = { name?: string; content?: string; width?: number; height?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
+type ImageNodeData = {
+  name?: string;
+  content?: string;
+  width?: number;
+  height?: number;
+  state?: string;
+  errorMessage?: string;
+};
 
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
   const { nodes } = useCanvasData();
-  const { updateNode, onNodesChange } = useCanvasActions();
+  const { onNodesChange } = useCanvasActions();
   const { openRightPanel } = useProjectLayout();
   const { openCanvasOverlayPanel, closeCanvasOverlayPanel, canvasOverlayPanel } = useCanvasUI();
   const showContent = useStore(zoomLevelShowContentSelector);
@@ -67,8 +62,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   /** Derived from node data: current image URL from data.content (new schema). */
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as ImageNodeData | undefined;
-  const pick = nodeData?.pickState;
-  const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
   /** Direct read of data.content — no history indirection in canvas-native schema. */
   const imageUrlFromData = nodeData?.content ?? '';
   const isHandling = nodeData?.state === 'handling';
@@ -147,40 +140,8 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const selectedCount = nodes.filter((n: { selected?: boolean }) => n.selected).length;
   const parentNode = currentNode?.parentId ? nodes.find((n) => n.id === currentNode.parentId) : null;
   const isInsideLockedGroup = parentNode?.type === 'group' && (parentNode.data as { locked?: boolean })?.locked === true;
-  const agentCanvasPickFromCanvas = Boolean(pick?.fromCanvas);
-  const baseToolbarVisible = !dragging && !isInsideLockedGroup && ((selected && selectedCount === 1) || agentCanvasPickFromCanvas);
-  const showTopToolbar = baseToolbarVisible && !agentCanvasPickFromCanvas;
-  const showBottomNodeChatComposer = baseToolbarVisible && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
-
-  const agentCanvasPickSourceNodeId = nodes.find((n) =>
-    Boolean((n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState?.fromCanvas),
-  )?.id;
+  const showTopToolbar = !dragging && !isInsideLockedGroup && selected && selectedCount === 1;
   const displayImageUrl = imageUrl || imageUrlFromData;
-  let imageContentCursorClass = 'cursor-grab';
-  if (
-    agentCanvasPickSourceNodeId != null &&
-    Boolean(displayImageUrl) &&
-    (agentCanvasPickSourceNodeId !== id || agentCanvasPickFromCanvas)
-  ) {
-    imageContentCursorClass = 'cursor-pointer';
-  }
-
-  /** During focused picking, render one "recognizing" bubble per pending request on this node. */
-  const agentCanvasPickPendingListForThis = nodes.reduce<PickPending[]>((acc, n) => {
-    const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
-    const list = ps?.pendingList ?? [];
-    const matched = list.filter((item) => item.targetNodeId === id);
-    if (matched.length > 0) {
-      acc.push(...matched);
-      return acc;
-    }
-    const legacy = ps?.pending ?? null;
-    if (legacy?.targetNodeId === id) acc.push(legacy);
-    return acc;
-  }, []);
-  const isAgentCanvasPickRecognizingTarget = agentCanvasPickPendingListForThis.length > 0;
-  const pickResultBoxes = useMemo<PickResultBox[]>(() => pick?.resultBoxes ?? [], [pick?.resultBoxes]);
-  const imagePickOverlayOverflow = isAgentCanvasPickRecognizingTarget || pickResultBoxes.length > 0;
 
   /** Track node hover to control plus-handle visibility. */
   const [nodeHovered, setNodeHovered] = useState(false);
@@ -198,55 +159,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       setContentHeight(Math.round(defaultNodeWidth * (naturalHeight / naturalWidth)));
     }
   };
-
-  const handleChatInputSend = (content: string, imageUrls?: string[]) => {
-    // eslint-disable-next-line no-console
-    console.log('ImageNode ChatInput send:', { nodeId: id, content, imageUrls });
-    // TODO: Wire this to the ChatMessage list bound to this node.
-  };
-
-  const handleRecognizedOverlaySelect = useCallback(
-    (box: PickResultBox, presetKey: string) => {
-      const preset = recognizedOverlayPresets.find((item) => item.key === presetKey);
-      if (!preset || !box.placeholderId) return;
-      const nextBoxes = pickResultBoxes.map((item) =>
-        item.placeholderId === box.placeholderId
-          ? {
-            ...item,
-            name: preset.label,
-            cxPct: preset.cxPct,
-            cyPct: preset.cyPct,
-            wPct: preset.wPct,
-            hPct: preset.hPct,
-          }
-          : item,
-      );
-      updateNode(
-        id,
-        { data: { pickState: { resultBoxes: nextBoxes.length ? nextBoxes : null } } },
-        { history: 'skip' },
-      );
-      if (!box.sourceNodeId || !box.content) return;
-      updateNode(
-        box.sourceNodeId,
-        {
-          data: {
-            pickState: {
-              selection: {
-                targetNodeId: id,
-                placeholderId: box.placeholderId,
-                content: box.content,
-                name: preset.label,
-                resourceType: box.resourceType ?? 'image',
-              },
-            },
-          },
-        },
-        { history: 'skip' },
-      );
-    },
-    [id, pickResultBoxes, updateNode],
-  );
 
   /** Open the right chat panel as image editor (resource list + resizable editor area). */
   return (
@@ -313,24 +225,17 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
             nodeHovered={nodeHovered}
             isInsideLockedGroup={isInsideLockedGroup}
           />
-          <div className={cn('flex-1 min-h-0', imagePickOverlayOverflow && 'overflow-visible')}>
+          <div className={cn('flex-1 min-h-0')}>
             {!showContent ? (
               <NodeSkeleton />
             ) : (
-              <div
-                className={cn(
-                  'w-full h-full min-h-0 flex items-center justify-center rounded-[8px]',
-                  imagePickOverlayOverflow ? 'overflow-visible' : 'overflow-hidden',
-                )}
-              >
+              <div className='w-full h-full min-h-0 flex items-center justify-center rounded-[8px] overflow-hidden'>
                 {imageUrl ? (
                   <div
                     className={cn(
-                      'relative h-full w-full min-h-0 rounded-[8px]',
-                      imagePickOverlayOverflow ? 'overflow-visible' : 'overflow-hidden',
+                      'relative h-full w-full min-h-0 rounded-[8px] overflow-hidden',
                       errorMessage && !isHandling && 'outline outline-2 outline-red-400',
                     )}
-                    data-agent-image-viewport={id}
                   >
                     {/* Handling overlay: shown when backend is processing this node. */}
                     {isHandling && (
@@ -355,42 +260,9 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                       onDownloadClick={handleDownloadClick}
                       onMentionClick={handleMentionClick}
                       onImageLoad={handleImageLoad}
-                      imageCursorClassName={imageContentCursorClass}
-                      hideFloatingToolbar={agentCanvasPickFromCanvas}
+                      imageCursorClassName='cursor-grab'
+                      hideFloatingToolbar={false}
                     />
-                    {pickResultBoxes.map((box, boxIdx) => (
-                      <div
-                        key={box.placeholderId ?? `${box.cxPct}-${box.cyPct}-${boxIdx}`}
-                        className='absolute z-[5] rounded-md border-2 border-[rgb(99,102,241)] bg-[rgb(99,102,241)]/15 shadow-[0_0_0_1px_rgba(255,255,255,0.25)_inset] box-border'
-                        style={{
-                          left: `${box.cxPct}%`,
-                          top: `${box.cyPct}%`,
-                          width: `${box.wPct}%`,
-                          height: `${box.hPct}%`,
-                          transform: 'translate(-50%, -50%)',
-                        }}
-                      >
-                        <div className='absolute -left-1 -top-8 z-[8] pointer-events-auto'>
-                          <RecognizedPickDropdown
-                            currentLabel={box.name}
-                            options={recognizedOverlayPresets.map((item) => ({ key: item.key, label: item.label }))}
-                            onSelect={(presetKey) => handleRecognizedOverlaySelect(box, presetKey)}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {agentCanvasPickPendingListForThis.map((pending) => (
-                      <div
-                        key={pending.placeholderId}
-                        className='pointer-events-none absolute z-[7] inline-flex max-w-[126px] min-w-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--color-border-default-base)] bg-[var(--color-background-default-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-default-base)] shadow-sm -translate-x-1/2 -translate-y-1/2'
-                        style={{
-                          left: pending.overlayAnchor ? `${pending.overlayAnchor.xPct}%` : '50%',
-                          top: pending.overlayAnchor ? `${pending.overlayAnchor.yPct}%` : '50%',
-                        }}
-                      >
-                        <span className='mr-1'>⏳</span>识别中...
-                      </div>
-                    ))}
                   </div>
                 ) : isHandling ? (
                   /* No content yet but backend is processing: show full-area spinner */
@@ -419,14 +291,6 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           </div>
         </div>
       </div>
-      {/* Bottom FlowNodeToolbar: show a floating ChatInput below when this node is selected. */}
-      <FlowNodeToolbar position={Position.Bottom} align='center' offset={20} isVisible={showBottomNodeChatComposer}>
-        <NodeChatComposer
-          className='w-[526px] min-h-[160px] pointer-events-auto rounded-[16px]'
-          onSend={handleChatInputSend}
-          targetNodeId={id}
-        />
-      </FlowNodeToolbar>
     </>
   );
 };

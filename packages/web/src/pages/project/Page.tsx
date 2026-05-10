@@ -107,27 +107,16 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   const isVideoOrAudioNode = panelNodeType === '1003' || panelNodeType === '1004';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
 
-  const exitCanvasPickMode = useCallback(() => {
-    for (const n of nodes) {
-      const ps = (n.data as Partial<CanvasWorkflowNodeData> | undefined)?.pickState;
-      if (ps?.fromCanvas || ps?.resultBoxes?.length) {
-        updateNode(n.id, { data: { pickState: null } }, { history: 'skip' });
-      }
-    }
-  }, [nodes, updateNode]);
-
   const handleToggleChatPanel = () => {
     setChatPanelVisible((prev) => !prev);
   };
 
   const handleToggleEditorPanel = () => {
     if (rightPanel.open) {
-      exitCanvasPickMode();
       closeRightPanel();
       setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
       return;
     }
-    exitCanvasPickMode();
     openRightPanel('editor', rightPanel.nodeId);
     setSelectedWorkspaceRegion('rightEditor');
   };
@@ -136,7 +125,6 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
     setCanvasPanelVisible((prev) => {
       const next = !prev;
       if (!next) {
-        exitCanvasPickMode();
         setSelectedWorkspaceRegion((current) => (current === 'canvas' ? null : current));
       }
       return next;
@@ -154,13 +142,10 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
 
   useEffect(() => {
     if (isRightEditorOpen) {
-      exitCanvasPickMode();
       setSelectedWorkspaceRegion('rightEditor');
     } else {
       setSelectedWorkspaceRegion((prev) => (prev === 'rightEditor' ? null : prev));
     }
-    // exitCanvasPickMode reads from the latest nodes snapshot via its memoised deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRightEditorOpen]);
 
   useEffect(() => {
@@ -209,7 +194,6 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
               id='resizable-left'
               className={`bg-background-default-secondary flex flex-col shrink-0 border box-border ${rightEditorBorderClass}`}
               onMouseDownCapture={() => {
-                exitCanvasPickMode();
                 setSelectedWorkspaceRegion('rightEditor');
               }}
             >
@@ -252,7 +236,6 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
               id='resize-canvas-right'
               className='w-px bg-gray-300 hover:bg-blue-400 data-[resize-handle-state=drag]:bg-blue-500 cursor-col-resize shrink-0 transition-colors focus-visible:outline-none'
               onMouseDownCapture={() => {
-                exitCanvasPickMode();
                 setSelectedWorkspaceRegion('rightEditor');
                 setIsResizingRightEditor(true);
               }}

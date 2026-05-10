@@ -11,10 +11,7 @@ import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
-import {
-  shouldHideNodeChatComposerForChatRecordCanvasPick,
-  type CanvasWorkflowNodeData,
-} from '@/spaces/canvas/types';
+import { type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import { Icon } from '@/ui/icon';
 import TextNodeContent, { type TextNodeContentHandle } from './TextNodeContent';
 import mammoth from 'mammoth';
@@ -23,7 +20,6 @@ import NodeHeader from '../../common/NodeHeader';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
 import TextNodeToolbar from './NodeToolbar';
-import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
 
 /** Extract plain text from HTML to check emptiness (same rule as TextNodeContent). */
 const getTextFromHtml = (html: string): string => {
@@ -191,7 +187,6 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
   const isInsideLockedGroup =
     parentNode?.type === 'group' && (parentNode.data as { locked?: boolean })?.locked === true;
   const showToolbar = selected && selectedCount === 1 && !dragging && !isInsideLockedGroup;
-  const showBottomNodeChatComposer = showToolbar && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
 
   /** Toolbar upload click: trigger hidden file input. */
   const handleToolbarUploadClick = () => {
@@ -264,12 +259,6 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
   const handleEnterEditMode = useCallback(() => {
     setContentEditingActive(true);
   }, []);
-
-  const handleChatInputSend = (content: string, imageUrls?: string[]) => {
-    // eslint-disable-next-line no-console
-    console.log('TextNode ChatInput send:', { nodeId: id, content, imageUrls });
-    // TODO: Wire to the ChatMessage list bound to this node.
-  };
 
   return (
     <>
@@ -392,14 +381,6 @@ const TextNode: React.FC<NodeProps> = ({ id, data, selected, dragging }) => {
           </div>
         </div>
       </div>
-      {/* Bottom FlowNodeToolbar: show a floating ChatInput below when selected. */}
-      <FlowNodeToolbar position={Position.Bottom} align='center' offset={20} isVisible={showBottomNodeChatComposer}>
-        <NodeChatComposer
-          className='w-[526px] min-h-[160px] pointer-events-auto rounded-[16px]'
-          onSend={handleChatInputSend}
-          targetNodeId={id}
-        />
-      </FlowNodeToolbar>
     </>
   );
 };

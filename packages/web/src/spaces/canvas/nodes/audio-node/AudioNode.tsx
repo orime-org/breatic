@@ -22,10 +22,6 @@ import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import { uploadOne } from '@/features/upload';
-import {
-  shouldHideNodeChatComposerForChatRecordCanvasPick,
-  type CanvasWorkflowNodeData,
-} from '@/spaces/canvas/types';
 import { Modal } from '@/app/shell/modals/Modal';
 import { Input } from '@/ui/input';
 import WaveSurfer from 'wavesurfer.js';
@@ -34,13 +30,12 @@ import AudioNodeToolbar from './NodeToolbar';
 import DataNodeHandle from '../../common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
 import AudioNodePlayer from './AudioNodePlayer';
-import NodeChatComposer from '@/features/chat/components/NodeChatComposer';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Audio_0_0';
 const sourceHandleId = 'Audio_0_0';
 
-type AudioNodeData = { name?: string; content?: string; duration?: number; state?: string; errorMessage?: string; pickState?: CanvasWorkflowNodeData['pickState'] };
+type AudioNodeData = { name?: string; content?: string; duration?: number; state?: string; errorMessage?: string };
 
 /** Maximum recording duration (ms). */
 const maxRecordingTime = 60000;
@@ -86,7 +81,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   // ---------- Derived from node data: current audio URL from data.content (canvas-native schema) ----------
   const currentNode = nodes.find((n: { id: string }) => n.id === id);
   const nodeData = currentNode?.data as AudioNodeData | undefined;
-  const wf = nodeData as Partial<CanvasWorkflowNodeData> | undefined;
   /** Direct read of data.content — no history indirection in canvas-native schema. */
   const audioUrlFromData = nodeData?.content ?? '';
   const isHandling = nodeData?.state === 'handling';
@@ -276,7 +270,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const isInsideLockedGroup =
     parentNode?.type === 'group' && (parentNode.data as { locked?: boolean })?.locked === true;
   const showToolbar = selected && selectedCount === 1 && !dragging && !isInsideLockedGroup;
-  const showBottomNodeChatComposer = showToolbar && !shouldHideNodeChatComposerForChatRecordCanvasPick(wf);
 
   const handleToolbarInfoClick = () => {
     const isCurrentNodePanelOpen = canvasOverlayPanel.open && canvasOverlayPanel.nodeId === id;
@@ -291,12 +284,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const handlePlaceholderClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onNodesChange(nodes.map((n: { id: string }) => ({ type: 'select' as const, id: n.id, selected: n.id === id })));
-  };
-
-  const handleChatInputSend = (content: string, imageUrls?: string[]) => {
-    // eslint-disable-next-line no-console
-    console.log('AudioNode ChatInput send:', { nodeId: id, content, imageUrls });
-    // TODO: Wire to the ChatMessage list bound to this node.
   };
 
   return (
@@ -447,14 +434,6 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
           </div>
         </div>
       </div>
-      {/* Bottom FlowNodeToolbar: show a floating ChatInput below when selected. */}
-      <FlowNodeToolbar position={Position.Bottom} align='center' offset={20} isVisible={showBottomNodeChatComposer}>
-        <NodeChatComposer
-          className='w-[526px] min-h-[160px] pointer-events-auto rounded-[16px]'
-          onSend={handleChatInputSend}
-          targetNodeId={id}
-        />
-      </FlowNodeToolbar>
       <Modal
         open={modalVisible}
         title={null}
