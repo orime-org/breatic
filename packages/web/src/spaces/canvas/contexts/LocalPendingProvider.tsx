@@ -16,14 +16,28 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 export interface LocalPendingNode {
   /** UUID v4 (the eventual Yjs nodeId). */
   id: string;
-  /** Node type string (e.g. '1002' for image). */
+  /** Node type string (e.g. '1002' for image, 'annotation' for batch批注). */
   type: string;
   /** Parent node id when mini-tool produced this node. */
   sourceNodeId?: string;
   /** Canvas coordinates for when the node is promoted to Yjs. */
   position: { x: number; y: number };
-  /** Optional partial data fields to seed on promotion. */
-  partialData?: { name?: string; operation?: string; operationParams?: Record<string, unknown> };
+  /**
+   * Optional partial data fields to seed on promotion.
+   *
+   * F6 added `content` so the annotation composer can stash the
+   * user's typed text in the pending entry while the composer is
+   * open; on submit, the value flows into `createDataNode`'s
+   * `data.content` field. Text-body nodes (text / annotation) use
+   * this; mini-tool / generative nodes still use `operation` /
+   * `operationParams` instead.
+   */
+  partialData?: {
+    name?: string;
+    content?: string;
+    operation?: string;
+    operationParams?: Record<string, unknown>;
+  };
   /** Error when the frontend operation failed before the node was written to Yjs. */
   errorMessage?: string;
   /** Epoch ms — for stale detection if needed. */
