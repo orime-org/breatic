@@ -99,16 +99,17 @@ export async function getOrCreate(
  * List conversations for a user, ordered by most recently updated.
  *
  * @param userId - Owner user UUID
- * @param limit - Maximum number of results (default 50)
- * @param offset - Pagination offset (default 0)
+ * @param opts.projectId - Optional project scope; when set, returns only
+ *   conversations belonging to that project.
+ * @param opts.limit - Maximum number of results (default 50)
+ * @param opts.offset - Pagination offset (default 0)
  * @returns Array of conversation entities
  */
 export async function list(
   userId: string,
-  limit?: number,
-  offset?: number,
+  opts: { projectId?: string; limit?: number; offset?: number } = {},
 ): Promise<ConversationEntity[]> {
-  return conversationRepo.listConversations(userId, limit, offset);
+  return conversationRepo.listConversations(userId, opts);
 }
 
 /**

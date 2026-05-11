@@ -37,6 +37,41 @@ describe("Conversation routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json() as { data: unknown[] };
       expect(body.data).toHaveLength(2);
+      // Default call shape: no project filter, default limit/offset.
+      expect(mocks.conversationService.list).toHaveBeenCalledWith(expect.any(String), {
+        projectId: undefined,
+        limit: 20,
+        offset: 0,
+      });
+    });
+
+    it("forwards project_id query to the service", async () => {
+      mocks.conversationService.list.mockResolvedValue([]);
+      const projectId = "11111111-1111-4111-8111-111111111111";
+
+      const app = createApp();
+      const res = await app.request(
+        `/api/v1/chat/conversations?project_id=${projectId}&limit=1`,
+        { headers: AUTH },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mocks.conversationService.list).toHaveBeenCalledWith(expect.any(String), {
+        projectId,
+        limit: 1,
+        offset: 0,
+      });
+    });
+
+    it("rejects a malformed project_id with 400", async () => {
+      const app = createApp();
+      const res = await app.request(
+        "/api/v1/chat/conversations?project_id=not-a-uuid",
+        { headers: AUTH },
+      );
+
+      expect(res.status).toBe(400);
+      expect(mocks.conversationService.list).not.toHaveBeenCalled();
     });
   });
 

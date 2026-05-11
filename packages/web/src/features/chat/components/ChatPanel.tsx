@@ -167,24 +167,23 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
 
   /**
    * Load the most-recent conversation matching the active project,
-   * if any. Backend `GET /chat/conversations` doesn't support a
-   * project_id filter today, so we pull a small page and filter
-   * client-side. TODO(B.1-followup): add a server-side `project_id`
-   * query so users with many cross-project conversations don't miss
-   * theirs.
+   * if any. Backend filters server-side by `project_id`, so we just
+   * take the first row of the response (ordered by `updated_at desc`).
    */
   const loadHistory = useCallback(async () => {
     if (!activeMgr) return;
     try {
-      const listed = await listConversations({ limit: 10 });
+      const listed = await listConversations({
+        projectId: activeMgr.projectId,
+        limit: 1,
+      });
       // The axios interceptor unwraps `response.data` so `listed`
       // already matches the API envelope; cast through unknown to
       // re-narrow without hauling in axios types.
       const envelope = listed as unknown as {
-        data?: { id: string; projectId: string | null }[];
+        data?: { id: string }[];
       };
-      const arr = envelope.data ?? [];
-      const match = arr.find((c) => c.projectId === activeMgr.projectId);
+      const match = envelope.data?.[0];
       if (!match) return;
       const fetched = await getConversation(match.id);
       const conv = fetched as unknown as {

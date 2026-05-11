@@ -67,16 +67,29 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** List active (non-deleted) conversations for a user. */
+/**
+ * List active (non-deleted) conversations for a user, optionally
+ * scoped to a single project.
+ *
+ * @param userId - Conversations are user-owned; this is the auth boundary.
+ * @param opts.projectId - When set, restricts to conversations belonging
+ *   to that project. ChatPanel passes the active space's project id so
+ *   it doesn't have to client-side-filter a paginated response (which
+ *   silently dropped the target when it sat past page boundary).
+ */
 export async function listConversations(
   userId: string,
-  limit = 50,
-  offset = 0,
+  opts: { projectId?: string; limit?: number; offset?: number } = {},
 ): Promise<ConversationEntity[]> {
+  const { projectId, limit = 50, offset = 0 } = opts;
+  const conditions = [eq(conversations.userId, userId), isNull(conversations.deletedAt)];
+  if (projectId !== undefined) {
+    conditions.push(eq(conversations.projectId, projectId));
+  }
   const rows = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.userId, userId), isNull(conversations.deletedAt)))
+    .where(and(...conditions))
     .orderBy(desc(conversations.updatedAt))
     .limit(limit)
     .offset(offset);
