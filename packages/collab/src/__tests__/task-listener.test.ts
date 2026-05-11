@@ -18,10 +18,11 @@ import type { NodeStateUpdateEvent } from "@breatic/shared";
 // vi.mock factories are hoisted to the top of the file by Vitest's transform,
 // so variables declared with `const` in module scope are not yet initialized
 // when the factory runs. `vi.hoisted` is the correct escape hatch.
-const { warnSpy, infoSpy, debugSpy } = vi.hoisted(() => ({
+const { warnSpy, infoSpy, debugSpy, errorSpy } = vi.hoisted(() => ({
   warnSpy: vi.fn(),
   infoSpy: vi.fn(),
   debugSpy: vi.fn(),
+  errorSpy: vi.fn(),
 }));
 
 // ── Mock the logger before importing the module under test ────────────────
@@ -32,6 +33,7 @@ vi.mock("../logger.js", () => ({
     warn: warnSpy,
     info: infoSpy,
     debug: debugSpy,
+    error: errorSpy,
   }),
 }));
 
@@ -128,6 +130,7 @@ describe("handleNodeStateUpdateEvent", () => {
     warnSpy.mockClear();
     infoSpy.mockClear();
     debugSpy.mockClear();
+    errorSpy.mockClear();
   });
 
   // ── Case 1: handling → idle success ───────────────────────────────────
@@ -325,7 +328,120 @@ describe("handleNodeStateUpdateEvent", () => {
     expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
   });
 
-  // ── Case 8: unknown event type forward-compat ─────────────────────────
+  // ── Case 8a: malformed update payload (null) — must skip, not throw ───
+  // audit #133: a null/undefined/array `update` previously crashed at
+  // `Object.entries(...)` and the stream consumer treated the throw as
+  // a transient handler failure → infinite-retry-loop poison message.
+  it("skips when event.update is null (poison-payload tolerance)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const event = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: null,
+    };
+
+    await expect(
+      handleNodeStateUpdateEvent(hocuspocus, event as unknown as NodeStateUpdateEvent),
+    ).resolves.toBeUndefined();
+
+    expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    const msgs = (warnSpy.mock.calls as [unknown, string][]).map(([, m]) => m ?? "");
+    expect(msgs.some((m) => /malformed update/i.test(m))).toBe(true);
+  });
+
+  it("skips when event.update is an array (poison-payload tolerance)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const event = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: ["state", "idle"],
+    };
+
+    await expect(
+      handleNodeStateUpdateEvent(hocuspocus, event as unknown as NodeStateUpdateEvent),
+    ).resolves.toBeUndefined();
+
+    expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+  });
+
+  // ── Case 8b: empty/missing nodeId ──────────────────────────────────────
+  it("skips when event.nodeId is empty string (poison-payload tolerance)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const event = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: "",
+      update: { state: "idle" as const },
+    };
+
+    await expect(
+      handleNodeStateUpdateEvent(hocuspocus, event as unknown as NodeStateUpdateEvent),
+    ).resolves.toBeUndefined();
+
+    expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    const msgs = (warnSpy.mock.calls as [unknown, string][]).map(([, m]) => m ?? "");
+    expect(msgs.some((m) => /invalid nodeId/i.test(m))).toBe(true);
+  });
+
+  it("skips when event.nodeId is not a string (poison-payload tolerance)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const event = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: 42 as unknown as string,
+      update: { state: "idle" as const },
+    };
+
+    await expect(
+      handleNodeStateUpdateEvent(hocuspocus, event as unknown as NodeStateUpdateEvent),
+    ).resolves.toBeUndefined();
+
+    expect(hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+  });
+
+  // ── Case 8c: transient I/O failure should propagate (no-ack + retry) ──
+  it("propagates openDirectConnection errors so the stream consumer retries", async () => {
+    const failingHocuspocus = {
+      openDirectConnection: vi.fn(async () => {
+        throw new Error("hocuspocus persistence offline");
+      }),
+    } as unknown as Hocuspocus;
+
+    const event: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      update: { state: "idle" },
+    };
+
+    // Throw is *expected* for transient I/O failures — the stream
+    // consumer's no-ack retry path is the recovery strategy.
+    await expect(handleNodeStateUpdateEvent(failingHocuspocus, event)).rejects.toThrow(
+      /hocuspocus persistence offline/,
+    );
+
+    // Structured error log emits before the rethrow so ops can see the
+    // failure context (docName, nodeId) instead of just the stack.
+    expect(failingHocuspocus.openDirectConnection).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalled();
+    const errCall = (errorSpy.mock.calls as [Record<string, unknown>, string][])
+      .find(([ctx]) => ctx.docName === VALID_DOC_NAME);
+    expect(errCall).toBeDefined();
+  });
+
+  // ── Case 9: unknown event type forward-compat ─────────────────────────
   // The `NodeEvent` union currently has one member, but the router guard
   // should warn+skip unknown future types instead of crashing.
   // We test via startTaskListener's internal router by importing a private
