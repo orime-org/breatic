@@ -15,6 +15,7 @@ import copy from 'copy-to-clipboard';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import {
+  canMutate,
   getLockedGroupIds,
   isNodeLocked,
   isNodeLockable,
@@ -613,9 +614,12 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
     // any target is locked, but Cut (which delegates here) also
     // depends on this guard for "delete the unlocked items only,
     // keep locked ones in place".
+    // Delete-gating goes through `canMutate` (the union of user lock,
+    // operationLock, and handling-state), not `isNodeLocked` — ADR
+    // 2026-05-11-mini-tool-state-machine.md §D2.
     const lockedGroupIdsForDelete = getLockedGroupIds(allNodes);
     const deletableTargets = targetNodes.filter(
-      (n) => !isNodeLocked(n, lockedGroupIdsForDelete),
+      (n) => canMutate(n, lockedGroupIdsForDelete),
     );
     if (deletableTargets.length === 0) {
       onClose();

@@ -964,6 +964,86 @@ export function useCanvasActions() {
     [],
   );
 
+  /**
+   * Add a mini-tool configure-phase lock to `nodeId` for the current user.
+   * Idempotent — re-adding the same `(toolId, userId)` entry no-ops.
+   *
+   * Spec: ADR `breatic-inner/decisions/2026-05-11-mini-tool-state-machine.md`
+   * §D2. Lifecycle:
+   *
+   *   - Called when the user picks a tool in `NodeFloatMenu`
+   *     (`MiniToolContext.pickTool` → bridge effect in `MiniToolLockSync`).
+   *   - Released by `removeOperationLock` when the same user presses
+   *     Apply / Cancel, or by Collab's `onDisconnect` cleanup when the
+   *     user leaves.
+   *
+   * @param nodeId - Source node receiving the lock.
+   * @param toolId - The mini-tool id pinning the lock (e.g. `'adjust'`).
+   * @param options - Optional Yjs origin for UndoManager filtering.
+   */
+  const addOperationLock = useCallback(
+    (nodeId: string, toolId: string, options?: HistoryOptions) => {
+      const mgr = getCanvasYjsManager();
+      if (!mgr?.synced) return;
+      const userId = getCurrentUserId();
+      if (!userId) return;
+      const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
+      if (!(nodeMap instanceof Y.Map)) return;
+      const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
+      if (!(dataMap instanceof Y.Map)) return;
+
+      const origin = getOrigin(options);
+      mgr.doc.transact(() => {
+        const current = (dataMap.get('operationLocks') as
+          | Array<{ toolId: string; userId: string }>
+          | undefined) ?? [];
+        const already = current.some(
+          (l) => l.toolId === toolId && l.userId === userId,
+        );
+        if (already) return;
+        dataMap.set('operationLocks', [...current, { toolId, userId }]);
+      }, origin);
+    },
+    [],
+  );
+
+  /**
+   * Remove a mini-tool configure-phase lock from `nodeId`. Only matches
+   * by `(toolId, userId)` — calls with a different user id or tool id
+   * are silently no-ops, preserving the "only the owner can release"
+   * invariant from the ADR.
+   *
+   * @param nodeId - Source node releasing the lock.
+   * @param toolId - The mini-tool id that previously acquired the lock.
+   * @param options - Optional Yjs origin for UndoManager filtering.
+   */
+  const removeOperationLock = useCallback(
+    (nodeId: string, toolId: string, options?: HistoryOptions) => {
+      const mgr = getCanvasYjsManager();
+      if (!mgr?.synced) return;
+      const userId = getCurrentUserId();
+      if (!userId) return;
+      const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
+      if (!(nodeMap instanceof Y.Map)) return;
+      const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
+      if (!(dataMap instanceof Y.Map)) return;
+
+      const origin = getOrigin(options);
+      mgr.doc.transact(() => {
+        const current = (dataMap.get('operationLocks') as
+          | Array<{ toolId: string; userId: string }>
+          | undefined) ?? [];
+        const filtered = current.filter(
+          (l) => !(l.toolId === toolId && l.userId === userId),
+        );
+        if (filtered.length !== current.length) {
+          dataMap.set('operationLocks', filtered);
+        }
+      }, origin);
+    },
+    [],
+  );
+
   const undo = useCallback(() => {
     const mgr = getCanvasYjsManager();
     if (!mgr || mgr.undoManager.undoStack.length === 0) return false;
@@ -1000,5 +1080,8 @@ export function useCanvasActions() {
     setPrimaryDownstreamEdge,
     addAppendVersion,
     addAppendVersionAsPrimary,
+    // Mini-tool configure-phase locks (ADR 2026-05-11)
+    addOperationLock,
+    removeOperationLock,
   };
 }
