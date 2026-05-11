@@ -108,9 +108,3 @@
 - [ ] CD Pipeline：GitHub Actions → Docker build → 自动部署
 - [ ] 监控：Sentry 错误追踪 + 基础性能指标
 - [ ] CONTRIBUTING.md：贡献指南、Code of Conduct、PR 模板
-
----
-
-## Completed
-
-详见 [CHANGELOG.md](./CHANGELOG.md)。

@@ -33,7 +33,6 @@ packages/*/dist
 # Docs (not needed at runtime, but keep skills/ and agents/ .md files)
 README.md
 CLAUDE.md
-CHANGELOG.md
 CONTRIBUTING.md
 CODE_OF_CONDUCT.md
 LICENSE
