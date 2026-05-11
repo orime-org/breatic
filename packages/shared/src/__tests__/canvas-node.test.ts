@@ -10,6 +10,7 @@ import { describe, it, expect, expectTypeOf } from "vitest";
 import type {
   NodeState,
   HandlingActor,
+  OperationLock,
   AttachRef,
   CanvasNodeFields,
   NodeStateUpdateEvent,
@@ -52,20 +53,66 @@ describe("NodeState", () => {
 // ── HandlingActor ──────────────────────────────────────────────────
 
 describe("HandlingActor", () => {
-  it("accepts a valid HandlingActor shape", () => {
+  it("accepts a valid HandlingActor shape with frontend driver", () => {
     const actor: HandlingActor = {
       userId: "user-1",
       username: "alice",
+      type: "frontend",
     };
     expect(actor.userId).toBe("user-1");
     expect(actor.username).toBe("alice");
+    expect(actor.type).toBe("frontend");
   });
 
-  it("type matches { userId: string; username: string }", () => {
+  it("accepts a valid HandlingActor shape with backend driver", () => {
+    const actor: HandlingActor = {
+      userId: "user-2",
+      username: "bob",
+      type: "backend",
+    };
+    expect(actor.type).toBe("backend");
+  });
+
+  it("type field narrows to the 'frontend' | 'backend' union", () => {
     expectTypeOf<HandlingActor>().toEqualTypeOf<{
       userId: string;
       username: string;
+      type: "frontend" | "backend";
     }>();
+  });
+});
+
+// ── OperationLock ──────────────────────────────────────────────────
+
+describe("OperationLock", () => {
+  it("accepts a valid OperationLock shape", () => {
+    const lock: OperationLock = {
+      toolId: "adjust",
+      userId: "user-1",
+    };
+    expect(lock.toolId).toBe("adjust");
+    expect(lock.userId).toBe("user-1");
+  });
+
+  it("type narrows to { toolId: string; userId: string }", () => {
+    expectTypeOf<OperationLock>().toEqualTypeOf<{
+      toolId: string;
+      userId: string;
+    }>();
+  });
+
+  it("multiple OperationLock entries can coexist on one node", () => {
+    const locks: OperationLock[] = [
+      { toolId: "adjust", userId: "user-A" },
+      { toolId: "filter", userId: "user-B" },
+      // Same tool, different user (collaborative configure of same tool):
+      { toolId: "crop", userId: "user-A" },
+      { toolId: "crop", userId: "user-B" },
+    ];
+    expect(locks).toHaveLength(4);
+    // userId is the owner — filtering by it is the disconnect-cleanup primitive.
+    const userAEntries = locks.filter((l) => l.userId === "user-A");
+    expect(userAEntries).toHaveLength(2);
   });
 });
 
@@ -82,6 +129,7 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
+        operationLocks: [],
         state: "idle",
         attachments: [],
       },
@@ -101,6 +149,7 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
+        operationLocks: [],
         state: "idle",
         attachments: [],
         handlingBy: undefined,
@@ -131,8 +180,9 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
+        operationLocks: [],
         state: "handling",
-        handlingBy: { userId: "u1", username: "alice" },
+        handlingBy: { userId: "u1", username: "alice", type: "backend" },
         attachments: [],
         prompt: "a painting of a sunset",
         outputType: "image",
@@ -156,6 +206,7 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
+        operationLocks: [],
         state: "idle",
         attachments: [],
         childIds: ["node-1", "node-2"],
@@ -176,6 +227,7 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: true,
+        operationLocks: [],
         state: "idle",
         attachments: [],
       },
@@ -184,12 +236,47 @@ describe("CanvasNodeFields", () => {
     expect(node.data.createdBy).toBe("user-1");
   });
 
+  it("accepts a node with operationLocks + frontend handlingBy (Category A mid-op)", () => {
+    // Spec §10.13.6.2 + ADR 2026-05-11-mini-tool-state-machine.md:
+    //   - operationLocks: configure-phase lock list, multiple entries allowed
+    //   - handlingBy.type: 'frontend' = browser-driven (Category A); Collab
+    //     onDisconnect writes errorMessage if the holder leaves mid-op
+    const node: CanvasNodeFields = {
+      id: "node-mid-op",
+      type: "1002",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "Adjusting",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
+        operationLocks: [
+          { toolId: "adjust", userId: "user-2" },
+        ],
+        state: "handling",
+        handlingBy: {
+          userId: "user-2",
+          username: "bob",
+          type: "frontend",
+        },
+        attachments: [],
+        operation: "adjust",
+        operationParams: { brightness: 10, contrast: 5, saturation: 0 },
+        sourceNodeId: "node-source",
+      },
+    };
+    expect(node.data.operationLocks).toHaveLength(1);
+    expect(node.data.operationLocks[0]?.toolId).toBe("adjust");
+    expect(node.data.handlingBy?.type).toBe("frontend");
+  });
+
   it("removed data fields no longer compile", () => {
     const data: CanvasNodeFields["data"] = {
       name: "x",
       createdAt: 1714492800000,
       createdBy: "user-1",
       locked: false,
+      operationLocks: [],
       state: "idle",
       attachments: [],
     };
@@ -221,7 +308,7 @@ describe("NodeStateUpdateEvent", () => {
       nodeId: "node-1",
       update: {
         state: "handling",
-        handlingBy: { userId: "u1", username: "alice" },
+        handlingBy: { userId: "u1", username: "alice", type: "backend" },
       },
     };
     expect(event.type).toBe("node-state-update");
