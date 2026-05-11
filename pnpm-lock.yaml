@@ -285,9 +285,6 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@erase2d/fabric':
-        specifier: ^1.2.1
-        version: 1.2.1(fabric@7.2.0)
       '@excalidraw/excalidraw':
         specifier: ^0.18.0
         version: 0.18.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(immer@11.1.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -465,12 +462,6 @@ importers:
       dompurify:
         specifier: ^3.3.3
         version: 3.3.3
-      fabric:
-        specifier: ^7.2.0
-        version: 7.2.0
-      fontfaceobserver:
-        specifier: ^2.3.0
-        version: 2.3.0
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -519,18 +510,12 @@ importers:
       react-icons:
         specifier: ^5.6.0
         version: 5.6.0(react@19.2.4)
-      react-infinite-viewer:
-        specifier: ^0.28.1
-        version: 0.28.1
       react-intl:
         specifier: ^8.0.9
         version: 8.2.0(@types/react@19.2.14)(react@19.2.4)(typescript@5.8.2)
       react-markdown:
         specifier: ^9.1.0
         version: 9.1.0(@types/react@19.2.14)(react@19.2.4)
-      react-moveable:
-        specifier: ^0.56.0
-        version: 0.56.0
       react-redux:
         specifier: ^9.2.0
         version: 9.2.0(@types/react@19.2.14)(react@19.2.4)(redux@5.0.1)
@@ -610,15 +595,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.1.18
         version: 4.2.2
-      '@types/ali-oss':
-        specifier: ^6.23.1
-        version: 6.23.3
       '@types/dompurify':
         specifier: ^3.2.0
         version: 3.2.0
-      '@types/fontfaceobserver':
-        specifier: ^2.1.3
-        version: 2.1.3
       '@types/node':
         specifier: ^25.0.3
         version: 25.5.2
@@ -1176,9 +1155,6 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@egjs/agent@2.4.4':
-    resolution: {integrity: sha512-cvAPSlUILhBBOakn2krdPnOGv5hAZq92f1YHxYcfu0p7uarix2C6Ia3AVizpS1SGRZGiEkIS5E+IVTLg1I2Iog==}
-
   '@egjs/children-differ@1.0.1':
     resolution: {integrity: sha512-DRvyqMf+CPCOzAopQKHtW+X8iN6Hy6SFol+/7zCUiE5y4P/OB8JP8FtU4NxtZwtafvSL4faD5KoQYPj3JHzPFQ==}
 
@@ -1190,11 +1166,6 @@ packages:
 
   '@emnapi/runtime@1.10.0':
     resolution: {integrity: sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA==}
-
-  '@erase2d/fabric@1.2.1':
-    resolution: {integrity: sha512-7VgjhCD5yHDMA8HbHf0cpU0T1q/MKMJQwPajuparLUQXb2tPbnwmczWXvojt0dQ66VS4Rs2caRNVucM9P9FfEA==}
-    peerDependencies:
-      fabric: '>=6.0.0'
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -3786,9 +3757,6 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/fontfaceobserver@2.1.3':
-    resolution: {integrity: sha512-AewfFg9iUfoUZ4EfKxhBaEuzY2TUS+Hm0vXWMPcJRY7C4wC9XtW20lPVYHTcWVZYq1uthCEa5APl7RAX7jr2Xg==}
-
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
 
@@ -5617,10 +5585,6 @@ packages:
     resolution: {integrity: sha512-Nmb6QXkELsuBr24CJSkilo6UHHgbekK5UiZgfE6UHD3Eb27YC6oD+bhcT+tJ6cl8dmsgdQxnWlcry8ksBIBLpw==}
     engines: {node: '>=0.10.0'}
 
-  fabric@7.2.0:
-    resolution: {integrity: sha512-XSYmSqSMrlbCg+/j7/uU/PFeZuA5hHRDp7sGbDlMvz/T6BHt2MQSOYtz/AIdr+kmReA1s5jTzHJ8AjHwYUcmfQ==}
-    engines: {node: '>=20.0.0'}
-
   fast-copy@3.0.2:
     resolution: {integrity: sha512-dl0O9Vhju8IrcLndv2eU4ldt1ftXMqqfgN4H1cpmGV7P6jeB9FwpN9a2c8DPGE1Ys88rNUJVYDHq73CGAGOPfQ==}
 
@@ -5714,9 +5678,6 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
-
-  fontfaceobserver@2.3.0:
-    resolution: {integrity: sha512-6FPvD/IVyT4ZlNe7Wcn5Fb/4ChigpucKYSvD6a+0iMoLn2inpo711eyIcKjmDtE5XNcgAkSH9uN/nfAeZzHEfg==}
 
   for-each@0.3.5:
     resolution: {integrity: sha512-dKx12eRCVIzqCxFGplyFKJMPvLEWgmNtUrpTiJIR5u97zEhRG8ySrtboPHZXx7daLxQVrl643cTzbab2tkQjxg==}
@@ -6099,9 +6060,6 @@ packages:
   indent-string@4.0.0:
     resolution: {integrity: sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==}
     engines: {node: '>=8'}
-
-  infinite-viewer@0.29.1:
-    resolution: {integrity: sha512-/ZWsJxgB5Atg/M3rb2HlYY33XrRkOcRIRlRTZoCWsORO/xvFSprm7gq2gB8DZvkjlkRnIOeR9TjZSLn8LFK19w==}
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -7699,9 +7657,6 @@ packages:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
 
-  react-css-styled@1.1.9:
-    resolution: {integrity: sha512-M7fJZ3IWFaIHcZEkoFOnkjdiUFmwd8d+gTh2bpqMOcnxy/0Gsykw4dsL4QBiKsxcGow6tETUa4NAUcmJF+/nfw==}
-
   react-dom@19.2.4:
     resolution: {integrity: sha512-AXJdLo8kgMbimY95O2aKQqsz2iWi9jMgKJhRBAxECE4IFxfcazB2LmzloIoibJI3C12IlY20+KFaLv+71bUJeQ==}
     peerDependencies:
@@ -7731,9 +7686,6 @@ packages:
     peerDependencies:
       react: '*'
 
-  react-infinite-viewer@0.28.1:
-    resolution: {integrity: sha512-SnNJz1+UZe9C5QibhrAClLK3w3IpWjyF+Kx//HcCGG7DYgp30yYDioW/13Fsj4uvyI7od5MuQwOI6aM9GXRQig==}
-
   react-intl@8.2.0:
     resolution: {integrity: sha512-LKgmOaL0O5QCPO81H7Fy8e52cgPNRSpFoSlUfwxw7D3KJpnEbeMMjjqNNWdXlqn0uSlJ8bouXpxMtDUFq62B6A==}
     deprecated: Bad version, use v9 instead. See https://formatjs.github.io/docs/react-intl/upgrade-guide-9.x
@@ -7759,9 +7711,6 @@ packages:
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
-
-  react-moveable@0.56.0:
-    resolution: {integrity: sha512-FmJNmIOsOA36mdxbrc/huiE4wuXSRlmon/o+/OrfNhSiYYYL0AV5oObtPluEhb2Yr/7EfYWBHTxF5aWAvjg1SA==}
 
   react-redux@9.2.0:
     resolution: {integrity: sha512-ROY9fvHhwOD9ySfrF0wmvu//bKCQ6AeZZq1nJNtbDC+kk5DuSuNX/n6YWYF/SYy7bSba4D4FSz8DJeKY/S/r+g==}
@@ -10063,8 +10012,6 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@egjs/agent@2.4.4': {}
-
   '@egjs/children-differ@1.0.1':
     dependencies:
       '@egjs/list-differ': 1.0.1
@@ -10077,10 +10024,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
-
-  '@erase2d/fabric@1.2.1(fabric@7.2.0)':
-    dependencies:
-      fabric: 7.2.0
 
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
@@ -12473,8 +12416,6 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
-  '@types/fontfaceobserver@2.1.3': {}
-
   '@types/hast@3.0.4':
     dependencies:
       '@types/unist': 3.0.3
@@ -14606,15 +14547,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fabric@7.2.0:
-    optionalDependencies:
-      canvas: 3.2.3
-      jsdom: 26.1.0(canvas@3.2.3)
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   fast-copy@3.0.2: {}
 
   fast-deep-equal@3.1.3: {}
@@ -14696,8 +14628,6 @@ snapshots:
   flatted@3.4.2: {}
 
   follow-redirects@1.15.11: {}
-
-  fontfaceobserver@2.3.0: {}
 
   for-each@0.3.5:
     dependencies:
@@ -15132,15 +15062,6 @@ snapshots:
   imurmurhash@0.1.4: {}
 
   indent-string@4.0.0: {}
-
-  infinite-viewer@0.29.1:
-    dependencies:
-      '@daybrush/utils': 1.13.0
-      '@egjs/agent': 2.4.4
-      '@scena/event-emitter': 1.0.5
-      css-styled: 1.0.8
-      framework-utils: 1.1.0
-      gesto: 1.19.4
 
   inherits@2.0.4: {}
 
@@ -17122,11 +17043,6 @@ snapshots:
       strip-json-comments: 2.0.1
     optional: true
 
-  react-css-styled@1.1.9:
-    dependencies:
-      css-styled: 1.0.8
-      framework-utils: 1.1.0
-
   react-dom@19.2.4(react@19.2.4):
     dependencies:
       react: 19.2.4
@@ -17147,10 +17063,6 @@ snapshots:
   react-icons@5.6.0(react@19.2.4):
     dependencies:
       react: 19.2.4
-
-  react-infinite-viewer@0.28.1:
-    dependencies:
-      infinite-viewer: 0.29.1
 
   react-intl@8.2.0(@types/react@19.2.14)(react@19.2.4)(typescript@5.8.2):
     dependencies:
@@ -17186,22 +17098,6 @@ snapshots:
       vfile: 6.0.3
     transitivePeerDependencies:
       - supports-color
-
-  react-moveable@0.56.0:
-    dependencies:
-      '@daybrush/utils': 1.13.0
-      '@egjs/agent': 2.4.4
-      '@egjs/children-differ': 1.0.1
-      '@egjs/list-differ': 1.0.1
-      '@scena/dragscroll': 1.4.0
-      '@scena/event-emitter': 1.0.5
-      '@scena/matrix': 1.1.1
-      css-to-mat: 1.1.1
-      framework-utils: 1.1.0
-      gesto: 1.19.4
-      overlap-area: 1.1.0
-      react-css-styled: 1.1.9
-      react-selecto: 1.26.3
 
   react-redux@9.2.0(@types/react@19.2.14)(react@19.2.4)(redux@5.0.1):
     dependencies:
@@ -18281,7 +18177,7 @@ snapshots:
 
   tunnel-agent@0.6.0:
     dependencies:
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
     optional: true
 
   tunnel-rat@0.1.2(@types/react@19.2.14)(immer@11.1.4)(react@19.2.4):
