@@ -60,6 +60,32 @@ export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
       },
     ],
   },
+  {
+    id: 'filter',
+    modality: 'image',
+    category: 'A',
+    menuLabel: '滤镜',
+    title: 'Filter',
+    params: [
+      {
+        id: 'preset',
+        type: 'enum',
+        ui: 'select',
+        options: ['none', 'mono', 'sepia', 'film', 'cool', 'warm'],
+        default: 'none',
+        label: '风格',
+      },
+      {
+        id: 'intensity',
+        type: 'number',
+        ui: 'slider',
+        min: 0,
+        max: 100,
+        default: 50,
+        label: '强度',
+      },
+    ],
+  },
   // ── Category B (backend AIGC — credits, ≥1 s) ────────────────────────
   {
     id: 'remove-bg',
