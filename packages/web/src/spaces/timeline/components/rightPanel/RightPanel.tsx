@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
-import { MediaItem } from '../../types';
+import { MediaItem } from '@/spaces/timeline/types';
 import TextStylePanel from './TextStylePanel';
 import VideoStylePanel from './VideoStylePanel';
 import ImageStylePanel from './ImageStylePanel';

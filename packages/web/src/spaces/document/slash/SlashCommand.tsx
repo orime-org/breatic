@@ -42,11 +42,11 @@ import {
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import type { Editor } from '@tiptap/react';
-import { openImageFilePanel } from '../media/ImageFilePanel';
-import { openMediaFilePanel } from '../media/MediaFilePanel';
-import { BlockHighlightIcon } from '../view/TextEditorIcons';
+import { openImageFilePanel } from '@/spaces/document/media/ImageFilePanel';
+import { openMediaFilePanel } from '@/spaces/document/media/MediaFilePanel';
+import { BlockHighlightIcon } from '@/spaces/document/view/TextEditorIcons';
 import { SlashTableSizePicker } from './SlashTableSizePicker';
-import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
+import { openGenerationAIMenuAtBottom } from '@/spaces/document/utils/openGenerationAIMenuAtBottom';
 
 export { openBreaticSlashMenu } from './SlashMenuPlugin';
 

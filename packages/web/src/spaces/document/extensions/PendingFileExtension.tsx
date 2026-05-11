@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { RiFile2Line } from 'react-icons/ri';
-import { openMediaFilePanel } from '../media/MediaFilePanel';
+import { openMediaFilePanel } from '@/spaces/document/media/MediaFilePanel';
 
 const PendingFileView = ({ editor, getPos, node }: NodeViewProps) => {
   const openPanel = () => {

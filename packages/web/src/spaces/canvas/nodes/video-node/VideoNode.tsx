@@ -13,7 +13,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
-import NodeHeader from '../../common/NodeHeader';
+import NodeHeader from '@/spaces/canvas/common/NodeHeader';
 import { Icon } from '@/ui/icon';
 import VideoNodeContent from './VideoNodeContent';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
@@ -22,8 +22,8 @@ import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import VideoNodeToolbar from './NodeToolbar';
-import DataNodeHandle from '../../common/DataNodeHandle';
-import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
+import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
+import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Video_0_0';

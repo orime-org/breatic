@@ -3,7 +3,7 @@ import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
 import Tooltip from '@/ui/tooltip';
 import { Icon } from '@/ui/icon';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 
 interface VideoPanelProps {
   nodeId?: string;

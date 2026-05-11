@@ -2,7 +2,7 @@ import React, { memo, useState } from 'react';
 import { message } from '@/ui/message';
 import { Button } from '@/ui/button';
 import { useTranslation } from 'react-i18next';
-import { CreditsItemType } from '../types';
+import { CreditsItemType } from '@/pages/user-center/types';
 
 /** Static bundles (replaces `/api/plan/credit/list`). */
 const DEMO_CREDITS: CreditsItemType[] = [

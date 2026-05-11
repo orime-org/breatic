@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import type { TimelineClip, MediaItem } from '../../types';
+import type { TimelineClip, MediaItem } from '@/spaces/timeline/types';
 
 interface AudioPanelProps {
   nodeId?: string;

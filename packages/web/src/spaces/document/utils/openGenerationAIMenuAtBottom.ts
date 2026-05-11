@@ -1,7 +1,7 @@
 import type { Range } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
-import { getTextEditorBridgeStorage } from '../extensions/TextEditorBridgeExtension';
+import { getTextEditorBridgeStorage } from '@/spaces/document/extensions/TextEditorBridgeExtension';
 
 type OpenGenerationAIMenuAtBottomOptions = {
   replacement?: string | null;

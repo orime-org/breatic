@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useState, memo, useCallback, forwardRef, useI
 import { createPortal } from 'react-dom';
 import Selecto from 'react-selecto';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import VideoElement from './VideoElement';
 import ImageElement from './ImageElement';
 import TextElement from './TextElement';

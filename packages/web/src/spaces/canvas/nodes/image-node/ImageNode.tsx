@@ -17,7 +17,7 @@ import React, { useState, useEffect, memo } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
 import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
-import NodeHeader from '../../common/NodeHeader';
+import NodeHeader from '@/spaces/canvas/common/NodeHeader';
 import ImageNodeContent from './ImageNodeContent';
 import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
@@ -27,8 +27,8 @@ import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import NodeToolbar from './NodeToolbar';
 import { NodeFloatMenu, IMAGE_TOOLS } from '@/features/mini-tools';
-import DataNodeHandle from '../../common/DataNodeHandle';
-import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
+import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
+import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 
 /** Edge handle IDs aligned with canvas conventions. */
 const targetHandleId = 'Image_0_0';

@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { RiImage2Fill } from 'react-icons/ri';
-import { openImageFilePanel } from '../media/ImageFilePanel';
+import { openImageFilePanel } from '@/spaces/document/media/ImageFilePanel';
 
 /** Empty image placeholder; opens the image file panel when activated. */
 const PendingImageView = ({ editor, getPos, node }: NodeViewProps) => {
