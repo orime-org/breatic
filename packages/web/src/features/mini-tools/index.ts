@@ -23,5 +23,11 @@ export { BottomToolbar } from './BottomToolbar';
 export { NodeFloatMenu } from './NodeFloatMenu';
 export { IMAGE_TOOLS, findToolSchema, defaultValues } from './tool-schemas';
 export type { ToolSchema, ToolCategory, ParamConfig } from './types';
-export { runCategoryAOp, applyAdjust, applyAdjustInPlace } from './image-ops';
-export type { AdjustParams } from './image-ops';
+export {
+  runCategoryAOp,
+  applyAdjust,
+  applyAdjustInPlace,
+  applyFilter,
+  applyFilterInPlace,
+} from './image-ops';
+export type { AdjustParams, FilterParams, FilterPreset } from './image-ops';

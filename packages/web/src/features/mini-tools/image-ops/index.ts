@@ -8,6 +8,16 @@
  * stay agnostic to which specific tool is running.
  */
 import { applyAdjust, type AdjustParams } from './adjust';
+import { applyFilter, type FilterParams, type FilterPreset } from './filter';
+
+const FILTER_PRESETS: ReadonlySet<FilterPreset> = new Set([
+  'none',
+  'mono',
+  'sepia',
+  'film',
+  'cool',
+  'warm',
+]);
 
 /**
  * Run the Category A op matching `toolId`. Throws when `toolId` isn't
@@ -36,10 +46,24 @@ export async function runCategoryAOp(
       };
       return applyAdjust(source, params);
     }
-    // filter / bg-blur / crop land in follow-up PRs.
+    case 'filter': {
+      const params: FilterParams = {
+        preset: presetOr(values.preset, 'none'),
+        intensity: numberOr(values.intensity, 50),
+      };
+      return applyFilter(source, params);
+    }
+    // bg-blur / crop land in follow-up PRs.
     default:
       throw new Error(`Category A op not implemented: ${toolId}`);
   }
+}
+
+/** Coerce an unknown to a known `FilterPreset`; fall back if invalid. */
+function presetOr(v: unknown, fallback: FilterPreset): FilterPreset {
+  return typeof v === 'string' && FILTER_PRESETS.has(v as FilterPreset)
+    ? (v as FilterPreset)
+    : fallback;
 }
 
 function numberOr(v: unknown, fallback: number): number {
@@ -48,3 +72,5 @@ function numberOr(v: unknown, fallback: number): number {
 
 export { applyAdjust, applyAdjustInPlace } from './adjust';
 export type { AdjustParams } from './adjust';
+export { applyFilter, applyFilterInPlace } from './filter';
+export type { FilterParams, FilterPreset } from './filter';
