@@ -19,9 +19,8 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { Icon } from '@/ui/icon';
-import { useReactFlow } from '@xyflow/react';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
-import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
+import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import { message } from '@/ui/message';
 import { useUploadFiles, NODE_TYPE_BY_KIND } from '@/features/upload';
@@ -83,7 +82,6 @@ const BOTTOM_ITEMS = [
 
 export function LeftFloatingMenu() {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
-  const { screenToFlowPosition } = useReactFlow();
   const { createGenerativeNode, createDataNode } = useCanvasActions();
   const activeMgr = useActiveCanvasSpace();
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -100,17 +98,15 @@ export function LeftFloatingMenu() {
       // Use the real visible canvas pane center when we can read it
       // (avoids landing the node off-screen when chat / right editor
       // panels eat half the viewport).
-      const center = flowCenterFromCanvasPane(
-        screenToFlowPosition,
-        { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-      );
+      const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+      if (!center) return;
       createGenerativeNode({
         outputType,
         kind: DEFAULT_KIND[outputType],
         position: { x: center.x, y: center.y },
       });
     },
-    [screenToFlowPosition, createGenerativeNode],
+    [createGenerativeNode],
   );
 
   /**
@@ -127,10 +123,11 @@ export function LeftFloatingMenu() {
       if (files.length === 0) return;
       try {
         const results = await upload(files, { projectId: activeMgr.projectId });
-        const center = flowCenterFromCanvasPane(
-          screenToFlowPosition,
-          { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-        );
+        const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+        if (!center) {
+          message.warning('画布未就绪,无法放置节点');
+          return;
+        }
         results.forEach((r, idx) => {
           const nodeType = NODE_TYPE_BY_KIND[r.kind];
           if (!nodeType) {
@@ -157,7 +154,7 @@ export function LeftFloatingMenu() {
         message.error('上传失败,请重试');
       }
     },
-    [activeMgr, upload, screenToFlowPosition, createDataNode],
+    [activeMgr, upload, createDataNode],
   );
 
   const handleUploadInputChange = useCallback(

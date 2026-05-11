@@ -108,20 +108,6 @@ export function getProjectCanvasPaneClientCenter(): { x: number; y: number } | n
 }
 
 /**
- * Converts the canvas pane center to flow coordinates, or uses `fallback` screen point when the pane is unavailable.
- *
- * @param screenToFlowPosition - From `useReactFlow()` inside the project canvas.
- * @param fallback - Screen coordinates passed to `screenToFlowPosition` if the pane is missing.
- */
-export function flowCenterFromCanvasPane(
-  screenToFlowPosition: (p: { x: number; y: number }) => { x: number; y: number },
-  fallback: { x: number; y: number },
-): { x: number; y: number } {
-  const c = getProjectCanvasPaneClientCenter();
-  return screenToFlowPosition(c ?? fallback);
-}
-
-/**
  * Bridges the main canvas React Flow viewport to siblings that live outside
  * `<ReactFlowProvider>` — e.g. `ChatPanel` mounted at the page level, the
  * document space's `RightToolbar`. Those siblings cannot call `useReactFlow`
