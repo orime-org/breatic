@@ -28,6 +28,15 @@ interface MiniToolState {
   toolId: string;
   /** Live parameter values, keyed by `ParamConfig.id`. */
   values: Record<string, unknown>;
+  /**
+   * Live values published by a tool-specific custom widget (e.g.
+   * `CropOverlay` writes its rect here). Distinct from `values` because
+   * `category: 'special'` tools render no schema params — there's
+   * nothing for the generic toolbar to seed defaults from. BottomToolbar
+   * merges `{ ...values, ...specialValues }` into the Apply payload.
+   * Null when the active tool isn't a special-category one.
+   */
+  specialValues: Record<string, unknown> | null;
   /** Resolved schema cached so consumers don't re-look it up. */
   schema: ToolSchema;
 }
@@ -46,6 +55,13 @@ interface MiniToolContextValue {
   ) => void;
   /** Update a single param. No-op when the tool isn't active. */
   setValue: (paramId: string, value: unknown) => void;
+  /**
+   * Replace the live values from a `category: 'special'` custom widget.
+   * Pass `null` to clear (overlay unmounted without committing). Most
+   * call sites should pass the full rect / shape value in one go rather
+   * than per-field — the values are opaque to BottomToolbar.
+   */
+  setSpecialValues: (values: Record<string, unknown> | null) => void;
   /** Clear the active tool (Cancel / Apply success / node unmount). */
   clear: () => void;
 }
@@ -67,6 +83,7 @@ export function MiniToolProvider({ children }: { children: ReactNode }) {
         nodeId,
         toolId,
         values: overrideValues ?? defaultValues(schema),
+        specialValues: null,
         schema,
       });
     },
@@ -79,11 +96,15 @@ export function MiniToolProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const setSpecialValues = useCallback((values: Record<string, unknown> | null) => {
+    setActive((cur) => (cur ? { ...cur, specialValues: values } : cur));
+  }, []);
+
   const clear = useCallback(() => setActive(null), []);
 
   const ctx = useMemo<MiniToolContextValue>(
-    () => ({ active, pickTool, setValue, clear }),
-    [active, pickTool, setValue, clear],
+    () => ({ active, pickTool, setValue, setSpecialValues, clear }),
+    [active, pickTool, setValue, setSpecialValues, clear],
   );
 
   return <MiniToolContext.Provider value={ctx}>{children}</MiniToolContext.Provider>;

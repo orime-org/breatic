@@ -11,10 +11,10 @@
  * F4-categoryA is landing incrementally — V1 ships image tools only
  * (spec `02-mini-tool-system.md` §3.1 defers video / audio mini-tools
  * to V2). One Category A tool per PR:
- *   - adjust  (this PR — brightness / contrast / saturation)
- *   - filter  (next — preset enum + intensity)
- *   - bg-blur (next — radius slider + preserveSubject toggle)
- *   - crop    (next — corner-handle rect + rotate)
+ *   - adjust  (brightness / contrast / saturation)
+ *   - filter  (preset enum + intensity)
+ *   - bg-blur (radius slider + preserveSubject toggle)
+ *   - crop    (interactive rect overlay — category: 'special')
  *
  * Public API:
  */
@@ -31,10 +31,14 @@ export {
   applyFilterInPlace,
   applyBgBlur,
   applyBgBlurInPlace,
+  applyCrop,
+  resolveSourceRect,
 } from './image-ops';
 export type {
   AdjustParams,
   FilterParams,
   FilterPreset,
   BgBlurParams,
+  CropParams,
 } from './image-ops';
+export { CropOverlay } from './crop-overlay';

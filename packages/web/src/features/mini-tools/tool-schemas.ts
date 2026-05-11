@@ -4,9 +4,9 @@
  * unions in `packages/server/src/routes/schemas.ts` so a frontend
  * row with no backing server tool produces a 4xx on Apply.
  *
- * F4-framework ships only the **Category B image tools** the server
- * already supports. Category A (instant, frontend) — crop / adjust /
- * filter — and the video/audio tool rosters land in F4-categoryA.
+ * Category A (instant, frontend, no credits) — adjust / filter /
+ * bg-blur / crop — ships in PR-A..PR-E (2026-05-11).
+ * Video/audio tool rosters land in a later follow-up.
  *
  * Adding a new tool: add a row here. The framework picks it up; the
  * only UI work needed is when the tool wants a `category: 'special'`
@@ -110,6 +110,20 @@ export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
         label: '保留主体',
       },
     ],
+  },
+  {
+    // Crop's input doesn't fit slider/select/toggle — the user drags a
+    // rect overlay on the source image. `category: 'special'` tells the
+    // BottomToolbar to render a hint + Apply/Cancel only, and the
+    // `CropOverlay` (mounted on the active source image node) publishes
+    // the chosen rect to `MiniToolContext.specialValues` so Apply can
+    // pick it up. The rect is normalized {x, y, width, height} in [0,1].
+    id: 'crop',
+    modality: 'image',
+    category: 'special',
+    menuLabel: '裁剪',
+    title: 'Crop',
+    params: [],
   },
   // ── Category B (backend AIGC — credits, ≥1 s) ────────────────────────
   {
