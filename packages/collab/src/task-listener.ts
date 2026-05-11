@@ -92,7 +92,32 @@ export async function handleNodeStateUpdateEvent(
     return;
   }
 
-  // Debug trace at the top, before any async work
+  // Payload-shape guards (audit #133). Every `return` below intentionally
+  // *skips* the event — i.e. the stream consumer treats the handler as
+  // successful and moves on. We do not throw on permanently-broken payloads
+  // because the stream consumer retries on throw (no-ack), which would
+  // turn a single corrupt event into an infinite-retry loop that blocks
+  // every subsequent event on the same stream.
+  if (typeof event.nodeId !== "string" || event.nodeId.length === 0) {
+    logger.warn(
+      { docName: event.docName, nodeId: event.nodeId },
+      "node-state-update event missing or invalid nodeId, skipping",
+    );
+    return;
+  }
+  if (
+    event.update === null ||
+    typeof event.update !== "object" ||
+    Array.isArray(event.update)
+  ) {
+    logger.warn(
+      { docName: event.docName, nodeId: event.nodeId, update: event.update },
+      "node-state-update event has malformed update payload, skipping",
+    );
+    return;
+  }
+
+  // Debug trace after shape guards — keys lookup is safe now.
   logger.debug({
     docName: event.docName,
     nodeId: event.nodeId,
@@ -144,9 +169,23 @@ export async function handleNodeStateUpdateEvent(
     return;
   }
 
-  const connection = await hocuspocus.openDirectConnection(event.docName, {
-    context: { user: { id: "system" }, source: "task-listener" },
-  });
+  // openDirectConnection / transact failures are *transient* (Hocuspocus
+  // persistence layer hiccup, Redis pub/sub split-brain, etc.). Let them
+  // bubble — the stream consumer will not-ack and retry on the next
+  // iteration. We only catch to log structured context; we do NOT swallow
+  // here because retry on transient failure is the desired behavior.
+  let connection: Awaited<ReturnType<Hocuspocus["openDirectConnection"]>>;
+  try {
+    connection = await hocuspocus.openDirectConnection(event.docName, {
+      context: { user: { id: "system" }, source: "task-listener" },
+    });
+  } catch (err) {
+    logger.error(
+      { err, docName: event.docName, nodeId: event.nodeId },
+      "Failed to open direct connection to Yjs doc; event will retry",
+    );
+    throw err;
+  }
 
   let applied = false;
   try {
