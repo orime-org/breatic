@@ -23,6 +23,44 @@ import type { ToolSchema } from './types';
  * params the server would have inferred.
  */
 export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
+  // ── Category A (frontend, instant — no backend round-trip) ───────────
+  {
+    id: 'adjust',
+    modality: 'image',
+    category: 'A',
+    menuLabel: '调色',
+    title: 'Adjust',
+    params: [
+      {
+        id: 'brightness',
+        type: 'number',
+        ui: 'slider',
+        min: -50,
+        max: 50,
+        default: 0,
+        label: '亮度',
+      },
+      {
+        id: 'contrast',
+        type: 'number',
+        ui: 'slider',
+        min: -50,
+        max: 50,
+        default: 0,
+        label: '对比度',
+      },
+      {
+        id: 'saturation',
+        type: 'number',
+        ui: 'slider',
+        min: -50,
+        max: 50,
+        default: 0,
+        label: '饱和度',
+      },
+    ],
+  },
+  // ── Category B (backend AIGC — credits, ≥1 s) ────────────────────────
   {
     id: 'remove-bg',
     modality: 'image',
@@ -130,7 +168,9 @@ export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
 
 /** Look up a tool by id across every modality. Returns null when unknown. */
 export function findToolSchema(toolId: string): ToolSchema | null {
-  // Currently only image tools ship; video/audio land in F4-categoryA.
+  // V1 ships image tools only — spec `02-mini-tool-system.md` §3.1 defers
+  // video / audio mini-tools to V2. The schema's `modality` field still
+  // exists so the framework is ready when V2 lands.
   return IMAGE_TOOLS.find((t) => t.id === toolId) ?? null;
 }
 

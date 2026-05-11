@@ -61,7 +61,13 @@ import ConnectEndAnchorNode, {
 import CanvasCommentComposer from '@/spaces/canvas/common/CanvasCommentComposer';
 import CommentMarkerNode from '@/spaces/canvas/common/CommentMarkerNode';
 import { LeftFloatingMenu } from '@/features/canvas-left-menu';
-import { BottomToolbar, useMiniTool } from '@/features/mini-tools';
+import {
+  BottomToolbar,
+  findToolSchema,
+  runCategoryAOp,
+  useMiniTool,
+} from '@/features/mini-tools';
+import { uploadOne } from '@/features/upload';
 import { useChipsPick } from '@/features/chat/contexts/ChipsPickContext';
 // B.2 — pickState integration (agentCanvasPickEditingNodeId / mention
 // mode / canvas-pick recognized boxes) is gone. v13 chip pick goes
@@ -563,23 +569,28 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
   };
 
   /**
-   * Mini-tool Apply handler. Three steps in one user action:
-   *   1. Spawn a new sibling asset node (idle, with operation +
-   *      operationParams stamped) at +360px right of the source so
-   *      the layout doesn't overlap.
-   *   2. Connect source → sibling with a non-primary edge so the
-   *      lineage is visible on the canvas (matches mockup §10.13).
-   *   3. POST `/api/v1/mini-tools/image` with target_node_id =
-   *      sibling. The Worker drives state transitions
-   *      (idle → handling → idle/error) via NodeStateUpdateEvent
-   *      → Hocuspocus → Yjs, so the frontend doesn't manually flip
-   *      `state` here.
+   * Mini-tool Apply handler. Routes on tool category:
    *
-   * F4-framework only handles Category B (backend) tools. Picking a
-   * Category A tool today still calls this handler — the request
-   * will 4xx since the server schema covers Category B only — which
-   * is fine: F4-categoryA will route Category A through an in-browser
-   * canvas op instead of going to the network.
+   *   - **Category A (frontend, instant)** — load the source image
+   *     into a canvas, apply the pixel transform in-browser, upload
+   *     the resulting blob through the canonical `uploadOne` so the
+   *     URL written to Yjs is durable (presigned + permanent), then
+   *     `createDataNode` a sibling with `content = newFileUrl`. State
+   *     starts at `idle` — there is no `handling` phase because the
+   *     work is already done by the time we touch Yjs.
+   *
+   *   - **Category B (backend, async)** — `createDataNode` a sibling
+   *     stamped with `operation + operationParams`, connect source
+   *     → sibling with a non-primary edge, then POST to the matching
+   *     `/api/v1/mini-tools/*` endpoint. The Worker drives state
+   *     transitions (idle → handling → idle/error) via
+   *     NodeStateUpdateEvent → Hocuspocus → Yjs, so the frontend
+   *     doesn't manually flip `state` here.
+   *
+   * Both paths spawn a fresh sibling node at `+360 right, +80 down`
+   * of the source so the layout doesn't overlap. The source node is
+   * never mutated — every Apply produces a new asset (spec invariant
+   * §3.3 "源节点不变").
    */
   const handleMiniToolApply = useCallback(
     ({
@@ -598,13 +609,72 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       const imageUrl = sourceData?.content;
       if (!imageUrl) return;
 
+      const schema = findToolSchema(toolId);
+      if (!schema) {
+        console.error('[mini-tool] unknown toolId', toolId);
+        return;
+      }
+
+      const siblingPosition = {
+        x: sourceNode.position.x + 360,
+        y: sourceNode.position.y + 80,
+      };
+
+      if (schema.category === 'A') {
+        // Category A: do the work in the browser, then write a fully-
+        // baked sibling node. No worker dispatch; idle from the start.
+        // The sibling + edge are created only after the op + upload
+        // succeed so a failed Apply doesn't litter the canvas with a
+        // dangling placeholder node.
+        const projectId = activeMgr.projectId;
+        void (async () => {
+          try {
+            const res = await fetch(imageUrl, { mode: 'cors' });
+            if (!res.ok) throw new Error(`fetch ${imageUrl}: ${res.status}`);
+            const sourceBlob = await res.blob();
+
+            const resultBlob = await runCategoryAOp(schema.id, sourceBlob, values);
+
+            const filename = `${schema.id}-${Date.now()}.png`;
+            const file = new File([resultBlob], filename, { type: 'image/png' });
+            const uploaded = await uploadOne(file, { projectId });
+
+            const newTargetNodeId = createDataNode({
+              type: '1002',
+              sourceNodeId: nodeId,
+              position: siblingPosition,
+              data: {
+                name: schema.menuLabel || toolId,
+                content: uploaded.fileUrl,
+                operation: toolId,
+                operationParams: values,
+                ...(uploaded.width !== undefined ? { width: uploaded.width } : {}),
+                ...(uploaded.height !== undefined ? { height: uploaded.height } : {}),
+              },
+            });
+            setEdges([
+              ...edgesRef.current,
+              {
+                id: `e-${nodeId}-${newTargetNodeId}`,
+                source: nodeId,
+                target: newTargetNodeId,
+                sourceHandle: 'Image_0_0',
+                targetHandle: 'Image_0_0',
+              },
+            ]);
+          } catch (err) {
+            console.error('[mini-tool] Category A op failed', err);
+          }
+        })();
+        clearMiniTool();
+        return;
+      }
+
+      // Category B (backend AIGC).
       const targetNodeId = createDataNode({
         type: '1002',
         sourceNodeId: nodeId,
-        position: {
-          x: sourceNode.position.x + 360,
-          y: sourceNode.position.y + 80,
-        },
+        position: siblingPosition,
         data: {
           name: toolId,
           operation: toolId,
