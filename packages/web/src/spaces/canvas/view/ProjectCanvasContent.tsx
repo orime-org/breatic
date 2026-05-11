@@ -85,6 +85,7 @@ import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasVi
 import MiniToolLockSync from '@/spaces/canvas/view/MiniToolLockSync';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useCurrentUserId, useCurrentUsername } from '@/domain/user/CurrentUserContext';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { type UseProjectSpacesResult } from '@/domain/space/useProjectSpaces';
 import { type CanvasWorkflowNodeData } from '@/spaces/canvas/types';
@@ -134,8 +135,14 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
     setEdges,
     updateNode,
     createDataNode,
+    completeHandling,
+    setNodeError,
   } = useCanvasActions();
   const { clear: clearMiniTool } = useMiniTool();
+  // Caller identity for HandlingActor when frontend-driven mini-tool ops
+  // mark a node as `handling` (ADR `2026-05-11-mini-tool-state-machine.md`).
+  const currentUserId = useCurrentUserId();
+  const currentUsername = useCurrentUsername();
   // B.1 chips pick: when ChatPanel asks for a node selection, the
   // next `onNodeClick` should hand the id back via this context
   // (instead of falling through to v12 pickState branches).
@@ -572,13 +579,16 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
   /**
    * Mini-tool Apply handler. Routes on tool category:
    *
-   *   - **Category A (frontend, instant)** — load the source image
-   *     into a canvas, apply the pixel transform in-browser, upload
-   *     the resulting blob through the canonical `uploadOne` so the
-   *     URL written to Yjs is durable (presigned + permanent), then
-   *     `createDataNode` a sibling with `content = newFileUrl`. State
-   *     starts at `idle` — there is no `handling` phase because the
-   *     work is already done by the time we touch Yjs.
+   *   - **Category A (frontend, instant-ish)** — synchronously create
+   *     a sibling in `state: 'handling'` (with `handlingBy.type =
+   *     'frontend'`) plus the connecting edge, so collaborators see
+   *     the in-flight work immediately. Then async: fetch the source,
+   *     run the pixel transform in-browser via `runCategoryAOp`,
+   *     upload through `uploadOne`, and finally `completeHandling`
+   *     (success) or `setNodeError` (failure). The two-phase pattern
+   *     matches Category B's lifecycle so the right-click "delete" /
+   *     `canMutate` gates behave consistently on both. See ADR
+   *     `breatic-inner/decisions/2026-05-11-mini-tool-state-machine.md`.
    *
    *   - **Category B (backend, async)** — `createDataNode` a sibling
    *     stamped with `operation + operationParams`, connect source
@@ -622,12 +632,53 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       };
 
       if (schema.category === 'A') {
-        // Category A: do the work in the browser, then write a fully-
-        // baked sibling node. No worker dispatch; idle from the start.
-        // The sibling + edge are created only after the op + upload
-        // succeed so a failed Apply doesn't litter the canvas with a
-        // dangling placeholder node.
+        // Category A — two-phase per ADR mini-tool-state-machine §D3:
+        //   (1) synchronously create the sibling in `state: 'handling'`
+        //       + connect the edge, so collaborators see the in-flight
+        //       work the moment Apply is clicked (long-running ops like
+        //       blur on a large image can take seconds);
+        //   (2) async: fetch → run op → upload, then either
+        //       `completeHandling` on success or `setNodeError` on
+        //       failure. `handlingBy.type === 'frontend'` tells Collab's
+        //       onDisconnect hook this is our client's responsibility —
+        //       if we disconnect mid-flight, Collab marks the node idle
+        //       with an `interrupted` errorMessage.
         const projectId = activeMgr.projectId;
+        if (!currentUserId) {
+          // No identity yet — refuse to start. Without `handlingBy`,
+          // Collab can't attribute the in-flight work or clean up on
+          // disconnect, so this would leave nodes wedged in `handling`.
+          console.error('[mini-tool] Category A apply blocked — currentUserId unresolved');
+          clearMiniTool();
+          return;
+        }
+        const targetNodeId = createDataNode({
+          type: '1002',
+          sourceNodeId: nodeId,
+          position: siblingPosition,
+          data: {
+            name: schema.menuLabel || toolId,
+            state: 'handling',
+            handlingBy: {
+              userId: currentUserId,
+              username: currentUsername ?? '',
+              type: 'frontend',
+            },
+            operation: toolId,
+            operationParams: values,
+          },
+        });
+        setEdges([
+          ...edgesRef.current,
+          {
+            id: `e-${nodeId}-${targetNodeId}`,
+            source: nodeId,
+            target: targetNodeId,
+            sourceHandle: 'Image_0_0',
+            targetHandle: 'Image_0_0',
+          },
+        ]);
+
         void (async () => {
           try {
             const res = await fetch(imageUrl, { mode: 'cors' });
@@ -640,31 +691,15 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
             const file = new File([resultBlob], filename, { type: 'image/png' });
             const uploaded = await uploadOne(file, { projectId });
 
-            const newTargetNodeId = createDataNode({
-              type: '1002',
-              sourceNodeId: nodeId,
-              position: siblingPosition,
-              data: {
-                name: schema.menuLabel || toolId,
-                content: uploaded.fileUrl,
-                operation: toolId,
-                operationParams: values,
-                ...(uploaded.width !== undefined ? { width: uploaded.width } : {}),
-                ...(uploaded.height !== undefined ? { height: uploaded.height } : {}),
-              },
+            completeHandling(targetNodeId, {
+              content: uploaded.fileUrl,
+              ...(uploaded.width !== undefined ? { width: uploaded.width } : {}),
+              ...(uploaded.height !== undefined ? { height: uploaded.height } : {}),
             });
-            setEdges([
-              ...edgesRef.current,
-              {
-                id: `e-${nodeId}-${newTargetNodeId}`,
-                source: nodeId,
-                target: newTargetNodeId,
-                sourceHandle: 'Image_0_0',
-                targetHandle: 'Image_0_0',
-              },
-            ]);
           } catch (err) {
             console.error('[mini-tool] Category A op failed', err);
+            const msg = err instanceof Error ? err.message : 'Operation failed';
+            setNodeError(targetNodeId, msg);
           }
         })();
         clearMiniTool();
@@ -712,7 +747,16 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
 
       clearMiniTool();
     },
-    [activeMgr, createDataNode, setEdges, clearMiniTool],
+    [
+      activeMgr,
+      createDataNode,
+      setEdges,
+      clearMiniTool,
+      completeHandling,
+      setNodeError,
+      currentUserId,
+      currentUsername,
+    ],
   );
 
   return (

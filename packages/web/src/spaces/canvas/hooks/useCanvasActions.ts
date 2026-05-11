@@ -18,7 +18,7 @@ import {
 } from '@/data/yjs/canvas-space';
 import type { CanvasSpaceManager } from '@/data/yjs/canvas-space';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
-import { useCurrentUserId } from '@/domain/user/CurrentUserContext';
+import { useCurrentUserId, useCurrentUsername } from '@/domain/user/CurrentUserContext';
 import type { NodeChange, EdgeChange, Connection, Node, Edge } from '@xyflow/react';
 import type { NodeState, HandlingActor, CanvasNodeFields, AttachRef } from '@breatic/shared';
 
@@ -172,6 +172,13 @@ export function useCanvasActions() {
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
   const getCurrentUserId = (): string => currentUserIdRef.current ?? '';
+
+  // Username for HandlingActor construction (ADR mini-tool state machine,
+  // 2026-05-11). Pinned on a ref for the same reason as userId.
+  const currentUsername = useCurrentUsername();
+  const currentUsernameRef = useRef<string | null>(currentUsername);
+  currentUsernameRef.current = currentUsername;
+  const getCurrentUsername = (): string => currentUsernameRef.current ?? '';
 
   const addNode = useCallback(
     (node: Node, options?: { select?: boolean } & HistoryOptions) => {
@@ -487,7 +494,16 @@ export function useCanvasActions() {
         const dataMap = new Y.Map();
         dataMap.set('name', opts.data?.name ?? '');
         stampAuditFields(dataMap, opts.data, userId);
-        dataMap.set('state', 'idle');
+        // State machine entry point. Frontend-driven mini-tool ops
+        // (Category A) create the node directly in `handling` so
+        // collaborators see the in-flight work; everything else defaults
+        // to `idle`. When `handling`, `handlingBy` is required —
+        // callers must pass `{ userId, username, type }` in `opts.data`.
+        const initialState = opts.data?.state ?? 'idle';
+        dataMap.set('state', initialState);
+        if (initialState === 'handling' && opts.data?.handlingBy) {
+          dataMap.set('handlingBy', opts.data.handlingBy);
+        }
         dataMap.set('attachments', new Y.Array<AttachRef>());
         if (opts.data?.content !== undefined) dataMap.set('content', opts.data.content);
         if (opts.data?.cover_url !== undefined) dataMap.set('cover_url', opts.data.cover_url);
@@ -965,6 +981,55 @@ export function useCanvasActions() {
   );
 
   /**
+   * Atomically complete a `handling` node with its result. Single Yjs
+   * `transact` so collaborators never observe an intermediate state where
+   * the node is `idle` but its content is still the placeholder (which
+   * would happen if callers chained `setNodeState('idle')` then
+   * `setNodeContent(...)`).
+   *
+   * Used by Category A mini-tools after the in-browser op + upload
+   * succeed, and is the symmetric counterpart to {@link setNodeError}
+   * for the failure path.
+   *
+   * @param nodeId - Target node currently in `state === 'handling'`.
+   * @param fields - Result fields to write onto the node's data map.
+   *   `content` is required; cover/width/height/duration are optional
+   *   modality-specific extras.
+   */
+  const completeHandling = useCallback(
+    (
+      nodeId: string,
+      fields: {
+        content: string;
+        cover_url?: string;
+        width?: number;
+        height?: number;
+        duration?: number;
+      },
+    ): void => {
+      const mgr = getCanvasYjsManager();
+      if (!mgr?.synced) return;
+
+      const nodeMap = mgr.nodesMap.get(nodeId) as Y.Map<unknown> | undefined;
+      if (!(nodeMap instanceof Y.Map)) return;
+
+      mgr.doc.transact(() => {
+        const dataMap = nodeMap.get('data') as Y.Map<unknown> | undefined;
+        if (!(dataMap instanceof Y.Map)) return;
+        dataMap.set('state', 'idle');
+        dataMap.delete('handlingBy');
+        dataMap.delete('errorMessage');
+        dataMap.set('content', fields.content);
+        if (fields.cover_url !== undefined) dataMap.set('cover_url', fields.cover_url);
+        if (fields.width !== undefined) dataMap.set('width', fields.width);
+        if (fields.height !== undefined) dataMap.set('height', fields.height);
+        if (fields.duration !== undefined) dataMap.set('duration', fields.duration);
+      }, noHistoryOrigin);
+    },
+    [],
+  );
+
+  /**
    * Add a mini-tool configure-phase lock to `nodeId` for the current user.
    * Idempotent — re-adding the same `(toolId, userId)` entry no-ops.
    *
@@ -1076,6 +1141,7 @@ export function useCanvasActions() {
     deleteNodeAndEdges,
     setNodeState,
     setNodeError,
+    completeHandling,
     // Generative dual-button + primary downstream (spec §10.13.4 / §10.13.5)
     setPrimaryDownstreamEdge,
     addAppendVersion,

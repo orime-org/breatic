@@ -11,7 +11,7 @@ import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { ProjectLayoutProvider, useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { useProjectSpaces } from '@/domain/space/useProjectSpaces';
 import { useUserRole } from '@/domain/user/useUserRole';
-import { CurrentUserIdProvider } from '@/domain/user/CurrentUserContext';
+import { CurrentUserProvider } from '@/domain/user/CurrentUserContext';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import * as authApi from '@/data/api/auth';
@@ -75,20 +75,23 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   // PR-Y2: members + credits no longer floats as an overlay; the
   // full-width `TopBar` (features/top-bar) houses them now.
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
 
-  // Resolve the caller's userId once on mount (the redux user-info
-  // slice doesn't store `id` today). useUserRole below depends on it.
-  // Backend returns `ApiResponse<UserEntity>` and the axios interceptor
-  // unwraps the envelope to `{ data: UserEntity }` — see
-  // `data/api/request.ts`.
+  // Resolve the caller's userId + username once on mount (the redux
+  // user-info slice doesn't store `id` today). useUserRole below depends
+  // on the id; HandlingActor needs username when frontend-driven mini-tool
+  // ops mark a node as `handling`. Backend returns `ApiResponse<UserEntity>`
+  // and the axios interceptor unwraps the envelope to `{ data: UserEntity }`
+  // — see `data/api/request.ts`.
   useEffect(() => {
     let cancelled = false;
     authApi
       .getMe()
       .then((res) => {
         if (cancelled) return;
-        const id = (res as unknown as { data?: { id?: string } })?.data?.id ?? null;
-        setCurrentUserId(id);
+        const me = (res as unknown as { data?: { id?: string; username?: string | null } })?.data;
+        setCurrentUserId(me?.id ?? null);
+        setCurrentUsername(me?.username ?? null);
       })
       .catch(() => {
         // Auth interceptor handles 401; on transient failures we
@@ -156,7 +159,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   }, [isResizingRightEditor]);
 
   return (
-    <CurrentUserIdProvider value={currentUserId}>
+    <CurrentUserProvider id={currentUserId} username={currentUsername}>
     <ProjectWorkspaceRegionContext.Provider value={selectedWorkspaceRegion}>
     <ChipsPickProvider>
       <div className='flex flex-col w-screen h-screen overflow-hidden'>
@@ -304,7 +307,7 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
       </div>
     </ChipsPickProvider>
     </ProjectWorkspaceRegionContext.Provider>
-    </CurrentUserIdProvider>
+    </CurrentUserProvider>
   );
 };
 
