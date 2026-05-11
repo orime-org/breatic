@@ -9,6 +9,7 @@
  */
 import { applyAdjust, type AdjustParams } from './adjust';
 import { applyFilter, type FilterParams, type FilterPreset } from './filter';
+import { applyBgBlur, type BgBlurParams } from './bg-blur';
 
 const FILTER_PRESETS: ReadonlySet<FilterPreset> = new Set([
   'none',
@@ -53,10 +54,21 @@ export async function runCategoryAOp(
       };
       return applyFilter(source, params);
     }
-    // bg-blur / crop land in follow-up PRs.
+    case 'bg-blur': {
+      const params: BgBlurParams = {
+        radius: numberOr(values.radius, 50),
+        preserveSubject: booleanOr(values.preserveSubject, true),
+      };
+      return applyBgBlur(source, params);
+    }
+    // crop lands in follow-up PR.
     default:
       throw new Error(`Category A op not implemented: ${toolId}`);
   }
+}
+
+function booleanOr(v: unknown, fallback: boolean): boolean {
+  return typeof v === 'boolean' ? v : fallback;
 }
 
 /** Coerce an unknown to a known `FilterPreset`; fall back if invalid. */
@@ -74,3 +86,5 @@ export { applyAdjust, applyAdjustInPlace } from './adjust';
 export type { AdjustParams } from './adjust';
 export { applyFilter, applyFilterInPlace } from './filter';
 export type { FilterParams, FilterPreset } from './filter';
+export { applyBgBlur, applyBgBlurInPlace } from './bg-blur';
+export type { BgBlurParams } from './bg-blur';
