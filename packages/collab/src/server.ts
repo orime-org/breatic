@@ -19,6 +19,7 @@ import * as Y from "yjs";
 import { createAuthHook } from "./auth.js";
 import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
+import { cleanupOnDisconnect } from "./disconnect-cleanup.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("hocuspocus");
@@ -111,7 +112,21 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
     onDisconnect: async ({ documentName, context }) => {
       const ctx = context as { user?: { id: string } };
-      logger.info({ documentName, userId: ctx.user?.id }, "Client disconnected");
+      const userId = ctx.user?.id;
+      logger.info({ documentName, userId }, "Client disconnected");
+      // Mini-tool state-machine cleanup (ADR 2026-05-11). Strips
+      // operationLocks and finishes frontend-driver handling nodes the
+      // disconnected client was running.
+      if (userId) {
+        try {
+          await cleanupOnDisconnect(wsServer.hocuspocus, documentName, userId);
+        } catch (err) {
+          // Cleanup failure is non-fatal — we logged the error inside the
+          // helper. Continue so Hocuspocus's own disconnect bookkeeping
+          // finishes cleanly.
+          logger.error({ err, documentName, userId }, "disconnect cleanup failed");
+        }
+      }
     },
 
     // Document size limit — reject updates that would exceed max
