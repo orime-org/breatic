@@ -26,7 +26,7 @@ import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
 import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import NodeToolbar from './NodeToolbar';
-import { NodeFloatMenu, IMAGE_TOOLS } from '@/features/mini-tools';
+import { NodeFloatMenu, IMAGE_TOOLS, CropOverlay } from '@/features/mini-tools';
 import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 
@@ -263,6 +263,13 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                       imageCursorClassName='cursor-grab'
                       hideFloatingToolbar={false}
                     />
+                    {/* Crop overlay: renders only while the active
+                        mini-tool is `crop` targeting this node, sitting
+                        on top of the image and below the floating
+                        toolbar. The overlay itself decides whether to
+                        render — passing the props unconditionally keeps
+                        the JSX shape stable. */}
+                    <CropOverlay nodeId={id} />
                   </div>
                 ) : isHandling ? (
                   /* No content yet but backend is processing: show full-area spinner */

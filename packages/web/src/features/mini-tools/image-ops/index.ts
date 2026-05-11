@@ -10,6 +10,7 @@
 import { applyAdjust, type AdjustParams } from './adjust';
 import { applyFilter, type FilterParams, type FilterPreset } from './filter';
 import { applyBgBlur, type BgBlurParams } from './bg-blur';
+import { applyCrop, type CropParams } from './crop';
 
 const FILTER_PRESETS: ReadonlySet<FilterPreset> = new Set([
   'none',
@@ -61,7 +62,20 @@ export async function runCategoryAOp(
       };
       return applyBgBlur(source, params);
     }
-    // crop lands in follow-up PR.
+    case 'crop': {
+      // The rect arrives via `MiniToolContext.specialValues` rather
+      // than the schema's slider params (which are empty for crop) —
+      // BottomToolbar merges them into the payload before Apply.
+      // Missing fields fall back to "full image" so a stale Apply
+      // never crops to zero by accident.
+      const params: CropParams = {
+        x: numberOr(values.x, 0),
+        y: numberOr(values.y, 0),
+        width: numberOr(values.width, 1),
+        height: numberOr(values.height, 1),
+      };
+      return applyCrop(source, params);
+    }
     default:
       throw new Error(`Category A op not implemented: ${toolId}`);
   }
@@ -88,3 +102,5 @@ export { applyFilter, applyFilterInPlace } from './filter';
 export type { FilterParams, FilterPreset } from './filter';
 export { applyBgBlur, applyBgBlurInPlace } from './bg-blur';
 export type { BgBlurParams } from './bg-blur';
+export { applyCrop, resolveSourceRect } from './crop';
+export type { CropParams } from './crop';

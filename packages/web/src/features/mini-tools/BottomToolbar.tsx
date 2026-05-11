@@ -33,7 +33,12 @@ export function BottomToolbar({ onApply }: BottomToolbarProps) {
   const { active, setValue, clear } = useMiniTool();
 
   if (!active) return null;
-  const { schema, values } = active;
+  const { schema, values, specialValues } = active;
+  const isSpecial = schema.category === 'special';
+  // Special tools (e.g. crop) require their overlay to publish a value
+  // before Apply makes sense. Without it, Apply would either no-op or
+  // resolve to the full-image default — neither is what the user wants.
+  const applyDisabled = isSpecial && specialValues === null;
 
   return (
     <div
@@ -44,7 +49,13 @@ export function BottomToolbar({ onApply }: BottomToolbarProps) {
         {schema.title}
       </div>
 
-      {schema.params.length === 0 ? (
+      {isSpecial ? (
+        <span className='text-xs text-text-default-tertiary flex-1'>
+          {specialValues === null
+            ? '在节点上拖动选区，然后点击 Apply'
+            : '已选区，点击 Apply 应用'}
+        </span>
+      ) : schema.params.length === 0 ? (
         <span className='text-xs text-text-default-tertiary'>No parameters</span>
       ) : (
         <div className='flex items-center gap-4 flex-1'>
@@ -69,10 +80,18 @@ export function BottomToolbar({ onApply }: BottomToolbarProps) {
         </button>
         <button
           type='button'
+          disabled={applyDisabled}
           onClick={() =>
-            onApply({ nodeId: active.nodeId, toolId: active.toolId, values: active.values })
+            onApply({
+              nodeId: active.nodeId,
+              toolId: active.toolId,
+              // Special tools merge the custom-widget output into the
+              // payload after the schema params, so the widget can
+              // override any matching defaults.
+              values: { ...active.values, ...(active.specialValues ?? {}) },
+            })
           }
-          className='h-[30px] px-3.5 bg-brand-500 text-white border-0 rounded-sm text-xs font-medium hover:bg-brand-600 transition-colors'
+          className='h-[30px] px-3.5 bg-brand-500 text-white border-0 rounded-sm text-xs font-medium hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
         >
           Apply
         </button>
