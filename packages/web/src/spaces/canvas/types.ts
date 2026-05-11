@@ -121,18 +121,30 @@ export function flowCenterFromCanvasPane(
   return screenToFlowPosition(c ?? fallback);
 }
 
-/** Bridges main canvas React Flow viewport to code outside that tree (e.g. image editor panel). */
+/**
+ * Bridges the main canvas React Flow viewport to siblings that live outside
+ * `<ReactFlowProvider>` — e.g. `ChatPanel` mounted at the page level, the
+ * document space's `RightToolbar`. Those siblings cannot call `useReactFlow`
+ * directly (the provider isn't their ancestor), so the canvas registers an
+ * imperative API via `setProjectCanvasViewportApi` while it is mounted and
+ * clears it on unmount; consumers read it via `getProjectCanvasViewportApi()`
+ * and treat `null` as "no canvas is currently mounted".
+ */
 export type ProjectCanvasViewportApi = {
   /**
-   * Flow-space coordinates at the center of the visible main canvas pane.
-   * @returns Center point in the infinite canvas coordinate system.
-   */
-  getViewportCenterFlow: () => { x: number; y: number };
-  /**
-   * Centers the main workflow canvas on the first matching node id without changing current zoom.
+   * Flow-space coordinates at the center of the visible canvas pane.
    *
-   * @param nodeIds - Candidate React Flow node ids (first existing id wins)
-   * @param select - When true, clears previous selection and selects that node before centering.
+   * @returns A point in the infinite-canvas coordinate system, or `null`
+   *   when the pane is not laid out (zero-size or torn down).
+   */
+  getViewportCenterFlow: () => { x: number; y: number } | null;
+  /**
+   * Pan the canvas onto the first matching node id, keeping current zoom.
+   *
+   * @param nodeIds - Candidate React Flow node ids; the first one that
+   *   currently exists in the canvas wins.
+   * @param select - When true, selects only the centered node (clearing
+   *   any prior selection) before panning.
    */
   centerOnFirstNodeId: (nodeIds: string[], select?: boolean) => void;
 };

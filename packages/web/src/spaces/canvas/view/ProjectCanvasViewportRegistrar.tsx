@@ -1,16 +1,18 @@
 /**
- * ProjectCanvasViewportRegistrar — registers the canvas viewport API
- * (centerOnFlowPos / setNodes etc.) globally so the image editor
- * sibling panel can pan/zoom the project canvas without prop-drilling
- * through the entire `apps/project` tree.
+ * ProjectCanvasViewportRegistrar — publishes the canvas viewport API to a
+ * module-level registry so siblings that live outside `<ReactFlowProvider>`
+ * (e.g. `ChatPanel` mounted at the page level, the document space's
+ * `RightToolbar`) can pan/zoom the canvas without prop-drilling and without
+ * being inside the provider subtree themselves.
  *
- * Lives inside `ReactFlowProvider` (so `useReactFlow` works), runs an
- * effect on mount that publishes the API via `setProjectCanvasViewportApi`,
- * and clears it on unmount. Renders nothing.
+ * Renders nothing. Must be mounted inside `<ReactFlowProvider>` — that's the
+ * whole reason this component exists: it's the one place that's allowed to
+ * call `useReactFlow`, and it relays the viewport handles outward.
  */
 
 import { useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
+
 import {
   type ProjectCanvasViewportApi,
   setProjectCanvasViewportApi,
@@ -21,17 +23,22 @@ const ProjectCanvasViewportRegistrar: React.FC = () => {
   const { screenToFlowPosition, setCenter, getZoom, getNodes, setNodes } = useReactFlow();
   useEffect(() => {
     const api: ProjectCanvasViewportApi = {
-      centerOnFlowPos: (flowX, flowY, opts) => {
-        const zoom = getZoom();
-        setCenter(flowX, flowY, { zoom, duration: opts?.smooth ? 320 : 0 });
+      getViewportCenterFlow: () => {
+        const c = getProjectCanvasPaneClientCenter();
+        if (!c) return null;
+        return screenToFlowPosition(c);
       },
-      flowPosFromPaneCenter: () => {
-        const center = getProjectCanvasPaneClientCenter();
-        if (!center) return null;
-        return screenToFlowPosition(center);
-      },
-      setNodes: (updater) => {
-        setNodes(updater(getNodes()));
+      centerOnFirstNodeId: (nodeIds, select) => {
+        const nodes = getNodes();
+        const target = nodes.find((n) => nodeIds.includes(n.id));
+        if (!target) return;
+        if (select) {
+          setNodes(nodes.map((n) => ({ ...n, selected: n.id === target.id })));
+        }
+        setCenter(target.position.x, target.position.y, {
+          zoom: getZoom(),
+          duration: 320,
+        });
       },
     };
     setProjectCanvasViewportApi(api);

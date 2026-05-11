@@ -58,7 +58,6 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
 import { message as uiMessage } from '@/ui/message';
-import { useReactFlow } from '@xyflow/react';
 import AgentMessage from '@/features/chat/components/AgentMessage';
 import AgentToolMessage from '@/features/chat/components/AgentToolMessage';
 import ChatComposer, {
@@ -78,7 +77,7 @@ import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { uploadOne, NODE_TYPE_BY_KIND } from '@/features/upload';
-import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
+import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import type { ChatAttachedChip, MessageData } from '@breatic/shared';
 import { nanoid } from 'nanoid';
 
@@ -148,7 +147,6 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
   const activeMgr = useActiveCanvasSpace();
   const { nodes } = useCanvasData();
   const { createDataNode } = useCanvasActions();
-  const { screenToFlowPosition } = useReactFlow();
   const chipsPick = useChipsPick();
 
   const {
@@ -325,10 +323,11 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
           uiMessage.warning(t('canvas.chat.searchHitUnsupported', { defaultValue: '暂不支持的搜索结果类型' }));
           return;
         }
-        const center = flowCenterFromCanvasPane(
-          screenToFlowPosition,
-          { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-        );
+        const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+        if (!center) {
+          uiMessage.warning(t('canvas.chat.canvasNotReady', { defaultValue: '画布未就绪,无法放置节点' }));
+          return;
+        }
         createDataNode({
           type: nodeType,
           position: { x: center.x, y: center.y },
@@ -346,7 +345,7 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
         uiMessage.error(t('canvas.chat.searchHitAddFailed', { defaultValue: '添加搜索结果失败' }));
       }
     },
-    [activeMgr, createDataNode, screenToFlowPosition, t],
+    [activeMgr, createDataNode, t],
   );
 
   /**
@@ -362,10 +361,11 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
   const handleApplyCanvasAction = useCallback(
     (msgId: string, args: AgentToolArgsProposeCanvasAction) => {
       if (appliedActionByMessageId[msgId]) return;
-      const center = flowCenterFromCanvasPane(
-        screenToFlowPosition,
-        { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-      );
+      const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+      if (!center) {
+        uiMessage.warning(t('canvas.chat.canvasNotReady', { defaultValue: '画布未就绪,无法放置节点' }));
+        return;
+      }
       args.nodes.forEach((n, idx) => {
         const nodeType = chipKindToNodeType(n.type);
         if (!nodeType) return;
@@ -382,7 +382,7 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
         prev[msgId] ? prev : { ...prev, [msgId]: true },
       );
     },
-    [appliedActionByMessageId, createDataNode, screenToFlowPosition],
+    [appliedActionByMessageId, createDataNode, t],
   );
 
   // Esc exits chip pick mode.
