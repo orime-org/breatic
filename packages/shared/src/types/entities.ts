@@ -40,6 +40,13 @@ export interface ToolCallInfo {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+  /**
+   * Parsed tool output for tools whose result drives a frontend UI render
+   * (e.g., v13 interaction tools `ask_user_choice` / `propose_canvas_action` /
+   * `show_search_results`). For LLM-only tools, the result lives in the
+   * paired `role: 'tool'` message and this field stays unset.
+   */
+  result?: Record<string, unknown>;
 }
 
 /** Single message within a conversation. */

@@ -21,30 +21,7 @@ import { conversationRepo } from "@breatic/core";
 import { consolidateIfNeeded } from "./memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-
-const ASK_USER_SENTINEL = "__ASK_USER__";
-// Interaction tools (spec §10.18.4 v13). When the LLM calls one of
-// these tools, the tool's execute() returns a sentinel-prefixed JSON
-// payload; main-agent detects the sentinel, yields the matching SSE
-// event, and stops the loop so the user can respond on the frontend.
-const ASK_USER_CHOICE_SENTINEL = "__ASK_USER_CHOICE__";
-const PROPOSE_CANVAS_ACTION_SENTINEL = "__PROPOSE_CANVAS_ACTION__";
-const SHOW_SEARCH_RESULTS_SENTINEL = "__SHOW_SEARCH_RESULTS__";
-
-/**
- * Maps an interaction-tool sentinel prefix to the SSE event type the
- * frontend listens for. Order matters only for code clarity — the prefix
- * match below tries each entry; sentinels are mutually-exclusive prefixes
- * so order is irrelevant for correctness.
- */
-const INTERACTION_TOOL_SENTINELS: ReadonlyArray<{
-  sentinel: string;
-  event: typeof SSEEventType[keyof typeof SSEEventType];
-}> = [
-  { sentinel: ASK_USER_CHOICE_SENTINEL, event: SSEEventType.AGENT_CHOICE },
-  { sentinel: PROPOSE_CANVAS_ACTION_SENTINEL, event: SSEEventType.AGENT_CANVAS_ACTION },
-  { sentinel: SHOW_SEARCH_RESULTS_SENTINEL, event: SSEEventType.AGENT_SEARCH_RESULTS },
-];
+import { ASK_USER_SENTINEL, parseInteractionSentinel } from "./interaction-sentinel.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 
@@ -190,27 +167,39 @@ export class MainAgent {
           break;
 
         case "tool-result": {
-          // Save tool call + result messages for history
           const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
+
+          // Stringify output once; reused for sentinel detection,
+          // interaction-tool payload parse, and the `role: 'tool'`
+          // history message that the LLM sees on subsequent turns.
+          const output = "output" in part ? part.output : undefined;
+          const resultStr = typeof output === "string" ? output : JSON.stringify(output);
+
+          // Pre-parse interaction-tool payload BEFORE persisting so the
+          // structured result lands on the assistant `tool_calls[0].result`
+          // record. History reload reads that field directly — sentinel
+          // decoding stays a backend protocol concern and never leaks
+          // into the frontend persistence boundary.
+          const interaction = parseInteractionSentinel(resultStr);
+
           if (toolCall) {
             await conversationRepo.addMessage(conversationId, {
               role: "assistant",
               content: "",
               ts: new Date().toISOString(),
-              tool_calls: [toolCall],
+              tool_calls: [
+                interaction ? { ...toolCall, result: interaction.payload } : toolCall,
+              ],
             });
             await conversationRepo.addMessage(conversationId, {
               role: "tool",
-              content: typeof part.output === "string" ? part.output : JSON.stringify(part.output),
+              content: resultStr,
               ts: new Date().toISOString(),
               tool_call_id: part.toolCallId,
               name: toolCall.name,
             });
           }
 
-          // Check for ask_user sentinel
-          const output = "output" in part ? part.output : undefined;
-          const resultStr = typeof output === "string" ? output : JSON.stringify(output);
           if (resultStr.startsWith(ASK_USER_SENTINEL)) {
             try {
               const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
@@ -221,24 +210,9 @@ export class MainAgent {
             return;
           }
 
-          // Spec §10.18.4 v13 — interaction tools (ask_user_choice /
-          // propose_canvas_action / show_search_results). These tools
-          // don't execute logic; they emit structured payloads the
-          // frontend renders as UI components. Match the sentinel prefix,
-          // yield the matching SSE event, and stop the loop so the user
-          // can respond.
-          for (const { sentinel, event } of INTERACTION_TOOL_SENTINELS) {
-            if (resultStr.startsWith(sentinel)) {
-              try {
-                const payload = JSON.parse(resultStr.slice(sentinel.length)) as Record<string, unknown>;
-                yield this.sse(event, payload);
-              } catch {
-                // Malformed JSON in the tool result — surface raw string
-                // so the frontend can still show *something* to the user.
-                yield this.sse(event, { raw: resultStr });
-              }
-              return;
-            }
+          if (interaction) {
+            yield this.sse(interaction.event, interaction.payload);
+            return;
           }
           break;
         }

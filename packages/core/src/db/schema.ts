@@ -171,7 +171,12 @@ export interface ConversationMessage {
   ts: string;
   turnIndex: number;
   thinking?: string;
-  tool_calls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  tool_calls?: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+    result?: Record<string, unknown>;
+  }>;
   tool_call_id?: string;
   name?: string;
 }
