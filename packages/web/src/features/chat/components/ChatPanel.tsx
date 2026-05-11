@@ -70,6 +70,7 @@ import type {
   AgentSearchHit,
   AgentToolArgsProposeCanvasAction,
 } from '@/features/chat/components/agent-tool-types';
+import { backendToLocal } from '@/features/chat/components/chat-history';
 import { useChipsPick } from '@/features/chat/contexts/ChipsPickContext';
 import { useChatStream, type ChatStreamMessage } from '@/features/chat/use-chat-stream';
 import { listConversations, getConversation } from '@/data/api/chat';
@@ -85,15 +86,6 @@ interface ChatPanelProps {
   className?: string;
 }
 
-/** Convert a backend `MessageData` to the local `ChatStreamMessage` shape. */
-function backendToLocal(msg: MessageData): ChatStreamMessage | null {
-  if (msg.role !== 'user' && msg.role !== 'assistant') return null;
-  return {
-    id: nanoid(),
-    role: msg.role,
-    content: msg.content,
-  };
-}
 
 /** Map a canvas node `type` field to the chip kind ChatComposer accepts. */
 function chipKindFromNodeType(nodeType: string | undefined): ChatChipKind {
