@@ -4,8 +4,8 @@
 import React, { memo, useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@/ui/icon';
-import Video, { type VideoRef } from '../../common/Video';
-import PreviewVideo from '../../common/PreviewVideo';
+import Video, { type VideoRef } from '@/spaces/canvas/common/Video';
+import PreviewVideo from '@/spaces/canvas/common/PreviewVideo';
 
 export interface VideoNodeContentProps {
   /** Video URL */

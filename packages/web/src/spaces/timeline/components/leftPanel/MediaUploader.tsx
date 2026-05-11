@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Upload from '@/ui/upload';
 import { message } from '@/ui/message';
-import { MediaItem } from '../../types';
+import { MediaItem } from '@/spaces/timeline/types';
 import { Icon } from '@/ui/icon';
 import { getImageMeta, getVideoMeta, getAudioMeta, extractThumbWithVideoElement } from '@/utils/mediaUtils';
 

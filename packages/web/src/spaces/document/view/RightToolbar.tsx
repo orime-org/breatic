@@ -30,7 +30,7 @@ type AgentComposerUploadItem = {
 };
 import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';
-import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
+import { openGenerationAIMenuAtBottom } from '@/spaces/document/utils/openGenerationAIMenuAtBottom';
 
 /** Side-panel tab ids — local to RightToolbar after mixedEditor slice deletion. */
 type ImageEditorRightSidePanelId = 'assets' | 'attach' | 'link' | 'history';

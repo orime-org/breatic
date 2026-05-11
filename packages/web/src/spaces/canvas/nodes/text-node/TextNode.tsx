@@ -16,9 +16,9 @@ import { Icon } from '@/ui/icon';
 import TextNodeContent, { type TextNodeContentHandle } from './TextNodeContent';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import NodeHeader from '../../common/NodeHeader';
-import DataNodeHandle from '../../common/DataNodeHandle';
-import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
+import NodeHeader from '@/spaces/canvas/common/NodeHeader';
+import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
+import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 import TextNodeToolbar from './NodeToolbar';
 
 /** Extract plain text from HTML to check emptiness (same rule as TextNodeContent). */

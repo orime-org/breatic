@@ -4,7 +4,7 @@ import { message } from '@/ui/message';
 import Slider from '@/ui/slider';
 import Tooltip from '@/ui/tooltip';
 import { useTranslation } from 'react-i18next';
-import type { TimelineClip } from '../../types';
+import type { TimelineClip } from '@/spaces/timeline/types';
 import { Icon } from '@/ui/icon';
 
 interface PlaybackControlsProps {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import KeyController, { type KeyControllerEvent } from 'keycon';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import type { TimelineClip } from '../../types';
+import type { TimelineClip } from '@/spaces/timeline/types';
 import { nanoid } from 'nanoid';
 import copy from 'copy-to-clipboard';
 

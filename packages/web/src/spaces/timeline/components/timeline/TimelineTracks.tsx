@@ -1,7 +1,7 @@
 import React, { useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { TimelineClip } from '../../types';
+import { TimelineClip } from '@/spaces/timeline/types';
 import TrackRow from './TrackRow';
 
 interface TimelineTracksProps {

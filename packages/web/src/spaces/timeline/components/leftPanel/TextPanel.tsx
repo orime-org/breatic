@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import { useTranslation } from 'react-i18next';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import { Button } from '@/ui/button';
 
 interface TextPanelProps {

@@ -8,14 +8,14 @@ import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import Divider from '@/ui/divider';
 import Tooltip from '@/ui/tooltip';
-import BlockTypeSelect from '../formatting/BlockTypeSelect';
-import TextColorSelect from '../formatting/TextColorSelect';
-import TableHandles from '../table/TableHandles';
-import TableSelectionChrome from '../table/TableSelectionChrome';
-import ImageBubbleMenu, { formatBubbleShouldShow } from '../media/ImageBubbleMenu';
+import BlockTypeSelect from '@/spaces/document/formatting/BlockTypeSelect';
+import TextColorSelect from '@/spaces/document/formatting/TextColorSelect';
+import TableHandles from '@/spaces/document/table/TableHandles';
+import TableSelectionChrome from '@/spaces/document/table/TableSelectionChrome';
+import ImageBubbleMenu, { formatBubbleShouldShow } from '@/spaces/document/media/ImageBubbleMenu';
 import AIMenu from './AIMenu';
 import { ImproveMenuTrigger } from './ImproveMenuTrigger';
-import { getTextEditorBridgeStorage } from '../extensions/TextEditorBridgeExtension';
+import { getTextEditorBridgeStorage } from '@/spaces/document/extensions/TextEditorBridgeExtension';
 import {
   RiBold,
   RiItalic,

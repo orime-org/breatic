@@ -32,8 +32,8 @@ import { type NodeProps, Position } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
-import NodeHeader from '../../common/NodeHeader';
-import DataNodeHandle from '../../common/DataNodeHandle';
+import NodeHeader from '@/spaces/canvas/common/NodeHeader';
+import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 import {
   PromptEditor,

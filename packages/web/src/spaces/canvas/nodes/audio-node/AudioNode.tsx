@@ -14,7 +14,7 @@ import React, { useState, useEffect, memo, useRef } from 'react';
 import { type NodeProps, Position, NodeToolbar as FlowNodeToolbar, useStore } from '@xyflow/react';
 import { message } from '@/ui/message';
 import { useTranslation } from 'react-i18next';
-import NodeHeader from '../../common/NodeHeader';
+import NodeHeader from '@/spaces/canvas/common/NodeHeader';
 import { Icon } from '@/ui/icon';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
@@ -27,8 +27,8 @@ import { Input } from '@/ui/input';
 import WaveSurfer from 'wavesurfer.js';
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 import AudioNodeToolbar from './NodeToolbar';
-import DataNodeHandle from '../../common/DataNodeHandle';
-import NodeSkeleton, { zoomLevelShowContentSelector } from '../../common/NodeSkeleton';
+import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
+import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 import AudioNodePlayer from './AudioNodePlayer';
 
 /** Edge handle IDs aligned with canvas conventions. */

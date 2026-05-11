@@ -3,7 +3,7 @@ import { DndContext, DragEndEvent, DragStartEvent, DragMoveEvent, closestCenter,
 import { useTranslation } from 'react-i18next';
 import Selecto from 'react-selecto';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import TimelineScale from './TimelineScale';
 import TimelineTracks from './TimelineTracks';
 import PlaybackCursor from './PlaybackCursor';

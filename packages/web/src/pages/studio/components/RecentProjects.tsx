@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useImperativeHandle, forwardRef, us
 import { useTranslation } from 'react-i18next';
 import { message } from '@/ui/message';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
-import type { WorkspaceProject } from '../types';
+import type { WorkspaceProject } from '@/pages/studio/types';
 import { projectsApi } from '@/data/api';
 import { Icon } from '@/ui/icon';
 import ConfirmModal from '@/app/shell/modals/ConfirmModal';

@@ -46,7 +46,7 @@ import {
 } from 'react-icons/ri';
 import { cn } from '@/utils/classnames';
 import { TextColorPalettePanel } from '@/spaces/document/formatting/TextColorSelect';
-import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '../view/TextEditorIcons';
+import { BlockHighlightIcon, BlockIndentAlignIcon, BlockTaskListIcon } from '@/spaces/document/view/TextEditorIcons';
 import {
   decreaseBlockIndent,
   increaseBlockIndent,

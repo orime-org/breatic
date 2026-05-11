@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { MediaItem } from '../../types';
+import { MediaItem } from '@/spaces/timeline/types';
 import TextPanel from './TextPanel';
 import ImagePanel from './ImagePanel';
 import AudioPanel from './AudioPanel';

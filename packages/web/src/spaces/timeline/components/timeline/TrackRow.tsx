@@ -1,7 +1,7 @@
 import React, { useMemo, memo, useRef, useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { TimelineClip } from '../../types';
+import { TimelineClip } from '@/spaces/timeline/types';
 import ClipItem from './ClipItem';
 
 interface TrackRowProps {

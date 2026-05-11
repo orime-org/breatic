@@ -3,7 +3,7 @@ import Slider from '@/ui/slider';
 import { ColorPicker } from '@/ui/colorPicker';
 import Input from '@/ui/input';
 import { useTranslation } from 'react-i18next';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
 import CropModal from './CropModal';
 import { Icon } from '@/ui/icon';

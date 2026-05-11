@@ -18,7 +18,7 @@ import Moveable, {
   OnRotateGroupEnd,
 } from 'react-moveable';
 import { useVideoEditorStore } from '@/app/hooks/useVideoEditorStore';
-import { MediaItem, TimelineClip } from '../../types';
+import { MediaItem, TimelineClip } from '@/spaces/timeline/types';
 import './MoveableControl.css';
 
 interface MoveableControlProps {
