@@ -9,11 +9,9 @@ import Upload, { type UploadFile } from '@/ui/upload';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { RiAddLine, RiEdit2Line, RiSparkling2Fill } from 'react-icons/ri';
+import { nanoid } from 'nanoid';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useUpstreamExternalFileList, type UpstreamExternalFileItem } from '@/spaces/canvas/hooks/useUpstreamExternalFileList';
-import { useSelector, useDispatch } from 'react-redux';
-import type { RootState } from '@/store';
-import { toggleMixedEditorFavoriteAsset } from '@/store/modules/mixedEditor';
 import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
 
 /**
@@ -34,8 +32,28 @@ import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 import MediaResourceListPanel, { type MediaResourceListItem } from './MediaResourceListPanel';
 import { openGenerationAIMenuAtBottom } from '../utils/openGenerationAIMenuAtBottom';
 
-/** Side-panel tab ids shared with the mixedEditor module (inlined here after mixedEditor deletion). */
+/** Side-panel tab ids — local to RightToolbar after mixedEditor slice deletion. */
 type ImageEditorRightSidePanelId = 'assets' | 'attach' | 'link' | 'history';
+
+/**
+ * User-starred items shown in the `assets` side panel. Local to this
+ * component since the slice was deleted in the mixedEditor cleanup;
+ * the favorites only live as long as the panel is mounted. PR-6 will
+ * decide whether to persist them (per-project, per-user) when it
+ * brings the document editor back online.
+ */
+interface FavoriteAsset {
+  id: string;
+  previewUrl: string;
+  name?: string;
+  sourcePanel?: ImageEditorRightSidePanelId;
+  sourceItemId?: string;
+}
+
+interface ToggleFavoritePayload {
+  panel: ImageEditorRightSidePanelId;
+  item: { id: string; previewUrl: string; name?: string };
+}
 
 type RightToolbarProps = {
   editor: Editor;
@@ -161,12 +179,39 @@ async function parseTextUploadFile(file: File): Promise<string> {
 
 const RightToolbar: React.FC<RightToolbarProps> = ({ editor, nodeId }) => {
   const { nodes: projectNodes, edges: projectEdges } = useCanvasData();
-  const favoriteAssets = useSelector((s: RootState) => s.mixedEditor.favoriteAssets);
-  const dispatch = useDispatch();
+  const [favoriteAssets, setFavoriteAssets] = useState<FavoriteAsset[]>([]);
   const toggleFavoriteAsset = useCallback(
-    (payload: { panel: ImageEditorRightSidePanelId; item: MediaResourceListItem }) =>
-      dispatch(toggleMixedEditorFavoriteAsset(payload)),
-    [dispatch],
+    ({ panel, item }: ToggleFavoritePayload) => {
+      const url = item.previewUrl.trim();
+      if (!url) return;
+      setFavoriteAssets((prev) => {
+        if (panel === 'assets') {
+          // The Assets panel itself stars/unstars by favorite id.
+          const i = prev.findIndex((f) => f.id === item.id);
+          return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+        }
+        // Other panels (attach / link / history): identity = (sourcePanel, sourceItemId)
+        // so the same URL on two different rows doesn't collide.
+        const i = prev.findIndex(
+          (f) => f.sourcePanel === panel && f.sourceItemId === item.id,
+        );
+        if (i !== -1) {
+          return [...prev.slice(0, i), ...prev.slice(i + 1)];
+        }
+        const trimmedName = item.name?.trim();
+        return [
+          ...prev,
+          {
+            id: `fav-${nanoid(10)}`,
+            previewUrl: url,
+            ...(trimmedName ? { name: trimmedName } : {}),
+            sourcePanel: panel,
+            sourceItemId: item.id,
+          },
+        ];
+      });
+    },
+    [],
   );
   const projectCanvasUpstream = useUpstreamExternalFileList(projectNodes, projectEdges, nodeId);
 

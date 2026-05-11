@@ -1,13 +1,11 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
 import userCenterReducer from './modules/userCenter';
-import mixedEditorReducer from './modules/mixedEditor';
 import projectInfoReducer from './modules/projectInfo';
 import loadingReducer from './modules/loading';
 import videoEditorReducer from './modules/videoEditor';
 
 const baseReducer = combineReducers({
   userCenter: userCenterReducer,
-  mixedEditor: mixedEditorReducer,
   projectInfo: projectInfoReducer,
   loading: loadingReducer,
   videoEditor: videoEditorReducer,
