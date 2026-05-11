@@ -52,13 +52,24 @@ export const sendSkillCommand = (
     onclose: config.onclose,
   });
 
-/** List conversations for the current user. */
-export const listConversations = (params: { limit?: number; offset?: number } = {}) =>
-  request<PaginatedResponse<ConversationEntity>>({
+/**
+ * List conversations for the current user.
+ *
+ * @param params.projectId - Server-side filter to one project; matches
+ *   the `project_id` query param on `GET /chat/conversations`. Replaces
+ *   the client-side `.find(c => c.projectId === ...)` that dropped
+ *   silently when the target sat past page boundary.
+ */
+export const listConversations = (
+  params: { projectId?: string; limit?: number; offset?: number } = {},
+) => {
+  const { projectId, ...rest } = params;
+  return request<PaginatedResponse<ConversationEntity>>({
     url: '/api/v1/chat/conversations',
     method: 'get',
-    params,
+    params: { ...rest, ...(projectId !== undefined ? { project_id: projectId } : {}) },
   });
+};
 
 /** Get a conversation with its messages. */
 export const getConversation = (id: string) =>

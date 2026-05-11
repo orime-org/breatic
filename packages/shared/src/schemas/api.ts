@@ -179,3 +179,14 @@ export const paginationSchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 export type PaginationInput = z.infer<typeof paginationSchema>;
+
+/**
+ * `GET /chat/conversations` query — pagination plus an optional
+ * `project_id` filter. Without the filter, ChatPanel had to pull a
+ * page and client-side `find` for a matching project, which dropped
+ * silently when the target conversation sat past the page boundary.
+ */
+export const chatConversationsQuerySchema = paginationSchema.extend({
+  project_id: z.string().uuid().optional(),
+});
+export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;

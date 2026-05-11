@@ -76,6 +76,7 @@ export {
   projectCreateSchema,
   checkoutSchema,
   paginationSchema,
+  chatConversationsQuerySchema,
 } from "./schemas/index.js";
 
 export type {
@@ -89,6 +90,7 @@ export type {
   ProjectCreateInput,
   CheckoutInput,
   PaginationInput,
+  ChatConversationsQueryInput,
 } from "./schemas/index.js";
 
 export { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "./i18n/index.js";

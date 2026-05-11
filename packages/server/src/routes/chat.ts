@@ -13,7 +13,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   chatMessageSchema,
   skillCommandSchema,
-  paginationSchema,
+  chatConversationsQuerySchema,
 } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
@@ -195,16 +195,23 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
 /**
  * `GET /chat/conversations` — list conversations for the current user.
  *
- * @param c - Hono context with optional pagination query params
- * @returns Paginated array of conversation entities
+ * Optional `project_id` query scopes the result to one project so the
+ * frontend doesn't have to client-side filter a paginated response.
+ *
+ * @param c - Hono context with pagination + optional `project_id`
+ * @returns Array of conversation entities
  */
 chat.get(
   "/conversations",
-  zValidator("query", paginationSchema),
+  zValidator("query", chatConversationsQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const { limit, offset } = c.req.valid("query");
-    const conversations = await conversationService.list(user.id, limit, offset);
+    const { limit, offset, project_id: projectId } = c.req.valid("query");
+    const conversations = await conversationService.list(user.id, {
+      projectId,
+      limit,
+      offset,
+    });
     return c.json({ data: conversations });
   },
 );

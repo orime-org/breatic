@@ -11,6 +11,7 @@ export {
   projectCreateSchema,
   checkoutSchema,
   paginationSchema,
+  chatConversationsQuerySchema,
 } from "./api.js";
 
 export type {
@@ -24,4 +25,5 @@ export type {
   ProjectCreateInput,
   CheckoutInput,
   PaginationInput,
+  ChatConversationsQueryInput,
 } from "./api.js";
