@@ -27,13 +27,6 @@ import {
   ANNOTATION_NODE_TYPE,
 } from './use-annotation-actions';
 
-vi.mock('@xyflow/react', () => ({
-  useReactFlow: () => ({
-    screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x, y }),
-    flowToScreenPosition: ({ x, y }: { x: number; y: number }) => ({ x, y }),
-  }),
-}));
-
 const createDataNodeMock = vi.fn(() => 'mock-yjs-node-id');
 
 vi.mock('@/spaces/canvas/hooks/useCanvasActions', () => ({
@@ -42,16 +35,18 @@ vi.mock('@/spaces/canvas/hooks/useCanvasActions', () => ({
   }),
 }));
 
+// Stub the viewport registry so `dropAnnotation` sees a "canvas mounted"
+// world during tests — real registrar publishes when ProjectCanvas mounts.
 vi.mock('@/spaces/canvas/types', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '@/spaces/canvas/types',
   );
   return {
     ...actual,
-    flowCenterFromCanvasPane: (
-      _conv: unknown,
-      fallback: { x: number; y: number },
-    ) => fallback,
+    getProjectCanvasViewportApi: () => ({
+      getViewportCenterFlow: () => ({ x: 0, y: 0 }),
+      centerOnFirstNodeId: () => undefined,
+    }),
   };
 });
 

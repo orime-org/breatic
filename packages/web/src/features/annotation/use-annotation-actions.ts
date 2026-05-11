@@ -23,10 +23,9 @@
  * `state: 'handling'` limbo.
  */
 import { useCallback, useMemo } from 'react';
-import { useReactFlow } from '@xyflow/react';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useLocalPending } from '@/spaces/canvas/contexts/LocalPendingProvider';
-import { flowCenterFromCanvasPane } from '@/spaces/canvas/types';
+import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
 
 /** Yjs node-type id for annotation. Mirrors '1002' / '1003' / '1004' but kept named since annotation isn't part of the numbered modality family. */
 export const ANNOTATION_NODE_TYPE = 'annotation';
@@ -68,7 +67,6 @@ interface UseAnnotationActionsResult {
 export function useAnnotationActions(): UseAnnotationActionsResult {
   const { pending, addPending, removePending } = useLocalPending();
   const { createDataNode } = useCanvasActions();
-  const { screenToFlowPosition } = useReactFlow();
 
   const pendingAnnotation = useMemo(() => {
     // Array.from over .values() avoids the downlevelIteration TS
@@ -92,11 +90,14 @@ export function useAnnotationActions(): UseAnnotationActionsResult {
       // race a fast clicker.
       return null;
     }
+    const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+    if (!center) {
+      // Canvas not mounted (e.g. user is on document space). Drop
+      // silently — annotation is a canvas-only affordance and the
+      // entry-point button is hidden in that state.
+      return null;
+    }
     const id = crypto.randomUUID();
-    const center = flowCenterFromCanvasPane(
-      screenToFlowPosition,
-      { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-    );
     addPending({
       id,
       type: ANNOTATION_NODE_TYPE,
@@ -105,7 +106,7 @@ export function useAnnotationActions(): UseAnnotationActionsResult {
       startedAt: Date.now(),
     });
     return id;
-  }, [pendingAnnotation, addPending, screenToFlowPosition]);
+  }, [pendingAnnotation, addPending]);
 
   const submitAnnotation = useCallback(
     (id: string, text: string) => {
