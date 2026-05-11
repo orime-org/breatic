@@ -1,9 +1,12 @@
-import React, { useEffect } from 'react';
-import { useReactFlow, type Node } from '@xyflow/react';
-import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
-import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import React, { useEffect, useRef } from 'react';
 import { nanoid } from 'nanoid';
-import type { CanvasWorkflowNodeData } from '@/spaces/canvas/types';
+import type { Node } from '@xyflow/react';
+
+import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
+import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
+import { getProjectCanvasViewportApi } from '@/spaces/canvas/types';
+import { useUploadFiles, NODE_TYPE_BY_KIND } from '@/features/upload';
+import { message as uiMessage } from '@/ui/message';
 
 /** True when paste should stay inside text-editor/contenteditable context. */
 const isEditablePasteContext = (e: ClipboardEvent): boolean => {
@@ -31,296 +34,155 @@ const isEditablePasteContext = (e: ClipboardEvent): boolean => {
   return false;
 };
 
-/** Builds a text node for pasted plain text.
- * TODO PR-C+: `textContent` is currently unused in the canvas-native schema because
- * text lives in the Yjs `prompt` Y.XmlFragment. After paste, the caller should
- * open the node editor and insert text into the TipTap document.
- */
-const createTextNode = (
-  _textContent: string,
-  position: { x: number; y: number },
-  nodeId: string
-): Node => {
-  return {
-    id: nodeId,
-    type: '1001',
-    position,
-    selected: true,
-    style: { width: 300 },
-    // addNode() in useCanvasActions reads `name` and `state`; attachments is
-    // initialised as empty Y.Array. UI-only `handles` config is kept here.
-    data: {
-      name: 'text',
-      state: 'idle',
-      attachments: [],
-      handles: {
-        target: [{ handleType: 'Text', number: 1 }],
-      },
-    } satisfies CanvasWorkflowNodeData,
-  };
+/** Filename builder for clipboard blobs — blobs lack `name`, so synthesise one. */
+const blobFilename = (kind: 'image' | 'video' | 'audio', blob: Blob): string => {
+  const extByKind = { image: 'png', video: 'mp4', audio: 'mp3' } as const;
+  const fromMime = blob.type.split('/')[1]?.split(';')[0];
+  const ext = fromMime || extByKind[kind];
+  return `clipboard-${kind}-${Date.now()}.${ext}`;
 };
 
 /**
- * Builds an image node for upload.
- *
- * TODO (F5-followup): the `_file` arg is dropped on the floor — clipboard
- * paste of an image creates an empty node with no content. Wire through
- * `useUploadFiles.uploadOne` + `setNodeContent` so the pasted blob lands
- * in permanent storage. Pre-F5 this was broken too; F5 doesn't regress
- * the behavior, but cleanup is owed.
+ * Picks the first media item from clipboard, preferring file types over text.
+ * Returns `null` when there's nothing the canvas can host.
  */
-const createImageNodeForUpload = (
-  position: { x: number; y: number },
-  nodeId: string,
-  _file?: File
-): Node => {
-  return {
-    id: nodeId,
-    type: '1002',
-    position,
-    selected: true,
-    data: {
-      name: 'image',
-      state: 'idle',
-      attachments: [],
-      handles: {
-        target: [{ handleType: 'Image', number: 1 }],
-      },
-    } satisfies CanvasWorkflowNodeData,
-  };
-};
+function pickClipboardPayload(
+  data: DataTransfer,
+):
+  | { kind: 'image' | 'video' | 'audio'; blob: Blob }
+  | { kind: 'text'; text: string }
+  | null {
+  const items = data.items;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const mime = item.type.toLowerCase();
+    if (mime.startsWith('image/')) {
+      const blob = item.getAsFile();
+      if (blob) return { kind: 'image', blob };
+    } else if (mime.startsWith('video/')) {
+      const blob = item.getAsFile();
+      if (blob) return { kind: 'video', blob };
+    } else if (mime.startsWith('audio/')) {
+      const blob = item.getAsFile();
+      if (blob) return { kind: 'audio', blob };
+    }
+  }
+  const text = data.getData('text');
+  if (text) return { kind: 'text', text };
+  return null;
+}
 
-/** Builds a video node for upload. */
-const createVideoNodeForUpload = (
-  position: { x: number; y: number },
-  nodeId: string,
-  _file?: File
-): Node => {
-  return {
-    id: nodeId,
-    type: '1003',
-    position,
-    selected: true,
-    data: {
-      name: 'video',
-      state: 'idle',
-      attachments: [],
-      handles: {
-        target: [{ handleType: 'Video', number: 1 }],
-      },
-    } satisfies CanvasWorkflowNodeData,
-  };
-};
-
-/** Builds an audio node for upload. */
-const createAudioNodeForUpload = (
-  position: { x: number; y: number },
-  nodeId: string,
-  _file?: File
-): Node => {
-  return {
-    id: nodeId,
-    type: '1004',
-    position,
-    selected: true,
-    data: {
-      name: 'audio',
-      state: 'idle',
-      attachments: [],
-      handles: {
-        target: [{ handleType: 'Audio', number: 1 }],
-      },
-    } satisfies CanvasWorkflowNodeData,
-  };
-};
-
-/** Creates a text node from clipboard text at the given flow position. */
-const handleTextPaste = (
-  text: string,
-  position: { x: number; y: number },
-  nodeId: string,
-  addNode: (node: Node) => void,
-  zIndex?: number
-) => {
-  const newNode = createTextNode(text, position, nodeId);
-  const nodeWithZ = zIndex !== undefined ? ({ ...newNode, zIndex } as Node & { zIndex?: number }) : newNode;
-  addNode(nodeWithZ);
-};
-
-/** Wraps a Blob as a File with filename and MIME type. */
-const blobToFile = (blob: Blob, fileName: string, mimeType: string): File =>
-  new File([blob], fileName, { type: mimeType });
-
-/** Adds an image node from a clipboard image blob. */
-const handleImageFileUpload = (
-  blob: Blob,
-  position: { x: number; y: number },
-  nodeId: string,
-  addNode: (node: Node) => void,
-  zIndex?: number
-) => {
-  const file = blobToFile(blob, 'image.png', blob.type || 'image/png');
-  const newNode = createImageNodeForUpload(position, nodeId, file);
-  const nodeWithZ = zIndex !== undefined ? ({ ...newNode, zIndex } as Node & { zIndex?: number }) : newNode;
-  addNode(nodeWithZ);
-};
-
-/** Adds a video node from a clipboard video blob. */
-const handleVideoFileUpload = (
-  blob: Blob,
-  position: { x: number; y: number },
-  nodeId: string,
-  addNode: (node: Node) => void,
-  zIndex?: number
-) => {
-  const file = blobToFile(blob, 'video.mp4', blob.type || 'video/mp4');
-  const newNode = createVideoNodeForUpload(position, nodeId, file);
-  const nodeWithZ = zIndex !== undefined ? ({ ...newNode, zIndex } as Node & { zIndex?: number }) : newNode;
-  addNode(nodeWithZ);
-};
-
-/** Adds an audio node from a clipboard audio blob. */
-const handleAudioFileUpload = (
-  blob: Blob,
-  position: { x: number; y: number },
-  nodeId: string,
-  addNode: (node: Node) => void,
-  zIndex?: number
-) => {
-  const file = blobToFile(blob, 'audio.mp3', blob.type || 'audio/mpeg');
-  const newNode = createAudioNodeForUpload(position, nodeId, file);
-  const nodeWithZ = zIndex !== undefined ? ({ ...newNode, zIndex } as Node & { zIndex?: number }) : newNode;
-  addNode(nodeWithZ);
-};
-
-/** Listens for global paste and creates canvas nodes from clipboard files or text. */
+/**
+ * Listens for global paste and drops the result onto the canvas:
+ *   - image / video / audio blob → upload to permanent storage,
+ *     then `createDataNode` with the returned URL on `data.content`.
+ *   - plain text → empty text node at viewport center (F-series TODO:
+ *     wire the pasted text into the node's Yjs `prompt` Y.XmlFragment
+ *     once the canvas-native text editor lands).
+ *
+ * Paste inside an existing input / contenteditable / ProseMirror surface
+ * is ignored — those host their own paste behavior.
+ */
 const ClipboardPasteHandler: React.FC = () => {
-  const { screenToFlowPosition } = useReactFlow();
-  const { nodes } = useCanvasData();
-  const { addNode } = useCanvasActions();
-
-  const handlePaste = async (e: ClipboardEvent) => {
-    // Skip when focus/selection is inside editor inputs or ProseMirror.
-    if (isEditablePasteContext(e)) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!e.clipboardData) {
-      return;
-    }
-
-    let clipboardData = null;
-    // Prefer first matching media item from clipboardData.items
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const itemType = item.type.toLowerCase();
-      if (itemType.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          clipboardData = {
-            type: 'image' as const,
-            data: blob,
-          };
-          break;
-        }
-      }
-      if (itemType.startsWith('audio/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          clipboardData = {
-            type: 'audio' as const,
-            data: blob,
-          };
-          break;
-        }
-      }
-      if (itemType.startsWith('video/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          clipboardData = {
-            type: 'video' as const,
-            data: blob,
-          };
-          break;
-        }
-      }
-    }
-    if (!clipboardData && e.clipboardData.getData('text')) {
-      const text = e.clipboardData.getData('text');
-      clipboardData = {
-        type: 'text' as const,
-        data: text,
-      };
-    }
-
-    if (!clipboardData) {
-      return;
-    }
-
-    const viewport = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const position = screenToFlowPosition(viewport);
-
-    const maxZIndex = nodes.reduce((max, node) => {
-      const z = (node as Node & { zIndex?: number }).zIndex ?? 0;
-      return Math.max(max, z);
-    }, 0);
-    const nextZIndex = maxZIndex + 1;
-
-    const timestamp = Date.now();
-    const randomString = nanoid(5);
-    let nodeType: string;
-    if (clipboardData.type === 'text') {
-      nodeType = '1001';
-    } else if (clipboardData.type === 'image') {
-      nodeType = '1002';
-    } else if (clipboardData.type === 'video') {
-      nodeType = '1003';
-    } else {
-      nodeType = '1004';
-    }
-    const nodeId = `${nodeType}-${timestamp}-${randomString}`;
-
-    switch (clipboardData.type) {
-      case 'text': {
-        handleTextPaste(clipboardData.data as string, position, nodeId, addNode, nextZIndex);
-        break;
-      }
-      case 'image': {
-        if (clipboardData.data instanceof Blob) {
-          handleImageFileUpload(clipboardData.data, position, nodeId, addNode, nextZIndex);
-        }
-        break;
-      }
-      case 'video': {
-        if (clipboardData.data instanceof Blob) {
-          handleVideoFileUpload(clipboardData.data, position, nodeId, addNode, nextZIndex);
-        }
-        break;
-      }
-      case 'audio': {
-        if (clipboardData.data instanceof Blob) {
-          handleAudioFileUpload(clipboardData.data, position, nodeId, addNode, nextZIndex);
-        }
-        break;
-      }
-      default:
-        return;
-    }
-  };
+  const { addNode, createDataNode } = useCanvasActions();
+  const activeMgr = useActiveCanvasSpace();
+  const { upload } = useUploadFiles();
+  // Refs let the window-listener effect keep a `[]` dep array — the
+  // listener reads the latest manager / upload / node-action identities
+  // without re-binding the global event handler every render.
+  const activeMgrRef = useRef(activeMgr);
+  activeMgrRef.current = activeMgr;
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
+  const addNodeRef = useRef(addNode);
+  addNodeRef.current = addNode;
+  const createDataNodeRef = useRef(createDataNode);
+  createDataNodeRef.current = createDataNode;
 
   useEffect(() => {
-    const pasteHandler = (e: Event) => {
-      handlePaste(e as ClipboardEvent);
+    const handlePaste = async (rawEvent: Event) => {
+      const e = rawEvent as ClipboardEvent;
+      if (isEditablePasteContext(e)) return;
+      if (!e.clipboardData) return;
+
+      const payload = pickClipboardPayload(e.clipboardData);
+      if (!payload) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const center = getProjectCanvasViewportApi()?.getViewportCenterFlow();
+      if (!center) {
+        uiMessage.warning('画布未就绪,无法粘贴');
+        return;
+      }
+      const position = { x: center.x, y: center.y };
+
+      if (payload.kind === 'text') {
+        // Text path stays on the v12 addNode shape — the canvas-native
+        // text node holds its content in a Yjs `prompt` Y.XmlFragment
+        // that's wired through TipTap, not through `data.content`. F5-
+        // followup is scoped to upload-driven media; text-paste content
+        // wiring is its own TODO.
+        const nodeId = `1001-${Date.now()}-${nanoid(5)}`;
+        // addNode stamps audit fields (`createdAt` / `createdBy`) inside
+        // its Yjs transact, so the call-site data only needs `name` /
+        // `state` / `attachments`. Cast through `unknown` since react-
+        // flow's `Node['data']` is `unknown` by design.
+        const textNode: Node = {
+          id: nodeId,
+          type: '1001',
+          position,
+          selected: true,
+          style: { width: 300 },
+          data: { name: 'text', state: 'idle', attachments: [] } as unknown as Node['data'],
+        };
+        addNodeRef.current(textNode);
+        return;
+      }
+
+      // Media path: upload to permanent storage first so the URL the
+      // node persists to Yjs is durable, not a blob: URL that dies with
+      // the tab. Mirrors the LeftFloatingMenu upload flow exactly.
+      const mgr = activeMgrRef.current;
+      if (!mgr) {
+        uiMessage.warning('画布未就绪,无法粘贴');
+        return;
+      }
+      try {
+        const file = new File(
+          [payload.blob],
+          blobFilename(payload.kind, payload.blob),
+          { type: payload.blob.type || `${payload.kind}/*` },
+        );
+        const [result] = await uploadRef.current([file], { projectId: mgr.projectId });
+        const nodeType = NODE_TYPE_BY_KIND[result.kind];
+        if (!nodeType) {
+          uiMessage.warning(`暂不支持的剪贴板文件类型: ${result.kind}`);
+          return;
+        }
+        createDataNodeRef.current({
+          type: nodeType,
+          position,
+          data: {
+            name: result.file.name,
+            content: result.fileUrl,
+            ...(result.width !== undefined ? { width: result.width } : {}),
+            ...(result.height !== undefined ? { height: result.height } : {}),
+            ...(result.duration !== undefined ? { duration: result.duration } : {}),
+          },
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[ClipboardPasteHandler] upload failed', err);
+        uiMessage.error('粘贴上传失败,请重试');
+      }
     };
-    window.addEventListener('paste', pasteHandler);
+
+    window.addEventListener('paste', handlePaste);
     return () => {
-      window.removeEventListener('paste', pasteHandler);
+      window.removeEventListener('paste', handlePaste);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return null;
