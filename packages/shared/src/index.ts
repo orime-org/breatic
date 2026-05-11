@@ -30,6 +30,7 @@ export type {
   SkillMeta,
   NodeState,
   HandlingActor,
+  OperationLock,
   AttachRef,
   CanvasNodeFields,
   CanvasEdgeData,

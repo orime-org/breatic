@@ -12,10 +12,51 @@
 /** Yjs-shared lifecycle. localPending is local-only and not represented here. */
 export type NodeState = 'idle' | 'handling';
 
-/** Identifies the user who triggered the current handling. */
+/**
+ * Identifies the user who triggered the current handling AND the driver
+ * responsible for advancing the node out of `handling`.
+ *
+ * `type` was added 2026-05-11 (ADR `2026-05-11-mini-tool-state-machine.md`)
+ * so the Collab `onDisconnect` cleanup hook can distinguish:
+ *
+ *   - `frontend` — the user's own browser is running the op. If the
+ *     client disconnects, Collab writes back `state: 'idle', errorMessage:
+ *     "Operation interrupted by client disconnect"` so the node doesn't
+ *     stay stuck in `handling` forever.
+ *   - `backend`  — a Worker is running the op (POST → BullMQ → provider).
+ *     Worker has its own retry / dead-letter machinery; Collab leaves
+ *     these nodes untouched on user disconnect.
+ */
 export interface HandlingActor {
   userId: string;
   username: string;
+  /** Who owns the handling → idle/error transition. See type-doc above. */
+  type: 'frontend' | 'backend';
+}
+
+/**
+ * One mini-tool configure-phase lock on a node.
+ *
+ * Added 2026-05-11 (ADR `2026-05-11-mini-tool-state-machine.md`). Multiple
+ * locks can coexist on the same node — one per (user, tool) pair — to
+ * support concurrent multi-user mini-tool configuration.
+ *
+ * Lifecycle:
+ *   - Pushed when a user picks a tool in `NodeFloatMenu`.
+ *   - Removed when the same user presses Apply or Cancel (matched by
+ *     `toolId + userId`; one operation may only release its own lock).
+ *   - Stripped by Collab's `onDisconnect` hook when the holder leaves
+ *     the canvas doc (any operationLock entry with `userId === disconnected`).
+ *
+ * Independent of the user's manual `data.locked` (which Collab never
+ * touches) and of the implicit `state === 'handling'` lock (handled
+ * separately, see `HandlingActor`).
+ */
+export interface OperationLock {
+  /** Tool id matching a row in `IMAGE_TOOLS` etc. */
+  toolId: string;
+  /** User who owns this lock; the only one allowed to remove it. */
+  userId: string;
 }
 
 /**
@@ -129,8 +170,30 @@ export interface CanvasNodeFields {
     createdAt: number;
     /** User id who created the node. Set once at creation; never updated. */
     createdBy: string;
-    /** When true, mini-tools / Worker writes / accidental deletes are blocked (spec §10.13.6). */
+    /**
+     * User-driven manual lock (spec §10.13.6). Only the user UI can
+     * toggle this; mini-tool operations and Collab `onDisconnect`
+     * never touch it. When `true`, the node is undeletable and its
+     * `content` is immutable.
+     */
     locked: boolean;
+    /**
+     * Mini-tool configure-phase locks (spec §10.13.6.2 — added
+     * 2026-05-11 in ADR `2026-05-11-mini-tool-state-machine.md`).
+     * Each entry is `{ toolId, userId }`. Multiple entries can coexist
+     * — one per (user, tool) pair — so two collaborators may simultaneously
+     * configure different tools on the same node.
+     *
+     * Reading conventions:
+     *   - Empty array (or undefined on older Yjs docs) = no operation lock
+     *   - The `yMapToNode` adapter normalizes missing field to `[]`
+     *
+     * Authorization (enforced by writers, not type system):
+     *   - Mini-tool `setActive`: push `{ toolId, userId: self }` iff not present
+     *   - Mini-tool Apply/Cancel: remove entries matching `toolId + userId`
+     *   - Collab `onDisconnect`: strip entries where `userId === disconnected`
+     */
+    operationLocks: OperationLock[];
 
     // ─── State machine (all node types) ─────────────────────
     /** Yjs-shared lifecycle. */

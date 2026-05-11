@@ -144,6 +144,10 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
             // Username is nullable on UserEntity; fall back to email so the
             // collaborator-avatar tooltip always renders something.
             username: user.username ?? user.email,
+            // Worker-driven path — this endpoint dispatches BullMQ jobs.
+            // Collab `onDisconnect` leaves backend-driven handling nodes
+            // alone; Worker owns the terminal state transition.
+            type: "backend",
           },
         },
       });

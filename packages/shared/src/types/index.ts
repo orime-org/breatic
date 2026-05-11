@@ -18,6 +18,7 @@ export type {
 export type {
   NodeState,
   HandlingActor,
+  OperationLock,
   AttachRef,
   CanvasNodeFields,
   CanvasEdgeData,
