@@ -3,6 +3,7 @@ import { useReactFlow, type Node, type Edge } from '@xyflow/react';
 import KeyController, { type KeyControllerEvent } from 'keycon';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import {
+  canMutate,
   getLockedGroupIds,
   isNodeLocked,
 } from '@/spaces/canvas/common/lock-helpers';
@@ -332,15 +333,18 @@ const HotkeysHandler: React.FC<HotkeysHandlerProps> = ({
       const nodeById = new Map<string, AnyNode>();
       currentNodes.forEach((n) => nodeById.set(n.id, n));
 
+      // Delete-gating goes through `canMutate` (the union of user lock,
+      // operationLock, and handling-state), not `isNodeLocked` — ADR
+      // 2026-05-11-mini-tool-state-machine.md §D2.
       const selectedNodes = currentNodes.filter(
-        (n) => n.selected && !isNodeLocked(n as AnyNode, lockedGroupIds)
+        (n) => n.selected && canMutate(n as AnyNode, lockedGroupIds)
       );
       const selectedEdges = currentEdges.filter((edge) => {
         if (!edge.selected) return false;
         const sourceNode = nodeById.get(edge.source);
         const targetNode = nodeById.get(edge.target);
-        if (sourceNode && isNodeLocked(sourceNode, lockedGroupIds)) return false;
-        if (targetNode && isNodeLocked(targetNode, lockedGroupIds)) return false;
+        if (sourceNode && !canMutate(sourceNode, lockedGroupIds)) return false;
+        if (targetNode && !canMutate(targetNode, lockedGroupIds)) return false;
         return true;
       });
 

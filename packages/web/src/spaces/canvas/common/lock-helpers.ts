@@ -99,3 +99,40 @@ export function isNodeLockable(node: Node | undefined): boolean {
   if (!node.type) return true;
   return !NON_LOCKABLE_NODE_TYPES.has(node.type);
 }
+
+/** Number of mini-tool configure-phase locks currently held on this node. */
+function readOperationLocksLength(node: Node): number {
+  const data = node.data as { operationLocks?: unknown[] } | undefined;
+  return Array.isArray(data?.operationLocks) ? data!.operationLocks!.length : 0;
+}
+
+/** Whether this node is currently in a `handling` state (Yjs). */
+function readIsHandling(node: Node): boolean {
+  const data = node.data as { state?: string } | undefined;
+  return data?.state === 'handling';
+}
+
+/**
+ * Whether destructive / mutating operations should be allowed on this
+ * node. The union of three lock layers per ADR
+ * `2026-05-11-mini-tool-state-machine.md` §D2:
+ *
+ *   - user manual lock (`data.locked === true`, transitively via locked group)
+ *   - any mini-tool configure-phase lock (`data.operationLocks.length > 0`)
+ *   - in-flight operation (`data.state === 'handling'`)
+ *
+ * Callers that ONLY care about the user lock (e.g., the right-click
+ * "Lock / Unlock" toggle that should show the current user-lock state
+ * rather than the union) should still use {@link isNodeLocked} instead.
+ *
+ * "Mutating" includes:
+ *   - delete (right-click + delete key)
+ *   - mini-tool / Worker writes to `content`
+ *   - drag (position change) — handling nodes block drag too
+ */
+export function canMutate(node: Node, lockedGroupIds: Set<string>): boolean {
+  if (isNodeLocked(node, lockedGroupIds)) return false;
+  if (readOperationLocksLength(node) > 0) return false;
+  if (readIsHandling(node)) return false;
+  return true;
+}

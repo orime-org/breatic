@@ -82,6 +82,7 @@ import { executeImage } from '@/data/api/mini-tools';
 import { useActiveCanvasSpace } from '@/domain/space/ActiveCanvasSpaceContext';
 import CanvasRightOverlayPanel from '@/spaces/canvas/view/CanvasRightOverlayPanel';
 import ProjectCanvasViewportRegistrar from '@/spaces/canvas/view/ProjectCanvasViewportRegistrar';
+import MiniToolLockSync from '@/spaces/canvas/view/MiniToolLockSync';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
@@ -758,6 +759,7 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
         connectionRadius={20}
       >
         <ProjectCanvasViewportRegistrar />
+        <MiniToolLockSync />
         <Background color='#d0d0d0' variant={BackgroundVariant.Dots} gap={20} size={1} />
         <ClipboardPasteHandler />
         <HotkeysHandler

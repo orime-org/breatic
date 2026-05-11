@@ -13,6 +13,7 @@ import {
   getLockedNodeIds,
   isNodeLockable,
   isNodeLocked,
+  canMutate,
 } from './lock-helpers';
 
 const fakePos = { x: 0, y: 0 };
@@ -134,5 +135,84 @@ describe('getLockedNodeIds', () => {
       makeNode({ id: 'b', type: '1003' }),
     ];
     expect(getLockedNodeIds(nodes).size).toBe(0);
+  });
+});
+
+describe('canMutate', () => {
+  const noLockedGroups = new Set<string>();
+
+  it('returns true for a vanilla idle node with no locks', () => {
+    expect(canMutate(makeNode({ id: 'a', type: '1002' }), noLockedGroups)).toBe(true);
+  });
+
+  it('returns false when data.locked is true', () => {
+    const node = makeNode({ id: 'a', type: '1002', data: { locked: true } });
+    expect(canMutate(node, noLockedGroups)).toBe(false);
+  });
+
+  it('returns false when the node is inside a locked group (transitive user lock)', () => {
+    const node = makeNode({ id: 'a', type: '1002', parentId: 'g1' } as Partial<Node>);
+    expect(canMutate(node, new Set(['g1']))).toBe(false);
+  });
+
+  it('returns false when operationLocks has any entry', () => {
+    const node = makeNode({
+      id: 'a',
+      type: '1002',
+      data: { operationLocks: [{ toolId: 'adjust', userId: 'u1' }] },
+    });
+    expect(canMutate(node, noLockedGroups)).toBe(false);
+  });
+
+  it('returns true when operationLocks is an empty array', () => {
+    const node = makeNode({
+      id: 'a',
+      type: '1002',
+      data: { operationLocks: [] },
+    });
+    expect(canMutate(node, noLockedGroups)).toBe(true);
+  });
+
+  it('returns true when operationLocks is missing (older Yjs row)', () => {
+    const node = makeNode({ id: 'a', type: '1002', data: {} });
+    expect(canMutate(node, noLockedGroups)).toBe(true);
+  });
+
+  it('returns false when state is handling', () => {
+    const node = makeNode({
+      id: 'a',
+      type: '1002',
+      data: { state: 'handling' },
+    });
+    expect(canMutate(node, noLockedGroups)).toBe(false);
+  });
+
+  it('returns true when state is idle (explicit)', () => {
+    const node = makeNode({
+      id: 'a',
+      type: '1002',
+      data: { state: 'idle' },
+    });
+    expect(canMutate(node, noLockedGroups)).toBe(true);
+  });
+
+  it('union semantics — any layer engaged blocks mutation', () => {
+    // operationLock set, but locked + handling are both default → blocked
+    const a = makeNode({
+      id: 'a',
+      type: '1002',
+      data: { operationLocks: [{ toolId: 'adjust', userId: 'u1' }] },
+    });
+    // locked set, but operationLocks empty + idle → blocked
+    const b = makeNode({ id: 'b', type: '1002', data: { locked: true } });
+    // handling set, but locked false + operationLocks empty → blocked
+    const c = makeNode({
+      id: 'c',
+      type: '1002',
+      data: { state: 'handling' },
+    });
+    expect(canMutate(a, noLockedGroups)).toBe(false);
+    expect(canMutate(b, noLockedGroups)).toBe(false);
+    expect(canMutate(c, noLockedGroups)).toBe(false);
   });
 });
