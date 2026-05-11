@@ -29,5 +29,12 @@ export {
   applyAdjustInPlace,
   applyFilter,
   applyFilterInPlace,
+  applyBgBlur,
+  applyBgBlurInPlace,
 } from './image-ops';
-export type { AdjustParams, FilterParams, FilterPreset } from './image-ops';
+export type {
+  AdjustParams,
+  FilterParams,
+  FilterPreset,
+  BgBlurParams,
+} from './image-ops';

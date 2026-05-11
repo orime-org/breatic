@@ -86,6 +86,31 @@ export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
       },
     ],
   },
+  {
+    id: 'bg-blur',
+    modality: 'image',
+    category: 'A',
+    menuLabel: '虚化',
+    title: 'Background Blur',
+    params: [
+      {
+        id: 'radius',
+        type: 'number',
+        ui: 'slider',
+        min: 0,
+        max: 100,
+        default: 50,
+        label: '强度',
+      },
+      {
+        id: 'preserveSubject',
+        type: 'boolean',
+        ui: 'toggle',
+        default: true,
+        label: '保留主体',
+      },
+    ],
+  },
   // ── Category B (backend AIGC — credits, ≥1 s) ────────────────────────
   {
     id: 'remove-bg',
