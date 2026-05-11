@@ -44,6 +44,7 @@ worktrees/
 # Claude Code local config
 .claude/
 .remember/
+CLAUDE.local.md
 
 # Playwright MCP cache
 .playwright-mcp/
