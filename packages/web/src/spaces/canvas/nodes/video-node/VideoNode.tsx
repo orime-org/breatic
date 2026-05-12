@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import NodeHeader from '@/spaces/canvas/common/NodeHeader';
 import { Icon } from '@/ui/icon';
 import VideoNodeContent from './VideoNodeContent';
+import HandlingOverlay from '@/spaces/canvas/common/HandlingOverlay';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 import { useCanvasUI } from '@/spaces/canvas/contexts/CanvasUIContext';
@@ -33,7 +34,17 @@ const sourceHandleId = 'Video_0_0';
 const defaultNodeWidth = 300;
 const defaultNodeHeight = 250;
 
-type VideoNodeData = { name?: string; content?: string; cover_url?: string; width?: number; height?: number; state?: string; errorMessage?: string };
+type VideoNodeData = {
+  name?: string;
+  content?: string;
+  cover_url?: string;
+  width?: number;
+  height?: number;
+  state?: string;
+  errorMessage?: string;
+  handlingBy?: { userId: string; username: string; type?: 'frontend' | 'backend' };
+  operation?: string;
+};
 
 const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
   const { t } = useTranslation();
@@ -168,12 +179,13 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
               )}>
                 {videoUrl ? (
                   <div className='relative w-full h-full'>
-                    {/* Handling overlay */}
+                    {/* Handling overlay: avatar + spinner + operation
+                        per mock 05 @1928-1967 (shared component). */}
                     {isHandling && (
-                      <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
-                        <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
-                        <div className='text-[12px] text-white font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
-                      </div>
+                      <HandlingOverlay
+                        username={nodeData?.handlingBy?.username ?? null}
+                        operation={nodeData?.operation ?? null}
+                      />
                     )}
                     {errorMessage && !isHandling && (
                       <div className='absolute top-1 right-1 z-[10] max-w-[80%] rounded px-1.5 py-0.5 text-[10px] font-medium text-white bg-red-500 leading-tight truncate' title={errorMessage}>
@@ -183,9 +195,11 @@ const VideoNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     <VideoNodeContent src={videoUrl} selected={selected} onMentionClick={handleMentionClick} />
                   </div>
                 ) : isHandling ? (
-                  <div className='w-full h-full flex flex-col items-center justify-center text-center'>
-                    <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
+                  <div className='relative w-full h-full'>
+                    <HandlingOverlay
+                      username={nodeData?.handlingBy?.username ?? null}
+                      operation={nodeData?.operation ?? null}
+                    />
                   </div>
                 ) : (
                   <div
