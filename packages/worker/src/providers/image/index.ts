@@ -28,8 +28,13 @@ import nanoBanana from "./models/nano-banana.js";
 import seedream from "./models/seedream.js";
 import midjourney from "./models/midjourney.js";
 import qwen from "./models/qwen.js";
-import qwenMultiAngle from "./models/qwen-multi-angle.js";
-import icLight from "./models/ic-light.js";
+// B5 (`design/project/02-mini-tool-system.md` §2.2): V1 image roster =
+// remove-bg / upscale / inpaint. The `qwen-multi-angle` + `ic-light`
+// families served `multi-angle` / `relight` which were trimmed from the
+// registry + schema; their model files are gone. The generative-node
+// families (nano-banana / seedream / midjourney / qwen text-to-image)
+// stay because they're called by the generative pipeline, not the
+// mini-tool route.
 import topaz from "./models/topaz.js";
 import backgroundRemove from "./models/background-remove.js";
 
@@ -48,8 +53,6 @@ const ALL_FAMILIES: readonly ModelFamily[] = [
   seedream,
   midjourney,
   qwen,
-  qwenMultiAngle,
-  icLight,
   topaz,
   backgroundRemove,
 ];

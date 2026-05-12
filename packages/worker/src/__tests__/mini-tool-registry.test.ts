@@ -1,7 +1,11 @@
 /**
- * Registry tests — guard both additions (graffiti provider) and
- * deletions (image crop / flipRotate / manual-adjust local handlers)
- * from the t3-phase4c pivot.
+ * Registry tests — guard the V1 image mini-tool roster.
+ *
+ * Per `design/project/02-mini-tool-system.md` §2.2 V1 ships
+ * remove-bg / upscale (+ inpaint when its overlay-driven param UI
+ * lands). Every other image entry was trimmed in B5. Tests below
+ * pin both halves so accidental re-introduction or accidental
+ * deletion of the survivors trips CI.
  *
  * No storage / HTTP / FFmpeg touched — pure map lookups.
  */
@@ -10,23 +14,42 @@ import { describe, it, expect } from "vitest";
 import { resolveMiniToolEntry } from "../mini-tool-registry.js";
 
 describe("mini-tool-registry", () => {
-  describe("graffiti (phase4c addition)", () => {
-    it("image.graffiti resolves to nano-banana-2-edit provider", () => {
-      const entry = resolveMiniToolEntry("image", "graffiti");
-      expect(entry).toEqual({ kind: "provider", model: "nano-banana-2-edit" });
+  describe("V1 image roster", () => {
+    it("image.remove-bg resolves to bg-remover provider", () => {
+      expect(resolveMiniToolEntry("image", "remove-bg")).toEqual({
+        kind: "provider",
+        model: "bg-remover",
+      });
+    });
+
+    it("image.upscale resolves to topaz-upscale provider", () => {
+      expect(resolveMiniToolEntry("image", "upscale")).toEqual({
+        kind: "provider",
+        model: "topaz-upscale",
+      });
     });
   });
 
-  describe("image local handlers (phase4c removal)", () => {
-    // These were registered in phase4a; they were sub-100ms Canvas
-    // operations that had no business round-tripping through the
-    // Worker. Each removal below is a guard against accidental
-    // reintroduction without re-opening the frontend/backend boundary
-    // discussion.
+  describe("trimmed entries", () => {
+    // Category A (sub-100 ms Canvas operations — frontend per
+    // `feedback_frontend_backend_boundary`) plus B5 removals
+    // (sharpen / denoise / restore / upscale-creative / adjust /
+    // relight / multi-angle / edit / graffiti). Each entry below is a
+    // guard against accidental re-introduction without re-opening the
+    // frontend/backend boundary or the V1 roster discussion.
     it.each([
       ["crop"],
       ["flipRotate"],
       ["manual-adjust"],
+      ["sharpen"],
+      ["denoise"],
+      ["restore"],
+      ["upscale-creative"],
+      ["adjust"],
+      ["relight"],
+      ["multi-angle"],
+      ["edit"],
+      ["graffiti"],
     ])("image.%s is no longer registered", (toolName) => {
       expect(() => resolveMiniToolEntry("image", toolName)).toThrow(
         /Unknown mini-tool/,
@@ -39,13 +62,6 @@ describe("mini-tool-registry", () => {
       expect(resolveMiniToolEntry("video", "crop")).toEqual({
         kind: "local",
         handler: "video/crop",
-      });
-    });
-
-    it("image.edit still resolves as nano-banana-2-edit provider", () => {
-      expect(resolveMiniToolEntry("image", "edit")).toEqual({
-        kind: "provider",
-        model: "nano-banana-2-edit",
       });
     });
   });
