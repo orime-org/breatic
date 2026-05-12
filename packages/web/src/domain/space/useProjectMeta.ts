@@ -98,16 +98,26 @@ export function useProjectMeta(
       setSpaces(readAllSpaces(mgr.spaces));
     };
 
+    // Track whether observeDeep actually ran so cleanup doesn't call
+    // unobserveDeep on a handler Yjs never registered — that emits
+    // "Tried to remove event handler that doesn't exist" warnings
+    // when the manager is torn down before initial sync completes
+    // (StrictMode's fake-unmount can hit this window).
+    let observerAttached = false;
+
     const unsubSynced = mgr.onSynced(() => {
       setLoading(false);
       refreshSpaces();
       // observeDeep so additions / per-entry edits both trigger.
       mgr.spaces.observeDeep(refreshSpaces);
+      observerAttached = true;
     });
 
     return () => {
       unsubSynced();
-      mgr.spaces.unobserveDeep(refreshSpaces);
+      if (observerAttached) {
+        mgr.spaces.unobserveDeep(refreshSpaces);
+      }
       mgr.destroy();
       setManager(null);
       setSpaces([]);
