@@ -121,7 +121,7 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       container: waveformRef.current,
       /* Waveform styles */
       waveColor: 'var(--color-text-disabled-base)',
-      progressColor: '#262626',
+      progressColor: 'var(--color-icon-base)',
       cursorColor: 'var(--color-text-status-error)',
       cursorWidth: 2,
       barWidth: 2,
@@ -448,21 +448,21 @@ const AudioNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
       >
         <div className='flex flex-col items-center gap-6'>
           <div className='flex flex-col items-start gap-0 w-full'>
-            <div className='text-[14px] text-[#0C0C0D] text-left font-bold'>
+            <div className='text-[14px] text-text-default-base text-left font-bold'>
               {t('project.toolbar.audioFormatsSupported')}
             </div>
-            <div className='text-[14px] text-[#0C0C0D] text-left font-bold'>
+            <div className='text-[14px] text-text-default-base text-left font-bold'>
               {t('project.toolbar.audioFormatsMustBe')}
             </div>
           </div>
-          <div className='w-[428px] px-6 py-1.5 bg-[#F5F5F5] rounded-full inline-flex items-center'>
+          <div className='w-[428px] px-6 py-1.5 bg-background-default-secondary rounded-full inline-flex items-center'>
             <Input
               ref={inputRef}
               value={urlValue}
               onChange={(e) => setUrlValue(e.target.value)}
               placeholder={t('project.toolbar.pleaseInputUrl')}
               maxLength={128}
-              className='flex w-full h-[24px] bg-[#F5F5F5] text-[#0C0C0D] !border-0 !outline-0'
+              className='flex w-full h-[24px] bg-background-default-secondary text-text-default-base !border-0 !outline-0'
             />
           </div>
         </div>

@@ -804,7 +804,10 @@ const ProjectCanvasContent: React.FC<ProjectCanvasContentProps> = ({ yjs, hotkey
       >
         <ProjectCanvasViewportRegistrar />
         <MiniToolLockSync />
-        <Background color='#d0d0d0' variant={BackgroundVariant.Dots} gap={20} size={1} />
+        {/* Use the theme's grid-pattern token (set in light.css/dark.css
+            as `--xy-background-pattern-color`). Omitting `color` falls
+            back to that var so the dot grid follows the active theme. */}
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <ClipboardPasteHandler />
         <HotkeysHandler
           yjsUndo={yjsAny.undo}

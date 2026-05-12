@@ -85,7 +85,7 @@ const AnnotationComposer: React.FC = () => {
 
   return (
     <div
-      className='fixed z-[60] w-[240px] rounded-[8px] border border-[#DBDBDB] bg-background-default-base p-2 shadow-[0_2px_6px_rgba(0,0,0,0.12)]'
+      className='fixed z-[60] w-[240px] rounded-[8px] border border-border-default-base bg-background-default-base p-2 shadow-[0_2px_6px_rgba(0,0,0,0.12)]'
       style={{ left: screenPos.x, top: screenPos.y }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -112,7 +112,7 @@ const AnnotationComposer: React.FC = () => {
             size='medium'
             shape='round'
             disabled={!canSend}
-            icon={<Icon name='project-chat-send-icon' width={14} height={12} color='#fff' />}
+            icon={<Icon name='project-chat-send-icon' width={14} height={12} color='var(--color-text-on-button-base)' />}
             onClick={handleSubmit}
             className='!h-[24px] !w-[40px] !border-brand-base !bg-brand-base !py-0 !pl-3 !pr-2 hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
             aria-label={t('canvas.annotation.send', '保存批注')}

@@ -101,7 +101,7 @@ const PreviewVideo: React.FC<PreviewVideoProps> = ({ open, src, onClose, initial
         bordered={false}
         className='absolute right-4 top-4 z-20 !w-10 !h-10 !p-[2px] !bg-black/50 backdrop-blur-sm !hover:!bg-black/70'
         aria-label={t('common.close', 'Close')}
-        icon={<Icon name='base-close-icon' width={16} height={16} color='#ffffff' />}
+        icon={<Icon name='base-close-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
       />
       {effectiveSize ? (
         <div

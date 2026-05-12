@@ -52,7 +52,7 @@ const AudioNodePlayer: React.FC<AudioNodePlayerProps> = ({
     container: containerRef,
     url: src,
     waveColor: 'var(--color-text-disabled-base)',
-    progressColor: '#262626',
+    progressColor: 'var(--color-icon-base)',
     cursorColor: 'transparent',
     barWidth: 2,
     barRadius: 0,

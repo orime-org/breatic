@@ -197,7 +197,7 @@ export const Checkbox = forwardRef<HTMLSpanElement, CheckboxProps>(
           >
             <div
               className={cn(
-                'h-0.5 bg-[#444444]',
+                'h-0.5 bg-icon-base',
                 size === 'small' && 'w-2',
                 size === 'medium' && 'w-2.5',
                 size === 'large' && 'w-3'
@@ -210,7 +210,7 @@ export const Checkbox = forwardRef<HTMLSpanElement, CheckboxProps>(
       return (
         <span
           className={cn(
-            'absolute inset-0 flex items-center justify-center pointer-events-none z-10',
+            'absolute inset-0 flex items-center justify-center pointer-events-none z-10 text-icon-base',
             actualChecked ? 'opacity-100' : 'opacity-0'
           )}
         >
@@ -223,7 +223,7 @@ export const Checkbox = forwardRef<HTMLSpanElement, CheckboxProps>(
           >
             <path
               d='M10 24L20 34L40 14'
-              stroke='#444444'
+              stroke='currentColor'
               strokeWidth='4'
               strokeLinecap='round'
               strokeLinejoin='round'

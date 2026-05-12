@@ -55,7 +55,7 @@ export function TocNodeItem({ node, editor, onToggleCollapse, hidden = false }: 
           <button
             type='button'
             className={cn(
-              'flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#646A73] transition-opacity duration-150',
+              'flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-default-secondary transition-opacity duration-150',
               'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto',
               'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
             )}
@@ -77,7 +77,7 @@ export function TocNodeItem({ node, editor, onToggleCollapse, hidden = false }: 
 
         <span
           className={cn(
-            'truncate text-[#646A73] transition-colors duration-100 leading-5',
+            'truncate text-text-default-secondary transition-colors duration-100 leading-5',
             heading.level === 1 && 'text-[13px] font-bold',
             heading.level === 2 && 'text-[12px]',
             heading.level === 3 && 'text-[12px]',

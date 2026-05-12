@@ -310,7 +310,7 @@ const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
                           type='button'
                           onClick={() => handleCommitEdit(item.id)}
                           disabled={editingValue.trim().length === 0}
-                          className='h-7 rounded-[6px] bg-brand-base px-3 text-xs font-semibold text-white hover:bg-[#2FAF31] disabled:cursor-not-allowed disabled:bg-background-neutral-secondary'
+                          className='h-7 rounded-[6px] bg-brand-base px-3 text-xs font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-background-neutral-secondary'
                         >
                           Save
                         </button>
@@ -356,7 +356,7 @@ const CommentMarkerNode: React.FC<NodeProps> = ({ id, data, selected }) => {
                 shape='round'
                 disabled={!canSend}
                 onClick={handleSendReply}
-                icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+                icon={<Icon name='project-chat-send-icon' width={18} height={16} color='var(--color-text-on-button-base)' />}
                 className='!h-[28px] w-[52px] shrink-0 !border-brand-base !bg-brand-base !py-[2px] !pl-[16px] !pr-[12px] hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
                 aria-label={t('canvas.comment.send')}
               />

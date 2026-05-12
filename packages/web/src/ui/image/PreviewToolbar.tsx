@@ -51,7 +51,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             bordered={false}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.flipVertical', 'Flip vertical')}
-            icon={<Icon name='base-flip-vertical-icon' width={16} height={16} color='#ffffff' className='rotate-90' />}
+            icon={<Icon name='base-flip-vertical-icon' width={16} height={16} color='var(--color-text-on-button-base)' className='rotate-90' />}
           />
         )}
         {onFlipX && (
@@ -60,7 +60,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             bordered={false}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.flipHorizontal', 'Flip horizontal')}
-            icon={<Icon name='base-flip-horizontal-icon' width={16} height={16} color='#ffffff' />}
+            icon={<Icon name='base-flip-horizontal-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
           />
         )}
         {onRotateLeft && (
@@ -69,7 +69,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             bordered={false}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.rotateLeft', 'Rotate left')}
-            icon={<Icon name='base-rotate-left-icon' width={16} height={16} color='#ffffff' />}
+            icon={<Icon name='base-rotate-left-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
           />
         )}
         {onRotateRight && (
@@ -78,7 +78,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             bordered={false}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.rotateRight', 'Rotate right')}
-            icon={<Icon name='base-rotate-right-icon' width={16} height={16} color='#ffffff' />}
+            icon={<Icon name='base-rotate-right-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
           />
         )}
         {onZoomOut && (
@@ -88,7 +88,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             disabled={isZoomOutDisabled}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.zoomOut', 'Zoom out')}
-            icon={<Icon name='base-zoom-out-icon' width={16} height={16} color='#ffffff' />}
+            icon={<Icon name='base-zoom-out-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
           />
         )}
         {onZoomIn && (
@@ -98,7 +98,7 @@ const PreviewToolbar: React.FC<PreviewToolbarProps> = ({
             disabled={isZoomInDisabled}
             className='!bg-transparent !backdrop-filter-none !shadow-none'
             aria-label={t('image.zoomIn', 'Zoom in')}
-            icon={<Icon name='base-zoom-in-icon' width={16} height={16} color='#ffffff' />}
+            icon={<Icon name='base-zoom-in-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
           />
         )}
       </div>

@@ -8,8 +8,11 @@ import { NodeResizer } from '@xyflow/react';
 import { useCanvasData } from '@/spaces/canvas/contexts/CanvasDataContext';
 import { useCanvasActions } from '@/spaces/canvas/hooks/useCanvasActions';
 
-/* PR9-A: hex literal kept intentionally — `toRgba08` below parses hex digits, so a CSS var token would not work here. */
-const defaultGroupBackgroundColor = '#35C838';
+/* Hex literal kept intentionally — `toRgba08` below parses hex digits,
+ * so a CSS var token would not work here. Value is the v13 brand-500
+ * (mock 05: hsl(8°, 58%, 50%) ≈ #C94936). PR-tokens-A swept the rest;
+ * this stays in sync manually because of the parser. */
+const defaultGroupBackgroundColor = '#C94936';
 const defaultGroupBgRgba = 'rgba(34, 41, 51, 0.8)';
 
 /** Convert hex to rgba(..., 0.8); preserve original alpha if already rgba */

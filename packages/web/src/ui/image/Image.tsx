@@ -224,7 +224,7 @@ const Image: React.FC<ImageProps> = ({
                 bordered={false}
                 className='absolute right-4 top-4 z-20 !w-10 !h-10 !p-[2px] !bg-black/50 !hover:!bg-black/70'
                 aria-label={t('image.closePreview', 'Close preview')}
-                icon={<Icon name='base-close-icon' width={16} height={16} color='#ffffff' />}
+                icon={<Icon name='base-close-icon' width={16} height={16} color='var(--color-text-on-button-base)' />}
               />
 
               <TransitionChild

@@ -1,9 +1,11 @@
-/* Audio progress bar: unplayed --color-border-default-base (#D9D9D9), played --color-icon-base (#383838) */
+/* Audio progress bar: played -> --color-icon-base (foreground),
+ * unplayed -> --color-border-default-base (track). Both tokens flip on
+ * theme so the player reads correctly in light + dark. */
 .audio-progress-slider .slider-track {
   background-color: var(--color-icon-base) !important;
 }
 
 .audio-progress-slider .slider-track-1 {
-  background-color: #D9D9D9 !important;
+  background-color: var(--color-border-default-base) !important;
 }
 

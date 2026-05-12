@@ -66,21 +66,21 @@ export function SlashTableSizePicker({ open, onCommit, onHoverChange }: SlashTab
 
   return (
     <div
-      className='box-border max-w-[calc(100vw-24px)] shrink-0 overflow-hidden rounded-[10px] border border-[#D2D2D2] bg-white shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'
+      className='box-border max-w-[calc(100vw-24px)] shrink-0 overflow-hidden rounded-[10px] border border-border-default-base bg-background-default-base shadow-[0px_8px_24px_-8px_rgba(12,12,13,0.25)]'
       data-breatic-slash-menu
       data-breatic-table-picker
       onMouseDown={(e) => e.preventDefault()}
     >
       <div className='flex items-center justify-between gap-2 px-[10px] pb-2 pt-[10px]'>
-        <span className='select-none text-left text-[12px] leading-normal text-[#646A73]'>Insert table</span>
-        <span className='select-none whitespace-nowrap text-[12px] tabular-nums leading-normal text-[#303540]'>
+        <span className='select-none text-left text-[12px] leading-normal text-text-default-secondary'>Insert table</span>
+        <span className='select-none whitespace-nowrap text-[12px] tabular-nums leading-normal text-text-default-base'>
           {hoverEnd.col} x {hoverEnd.row}
         </span>
       </div>
       <div className='box-border px-[10px] pb-[10px]'>
-        <div className='rounded-[4px] border border-[#D2D2D2] bg-white p-[10px]'>
+        <div className='rounded-[4px] border border-border-default-base bg-background-default-base p-[10px]'>
           <div
-            className='mx-auto grid w-fit rounded-[4px] bg-white'
+            className='mx-auto grid w-fit rounded-[4px] bg-background-default-base'
             style={{
               ...gridGapStyle,
               gridTemplateColumns: track,
@@ -103,7 +103,7 @@ export function SlashTableSizePicker({ open, onCommit, onHoverChange }: SlashTab
                     style={{ width: SLASH_TABLE_CELL_PX, height: SLASH_TABLE_CELL_PX }}
                     className={cn(
                       'box-border shrink-0 cursor-pointer rounded-[2px] transition-colors',
-                      selected ? 'bg-[#B4D4FF]' : 'bg-[#F0F1F3]',
+                      selected ? 'bg-brand-200' : 'bg-background-default-secondary',
                     )}
                     onMouseEnter={handleCellMouseEnter}
                     onMouseDown={handleCellMouseDown}

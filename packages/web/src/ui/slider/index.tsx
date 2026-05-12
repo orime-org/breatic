@@ -64,7 +64,7 @@ const Slider = ({
   const [tooltipLayout, setTooltipLayout] = useState<{ left: number; arrowLeft: number } | null>(null);
 
   const active = activeColor ?? 'var(--slider-active, var(--color-icon-base))';
-  const inactive = inactiveColor ?? 'var(--slider-inactive, #e5e7eb)';
+  const inactive = inactiveColor ?? 'var(--slider-inactive, var(--color-border-default-base))';
 
   const useFillFromZero = Boolean(fillFromZero && min < 0 && max > 0 && !vertical);
   const zeroPercent = max === min ? 0 : ((0 - min) / (max - min)) * 100;
