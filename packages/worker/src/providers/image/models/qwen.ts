@@ -7,7 +7,9 @@
  * Parameter mapping (YAML user-facing vs API):
  * - aspect_ratio + resolution -> size (e.g. "1024*640")
  * - seed -> pass-through
- * (qwen-image and qwen-edit removed — qwen-multi-angle in separate module)
+ * (qwen-image and qwen-edit removed; `qwen-multi-angle` retired in B5 along
+ * with the rest of the `multi-angle` mini-tool plumbing — V1 image roster
+ * is remove-bg / upscale / inpaint per `02-mini-tool-system.md` §2.2)
  */
 
 import type { ModelFamily } from "../../shared.js";

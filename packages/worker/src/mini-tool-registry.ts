@@ -49,24 +49,16 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
   image: {
     "remove-bg": { kind: "provider", model: "bg-remover" },
     upscale: { kind: "provider", model: "topaz-upscale" },
-    "upscale-creative": { kind: "provider", model: "topaz-upscale-creative" },
-    sharpen: { kind: "provider", model: "topaz-sharpen" },
-    denoise: { kind: "provider", model: "topaz-denoise" },
-    restore: { kind: "provider", model: "topaz-restore" },
-    adjust: { kind: "provider", model: "topaz-adjust" },
-    relight: { kind: "provider", model: "ic-light-v2" },
-    "multi-angle": { kind: "provider", model: "qwen-multi-angle" },
-    edit: { kind: "provider", model: "nano-banana-2-edit" },
-    // Graffiti = user draws coloured strokes on the source image,
-    // frontend burns them in and synthesises a prompt like
-    // "red strokes mean X, green strokes mean Y", then calls here.
-    // Same model as `edit`; distinct tool name so billing /
-    // analytics / future model-swap remain clean.
-    graffiti: { kind: "provider", model: "nano-banana-2-edit" },
+    // V1 image roster per `design/project/02-mini-tool-system.md` §2.2 =
+    // remove-bg / upscale / inpaint. inpaint will land once its
+    // overlay-driven param UI is designed; the previous over-broad
+    // registry (sharpen / denoise / restore / upscale-creative / adjust
+    // / relight / multi-angle / edit / graffiti) was trimmed in B5.
+    //
     // Image local handlers intentionally absent: crop / flipRotate /
-    // manual-adjust are sub-100ms Canvas operations and belong in
-    // the browser (see feedback_frontend_backend_boundary). Video's
-    // FFmpeg handlers below are genuinely second-level, so they stay.
+    // manual-adjust are sub-100ms Canvas operations and belong in the
+    // browser (see `feedback_frontend_backend_boundary` memory). The
+    // `adjust` row moved entirely to frontend Category A in F4-categoryA.
   },
   video: {
     upscale: { kind: "provider", model: "video-upscale-pro" },

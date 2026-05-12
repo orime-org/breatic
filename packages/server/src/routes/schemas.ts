@@ -50,30 +50,19 @@ const imageToolBase = z.object({
 export const imageToolSchema = z.discriminatedUnion("tool", [
   imageToolBase.extend({ tool: z.literal("remove-bg") }),
   imageToolBase.extend({ tool: z.literal("upscale"), output_resolution: z.string().optional(), source_width: z.number().optional(), source_height: z.number().optional() }),
-  imageToolBase.extend({ tool: z.literal("upscale-creative"), output_resolution: z.string().optional(), source_width: z.number().optional(), source_height: z.number().optional(), prompt: z.string().optional(), creativity: z.number().default(3) }),
-  imageToolBase.extend({ tool: z.literal("sharpen"), sharpen_model: z.string().default("Standard"), sharpen_strength: z.number().default(0), denoise_strength: z.number().default(0) }),
-  imageToolBase.extend({ tool: z.literal("denoise"), denoise_model: z.string().default("Normal"), denoise: z.number().default(0), detail: z.number().default(0), face_enhancement: z.boolean().default(true) }),
-  imageToolBase.extend({ tool: z.literal("restore"), restore_model: z.string().default("Dust-Scratch") }),
-  imageToolBase.extend({ tool: z.literal("adjust"), adjust_mode: z.string().default("Adjust"), saturation: z.number().default(0.2) }),
-  imageToolBase.extend({ tool: z.literal("relight"), light_source: z.string().default("none"), brightness: z.number().default(50), light_temperature: z.number().default(5600), rim_light: z.boolean().default(false), prompt: z.string().optional() }),
-  imageToolBase.extend({ tool: z.literal("multi-angle"), horizontal_angle: z.number().default(0), vertical_angle: z.number().default(0), distance: z.number().default(1) }),
-  imageToolBase.extend({ tool: z.literal("edit"), prompt: z.string() }),
-  // Graffiti = frontend burns coloured strokes into the source and
-  // builds a prompt ("red: X, green: Y") before POSTing here. On the
-  // wire it's just `edit` with a different tool name — the rename is
-  // intentional so billing / analytics / future model swap can target
-  // "graffiti" without touching `edit` callers.
-  imageToolBase.extend({
-    tool: z.literal("graffiti"),
-    prompt: z.string(),
-    host_node_ids: z.array(z.string()).min(1).optional(),
-  }),
-  // NOTE: `crop`, `flipRotate`, `manual-adjust` deliberately removed
-  // in t3-phase4c. These are sub-100ms Canvas operations; the round
-  // trip to the Worker made them feel laggy without providing any
-  // server-side benefit. They now live entirely in the frontend (Yjs
-  // node creation → Canvas processing → presigned upload → content
-  // write-back). See feedback_frontend_backend_boundary memory.
+  // NOTE: per `design/project/02-mini-tool-system.md` §2.2 V1 ships
+  // 3 Category B image tools — remove-bg / upscale / inpaint. inpaint
+  // will land once its overlay-driven param UI is designed. B5 (this
+  // PR) removed the previous over-broad schema (sharpen / denoise /
+  // restore / upscale-creative / adjust / relight / multi-angle / edit
+  // / graffiti); none had frontend callers and none were reachable via
+  // agent paths (skills never POST `/mini-tools/image` — they invoke
+  // models directly through the provider layer).
+  //
+  // Earlier note from t3-phase4c kept for context: `crop` / `flipRotate`
+  // / `manual-adjust` belong in the browser (see
+  // `feedback_frontend_backend_boundary` memory) and ship as Category A
+  // — same rationale that motivated `adjust` moving to Category A.
 ]);
 
 // Mini-Tools: Video

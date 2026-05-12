@@ -151,84 +151,11 @@ export const IMAGE_TOOLS: ReadonlyArray<ToolSchema> = [
       },
     ],
   },
-  {
-    id: 'sharpen',
-    modality: 'image',
-    category: 'B',
-    menuLabel: '锐化',
-    title: 'Sharpen',
-    params: [
-      {
-        id: 'sharpen_strength',
-        type: 'number',
-        ui: 'slider',
-        min: 0,
-        max: 100,
-        default: 0,
-        label: '锐化强度',
-      },
-      {
-        id: 'denoise_strength',
-        type: 'number',
-        ui: 'slider',
-        min: 0,
-        max: 100,
-        default: 0,
-        label: '降噪强度',
-      },
-    ],
-  },
-  {
-    id: 'denoise',
-    modality: 'image',
-    category: 'B',
-    menuLabel: '降噪',
-    title: 'Denoise',
-    params: [
-      {
-        id: 'denoise',
-        type: 'number',
-        ui: 'slider',
-        min: 0,
-        max: 100,
-        default: 0,
-        label: '降噪',
-      },
-      {
-        id: 'detail',
-        type: 'number',
-        ui: 'slider',
-        min: 0,
-        max: 100,
-        default: 0,
-        label: '细节保留',
-      },
-      {
-        id: 'face_enhancement',
-        type: 'boolean',
-        ui: 'toggle',
-        default: true,
-        label: '面部增强',
-      },
-    ],
-  },
-  {
-    id: 'restore',
-    modality: 'image',
-    category: 'B',
-    menuLabel: '修复',
-    title: 'Restore',
-    params: [
-      {
-        id: 'restore_model',
-        type: 'enum',
-        ui: 'select',
-        options: ['Dust-Scratch', 'CGI', 'Mosaic', 'Robust'],
-        default: 'Dust-Scratch',
-        label: '修复模式',
-      },
-    ],
-  },
+  // Per `design/project/02-mini-tool-system.md` §2.2 V1 ships **3** Category B
+  // image tools: remove-bg / upscale / inpaint. sharpen / denoise / restore
+  // were stubbed during F4-framework when the schema was bigger; B5 removes
+  // them to bring the menu in line with the spec. inpaint will land as a
+  // future PR once its overlay-driven param UI is designed.
 ] as const;
 
 /** Look up a tool by id across every modality. Returns null when unknown. */
