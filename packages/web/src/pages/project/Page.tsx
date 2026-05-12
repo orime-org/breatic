@@ -15,6 +15,7 @@ import { CurrentUserProvider } from '@/domain/user/CurrentUserContext';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import { removeToken } from '@/data/api/token';
 import * as authApi from '@/data/api/auth';
+import * as projectsApi from '@/data/api/projects';
 import { TopBar } from '@/features/top-bar';
 import EditorComingSoonPlaceholder from '@/app/shell/EditorComingSoonPlaceholder';
 import TextEditor from '@/spaces/document';
@@ -68,6 +69,30 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   const { updateNode } = useCanvasActions();
   const { rightPanel, openRightPanel, closeRightPanel, chatPanelVisible } = useProjectLayout();
   const [workflowName, setWorkflowName] = useState<string>('');
+
+  // Populate the project name on mount. Mock 05 @1101 shows the name
+  // in the TopBar's left cluster, but Page used to leave it as the
+  // empty string — TopBar then rendered with a blank middle slot. The
+  // canonical source is `GET /api/v1/projects/:id`; the Yjs project-
+  // meta doc doesn't yet carry `name`, that's a follow-up.
+  useEffect(() => {
+    if (!yjs.projectId) return;
+    let cancelled = false;
+    projectsApi
+      .get(yjs.projectId)
+      .then((res) => {
+        if (cancelled) return;
+        const name = (res as unknown as { data?: { name?: string } })?.data?.name;
+        if (name) setWorkflowName(name);
+      })
+      .catch(() => {
+        // Auth interceptor surfaces 401; transient 5xx leaves the
+        // title blank rather than blowing up the whole page.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [yjs.projectId]);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
   const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
   const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);

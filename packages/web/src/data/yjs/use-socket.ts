@@ -9,29 +9,28 @@
  * ws ceiling stays untouched even when the LRU pool keeps several
  * Space docs open at once.
  *
- * Why `useMemo`, not `useState` + `useEffect`:
- *   The pre-fix version constructed the websocket inside an effect,
- *   which meant the FIRST render returned `null`. Sibling hooks
- *   (`useProjectMeta`, `useSpaceManagerPool`) would then build their
- *   per-doc providers without a shared socket, fall back to the
- *   per-provider socket path, and never share TCP — defeating the
- *   spec. Worse, when the websocket arrived a render later, those
- *   providers would not be rebuilt (stale closure), so the canvas
- *   doc's provider would attach to a useless promise of a future
- *   socket. Constructing in `useMemo` resolves both issues: the
- *   socket exists from the first render, and the deps array makes
- *   the lifecycle explicit.
+ * StrictMode safety:
+ *   The socket is created inside `useEffect`, not `useMemo`. React 18
+ *   StrictMode intentionally double-invokes effects in dev (mount →
+ *   fake-unmount → mount). The pre-fix version put the construction
+ *   in `useMemo`, so the *factory ran twice per render* and the
+ *   cleanup ran in between, calling `socket.disconnect()` on the
+ *   only socket the second mount would later try to use. Result:
+ *   Yjs `onSynced` never fired, `spaces` stayed empty, the canvas
+ *   wouldn't render. Moving creation+cleanup into the *same* effect
+ *   means StrictMode's fake-unmount cleans up a real, paired socket,
+ *   and the re-mount creates a fresh one. Production behaviour is
+ *   unchanged (no double-invoke without StrictMode).
  *
- *   The constructor itself is synchronous; the TCP/WS handshake is
- *   async but the object is immediately attachable — providers can
- *   register listeners and they'll fire when the handshake completes.
- *
- * The cleanup in `useEffect` runs on unmount / dep change. The
- * `useMemo` value rotates atomically with the deps so React always
- * sees a fresh socket reference for the new `(projectId, token)`.
+ *   Trade-off: the very first render returns `null` because the
+ *   effect runs after layout. Consumers (`useProjectMeta`,
+ *   `useSpaceManagerPool`) already tolerate `null` and rebuild their
+ *   provider once a non-null socket arrives — `websocketProvider` is
+ *   in their effect deps, so a state change rotates the per-doc
+ *   providers cleanly.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 
 export interface UseHocuspocusSocketOptions {
@@ -48,8 +47,9 @@ function resolveWsUrl(explicit?: string): string {
 }
 
 /**
- * @returns the shared websocket — `null` only when the hook is
- *   disabled or the project / token isn't ready yet.
+ * @returns the shared websocket — `null` on the very first render and
+ *   while the hook is disabled / waiting for project / token. Consumers
+ *   must tolerate `null` and re-attach when a real socket arrives.
  */
 export function useHocuspocusSocket(
   projectId: string | null,
@@ -58,24 +58,25 @@ export function useHocuspocusSocket(
 ): HocuspocusProviderWebsocket | null {
   const { enabled = true, wsUrl } = options;
 
-  const socket = useMemo<HocuspocusProviderWebsocket | null>(() => {
-    if (!enabled || !projectId || !token) return null;
-    return new HocuspocusProviderWebsocket({
-      url: resolveWsUrl(wsUrl),
-    });
-  }, [enabled, projectId, token, wsUrl]);
+  const [socket, setSocket] = useState<HocuspocusProviderWebsocket | null>(null);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!enabled || !projectId || !token) {
+      setSocket(null);
+      return;
+    }
+    const s = new HocuspocusProviderWebsocket({ url: resolveWsUrl(wsUrl) });
+    setSocket(s);
     return () => {
       // The websocket has no `destroy()` in 3.4.4 — `disconnect()` +
       // GC is the documented teardown. Sibling HocuspocusProvider
-      // instances that still hold a reference will receive a
-      // `disconnected` event and stop reconnecting until they
-      // re-attach to a fresh socket from the next render.
-      socket.disconnect();
+      // instances that hold a reference receive a `disconnected`
+      // event; the consumer's effect runs cleanup when the socket
+      // state rotates so they don't try to use the dead instance.
+      s.disconnect();
+      setSocket((current) => (current === s ? null : current));
     };
-  }, [socket]);
+  }, [enabled, projectId, token, wsUrl]);
 
   return socket;
 }
