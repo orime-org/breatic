@@ -1,14 +1,30 @@
 /**
  * Top bar feature — full-width header chrome on the project page.
  *
- * Composes the legacy `ProjectHeader` (logo + project title +
- * import/export menu) with the v10 collaboration widgets
- * (`MembersPopover` from `features/members`, `CreditsPill` from
- * `features/credits`, the `UserCenter` account dropdown).
+ * Layout matches `design/project/mocks/05-canvas-native-tailwind.html`
+ * @1083-1115. The bar composes:
  *
- * Replaces the temporary PR4-A overlay (absolute-positioned right-top
- * pills above the canvas) and the in-chat-panel-header placement of
- * ProjectHeader.
+ *   Left cluster
+ *   ────────────
+ *   - `Logo`                — breatic v4 mark
+ *   - `BackToWorkspaceLink` — `< Workspace`
+ *   - `/` separator
+ *   - `ProjectTitle`        — editable, surfaces autosave time
+ *   - `RoleBadge`           — owner / edit / view pill
+ *
+ *   Right cluster
+ *   ─────────────
+ *   - `MembersPopover` (features/members)
+ *   - `LangPicker`
+ *   - `ThemePicker`
+ *   - `CreditsPill` (features/credits)
+ *   - `ExportPicker`        — workflow import / export
+ *   - `SharePopover`        — share / invite (V1 shell; copies URL)
+ *   - `NotificationsBell`   — visual placeholder for PR-Y3 (#134)
+ *   - `UserCenter`          — account dropdown
+ *
+ * Each piece lives in its own file so a swap-out (e.g. PR-Y3 wires
+ * `NotificationsBell` to `meta.systemMessages`) touches one component.
  */
 
 export { default as TopBar } from './components/TopBar';

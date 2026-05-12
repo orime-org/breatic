@@ -1,7 +1,6 @@
 import React, { memo, useEffect } from 'react';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
 import { Icon } from '@/ui/icon';
-import '@/features/top-bar/components/ProjectHeader.css';
 
 type ThemeMode = 'system' | 'dark' | 'light';
 
