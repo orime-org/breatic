@@ -2,8 +2,8 @@ import axios, { AxiosRequestConfig } from 'axios';
 import { getToken, removeToken } from './token';
 import { logout as logoutApi } from '@/data/api/auth';
 import { googleLogout } from '@react-oauth/google';
-import store from '@/store';
-import { incrementLoading, decrementLoading } from '@/store/modules/loading';
+import { loadingActions } from '@/app/store/loadingStore';
+import { useUserCenter } from '@/app/store/userCenterStore';
 
 interface CustomAxiosRequestConfig extends AxiosRequestConfig {
   needGlobalLoading?: boolean;
@@ -29,7 +29,7 @@ request.interceptors.request.use(
     }
     const customConfig = config as CustomAxiosRequestConfig;
     if (customConfig.needGlobalLoading === true) {
-      store.dispatch(incrementLoading());
+      loadingActions.increment();
     }
     return config;
   },
@@ -40,7 +40,7 @@ request.interceptors.response.use(
   (response) => {
     const customConfig = response.config as CustomAxiosRequestConfig;
     if (customConfig.needGlobalLoading === true) {
-      store.dispatch(decrementLoading());
+      loadingActions.decrement();
     }
     return response.data;
   },
@@ -49,11 +49,11 @@ request.interceptors.response.use(
     const isNetworkError = !error.response && (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message === 'Network Error');
     if (customConfig?.needGlobalLoading === true) {
       if (!isNetworkError) {
-        store.dispatch(decrementLoading());
+        loadingActions.decrement();
       }
     }
     if (error?.status === 401) {
-      const authRequired = store.getState().userCenter.authRequired;
+      const authRequired = useUserCenter.getState().authRequired;
       // 跳过 logout 请求本身的 401，避免循环
       const isLogoutRequest = error.config?.url?.includes('/auth/logout');
       if (authRequired && !isLogoutRequest) {

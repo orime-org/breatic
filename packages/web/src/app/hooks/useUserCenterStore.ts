@@ -1,86 +1,38 @@
 /**
- * User Store Hook
+ * `useUserCenterStore` — public hook for the user-center store.
+ *
+ * Public shape preserved from the Redux era so call sites don't
+ * change. Internally it now reads from the Zustand store. Each setter
+ * is a stable reference (Zustand returns the same function instance
+ * across renders), so the previous `useCallback` wrapping is gone.
  */
+import { useUserCenter, type AuthenticatedInfoType, type UserInfoType } from '@/app/store/userCenterStore';
 
-import { useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { setAuthInfo, setUserInfo, setLanguage, setTheme, AuthenticatedInfoType, UserInfoType } from '@/store/modules/userCenter';
-import type { RootState } from '@/store';
+export type { AuthenticatedInfoType, UserInfoType };
 
-/**
- * useUserCenterStore
- */
 export const useUserCenterStore = () => {
-  const dispatch = useDispatch();
+  // Slice subscriptions — each component only re-renders when the
+  // exact field it reads changes, which matches the per-field
+  // `useSelector` pattern the Redux version used.
+  const authInfo = useUserCenter((s) => s.authInfo);
+  const userInfo = useUserCenter((s) => s.userInfo);
+  const authRequired = useUserCenter((s) => s.authRequired);
+  const language = useUserCenter((s) => s.language);
+  const theme = useUserCenter((s) => s.theme);
+  const setAuthInfo = useUserCenter((s) => s.setAuthInfo);
+  const setUserInfo = useUserCenter((s) => s.setUserInfo);
+  const setLanguage = useUserCenter((s) => s.setLanguage);
+  const setTheme = useUserCenter((s) => s.setTheme);
 
-  const authInfo = useSelector((state: RootState) => state.userCenter.authInfo);
-  const userInfo = useSelector((state: RootState) => state.userCenter.userInfo);
-  const authRequired = useSelector((state: RootState) => state.userCenter.authRequired);
-  const language = useSelector((state: RootState) => state.userCenter.language);
-  const theme = useSelector((state: RootState) => state.userCenter.theme);
-
-  /**
-   * Update authentication information.
-   *
-   * @param authInfo - Authentication data object
-   */
-  const setAuthInfoAction = useCallback(
-    (authInfo: AuthenticatedInfoType) => {
-      dispatch(setAuthInfo(authInfo));
-    },
-    [dispatch],
-  );
-
-  /**
-   * Update user profile information.
-   *
-   * @param userInfo - User profile data object
-   */
-  const setUserInfoAction = useCallback(
-    (userInfo: UserInfoType) => {
-      dispatch(setUserInfo(userInfo));
-    },
-    [dispatch],
-  );
-
-  /**
-   * Update language.
-   *
-   * @param language - Language code
-   */
-  const setLanguageAction = useCallback(
-    (language: string) => {
-      dispatch(setLanguage(language));
-    },
-    [dispatch],
-  );
-
-  /**
-   * Update theme.
-   *
-   * @param theme - Theme mode
-   */
-  const setThemeAction = useCallback(
-    (theme: 'light' | 'dark' | 'system') => {
-      dispatch(setTheme(theme));
-    },
-    [dispatch],
-  );
-
-  /**
-   * Exposed API
-   *
-   * The returned object mimics a simple store interface,
-   */
   return {
     authInfo,
     userInfo,
     authRequired,
     language,
     theme,
-    setAuthInfo: setAuthInfoAction,
-    setUserInfo: setUserInfoAction,
-    setLanguage: setLanguageAction,
-    setTheme: setThemeAction,
+    setAuthInfo,
+    setUserInfo,
+    setLanguage,
+    setTheme,
   };
 };

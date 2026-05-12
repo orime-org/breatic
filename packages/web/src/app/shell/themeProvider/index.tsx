@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
-import type { RootState } from '@/store';
+import { useUserCenter } from '@/app/store/userCenterStore';
 
 interface ThemeProviderProps {
   children: React.ReactNode;
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const theme = useSelector((state: RootState) => state.userCenter.theme);
+  const theme = useUserCenter((s) => s.theme);
   const [systemTheme, setSystemTheme] = useState<'dark' | 'light'>(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       return 'dark';

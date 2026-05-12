@@ -5,8 +5,6 @@ import '@/i18n';
 import 'virtual:svg-icons-register';
 import { RouterProvider } from 'react-router-dom';
 import router from '@/app/routes';
-import { Provider } from 'react-redux';
-import store from './store';
 import { ThemeProvider } from '@/app/shell/themeProvider';
 import { GlobalLoading } from '@/app/shell/loading';
 import { MessageContainer } from './ui/message';
@@ -39,13 +37,11 @@ const root = ReactDOM.createRoot(
 root.render(
   <Sentry.ErrorBoundary fallback={<div>Page Error</div>}>
     <React.StrictMode>
-      <Provider store={store}>
-        <ThemeProvider>
-          <GlobalLoading />
-          <MessageContainer />
-          <RouterProvider router={router} />
-        </ThemeProvider>
-      </Provider>
+      <ThemeProvider>
+        <GlobalLoading />
+        <MessageContainer />
+        <RouterProvider router={router} />
+      </ThemeProvider>
     </React.StrictMode>
   </Sentry.ErrorBoundary>
 );

@@ -1,5 +1,11 @@
-import { useSelector } from 'react-redux';
-import type { RootState } from '@/store';
+/**
+ * Public hooks for the loading store.
+ *
+ * The shape is unchanged from the Redux era — components read whether
+ * anything is loading, or the raw count for debugging. Internally
+ * backed by Zustand.
+ */
+import { useLoadingStore } from '@/app/store/loadingStore';
 
 /**
  * Returns whether any in-flight request toggled the global loading overlay.
@@ -10,12 +16,7 @@ import type { RootState } from '@/store';
  * return loading ? <Loading /> : <Content />;
  * ```
  */
-export const useLoading = (): boolean => {
-  const loadingCount = useSelector((state: RootState) => state.loading.count);
-  return loadingCount > 0;
-};
+export const useLoading = (): boolean => useLoadingStore((s) => s.count > 0);
 
 /** Raw count of nested loading tokens (useful for debugging concurrent requests). */
-export const useLoadingCount = (): number => {
-  return useSelector((state: RootState) => state.loading.count);
-};
+export const useLoadingCount = (): number => useLoadingStore((s) => s.count);

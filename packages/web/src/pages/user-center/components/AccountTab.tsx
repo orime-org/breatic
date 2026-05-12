@@ -3,7 +3,7 @@ import { Icon } from '@/ui/icon';
 import { Button } from '@/ui/button';
 import user_png from '@/assets/images/userCenter/user.png';
 import { useTranslation } from 'react-i18next';
-import { UserInfoType } from '@/store/modules/userCenter';
+import type { UserInfoType } from '@/app/store/userCenterStore';
 
 interface AccountTabProps {
   userInfo?: UserInfoType;
