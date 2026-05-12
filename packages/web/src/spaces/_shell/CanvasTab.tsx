@@ -1,14 +1,13 @@
 /**
- * CanvasTab — single tab in the Tab Bar.
+ * CanvasTab — a single tab in the Tab Bar.
  *
- * Renders the space name + a kind glyph; clicking switches the active
- * space. The active tab is visually emphasized; the close affordance
- * appears on hover for non-active, non-only-tab tabs (we don't allow
- * the user to close the only tab in V1 — the project would have no
- * active space).
+ * Visual language matches `design/project/mocks/05-canvas-native-tailwind.html`
+ * (CanvasTab @1122) — pill-style with a bottom underline on the active
+ * tab, kind glyph on the left, optional lock indicator when the space
+ * is locked, hover-revealed close button on the right.
  *
- * Rename / lock / per-tab context menu are deferred to a follow-up
- * (the Drawer carries those richer affordances).
+ * Rename / per-tab context menu are deferred to a follow-up (the
+ * Drawer carries those richer affordances).
  */
 
 import { memo } from 'react';
@@ -17,16 +16,23 @@ import type { Space } from '@breatic/shared';
 import { cn } from '@/utils/classnames';
 
 const CloseGlyph = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5" aria-hidden>
     <line x1="12" y1="4" x2="4" y2="12" />
     <line x1="4" y1="4" x2="12" y2="12" />
+  </svg>
+);
+
+const LockGlyph = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0" aria-hidden>
+    <rect x="3" y="7" width="10" height="7" rx="1" />
+    <path d="M5 7V5a3 3 0 0 1 6 0v2" />
   </svg>
 );
 
 const KindGlyph = ({ kind }: { kind: Space['type'] }) => {
   if (kind === 'canvas') {
     return (
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 flex-shrink-0" aria-hidden>
         <rect x="2" y="2" width="12" height="12" rx="1.5" />
         <path d="M2 6h12M6 2v12" />
       </svg>
@@ -34,7 +40,7 @@ const KindGlyph = ({ kind }: { kind: Space['type'] }) => {
   }
   if (kind === 'document') {
     return (
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0" aria-hidden>
         <path d="M9 1H4a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5V5z" />
         <polyline points="9 1 9 5 13.5 5" />
       </svg>
@@ -42,7 +48,7 @@ const KindGlyph = ({ kind }: { kind: Space['type'] }) => {
   }
   // timeline
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-3 h-3" aria-hidden>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-3 h-3 flex-shrink-0" aria-hidden>
       <line x1="2" y1="5" x2="14" y2="5" />
       <line x1="2" y1="11" x2="14" y2="11" />
       <circle cx="6" cy="5" r="1" fill="currentColor" />
@@ -72,6 +78,7 @@ const CanvasTab: React.FC<CanvasTabProps> = memo(function CanvasTab({
     <div
       role="tab"
       aria-selected={isActive}
+      data-space-id={space.id}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -81,11 +88,13 @@ const CanvasTab: React.FC<CanvasTabProps> = memo(function CanvasTab({
       }}
       tabIndex={0}
       className={cn(
-        'group relative flex items-center gap-1.5 h-8 pl-2.5 pr-1.5 rounded-t-md cursor-pointer select-none transition-colors',
-        'border-l border-r border-t',
+        'group relative inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm cursor-pointer select-none transition-colors flex-shrink-0 max-w-[200px]',
+        'text-[13px]',
+        // Active tab: stronger fill + brand-coloured bottom underline
+        // (via after-pseudo) per mock CanvasTab @1135.
         isActive
-          ? 'bg-[var(--color-background-default-base)] border-[var(--color-border-default-base)] -mb-px z-10'
-          : 'bg-[var(--color-background-default-secondary)] border-transparent hover:bg-[var(--color-background-default-base)]/60',
+          ? 'bg-[var(--color-background-default-base)] text-[var(--color-text-default-base)] after:absolute after:bottom-[-9px] after:left-2 after:right-2 after:h-[2px] after:bg-brand-500 after:rounded-full'
+          : 'text-[var(--color-text-default-secondary)] hover:bg-[var(--color-background-default-base)]/60 hover:text-[var(--color-text-default-base)]',
       )}
     >
       <span
@@ -96,16 +105,19 @@ const CanvasTab: React.FC<CanvasTabProps> = memo(function CanvasTab({
         <KindGlyph kind={space.type} />
       </span>
       <span
-        className={cn(
-          'text-[12px] font-medium max-w-[140px] truncate',
-          isActive
-            ? 'text-[var(--color-text-default-base)]'
-            : 'text-[var(--color-text-default-secondary)]',
-        )}
+        className="truncate"
         title={space.name}
       >
         {space.name}
       </span>
+      {space.locked && (
+        <span
+          className="text-[var(--color-text-default-tertiary)]"
+          aria-label={t('spaces.tab.locked', { defaultValue: 'Locked' })}
+        >
+          <LockGlyph />
+        </span>
+      )}
       {!hideClose && (
         <button
           type="button"
@@ -115,9 +127,9 @@ const CanvasTab: React.FC<CanvasTabProps> = memo(function CanvasTab({
           }}
           aria-label={t('spaces.tab.close')}
           className={cn(
-            'inline-flex items-center justify-center w-4 h-4 rounded-sm transition-colors',
+            'inline-flex items-center justify-center w-4 h-4 rounded-full transition-colors flex-shrink-0',
             'text-[var(--color-text-default-tertiary)] hover:bg-[var(--color-background-default-secondary)] hover:text-[var(--color-text-default-base)]',
-            isActive ? 'opacity-60' : 'opacity-0 group-hover:opacity-60',
+            isActive ? 'opacity-60 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100',
           )}
         >
           <CloseGlyph />

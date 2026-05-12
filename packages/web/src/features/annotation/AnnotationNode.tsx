@@ -53,7 +53,7 @@ const AnnotationNode: React.FC<NodeProps> = ({ id, selected }) => {
   return (
     <div
       className={
-        'pointer-events-auto w-[200px] rounded-[10px] border bg-[#FFF8C5] px-3 py-2 shadow-md ' +
+        'pointer-events-auto w-[260px] rounded-[10px] border bg-[#FFF8C5] px-3 py-2 shadow-md ' +
         (selected
           ? 'border-border-utilities-selected outline outline-2 outline-border-utilities-selected/30'
           : 'border-[#F5DC65]')

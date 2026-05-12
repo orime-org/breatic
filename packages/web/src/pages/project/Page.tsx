@@ -66,9 +66,8 @@ const ProjectPage: React.FC = () => {
 const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }> = ({ yjs }) => {
   const { nodes } = useCanvasData();
   const { updateNode } = useCanvasActions();
-  const { rightPanel, openRightPanel, closeRightPanel } = useProjectLayout();
+  const { rightPanel, openRightPanel, closeRightPanel, chatPanelVisible } = useProjectLayout();
   const [workflowName, setWorkflowName] = useState<string>('');
-  const [chatPanelVisible, setChatPanelVisible] = useState(true);
   const [canvasPanelVisible, setCanvasPanelVisible] = useState(true);
   const [selectedWorkspaceRegion, setSelectedWorkspaceRegion] = useState<'canvas' | 'rightEditor' | null>('canvas');
   const [isResizingRightEditor, setIsResizingRightEditor] = useState(false);
@@ -109,10 +108,6 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
   const isImageNode = panelNodeType === '1002';
   const isVideoOrAudioNode = panelNodeType === '1003' || panelNodeType === '1004';
   const isRightEditorOpen = rightPanel.open && rightPanel.panelType === 'editor';
-
-  const handleToggleChatPanel = () => {
-    setChatPanelVisible((prev) => !prev);
-  };
 
   const handleToggleEditorPanel = () => {
     if (rightPanel.open) {
@@ -255,26 +250,10 @@ const ProjectContentBody: React.FC<{ yjs: ReturnType<typeof useProjectSpaces> }>
               }}
             >
               <div className='relative h-full w-full'>
-                <div className='absolute left-3 top-3 z-10'>
-                  <Tooltip
-                    title={chatPanelVisible ? 'Collapse chat panel' : 'Expand chat panel'}
-                    placement='right'
-                    triggerClassName='absolute left-0 top-0 z-10'
-                  >
-                    <button
-                      type='button'
-                      onClick={handleToggleChatPanel}
-                      className='flex h-8 w-8 items-center justify-center rounded-md bg-background-default-secondary text-icon-secondary transition-colors hover:bg-background-default-base-hover'
-                    >
-                      <Icon
-                        name={chatPanelVisible ? 'project-canvas-chat-toggle-icon' : 'project-canvas-chat-close-icon'}
-                        width={16}
-                        height={16}
-                        color='var(--color-icon-base)'
-                      />
-                    </button>
-                  </Tooltip>
-                </div>
+                {/* Chat toggle moved to the TabBar left edge — single
+                    entry per spec §10.18 + mock @1227. The floating
+                    canvas-top-left button was removed in PR
+                    `feat/web-tab-bar-mock-alignment`. */}
                 <div className='absolute right-3 top-3 z-10'>
                   <Tooltip
                     title={rightPanel.open ? 'Collapse editor' : 'Expand editor'}
