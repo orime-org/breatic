@@ -492,62 +492,132 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
           />
         </div>
 
-        {/* ── Pill bar (60px) ───────────────────────────────────────── */}
+        {/* ── Pill bar (60px) ───────────────────────────────────────────
+            Visual aligned with mock 05 @2301-2373:
+              [kind?] [⚙ model] ... [★ cost] [▶ 新增版本] [↻ 主下游 ▾]
+            `新增版本` is the solid emphasis button (Linear-style black
+            CTA); `↻` is the split-button group that brand-tints when
+            a primary downstream exists. */}
         <div
-          className='flex items-center gap-2 px-3 border-t border-border-default-secondary'
+          className='flex items-center gap-1.5 px-2.5 border-t border-border-default-base'
           style={{ height: PILL_BAR_HEIGHT }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {kindOptions.length > 1 && (
-            <select
-              className='h-7 px-2 rounded-md border border-border-default-secondary bg-background-default-base text-[12px]'
-              value={kind}
-              onChange={(e) => handleKindChange(e.target.value)}
+            <Dropdown
+              items={kindOptions.map((k) => ({ key: k, label: k }))}
+              trigger='click'
+              onClick={handleKindChange}
+              placement='top-start'
             >
-              {kindOptions.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
+              <button
+                type='button'
+                title='Sub-kind (spec §10.13)'
+                className='inline-flex items-center gap-1 h-7 px-2 rounded-md bg-background-default-secondary text-text-default-base text-[11px] hover:bg-background-default-secondary-hover min-w-0 flex-shrink'
+              >
+                <span className='truncate'>{kind}</span>
+                <span className='text-text-default-tertiary text-[9px]'>▾</span>
+              </button>
+            </Dropdown>
           )}
-          <div className='h-7 px-2 rounded-md border border-border-default-secondary bg-background-default-base text-[12px] flex items-center text-text-default-tertiary'>
-            ⚙ {wf?.model || 'model'}
-          </div>
-          <div className='text-[12px] text-text-default-tertiary'>★ 0</div>
-          <div className='flex-1' />
           <button
             type='button'
-            className='h-7 px-3 rounded-md text-[12px] border border-border-default-secondary bg-background-default-base hover:bg-background-default-secondary disabled:opacity-50 disabled:cursor-not-allowed'
+            title='Model + params (next iteration)'
+            className='inline-flex items-center gap-1 h-7 px-2 rounded-md bg-background-default-secondary text-text-default-base text-[11px] hover:bg-background-default-secondary-hover min-w-0 flex-shrink'
+          >
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.75' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3 flex-shrink-0' aria-hidden>
+              <circle cx='12' cy='12' r='3' />
+              <path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' />
+            </svg>
+            <span className='truncate'>{wf?.model || 'model'}</span>
+          </button>
+          {/* Cost pill — brand star + estimate (V1: literal "0" until
+              the per-tool credit estimate ships, mock @2315-2318). */}
+          <span
+            className='inline-flex items-center gap-1 text-[11px] text-text-default-tertiary font-mono flex-shrink-0'
+            title='Estimated credit cost'
+          >
+            <svg viewBox='0 0 24 24' fill='currentColor' className='w-3 h-3 text-brand-500' aria-hidden>
+              <path d='M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z' />
+            </svg>
+            <span>0</span>
+          </span>
+          <span className='flex-1' />
+          {/* ▶ 新增版本 — solid emphasis button per mock @2320-2327. */}
+          <button
+            type='button'
             disabled={isPromptEmpty}
             onClick={handleNewVersionClick}
             title={isPromptEmpty ? 'Enter a prompt first' : 'Create a new sibling version (does not change primary downstream)'}
+            className={
+              'h-7 px-2.5 inline-flex items-center gap-1 rounded-md text-[11px] font-medium flex-shrink-0 transition-colors ' +
+              (isPromptEmpty
+                ? 'bg-background-default-secondary text-text-default-tertiary pointer-events-none'
+                : 'bg-neutral-900 text-neutral-0 hover:bg-neutral-700')
+            }
           >
-            ▶ 新增版本
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' className='w-3 h-3' aria-hidden>
+              <line x1='12' y1='5' x2='12' y2='19' />
+              <line x1='5' y1='12' x2='19' y2='12' />
+            </svg>
+            <span>新增版本</span>
           </button>
-          {/* ↻ button + ▾ primary picker — spec §10.13.4 / §10.13.5 v13 */}
-          <div className='flex items-stretch'>
+
+          {/* ↻ split button + ▾ primary picker — mock @2330-2372.
+              Brand-tinted when a primary downstream exists and is not
+              locked; neutral otherwise. */}
+          <div
+            className={
+              'inline-flex items-stretch rounded-md border overflow-hidden flex-shrink-0 ' +
+              (isPromptEmpty || (primaryDownstream !== null && primaryDownstream.locked)
+                ? 'border-border-default-base text-text-default-tertiary'
+                : primaryDownstream
+                  ? 'border-brand-500 text-brand-700'
+                  : 'border-border-default-base text-text-default-base')
+            }
+          >
             <button
               type='button'
-              className='h-7 px-3 rounded-l-md text-[12px] bg-background-default-secondary text-text-default-primary hover:bg-background-default-base-hover disabled:opacity-50 disabled:cursor-not-allowed'
-              disabled={
-                isPromptEmpty ||
-                (primaryDownstream !== null && primaryDownstream.locked)
-              }
+              disabled={isPromptEmpty || (primaryDownstream !== null && primaryDownstream.locked)}
               onClick={handleUpdatePrimaryClick}
               title={
                 isPromptEmpty
                   ? 'Enter a prompt first'
                   : primaryDownstream === null
-                    ? 'No primary downstream — clicking creates one (✨ 新建)'
+                    ? 'No primary downstream — clicking creates one'
                     : primaryDownstream.locked
                       ? `${primaryDownstream.name} is locked. Unlock first or pick a different primary in ▾.`
                       : `Overwrite ${primaryDownstream.name}`
               }
+              className={
+                'h-7 px-2.5 inline-flex items-center gap-1 text-[11px] font-medium transition-colors ' +
+                (isPromptEmpty || (primaryDownstream !== null && primaryDownstream.locked)
+                  ? 'bg-background-default-secondary pointer-events-none'
+                  : primaryDownstream
+                    ? 'bg-brand-500/10 hover:bg-brand-500/20'
+                    : 'bg-background-default-base hover:bg-background-default-secondary')
+              }
             >
-              {primaryDownstream === null
-                ? '✨ 新建'
-                : `↻ 更新 ${primaryDownstream.name}${primaryDownstream.locked ? ' 🔒' : ''}`}
+              {primaryDownstream === null ? (
+                <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3' aria-hidden>
+                  <path d='M12 3l1.91 4.09L18 8l-3 2.86.71 4.14L12 13.27 8.29 15l.71-4.14L6 8l4.09-.91z' />
+                </svg>
+              ) : (
+                <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3' aria-hidden>
+                  <polyline points='23 4 23 10 17 10' />
+                  <polyline points='1 20 1 14 7 14' />
+                  <path d='M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15' />
+                </svg>
+              )}
+              <span className='truncate max-w-[110px]'>
+                {primaryDownstream === null ? '新建' : `更新 ${primaryDownstream.name}`}
+              </span>
+              {primaryDownstream?.locked && (
+                <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3 text-amber-600' aria-hidden>
+                  <rect x='3' y='11' width='18' height='11' rx='2' ry='2' />
+                  <path d='M7 11V7a5 5 0 0 1 10 0v4' />
+                </svg>
+              )}
             </button>
             <Dropdown
               items={primaryDropdownItems}
@@ -557,10 +627,17 @@ const GenerativeNode: React.FC<NodeProps> = ({ id, data, selected }) => {
             >
               <button
                 type='button'
-                className='h-7 px-2 rounded-r-md text-[12px] bg-background-default-secondary text-text-default-primary hover:bg-background-default-base-hover border-l border-border-default-secondary'
                 title='Pick primary downstream'
+                className={
+                  'h-7 px-1.5 border-l flex items-center justify-center transition-colors ' +
+                  (primaryDownstream
+                    ? 'border-brand-500/40 hover:bg-brand-500/15'
+                    : 'border-border-default-base hover:bg-background-default-secondary')
+                }
               >
-                ▾
+                <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-2.5 h-2.5 opacity-60' aria-hidden>
+                  <polyline points='6 9 12 15 18 9' />
+                </svg>
               </button>
             </Dropdown>
           </div>

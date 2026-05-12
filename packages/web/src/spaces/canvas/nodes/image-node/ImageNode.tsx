@@ -27,6 +27,7 @@ import { useProjectLayout } from '@/app/contexts/ProjectLayoutContext';
 import { cn } from '@/utils/classnames';
 import NodeToolbar from './NodeToolbar';
 import { NodeFloatMenu, IMAGE_TOOLS, CropOverlay } from '@/features/mini-tools';
+import HandlingOverlay from '@/spaces/canvas/common/HandlingOverlay';
 import DataNodeHandle from '@/spaces/canvas/common/DataNodeHandle';
 import NodeSkeleton, { zoomLevelShowContentSelector } from '@/spaces/canvas/common/NodeSkeleton';
 
@@ -45,6 +46,8 @@ type ImageNodeData = {
   height?: number;
   state?: string;
   errorMessage?: string;
+  handlingBy?: { userId: string; username: string; type?: 'frontend' | 'backend' };
+  operation?: string;
 };
 
 const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
@@ -237,12 +240,15 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                       errorMessage && !isHandling && 'outline outline-2 outline-red-400',
                     )}
                   >
-                    {/* Handling overlay: shown when backend is processing this node. */}
+                    {/* Handling overlay: avatar + spinner + operation label,
+                        per mock 05 @1928-1967. Shown whenever the node is in
+                        the `handling` state (either a backend Worker or this
+                        client's own Category A op). */}
                     {isHandling && (
-                      <div className='absolute inset-0 z-[10] flex flex-col items-center justify-center rounded-[8px] bg-black/40 pointer-events-none'>
-                        <Icon name='base-loading-spinner' width={28} height={28} className='animate-spin text-white' />
-                        <div className='text-[12px] text-white font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
-                      </div>
+                      <HandlingOverlay
+                        username={nodeData?.handlingBy?.username ?? null}
+                        operation={nodeData?.operation ?? null}
+                      />
                     )}
                     {/* Error badge: shown when last op failed (state === 'idle' with errorMessage). */}
                     {errorMessage && !isHandling && (
@@ -272,10 +278,14 @@ const ImageNode: React.FC<NodeProps> = ({ id, selected, dragging }) => {
                     <CropOverlay nodeId={id} />
                   </div>
                 ) : isHandling ? (
-                  /* No content yet but backend is processing: show full-area spinner */
-                  <div className='w-full h-full flex flex-col items-center justify-center text-center'>
-                    <Icon name='base-loading-spinner' width={32} height={32} className='animate-spin' />
-                    <div className='text-[12px] text-text-default-tertiary font-normal mt-2'>{t('canvas.node.processing', 'Processing...')}</div>
+                  /* No content yet but worker is processing — same
+                     overlay component, just at the full-node level
+                     (no image to layer on top of). */
+                  <div className='relative w-full h-full'>
+                    <HandlingOverlay
+                      username={nodeData?.handlingBy?.username ?? null}
+                      operation={nodeData?.operation ?? null}
+                    />
                   </div>
                 ) : (
                   <div
