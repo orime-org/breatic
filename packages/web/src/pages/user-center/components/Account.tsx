@@ -1,7 +1,7 @@
 import React, { memo, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Table, type TableColumn } from '@/ui/table';
-import { UserInfoType } from '@/store/modules/userCenter';
+import type { UserInfoType } from '@/app/store/userCenterStore';
 import AccountTab from './AccountTab';
 import Tabs from '@/ui/tabs';
 

@@ -1,7 +1,7 @@
 import React, { memo, useState } from 'react';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { Icon } from '@/ui/icon';
-import { UserInfoType } from '@/store/modules/userCenter';
+import type { UserInfoType } from '@/app/store/userCenterStore';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui/button';
 

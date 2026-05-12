@@ -2,9 +2,8 @@ import React, { memo, useState, useEffect } from 'react';
 import { message } from '@/ui/message';
 import Dropdown, { type MenuItemType } from '@/ui/dropdown';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
-import type { RootState } from '@/store';
 import { useUserCenterStore } from '@/app/hooks/useUserCenterStore';
+import { useProjectInfo } from '@/app/store/projectInfoStore';
 import { type Node, type Edge } from '@xyflow/react';
 import i18n from '@/i18n';
 import { Icon } from '@/ui/icon';
@@ -32,7 +31,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({
 }) => {
   const { t } = useTranslation();
   const { language, theme, setLanguage, setTheme } = useUserCenterStore();
-  const autosaveTime = useSelector((state: RootState) => state.projectInfo.autosaveTime);
+  const autosaveTime = useProjectInfo((s) => s.autosaveTime);
   const [inputValue, setInputValue] = useState<string>(projectName);
   const [open, setOpen] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
