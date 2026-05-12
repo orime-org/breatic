@@ -1,103 +1,148 @@
+/*
+ * Dark theme tokens — mirror of `light.css` with two structural shifts
+ * baked in per mock 05 line 579-582:
+ *
+ *   1. Brand lightness +10% (clamped at 95%) so the same hue/sat stays
+ *      legible on dark surfaces. `brand-500` shifts from L=50 → L=60.
+ *   2. Stone neutral ramp inverted (`warm_dark`, mock line 532).
+ *      `neutral-0` is now the darkest page bg; `neutral-900` is the
+ *      lightest text.
+ *
+ * All semantic tokens (`--color-*`) stay structurally identical to
+ * light — only the underlying scale tokens flip. Components keep
+ * reading the same names, the theme switch toggles the values.
+ */
 html[data-theme="dark"] {
-  --color-brand-base: #199A1B;
-  --color-brand-secondary: #35C838;
+  /* Brand · HSL(8°, 58%, L+10%) — mock 05 line 581 (Math.min(95, L+10)) */
+  --brand-50:  hsl(8, 58%, 95%);   /* clamped from 107% */
+  --brand-100: hsl(8, 58%, 95%);   /* clamped from 102% */
+  --brand-200: hsl(8, 58%, 92%);
+  --brand-300: hsl(8, 58%, 80%);
+  --brand-400: hsl(8, 58%, 68%);
+  --brand-500: hsl(8, 58%, 60%);
+  --brand-600: hsl(8, 58%, 50%);
+  --brand-700: hsl(8, 58%, 42%);
+  --brand-800: hsl(8, 58%, 33%);
+  --brand-900: hsl(8, 58%, 25%);
 
-  --color-background-default-base: #2C2C2C;
-  --color-background-default-base-hover: #444444;
-  --color-background-default-secondary: #383838;
-  --color-background-default-secondary-hover: #757575;
-  --color-background-default-tertiary: #B3B3B3;
-  --color-background-default-tertiary-hover: #E6E6E6;
+  /* Neutral · Stone 暖灰阶 inverted — mock 05 line 532 (`warm_dark`) */
+  --neutral-0:   #0C0A09;
+  --neutral-50:  #1C1917;
+  --neutral-100: #292524;
+  --neutral-200: #44403C;
+  --neutral-300: #57534E;
+  --neutral-400: #78716C;
+  --neutral-500: #A8A29E;
+  --neutral-600: #D6D3D1;
+  --neutral-700: #E7E5E4;
+  --neutral-800: #F5F5F4;
+  --neutral-900: #FAFAF9;
 
-  --color-background-success-base: #199A1B;
-  --color-background-success-base-hover: #35C838;
-  --color-background-success-secondary: #7879F1;
-  --color-background-success-secondary-hover: #A5A6F6;
+  /* Brand semantic */
+  --color-brand-base:      var(--brand-500);
+  --color-brand-secondary: var(--brand-300);
 
-  --color-background-warning-base: #E8B931;
-  --color-background-warning-base-hover: #BF6A02;
+  /* Backgrounds */
+  --color-background-default-base:           var(--neutral-0);
+  --color-background-default-base-hover:     var(--neutral-50);
+  --color-background-default-secondary:      var(--neutral-100);
+  --color-background-default-secondary-hover: var(--neutral-200);
+  --color-background-default-tertiary:       var(--neutral-300);
+  --color-background-default-tertiary-hover: var(--neutral-400);
 
-  --color-background-error-base: #C00F0C;
-  --color-background-error-base-hover: #900B09;
+  --color-background-success-base:           var(--brand-500);
+  --color-background-success-base-hover:     var(--brand-600);
+  --color-background-success-secondary:      var(--brand-800);
+  --color-background-success-secondary-hover: var(--brand-700);
 
-  --color-background-neutral-base: #B2B2B2;
-  --color-background-neutral-base-hover: #949494;
-  --color-background-neutral-secondary: #303030;
-  --color-background-neutral-secondary-hover: #242424;
-  --color-background-neutral-tertiary: #303030;
-  --color-background-neutral-tertiary-hover: #242424;
+  --color-background-warning-base:           #E8B931;
+  --color-background-warning-base-hover:     #BF6A02;
 
-  --color-shadow-scrim: rgba(255, 255, 255, 0.05);
-  --color-shadow-scrim-reversal: rgba(12, 12, 13, 0.1);
-  --color-shadow-blanket: rgba(255, 255, 255, 0.1);
-  --color-shadow-blanket-reversal: rgba(12, 12, 13, 0.4);
-  --color-shadow-overlay: rgba(255, 255, 255, 0.2);
-  --color-shadow-overlay-reversal: rgba(12, 12, 13, 0.8);
+  --color-background-error-base:             #C00F0C;
+  --color-background-error-base-hover:       #900B09;
 
-  --color-border-utilities-brand: #6DEF70;
-  --color-border-utilities-selected: #A5A6F6;
-  --color-border-default-base: #444444;
-  --color-border-default-secondary: #757575;
-  --color-border-default-tertiary: #B3B3B3;
+  --color-background-neutral-base:           var(--neutral-700);
+  --color-background-neutral-base-hover:     var(--neutral-800);
+  --color-background-neutral-secondary:      var(--neutral-100);
+  --color-background-neutral-secondary-hover: var(--neutral-200);
+  --color-background-neutral-tertiary:       var(--neutral-50);
+  --color-background-neutral-tertiary-hover: var(--neutral-100);
 
-  --color-text-default-base: #E3E3E3;
-  --color-text-default-secondary: #CDCDCD;
-  --color-text-default-tertiary: #949494;
-  --color-text-status-success: #6DEF70;
-  --color-text-status-error: #EC221F;
-  --color-text-disabled-base: #757575;
-  --color-text-disabled-secondary: #444444;
-  --color-text-solid: #0C0C0D;
-  --color-text-on-button-base: #FFFFFF;
-  --color-text-text-default-base: #FFFFFF;
+  /* Shadows — deeper for dark (mock 05 line 537-538). */
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.20);
+  --shadow:    0 1px 3px 0 rgba(0,0,0,0.25), 0 1px 2px -1px rgba(0,0,0,0.15);
+  --shadow-md: 0 4px 12px -2px rgba(0,0,0,0.30), 0 2px 4px -2px rgba(0,0,0,0.20);
+  --elevation-0: none;
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow-md);
+
+  --color-shadow-scrim:             rgba(255, 255, 255, 0.05);
+  --color-shadow-scrim-reversal:    rgba(0, 0, 0, 0.1);
+  --color-shadow-blanket:           rgba(255, 255, 255, 0.10);
+  --color-shadow-blanket-reversal:  rgba(0, 0, 0, 0.4);
+  --color-shadow-overlay:           rgba(255, 255, 255, 0.20);
+  --color-shadow-overlay-reversal:  rgba(0, 0, 0, 0.8);
+
+  /* Border */
+  --color-border-utilities-brand:    var(--brand-500);
+  --color-border-utilities-selected: var(--brand-500);
+  --color-border-default-base:       var(--neutral-100);
+  --color-border-default-secondary:  var(--neutral-200);
+  --color-border-default-tertiary:   var(--neutral-300);
+
+  /* Text */
+  --color-text-default-base:      var(--neutral-800);
+  --color-text-default-secondary: var(--neutral-600);
+  --color-text-default-tertiary:  var(--neutral-400);
+  --color-text-status-success:    var(--brand-400);
+  --color-text-status-error:      #FCA5A5;
+  --color-text-disabled-base:     var(--neutral-300);
+  --color-text-disabled-secondary: var(--neutral-200);
+  --color-text-solid:             var(--neutral-0);
+  --color-text-on-button-base:    #FFFFFF;
+  --color-text-text-default-base: var(--neutral-800);
   --color-text-on-button-secondary: rgba(255, 255, 255, 0.85);
-  --color-text-on-button-tertiary: rgba(255, 255, 255, 0.7);
+  --color-text-on-button-tertiary:  rgba(255, 255, 255, 0.7);
 
-  --color-icon-base: rgba(255, 255, 255, 0.85);
-  --color-icon-base-hover: rgba(255, 255, 255, 0.95);
-  --bg-icon-base: rgba(255, 255, 255, 0.85);
-  --color-icon-secondary: rgba(255, 255, 255, 0.7);
-  --color-icon-secondary-hover: rgba(255, 255, 255, 0.8);
-  --color-icon-tertiary: rgba(255, 255, 255, 0.1);
-  --color-icon-tertiary-hover: rgba(255, 255, 255, 0.4);
-  --color-icon-on-background: #FFFFFF;
+  /* Icon */
+  --color-icon-base:           var(--neutral-700);
+  --color-icon-base-hover:     var(--neutral-900);
+  --bg-icon-base:              var(--neutral-700);
+  --color-icon-secondary:      var(--neutral-500);
+  --color-icon-secondary-hover: var(--neutral-700);
+  --color-icon-tertiary:       var(--neutral-300);
+  --color-icon-tertiary-hover: var(--neutral-500);
+  --color-icon-on-background:  #FFFFFF;
   --color-icon-on-background-hover: rgba(255, 255, 255, 0.85);
 
-  --color-node-handle-text-node: #9EBEF1;
+  /* Node handle accents — same hues as light (modality identity
+   * should not flip with theme). */
+  --color-node-handle-text-node:  #9EBEF1;
   --color-node-handle-audio-node: #E8B931;
   --color-node-handle-image-node: #F19EDC;
-  --color-node-handle-video-node: #6DEF70;
+  --color-node-handle-video-node: #A8E16C;
 
-  /* Numeric scales (dark) — mirror the light theme structure but
-     pick darker brand stops and inverted neutrals. See light.css
-     for the rationale. */
-  --brand-50:  hsl(121, 58%, 12%);
-  --brand-100: hsl(121, 58%, 18%);
-  --brand-200: hsl(121, 58%, 25%);
-  --brand-300: hsl(121, 58%, 32%);
-  --brand-400: hsl(121, 58%, 42%);
-  --brand-500: hsl(121, 58%, 50%);
-  --brand-600: hsl(121, 58%, 60%);
-  --brand-700: hsl(121, 58%, 72%);
-  --brand-800: hsl(121, 58%, 82%);
-  --brand-900: hsl(121, 58%, 92%);
+  /* R4 紧凑 radii — identical to light (radius doesn't flip per theme). */
+  --rounded-sm: 2px;
+  --rounded-md: 4px;
+  --rounded-lg: 6px;
+  --rounded-xl: 8px;
 
-  --neutral-0:   #09090B;
-  --neutral-50:  #18181B;
-  --neutral-100: #27272A;
-  --neutral-200: #3F3F46;
-  --neutral-300: #52525B;
-  --neutral-400: #71717A;
-  --neutral-500: #A1A1AA;
-  --neutral-600: #D4D4D8;
-  --neutral-700: #E4E4E7;
-  --neutral-800: #F4F4F5;
-  --neutral-900: #FAFAFA;
-
-  --rounded-sm: 4px;
-  --rounded-md: 8px;
-  --rounded-lg: 12px;
-  --rounded-xl: 16px;
   --text-scale: 1;
-}
 
+  /* ReactFlow — same semantic intent, picks neutral-300 dot pattern for
+   * the subtle dark grid (mock 05 line 146 overrides `--xy-background-
+   * pattern-color`). */
+  --xy-edge-stroke:                   var(--neutral-300);
+  --xy-edge-stroke-selected:          var(--brand-500);
+  --xy-edge-stroke-width:             1.5px;
+  --xy-handle-background-color:       var(--neutral-0);
+  --xy-handle-border-color:           var(--neutral-400);
+  --xy-controls-button-background-color:       var(--neutral-0);
+  --xy-controls-button-background-color-hover: var(--neutral-100);
+  --xy-controls-button-color:         var(--neutral-700);
+  --xy-controls-button-border-color:  var(--neutral-200);
+  --xy-background-color:              transparent;
+  --xy-background-pattern-color:      var(--neutral-300);
+  --xy-attribution-background-color:  transparent;
+}

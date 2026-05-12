@@ -80,12 +80,40 @@ function loadInitialAuthInfo(): AuthenticatedInfoType {
   };
 }
 
+/**
+ * Restore a previously chosen theme from localStorage, falling back to
+ * `'system'` so the OS preference drives the first paint when nothing
+ * has been chosen yet. Matches mock 05 DEFAULTS (line 520, `th:
+ * 'system'` per the 2026-05-12 token alignment).
+ */
+function loadInitialTheme(): 'light' | 'dark' | 'system' {
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark' || saved === 'system') {
+      return saved;
+    }
+  } catch {
+    // localStorage may be disabled (private browsing / SSR / etc.).
+  }
+  return 'system';
+}
+
+function loadInitialLanguage(): string {
+  try {
+    const saved = localStorage.getItem('language');
+    if (saved) return saved;
+  } catch {
+    // see loadInitialTheme.
+  }
+  return 'en';
+}
+
 export const useUserCenter = create<UserCenterState>((set) => ({
   authInfo: loadInitialAuthInfo(),
   authRequired,
   userInfo: {} as UserInfoType,
-  theme: 'light',
-  language: 'en',
+  theme: loadInitialTheme(),
+  language: loadInitialLanguage(),
   setAuthInfo: (authInfo) => {
     set({ authInfo });
     localStorage.setItem('auth', JSON.stringify(authInfo));
