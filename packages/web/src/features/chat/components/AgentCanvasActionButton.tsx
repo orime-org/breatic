@@ -100,7 +100,7 @@ const AgentCanvasActionButton: React.FC<AgentCanvasActionButtonProps> = ({
           </>
         ) : (
           <>
-            <Icon name='base-add' width={12} height={12} color='#fff' />
+            <Icon name='base-add' width={12} height={12} color='var(--color-text-on-button-base)' />
             <span>
               {t('canvas.chat.proposalApply', {
                 count: nodes.length,

@@ -1266,8 +1266,8 @@ const BlockLineControl = ({ editor }: BlockLineControlProps) => {
                 top: dropIndicator.top - 1,
                 left: dropIndicator.left,
                 width: dropIndicator.width,
-                backgroundColor: 'var(--color-brand-base, #3563E9)',
-                boxShadow: '0 0 0 1px var(--color-brand-base, #3563E9)',
+                backgroundColor: 'var(--color-brand-base, #C94936)',
+                boxShadow: '0 0 0 1px var(--color-brand-base, #C94936)',
               }}
               aria-hidden
             />,

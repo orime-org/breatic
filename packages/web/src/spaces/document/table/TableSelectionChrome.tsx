@@ -248,7 +248,7 @@ const TableSelectionChrome = ({ editor }: { editor: Editor }) => {
             top: rect.top - pad,
             width: rect.width + borderW,
             height: rect.height + borderW,
-            boxShadow: `inset 0 0 0 ${borderW}px var(--color-brand-base, #3563E9)`,
+            boxShadow: `inset 0 0 0 ${borderW}px var(--color-brand-base, #C94936)`,
             pointerEvents: 'none',
           }}
         />
@@ -263,7 +263,7 @@ const TableSelectionChrome = ({ editor }: { editor: Editor }) => {
             height: 8,
             left: rect.right - 4,
             top: rect.top + rect.height / 2 - 4,
-            backgroundColor: 'var(--color-brand-base, #3563E9)',
+            backgroundColor: 'var(--color-brand-base, #C94936)',
             pointerEvents: 'auto',
             boxShadow: '0 0 0 1px var(--color-background-default-base, #fff)',
           }}

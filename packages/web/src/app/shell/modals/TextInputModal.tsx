@@ -96,7 +96,7 @@ const TextInputModal: React.FC<TextInputModalProps> = ({
             size='small'
             className='flex-1 h-[24px] text-[var(--color-text-disabled-base)] text-base font-medium leading-6'
           />
-          <div className='text-[#767676] text-base font-medium tracking-tight w-[42px] text-center'>
+          <div className='text-text-default-secondary text-base font-medium tracking-tight w-[42px] text-center'>
             {localValue?.length}/{maxLength}
           </div>
         </div>

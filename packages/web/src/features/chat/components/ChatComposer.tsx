@@ -191,7 +191,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                   title={t('canvas.chat.removeChip', { defaultValue: '移除' })}
                   className='-mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-text-default-secondary text-white opacity-0 group-hover:opacity-100 hover:bg-background-error-base'
                 >
-                  <Icon name='base-close-icon' width={8} height={8} color='#fff' />
+                  <Icon name='base-close-icon' width={8} height={8} color='var(--color-text-on-button-base)' />
                 </button>
               )}
             </div>
@@ -235,7 +235,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               : 'cursor-not-allowed bg-background-neutral-secondary text-text-default-tertiary',
           )}
         >
-          <Icon name='project-chat-send-icon' width={14} height={14} color={canSend ? '#fff' : 'currentColor'} />
+          <Icon name='project-chat-send-icon' width={14} height={14} color={canSend ? 'var(--color-text-on-button-base)' : 'currentColor'} />
         </button>
       </div>
     </div>

@@ -637,7 +637,7 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  background-color: var(--color-brand-base, #3563E9);
+  background-color: var(--color-brand-base, #C94936);
   pointer-events: none;
   z-index: 1;
 }
@@ -696,7 +696,7 @@
   width: 15px;
   height: 15px;
   cursor: pointer;
-  accent-color: var(--color-brand-base, #3563e9);
+  accent-color: var(--color-brand-base, #C94936);
 }
 
 /* tiptap inserts an empty <span> next to the input — hide it */

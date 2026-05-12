@@ -89,7 +89,7 @@ const AgentSearchResultsGrid: React.FC<AgentSearchResultsGridProps> = ({
                 })}
                 className='absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-brand-base text-white opacity-0 transition-all hover:bg-brand-600 group-hover:opacity-100'
               >
-                <Icon name='base-add' width={12} height={12} color='#fff' />
+                <Icon name='base-add' width={12} height={12} color='var(--color-text-on-button-base)' />
               </button>
             )}
           </div>

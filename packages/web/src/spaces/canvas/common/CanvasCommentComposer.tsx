@@ -42,7 +42,7 @@ const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onC
 
   return (
     <div
-      className='fixed z-[60] w-[430px] rounded-[8px] border border-[#DBDBDB] bg-background-default-base p-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+      className='fixed z-[60] w-[430px] rounded-[8px] border border-border-default-base bg-background-default-base p-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
       style={{ left: x, top: y }}
     >
       <div className='relative rounded-[8px] border-none bg-background-default-secondary px-2 py-1.5'>
@@ -65,7 +65,7 @@ const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onC
             size='medium'
             shape='round'
             disabled={!canSend}
-            icon={<Icon name='project-chat-send-icon' width={18} height={16} color='#fff' />}
+            icon={<Icon name='project-chat-send-icon' width={18} height={16} color='var(--color-text-on-button-base)' />}
             onClick={handleSend}
             className='!h-[28px] w-[52px] shrink-0 !border-brand-base !bg-brand-base !py-[2px] !pl-[16px] !pr-[12px] hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
             aria-label={t('canvas.comment.send')}

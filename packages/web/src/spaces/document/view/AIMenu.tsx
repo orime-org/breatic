@@ -158,7 +158,9 @@ const AIMenu = ({
   const selectionRangeRef = useRef<{ from: number; to: number } | null>(null);
   const tempSelectionHighlightRef = useRef(false);
 
-  const previewColor = '#2563EB';
+  // AI-preview highlight pulls from the brand token so a future brand
+  // swap propagates here too; matches v13 mock 05 brand-500 (coral).
+  const previewColor = 'var(--color-brand-base)';
 
   const { refs, floatingStyles, update, placement } = useFloating({
     open: true,

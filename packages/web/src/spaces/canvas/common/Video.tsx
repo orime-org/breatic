@@ -389,9 +389,9 @@ const Video = forwardRef<VideoRef, VideoProps>(
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
-                  <Icon name='project-pause-audio-icon' width={10} height={10} color='#fff' />
+                  <Icon name='project-pause-audio-icon' width={10} height={10} color='var(--color-text-on-button-base)' />
                 ) : (
-                  <Icon name='project-play-audio-icon' width={10} height={10} color='#fff' />
+                  <Icon name='project-play-audio-icon' width={10} height={10} color='var(--color-text-on-button-base)' />
                 )}
               </button>
               <span className='flex-shrink-0 text-[12px] text-white font-normal tabular-nums'>
@@ -422,9 +422,9 @@ const Video = forwardRef<VideoRef, VideoProps>(
                   aria-label={volume === 0 ? 'Unmute' : 'Mute'}
                 >
                   {volume === 0 ? (
-                    <Icon name='project-mute-icon' width={14} height={14} color='#fff' />
+                    <Icon name='project-mute-icon' width={14} height={14} color='var(--color-text-on-button-base)' />
                   ) : (
-                    <Icon name='project-volume-icon' width={14} height={14} color='#fff' />
+                    <Icon name='project-volume-icon' width={14} height={14} color='var(--color-text-on-button-base)' />
                   )}
                 </button>
                 {showVolumeSlider && (

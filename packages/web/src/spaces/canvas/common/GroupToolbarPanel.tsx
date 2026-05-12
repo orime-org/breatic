@@ -16,12 +16,16 @@ const toolbarHeight = 40;
 const groupPadding = 40;
 const defaultGroupBackgroundColor = 'transparent';
 
+// Transparent-checker pattern for the "no fill" swatch. Cells use the
+// neutral-100 / neutral-0 token pair so the checker flips correctly in
+// dark mode (where neutral-0 is the deep page bg and the squares stay
+// readable as a tonal-shift pattern rather than a literal white grid).
 const transparentCheckerStyle: React.CSSProperties = {
   backgroundImage:
-    'linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)',
+    'linear-gradient(45deg, var(--neutral-100) 25%, transparent 25%), linear-gradient(-45deg, var(--neutral-100) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--neutral-100) 75%), linear-gradient(-45deg, transparent 75%, var(--neutral-100) 75%)',
   backgroundSize: '6px 6px',
   backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px',
-  backgroundColor: '#fff',
+  backgroundColor: 'var(--neutral-0)',
 };
 
 const backgroundColorOptions: { value: string }[] = [

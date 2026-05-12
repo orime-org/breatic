@@ -69,7 +69,7 @@ function MediaResourceListPanelComponent({
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border-default-base)] px-3 py-2.5'>
         <div className='flex min-w-0 items-center gap-2'>
           {showStatusDot ? (
-            <span className='h-2 w-2 shrink-0 rounded-full bg-[#2FB344]' aria-hidden />
+            <span className='h-2 w-2 shrink-0 rounded-full bg-background-success-base' aria-hidden />
           ) : null}
           <span className='truncate text-sm font-semibold text-text-default-base'>{title}</span>
         </div>
@@ -108,7 +108,7 @@ function MediaResourceListPanelComponent({
                           className='h-full w-full object-cover'
                         />
                         <span className='pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25'>
-                          <Icon name='project-play-audio-icon' width={16} height={16} color='#fff' />
+                          <Icon name='project-play-audio-icon' width={16} height={16} color='var(--color-text-on-button-base)' />
                         </span>
                       </>
                     ) : item.mediaType === 'audio' ? (

@@ -96,7 +96,7 @@ function MediaResourceListPanelComponent({
     >
       <div className='flex shrink-0 items-center justify-between gap-2 px-[10px] pt-[10px] pb-0'>
         <div className='flex min-w-0 items-center gap-2'>
-          {showStatusDot ? <span className='h-2 w-2 shrink-0 rounded-full bg-[#2FB344]' aria-hidden /> : null}
+          {showStatusDot ? <span className='h-2 w-2 shrink-0 rounded-full bg-background-success-base' aria-hidden /> : null}
           <span className='truncate text-sm font-semibold text-text-default-base'>{title}</span>
         </div>
         <button
