@@ -25,16 +25,23 @@ interface NodesLibraryPanelProps {
  * One row in the panel. Mockup keeps the metadata terse (Chinese for
  * production, English-style helper sub-line). When the i18n pass
  * lands these go through `t()`.
+ *
+ * `icon` matches each outputType's modality glyph so rows are
+ * scannable at a glance — previously every row used `base-add` which
+ * read as four identical buttons. The icons live in the existing
+ * `assets/svg/videoEditor/` sprite (text_icon / image_icon / video_icon
+ * / audio_icon) — same set used by chat attachments and node previews.
  */
 const OUTPUT_TYPE_ROWS: ReadonlyArray<{
   outputType: GenerativeOutputType;
   name: string;
   meta: string;
+  icon: string;
 }> = [
-  { outputType: 'text', name: '文本生成', meta: 'AI 生成文本' },
-  { outputType: 'image', name: '图片生成', meta: 'AI 生成图片' },
-  { outputType: 'video', name: '视频生成', meta: 'AI 生成视频' },
-  { outputType: 'audio', name: '音频生成', meta: 'AI 生成音频' },
+  { outputType: 'text',  name: '文本生成', meta: 'AI 生成文本', icon: 'videoEditor-text-icon' },
+  { outputType: 'image', name: '图片生成', meta: 'AI 生成图片', icon: 'videoEditor-image-icon' },
+  { outputType: 'video', name: '视频生成', meta: 'AI 生成视频', icon: 'videoEditor-video-icon' },
+  { outputType: 'audio', name: '音频生成', meta: 'AI 生成音频', icon: 'videoEditor-audio-icon' },
 ];
 
 export function NodesLibraryPanel({
@@ -66,7 +73,7 @@ export function NodesLibraryPanel({
             className='group flex items-center gap-2 px-2 py-2 w-full text-left rounded-sm hover:bg-background-default-secondary cursor-pointer'
           >
             <div className='w-8 h-8 rounded bg-brand-500/10 inline-flex items-center justify-center flex-shrink-0'>
-              <Icon name='base-add' width={16} height={16} className='text-brand-700' />
+              <Icon name={row.icon} width={16} height={16} className='text-brand-700' />
             </div>
             <div className='flex-1 min-w-0'>
               <div className='text-[12px] font-medium text-text-default-primary truncate'>

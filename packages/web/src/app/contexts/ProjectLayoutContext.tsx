@@ -32,6 +32,13 @@ interface ProjectLayoutContextValue {
   rightPanel: RightPanelState;
   openRightPanel: (panelType: string, nodeId?: string, panelMode?: 'node' | 'assets') => void;
   closeRightPanel: () => void;
+  /**
+   * Whether the left ChatPanel is visible. The toggle lives in the
+   * TabBar's left edge (mock @1227 "方案 B:永久 chat toggle 按钮 — 单入口");
+   * Page.tsx reads this flag to decide whether to render `<ChatPanel>`.
+   */
+  chatPanelVisible: boolean;
+  toggleChatPanel: () => void;
 }
 
 const initialRightPanel: RightPanelState = {
@@ -44,6 +51,7 @@ const ProjectLayoutContext = createContext<ProjectLayoutContextValue | null>(nul
 
 export function ProjectLayoutProvider({ children }: { children: ReactNode }) {
   const [rightPanel, setRightPanel] = useState<RightPanelState>(initialRightPanel);
+  const [chatPanelVisible, setChatPanelVisible] = useState(true);
 
   const openRightPanel = useCallback(
     (panelType: string, nodeId?: string, panelMode?: 'node' | 'assets') => {
@@ -61,9 +69,13 @@ export function ProjectLayoutProvider({ children }: { children: ReactNode }) {
     setRightPanel((prev) => ({ ...prev, open: false }));
   }, []);
 
+  const toggleChatPanel = useCallback(() => {
+    setChatPanelVisible((v) => !v);
+  }, []);
+
   const value = useMemo<ProjectLayoutContextValue>(
-    () => ({ rightPanel, openRightPanel, closeRightPanel }),
-    [rightPanel, openRightPanel, closeRightPanel],
+    () => ({ rightPanel, openRightPanel, closeRightPanel, chatPanelVisible, toggleChatPanel }),
+    [rightPanel, openRightPanel, closeRightPanel, chatPanelVisible, toggleChatPanel],
   );
 
   return <ProjectLayoutContext.Provider value={value}>{children}</ProjectLayoutContext.Provider>;
