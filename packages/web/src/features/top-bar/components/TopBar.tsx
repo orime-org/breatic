@@ -1,36 +1,40 @@
 /**
  * TopBar — full-width chrome at the top of the project page.
  *
- * Replaces the pre-PR-Y2 layout where the leaf-icon dropdown +
- * project title lived inside the chat-panel's 56px header, and
- * the members + credits pills floated as an absolute-positioned
- * overlay above the canvas (PR4-A).
+ * Layout matches `design/project/mocks/05-canvas-native-tailwind.html`
+ * @1083-1115 (`TopBar`):
  *
- * Now both groups sit in one horizontal bar that spans the entire
- * project page width, mirroring mock 05's structure: logo + title
- * on the left, member / credit / account widgets on the right.
+ *   ┌───────────────────────────────────────────────────────────────────────────────┐
+ *   │ [Logo] [< Workspace] [/] [ProjectTitle] [Role]   …   [Members] [Lang] [Theme] │
+ *   │                                                       [Credits] [Export]      │
+ *   │                                                       [Share] [Bell] [User]   │
+ *   └───────────────────────────────────────────────────────────────────────────────┘
  *
- * The chat panel's header is now reduced to chat-specific
- * affordances (New conversation, History) — see B.1 `ChatPanel`
- * (B.2 deleted the v12 `AiChatRecordPanel`).
- *
- * `userId` flows in for `MembersPopover` (which derives `myRole` via
- * `useUserRole`). `metaProvider` from `useProjectSpaces` powers the
- * stateless invalidate channel for the members cache.
+ * The chat-toggle moved to the TabBar left (PR #94 + #95). System
+ * messages bell is a visual placeholder until PR-Y3 lands the
+ * backend. Share popover is a basic shell (copies the URL) — the
+ * full invite-link popover lands in a follow-up.
  */
-
 import { memo, useState } from 'react';
 import type { ProjectMetaManager } from '@/data/yjs/project-meta';
 import type { ProjectRole } from '@breatic/shared';
 import UserCenter from '@/pages/user-center';
 import { MembersPopover, MembersPanel } from '@/features/members';
 import { CreditsPill, RechargeDialog } from '@/features/credits';
-import ProjectHeader from './ProjectHeader';
+import Logo from './Logo';
+import BackToWorkspaceLink from './BackToWorkspaceLink';
+import ProjectTitle from './ProjectTitle';
+import RoleBadge from './RoleBadge';
+import LangPicker from './LangPicker';
+import ThemePicker from './ThemePicker';
+import ExportPicker from './ExportPicker';
+import SharePopover from './SharePopover';
+import NotificationsBell from './NotificationsBell';
 
 export interface TopBarProps {
   projectId: string | null;
   metaProvider: ProjectMetaManager['provider'] | null;
-  /** Caller's role on the project — gates members management UI. */
+  /** Caller's role on the project — gates members management UI + drives role badge. */
   myRole: ProjectRole | null;
   projectName: string;
   onProjectNameCommit: (name: string) => void;
@@ -52,25 +56,36 @@ const TopBar: React.FC<TopBarProps> = memo(function TopBar({
   return (
     <>
       <div
-        role="banner"
-        className="flex items-center justify-between gap-3 h-14 px-3 shrink-0 bg-[var(--color-background-default-base)] border-b border-[var(--color-border-default-base)]"
+        role='banner'
+        className='h-12 flex items-center px-4 gap-4 bg-background-default-base border-b border-border-default-base flex-shrink-0'
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <ProjectHeader
-            projectName={projectName}
-            onProjectNameCommit={onProjectNameCommit}
-            className="min-w-0 max-w-[280px]"
-          />
+        {/* Left cluster: logo + breadcrumb + title + role. */}
+        <div className='flex items-center gap-2.5 min-w-0'>
+          <Logo />
+          <BackToWorkspaceLink />
+          <span className='text-text-default-tertiary'>/</span>
+          <ProjectTitle projectName={projectName} onCommit={onProjectNameCommit} />
+          <RoleBadge role={myRole} />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+
+        {/* Spacer — pushes the right cluster to the edge. */}
+        <div className='flex-1' />
+
+        {/* Right cluster: members / lang / theme / credits / export / share / bell / user. */}
+        <div className='flex items-center gap-2 shrink-0'>
           <MembersPopover
             projectId={projectId}
             metaProvider={metaProvider}
             myRole={myRole}
             onOpenPanel={() => setMembersPanelOpen(true)}
           />
+          <LangPicker />
+          <ThemePicker />
           <CreditsPill onClick={() => setRechargeOpen(true)} />
-          <UserCenter className="shrink-0" hideUpgradeButtonText={hideUpgradeButtonText} />
+          <ExportPicker projectName={projectName} />
+          <SharePopover />
+          <NotificationsBell />
+          <UserCenter className='shrink-0' hideUpgradeButtonText={hideUpgradeButtonText} />
         </div>
       </div>
 
