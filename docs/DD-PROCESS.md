@@ -117,11 +117,15 @@
 
 ### 保存位置
 
-| 文档类型 | 位置 | 性质 |
-|---|---|---|
-| 公开选型 DD(技术栈 / OSS 库) | `docs/dd/<YYYY-MM-DD>-<topic>-dd.md` | OSS contributor 可见,透明信号 |
-| 敏感选型 DD(vendor 关系 / 内部成本 / 安全模型) | 团队私有 channel(Notion / 内部 wiki / private repo) | **不入公开仓库** |
-| 事实验证 DD | `docs/dd/<YYYY-MM-DD>-<topic>-verify.md` | 同选型 |
+DD 报告**必须归档**(不进 git = 没真正 DD 完),具体位置由各团队约定:
+
+| 文档类型 | 推荐位置 |
+|---|---|
+| 公开选型 DD(技术栈 / OSS 库 / 架构) | 团队工程文档目录(若公开则放公开 `docs/dd/`;若团队有私有工程仓则放私有仓) |
+| 敏感选型 DD(vendor 关系 / 内部成本 / 安全模型) | **不入公开仓库** — 团队私有 channel(Notion / 内部 wiki / private repo) |
+| 事实验证 DD | 同选型,文件名后缀 `-verify.md` |
+
+**为什么模糊化路径**:DD 流程是通用工程纪律,具体归档目录是 breatic 团队的私有约定。OSS contributor 看到的 DD 流程是规则,具体路径在团队的 `CLAUDE.local.md` / 内部 wiki 里指定。
 
 ### 命名规范
 
