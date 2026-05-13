@@ -49,9 +49,12 @@ html[data-theme="light"] {
   --neutral-800: #292524;
   --neutral-900: #1C1917;
 
-  /* Brand semantic — mock 4-处使用约束 (status / active / primary CTA / cursor) */
-  --color-brand-base:      var(--brand-500);
-  --color-brand-secondary: var(--brand-300);
+  /*
+   * Brand semantic aliases removed per ADR 2026-05-13-canvas-neutral-first-status-colors.
+   * Brand color (--brand-50..900 raw scale) now only used for logo.
+   * All product UI (buttons, focus rings, status indicators) sweeps to
+   * --neutral-* and --status-* below.
+   */
 
   /* Backgrounds */
   --color-background-default-base:           var(--neutral-0);
@@ -158,4 +161,43 @@ html[data-theme="light"] {
   --xy-background-color:              transparent;
   --xy-background-pattern-color:      var(--neutral-200);
   --xy-attribution-background-color:  transparent;
+
+  /*
+   * Status colors — ADR 2026-05-13-canvas-neutral-first-status-colors
+   * 5 semantic states + handling synonym for selected (Tailwind blue/amber/red/emerald).
+   * Dark variants overridden in dark.css.
+   */
+  --status-selected:  #3B82F6;  /* blue-500 */
+  --status-handling:  #3B82F6;  /* blue-500 + pulse animation */
+  --status-locked:    #F59E0B;  /* amber-500 */
+  --status-warning:   #FBBF24;  /* amber-400 */
+  --status-error:     #EF4444;  /* red-500 */
+  --status-success:   #10B981;  /* emerald-500 */
+
+  /*
+   * shadcn/ui compat layer — ADR 2026-05-13-component-library-shadcn-ui
+   * Maps shadcn's expected var names to the project's neutral/status tokens
+   * so shadcn primitives (Button, Dialog, etc.) inherit project theme
+   * via the existing `html[data-theme]` switch (no `.dark` class needed).
+   */
+  --primary:                var(--neutral-900);
+  --primary-foreground:     var(--neutral-0);
+  --secondary:              var(--neutral-100);
+  --secondary-foreground:   var(--neutral-900);
+  --accent:                 var(--neutral-50);
+  --accent-foreground:      var(--neutral-900);
+  --muted:                  var(--neutral-100);
+  --muted-foreground:       var(--neutral-500);
+  --destructive:            #DC2626;  /* red-600 */
+  --destructive-foreground: var(--neutral-0);
+  --border:                 var(--neutral-200);
+  --input:                  var(--neutral-200);
+  --ring:                   var(--status-selected);
+  --background:             var(--neutral-0);
+  --foreground:             var(--neutral-900);
+  --card:                   var(--neutral-0);
+  --card-foreground:        var(--neutral-900);
+  --popover:                var(--neutral-0);
+  --popover-foreground:     var(--neutral-900);
+  --radius:                 var(--rounded-md);
 }

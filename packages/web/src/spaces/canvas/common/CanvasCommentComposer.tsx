@@ -67,7 +67,7 @@ const CanvasCommentComposer: React.FC<CanvasCommentComposerProps> = ({ x, y, onC
             disabled={!canSend}
             icon={<Icon name='project-chat-send-icon' width={18} height={16} color='var(--color-text-on-button-base)' />}
             onClick={handleSend}
-            className='!h-[28px] w-[52px] shrink-0 !border-brand-base !bg-brand-base !py-[2px] !pl-[16px] !pr-[12px] hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
+            className='!h-[28px] w-[52px] shrink-0 !border-status-selected !bg-status-selected !py-[2px] !pl-[16px] !pr-[12px] hover:!border-status-selected hover:!bg-status-selected disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
             aria-label={t('canvas.comment.send')}
           />
         </div>

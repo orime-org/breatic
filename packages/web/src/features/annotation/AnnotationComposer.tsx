@@ -114,7 +114,7 @@ const AnnotationComposer: React.FC = () => {
             disabled={!canSend}
             icon={<Icon name='project-chat-send-icon' width={14} height={12} color='var(--color-text-on-button-base)' />}
             onClick={handleSubmit}
-            className='!h-[24px] !w-[40px] !border-brand-base !bg-brand-base !py-0 !pl-3 !pr-2 hover:!border-brand-base hover:!bg-brand-base disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
+            className='!h-[24px] !w-[40px] !border-neutral-900 !bg-neutral-900 !py-0 !pl-3 !pr-2 hover:!border-neutral-700 hover:!bg-neutral-700 disabled:!border-background-neutral-secondary disabled:!bg-background-neutral-secondary'
             aria-label={t('canvas.annotation.send', '保存批注')}
           />
         </div>

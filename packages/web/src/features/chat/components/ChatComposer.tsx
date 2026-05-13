@@ -138,16 +138,16 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
     placeholder ??
     (chips.length > 0
       ? t('canvas.chat.composerPlaceholderWithChips', {
-          defaultValue: '描述你想做什么(用 @ 引用上方 chips)…',
-        })
+        defaultValue: '描述你想做什么(用 @ 引用上方 chips)…',
+      })
       : t('canvas.chat.composerPlaceholder', { defaultValue: '输入消息…' }));
 
   return (
     <div
       className={cn(
         'rounded-lg border border-border-default-secondary bg-background-default-secondary',
-        'focus-within:border-brand-base focus-within:bg-background-default-base',
-        'focus-within:ring-2 focus-within:ring-brand-500/15 transition',
+        'focus-within:border-status-selected focus-within:bg-background-default-base',
+        'focus-within:ring-2 focus-within:ring-status-selected/15 transition',
         className,
       )}
     >
@@ -231,7 +231,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           className={cn(
             'inline-flex h-7 w-8 items-center justify-center rounded transition-colors',
             canSend
-              ? 'bg-brand-base text-white hover:bg-brand-600'
+              ? 'bg-neutral-900 text-white hover:bg-neutral-700'
               : 'cursor-not-allowed bg-background-neutral-secondary text-text-default-tertiary',
           )}
         >

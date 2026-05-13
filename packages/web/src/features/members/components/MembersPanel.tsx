@@ -64,7 +64,7 @@ function initialsFor(name: string): string {
 const RoleTag = ({ role }: { role: ProjectRole }) => {
   const { t } = useTranslation();
   const styles: Record<ProjectRole, string> = {
-    owner: 'bg-brand-50 text-brand-700 border-brand-200',
+    owner: 'bg-status-selected/10 text-status-selected border-status-selected/30',
     edit: 'bg-neutral-100 text-neutral-700 border-neutral-200',
     view: 'bg-neutral-50 text-neutral-500 border-neutral-200',
   };
@@ -76,9 +76,9 @@ const RoleTag = ({ role }: { role: ProjectRole }) => {
 };
 
 const CloseGlyph = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
+  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-3.5 h-3.5' aria-hidden>
+    <line x1='18' y1='6' x2='6' y2='18' />
+    <line x1='6' y1='6' x2='18' y2='18' />
   </svg>
 );
 
@@ -153,7 +153,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
       onClose={onClose}
       title={t('members.panel.title')}
       width={640}
-      bodyClassName="pt-1"
+      bodyClassName='pt-1'
     >
       <p className={cn('text-[12px] mb-4', TXT_SECONDARY)}>
         {t('members.panel.subtitle')}
@@ -166,7 +166,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
           <div className={cn('text-[11px] font-medium mb-2 uppercase tracking-wider', TXT_SECONDARY)}>
             {t('members.panel.invite_section')}
           </div>
-          <div className="flex gap-2">
+          <div className='flex gap-2'>
             <input
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
@@ -178,7 +178,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
                 BORDER_BASE,
                 TXT_BASE,
                 'placeholder:text-[var(--color-text-default-tertiary)]',
-                'focus:border-brand-base focus:ring-2 focus:ring-brand-base/15',
+                'focus:border-status-selected focus:ring-2 focus:ring-status-selected/15',
                 pending && 'opacity-60',
               )}
             />
@@ -191,17 +191,17 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
                 BG_BASE,
                 BORDER_BASE,
                 TXT_BASE,
-                'focus:border-brand-base',
+                'focus:border-status-selected',
               )}
             >
-              <option value="view">{t('members.role.view')}</option>
-              <option value="edit">{t('members.role.edit')}</option>
+              <option value='view'>{t('members.role.view')}</option>
+              <option value='edit'>{t('members.role.edit')}</option>
             </select>
             <button
-              type="button"
+              type='button'
               onClick={handleInvite}
               disabled={pending || !inviteEmail.trim()}
-              className="h-9 px-4 bg-brand-base text-text-on-button-base rounded-md text-[13px] font-medium hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className='h-9 px-4 bg-neutral-900 text-text-on-button-base rounded-md text-[13px] font-medium hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
             >
               {t('members.panel.invite_button')}
             </button>
@@ -212,7 +212,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
         </div>
       )}
 
-      <div className="overflow-y-auto max-h-[420px] -mx-2 px-2">
+      <div className='overflow-y-auto max-h-[420px] -mx-2 px-2'>
         <div className={cn('px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider flex items-center justify-between', TXT_SECONDARY)}>
           <span>{t('members.panel.list_count', { count: members.length })}</span>
           <span className={cn('text-[10px] font-mono normal-case tracking-normal', TXT_TERTIARY)}>
@@ -233,12 +233,12 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
           return (
             <div
               key={m.userId}
-              className="group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-[var(--color-background-default-secondary)] transition-colors"
+              className='group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-[var(--color-background-default-secondary)] transition-colors'
             >
               <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-semibold text-text-on-button-base flex-shrink-0', avatarTint(m.userId))}>
                 {initialsFor(display)}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className='flex-1 min-w-0'>
                 <div className={cn('text-[13px] font-semibold truncate', TXT_BASE)}>
                   {display}
                 </div>
@@ -247,7 +247,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
                 </div>
               </div>
               {isOwner ? (
-                <RoleTag role="owner" />
+                <RoleTag role='owner' />
               ) : canManage ? (
                 <select
                   value={m.role}
@@ -257,21 +257,21 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
                     BG_BASE,
                     BORDER_BASE,
                     TXT_BASE,
-                    'focus:border-brand-base',
+                    'focus:border-status-selected',
                   )}
                 >
-                  <option value="view">{t('members.role.view')}</option>
-                  <option value="edit">{t('members.role.edit')}</option>
+                  <option value='view'>{t('members.role.view')}</option>
+                  <option value='edit'>{t('members.role.edit')}</option>
                 </select>
               ) : (
                 <RoleTag role={m.role} />
               )}
               {!isOwner && canManage && (
                 <button
-                  type="button"
+                  type='button'
                   onClick={() => handleRemove(m.userId)}
                   title={t('members.popover.remove')}
-                  className="opacity-0 group-hover:opacity-100 w-7 h-7 inline-flex items-center justify-center rounded-sm hover:bg-[var(--color-background-error-base)]/10 hover:text-[var(--color-text-status-error)] transition-all"
+                  className='opacity-0 group-hover:opacity-100 w-7 h-7 inline-flex items-center justify-center rounded-sm hover:bg-[var(--color-background-error-base)]/10 hover:text-[var(--color-text-status-error)] transition-all'
                 >
                   <CloseGlyph />
                 </button>
@@ -283,7 +283,7 @@ const MembersPanel: React.FC<MembersPanelProps> = ({
 
       <div className={cn('flex items-center justify-end pt-3 mt-3 border-t', BORDER_BASE)}>
         <button
-          type="button"
+          type='button'
           onClick={onClose}
           className={cn(
             'h-8 px-4 border rounded-md text-[12px] hover:bg-[var(--color-background-default-secondary)] transition-colors',

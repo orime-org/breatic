@@ -28,8 +28,8 @@ import type { PricingTier } from '@/data/api/payment';
 import { cn } from '@/utils/classnames';
 
 const StarGlyph = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26" />
+  <svg viewBox='0 0 24 24' fill='currentColor' className={className} aria-hidden>
+    <polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26' />
   </svg>
 );
 
@@ -123,7 +123,7 @@ const RechargeDialog: React.FC<RechargeDialogProps> = ({ open, onClose }) => {
       onClose={onClose}
       title={t('credits.dialog.title')}
       width={720}
-      bodyClassName="pt-2"
+      bodyClassName='pt-2'
     >
       <div className={cn('flex items-center justify-between rounded-md px-4 py-3 mb-5', BG_SECONDARY)}>
         <div>
@@ -131,7 +131,7 @@ const RechargeDialog: React.FC<RechargeDialogProps> = ({ open, onClose }) => {
             {t('credits.dialog.balance_label')}
           </div>
           <div className={cn('text-[22px] font-mono font-bold inline-flex items-center gap-1.5', TXT_BASE)}>
-            <StarGlyph className="w-3.5 h-3.5 text-brand-base" />
+            <StarGlyph className='w-3.5 h-3.5 text-neutral-900' />
             {balance.toLocaleString()}
           </div>
         </div>
@@ -154,7 +154,7 @@ const RechargeDialog: React.FC<RechargeDialogProps> = ({ open, onClose }) => {
 
       {!loading && tiers && tiers.length > 0 && (
         <>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
+          <div className='grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3'>
             {tiers.map((tier) => {
               const isPending = pendingTier === tier.name;
               const priceUsd = tier.priceCents / 100;
@@ -163,20 +163,20 @@ const RechargeDialog: React.FC<RechargeDialogProps> = ({ open, onClose }) => {
               return (
                 <button
                   key={tier.name}
-                  type="button"
+                  type='button'
                   disabled={!!pendingTier}
                   onClick={() => handlePick(tier)}
                   className={cn(
                     'relative border rounded-lg p-4 text-center transition-all',
                     BORDER_BASE,
                     BG_BASE,
-                    'hover:-translate-y-px hover:shadow-md hover:border-brand-base',
+                    'hover:-translate-y-px hover:shadow-md hover:border-status-selected',
                     pendingTier && !isPending && 'opacity-60 hover:translate-y-0 hover:shadow-none',
-                    isPending && 'border-brand-base shadow-md',
+                    isPending && 'border-status-selected shadow-md',
                   )}
                 >
                   <div className={cn('text-[28px] font-bold font-mono leading-none flex items-baseline justify-center gap-1.5', TXT_BASE)}>
-                    <StarGlyph className="w-3.5 h-3.5 text-brand-base self-center" />
+                    <StarGlyph className='w-3.5 h-3.5 text-neutral-900 self-center' />
                     {tier.credits.toLocaleString()}
                   </div>
                   <div className={cn('text-[11px] font-mono mt-1.5 mb-3.5', TXT_SECONDARY)}>

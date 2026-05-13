@@ -202,7 +202,7 @@ export const FloatButtonGroup = ({
         className={cn(
           'fixed z-50 flex items-center justify-center cursor-pointer shadow-lg hover:shadow-xl rounded-full',
           type === 'primary'
-            ? 'bg-brand-base text-white border border-brand-base hover:bg-brand-hover'
+            ? 'bg-neutral-900 text-white border border-neutral-900 hover:bg-neutral-700'
             : 'bg-background-default-secondary border border-[var(--color-border-default-base)] text-text-default-base hover:bg-background-default-tertiary',
           'w-12 h-12',
           className

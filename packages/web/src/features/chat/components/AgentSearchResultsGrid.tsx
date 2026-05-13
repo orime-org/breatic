@@ -87,7 +87,7 @@ const AgentSearchResultsGrid: React.FC<AgentSearchResultsGridProps> = ({
                 aria-label={t('canvas.chat.addToSpace', {
                   defaultValue: '添加到 Space',
                 })}
-                className='absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-brand-base text-white opacity-0 transition-all hover:bg-brand-600 group-hover:opacity-100'
+                className='absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-neutral-900 text-white opacity-0 transition-all hover:bg-neutral-700 group-hover:opacity-100'
               >
                 <Icon name='base-add' width={12} height={12} color='var(--color-text-on-button-base)' />
               </button>

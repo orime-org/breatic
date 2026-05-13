@@ -61,7 +61,7 @@ export const UploadDragger = ({
         'relative border-2 border-dashed rounded-lg cursor-pointer',
         'border-[var(--color-border-default-base)]',
         'bg-background-default-secondary',
-        isDragging && 'border-brand-base bg-background-default-tertiary',
+        isDragging && 'border-status-selected bg-background-default-tertiary',
         disabled && 'opacity-50 cursor-not-allowed',
         className
       )}

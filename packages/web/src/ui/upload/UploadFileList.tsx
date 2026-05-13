@@ -97,7 +97,7 @@ export const UploadFileList = ({
               <div className='mt-1'>
                 <div className='h-1 bg-background-default-tertiary rounded-full overflow-hidden'>
                   <div
-                    className='h-full bg-brand-base'
+                    className='h-full bg-status-handling'
                     style={{ width: `${file.percent || 0}%` }}
                   />
                 </div>

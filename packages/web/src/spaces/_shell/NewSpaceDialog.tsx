@@ -115,17 +115,17 @@ const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({
         {t('spaces.new_dialog.subtitle')}
       </p>
 
-      <div className="grid grid-cols-3 gap-2 mb-5">
+      <div className='grid grid-cols-3 gap-2 mb-5'>
         {KIND_OPTIONS.map(({ kind: k, supported }) => (
           <button
             key={k}
-            type="button"
+            type='button'
             onClick={() => setKind(k)}
             className={cn(
               'relative border rounded-md p-3 text-left transition-colors',
               kind === k
-                ? 'border-brand-base bg-brand-50'
-                : cn(BORDER_BASE, BG_BASE, 'hover:border-brand-300'),
+                ? 'border-status-selected bg-neutral-100'
+                : cn(BORDER_BASE, BG_BASE, 'hover:border-neutral-400'),
               !supported && 'opacity-70',
             )}
           >
@@ -139,7 +139,7 @@ const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({
         ))}
       </div>
 
-      <div className="mb-5">
+      <div className='mb-5'>
         <label className={cn('block text-[11px] uppercase tracking-wider mb-1.5', TXT_SECONDARY)}>
           {t('spaces.new_dialog.name_label')}
         </label>
@@ -158,7 +158,7 @@ const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({
             BORDER_BASE,
             TXT_BASE,
             'placeholder:text-[var(--color-text-default-tertiary)]',
-            'focus:border-brand-base focus:ring-2 focus:ring-brand-base/15',
+            'focus:border-status-selected focus:ring-2 focus:ring-status-selected/15',
           )}
         />
       </div>
@@ -175,7 +175,7 @@ const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({
 
       <div className={cn('flex items-center justify-end gap-2 pt-2 border-t', BORDER_BASE)}>
         <button
-          type="button"
+          type='button'
           onClick={onClose}
           disabled={pending}
           className={cn(
@@ -190,10 +190,10 @@ const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({
           {t('spaces.new_dialog.cancel')}
         </button>
         <button
-          type="button"
+          type='button'
           onClick={handleCreate}
           disabled={!canCreate}
-          className="h-8 px-4 bg-brand-base text-text-on-button-base rounded-md text-[13px] font-medium hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className='h-8 px-4 bg-neutral-900 text-text-on-button-base rounded-md text-[13px] font-medium hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
         >
           {t('spaces.new_dialog.create')}
         </button>

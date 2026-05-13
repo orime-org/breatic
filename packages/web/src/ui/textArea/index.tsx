@@ -113,11 +113,11 @@ const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           'placeholder:text-[var(--color-text-default-tertiary)]',
           textAreaVariants({ size, type }),
           type === 'outlined' && 'border-[0.5px] border-[var(--color-border-default-base)] rounded',
-          type === 'outlined' && 'data-focus:border-[var(--color-brand-base)] data-focus:ring-1 data-focus:ring-[var(--color-brand-base)]',
+          type === 'outlined' && 'data-focus:border-[var(--color-status-selected)] data-focus:ring-1 data-focus:ring-[var(--color-status-selected)]',
           type === 'outlined' && 'data-hover:border-[var(--color-border-default-base-hover)]',
           type === 'filled' && 'border-0 rounded',
           type === 'borderless' && 'rounded',
-          type === 'underlined' && 'rounded-none border-b-[var(--color-border-default-base)] data-focus:border-b-[var(--color-brand-base)]',
+          type === 'underlined' && 'rounded-none border-b-[var(--color-border-default-base)] data-focus:border-b-[var(--color-status-selected)]',
           'data-disabled:cursor-not-allowed data-disabled:bg-[var(--color-background-neutral-tertiary)] data-disabled:text-[var(--color-text-default-tertiary)] data-disabled:opacity-60',
           className
         )}

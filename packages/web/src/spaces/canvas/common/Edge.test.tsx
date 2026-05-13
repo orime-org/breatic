@@ -72,7 +72,7 @@ describe('CustomEdge — primary state', () => {
     expect(path.style.strokeWidth).toBe('1.5');
   });
 
-  it('primary: brand stroke, 2.5 px width, breatic-edge-primary class', () => {
+  it('primary: neutral stroke, 2.5 px width, breatic-edge-primary class', () => {
     const { getByTestId } = render(
       <CustomEdge {...baseProps} data={{ isPrimary: true }} />,
     );
@@ -80,7 +80,7 @@ describe('CustomEdge — primary state', () => {
       style: CSSStyleDeclaration;
     };
     expect(path.getAttribute('class')).toBe('breatic-edge-primary');
-    expect(path.style.stroke).toBe('var(--color-brand-base)');
+    expect(path.style.stroke).toBe('var(--neutral-900)');
     expect(path.style.strokeWidth).toBe('2.5');
   });
 

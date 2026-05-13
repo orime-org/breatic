@@ -101,7 +101,7 @@ const floatButtonVariants = cva(
         default:
           'bg-background-default-secondary border border-[var(--color-border-default-base)] text-text-default-base hover:bg-background-default-tertiary',
         primary:
-          'bg-brand-base text-white border border-brand-base hover:bg-brand-hover',
+          'bg-neutral-900 text-white border border-neutral-900 hover:bg-neutral-700',
       },
       shape: {
         circle: 'rounded-full',

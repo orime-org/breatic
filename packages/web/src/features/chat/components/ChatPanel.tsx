@@ -199,7 +199,7 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
     } catch (err) {
       // Silent fail — empty state is fine. The next send still
       // works (backend `getOrCreate` mints a fresh conversation).
-      // eslint-disable-next-line no-console
+
       console.warn('[ChatPanel] loadHistory failed', err);
     }
   }, [activeMgr, setMessages, setConversationId]);
@@ -331,7 +331,7 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
           },
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
+
         console.error('[ChatPanel] add search hit failed', err);
         uiMessage.error(t('canvas.chat.searchHitAddFailed', { defaultValue: '添加搜索结果失败' }));
       }
@@ -463,7 +463,7 @@ const ChatPanelComponent: React.FC<ChatPanelProps> = ({ className }) => {
       </div>
       <div className='shrink-0 p-3 pt-0'>
         {chipsPick.pickMode ? (
-          <div className='mb-2 rounded-md border border-brand-base bg-brand-500/5 px-3 py-1.5 text-[11px] text-brand-700'>
+          <div className='mb-2 rounded-md border border-status-selected bg-status-selected/5 px-3 py-1.5 text-[11px] text-status-selected'>
             {t('canvas.chat.pickModeHint', {
               defaultValue: '点画布上的节点添加为引用,Esc 退出',
             })}

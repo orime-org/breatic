@@ -433,7 +433,7 @@ export const ColorPicker = ({
                       type='button'
                       className={cn(
                         'w-6 h-6 rounded border border-[var(--color-border-default-base)] hover:scale-110',
-                        currentHex === presetColor && 'ring-2 ring-brand-base'
+                        currentHex === presetColor && 'ring-2 ring-status-selected'
                       )}
                       style={{ backgroundColor: presetColor }}
                       onClick={() => handlePresetClick(presetColor)}

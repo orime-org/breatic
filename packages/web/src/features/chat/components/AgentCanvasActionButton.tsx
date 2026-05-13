@@ -48,7 +48,7 @@ const AgentCanvasActionButton: React.FC<AgentCanvasActionButtonProps> = ({
   const nodes = args.nodes ?? [];
 
   return (
-    <div className='mt-2 rounded-md border border-brand-500/30 bg-brand-500/5 px-3 py-2.5'>
+    <div className='mt-2 rounded-md border border-status-selected/30 bg-status-selected/5 px-3 py-2.5'>
       <div className='mb-2 inline-flex items-center gap-1.5 text-[11px] font-mono text-text-default-tertiary'>
         <span className='rounded-sm bg-background-default-base px-1.5 py-px text-text-default-secondary'>
           propose_canvas_action
@@ -88,7 +88,7 @@ const AgentCanvasActionButton: React.FC<AgentCanvasActionButtonProps> = ({
           'inline-flex h-7 items-center gap-1.5 rounded px-3 text-[12px] font-medium transition-colors',
           applied
             ? 'cursor-not-allowed bg-background-neutral-secondary text-text-default-tertiary'
-            : 'bg-brand-base text-white hover:bg-brand-600',
+            : 'bg-neutral-900 text-white hover:bg-neutral-700',
         )}
       >
         {applied ? (

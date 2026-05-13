@@ -1,7 +1,10 @@
 const vars = {
-  /* brand */
-  'brand-base': 'var(--color-brand-base)',
-  'brand-secondary': 'var(--color-brand-secondary)',
+  /*
+   * brand semantic aliases removed per ADR 2026-05-13-canvas-neutral-first-status-colors.
+   * Use bg-neutral-900 (primary) or bg-status-* (state) instead.
+   * --brand-50..900 raw scale still available via the `brand` color in tailwind.config.ts
+   * for logo SVG use only.
+   */
 
   /* background */
   'background-default-base': 'var(--color-background-default-base)',

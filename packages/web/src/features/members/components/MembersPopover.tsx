@@ -32,24 +32,24 @@ import { cn } from '@/utils/classnames';
 const MAX_VISIBLE = 2;
 
 const ChevronGlyph = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 opacity-50" aria-hidden>
-    <polyline points="4 6 8 10 12 6" />
+  <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3 opacity-50' aria-hidden>
+    <polyline points='4 6 8 10 12 6' />
   </svg>
 );
 
 const PlusGlyph = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-3 h-3" aria-hidden>
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
+  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' className='w-3 h-3' aria-hidden>
+    <line x1='12' y1='5' x2='12' y2='19' />
+    <line x1='5' y1='12' x2='19' y2='12' />
   </svg>
 );
 
 const UsersGlyph = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='w-3 h-3' aria-hidden>
+    <path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' />
+    <circle cx='9' cy='7' r='4' />
+    <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
+    <path d='M16 3.13a4 4 0 0 1 0 7.75' />
   </svg>
 );
 
@@ -80,7 +80,7 @@ function initialsFor(name: string): string {
 const RoleTag = ({ role }: { role: ProjectRole }) => {
   const { t } = useTranslation();
   const styles: Record<ProjectRole, string> = {
-    owner: 'bg-brand-50 text-brand-700 border-brand-200',
+    owner: 'bg-status-selected/10 text-status-selected border-status-selected/30',
     edit: 'bg-neutral-100 text-neutral-700 border-neutral-200',
     view: 'bg-neutral-50 text-neutral-500 border-neutral-200',
   };
@@ -143,11 +143,11 @@ const MembersPopover = memo(function MembersPopover({
   if (!projectId) return null;
 
   return (
-    <Popover className="relative">
+    <Popover className='relative'>
       <PopoverButton
-        className="inline-flex items-center gap-1 h-9 px-2 rounded-sm hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-base/40"
+        className='inline-flex items-center gap-1 h-9 px-2 rounded-sm hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-selected/40'
       >
-        <div className="flex">
+        <div className='flex'>
           {visible.map((m, i) => {
             const u = users[m.userId];
             const display = u?.username || u?.email || m.userId;
@@ -166,7 +166,7 @@ const MembersPopover = memo(function MembersPopover({
             );
           })}
           {overflow > 0 && (
-            <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-[11px] font-semibold text-text-on-button-base border-2 border-[var(--color-background-default-base)] bg-gradient-to-br from-orange-400 to-amber-600 -ml-1.5">
+            <div className='w-[26px] h-[26px] rounded-full flex items-center justify-center text-[11px] font-semibold text-text-on-button-base border-2 border-[var(--color-background-default-base)] bg-gradient-to-br from-orange-400 to-amber-600 -ml-1.5'>
               +{overflow}
             </div>
           )}
@@ -176,24 +176,24 @@ const MembersPopover = memo(function MembersPopover({
 
       <Transition
         as={Fragment}
-        enter="transition ease-out duration-150"
-        enterFrom="opacity-0 translate-y-1"
-        enterTo="opacity-100 translate-y-0"
-        leave="transition ease-in duration-100"
-        leaveFrom="opacity-100 translate-y-0"
-        leaveTo="opacity-0 translate-y-1"
+        enter='transition ease-out duration-150'
+        enterFrom='opacity-0 translate-y-1'
+        enterTo='opacity-100 translate-y-0'
+        leave='transition ease-in duration-100'
+        leaveFrom='opacity-100 translate-y-0'
+        leaveTo='opacity-0 translate-y-1'
       >
         <PopoverPanel
           anchor={{ to: 'bottom end', gap: 4 }}
-          className="z-50 w-80 max-h-[480px] overflow-hidden bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-md shadow-lg flex flex-col"
+          className='z-50 w-80 max-h-[480px] overflow-hidden bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-md shadow-lg flex flex-col'
         >
-          <div className="px-3 py-2.5 border-b border-[var(--color-border-default-base)] flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wider text-[var(--color-text-default-secondary)] font-semibold">
+          <div className='px-3 py-2.5 border-b border-[var(--color-border-default-base)] flex items-center justify-between'>
+            <span className='text-[11px] uppercase tracking-wider text-[var(--color-text-default-secondary)] font-semibold'>
               {t('members.popover.title')}
             </span>
-            <span className="text-xs font-mono text-[var(--color-text-default-base)]">{members.length}</span>
+            <span className='text-xs font-mono text-[var(--color-text-default-base)]'>{members.length}</span>
           </div>
-          <div className="p-1 overflow-y-auto max-h-[360px]">
+          <div className='p-1 overflow-y-auto max-h-[360px]'>
             {members.map((m) => {
               const u = users[m.userId];
               const display = u?.username || u?.email || m.userId;
@@ -201,7 +201,7 @@ const MembersPopover = memo(function MembersPopover({
               return (
                 <div
                   key={m.userId}
-                  className="group relative flex items-center gap-2.5 px-2.5 py-2 rounded-sm hover:bg-[var(--color-background-default-secondary)]"
+                  className='group relative flex items-center gap-2.5 px-2.5 py-2 rounded-sm hover:bg-[var(--color-background-default-secondary)]'
                 >
                   <div
                     className={cn(
@@ -211,11 +211,11 @@ const MembersPopover = memo(function MembersPopover({
                   >
                     {initialsFor(display)}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <strong className="block text-[13px] text-[var(--color-text-default-base)] font-semibold truncate">
+                  <div className='flex-1 min-w-0'>
+                    <strong className='block text-[13px] text-[var(--color-text-default-base)] font-semibold truncate'>
                       {display}
                       {isSelf && (
-                        <span className="ml-1 text-[10px] text-[var(--color-text-default-tertiary)] font-normal font-mono">
+                        <span className='ml-1 text-[10px] text-[var(--color-text-default-tertiary)] font-normal font-mono'>
                           {t('members.popover.self_label')}
                         </span>
                       )}
@@ -224,9 +224,9 @@ const MembersPopover = memo(function MembersPopover({
                   </div>
                   {!isSelf && canManage && (
                     <button
-                      type="button"
+                      type='button'
                       onClick={() => handleRemove(m.userId)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] px-2 py-1 bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-sm text-[var(--color-text-default-secondary)] hover:bg-[var(--color-background-error-base)]/10 hover:border-[var(--color-text-status-error)] hover:text-[var(--color-text-status-error)] opacity-0 group-hover:opacity-100 transition-opacity"
+                      className='absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] px-2 py-1 bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-sm text-[var(--color-text-default-secondary)] hover:bg-[var(--color-background-error-base)]/10 hover:border-[var(--color-text-status-error)] hover:text-[var(--color-text-status-error)] opacity-0 group-hover:opacity-100 transition-opacity'
                     >
                       {t('members.popover.remove')}
                     </button>
@@ -235,20 +235,20 @@ const MembersPopover = memo(function MembersPopover({
               );
             })}
           </div>
-          <div className="p-2.5 border-t border-[var(--color-border-default-base)] space-y-1.5">
+          <div className='p-2.5 border-t border-[var(--color-border-default-base)] space-y-1.5'>
             <button
-              type="button"
+              type='button'
               onClick={onOpenPanel}
-              className="w-full h-8 inline-flex items-center justify-center gap-1.5 bg-neutral-900 text-text-on-button-base rounded-sm text-xs hover:bg-neutral-800 transition-colors"
+              className='w-full h-8 inline-flex items-center justify-center gap-1.5 bg-neutral-900 text-text-on-button-base rounded-sm text-xs hover:bg-neutral-800 transition-colors'
             >
               <PlusGlyph />
               <span>{t('members.popover.invite')}</span>
             </button>
             {canManage && (
               <button
-                type="button"
+                type='button'
                 onClick={onOpenPanel}
-                className="w-full h-8 inline-flex items-center justify-center gap-1.5 bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-sm text-xs text-[var(--color-text-default-base)] hover:bg-[var(--color-background-default-secondary)] transition-colors"
+                className='w-full h-8 inline-flex items-center justify-center gap-1.5 bg-[var(--color-background-default-base)] border border-[var(--color-border-default-base)] rounded-sm text-xs text-[var(--color-text-default-base)] hover:bg-[var(--color-background-default-secondary)] transition-colors'
               >
                 <UsersGlyph />
                 <span>{t('members.popover.manage')}</span>

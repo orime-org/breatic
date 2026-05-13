@@ -4,7 +4,7 @@
  *
  * Visual rules (spec §10.13.2 / §10.13.5 v13):
  *
- *   - **primary** (`data.isPrimary === true`): brand-base stroke,
+ *   - **primary** (`data.isPrimary === true`): neutral-900 stroke,
  *     2.5 px width, marching-ants animation via the
  *     `breatic-edge-primary` className. The animation makes the
  *     primary downstream visually unmistakable when a generative
@@ -78,7 +78,7 @@ const CustomEdge = ({
   const stroke = active
     ? 'var(--color-border-utilities-selected)'
     : isPrimary
-      ? 'var(--color-brand-base)'
+      ? 'var(--neutral-900)'
       : 'var(--color-border-default-secondary)';
 
   const edgeStyle: React.CSSProperties = {

@@ -38,6 +38,53 @@ const config: Config = {
           800: 'var(--neutral-800)',
           900: 'var(--neutral-900)',
         },
+        // Neutral-First status colors — ADR 2026-05-13-canvas-neutral-first-status-colors
+        // Use as: bg-status-selected, border-status-locked, text-status-error, etc.
+        // Light/dark variant resolved through CSS variables in theme/{light,dark}.css.
+        status: {
+          selected: 'var(--status-selected)',
+          handling: 'var(--status-handling)',
+          locked:   'var(--status-locked)',
+          warning:  'var(--status-warning)',
+          error:    'var(--status-error)',
+          success:  'var(--status-success)',
+        },
+        // shadcn/ui compat aliases — ADR 2026-05-13-component-library-shadcn-ui
+        // shadcn primitives use these via bg-primary / text-primary-foreground / etc.
+        // CSS vars defined in theme/{light,dark}.css resolve to project neutral tokens.
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)',
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
       },
       borderRadius: {
         base: 'var(--radius-base)',

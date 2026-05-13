@@ -27,7 +27,7 @@ const Login: React.FC = () => {
         size='large'
         shape='round'
         bordered={false}
-        className='bg-[var(--color-brand-base)] hover:bg-[var(--color-brand-secondary)] text-white font-bold px-8 h-[36px]'
+        className='bg-neutral-900 hover:bg-neutral-700 text-white font-bold px-8 h-[36px]'
         onClick={handleLogin}
       >
         {t('workspace.not_logged_in.login_button')}

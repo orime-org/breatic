@@ -61,7 +61,7 @@ const AnnotationNode: React.FC<NodeProps> = ({ id, selected }) => {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className='mb-1 flex items-center gap-2'>
-        <span className='inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-base text-[10px] font-bold text-white'>
+        <span className='inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-status-selected text-[10px] font-bold text-white'>
           {initial}
         </span>
         <Icon name='base-add-comment' width={12} height={12} className='text-text-default-tertiary' />

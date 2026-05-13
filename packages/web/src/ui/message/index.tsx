@@ -68,7 +68,7 @@ const TOAST_ICON: Record<ToastType, string> = {
 };
 
 const TOAST_BG: Record<ToastType, string> = {
-  success: 'bg-brand-base',
+  success: 'bg-status-success',
   error: 'bg-background-error-hover',
   warning: 'bg-background-warning-hover',
 };

@@ -243,14 +243,14 @@ export const Checkbox = forwardRef<HTMLSpanElement, CheckboxProps>(
         name={groupName}
         className={cn(
           checkboxVariants({ size, type }),
-          'data-checked:border-[var(--color-brand-base)]',
-          'data-focus:outline data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-[var(--color-brand-base)]',
+          'data-checked:border-[var(--color-status-selected)]',
+          'data-focus:outline data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-[var(--color-status-selected)]',
           'data-hover:border-[var(--color-border-default-base-hover)]',
-          'data-checked:data-hover:bg-[var(--color-brand-base-hover)] data-checked:data-hover:border-[var(--color-brand-base-hover)]',
+          'data-checked:data-hover:bg-[var(--color-status-selected)] data-checked:data-hover:border-[var(--color-status-selected)]',
           'data-disabled:cursor-not-allowed data-disabled:opacity-50',
           'data-disabled:bg-[var(--color-background-neutral-tertiary)]',
           'data-checked:data-disabled:bg-[var(--color-background-neutral-tertiary)] data-checked:data-disabled:border-[var(--color-border-default-base)]',
-          'data-indeterminate:bg-[var(--color-brand-base)] data-indeterminate:border-[var(--color-brand-base)]',
+          'data-indeterminate:bg-[var(--color-status-selected)] data-indeterminate:border-[var(--color-status-selected)]',
           className
         )}
         style={style}

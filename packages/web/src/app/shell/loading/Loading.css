@@ -49,7 +49,7 @@
 .breatic-loading span, .breatic-loading2 span {
   width: 18px;
   height: 18px;
-  background: var(--color-brand-secondary);
+  background: var(--status-handling);
   border-radius: 50%;
   animation: ball-lottie 3s linear infinite;
   opacity: 0.5;

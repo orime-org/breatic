@@ -62,10 +62,10 @@ const AgentChoicePicker: React.FC<AgentChoicePickerProps> = ({
               className={cn(
                 'w-full rounded border px-2.5 py-2 text-left transition-all',
                 isSelected
-                  ? 'border-brand-base bg-brand-500/10 text-brand-700'
+                  ? 'border-status-selected bg-status-selected/10 text-status-selected'
                   : isDisabled
                     ? 'cursor-not-allowed border-border-default-secondary bg-background-default-base text-text-default-tertiary'
-                    : 'border-border-default-secondary bg-background-default-base text-text-default-primary hover:border-brand-300 hover:bg-brand-500/5',
+                    : 'border-border-default-secondary bg-background-default-base text-text-default-primary hover:border-status-selected hover:bg-status-selected/5',
               )}
             >
               <div className='text-[12px] font-medium'>{c.label}</div>
