@@ -11,6 +11,12 @@ import reactHooks from 'eslint-plugin-react-hooks';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default [
+  // shadcn/ui primitives are vendor copy-paste (ADR 2026-05-13-component-library-shadcn-ui).
+  // Their style (double-quote / 4-space) intentionally diverges from project conventions
+  // so `shadcn add` re-copies cleanly on update. Skip lint to keep them shadcn-shaped.
+  {
+    ignores: ['src/components/ui/**'],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,

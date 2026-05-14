@@ -110,27 +110,27 @@ export const createYjsManager = (config: YjsManagerConfig): YjsManager => {
   //   that branch.
   const provider = websocketProvider
     ? new HocuspocusProvider({
-        websocketProvider,
-        name: docName,
-        document: doc,
-        token,
-        onAuthenticationFailed: ({ reason }) => {
-          // Stop the infinite reconnect loop on this doc's own
-          // provider; the shared socket may still be up for siblings.
-          provider.detach();
-          onAuthFailed?.(reason);
-        },
-      })
+      websocketProvider,
+      name: docName,
+      document: doc,
+      token,
+      onAuthenticationFailed: ({ reason }) => {
+        // Stop the infinite reconnect loop on this doc's own
+        // provider; the shared socket may still be up for siblings.
+        provider.detach();
+        onAuthFailed?.(reason);
+      },
+    })
     : new HocuspocusProvider({
-        url: resolveWsUrl(config.wsUrl),
-        name: docName,
-        document: doc,
-        token,
-        onAuthenticationFailed: ({ reason }) => {
-          provider.disconnect();
-          onAuthFailed?.(reason);
-        },
-      });
+      url: resolveWsUrl(config.wsUrl),
+      name: docName,
+      document: doc,
+      token,
+      onAuthenticationFailed: ({ reason }) => {
+        provider.disconnect();
+        onAuthFailed?.(reason);
+      },
+    });
 
   // Shared-socket branch: explicit attach. Per-socket branch:
   // constructor already attached.

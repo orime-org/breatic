@@ -23,7 +23,7 @@ import {
   createYjsManager,
   type YjsManager as BaseYjsManager,
   type YjsManagerConfig,
-} from "./manager";
+} from './manager';
 
 export interface ProjectMetaManagerConfig
   extends Omit<YjsManagerConfig, 'docName'> {

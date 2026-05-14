@@ -1,11 +1,9 @@
 /**
- * ProjectLayoutContext — UI state for the project page right-side
- * editor panel (the "Editor Panel" of v10 §2.3).
+ * ProjectLayoutContext — UI state shared across the Project page shell
+ * (TopBar / TabBar / ChatPanel / Canvas).
  *
- * Used across multiple Space kinds and the chat sidebar, so it lives
- * at the project page layer rather than inside spaces/canvas/.
- *
- * Replaces the Redux `canvas` slice rightPanel fields (PR-Z).
+ * V13 greenfield rewrite removes the right editor panel
+ * (mock v13 = 2-col CSS grid; no rightPanel field anymore).
  */
 
 import {
@@ -17,70 +15,44 @@ import {
   type ReactNode,
 } from 'react';
 
-export interface RightPanelState {
-  open: boolean;
-  /** Discriminator for what to render in the right panel.
-   *  Known values today: 'editor' (text editor / coming-soon placeholder),
-   *  'page' (initial placeholder). 'history' is written by the toast
-   *  stack click handler but currently has no renderer (legacy path). */
-  panelType?: string;
-  nodeId?: string;
-  panelMode?: 'node' | 'assets';
-}
-
 interface ProjectLayoutContextValue {
-  rightPanel: RightPanelState;
-  openRightPanel: (panelType: string, nodeId?: string, panelMode?: 'node' | 'assets') => void;
-  closeRightPanel: () => void;
   /**
-   * Whether the left ChatPanel is visible. The toggle lives in the
-   * TabBar's left edge (mock @1227 "方案 B:永久 chat toggle 按钮 — 单入口");
-   * Page.tsx reads this flag to decide whether to render `<ChatPanel>`.
+   * Whether the left ChatPanel is visible. Toggled from the TabBar's
+   * left edge (single chat-toggle entry per 5/9 decision).
+   * Page.tsx reads this to decide whether to render the chat aside.
    */
   chatPanelVisible: boolean;
   toggleChatPanel: () => void;
 }
 
-const initialRightPanel: RightPanelState = {
-  open: true,
-  panelMode: 'node',
-  panelType: 'page',
-};
-
-const ProjectLayoutContext = createContext<ProjectLayoutContextValue | null>(null);
+const ProjectLayoutContext = createContext<ProjectLayoutContextValue | null>(
+  null,
+);
 
 export function ProjectLayoutProvider({ children }: { children: ReactNode }) {
-  const [rightPanel, setRightPanel] = useState<RightPanelState>(initialRightPanel);
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
-
-  const openRightPanel = useCallback(
-    (panelType: string, nodeId?: string, panelMode?: 'node' | 'assets') => {
-      setRightPanel({
-        open: true,
-        panelType,
-        nodeId,
-        panelMode: panelMode ?? 'node',
-      });
-    },
-    [],
-  );
-
-  const closeRightPanel = useCallback(() => {
-    setRightPanel((prev) => ({ ...prev, open: false }));
-  }, []);
 
   const toggleChatPanel = useCallback(() => {
     setChatPanelVisible((v) => !v);
   }, []);
 
   const value = useMemo<ProjectLayoutContextValue>(
-    () => ({ rightPanel, openRightPanel, closeRightPanel, chatPanelVisible, toggleChatPanel }),
-    [rightPanel, openRightPanel, closeRightPanel, chatPanelVisible, toggleChatPanel],
+    () => ({ chatPanelVisible, toggleChatPanel }),
+    [chatPanelVisible, toggleChatPanel],
   );
 
-  return <ProjectLayoutContext.Provider value={value}>{children}</ProjectLayoutContext.Provider>;
+  return (
+    <ProjectLayoutContext.Provider value={value}>
+      {children}
+    </ProjectLayoutContext.Provider>
+  );
 }
 
+/**
+ * Read the project layout context. Throws if used outside a provider —
+ * surfaces missing-provider bugs early instead of returning a default
+ * value that silently breaks downstream behavior.
+ */
 export function useProjectLayout(): ProjectLayoutContextValue {
   const ctx = useContext(ProjectLayoutContext);
   if (!ctx) {

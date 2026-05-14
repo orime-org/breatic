@@ -279,6 +279,12 @@
     }
   },
   "project": {
+    "shell": {
+      "topBar": "頂欄(佔位 · M1 實作)",
+      "tabBar": "標籤欄(佔位 · M1 實作)",
+      "chatPanel": "Chat 面板(佔位 · M2 實作)",
+      "canvas": "畫布(佔位 · M1 實作)"
+    },
     "toolbar": {
       "copy": "複製",
       "delete": "刪除",
@@ -902,5 +908,13 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "檔案處理失敗"
+  },
+  "studio": {
+    "placeholder": {
+      "title": "Studio(佔位)",
+      "subtitle": "重寫期間用最簡形態。輸入專案 ID 進入 Project 頁測試。完整 Studio 在 Project 重寫完成後補。",
+      "projectIdInput": "專案 ID",
+      "openProject": "開啟專案"
+    }
   }
 }

@@ -279,6 +279,12 @@
     }
   },
   "project": {
+    "shell": {
+      "topBar": "Top bar (placeholder · landing in M1)",
+      "tabBar": "Tab bar (placeholder · landing in M1)",
+      "chatPanel": "Chat panel (placeholder · landing in M2)",
+      "canvas": "Canvas (placeholder · landing in M1)"
+    },
     "toolbar": {
       "copy": "Copy",
       "delete": "Delete",
@@ -902,5 +908,13 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "File processing failed"
+  },
+  "studio": {
+    "placeholder": {
+      "title": "Studio (placeholder)",
+      "subtitle": "Minimal form during the rewrite. Enter a project ID to jump into the Project page for testing. Full Studio lands after Project is rewritten.",
+      "projectIdInput": "Project ID",
+      "openProject": "Open project"
+    }
   }
 }

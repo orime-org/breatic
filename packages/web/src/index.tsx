@@ -7,7 +7,6 @@ import { RouterProvider } from 'react-router-dom';
 import router from '@/app/routes';
 import { ThemeProvider } from '@/app/shell/themeProvider';
 import { GlobalLoading } from '@/app/shell/loading';
-import { MessageContainer } from './ui/message';
 import * as Sentry from '@sentry/react';
 
 Sentry.init({
@@ -39,7 +38,6 @@ root.render(
     <React.StrictMode>
       <ThemeProvider>
         <GlobalLoading />
-        <MessageContainer />
         <RouterProvider router={router} />
       </ThemeProvider>
     </React.StrictMode>

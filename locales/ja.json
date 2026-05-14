@@ -279,6 +279,12 @@
     }
   },
   "project": {
+    "shell": {
+      "topBar": "トップバー(プレースホルダ · M1 で実装)",
+      "tabBar": "タブバー(プレースホルダ · M1 で実装)",
+      "chatPanel": "Chat パネル(プレースホルダ · M2 で実装)",
+      "canvas": "キャンバス(プレースホルダ · M1 で実装)"
+    },
     "toolbar": {
       "copy": "コピー",
       "delete": "削除",
@@ -902,5 +908,13 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "ファイル処理に失敗しました"
+  },
+  "studio": {
+    "placeholder": {
+      "title": "Studio(プレースホルダ)",
+      "subtitle": "書き直し期間の最小フォーム。プロジェクト ID を入力して Project ページに移動してテスト。完全な Studio は Project の書き直し後に実装。",
+      "projectIdInput": "プロジェクト ID",
+      "openProject": "プロジェクトを開く"
+    }
   }
 }

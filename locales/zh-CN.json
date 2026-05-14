@@ -279,6 +279,12 @@
     }
   },
   "project": {
+    "shell": {
+      "topBar": "顶栏(占位 · M1 实现)",
+      "tabBar": "标签栏(占位 · M1 实现)",
+      "chatPanel": "Chat 面板(占位 · M2 实现)",
+      "canvas": "画布(占位 · M1 实现)"
+    },
     "toolbar": {
       "copy": "复制",
       "delete": "删除",
@@ -902,5 +908,13 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "文件处理失败"
+  },
+  "studio": {
+    "placeholder": {
+      "title": "Studio(占位)",
+      "subtitle": "重写期间用最简形态。输入项目 ID 进入 Project 页测试。完整 Studio 在 Project 重写完成后补。",
+      "projectIdInput": "项目 ID",
+      "openProject": "打开项目"
+    }
   }
 }

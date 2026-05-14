@@ -1,0 +1,238 @@
+/* ============================================================
+   breatic design tokens(2026-05-14 rewrite by ADR 14 amended)
+   单一真相源 — 改这里 = 改全产品视觉
+
+   两类 token,各管各的范围(不重叠):
+
+   A. shadcn/ui 标准 token(CTA / Surface / Border / Ring)— 完全接受 shadcn 命名
+   B. design CC Status 体系(selected / info / handling / locked / warning / error / success)
+      — shadcn 没有,这是 design CC 补充
+   C. Logo 残余 brand(仅 logo SVG 内)
+
+   依据:
+   - decisions/2026-05-13-canvas-neutral-first-status-colors.md(5/13 neutral-first)
+   - decisions/2026-05-14-token-semantic-alias-and-ci-guard.md(amended,撤销 CTA 自创)
+
+   引用方式:`import 'design-system/tokens.css'` 或 link <link rel="stylesheet" href="...">
+   设计原则:design-system/principles.md
+   ============================================================ */
+
+:root {
+  /* —— Brand raw values · 仅用于 logo · chrome 禁用 —— */
+  --brand-50:  hsl(8, 58%, 97%);
+  --brand-100: hsl(8, 58%, 92%);
+  --brand-200: hsl(8, 58%, 82%);
+  --brand-300: hsl(8, 58%, 70%);
+  --brand-400: hsl(8, 58%, 58%);
+  --brand-500: hsl(8, 58%, 47%);   /* main · 仅 logo SVG */
+  --brand-600: hsl(8, 58%, 40%);
+  --brand-700: hsl(8, 53%, 32%);
+  --brand-800: hsl(8, 48%, 23%);
+  --brand-900: hsl(8, 43%, 15%);
+
+  /* —— Logo only · 唯一保留的 brand alias —— */
+  --brand-logo-primary: var(--brand-500);   /* 仅 logo SVG · 用任何 chrome 位置触发 brand-guard CI fail */
+
+  /* —— DEPRECATED brand 4 处 alias(2026-05-14 ADR 14 amended 已弃,1 个 release 内移除)——
+     业务代码不再用这些 alias;tokens.css 里改成 var() 跟新 token 指向同色,旧引用还能跑
+     但 brand-guard CI 不会拦它们(在 tokens.css 白名单)— 业务代码用要走 brand-guard 豁免 */
+  --color-brand-cta:           var(--primary);                    /* DEPRECATED → 用 --primary */
+  --color-brand-cta-hover:     var(--primary-foreground);         /* DEPRECATED */
+  --color-brand-active:        var(--status-selected-border);     /* DEPRECATED → 用 --status-selected-border */
+  --color-brand-active-bg:     var(--status-info-bg);             /* DEPRECATED → 用 --status-info-bg */
+  --color-brand-status:        var(--status-handling-border);     /* DEPRECATED → 拆 5 status alias */
+  --color-brand-cursor:        var(--ring-focus);                 /* DEPRECATED → 用 --ring-focus */
+
+  /* —— Neutral · Stone 暖灰阶 —— */
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #FAFAF9;
+  --neutral-100: #F5F5F4;
+  --neutral-200: #E7E5E4;
+  --neutral-300: #D6D3D1;
+  --neutral-400: #A8A29E;
+  --neutral-500: #78716C;
+  --neutral-600: #57534E;
+  --neutral-700: #44403C;
+  --neutral-800: #292524;
+  --neutral-900: #1C1917;
+  --neutral-950: #0C0A09;
+
+  /* ============================================================
+     §1A · shadcn/ui 标准 token(CTA + Surface + Border + Ring)
+     value 按 5/13 Neutral-First ADR;命名按 shadcn 标准不重新发明
+     ============================================================ */
+  --primary:               var(--neutral-900);
+  --primary-foreground:    var(--neutral-0);
+  --secondary:             var(--neutral-100);
+  --secondary-foreground:  var(--neutral-900);
+  --destructive:           #DC2626;          /* red-600 */
+  --destructive-foreground: #FFFFFF;
+  --background:            var(--neutral-0);
+  --foreground:            var(--neutral-900);
+  --card:                  var(--neutral-0);
+  --card-foreground:       var(--neutral-900);
+  --popover:               var(--neutral-0);
+  --popover-foreground:    var(--neutral-900);
+  --muted:                 var(--neutral-100);
+  --muted-foreground:      var(--neutral-500);
+  --accent:                var(--neutral-100);
+  --accent-foreground:     var(--neutral-900);
+  --border:                var(--neutral-200);
+  --input:                 var(--neutral-200);
+  --ring:                  var(--neutral-900);
+  --radius:                0.375rem;        /* 6px;跟下方 --rounded-lg 一致 */
+
+  /* ============================================================
+     §1B · design CC Status 体系(shadcn 没有,补充)
+     ============================================================ */
+  /* Selected / Focused / Active(蓝)*/
+  --status-selected-border: #3B82F6;          /* blue-500 */
+  --status-selected-ring:   rgba(59, 130, 246, 0.2);
+  --ring-focus:             rgba(59, 130, 246, 0.4);
+
+  /* Info(蓝,03 agent banner B 用此)*/
+  --status-info-bg:         #EFF6FF;          /* blue-50 */
+  --status-info-fg:         #1E3A8A;          /* blue-900 */
+  --status-info-border-l:   #3B82F6;          /* blue-500 */
+
+  /* Handling / Loading(蓝)*/
+  --status-handling-border: #60A5FA;          /* blue-400 */
+  --status-handling-fg:     #1E40AF;          /* blue-800 */
+
+  /* Locked(amber)*/
+  --status-locked-border:   #FBBF24;          /* amber-400 */
+  --status-locked-bg:       #FEF3C7;          /* amber-100 */
+  --status-locked-fg:       #D97706;          /* amber-600 */
+
+  /* Warning(amber)*/
+  --status-warning-bg:      #FBBF24;          /* amber-400 */
+  --status-warning-fg:      #78350F;          /* amber-900 */
+
+  /* Error(red)*/
+  --status-error-bg:        #FEF2F2;          /* red-50 */
+  --status-error-fg:        #991B1B;          /* red-800 */
+  --status-error-border:    #EF4444;          /* red-500 */
+
+  /* Success(emerald)*/
+  --status-success-bg:      #ECFDF5;          /* emerald-50 */
+  --status-success-fg:      #065F46;          /* emerald-800 */
+  --status-success-border:  #10B981;          /* emerald-500 */
+
+  /* ============================================================
+     Legacy 独立色 + 派生 token(指向 shadcn / status,保持向后兼容)
+     ============================================================ */
+  /* 独立色 */
+  --color-error:            var(--destructive);
+  --color-warning:          var(--status-warning-bg);
+  --color-success:          var(--status-success-border);
+  --color-lock-bg:          var(--status-locked-bg);
+  --color-lock-text:        var(--status-locked-fg);
+
+  /* 派生 bg */
+  --color-bg-default:       var(--background);
+  --color-bg-secondary:     var(--secondary);
+  --color-bg-tertiary:      var(--muted);
+  --color-bg-success:       var(--primary);              /* 主按钮 = shadcn primary */
+  --color-bg-error:         var(--destructive);
+  --color-bg-warning:       var(--status-warning-bg);
+  --color-bg-neutral:       var(--neutral-700);
+
+  /* Border 三档 */
+  --color-border-default:   var(--border);               /* shadcn border */
+  --color-border-strong:    var(--neutral-200);
+  --color-border-emphasis:  var(--neutral-300);
+  --color-border-secondary: var(--neutral-500);
+
+  /* Text */
+  --color-text-default:     var(--foreground);
+  --color-text-secondary:   var(--neutral-600);
+  --color-text-tertiary:    var(--neutral-400);
+  --color-text-on-button:   var(--primary-foreground);
+  --color-text-status-error: var(--destructive);
+
+  /* Canvas context(决议:2026-05-09-canvas-bg-figma-classic-contrast)*/
+  --color-canvas-bg:         var(--neutral-200);
+  --color-node-shell-bg:     var(--card);
+  --color-node-shell-border: var(--border);
+  --color-node-shell-shadow: var(--shadow-sm);
+
+  /* ReactFlow edge */
+  --xy-edge-stroke:          var(--neutral-300);
+  --xy-edge-stroke-selected: var(--status-selected-border);   /* selected edge = blue */
+
+  /* —— 圆角(R4 紧凑档 cap 6,禁用 > 8)—— */
+  --rounded-sm: 2px;
+  --rounded-md: 4px;
+  --rounded-lg: 6px;
+
+  /* —— 字号 —— */
+  --font-size-base: 14px;
+
+  /* —— Shadow —— */
+  --shadow-sm:  0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow:     0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md:  0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+
+  /* —— Elevation 语义层 —— */
+  --elevation-0: none;
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow-md);
+
+  /* —— 字号缩放 —— */
+  --text-scale: 1;
+}
+
+/* ============================================================
+   Dark mode · [data-theme="dark"] 覆盖 neutral + status
+   shadcn 标准 token 自动跟随 neutral 反相(var 引用)
+   ============================================================ */
+[data-theme="dark"] {
+  /* neutral 反相 */
+  --neutral-0:   #1C1917;
+  --neutral-50:  #201E1C;
+  --neutral-100: #292524;
+  --neutral-200: #44403C;
+  --neutral-300: #57534E;
+  --neutral-400: #78716C;
+  --neutral-500: #A8A29E;
+  --neutral-600: #D6D3D1;
+  --neutral-700: #E7E5E4;
+  --neutral-800: #F5F5F4;
+  --neutral-900: #FAFAF9;
+  --neutral-950: #FFFFFF;
+
+  /* shadcn destructive · dark 浅一档保对比 */
+  --destructive: #EF4444;            /* red-500 */
+
+  /* Status 体系 dark variants(不能简单跟 neutral 反相,要手动设)*/
+  --status-selected-border: #60A5FA;          /* blue-400 */
+  --status-selected-ring:   rgba(96, 165, 250, 0.2);
+  --ring-focus:             rgba(96, 165, 250, 0.4);
+
+  --status-info-bg:         #1E3A8A;          /* blue-900 */
+  --status-info-fg:         #DBEAFE;          /* blue-100 */
+  --status-info-border-l:   #60A5FA;
+
+  --status-handling-border: #3B82F6;          /* blue-500 */
+  --status-handling-fg:     #93C5FD;          /* blue-300 */
+
+  --status-locked-border:   #F59E0B;          /* amber-500 */
+  --status-locked-bg:       #78350F;          /* amber-900 */
+  --status-locked-fg:       #FDE68A;          /* amber-200 */
+
+  --status-warning-bg:      #F59E0B;
+  --status-warning-fg:      #FFFFFF;
+
+  --status-error-bg:        #7F1D1D;          /* red-900 */
+  --status-error-fg:        #FCA5A5;          /* red-300 */
+  --status-error-border:    #F87171;          /* red-400 */
+
+  --status-success-bg:      #064E3B;          /* emerald-900 */
+  --status-success-fg:      #6EE7B7;          /* emerald-300 */
+  --status-success-border:  #34D399;          /* emerald-400 */
+
+  /* shadow 加深 */
+  --shadow-sm:  0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow:     0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md:  0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+}
