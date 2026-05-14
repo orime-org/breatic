@@ -4,10 +4,16 @@
 
 ## 1. 什么算"重大决策"(任一即触发 DD)
 
-- 影响**安全模型**(凭据存储 / 协议鉴权 / 外部网络 / 用户数据)
-- 影响**长期维护负担**(核心依赖 / 协议层 / 数据层)
-- 影响范围**超过单个 package**(跨包接口 / 共享类型 / 全局状态)
-- **反悔代价 > 1 周工作量**
+触发条件用 **AI 友好的可观察信号**,**不用"工作量周数"等人类时间度量**(对 AI 不适用)。任一命中即触发:
+
+- **安全模型**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作 / 凭据存储 / 外部网络 / 用户数据)
+- **跨界**(跨 ≥ 2 package 接口 / 共享类型 / 全局状态 / 数据模型 / DB schema / 协议变更 / 关键 dep 增删/大版本升级)
+- **已扩散**(merge 入 main / 已 push 给其他 CC 或 long-living branch / 已落 ADR 被下游引用 / 已发给用户)
+- **架构 / 长期维护**(整体目录结构 / 公共 API / 跨服务边界 / 核心依赖)
+
+### 为什么不用"反悔代价 > 1 周工作量"
+
+旧版触发用"反悔代价 > 1 周工作量"。这个条件**只对人类有效**(按工时度量)。对 AI 不适用 — AI 工作不是按时间算,是按动作链 / 协调成本算。本节 4 类条件是"反悔代价大"的**具体可观察信号**:撤回时影响 main 消费者(已扩散)、撤回时要协调多 package(跨界)、撤回时要恢复 invariant + 重测(安全模型)、撤回时要改架构层(架构/长期维护)。
 
 ### Breatic 高频场景示例
 
@@ -15,11 +21,12 @@
 
 | 高频场景 | 对应触发 |
 |---|---|
-| AIGC provider 选型(image / video / audio / 3d / tts / understand 模型路由) | 长期维护 + 跨 package |
-| Agent / Skill 定义变更(system prompt / tools 列表) | 安全模型(prompt injection)+ 长期维护 |
-| 核心架构变更(三层记忆 / Turn 压缩 / Yjs 结构 / Redis Streams) | 长期维护 + 跨包 |
-| 积分 / 计费机制(pricing / Stripe webhook / 扣费幂等) | 安全模型 + 反悔代价 |
-| 部署形态变更(Docker / nginx / CI 流水线) | 长期维护 + 反悔代价 |
+| AIGC provider 选型(image / video / audio / 3d / tts / understand 模型路由) | 架构/长期维护 + 跨界 |
+| Agent / Skill 定义变更(system prompt / tools 列表) | 安全模型(prompt injection)+ 架构/长期维护 |
+| 核心架构变更(三层记忆 / Turn 压缩 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
+| 积分 / 计费机制(pricing / Stripe webhook / 扣费幂等) | 安全模型 + 已扩散 |
+| 部署形态变更(Docker / nginx / CI 流水线) | 架构/长期维护 + 已扩散 |
+| 全前端重写 / 长 living branch | 架构/长期维护 + 跨界 + 已扩散 |
 
 ## 2. 两类 DD
 

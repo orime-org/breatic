@@ -220,7 +220,14 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 **决策前的纪律**(跟决策后的 #1~#5 不互替)。完整流程 + 模板 + 反例见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md)。
 
-**触发**(任一):安全模型 / 长期维护负担 / 跨包接口 / 反悔代价 > 1 周工作量。breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 三层记忆 / Yjs 结构 · 积分计费。
+**触发**(任一,AI 友好可观察信号 — 不用"工作量周数"等人类时间度量):
+
+- **安全模型**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作)
+- **跨界**(跨 ≥ 2 package 接口 / 数据模型 / 协议 / 关键 dep 增删升级)
+- **已扩散**(merge 入 main / 已 push 给其他 CC / 已落 ADR 被引用 / 已发给用户)
+- **架构 / 长期维护**(整体目录结构 / 公共 API / 跨服务边界)
+
+breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 三层记忆 / Yjs 结构 · 积分计费。
 
 **硬流程**:候选枚举 → 5 维度尽调(实测 / 源码 / 治理 / 安全 / 上游)→ 对比矩阵(每格证据可追溯)→ 推荐 + 理由 → **用户拍板**。
 
