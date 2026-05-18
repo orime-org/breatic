@@ -1,0 +1,67 @@
+/**
+ * tokens.css — web v14 visual token source of truth.
+ *
+ * Mirrors `breatic-inner-design/design/tokens.css` (private design source of
+ * truth). Values are bumped here when ADRs land; do not edit divergently.
+ *
+ * Linear-style system:
+ *   - stone-warm neutral 11-step scale (0-900)
+ *   - 5 always-color status palettes (do NOT invert in dark mode to preserve
+ *     semantic contrast)
+ *   - radius cap 6px (ADR 9: typography-radius-defaults)
+ *   - brand reserved for logo only (ADR 13: canvas-neutral-first-status-colors)
+ */
+
+:root,
+html[data-theme='light'] {
+  /* ===== Neutral scale (stone-warm) ===== */
+  --neutral-0: #ffffff;
+  --neutral-50: #fafaf9;
+  --neutral-100: #f5f5f4;
+  --neutral-200: #e7e5e4;
+  --neutral-300: #d6d3d1;
+  --neutral-400: #a8a29e;
+  --neutral-500: #78716c;
+  --neutral-600: #57534e;
+  --neutral-700: #44403c;
+  --neutral-800: #292524;
+  --neutral-900: #1c1917;
+
+  /* ===== Status (5 palettes, always-color) ===== */
+  --status-selected-fg: #2563eb;
+  --status-selected-bg: #dbeafe;
+  --status-selected-border: #3b82f6;
+  --status-info-fg: #1d4ed8;
+  --status-info-bg: #eff6ff;
+  --status-success-fg: #047857;
+  --status-success-bg: #d1fae5;
+  --status-warning-fg: #b45309;
+  --status-warning-bg: #fef3c7;
+  --status-error-fg: #b91c1c;
+  --status-error-bg: #fee2e2;
+
+  /* ===== Radius (cap 6px, ADR 9) ===== */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* ===== Brand (logo only, ADR 13) ===== */
+  --brand-logo-primary: #bc4b36;
+}
+
+html[data-theme='dark'] {
+  /* Neutral inverted: 0 ↔ 900, symmetric step distance preserved. */
+  --neutral-0: #1c1917;
+  --neutral-50: #292524;
+  --neutral-100: #44403c;
+  --neutral-200: #57534e;
+  --neutral-300: #78716c;
+  --neutral-400: #a8a29e;
+  --neutral-500: #d6d3d1;
+  --neutral-600: #e7e5e4;
+  --neutral-700: #f5f5f4;
+  --neutral-800: #fafaf9;
+  --neutral-900: #ffffff;
+  /* status / brand-logo intentionally NOT inverted (always-color contract). */
+}

@@ -26,7 +26,8 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       react(),
-      // svg-icons plugin removed by web v14 reset(src/assets/svg/ 删);后续 PR 按需重引
+      // svg-icons plugin removed by the web v14 reset (src/assets/svg/ was
+      // deleted); re-add per future PR if any module needs sprite icons.
       ...(useSentryPlugin
         ? [
           sentryVitePlugin({

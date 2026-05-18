@@ -1,0 +1,30 @@
+/* Project visual tokens (neutral / status / radius / brand-logo). */
+@import './theme/tokens.css';
+
+/* shadcn token bridge — maps --primary etc. to project neutral. */
+@import './theme/shadcn-bridge.css';
+
+/* Tailwind base / components / utilities. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    'Inter',
+    'Noto Sans SC',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
