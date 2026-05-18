@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { createSvgIconsPlugin } from 'vite-plugin-svg-icons';
 
 // need to add breatic Index to serve
 // import sirv from 'sirv'
@@ -27,16 +26,7 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       react(),
-      createSvgIconsPlugin({
-        // 指定需要缓存的图标文件夹
-        iconDirs: [path.resolve(__dirname, 'src/assets/svg')],
-        // 指定symbolId格式，包含目录前缀和文件名
-        symbolId: 'icon-[dir]-[name]',
-        // 自定义插入位置
-        inject: 'body-last',
-        // 自定义dom id
-        customDomId: '__svg__icons__dom__',
-      }),
+      // svg-icons plugin removed by web v14 reset(src/assets/svg/ 删);后续 PR 按需重引
       ...(useSentryPlugin
         ? [
           sentryVitePlugin({

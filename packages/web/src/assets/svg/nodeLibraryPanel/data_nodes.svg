@@ -1,7 +1,0 @@
-<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="inline-flex transition-transform duration-200 group-hover:rotate-90">
-<path d="M0 8C0 3.58172 3.58172 0 8 0H32C36.4183 0 40 3.58172 40 8V32C40 36.4183 36.4183 40 32 40H8C3.58172 40 0 36.4183 0 32V8Z" fill="#0C0C0D"/>
-<rect x="18" y="3" width="4" height="13" rx="2" fill="white"/>
-<rect x="37" y="18" width="4" height="13" rx="2" transform="rotate(90 37 18)" fill="white"/>
-<rect x="18" y="24" width="4" height="13" rx="2" fill="white"/>
-<rect x="16" y="18" width="4" height="13" rx="2" transform="rotate(90 16 18)" fill="white"/>
-</svg>
