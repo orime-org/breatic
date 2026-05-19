@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores';
 import type { SpaceType } from '@/spaces';
 
+import { ChatPanel } from './chat/ChatPanel';
 import { AgentColHeader } from './chrome/agent-header/AgentColHeader';
 import { LeftFloatingMenu, type LeftMenuTool } from './chrome/left-floating-menu/LeftFloatingMenu';
 import { TopBar } from './chrome/top-bar/TopBar';
@@ -80,9 +81,8 @@ export default function ProjectPage() {
                 /* new conversation handler wires in chat PR */
               }}
             />
-            <div className='flex flex-1 items-center justify-center text-xs text-muted-foreground'>
-              Chat panel (PR for chat)
-            </div>
+            <ChatPanel projectId={projectId} />
+
           </aside>
         )}
         <section className='flex min-w-0 flex-1 flex-col'>
