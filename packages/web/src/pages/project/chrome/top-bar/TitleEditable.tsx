@@ -86,7 +86,11 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
             cancel();
           }
         }}
-        className='inline-block min-w-0 border-0 bg-muted/50 align-middle text-[13px] font-medium text-foreground outline-none'
+        // `field-sizing: content` (2024 CSS spec, Chrome 123+ / FF 137+ /
+        // Safari 18.4+) makes the input width follow the content length up
+        // to max-width — matching the span's inline-block content-grow
+        // behaviour so the static/edit transition has no width jump.
+        className='inline-block min-w-[40px] border-0 bg-muted/50 align-middle text-[13px] font-medium text-foreground outline-none [field-sizing:content]'
         style={sharedStyle}
         data-testid='title-input'
       />
