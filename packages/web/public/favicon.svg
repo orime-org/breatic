@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Breatic logo — brand 彩色版 / 透明底
-  几何来源:design/2026-05-09-logo.md + design/project/2026-05-09-top-bar.md §2
-  brand 三色:#BC4B36(主 brand 锈红)/ #0EA5E9(sky-500 蓝)/ #15D45A(cyber lime 绿)
-  ViewBox -50 -50 100 100 + g scale(1, -1)(y 轴翻转)
-  每个元素显式 fill/stroke 不靠 <g> 继承(避免 raster backend 兼容问题)
+  Breatic favicon — tight bounding-box variant of inner-design
+  `design/logo/logo-color.svg` for browser tab icon clarity.
+
+  Source viewBox is -50 -50 100 100 (per design spec); content bbox is
+  roughly -38..38 in both axes. Tab favicons are 16x16, so a loose
+  viewBox makes the visible content render at ~11x11 — visually smaller
+  than peers (GitHub, Twitter, etc.). This file tightens viewBox to
+  -38 -38 76 76 so 16x16 fills the visible icon area.
+
+  GEOMETRY IS COPIED EXACTLY from `inner-design/design/logo/logo-color.svg`
+  — only the viewBox + dimensions change. Brand colors + arc paths
+  must match the design source.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-50 -50 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="-38 -38 76 76">
   <g transform="scale(1, -1)">
     <circle cx="25.98" cy="-15" r="10" fill="#BC4B36"/>
     <path d="M 25.98 -15 A 30 30 0 0 0 -25.98 -15" fill="none" stroke="#BC4B36" stroke-width="8" stroke-linecap="round"/>
