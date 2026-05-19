@@ -5,71 +5,108 @@ interface TitleEditableProps {
   onChange: (next: string) => void;
 }
 
-/** Max title length aligned with backend constraint. */
+/** Project title length cap — system-wide limit, enforced on backend too. */
 const MAX_TITLE_LEN = 80;
+/** Visible width cap (= Agent column width). Both modes share this. */
+const TITLE_MAX_WIDTH = 320;
 
 /**
- * Project title — inline contenteditable per mock § TopBar v4.0.
+ * Project title — dual-mode inline title bar element.
  *
- * Always shown as an inline `<span contenteditable>`; clicking inside
- * activates the cursor (no mode toggle). Enter or blur commits;
- * Escape cancels (restore previous text).
+ * Two visual modes (transition triggered by focus/blur, no explicit button):
  *
- * Behavioral contract:
- *   - Empty / whitespace-only commits are rejected (restore previous).
- *   - Newlines are stripped (single-line title).
- *   - Length capped at MAX_TITLE_LEN (80) chars — excess input on commit
- *     is truncated; over-length text restores previous value.
- *   - Visual width capped at 320px (= Agent column width) with truncate
- *     (CSS `text-overflow: ellipsis`). Requires `inline-block` because
- *     CSS spec: inline elements ignore `max-width`.
+ *   - **Static** (blur)  → `<span>` with `truncate` + ellipsis. Over-long
+ *     text is left-aligned and clipped with "…". Width capped at 320px.
+ *   - **Edit** (focus)   → `<input>`. Native caret + horizontal scroll
+ *     follows the cursor; no ellipsis. Width still capped at 320px.
+ *
+ * Why dual mode (not `<span contenteditable>`): contenteditable's caret
+ * position ignores `overflow:hidden`, so an editing user sees the cursor
+ * drift outside the 320 cap. A native `<input>` keeps caret + content in
+ * the visible window via horizontal scroll, which is exactly what user
+ * expects ("内容从右往左移动 caret 跟随").
+ *
+ * Commit semantics:
+ *   - Enter / blur commit (trim, drop newlines, slice to MAX_TITLE_LEN,
+ *     reject empty).
+ *   - Escape cancel (restore previous value, exit edit mode).
  */
 export function TitleEditable({ value, onChange }: TitleEditableProps) {
-  const ref = React.useRef<HTMLSpanElement>(null);
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Keep the DOM text in sync with the prop when external rename happens
-  // and the user isn't currently editing.
+  // Sync draft when external rename happens and we're not actively editing.
   React.useEffect(() => {
-    if (ref.current && ref.current.innerText !== value) {
-      ref.current.innerText = value;
+    if (!editing) setDraft(value);
+  }, [editing, value]);
+
+  // Autofocus the input when we transition into edit mode.
+  React.useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
     }
-  }, [value]);
+  }, [editing]);
 
   const commit = () => {
-    if (!ref.current) return;
-    const next = ref.current.innerText.replace(/\n/g, '').trim().slice(0, MAX_TITLE_LEN);
-    if (next.length === 0) {
-      ref.current.innerText = value;
-      return;
-    }
-    if (next !== ref.current.innerText) {
-      // Length was capped — sync the visible text so user sees the truncation.
-      ref.current.innerText = next;
-    }
-    if (next !== value) onChange(next);
+    const next = draft.replace(/\n/g, '').trim().slice(0, MAX_TITLE_LEN);
+    if (next.length > 0 && next !== value) onChange(next);
+    if (next.length === 0) setDraft(value);
+    setEditing(false);
   };
+
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
+
+  const sharedStyle: React.CSSProperties = {
+    padding: '2px var(--space-2)',
+    borderRadius: 'var(--radius-chrome)',
+    maxWidth: TITLE_MAX_WIDTH,
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        maxLength={MAX_TITLE_LEN}
+        spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        className='inline-block min-w-0 border-0 bg-muted/50 align-middle text-[13px] font-medium text-foreground outline-none'
+        style={sharedStyle}
+        data-testid='title-input'
+      />
+    );
+  }
 
   return (
     <span
-      ref={ref}
       role='textbox'
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck={false}
-      onBlur={commit}
+      tabIndex={0}
+      onClick={() => setEditing(true)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+        // Keyboard a11y: Enter or Space starts edit mode.
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          (e.currentTarget as HTMLSpanElement).blur();
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          if (ref.current) ref.current.innerText = value;
-          (e.currentTarget as HTMLSpanElement).blur();
+          setEditing(true);
         }
       }}
-      className='inline-block min-w-0 max-w-[320px] truncate align-middle text-[13px] font-medium outline-none focus:bg-muted/50'
-      style={{ padding: '2px var(--space-2)', borderRadius: 'var(--radius-chrome)' }}
+      className='inline-block min-w-0 cursor-text truncate align-middle text-[13px] font-medium outline-none hover:bg-muted/50'
+      style={sharedStyle}
       data-testid='title-display'
       title={value}
     >

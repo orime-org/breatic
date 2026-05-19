@@ -38,16 +38,22 @@ describe('TopBar', () => {
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
-  it('title is inline contenteditable and commits via blur (mock § TopBar v4.0)', async () => {
+  it('title click swaps to <input>; typing + Enter commits the new name', async () => {
     const user = userEvent.setup();
     const { onRename } = setup({ projectName: 'Old' });
-    const title = screen.getByTestId('title-display');
-    expect(title.getAttribute('contenteditable')).toBe('true');
-    title.focus();
-    // Simulate inline edit then blur commit
-    title.innerText = 'New name';
-    await user.click(document.body); // blur
+    // Static mode: visible <span>
+    const display = screen.getByTestId('title-display');
+    expect(display).toBeInTheDocument();
+    await user.click(display);
+    // Edit mode: <input> autofocused + text selected
+    const input = await screen.findByTestId('title-input');
+    expect(input.tagName).toBe('INPUT');
+    await user.clear(input);
+    await user.type(input, 'New name{Enter}');
     expect(onRename).toHaveBeenCalledWith('New name');
+    // Back to static mode after commit
+    expect(screen.queryByTestId('title-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('title-display')).toBeInTheDocument();
   });
 
   it('renders the home logo link pointing at /studio', () => {
