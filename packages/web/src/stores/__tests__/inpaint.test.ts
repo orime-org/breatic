@@ -6,8 +6,9 @@ describe('useInpaintStore', () => {
     useInpaintStore.setState({
       brushSize: 20,
       brushColor: '#ffffff',
-      brushOpacity: 1,
-      brushMode: 'brush',
+      opacity: 1,
+      tool: 'brush',
+      strokes: [],
       maskDataUrl: null,
     });
     useInpaintStore.temporal.getState().clear();
@@ -16,28 +17,34 @@ describe('useInpaintStore', () => {
   it('initial brush settings', () => {
     const s = useInpaintStore.getState();
     expect(s.brushSize).toBe(20);
-    expect(s.brushMode).toBe('brush');
+    expect(s.tool).toBe('brush');
     expect(s.maskDataUrl).toBeNull();
+    expect(s.strokes).toEqual([]);
   });
 
-  it('setBrushMode flips brush <-> erase', () => {
-    useInpaintStore.getState().setBrushMode('erase');
-    expect(useInpaintStore.getState().brushMode).toBe('erase');
+  it('setTool flips brush <-> erase', () => {
+    useInpaintStore.getState().setTool('erase');
+    expect(useInpaintStore.getState().tool).toBe('erase');
   });
 
-  it('resetMask clears maskDataUrl', () => {
+  it('beginStroke + appendPoint accumulate points', () => {
+    useInpaintStore.getState().beginStroke({ radius: 5, alpha: 0.8 });
+    useInpaintStore.getState().appendPoint({ x: 1, y: 2 });
+    useInpaintStore.getState().appendPoint({ x: 3, y: 4 });
+    const strokes = useInpaintStore.getState().strokes;
+    expect(strokes.length).toBe(1);
+    expect(strokes[0].points).toEqual([
+      { x: 1, y: 2 },
+      { x: 3, y: 4 },
+    ]);
+    expect(strokes[0].radius).toBe(5);
+  });
+
+  it('resetMask clears strokes + maskDataUrl', () => {
     useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,XX');
+    useInpaintStore.getState().beginStroke({ radius: 3, alpha: 1 });
     useInpaintStore.getState().resetMask();
     expect(useInpaintStore.getState().maskDataUrl).toBeNull();
-  });
-
-  it('zundo temporal exposes undo on mask edits', () => {
-    useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,A');
-    useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,B');
-    // History has 2 past entries: initial null, then A.
-    useInpaintStore.temporal.getState().undo();
-    expect(useInpaintStore.getState().maskDataUrl).toBe(
-      'data:image/png;base64,A',
-    );
+    expect(useInpaintStore.getState().strokes).toEqual([]);
   });
 });

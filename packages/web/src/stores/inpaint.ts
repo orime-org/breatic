@@ -2,26 +2,51 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { temporal } from 'zundo';
 
+import type {
+  InpaintPoint,
+  InpaintStroke,
+} from '@/spaces/canvas/inpaint/types';
+
 /**
- * Inpaint editor store — brush settings + mask layer state.
+ * Inpaint editor store — brush settings + stroke history + exported
+ * mask. Strokes are the source of truth (so undo / redo work per-stroke
+ * without re-painting the full mask); `maskDataUrl` is set by the
+ * mask-export step before the inpaint request is dispatched.
  *
- * Uses zundo `temporal` middleware so mask edits can be undone via
- * `useInpaintStore.temporal.getState().undo()`.
+ * Uses zundo `temporal` middleware partialized over `strokes` so brush
+ * settings stay un-undoable while stroke edits roll back cleanly.
  */
 export type BrushMode = 'brush' | 'erase';
 
 interface InpaintState {
+  // Brush settings (config, NOT undoable)
   brushSize: number;
   brushColor: string;
-  brushOpacity: number;
-  brushMode: BrushMode;
+  opacity: number;
+  tool: BrushMode;
+  // History (undoable)
+  strokes: InpaintStroke[];
+  // Export
   maskDataUrl: string | null;
+
   setBrushSize: (size: number) => void;
   setBrushColor: (color: string) => void;
-  setBrushOpacity: (opacity: number) => void;
-  setBrushMode: (mode: BrushMode) => void;
+  setOpacity: (opacity: number) => void;
+  setTool: (tool: BrushMode) => void;
+
+  beginStroke: (init: { radius: number; alpha: number }) => void;
+  appendPoint: (point: InpaintPoint) => void;
+  endStroke: () => void;
+  clearStrokes: () => void;
+
   setMaskDataUrl: (dataUrl: string | null) => void;
   resetMask: () => void;
+}
+
+let strokeSeq = 0;
+function nextStrokeId(): string {
+  strokeSeq += 1;
+  return `stroke-${strokeSeq}`;
 }
 
 export const useInpaintStore = create<InpaintState>()(
@@ -29,9 +54,11 @@ export const useInpaintStore = create<InpaintState>()(
     immer((set) => ({
       brushSize: 20,
       brushColor: '#ffffff',
-      brushOpacity: 1,
-      brushMode: 'brush',
+      opacity: 1,
+      tool: 'brush',
+      strokes: [],
       maskDataUrl: null,
+
       setBrushSize: (size) =>
         set((s) => {
           s.brushSize = size;
@@ -40,14 +67,39 @@ export const useInpaintStore = create<InpaintState>()(
         set((s) => {
           s.brushColor = color;
         }),
-      setBrushOpacity: (opacity) =>
+      setOpacity: (opacity) =>
         set((s) => {
-          s.brushOpacity = opacity;
+          s.opacity = opacity;
         }),
-      setBrushMode: (mode) =>
+      setTool: (tool) =>
         set((s) => {
-          s.brushMode = mode;
+          s.tool = tool;
         }),
+
+      beginStroke: (init) =>
+        set((s) => {
+          s.strokes.push({
+            id: nextStrokeId(),
+            radius: init.radius,
+            alpha: init.alpha,
+            points: [],
+          });
+        }),
+      appendPoint: (point) =>
+        set((s) => {
+          const stroke = s.strokes[s.strokes.length - 1];
+          if (!stroke) return;
+          stroke.points = [...stroke.points, point];
+        }),
+      endStroke: () => {
+        // Stroke is already appended; this hook exists so callers can
+        // mark a brush gesture complete without further mutation.
+      },
+      clearStrokes: () =>
+        set((s) => {
+          s.strokes = [];
+        }),
+
       setMaskDataUrl: (dataUrl) =>
         set((s) => {
           s.maskDataUrl = dataUrl;
@@ -55,11 +107,11 @@ export const useInpaintStore = create<InpaintState>()(
       resetMask: () =>
         set((s) => {
           s.maskDataUrl = null;
+          s.strokes = [];
         }),
     })),
     {
-      // Only the mask is undoable — brush settings are config, not history.
-      partialize: (state) => ({ maskDataUrl: state.maskDataUrl }),
+      partialize: (state) => ({ strokes: state.strokes }),
     },
   ),
 );
