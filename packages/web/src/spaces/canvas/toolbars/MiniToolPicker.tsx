@@ -1,0 +1,68 @@
+import { Wand2 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { miniToolsForModality } from '@/pages/project/mini-tool-system/catalog';
+import type { Modality } from '@/spaces/canvas/types/node';
+
+interface MiniToolPickerProps {
+  modality: Modality;
+  onPick?: (toolId: string) => void;
+}
+
+/**
+ * Right-zone "Mini-tool" entry on the node toolbar. Opens a popover with
+ * tools filtered by the modality. Selecting a tool creates a NEW sibling
+ * node + primary edge (ADR mini-tool-unified-output) — the current node
+ * is never mutated.
+ *
+ * Tools come from the catalog in `pages/project/mini-tool-system/`.
+ */
+export function MiniToolPicker({ modality, onPick }: MiniToolPickerProps) {
+  const tools = miniToolsForModality(modality);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='h-7 gap-1 px-2'
+          data-testid='mini-tool-trigger'
+        >
+          <Wand2 className='h-3.5 w-3.5' />
+          <span className='text-xs'>Mini-tool</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align='end'
+        className='w-56 p-1'
+        data-testid='mini-tool-popover'
+      >
+        <ScrollArea className='max-h-64'>
+          <div className='flex flex-col gap-0.5 pr-2'>
+            {tools.map((t) => (
+              <Button
+                key={t.id}
+                variant='ghost'
+                size='sm'
+                className='justify-between'
+                onClick={() => onPick?.(t.id)}
+                data-testid={`mini-tool-${t.id}`}
+              >
+                <span>{t.label}</span>
+                <span className='text-[10px] uppercase text-muted-foreground'>
+                  {t.output}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}

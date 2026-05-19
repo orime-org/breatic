@@ -1,33 +1,57 @@
 import type { Config } from 'tailwindcss';
-import vars from './src/theme/tailwind-vars';
+import animate from 'tailwindcss-animate';
 
+/**
+ * Tailwind config for shadcn primitives — web v14.
+ *
+ * Token aliases map to project CSS variables defined in:
+ *   - `src/theme/tokens.css`       — neutral / status / radius / brand-logo
+ *   - `src/theme/shadcn-bridge.css` — shadcn standard tokens (--primary, etc.)
+ *
+ * Spec: ADR 13 (shadcn 100%) + ADR 14 (token-semantic-alias-and-ci-guard).
+ */
 const config: Config = {
-  content: [
-    './src/**/*.{js,ts,jsx,tsx}',
-    './public/index.html'
-  ],
-  darkMode: ['selector', '[data-theme="dark"]'], // 使用 data-theme 属性
+  content: ['./src/**/*.{js,ts,jsx,tsx}', './public/index.html'],
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        ...vars,
-        // Numeric scales (mock 05 alignment, additive — semantic
-        // color tokens above remain the recommended default).
-        brand: {
-          50:  'var(--brand-50)',
-          100: 'var(--brand-100)',
-          200: 'var(--brand-200)',
-          300: 'var(--brand-300)',
-          400: 'var(--brand-400)',
-          500: 'var(--brand-500)',
-          600: 'var(--brand-600)',
-          700: 'var(--brand-700)',
-          800: 'var(--brand-800)',
-          900: 'var(--brand-900)',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
         },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)',
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
         neutral: {
-          0:   'var(--neutral-0)',
-          50:  'var(--neutral-50)',
+          0: 'var(--neutral-0)',
+          50: 'var(--neutral-50)',
           100: 'var(--neutral-100)',
           200: 'var(--neutral-200)',
           300: 'var(--neutral-300)',
@@ -40,34 +64,22 @@ const config: Config = {
         },
       },
       borderRadius: {
-        base: 'var(--radius-base)',
-        // Token-driven scale used by the new RechargeDialog /
-        // SharePopover etc. (mock 05). Naming `sm/md/lg/xl`
-        // overrides Tailwind defaults so existing `rounded-md`
-        // class sites pick up the token instead of 0.375rem.
-        sm: 'var(--rounded-sm)',
-        md: 'var(--rounded-md)',
-        lg: 'var(--rounded-lg)',
-        xl: 'var(--rounded-xl)',
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
       },
-      fontSize: {
-        base: 'var(--font-size-base)',
-        // Used by Tweaks debug panel (dev only) — production sets
-        // --text-scale = 1, leaving this equal to 14px.
-        scaled: 'calc(14px * var(--text-scale, 1))',
-      },
-      keyframes: {
-        shimmer: {
-          '0%': { transform: 'translateX(-100%)' },
-          '100%': { transform: 'translateX(100%)' },
-        },
-      },
-      animation: {
-        shimmer: 'shimmer 1s ease-in-out infinite',
+      fontFamily: {
+        sans: [
+          'Inter',
+          'Noto Sans SC',
+          'system-ui',
+          '-apple-system',
+          'sans-serif',
+        ],
       },
     },
   },
-  plugins: [],
+  plugins: [animate],
 };
 
 export default config;

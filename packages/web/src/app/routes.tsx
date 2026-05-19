@@ -1,53 +1,29 @@
-import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import Loading from '@/app/shell/loading/Loading';
 
-const Project = lazy(() => import('@/pages/project/Page'));
-const Workspace = lazy(() => import('@/pages/studio/Page'));
-const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
-const ResetPasswordPage = lazy(() => import('@/pages/auth/ResetPasswordPage'));
+import StudioPage from '@/pages/studio/StudioPage';
+import ProjectPage from '@/pages/project/ProjectPage';
+import LoginPage from '@/pages/auth/LoginPage';
+import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <Navigate to='/workspace' replace />,
-  },
-  {
-    path: '/workspace',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <Workspace />
-      </Suspense>
-    ),
-  },
-  {
-    path: '/project/:projectId',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <Project />
-      </Suspense>
-    ),
-  },
-  {
-    path: '/login',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <LoginPage />
-      </Suspense>
-    ),
-  },
-  {
-    path: '/reset-password',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <ResetPasswordPage />
-      </Suspense>
-    ),
-  },
-  {
-    path: '*',
-    element: <Navigate to='/workspace' replace />,
-  },
+/**
+ * Top-level route table.
+ *
+ * `/`                      → redirect to /studio
+ * `/studio`                → StudioPage (project list + nav)
+ * `/project/:projectId`    → ProjectPage (canvas + chat)
+ * `/project/:projectId/space/:spaceId?` → ProjectPage (space-scoped deep link)
+ * `/login` `/reset-password` → auth flows
+ *
+ * Use `createBrowserRouter` over the legacy `<BrowserRouter><Routes>`
+ * pattern: data router lets future PRs add loaders / actions without
+ * rewriting the tree.
+ */
+export const router = createBrowserRouter([
+  { path: '/', element: <Navigate to='/studio' replace /> },
+  { path: '/studio', element: <StudioPage /> },
+  { path: '/project/:projectId', element: <ProjectPage /> },
+  { path: '/project/:projectId/space/:spaceId', element: <ProjectPage /> },
+  { path: '/login', element: <LoginPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '*', element: <Navigate to='/studio' replace /> },
 ]);
-
-export default router;

@@ -1,14 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import '@/index.css';
-import '@/i18n';
-import 'virtual:svg-icons-register';
-import { RouterProvider } from 'react-router-dom';
-import router from '@/app/routes';
-import { ThemeProvider } from '@/app/shell/themeProvider';
-import { GlobalLoading } from '@/app/shell/loading';
-import { MessageContainer } from './ui/message';
 import * as Sentry from '@sentry/react';
+import App from './App';
+import './index.css';
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
@@ -21,10 +15,10 @@ Sentry.init({
     const ignoredErrors = [
       'ResizeObserver loop limit exceeded',
       'Script error.',
-      'NetworkError when attempting to fetch resource'
+      'NetworkError when attempting to fetch resource',
     ];
     const message = event.exception?.values?.[0]?.value || '';
-    if (ignoredErrors.some(err => message.includes(err))) {
+    if (ignoredErrors.some((err) => message.includes(err))) {
       return null;
     }
     return event;
@@ -32,16 +26,12 @@ Sentry.init({
 });
 
 const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
+  document.getElementById('root') as HTMLElement,
 );
 root.render(
   <Sentry.ErrorBoundary fallback={<div>Page Error</div>}>
     <React.StrictMode>
-      <ThemeProvider>
-        <GlobalLoading />
-        <MessageContainer />
-        <RouterProvider router={router} />
-      </ThemeProvider>
+      <App />
     </React.StrictMode>
-  </Sentry.ErrorBoundary>
+  </Sentry.ErrorBoundary>,
 );
