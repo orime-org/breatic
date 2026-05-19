@@ -1,6 +1,16 @@
-import { DEV_USER_ID } from '@breatic/shared';
-
 import { useCurrentUserStore } from '@/stores';
+
+/**
+ * Dev user UUID — must match `packages/shared/src/constants/index.ts`
+ * `DEV_USER_ID`. Hardcoded (not imported from `@breatic/shared`)
+ * because that barrel re-exports `i18n/index.ts` which statically
+ * imports `node:fs` — vite externalizes the module for browser
+ * builds and any code path that touches it throws at runtime.
+ *
+ * Cross-link cost: drift risk = 0 (the value is the literal zero
+ * UUID, by convention forever).
+ */
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Dev-only fixed identity for local development.
