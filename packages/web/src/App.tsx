@@ -1,18 +1,24 @@
 import { RouterProvider } from 'react-router-dom';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClientProvider } from './app/providers/QueryClientProvider';
 import { router } from './app/routes';
 
 /**
- * App root — mounts the React Router 7 data router under a global
- * TooltipProvider so any descendant `<Tooltip>` works without local
- * wrapping. Future providers (Theme / Yjs / I18n / QueryClient) layer
- * around the same shell.
+ * App root — providers stack (outer to inner):
+ *   QueryClientProvider (TanStack Query)
+ *     → TooltipProvider (Radix tooltip context)
+ *       → RouterProvider (React Router 7 data router)
+ *
+ * Future providers (Theme / Yjs context / I18n) layer around the same
+ * shell as needed.
  */
 export default function App() {
   return (
-    <TooltipProvider>
-      <RouterProvider router={router} />
-    </TooltipProvider>
+    <QueryClientProvider>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
