@@ -1,13 +1,14 @@
 # Frontend
 
 Public overview of `packages/web/` — the breatic React app served at the
-browser. For backend, see `packages/{shared,core,server,worker,collab}/`.
+browser. For overall architecture (6 packages + 3 services) see
+[architecture.md](./architecture.md).
 
 ## Status
 
-The web package is being rewritten on a long-lived branch
-(`feat/web-builder-v1`). `main` still carries the prior implementation;
-the rewrite lands when the branch is feature-complete.
+v14 greenfield rewrite landed on `main` 2026-05-19 (PR #103). Visual
+alignment to the design-baseline mocks is ongoing on the long-lived
+branch `feat/web-visual-alignment`.
 
 ## Tech stack
 
@@ -63,19 +64,34 @@ lib/        utils (cn, format, env, analytics)
 
 - **shadcn 100%** — every primitive in `components/ui/` is shadcn/ui (Radix
   underneath). No Headless UI, no MUI.
-- **Token bridge** — shadcn standard tokens (`--primary`, `--border`, etc.)
-  are aliased to project neutral / status palettes in
-  `src/theme/shadcn-bridge.css`. Stone-warm neutral 11-step + 5 always-color
-  status palettes + radius cap 6px + brand reserved for logo.
+- **Single token source** — all design tokens (neutral / status / brand /
+  shadcn alias / chrome UI scale) live in `src/theme/tokens.css`. shadcn
+  primitives consume the standard aliases directly; no separate bridge
+  file. Stone-warm neutral 11-step + 5 status palettes (each bg/fg/border)
+  + radius split (chrome fixed 6px + content sm/md/lg/xl) + brand reserved
+  for logo only (`--brand-logo-primary`).
 - **Yjs single source of truth** — canvas node data and space metadata flow
   through Yjs (`data/yjs/`). The frontend owns node create / delete /
   position; the backend only updates `data` fields.
 - **ChatPanel is per-user, not Yjs-bound** — agent conversations stream via
   SSE, scoped to the viewer; chat content never enters Yjs.
-- **Canvas node matrix** — nodes follow a `kind × modality` grid: 4
-  modalities (text / image / audio / video, with 3D / web to come) × 2 kinds
-  (asset / generator). Generators auto-create a downstream asset + primary
-  edge on creation.
+- **Unified type nodes (2026-05-19)** — one node per modality:
+  `text` / `image` / `audio` / `video` / `3d` / `web` (6 content types)
+  plus `annotation` (standalone collaboration sticky). No asset/generator
+  split. `@`-references are edge relations + snapshot copies, NOT a node
+  type. Generation lives in the node toolbar's left zone (edits the
+  current node); mini-tools live in the right zone (create a new sibling
+  node + primary edge).
+
+## Naming conventions
+
+| File type | Naming | Example |
+|---|---|---|
+| React component `.tsx` | `PascalCase` (= export name) | `Button.tsx` `ProjectMembersPanel.tsx` |
+| React hook `.ts/.tsx` | `useFooBar` (= export name) | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| Other `.ts` (util / data / config / store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| Test | Same as subject + `.test` | `useProjectSpaces.test.ts` |
+| Directory | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
 
 ## Routing
 
@@ -100,7 +116,7 @@ packages/web/
 │   ├── data/                # api / yjs / stream / storage
 │   ├── ui/                  # business atoms
 │   ├── components/ui/       # shadcn primitives (vendor)
-│   ├── theme/               # tokens.css + shadcn-bridge.css
+│   ├── theme/               # tokens.css (single token source)
 │   ├── i18n/                # react-i18next + locales
 │   ├── lib/                 # utils (cn, etc.)
 │   ├── styles/              # global css overrides

@@ -6,168 +6,40 @@
 
 解决后再问:**真的解决了根本问题,还是把症状搬到了别处 / 把问题往后拖了一步 / 让自己看起来像解决了?** 答错就停,先跟用户沟通。
 
-**每次完成任务必须测试 + 同步所有受影响文档。** 测试 = typecheck + 单测 + smoke / e2e / 浏览器交互(做不了要 explicit 说明,不许跳过);文档 = ROADMAP / spec / docs/* 等所有受影响项。**落后文档比没文档更糟**。
+**每次完成任务必须测试 + 同步所有受影响文档:**
 
-**所有任务必须先列 todo 计划,按计划执行,完成后对照复核**。不分 research / 执行 / 测试 / 文档,**也不分大小** —— 哪怕一两步也写。todo 是工作的地图,没地图 = 边走边发明 scope = 容易漏步骤、偏题、事后补不全文档。**取消"小任务豁免"**:小任务也写、也复核。
+| 项 | 内容 |
+|---|---|
+| 测试 | typecheck + 单测 + smoke / e2e / 浏览器交互。做不了要 explicit 说明,不许跳过 |
+| 文档 | ROADMAP / spec / `docs/*` 等所有受影响项。**落后文档比没文档更糟** |
+
+**所有任务必须先列 todo 计划,按计划执行,完成后对照复核**。不分 research / 执行 / 测试 / 文档,**也不分大小** — 哪怕一两步也写。**取消"小任务豁免"**:小任务也写、也复核。
 
 # 项目简介
 
-面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo，6 个包 + 3 个运行时服务。
+面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,6 包 + 3 服务。
 
-# 技术栈
-
-Node.js 22+ | TypeScript 5.x | pnpm | Turborepo | Hono | Drizzle ORM | PostgreSQL (postgres.js) | ioredis | BullMQ | Vercel AI SDK | Hocuspocus 3.4.4 | Zod | Vitest | pino + pino-roll
+**架构详见 [docs/architecture.md](./docs/architecture.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 三层记忆 / SubAgent / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/frontend.md](./docs/frontend.md)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
 
 # 开发命令
 
 ```bash
-# 本地：首次复制 .env.dev → .env，docker 起 PG+Redis，pnpm db:migrate；之后 pnpm dev
-# Docker 全量：复制 .env.docker → .env，改域名/密钥，docker compose up -d
-pnpm dev              # turbo 跑全部服务（自动先 build shared/core，再 watch server/worker/collab）
+# 本地:首次复制 .env.dev → .env,docker 起 PG+Redis,pnpm db:migrate;之后 pnpm dev
+# Docker 全量:复制 .env.docker → .env,改域名/密钥,docker compose up -d
+pnpm dev              # turbo 跑全部服务(自动先 build shared/core,再 watch server/worker/collab)
 pnpm db:migrate       # 拉新 migration 后跑
 pnpm test / typecheck / lint
 ```
 
-启动时先 `checkInfraReady()` 验证 PG/Redis 可达；连不上立即退出（避免无声挂死）。Migration 是独立步骤，不绑在 dev 启动里。
-
-# 目录结构
-
-```
-packages/
-├── shared/   # Zod schema + 类型 + 常量(零依赖)
-├── core/     # 业务逻辑(barrel @breatic/core)
-│   modules/(*.repo.ts + *.service.ts) · agent/(MainAgent + skills-loader) ·
-│   db/(schema.ts 19 表) · infra/(redis/pubsub/queue/storage/stripe) · config/
-├── server/   # HTTP 壳(Hono):routes/(auth/chat/canvas/mini-tools/projects/skills/tasks/payment/health) + middleware/
-├── worker/   # BullMQ 壳:handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
-├── collab/   # Hocuspocus 独立进程:server/auth/persistence/event-stream/task-listener
-└── web/      # React + ReactFlow + Yjs(内部 layered:ui/data/domain)
-config/ agents/ skills/ locales/ uploads/(git-ignored)
-```
-
-**包依赖方向**:`shared(零依赖) ← core, collab(独立进程,只依赖 shared) ← server / worker / web`。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。
-
-**Package exports**:shared/core 导出 `./dist/index.js`(行业标准),本地和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`(向上查找 `pnpm-workspace.yaml`)。
-
-# 架构
-
-## 3 个服务
-
-| 服务 | 端口 | 职责 |
-|------|------|------|
-| API | 3000 | HTTP 请求 + Agent 聊天 SSE + Text mini-tool SSE |
-| Collab | 1234 | Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点 |
-| Worker | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs |
-
-## 画布协作
-
-- 节点 create/delete + position 由**前端独占**；后端只能改 `data` 字段（state/content 等）
-- 画布走 Yjs，Agent 聊天走 SSE。无锁：每次 mini-tool 操作产生新兄弟节点（edge 连接），不覆盖源节点
-- 事件总线：Redis Streams `${env}:stream:canvas-nodes`（`NodeStateUpdateEvent`，支持 `targetNodeIds: string[]` 1:N），Collab 消费后写 Yjs
-- 文档命名 v10 multi-doc：`project-{id}/meta`（含 spaces 列表）+ `project-{id}/canvas-{spaceId}`（每个 Canvas Space 一个）
-- 节点状态机：`idle` / `handling`（均在 Yjs）；`localPending` 是本地 React state；失败 = `idle` + `errorMessage`
-- Yjs 持久化走 PG `yjs_documents` 表（Hocuspocus Database extension）；跨实例同步走 Redis pub/sub（Hocuspocus Redis extension）
-- 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
-
-## 三层记忆 + Turn 压缩
-
-| 层 | 作用域 | 表 |
-|---|---|---|
-| User | 跨项目偏好 | `user_memories` |
-| Project | 协作者共享 | `project_memories` |
-| Conversation | 当前对话摘要 | `conversation_memories` |
-
-- **Turn 机制**：每条消息带 `turnIndex`（`role=user` 时递增）。`memory_window`（默认 20）按 Turn 计数，超出时自动归纳旧 Turn 到记忆摘要
-- **Context 压缩**：最近 `full_detail_turns`（默认 3）个 Turn 保留完整 step（tool_call + tool_result），更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
-- **消息存储**：`conversations.messages` JSONB 数组，含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除，归纳只生成摘要
-
-## SubAgent（spawn tool）
-
-SubAgent 通过 `spawn({ task, agent, skill? })` 调用。每个 Agent 是 `agents/*.md` 中定义的角色（frontmatter: name, description, tools, model, skills + body: system prompt）。Skill 是可选的知识补充（`skills/` 目录）。
-
-**Agent 定义角色（谁来做），Skill 定义知识（怎么做）。** 两者正交、可组合。
-
-内置 4 个 Agent：`researcher`（搜索参考）| `prompt_optimizer`（提示词优化）| `analyst`（多模态分析）| `planner`（项目规划）。
-
-Tools 取并集：Agent 声明的 tools ∪ Skill 声明的 tools，始终排除 spawn（防递归）。SubAgent 通过 `AsyncLocalStorage` 继承请求上下文（三层记忆 + 压缩对话历史 + userId），在内部直接扣费。
-
-## 任务执行（Worker 5 条路径）
-
-1. **AIGC Mini-Tool**（source="mini_tool"）→ toolName 查表 → provider 直调
-2. **Understand**（task_type="understand"）→ 多模态理解 / ASR 转写
-3. **AIGC 直达**（image/audio/video/3d/tts）→ provider `generateAsync()`
-4. **Skill（显式）** → 指定 skillName → AI SDK Agent 执行
-5. **Skill（自动选）** → 按 category 合并 Skills → LLM 选
-
-## Mini-Tool（两种模式）
-
-| | AIGC (image/video/audio) | Text |
-|---|---|---|
-| Endpoint | `POST /mini-tools/{image\|video\|audio}` | `POST /mini-tools/text` |
-| 执行 | BullMQ Worker（异步） | API 直接 streamText（同步 SSE） |
-| 结果交付 | Redis → Hocuspocus → Yjs（协作者可见） | SSE 流给请求者（私有，接受后才写 Yjs） |
-| 用户交互 | 等待 → 结果出现 | 打字机效果，可随时 abort |
-| 积分 | 按 API cost | 按 token 消耗 |
-| 并发 | Worker concurrency 控制 | 每用户 1 个（Redis 锁） |
-
-Text 工具（10 个）：polish / expand / summarize / translate / rewrite / continue / generate / character / storyboard / script。操作类发完整 `document` + `selection` 保证上下文。自动匹配输入语言回复。
-
-## Skill 系统
-
-**两区边界**：Agent（多轮对话，注入上下文）| Canvas（Worker 单次执行，必须生成）。文本编辑器（TipTap）独立运行，不使用 Skill。
-
-**metadata.json**：仅 `name` / `description` 必填；其他字段（`scope`/`category`/`tools`/`output_type`/`requires`/...）`skills-loader.ts` 都有 default 兜底（`scope` 默认 `["agent"]`，`category` 默认 `"default"`）。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 `packages/core/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段（version/author/license/engines/files/main）。
-
-## Agent Tools（9 个）
-
-`run_script` | `read_file` | `write_file` | `edit_file` | `list_dir` | `web_search` | `web_fetch` | `ask_user_question` | `spawn`
-
-**无通用 shell 执行器**。`run_script` 只能执行 `skills/{name}/scripts/` 下的脚本，路径防穿越，按扩展名选解释器（.py → python3, .sh → sh, .js → node）。
-
-# 配置
-
-| 文件 | 用途 |
-|------|------|
-| `.env` | 运行时配置（从 `.env.dev` 或 `.env.docker` 复制） |
-| `.env.dev` | 本地开发模板（localhost URLs） |
-| `.env.docker` | Docker 部署模板（容器名 URLs） |
-| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、memory Turn 窗口（20）、Turn 压缩（3） |
-| `config/text-tools.yaml` | Text mini-tool 模型 |
-| `config/worker.yaml` | Worker 并发、重试、轮询 |
-| `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
-| `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
-| `config/models/*.yaml` | AI 模型路由（46 文件，model-centric） |
-
-# 日志
-
-每个服务独立日志目录，pino-roll 每日轮转：
-
-| 服务 | 目录 | 初始化 |
-|------|------|--------|
-| API | `logs/api/` | 默认 `initLogger("api")` |
-| Worker | `logs/worker/` | 入口显式 `initLogger("worker")` |
-| Collab | `logs/collab/` | 独立 logger（不依赖 core） |
-| Nginx | `logs/nginx/` | logrotate，30 天保留 |
-
-每条日志双时间戳：`timestamp`（ISO 8601）+ `time`（epoch ms）。
+启动时先 `checkInfraReady()` 验证 PG/Redis 可达;连不上立即退出(避免无声挂死)。Migration 是独立步骤,不绑在 dev 启动里。
 
 # 代码风格
 
-- TSDoc（`@param`, `@returns`, `@throws`, `@example`），公共 API 必须有
-- TypeScript strict，禁止 `any`（用 `unknown`），禁止 `var`/`require`
+- TSDoc(`@param`, `@returns`, `@throws`, `@example`),公共 API 必须有
+- TypeScript strict,禁止 `any`(用 `unknown`),禁止 `var`/`require`
 - ESLint + eslint-plugin-tsdoc 强制
-
-## Web 命名规范（`packages/web/src/`）
-
-| 文件类型 | 命名 | 例 |
-|---|---|---|
-| React 组件 `.tsx` | `PascalCase`（= export 名） | `Button.tsx` `ProjectMembersPanel.tsx` |
-| React Hook `.ts/.tsx` | `useFooBar`（= export 名） | `useProjectSpaces.ts` `useCanvasActions.ts` |
-| 其他 `.ts`（util / data / config / store） | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
-| 测试 | 与主文件同名加 `.test` | `useProjectSpaces.test.ts` |
-| 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
-
-前端 layered 架构以 `packages/web/src/{ui,data,domain,features,spaces,pages,app}/` 目录组织，下层不 import 上层（严格单向依赖）。
+- 前端命名规范见 [docs/frontend.md#naming-conventions](./docs/frontend.md#naming-conventions)
+- 前端 layered 架构以 `app → pages → spaces → features → stores → domain → data → ui` 单向依赖(详见 [docs/frontend.md#layered-architecture](./docs/frontend.md#layered-architecture))
 
 # 关键规范
 
@@ -184,7 +56,22 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 # 禁止清单
 
-路由层写业务 | Service import hono | Drizzle 类型泄漏 | 硬编码密钥 | `allow_origins: ["*"]` + credentials | 裸 SQL | 非原子积分扣减 | 裸 catch | `any` 类型 | 同步阻塞事件循环 | 公共函数缺 TSDoc | `var` / `require()` | YAML 中文 | AIGC sync 路径
+| # | 禁 |
+|---|---|
+| 1 | 路由层写业务 |
+| 2 | Service import hono |
+| 3 | Drizzle 类型泄漏 |
+| 4 | 硬编码密钥 |
+| 5 | `allow_origins: ["*"]` + credentials |
+| 6 | 裸 SQL |
+| 7 | 非原子积分扣减 |
+| 8 | 裸 catch |
+| 9 | `any` 类型 |
+| 10 | 同步阻塞事件循环 |
+| 11 | 公共函数缺 TSDoc |
+| 12 | `var` / `require()` |
+| 13 | YAML 中文 |
+| 14 | AIGC sync 路径 |
 
 # 编码行为准则
 
@@ -208,9 +95,17 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 ## 5. 彻底解决,禁止补丁(MANDATORY — 零容忍)
 
-承接头号原则。**方案未经用户确认前不动代码**;方案不唯一时(含治本/治标取舍)列选项让用户选,不自己拍板;拿不准必须问,不猜、不"先实现一版试试";架构有根本缺陷就提架构变更,不打补丁;已有同类模式(主 canvas / Yjs / undo)必须对齐,不发明半套。
+承接头号原则。**方案未经用户确认前不动代码**;方案不唯一时(含治本/治标取舍)列选项让用户选,不自己拍板;拿不准必须问,不猜、不"先实现一版试试";架构有根本缺陷就提架构变更,不打补丁;已有同类模式必须对齐,不发明半套。
 
-**禁止补丁词汇**(任一即违规,立即停手):"compat shim / 兼容层 / 适配层" · "legacy mirror / 只读镜像" · "escape hatch / 全局 ref / 单例" · "临时/过渡/暂时/先这样/后续再改" · "为了不改 N 个 callsite" · "两条路径并存 / hybrid / 双写"。
+**禁止补丁词汇**(任一即违规,立即停手):
+
+| 类 | 词 |
+|---|---|
+| 兼容层 | compat shim · 兼容层 · 适配层 · legacy mirror · 只读镜像 |
+| 跳过修复 | escape hatch · 全局 ref · 单例 |
+| 拖延 | 临时 · 过渡 · 暂时 · 先这样 · 后续再改 |
+| 范围回避 | 为了不改 N 个 callsite |
+| 路径分裂 | 两条路径并存 · hybrid · 双写 |
 
 **动手前三自检**(全过才写):(1) 解决根因还是压症状?(2) 唯一解还是从多个挑了一个?(3) 是否有任一"暂时/兼容/补丁"?
 
@@ -220,11 +115,11 @@ Text 工具（10 个）：polish / expand / summarize / translate / rewrite / co
 
 **决策前的纪律**(跟决策后的 #1~#5 不互替)。完整流程 + 模板 + 反例见 [docs/DD-PROCESS.md](./docs/DD-PROCESS.md)。
 
-**触发**(任一,AI 友好可观察信号 — 不用"工作量周数"等人类时间度量):
+**触发**(任一):
 
 - **安全模型**(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作)
 - **跨界**(跨 ≥ 2 package 接口 / 数据模型 / 协议 / 关键 dep 增删升级)
-- **已扩散**(merge 入 main / 已 push 给其他 CC / 已落 ADR 被引用 / 已发给用户)
+- **已扩散**(已 merge 入 main / 已落 ADR 被引用 / 已发给用户)
 - **架构 / 长期维护**(整体目录结构 / 公共 API / 跨服务边界)
 
 breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 三层记忆 / Yjs 结构 · 积分计费。
@@ -233,13 +128,17 @@ breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 三层记忆 / Yj
 
 **反 DD 模式**(违规):浅表决策(star / "感觉")· hearsay(AI 对话当 ground truth)· 假对比(候选不全)· 单点论据 · "先用 X 后续再换"(同 #5 补丁)。**未做 DD 就动手 = 当场撤回**(同 #5)。
 
-**轻量 vs 完整**:候选明显 / 单文件 util → 轻量 Research(GitHub search 等);触发命中 → 必须完整 DD。归档位置见 [docs/DD-PROCESS.md §6](./docs/DD-PROCESS.md)(各团队自定;敏感内容入私有 channel)。
+**轻量 vs 完整**:候选明显 / 单文件 util → 轻量 Research(GitHub search 等);触发命中 → 必须完整 DD。
 
 # Test-Driven Development (TDD) — AI coding 时代(MANDATORY)
 
-业界共识(Anthropic / Kent Beck):TDD 在 AI 时代是关键纪律,但 AI 引入"作弊 / false confidence"风险需专门防御。完整 anti-pattern + invariant 工具 + 衔接 DD/audit 见 [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md)。
+业界共识(Anthropic / Kent Beck):TDD 在 AI 时代是关键纪律,但 AI 引入"作弊 / false confidence"风险需专门防御。完整 anti-pattern + invariant 工具见 [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md)。
 
-**5 条硬约束**(零容忍):(1) 修 bug 必须先写复现测试(违反 = 同 #5);(2) spec 由 audit / 人写、test code 由 dev 写(Writer/Reviewer 反闭环);(3) 重构前测试必须 green;(4) 禁止 AI 通过删除 / 禁用测试通过(CI 监控 test 总数下降);(5) 单一 AI session 不能闭环写 spec + test + 实现。
+**3 条硬约束**(零容忍):
+
+1. **修 bug 必须先写复现测试**(违反 = 同 #5)
+2. **重构前测试必须 green**
+3. **禁止 AI 通过删除 / 禁用测试通过**(CI 监控 test 总数下降)
 
 **节奏**:红(具体 assertion,禁 `toBeDefined()` 等 weak)→ 绿(最小实现)→ 蓝(重构 + 跑全套)。原型 / 探索期允许后置 test。
 
