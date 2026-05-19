@@ -6,6 +6,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { miniToolsForModality } from '@/pages/project/mini-tool-system/catalog';
 import type { Modality } from '@/spaces/canvas/types/node';
 
 interface MiniToolPickerProps {
@@ -19,32 +21,10 @@ interface MiniToolPickerProps {
  * node + primary edge (ADR mini-tool-unified-output) — the current node
  * is never mutated.
  *
- * PR 7 renders a short demo list per modality. The full 47-tool catalog
- * + per-tool inputs lands in PR 10 (mini-tool 47-tool batch).
+ * Tools come from the catalog in `pages/project/mini-tool-system/`.
  */
-const DEMO_TOOLS: Record<Modality, ReadonlyArray<{ id: string; label: string }>> = {
-  text: [
-    { id: 'polish', label: 'Polish' },
-    { id: 'summarize', label: 'Summarize' },
-    { id: 'translate', label: 'Translate' },
-  ],
-  image: [
-    { id: 'inpaint', label: 'Inpaint' },
-    { id: 'remove-bg', label: 'Remove background' },
-    { id: 'upscale', label: 'Upscale' },
-  ],
-  audio: [
-    { id: 'transcribe', label: 'Transcribe' },
-    { id: 'denoise', label: 'Denoise' },
-  ],
-  video: [
-    { id: 'extract-audio', label: 'Extract audio' },
-    { id: 'extract-cover', label: 'Extract cover' },
-  ],
-};
-
 export function MiniToolPicker({ modality, onPick }: MiniToolPickerProps) {
-  const tools = DEMO_TOOLS[modality];
+  const tools = miniToolsForModality(modality);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -60,23 +40,28 @@ export function MiniToolPicker({ modality, onPick }: MiniToolPickerProps) {
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-48 p-1'
+        className='w-56 p-1'
         data-testid='mini-tool-popover'
       >
-        <div className='flex flex-col gap-0.5'>
-          {tools.map((t) => (
-            <Button
-              key={t.id}
-              variant='ghost'
-              size='sm'
-              className='justify-start'
-              onClick={() => onPick?.(t.id)}
-              data-testid={`mini-tool-${t.id}`}
-            >
-              {t.label}
-            </Button>
-          ))}
-        </div>
+        <ScrollArea className='max-h-64'>
+          <div className='flex flex-col gap-0.5 pr-2'>
+            {tools.map((t) => (
+              <Button
+                key={t.id}
+                variant='ghost'
+                size='sm'
+                className='justify-between'
+                onClick={() => onPick?.(t.id)}
+                data-testid={`mini-tool-${t.id}`}
+              >
+                <span>{t.label}</span>
+                <span className='text-[10px] uppercase text-muted-foreground'>
+                  {t.output}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );
