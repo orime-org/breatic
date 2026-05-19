@@ -21,7 +21,8 @@ const MAX_TITLE_LEN = 80;
  *   - Length capped at MAX_TITLE_LEN (80) chars — excess input on commit
  *     is truncated; over-length text restores previous value.
  *   - Visual width capped at 320px (= Agent column width) with truncate
- *     (CSS `text-overflow: ellipsis`).
+ *     (CSS `text-overflow: ellipsis`). Requires `inline-block` because
+ *     CSS spec: inline elements ignore `max-width`.
  */
 export function TitleEditable({ value, onChange }: TitleEditableProps) {
   const ref = React.useRef<HTMLSpanElement>(null);
@@ -67,7 +68,7 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
           (e.currentTarget as HTMLSpanElement).blur();
         }
       }}
-      className='min-w-0 max-w-[320px] truncate text-[13px] font-medium outline-none focus:bg-muted/50'
+      className='inline-block min-w-0 max-w-[320px] truncate align-middle text-[13px] font-medium outline-none focus:bg-muted/50'
       style={{ padding: '2px var(--space-2)', borderRadius: 'var(--radius-chrome)' }}
       data-testid='title-display'
       title={value}
