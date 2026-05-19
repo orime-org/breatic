@@ -8,12 +8,14 @@ describe('canvas NODE_TYPES registry', () => {
     });
   });
 
-  it('NODE_KIND_LIST is exactly the 4 unified types + annotation', () => {
+  it('NODE_KIND_LIST is exactly the 6 unified types + annotation', () => {
     expect(NODE_KIND_LIST).toEqual([
       'text',
       'image',
       'audio',
       'video',
+      '3d',
+      'web',
       'annotation',
     ]);
   });

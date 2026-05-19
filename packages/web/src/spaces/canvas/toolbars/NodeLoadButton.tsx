@@ -14,6 +14,8 @@ const ACCEPT: Record<Modality, string> = {
   image: 'image/*',
   audio: 'audio/*',
   video: 'video/*',
+  '3d': '.glb,.gltf,.usdz',
+  web: '',
 };
 
 /**

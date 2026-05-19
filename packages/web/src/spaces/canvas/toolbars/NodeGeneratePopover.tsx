@@ -40,6 +40,13 @@ const MODELS: Record<Modality, ReadonlyArray<{ id: string; label: string }>> = {
     { id: 'kling', label: 'Kling' },
     { id: 'veo', label: 'Veo' },
   ],
+  '3d': [
+    { id: 'meshy', label: 'Meshy' },
+    { id: 'shape-e', label: 'Shap-E' },
+  ],
+  web: [
+    { id: 'iframe', label: 'Embed URL' },
+  ],
 };
 
 /**

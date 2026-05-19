@@ -1,4 +1,11 @@
-import { FileText, Image as ImageIcon, Music, Video } from 'lucide-react';
+import {
+  Box,
+  FileText,
+  Globe,
+  Image as ImageIcon,
+  Music,
+  Video,
+} from 'lucide-react';
 
 import type { Modality } from '@/spaces/canvas/types/node';
 
@@ -15,6 +22,8 @@ const ICONS: Record<Modality, typeof FileText> = {
   image: ImageIcon,
   audio: Music,
   video: Video,
+  '3d': Box,
+  web: Globe,
 };
 
 const DEFAULT_HINT: Record<Modality, string> = {
@@ -22,6 +31,8 @@ const DEFAULT_HINT: Record<Modality, string> = {
   image: 'Double-click to upload or generate an image',
   audio: 'Double-click to upload or generate audio',
   video: 'Double-click to upload or generate a video',
+  '3d': 'Double-click to upload a 3D model (glb / gltf)',
+  web: 'Double-click to embed a web page URL',
 };
 
 /**

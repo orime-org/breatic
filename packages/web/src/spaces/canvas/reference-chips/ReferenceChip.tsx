@@ -1,5 +1,7 @@
 import {
+  Box,
   FileText,
+  Globe,
   Image as ImageIcon,
   Music,
   Video,
@@ -23,6 +25,8 @@ const ICONS: Record<Modality, typeof FileText> = {
   image: ImageIcon,
   audio: Music,
   video: Video,
+  '3d': Box,
+  web: Globe,
 };
 
 /**

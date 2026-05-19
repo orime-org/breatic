@@ -14,7 +14,7 @@
  * atoms, driven by edges).
  */
 
-export type Modality = 'text' | 'image' | 'audio' | 'video';
+export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
 
 export type NodeKind = Modality | 'annotation';
 
@@ -59,6 +59,22 @@ export interface VideoNodeData {
   errorMessage?: string;
 }
 
+export interface ThreeDNodeData {
+  kind: '3d';
+  /** URL of a .glb / .gltf / .usdz model. */
+  url?: string;
+  status: NodeStatus;
+  errorMessage?: string;
+}
+
+export interface WebNodeData {
+  kind: 'web';
+  /** External URL rendered in a sandboxed iframe. */
+  url?: string;
+  status: NodeStatus;
+  errorMessage?: string;
+}
+
 export interface AnnotationNodeData {
   kind: 'annotation';
   text: string;
@@ -71,6 +87,8 @@ export type NodeData =
   | ImageNodeData
   | AudioNodeData
   | VideoNodeData
+  | ThreeDNodeData
+  | WebNodeData
   | AnnotationNodeData;
 
 export interface CanvasNode extends NodeBase {
@@ -83,6 +101,12 @@ export interface CanvasNode extends NodeBase {
  */
 export function isContentNode(
   data: NodeData,
-): data is TextNodeData | ImageNodeData | AudioNodeData | VideoNodeData {
+): data is
+  | TextNodeData
+  | ImageNodeData
+  | AudioNodeData
+  | VideoNodeData
+  | ThreeDNodeData
+  | WebNodeData {
   return data.kind !== 'annotation';
 }
