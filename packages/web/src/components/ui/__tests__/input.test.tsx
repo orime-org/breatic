@@ -5,14 +5,14 @@ import { Input } from '../input';
 
 describe('Input', () => {
   it('renders an <input> element with the given type', () => {
-    render(<Input type="email" data-testid="input" />);
+    render(<Input type='email' data-testid='input' />);
     const el = screen.getByTestId('input');
     expect(el.tagName).toBe('INPUT');
     expect(el).toHaveAttribute('type', 'email');
   });
 
   it('applies project token classes (border-input + bg-transparent)', () => {
-    render(<Input data-testid="input" />);
+    render(<Input data-testid='input' />);
     const el = screen.getByTestId('input');
     // shadcn-bridge.css aliases --input to var(--neutral-200), so this class
     // is the contract between primitive and design system.
@@ -22,7 +22,7 @@ describe('Input', () => {
 
   it('exposes placeholder + disabled + readonly to a11y tree', () => {
     render(
-      <Input placeholder="Enter email" disabled aria-label="Email" />,
+      <Input placeholder='Enter email' disabled aria-label='Email' />,
     );
     const el = screen.getByLabelText('Email');
     expect(el).toHaveAttribute('placeholder', 'Enter email');
@@ -30,7 +30,7 @@ describe('Input', () => {
   });
 
   it('merges custom className with default tokens (tailwind-merge)', () => {
-    render(<Input data-testid="input" className="h-10" />);
+    render(<Input data-testid='input' className='h-10' />);
     const el = screen.getByTestId('input');
     // h-9 default should be overridden by h-10 via tailwind-merge in cn().
     expect(el.className).toContain('h-10');

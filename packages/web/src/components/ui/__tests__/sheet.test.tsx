@@ -13,9 +13,9 @@ function setup(open: boolean, side?: 'left' | 'right' | 'top' | 'bottom') {
   return render(
     <Sheet open={open}>
       <SheetTrigger asChild>
-        <button type="button">Open</button>
+        <button type='button'>Open</button>
       </SheetTrigger>
-      <SheetContent side={side} data-testid="content">
+      <SheetContent side={side} data-testid='content'>
         <SheetTitle>Drawer title</SheetTitle>
         <SheetDescription>Drawer description</SheetDescription>
       </SheetContent>

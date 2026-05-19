@@ -33,19 +33,19 @@ function Harness({ onSubmit = () => {} }: { onSubmit?: (v: Schema) => void }) {
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
-          name="email"
+          name='email'
           render={({ field }) => (
             <FormItem>
               <FormLabel>Email address</FormLabel>
               <FormControl>
-                <Input data-testid="email-input" {...field} />
+                <Input data-testid='email-input' {...field} />
               </FormControl>
               <FormDescription>We will not share it.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        <button type="submit">Submit</button>
+        <button type='submit'>Submit</button>
       </form>
     </Form>
   );

@@ -5,13 +5,13 @@ import { Textarea } from '../textarea';
 
 describe('Textarea', () => {
   it('renders a <textarea> element', () => {
-    render(<Textarea data-testid="ta" />);
+    render(<Textarea data-testid='ta' />);
     const el = screen.getByTestId('ta');
     expect(el.tagName).toBe('TEXTAREA');
   });
 
   it('applies project token classes (border-input + bg-transparent)', () => {
-    render(<Textarea data-testid="ta" />);
+    render(<Textarea data-testid='ta' />);
     const el = screen.getByTestId('ta');
     expect(el.className).toContain('border-input');
     expect(el.className).toContain('bg-transparent');
@@ -20,9 +20,9 @@ describe('Textarea', () => {
   it('exposes placeholder + disabled + aria-label to a11y tree', () => {
     render(
       <Textarea
-        placeholder="Write description"
+        placeholder='Write description'
         disabled
-        aria-label="Description"
+        aria-label='Description'
       />,
     );
     const el = screen.getByLabelText('Description');
@@ -31,7 +31,7 @@ describe('Textarea', () => {
   });
 
   it('merges custom className with default tokens (tailwind-merge)', () => {
-    render(<Textarea data-testid="ta" className="min-h-[120px]" />);
+    render(<Textarea data-testid='ta' className='min-h-[120px]' />);
     const el = screen.getByTestId('ta');
     // Custom min-h overrides default min-h-[60px] via tailwind-merge in cn().
     expect(el.className).toContain('min-h-[120px]');

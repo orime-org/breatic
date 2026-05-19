@@ -14,8 +14,8 @@ import {
 describe('Command', () => {
   it('renders root with bg-popover + text-popover-foreground tokens', () => {
     render(
-      <Command data-testid="cmd">
-        <CommandInput placeholder="Search" />
+      <Command data-testid='cmd'>
+        <CommandInput placeholder='Search' />
         <CommandList>
           <CommandEmpty>No results</CommandEmpty>
         </CommandList>
@@ -29,7 +29,7 @@ describe('Command', () => {
   it('CommandInput renders <input> with placeholder + search icon', () => {
     render(
       <Command>
-        <CommandInput placeholder="Search skills" />
+        <CommandInput placeholder='Search skills' />
       </Command>,
     );
     const input = screen.getByPlaceholderText('Search skills');
@@ -40,7 +40,7 @@ describe('Command', () => {
     render(
       <Command>
         <CommandList>
-          <CommandGroup heading="Tools">
+          <CommandGroup heading='Tools'>
             <CommandItem>Remove bg</CommandItem>
             <CommandItem>Upscale</CommandItem>
           </CommandGroup>
@@ -53,7 +53,7 @@ describe('Command', () => {
   });
 
   it('CommandShortcut renders with muted-foreground + ml-auto (standalone)', () => {
-    render(<CommandShortcut data-testid="sc">⌘K</CommandShortcut>);
+    render(<CommandShortcut data-testid='sc'>⌘K</CommandShortcut>);
     const sc = screen.getByTestId('sc');
     expect(sc).toHaveTextContent('⌘K');
     expect(sc.className).toContain('text-muted-foreground');
@@ -63,7 +63,7 @@ describe('Command', () => {
   it('CommandEmpty shows fallback message when no items match', () => {
     render(
       <Command>
-        <CommandInput value="zzz_no_match" onValueChange={() => {}} />
+        <CommandInput value='zzz_no_match' onValueChange={() => {}} />
         <CommandList>
           <CommandEmpty>No results</CommandEmpty>
           <CommandGroup>

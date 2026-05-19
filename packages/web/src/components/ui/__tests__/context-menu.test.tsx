@@ -31,7 +31,7 @@ describe('ContextMenu', () => {
       <ContextMenu>
         <ContextMenuTrigger>x</ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem data-testid="item">Item A</ContextMenuItem>
+          <ContextMenuItem data-testid='item'>Item A</ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>,
     );
@@ -45,14 +45,14 @@ describe('ContextMenu', () => {
 
   it('ContextMenuSeparator renders h-px bg-border', () => {
     // Render in a normal div context — Separator does not require menu context.
-    render(<ContextMenuSeparator data-testid="sep" />);
+    render(<ContextMenuSeparator data-testid='sep' />);
     const sep = screen.getByTestId('sep');
     expect(sep.className).toContain('h-px');
     expect(sep.className).toContain('bg-border');
   });
 
   it('ContextMenuShortcut renders muted-foreground + ml-auto', () => {
-    render(<ContextMenuShortcut data-testid="sc">⌘K</ContextMenuShortcut>);
+    render(<ContextMenuShortcut data-testid='sc'>⌘K</ContextMenuShortcut>);
     const sc = screen.getByTestId('sc');
     expect(sc).toHaveTextContent('⌘K');
     expect(sc.className).toContain('text-muted-foreground');
@@ -61,7 +61,7 @@ describe('ContextMenu', () => {
 
   it('ContextMenuShortcut merges custom className (tailwind-merge)', () => {
     render(
-      <ContextMenuShortcut data-testid="sc" className="text-foreground">
+      <ContextMenuShortcut data-testid='sc' className='text-foreground'>
         F2
       </ContextMenuShortcut>,
     );

@@ -23,7 +23,7 @@ describe('Toaster (sonner)', () => {
   });
 
   it('mounts with custom position prop without throwing', () => {
-    expect(() => render(<Toaster position="top-right" richColors />)).not.toThrow();
+    expect(() => render(<Toaster position='top-right' richColors />)).not.toThrow();
   });
 
   it('toast() default call does not throw', () => {

@@ -24,13 +24,13 @@ beforeEach(() => {
 
 function setup(open: boolean) {
   return render(
-    <Select open={open} defaultValue="a">
-      <SelectTrigger data-testid="trigger">
-        <SelectValue placeholder="Pick" />
+    <Select open={open} defaultValue='a'>
+      <SelectTrigger data-testid='trigger'>
+        <SelectValue placeholder='Pick' />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="a">Option A</SelectItem>
-        <SelectItem value="b">Option B</SelectItem>
+        <SelectItem value='a'>Option A</SelectItem>
+        <SelectItem value='b'>Option B</SelectItem>
       </SelectContent>
     </Select>,
   );
@@ -68,11 +68,11 @@ describe('Select', () => {
   it('trigger merges custom className (tailwind-merge)', () => {
     render(
       <Select>
-        <SelectTrigger data-testid="trigger" className="w-48">
+        <SelectTrigger data-testid='trigger' className='w-48'>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="x">X</SelectItem>
+          <SelectItem value='x'>X</SelectItem>
         </SelectContent>
       </Select>,
     );

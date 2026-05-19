@@ -6,7 +6,7 @@ import { ScrollArea } from '../scroll-area';
 describe('ScrollArea', () => {
   it('renders root container with overflow-hidden + relative', () => {
     render(
-      <ScrollArea data-testid="root" className="h-32 w-64">
+      <ScrollArea data-testid='root' className='h-32 w-64'>
         <p>content</p>
       </ScrollArea>,
     );
@@ -28,8 +28,8 @@ describe('ScrollArea', () => {
 
   it('viewport has h-full + w-full (fills root)', () => {
     render(
-      <ScrollArea data-testid="root">
-        <p data-testid="child">x</p>
+      <ScrollArea data-testid='root'>
+        <p data-testid='child'>x</p>
       </ScrollArea>,
     );
     const child = screen.getByTestId('child');
@@ -47,8 +47,8 @@ describe('ScrollArea', () => {
 
   it('viewport inherits border-radius via rounded-[inherit]', () => {
     render(
-      <ScrollArea data-testid="root" className="rounded-lg">
-        <p data-testid="child">x</p>
+      <ScrollArea data-testid='root' className='rounded-lg'>
+        <p data-testid='child'>x</p>
       </ScrollArea>,
     );
     const child = screen.getByTestId('child');

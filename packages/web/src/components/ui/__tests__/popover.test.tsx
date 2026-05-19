@@ -7,9 +7,9 @@ function setup(open: boolean) {
   return render(
     <Popover open={open}>
       <PopoverTrigger asChild>
-        <button type="button">Open</button>
+        <button type='button'>Open</button>
       </PopoverTrigger>
-      <PopoverContent data-testid="content">Panel body</PopoverContent>
+      <PopoverContent data-testid='content'>Panel body</PopoverContent>
     </Popover>,
   );
 }
@@ -43,9 +43,9 @@ describe('Popover', () => {
     render(
       <Popover open>
         <PopoverTrigger asChild>
-          <button type="button">O</button>
+          <button type='button'>O</button>
         </PopoverTrigger>
-        <PopoverContent data-testid="content" className="w-96">
+        <PopoverContent data-testid='content' className='w-96'>
           x
         </PopoverContent>
       </Popover>,

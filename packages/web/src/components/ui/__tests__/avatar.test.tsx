@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../avatar';
 describe('Avatar', () => {
   it('renders root with default size + circular shape', () => {
     render(
-      <Avatar data-testid="avatar">
+      <Avatar data-testid='avatar'>
         <AvatarFallback>AL</AvatarFallback>
       </Avatar>,
     );
@@ -20,7 +20,7 @@ describe('Avatar', () => {
   it('AvatarFallback renders text + bg-muted token (visible when image fails)', () => {
     render(
       <Avatar>
-        <AvatarFallback data-testid="fb">AL</AvatarFallback>
+        <AvatarFallback data-testid='fb'>AL</AvatarFallback>
       </Avatar>,
     );
     // Radix Fallback renders immediately when no Image (jsdom never loads images).
@@ -33,7 +33,7 @@ describe('Avatar', () => {
   it('AvatarImage forwards src + alt to the underlying <img>', () => {
     render(
       <Avatar>
-        <AvatarImage src="/avatar.png" alt="User" data-testid="img" />
+        <AvatarImage src='/avatar.png' alt='User' data-testid='img' />
         <AvatarFallback>AL</AvatarFallback>
       </Avatar>,
     );
@@ -51,7 +51,7 @@ describe('Avatar', () => {
 
   it('merges custom size className (h-14 overrides h-10)', () => {
     render(
-      <Avatar data-testid="avatar" className="h-14 w-14">
+      <Avatar data-testid='avatar' className='h-14 w-14'>
         <AvatarFallback>AL</AvatarFallback>
       </Avatar>,
     );

@@ -22,8 +22,8 @@ describe('Label', () => {
     const user = userEvent.setup();
     render(
       <>
-        <Label htmlFor="email-input">Email</Label>
-        <input id="email-input" type="email" />
+        <Label htmlFor='email-input'>Email</Label>
+        <input id='email-input' type='email' />
       </>,
     );
     const label = screen.getByText('Email');
@@ -33,7 +33,7 @@ describe('Label', () => {
   });
 
   it('merges custom className with default tokens (tailwind-merge)', () => {
-    render(<Label className="text-base">Email</Label>);
+    render(<Label className='text-base'>Email</Label>);
     const el = screen.getByText('Email');
     // Custom text-base overrides default text-sm via tailwind-merge in cn().
     expect(el.className).toContain('text-base');

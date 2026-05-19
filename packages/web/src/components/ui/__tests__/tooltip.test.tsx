@@ -13,9 +13,9 @@ function setup(open = true) {
     <TooltipProvider>
       <Tooltip open={open}>
         <TooltipTrigger asChild>
-          <button type="button">Trigger</button>
+          <button type='button'>Trigger</button>
         </TooltipTrigger>
-        <TooltipContent data-testid="content">Tooltip text</TooltipContent>
+        <TooltipContent data-testid='content'>Tooltip text</TooltipContent>
       </Tooltip>
     </TooltipProvider>,
   );
@@ -52,9 +52,9 @@ describe('Tooltip', () => {
       <TooltipProvider>
         <Tooltip open>
           <TooltipTrigger asChild>
-            <button type="button">T</button>
+            <button type='button'>T</button>
           </TooltipTrigger>
-          <TooltipContent data-testid="content" className="bg-destructive">
+          <TooltipContent data-testid='content' className='bg-destructive'>
             Err
           </TooltipContent>
         </Tooltip>

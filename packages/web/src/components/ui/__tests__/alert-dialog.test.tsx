@@ -17,9 +17,9 @@ function setup(open: boolean) {
   return render(
     <AlertDialog open={open}>
       <AlertDialogTrigger asChild>
-        <button type="button">Delete</button>
+        <button type='button'>Delete</button>
       </AlertDialogTrigger>
-      <AlertDialogContent data-testid="content">
+      <AlertDialogContent data-testid='content'>
         <AlertDialogHeader>
           <AlertDialogTitle>Confirm</AlertDialogTitle>
           <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
