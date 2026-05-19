@@ -2,19 +2,32 @@
  * tokens.css — web v14 visual token source of truth.
  *
  * Mirrors `breatic-inner-design/design/tokens.css` (private design source of
- * truth). Values are bumped here when ADRs land; do not edit divergently.
+ * truth, 2026-05-14 ADR 14 amended) PLUS chrome-baseline mock v4.x UI scale
+ * extensions (avatar / btn / icon / space / radius chrome/content split).
  *
- * Linear-style system:
- *   - stone-warm neutral 11-step scale (0-900)
- *   - 5 always-color status palettes (do NOT invert in dark mode to preserve
- *     semantic contrast)
- *   - radius cap 6px (ADR 9: typography-radius-defaults)
- *   - brand reserved for logo only (ADR 13: canvas-neutral-first-status-colors)
+ * 4 token model decisions (user 拍板 2026-05-19):
+ *   1. `-foreground` full names (shadcn standard) — NOT short `-fg`
+ *   2. `--radius-chrome` (6px fixed) + `--radius-content-{sm,md,lg,xl}`
+ *      (Tweaks-linked) — supersedes shadcn single `--radius` scale because
+ *      Direction B Tweaks needs content-radius to respond to the slider
+ *   3. `--primary` / `--primary-foreground` (ADR 14 amended) — `--brand-*`
+ *      raw values reserved for logo SVG only (`--brand-logo-primary`)
+ *   4. `--status-{name}-{bg,fg,border}` complete 5-palette set (selected /
+ *      info / handling / locked / warning / error / success), light + dark
+ *      mode variants (don't auto-invert from neutral)
+ *
+ * Provenance:
+ *   - shadcn alias values: ADR 14 (canvas-neutral-first-status-colors)
+ *   - UI scale (avatar/btn/icon/space/radius split): chrome-baseline mock
+ *     `gstack/chrome-baseline-20260516/finalized.html` v4.x
+ *   - status palette + dark variants: inner `design/tokens.css` full file
  */
 
 :root,
 html[data-theme='light'] {
-  /* ===== Neutral scale (stone-warm) ===== */
+  /* ============================================================
+     Neutral · stone-warm 11-step (light mode default)
+     ============================================================ */
   --neutral-0: #ffffff;
   --neutral-50: #fafaf9;
   --neutral-100: #f5f5f4;
@@ -26,42 +39,230 @@ html[data-theme='light'] {
   --neutral-700: #44403c;
   --neutral-800: #292524;
   --neutral-900: #1c1917;
+  --neutral-950: #0c0a09;
 
-  /* ===== Status (5 palettes, always-color) ===== */
-  --status-selected-fg: #2563eb;
-  --status-selected-bg: #dbeafe;
-  --status-selected-border: #3b82f6;
-  --status-info-fg: #1d4ed8;
-  --status-info-bg: #eff6ff;
-  --status-success-fg: #047857;
-  --status-success-bg: #d1fae5;
-  --status-warning-fg: #b45309;
+  /* ============================================================
+     Brand raw values · logo SVG only (ADR 13 / ADR 14 amended)
+     `--brand-logo-primary` is the only exported brand alias.
+     ANY chrome use of `--brand-*` triggers brand-guard CI.
+     ============================================================ */
+  --brand-50: hsl(8, 58%, 97%);
+  --brand-100: hsl(8, 58%, 92%);
+  --brand-200: hsl(8, 58%, 82%);
+  --brand-300: hsl(8, 58%, 70%);
+  --brand-400: hsl(8, 58%, 58%);
+  --brand-500: hsl(8, 58%, 47%); /* main · logo SVG only */
+  --brand-600: hsl(8, 58%, 40%);
+  --brand-700: hsl(8, 53%, 32%);
+  --brand-800: hsl(8, 48%, 23%);
+  --brand-900: hsl(8, 43%, 15%);
+  --brand-logo-primary: var(--brand-500);
+
+  /* ============================================================
+     shadcn/ui standard tokens (CTA / Surface / Border / Ring)
+     Values follow Neutral-First ADR; names follow shadcn standard
+     ============================================================ */
+  --primary: var(--neutral-900);
+  --primary-foreground: var(--neutral-0);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --destructive: #dc2626; /* red-600 */
+  --destructive-foreground: #ffffff;
+  --background: var(--neutral-0);
+  --foreground: var(--neutral-900);
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
+  --border: var(--neutral-200);
+  --input: var(--neutral-200);
+  --ring: var(--neutral-900);
+
+  /* ============================================================
+     Status palette · 5 colors × 3-piece (bg / fg / border)
+     Not auto-inverted in dark mode (semantic contrast preserved)
+     ============================================================ */
+
+  /* Selected / Focused / Active (blue) */
+  --status-selected-bg: #dbeafe; /* blue-100 */
+  --status-selected-fg: #1d4ed8; /* blue-700 */
+  --status-selected-border: #3b82f6; /* blue-500 */
+  --status-selected-ring: rgba(59, 130, 246, 0.2);
+  --ring-focus: rgba(59, 130, 246, 0.4);
+
+  /* Info (blue) */
+  --status-info-bg: #eff6ff; /* blue-50 */
+  --status-info-fg: #1e3a8a; /* blue-900 */
+  --status-info-border: #3b82f6; /* blue-500 */
+
+  /* Handling / Loading (blue, lighter) */
+  --status-handling-bg: #dbeafe;
+  --status-handling-fg: #1e40af; /* blue-800 */
+  --status-handling-border: #60a5fa; /* blue-400 */
+
+  /* Locked (amber) */
+  --status-locked-bg: #fef3c7; /* amber-100 */
+  --status-locked-fg: #d97706; /* amber-600 */
+  --status-locked-border: #fbbf24; /* amber-400 */
+
+  /* Warning (amber, stronger) */
   --status-warning-bg: #fef3c7;
-  --status-error-fg: #b91c1c;
-  --status-error-bg: #fee2e2;
+  --status-warning-fg: #78350f; /* amber-900 */
+  --status-warning-border: #fbbf24;
 
-  /* ===== Radius (cap 6px, ADR 9) ===== */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
+  /* Error (red) */
+  --status-error-bg: #fee2e2; /* red-100 */
+  --status-error-fg: #991b1b; /* red-800 */
+  --status-error-border: #ef4444; /* red-500 */
+
+  /* Success (emerald) */
+  --status-success-bg: #d1fae5; /* emerald-100 */
+  --status-success-fg: #065f46; /* emerald-800 */
+  --status-success-border: #10b981; /* emerald-500 */
+
+  /* ============================================================
+     Radius · chrome FIXED / content responds to Tweaks
+     (chrome-baseline mock v4.x § F2)
+     ============================================================ */
+  --radius-chrome: 6px; /* fixed, not Tweaks-linked */
+  --radius-content-sm: 6px; /* Tight 4 / Medium 6 / Round 6 */
+  --radius-content-md: 12px; /* Tight 8 / Medium 10 / Round 12 */
+  --radius-content-lg: 16px; /* Tight 10 / Medium 14 / Round 16 */
+  --radius-content-xl: 20px; /* Tight 12 / Medium 16 / Round 20 */
+  /* shadcn primitives consume these aliases (mapped to content scale): */
+  --radius-sm: var(--radius-content-sm);
+  --radius-md: var(--radius-content-md);
+  --radius-lg: var(--radius-content-lg);
   --radius-full: 9999px;
 
-  /* ===== Brand (logo only, ADR 13) ===== */
-  --brand-logo-primary: #bc4b36;
+  /* ============================================================
+     Space scale · 8pt grid (chrome v4.0)
+     ============================================================ */
+  --space-1: 2px; /* dense inner gap */
+  --space-2: 4px; /* tight gap · TabBar baseline */
+  --space-3: 6px; /* container edge / icon+text inline */
+  --space-4: 8px; /* regular gap / button H padding */
+  --space-5: 12px; /* spacious · Logo / nav grouping */
+  --space-6: 16px; /* section divider */
+
+  /* ============================================================
+     Button hit area · 4-step (chrome v4.0)
+     ============================================================ */
+  --btn-compact: 24px; /* inline chip / tag */
+  --btn-inline: 28px; /* inline action (skill / send / credits) */
+  --btn-chrome: 32px; /* chrome button (TopBar / TabBar / popover) */
+  --btn-menu: 40px; /* LeftMenu primary entry */
+  /* Convenience aliases (chrome v4.0): */
+  --chrome-btn-size: var(--btn-chrome);
+  --chrome-btn-gap: var(--space-4);
+
+  /* ============================================================
+     Icon size · 4-step (chrome v4.0 / v4.10)
+     ============================================================ */
+  --icon-xs: 12px;
+  --icon-sm: 14px;
+  --icon-base: 18px;
+  --icon-lg: 20px;
+  --chrome-btn-icon: var(--icon-base);
+
+  /* ============================================================
+     Avatar size · 5-step (chrome v4.22)
+     ============================================================ */
+  --avatar-xs: 20px; /* TopBar Members stack / chip / awareness */
+  --avatar-sm: 26px; /* popover member row (compact) */
+  --avatar-md: 32px; /* section item / notif request */
+  --avatar-lg: 40px; /* modal / detail panel */
+  --avatar-xl: 64px; /* profile page header */
+
+  /* ============================================================
+     Typography · Tweaks-linked
+     ============================================================ */
+  --ts: 1; /* text scale · Tweaks STATE_VERSION=3 · localStorage key breatic-tweaks-v3 */
+  --font-size-base: calc(14px * var(--ts));
+  --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',
+    system-ui, -apple-system, sans-serif;
+
+  /* ============================================================
+     Shadow · light mode subtle
+     ============================================================ */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06),
+    0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08),
+    0 2px 4px -2px rgba(0, 0, 0, 0.04);
+
+  /* ============================================================
+     Elevation semantic layer
+     ============================================================ */
+  --elevation-0: none;
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow-md);
 }
 
+/* ============================================================
+   Dark mode · [data-theme="dark"] inverts neutral + status
+   shadcn standard tokens auto-follow via var() references
+   ============================================================ */
 html[data-theme='dark'] {
-  /* Neutral inverted: 0 ↔ 900, symmetric step distance preserved. */
+  /* Neutral inversion (stone-warm dark) */
   --neutral-0: #1c1917;
-  --neutral-50: #292524;
-  --neutral-100: #44403c;
-  --neutral-200: #57534e;
-  --neutral-300: #78716c;
-  --neutral-400: #a8a29e;
-  --neutral-500: #d6d3d1;
-  --neutral-600: #e7e5e4;
-  --neutral-700: #f5f5f4;
-  --neutral-800: #fafaf9;
-  --neutral-900: #ffffff;
-  /* status / brand-logo intentionally NOT inverted (always-color contract). */
+  --neutral-50: #201e1c;
+  --neutral-100: #292524;
+  --neutral-200: #44403c;
+  --neutral-300: #57534e;
+  --neutral-400: #78716c;
+  --neutral-500: #a8a29e;
+  --neutral-600: #d6d3d1;
+  --neutral-700: #e7e5e4;
+  --neutral-800: #f5f5f4;
+  --neutral-900: #fafaf9;
+  --neutral-950: #ffffff;
+
+  /* Popover elevated surface (one step lighter than background) */
+  --popover: var(--neutral-50);
+
+  /* shadcn destructive · lighter for dark contrast */
+  --destructive: #ef4444; /* red-500 */
+
+  /* Status palette · dark variants (manually set, not auto-inverted) */
+  --status-selected-bg: #1e3a8a;
+  --status-selected-fg: #dbeafe;
+  --status-selected-border: #60a5fa; /* blue-400 */
+  --status-selected-ring: rgba(96, 165, 250, 0.2);
+  --ring-focus: rgba(96, 165, 250, 0.4);
+
+  --status-info-bg: #1e3a8a; /* blue-900 */
+  --status-info-fg: #dbeafe; /* blue-100 */
+  --status-info-border: #60a5fa;
+
+  --status-handling-bg: #1e3a8a;
+  --status-handling-fg: #93c5fd; /* blue-300 */
+  --status-handling-border: #3b82f6; /* blue-500 */
+
+  --status-locked-bg: #78350f; /* amber-900 */
+  --status-locked-fg: #fde68a; /* amber-200 */
+  --status-locked-border: #f59e0b; /* amber-500 */
+
+  --status-warning-bg: #78350f;
+  --status-warning-fg: #fde68a;
+  --status-warning-border: #f59e0b;
+
+  --status-error-bg: #7f1d1d; /* red-900 */
+  --status-error-fg: #fca5a5; /* red-300 */
+  --status-error-border: #f87171; /* red-400 */
+
+  --status-success-bg: #064e3b; /* emerald-900 */
+  --status-success-fg: #6ee7b7; /* emerald-300 */
+  --status-success-border: #34d399; /* emerald-400 */
+
+  /* Shadow deepens in dark for visibility on dark background */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4),
+    0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5),
+    0 2px 4px -2px rgba(0, 0, 0, 0.4);
 }
