@@ -1,14 +1,18 @@
 import { RouterProvider } from 'react-router-dom';
 
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { router } from './app/routes';
 
 /**
- * App root — mounts the React Router 7 data router.
- *
- * The router definition lives in `app/routes.tsx`; this component is a
- * thin pass-through so future providers (Theme / Yjs / I18n / QueryClient)
- * can wrap it without churn.
+ * App root — mounts the React Router 7 data router under a global
+ * TooltipProvider so any descendant `<Tooltip>` works without local
+ * wrapping. Future providers (Theme / Yjs / I18n / QueryClient) layer
+ * around the same shell.
  */
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <TooltipProvider>
+      <RouterProvider router={router} />
+    </TooltipProvider>
+  );
 }

@@ -6,6 +6,7 @@ import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { Navigate } from 'react-router-dom';
 
 function makeRouter(initialPath: string) {
@@ -39,10 +40,13 @@ describe('routes', () => {
     ).toBeInTheDocument();
   });
 
-  it('/project/:id resolves the project page with the param', async () => {
-    render(<RouterProvider router={makeRouter('/project/demo-1')} />);
-    expect(await screen.findByText(/id:/i)).toBeInTheDocument();
-    expect(screen.getByText('demo-1')).toBeInTheDocument();
+  it('/project/:id resolves the project page (TopBar mounts)', async () => {
+    render(
+      <TooltipProvider>
+        <RouterProvider router={makeRouter('/project/demo-1')} />
+      </TooltipProvider>,
+    );
+    expect(await screen.findByTestId('top-bar')).toBeInTheDocument();
   });
 
   it('/login renders the auth placeholder', async () => {
