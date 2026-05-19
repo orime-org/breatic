@@ -14,8 +14,8 @@ describe('SpaceOutlet', () => {
     expect(screen.getByTestId('document-space')).toBeInTheDocument();
   });
 
-  it('renders the timeline body for type=timeline', () => {
+  it('renders the timeline body for type=timeline (empty state)', () => {
     render(<SpaceOutlet projectId='p' spaceId='s' type='timeline' />);
-    expect(screen.getByTestId('timeline-space')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
   });
 });
