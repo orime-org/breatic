@@ -28,9 +28,9 @@ describe('TopBar', () => {
     expect(screen.getByTestId('top-bar')).toBeInTheDocument();
   });
 
-  it('shows the role tag with the human label (Owner)', () => {
+  it('shows the role tag with the uppercase label (OWNER)', () => {
     setup();
-    expect(screen.getByTestId('role-tag')).toHaveTextContent('Owner');
+    expect(screen.getByTestId('role-tag')).toHaveTextContent('OWNER');
   });
 
   it('shows the credits chip with the credit count', () => {
@@ -38,13 +38,15 @@ describe('TopBar', () => {
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
-  it('switches title to an input on click and commits on Enter', async () => {
+  it('title is inline contenteditable and commits via blur (mock § TopBar v4.0)', async () => {
     const user = userEvent.setup();
     const { onRename } = setup({ projectName: 'Old' });
-    await user.click(screen.getByTestId('title-display'));
-    const input = screen.getByTestId('title-input');
-    await user.clear(input);
-    await user.type(input, 'New name{Enter}');
+    const title = screen.getByTestId('title-display');
+    expect(title.getAttribute('contenteditable')).toBe('true');
+    title.focus();
+    // Simulate inline edit then blur commit
+    title.innerText = 'New name';
+    await user.click(document.body); // blur
     expect(onRename).toHaveBeenCalledWith('New name');
   });
 
@@ -52,5 +54,11 @@ describe('TopBar', () => {
     setup();
     const link = screen.getByLabelText('Home');
     expect(link.getAttribute('href')).toBe('/studio');
+  });
+
+  it('renders both topbar groups (text-icon + icon-only)', () => {
+    setup();
+    expect(screen.getByTestId('topbar-group-text-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('topbar-group-icon-only')).toBeInTheDocument();
   });
 });

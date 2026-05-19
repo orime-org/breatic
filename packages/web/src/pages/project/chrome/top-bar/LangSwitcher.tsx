@@ -7,28 +7,39 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usePreferencesStore, type Language } from '@/stores';
-
-const LANGS: Array<{ code: Language; label: string }> = [
-  { code: 'zh-CN', label: '简体中文' },
-  { code: 'en', label: 'English' },
-  { code: 'ja', label: '日本語' },
-  { code: 'zh-TW', label: '繁體中文' },
-];
+import { TopBarTextIconButton } from './TopBarTextIconButton';
 
 /**
- * Language switcher — popover list bound to the preferences store. The
- * actual i18n provider that translates `language` → React content runs
- * in `app/providers/I18nProvider` (PR for i18n).
+ * Language switcher · TopBar group A (mock § TopBar v4.0).
+ *
+ * Renders the current language single-char label inline so the user
+ * sees the active locale at a glance (mock: "中" for zh-CN). Click opens
+ * a popover of all 4 supported locales.
+ *
+ * The actual i18n translation provider is wired in a later PR (`I18nProvider`).
  */
+const LANGS: Array<{ code: Language; label: string; char: string }> = [
+  { code: 'zh-CN', label: '简体中文', char: '中' },
+  { code: 'en', label: 'English', char: 'EN' },
+  { code: 'ja', label: '日本語', char: '日' },
+  { code: 'zh-TW', label: '繁體中文', char: '繁' },
+];
+
 export function LangSwitcher() {
   const language = usePreferencesStore((s) => s.language);
   const setLanguage = usePreferencesStore((s) => s.setLanguage);
+  const current = LANGS.find((l) => l.code === language) ?? LANGS[0];
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant='ghost' size='icon' aria-label='Language'>
-          <Globe className='h-4 w-4' />
-        </Button>
+        <TopBarTextIconButton
+          aria-label={`Language: ${current.label}`}
+          data-testid='lang-trigger'
+          icon={<Globe className='h-[18px] w-[18px]' />}
+          withChevron
+        >
+          {current.char}
+        </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent
         align='end'

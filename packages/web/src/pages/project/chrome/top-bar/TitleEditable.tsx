@@ -1,59 +1,67 @@
 import * as React from 'react';
 
-import { Input } from '@/components/ui/input';
-
 interface TitleEditableProps {
   value: string;
   onChange: (next: string) => void;
 }
 
 /**
- * Inline-editable project title. Click to enter edit mode, Enter or blur
- * to commit, Escape to cancel. Non-edit mode renders as a static label
- * to keep the chrome calm at rest.
+ * Project title — inline contenteditable per mock § TopBar v4.0.
+ *
+ * Always shown as an inline `<span contenteditable>`; clicking inside
+ * activates the cursor (no mode toggle). Enter or blur commits;
+ * Escape cancels (restore previous text).
+ *
+ * Behavioral contract:
+ *   - Empty / whitespace-only commits are rejected (restore previous).
+ *   - Newlines are stripped (single-line title).
+ *   - Outer parent of `min-w-0` keeps the title from overflowing.
  */
 export function TitleEditable({ value, onChange }: TitleEditableProps) {
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(value);
+  const ref = React.useRef<HTMLSpanElement>(null);
 
+  // Keep the DOM text in sync with the prop when external rename happens
+  // and the user isn't currently editing.
   React.useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [editing, value]);
+    if (ref.current && ref.current.innerText !== value) {
+      ref.current.innerText = value;
+    }
+  }, [value]);
 
   const commit = () => {
-    const trimmed = draft.trim();
-    if (trimmed.length > 0 && trimmed !== value) onChange(trimmed);
-    setEditing(false);
+    if (!ref.current) return;
+    const next = ref.current.innerText.replace(/\n/g, '').trim();
+    if (next.length === 0) {
+      ref.current.innerText = value;
+      return;
+    }
+    if (next !== value) onChange(next);
   };
 
-  if (editing) {
-    return (
-      <Input
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
-          if (e.key === 'Escape') {
-            setDraft(value);
-            setEditing(false);
-          }
-        }}
-        className='h-7 w-48'
-        data-testid='title-input'
-      />
-    );
-  }
-
   return (
-    <button
-      type='button'
-      onClick={() => setEditing(true)}
-      className='truncate rounded px-1 text-sm font-medium hover:bg-muted'
+    <span
+      ref={ref}
+      role='textbox'
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.currentTarget as HTMLSpanElement).blur();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (ref.current) ref.current.innerText = value;
+          (e.currentTarget as HTMLSpanElement).blur();
+        }
+      }}
+      className='min-w-0 truncate text-[13px] font-medium outline-none focus:bg-muted/50'
+      style={{ padding: '2px var(--space-2)', borderRadius: 'var(--radius-chrome)' }}
       data-testid='title-display'
     >
       {value}
-    </button>
+    </span>
   );
 }

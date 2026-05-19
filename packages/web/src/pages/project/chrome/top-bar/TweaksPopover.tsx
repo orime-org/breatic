@@ -1,25 +1,29 @@
-import { Sliders } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TweaksForm } from '@/pages/project/tweaks/TweaksForm';
+import { TopBarTextIconButton } from './TopBarTextIconButton';
 
 /**
- * Top-bar entry to the Direction B 5-parameter tweaks (text size,
- * saturation, hue, radius, neutrals). Opens a popover hosting `TweaksForm`,
- * which writes through to `usePreferencesStore` + runtime CSS-var injection.
+ * Top-bar entry to the Direction B 5-parameter tweaks. Renders as a
+ * text-icon TopBar button (mock § TopBar v4.0 group A), opens a popover
+ * hosting `TweaksForm` which writes through to `usePreferencesStore`.
  */
 export function TweaksPopover() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant='ghost' size='icon' aria-label='Tweaks'>
-          <Sliders className='h-4 w-4' />
-        </Button>
+        <TopBarTextIconButton
+          aria-label='Tweaks'
+          data-testid='tweaks-trigger'
+          icon={<SlidersHorizontal className='h-[18px] w-[18px]' />}
+        >
+          Tweaks
+        </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent className='w-80' align='end' data-testid='tweaks-popover'>
         <TweaksForm />

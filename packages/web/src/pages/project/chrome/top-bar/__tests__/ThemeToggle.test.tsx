@@ -16,18 +16,17 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
-  it('clicking toggles theme light → dark', async () => {
+  it('opens the theme popover and selecting Dark sets the theme', async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
     await user.click(screen.getByTestId('theme-toggle'));
+    await user.click(await screen.findByTestId('theme-option-dark'));
     expect(usePreferencesStore.getState().theme).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
-  it('aria-label tracks the next state (Switch to dark theme)', () => {
+  it('aria-label reflects the current theme (mock § TopBar v4.0 popover)', () => {
     render(<ThemeToggle />);
-    expect(
-      screen.getByLabelText('Switch to dark theme'),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Theme: light')).toBeInTheDocument();
   });
 });
