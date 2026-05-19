@@ -29,6 +29,7 @@ const THEMES: Array<{ code: ThemeMode; label: string }> = [
 export function ThemeToggle() {
   const theme = usePreferencesStore((s) => s.theme);
   const setTheme = usePreferencesStore((s) => s.setTheme);
+  const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -37,8 +38,13 @@ export function ThemeToggle() {
 
   const Icon = theme === 'light' ? Sun : Moon;
 
+  const pick = (code: ThemeMode) => {
+    setTheme(code);
+    setOpen(false);
+  };
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
           aria-label={`Theme: ${theme}`}
@@ -62,7 +68,7 @@ export function ThemeToggle() {
               variant={theme === t.code ? 'secondary' : 'ghost'}
               size='sm'
               className='justify-start'
-              onClick={() => setTheme(t.code)}
+              onClick={() => pick(t.code)}
               data-testid={`theme-option-${t.code}`}
             >
               {t.label}

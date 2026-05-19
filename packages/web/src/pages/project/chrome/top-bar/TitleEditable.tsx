@@ -5,6 +5,9 @@ interface TitleEditableProps {
   onChange: (next: string) => void;
 }
 
+/** Max title length aligned with backend constraint. */
+const MAX_TITLE_LEN = 80;
+
 /**
  * Project title — inline contenteditable per mock § TopBar v4.0.
  *
@@ -15,7 +18,10 @@ interface TitleEditableProps {
  * Behavioral contract:
  *   - Empty / whitespace-only commits are rejected (restore previous).
  *   - Newlines are stripped (single-line title).
- *   - Outer parent of `min-w-0` keeps the title from overflowing.
+ *   - Length capped at MAX_TITLE_LEN (80) chars — excess input on commit
+ *     is truncated; over-length text restores previous value.
+ *   - Visual width capped at 320px (= Agent column width) with truncate
+ *     (CSS `text-overflow: ellipsis`).
  */
 export function TitleEditable({ value, onChange }: TitleEditableProps) {
   const ref = React.useRef<HTMLSpanElement>(null);
@@ -30,10 +36,14 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
 
   const commit = () => {
     if (!ref.current) return;
-    const next = ref.current.innerText.replace(/\n/g, '').trim();
+    const next = ref.current.innerText.replace(/\n/g, '').trim().slice(0, MAX_TITLE_LEN);
     if (next.length === 0) {
       ref.current.innerText = value;
       return;
+    }
+    if (next !== ref.current.innerText) {
+      // Length was capped — sync the visible text so user sees the truncation.
+      ref.current.innerText = next;
     }
     if (next !== value) onChange(next);
   };
@@ -57,9 +67,10 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
           (e.currentTarget as HTMLSpanElement).blur();
         }
       }}
-      className='min-w-0 truncate text-[13px] font-medium outline-none focus:bg-muted/50'
+      className='min-w-0 max-w-[320px] truncate text-[13px] font-medium outline-none focus:bg-muted/50'
       style={{ padding: '2px var(--space-2)', borderRadius: 'var(--radius-chrome)' }}
       data-testid='title-display'
+      title={value}
     >
       {value}
     </span>

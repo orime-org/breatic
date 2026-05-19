@@ -1,4 +1,5 @@
 import { Globe } from 'lucide-react';
+import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -14,9 +15,9 @@ import { TopBarTextIconButton } from './TopBarTextIconButton';
  *
  * Renders the current language single-char label inline so the user
  * sees the active locale at a glance (mock: "中" for zh-CN). Click opens
- * a popover of all 4 supported locales.
+ * a popover of all 4 supported locales; picking one closes the popover.
  *
- * The actual i18n translation provider is wired in a later PR (`I18nProvider`).
+ * The actual i18n translation provider is wired in a later PR.
  */
 const LANGS: Array<{ code: Language; label: string; char: string }> = [
   { code: 'zh-CN', label: '简体中文', char: '中' },
@@ -29,8 +30,15 @@ export function LangSwitcher() {
   const language = usePreferencesStore((s) => s.language);
   const setLanguage = usePreferencesStore((s) => s.setLanguage);
   const current = LANGS.find((l) => l.code === language) ?? LANGS[0];
+  const [open, setOpen] = React.useState(false);
+
+  const pick = (code: Language) => {
+    setLanguage(code);
+    setOpen(false);
+  };
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
           aria-label={`Language: ${current.label}`}
@@ -53,7 +61,8 @@ export function LangSwitcher() {
               variant={language === l.code ? 'secondary' : 'ghost'}
               size='sm'
               className='justify-start'
-              onClick={() => setLanguage(l.code)}
+              onClick={() => pick(l.code)}
+              data-testid={`lang-option-${l.code}`}
             >
               {l.label}
             </Button>

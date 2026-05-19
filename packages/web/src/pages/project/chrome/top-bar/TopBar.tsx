@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Logo28 } from './Logo28';
 import { TitleEditable } from './TitleEditable';
-import { TweaksPopover } from './TweaksPopover';
 import { MembersStack } from './MembersStack';
 import { LangSwitcher } from './LangSwitcher';
 import { ThemeToggle } from './ThemeToggle';
@@ -32,8 +31,10 @@ interface TopBarProps {
  *   - 12px horizontal padding (`--space-5`)
  *   - .left  = Logo · BackLink · TitleEditable · RoleTag
  *   - .right = 2 topbar-groups separated by `--space-3` (6px) gap:
- *       group A (5 text-icon): Tweaks · Members · Lang · Theme · Credits
+ *       group A (4 text-icon): Members · Lang · Theme · Credits
  *       group B (3 icon-only): Export · Share · Bell
+ *
+ *   (Tweaks removed 2026-05-19 per user — defaults fixed in tokens.css.)
  */
 export function TopBar({
   projectId,
@@ -65,7 +66,6 @@ export function TopBar({
           style={{ gap: 'var(--space-2)' }}
           data-testid='topbar-group-text-icon'
         >
-          <TweaksPopover />
           <MembersStack projectId={projectId} />
           <LangSwitcher />
           <ThemeToggle />
