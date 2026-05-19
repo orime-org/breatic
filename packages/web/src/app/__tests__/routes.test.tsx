@@ -7,6 +7,7 @@ import ProjectPage from '@/pages/project/ProjectPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
 import { Navigate } from 'react-router-dom';
 
 function makeRouter(initialPath: string) {
@@ -42,9 +43,11 @@ describe('routes', () => {
 
   it('/project/:id resolves the project page (TopBar mounts)', async () => {
     render(
-      <TooltipProvider>
-        <RouterProvider router={makeRouter('/project/demo-1')} />
-      </TooltipProvider>,
+      <QueryClientProvider>
+        <TooltipProvider>
+          <RouterProvider router={makeRouter('/project/demo-1')} />
+        </TooltipProvider>
+      </QueryClientProvider>,
     );
     expect(await screen.findByTestId('top-bar')).toBeInTheDocument();
   });
