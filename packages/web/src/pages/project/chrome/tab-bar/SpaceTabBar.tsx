@@ -1,116 +1,221 @@
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+} from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { SPACE_TYPES, type SpaceType } from '@/spaces';
+import { cn } from '@/lib/utils';
+import type { ProjectSpace } from '@/data/yjs/project-meta';
+import type { SpaceType } from '@/spaces';
 import { useUIStore } from '@/stores';
 import { NewSpaceDialog } from './NewSpaceDialog';
-
-export interface SpaceTabSummary {
-  id: string;
-  name: string;
-  type: SpaceType;
-}
+import { SpaceDrawer } from './SpaceDrawer';
+import { SpaceHistoryButton } from './SpaceHistoryButton';
+import { SpaceTab } from './SpaceTab';
 
 interface SpaceTabBarProps {
-  spaces: ReadonlyArray<SpaceTabSummary>;
+  spaces: ReadonlyArray<ProjectSpace>;
   activeSpaceId: string;
   onActivate: (id: string) => void;
-  onCreate: (type: SpaceType, name: string) => void;
+  /** Returns a promise so the dialog can show progress and report errors. */
+  onCreate: (type: SpaceType, name: string) => Promise<void> | void;
+  onClose?: (id: string) => void;
 }
 
 /**
- * Project tab bar — shows the project's active spaces left-to-right.
- *   AgentToggle (◧) · ScrollArrow ← · SpaceTab list · NewSpaceButton (+)
+ * Space tab bar — chrome-baseline mock `.space-header` (40px).
  *
- * Lives directly under the TopBar. The Agent column visibility toggle
- * lives here so users can collapse the chat column without leaving the
- * project.
+ * Layout (mock § space-header):
+ *   [agent-toggle | divider] [scroll-left] [.space-tabs] [scroll-right]
+ *   [divider | new-space + drawer + history]
+ *
+ * Scroll arrows hide when content doesn't overflow + show disabled
+ * state at boundaries (industry standard pattern per mock v4.27/v4.29).
  */
 export function SpaceTabBar({
   spaces,
   activeSpaceId,
   onActivate,
   onCreate,
+  onClose,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
 
+  // Track scroll overflow + boundaries to drive the smart-hide/disabled
+  // states for the left / right scroll arrows (mock v4.27 / v4.29).
+  const [scrollState, setScrollState] = React.useState({
+    overflow: false,
+    atStart: true,
+    atEnd: true,
+  });
+
+  const updateScrollState = React.useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const overflow = el.scrollWidth > el.clientWidth + 1;
+    const atStart = el.scrollLeft <= 0;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    setScrollState({ overflow, atStart, atEnd });
+  }, []);
+
+  React.useEffect(() => {
+    updateScrollState();
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState);
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      ro.disconnect();
+    };
+  }, [updateScrollState, spaces.length]);
+
   const scrollBy = (delta: number) => {
     scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   };
 
+  const ArrowButton = ({
+    direction,
+    onClick,
+    disabled,
+  }: {
+    direction: 'left' | 'right';
+    onClick: () => void;
+    disabled: boolean;
+  }) => (
+    <Button
+      variant='ghost'
+      size='icon'
+      aria-label={direction === 'left' ? 'Scroll tabs left' : 'Scroll tabs right'}
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={direction === 'left' ? 'tabs-scroll-left' : 'tabs-scroll-right'}
+      className={cn(
+        !scrollState.overflow && 'hidden',
+        disabled && 'pointer-events-none opacity-35',
+      )}
+      style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+    >
+      {direction === 'left' ? (
+        <ChevronLeft className='h-3.5 w-3.5' />
+      ) : (
+        <ChevronRight className='h-3.5 w-3.5' />
+      )}
+    </Button>
+  );
+
   return (
     <div
       data-testid='space-tab-bar'
-      className='flex h-10 items-center gap-1 border-b border-border bg-background px-2'
+      role='tablist'
+      aria-label='Spaces'
+      className='flex shrink-0 items-center border-b border-border bg-background'
+      style={{
+        height: 40,
+        padding: '0 var(--space-5)',
+        gap: 'var(--space-2)',
+      }}
     >
-      <Button
-        variant='ghost'
-        size='icon'
-        aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
-        aria-pressed={agentOpen}
-        onClick={toggleAgent}
-        data-testid='agent-toggle'
+      <div
+        className='flex shrink-0 items-center border-r border-border'
+        style={{
+          gap: 'var(--space-2)',
+          paddingRight: 'var(--space-4)',
+          marginRight: 'var(--space-2)',
+        }}
+        data-testid='space-header-left'
       >
-        <span className='font-mono text-sm'>◧</span>
-      </Button>
-      <Button
-        variant='ghost'
-        size='icon'
-        aria-label='Scroll tabs left'
+        <Button
+          variant='ghost'
+          size='icon'
+          aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
+          aria-pressed={agentOpen}
+          onClick={toggleAgent}
+          data-testid='agent-toggle'
+          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+        >
+          {agentOpen ? (
+            <PanelLeftClose className='h-[18px] w-[18px]' />
+          ) : (
+            <PanelLeftOpen className='h-[18px] w-[18px]' />
+          )}
+        </Button>
+      </div>
+
+      <ArrowButton
+        direction='left'
         onClick={() => scrollBy(-120)}
-      >
-        <ChevronLeft className='h-4 w-4' />
-      </Button>
-      <ScrollArea className='flex-1'>
-        <div ref={scrollerRef} className='flex items-center gap-1 py-1'>
-          {spaces.map((s) => {
-            const def = SPACE_TYPES[s.type];
-            const active = s.id === activeSpaceId;
-            return (
-              <button
-                key={s.id}
-                type='button'
-                onClick={() => onActivate(s.id)}
-                className={`flex h-7 items-center gap-1 rounded-md border px-2 text-xs ${
-                  active
-                    ? 'border-border bg-secondary text-secondary-foreground'
-                    : 'border-transparent text-muted-foreground hover:bg-muted'
-                }`}
-                data-testid={`space-tab-${s.id}`}
-              >
-                <span className='opacity-70'>{def?.label?.[0] ?? '·'}</span>
-                <span className='max-w-[120px] truncate'>{s.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </ScrollArea>
-      <Button
-        variant='ghost'
-        size='icon'
-        aria-label='Scroll tabs right'
-        onClick={() => scrollBy(120)}
-      >
-        <ChevronRight className='h-4 w-4' />
-      </Button>
-      <NewSpaceDialog
-        onCreate={onCreate}
-        trigger={
-          <Button
-            variant='ghost'
-            size='icon'
-            aria-label='New space'
-            data-testid='new-space-button'
-          >
-            <Plus className='h-4 w-4' />
-          </Button>
-        }
+        disabled={scrollState.atStart}
       />
+
+      <div
+        ref={scrollerRef}
+        className='flex flex-1 items-center overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+        style={{
+          gap: 'var(--space-1)',
+          minWidth: 0,
+          height: '100%',
+          padding: '0 var(--space-2)',
+        }}
+      >
+        {spaces.map((s) => (
+          <SpaceTab
+            key={s.id}
+            id={s.id}
+            name={s.name}
+            type={s.type}
+            active={s.id === activeSpaceId}
+            locked={s.locked}
+            onActivate={() => onActivate(s.id)}
+            onClose={onClose ? () => onClose(s.id) : undefined}
+          />
+        ))}
+      </div>
+
+      <ArrowButton
+        direction='right'
+        onClick={() => scrollBy(120)}
+        disabled={scrollState.atEnd}
+      />
+
+      <div
+        className='flex shrink-0 items-center border-l border-border'
+        style={{
+          gap: 'var(--space-2)',
+          paddingLeft: 'var(--space-4)',
+          marginLeft: 'var(--space-2)',
+        }}
+        data-testid='space-header-right'
+      >
+        <NewSpaceDialog
+          onCreate={onCreate}
+          trigger={
+            <Button
+              variant='ghost'
+              size='icon'
+              aria-label='New space'
+              data-testid='new-space-button'
+              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+            >
+              <Plus className='h-[18px] w-[18px]' />
+            </Button>
+          }
+        />
+        <SpaceDrawer
+          spaces={spaces}
+          activeSpaceId={activeSpaceId}
+          onActivate={onActivate}
+        />
+        <SpaceHistoryButton />
+      </div>
     </div>
   );
 }

@@ -28,9 +28,9 @@ describe('TopBar', () => {
     expect(screen.getByTestId('top-bar')).toBeInTheDocument();
   });
 
-  it('shows the role tag with the human label (Owner)', () => {
+  it('shows the role tag with the uppercase label (OWNER)', () => {
     setup();
-    expect(screen.getByTestId('role-tag')).toHaveTextContent('Owner');
+    expect(screen.getByTestId('role-tag')).toHaveTextContent('OWNER');
   });
 
   it('shows the credits chip with the credit count', () => {
@@ -38,19 +38,33 @@ describe('TopBar', () => {
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
-  it('switches title to an input on click and commits on Enter', async () => {
+  it('title click swaps to <input>; typing + Enter commits the new name', async () => {
     const user = userEvent.setup();
     const { onRename } = setup({ projectName: 'Old' });
-    await user.click(screen.getByTestId('title-display'));
-    const input = screen.getByTestId('title-input');
+    // Static mode: visible <span>
+    const display = screen.getByTestId('title-display');
+    expect(display).toBeInTheDocument();
+    await user.click(display);
+    // Edit mode: <input> autofocused + text selected
+    const input = await screen.findByTestId('title-input');
+    expect(input.tagName).toBe('INPUT');
     await user.clear(input);
     await user.type(input, 'New name{Enter}');
     expect(onRename).toHaveBeenCalledWith('New name');
+    // Back to static mode after commit
+    expect(screen.queryByTestId('title-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('title-display')).toBeInTheDocument();
   });
 
   it('renders the home logo link pointing at /studio', () => {
     setup();
     const link = screen.getByLabelText('Home');
     expect(link.getAttribute('href')).toBe('/studio');
+  });
+
+  it('renders both topbar groups (text-icon + icon-only)', () => {
+    setup();
+    expect(screen.getByTestId('topbar-group-text-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('topbar-group-icon-only')).toBeInTheDocument();
   });
 });

@@ -2,27 +2,31 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { SpaceTabBar, type SpaceTabSummary } from '../SpaceTabBar';
+import { SpaceTabBar } from '../SpaceTabBar';
+import type { ProjectSpace } from '@/data/yjs/project-meta';
 import { useUIStore } from '@/stores';
 
-const SPACES: SpaceTabSummary[] = [
+const SPACES: ProjectSpace[] = [
   { id: 's1', name: 'Main', type: 'canvas' },
   { id: 's2', name: 'Notes', type: 'document' },
+  { id: 's3', name: 'Reel', type: 'timeline', locked: true },
 ];
 
 function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onActivate = vi.fn();
   const onCreate = vi.fn();
+  const onClose = vi.fn();
   render(
     <SpaceTabBar
       spaces={SPACES}
       activeSpaceId='s1'
       onActivate={onActivate}
       onCreate={onCreate}
+      onClose={onClose}
       {...overrides}
     />,
   );
-  return { onActivate, onCreate };
+  return { onActivate, onCreate, onClose };
 }
 
 describe('SpaceTabBar', () => {
@@ -34,6 +38,13 @@ describe('SpaceTabBar', () => {
     setup();
     expect(screen.getByTestId('space-tab-s1')).toBeInTheDocument();
     expect(screen.getByTestId('space-tab-s2')).toBeInTheDocument();
+    expect(screen.getByTestId('space-tab-s3')).toBeInTheDocument();
+  });
+
+  it('renders the 2 dividers (space-header-left + space-header-right)', () => {
+    setup();
+    expect(screen.getByTestId('space-header-left')).toBeInTheDocument();
+    expect(screen.getByTestId('space-header-right')).toBeInTheDocument();
   });
 
   it('clicking a non-active tab calls onActivate with its id', async () => {
@@ -51,15 +62,17 @@ describe('SpaceTabBar', () => {
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
   });
 
-  it('agent toggle exposes the right aria-pressed state', () => {
+  it('locked space does NOT render a close button', () => {
     setup();
     expect(
-      screen.getByTestId('agent-toggle').getAttribute('aria-pressed'),
-    ).toBe('true');
+      screen.queryByTestId('space-tab-close-s3'),
+    ).not.toBeInTheDocument();
   });
 
-  it('+ button is present (NewSpaceDialog trigger)', () => {
+  it('+ button, drawer trigger, history trigger all present (right group)', () => {
     setup();
     expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
+    expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('space-history-trigger')).toBeInTheDocument();
   });
 });

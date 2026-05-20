@@ -1,32 +1,38 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { projectsApi, spacesApi } from '@/data/api';
+import {
+  appendSpace,
+  removeSpace,
+  useProjectMeta,
+  type ProjectSpace,
+} from '@/data/yjs/project-meta';
 import { useUIStore } from '@/stores';
 import type { SpaceType } from '@/spaces';
 
 import { ChatPanel } from './chat/ChatPanel';
 import { AgentColHeader } from './chrome/agent-header/AgentColHeader';
-import { LeftFloatingMenu, type LeftMenuTool } from './chrome/left-floating-menu/LeftFloatingMenu';
-import { TopBar } from './chrome/top-bar/TopBar';
 import {
-  SpaceTabBar,
-  type SpaceTabSummary,
-} from './chrome/tab-bar/SpaceTabBar';
+  LeftFloatingMenu,
+  type LeftMenuTool,
+} from './chrome/left-floating-menu/LeftFloatingMenu';
+import { TopBar } from './chrome/top-bar/TopBar';
+import { SpaceTabBar } from './chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from './chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from './SpaceOutlet';
 
-const DEMO_SPACES: SpaceTabSummary[] = [
-  { id: 'demo-canvas', name: 'Main canvas', type: 'canvas' },
-];
-
 /**
  * Project page shell — TopBar above two columns:
- *   - left:  Agent column (320 px, collapsible)
- *   - right: TabBar + Space body + floating menus
+ *   - left:  Agent column (320 px, collapsible) — ChatPanel
+ *   - right: SpaceTabBar + Space body + floating menus
  *
- * Real project + space data fetching, Yjs binding, and the demo seed
- * land in later PRs. PR 4 wires the chrome layer + space outlet so the
- * structural contract is exercised end-to-end.
+ * Data source (B mode infrastructure):
+ *   - Project meta (name + credits + role)        → projects.get REST
+ *   - Spaces list (live)                          → Yjs project-meta doc
+ *   - Create / delete space                       → spaces.* REST + Yjs append/remove
+ *   - Active space id                             → URL `:spaceId` param
  */
 export default function ProjectPage() {
   const { projectId = 'demo', spaceId } = useParams<{
@@ -35,25 +41,67 @@ export default function ProjectPage() {
   }>();
   const navigate = useNavigate();
 
-  const [projectName, setProjectName] = React.useState('Untitled project');
-  const [spaces, setSpaces] = React.useState<SpaceTabSummary[]>(DEMO_SPACES);
-  const activeSpaceId = spaceId ?? spaces[0]?.id ?? 'demo-canvas';
-  const activeSpace =
-    spaces.find((s) => s.id === activeSpaceId) ?? spaces[0] ?? DEMO_SPACES[0];
+  // ---- Project meta (name / credits / role) ----
+  const projectQuery = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: projectId !== 'demo',
+  });
+  const projectName = projectQuery.data?.name ?? 'Untitled project';
+  const role = projectQuery.data?.role ?? 'owner';
+  // Credits live on the user; placeholder until /auth/me wires.
+  const credits = 0;
 
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => projectsApi.rename(projectId, name),
+  });
+
+  // ---- Spaces list (Yjs live) ----
+  const { spaces } = useProjectMeta(projectId);
+  const activeSpaceId = spaceId ?? spaces[0]?.id ?? '';
+  const activeSpace: ProjectSpace | undefined =
+    spaces.find((s) => s.id === activeSpaceId) ?? spaces[0];
+
+  // ---- Local UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const [tool, setTool] = React.useState<LeftMenuTool>('select');
   const [zoom, setZoom] = React.useState(1);
   const [locked, setLocked] = React.useState(false);
   const [minimapVisible, setMinimapVisible] = React.useState(true);
 
+  // ---- Handlers ----
   const onActivate = (id: string) =>
     navigate(`/project/${projectId}/space/${id}`);
 
-  const onCreateSpace = (type: SpaceType, name: string) => {
-    const id = `${type}-${Date.now().toString(36)}`;
-    setSpaces((prev) => [...prev, { id, name, type }]);
-    navigate(`/project/${projectId}/space/${id}`);
+  const onCreateSpace = async (type: SpaceType, name: string) => {
+    // REST first (authoritative id from backend), then Yjs append so all
+    // collaborators see the new space immediately.
+    const created = await spacesApi.create(projectId, { name, type });
+    appendSpace(projectId, {
+      id: created.id,
+      name: created.name,
+      type: created.type,
+    });
+    navigate(`/project/${projectId}/space/${created.id}`);
+  };
+
+  const onCloseSpace = async (id: string) => {
+    // Optimistic Yjs remove, then REST delete. If REST fails the page
+    // requery on next render will surface the inconsistency (good enough
+    // for v1; full optimistic rollback lands when we add toast).
+    removeSpace(projectId, id);
+    try {
+      await spacesApi.delete(projectId, id);
+    } catch {
+      // The Yjs binding will eventually re-sync from server-stored state
+      // on the next provider connect; nothing to do here.
+    }
+    // If we just closed the active space, jump to the first remaining one.
+    if (id === activeSpaceId) {
+      const next = spaces.find((s) => s.id !== id);
+      if (next) navigate(`/project/${projectId}/space/${next.id}`);
+      else navigate(`/project/${projectId}`);
+    }
   };
 
   return (
@@ -61,9 +109,9 @@ export default function ProjectPage() {
       <TopBar
         projectId={projectId}
         projectName={projectName}
-        role='owner'
-        credits={1024}
-        onRename={setProjectName}
+        role={role}
+        credits={credits}
+        onRename={(next) => renameMutation.mutate(next)}
       />
       <div className='flex min-h-0 flex-1'>
         {collapsed ? null : (
@@ -75,14 +123,13 @@ export default function ProjectPage() {
               conversationName='New conversation'
               messageCount={0}
               onOpenHistory={() => {
-                /* history sheet wires in chat PR */
+                /* wired in ChatPanel B-mode round */
               }}
               onNewConversation={() => {
-                /* new conversation handler wires in chat PR */
+                /* wired in ChatPanel B-mode round */
               }}
             />
             <ChatPanel projectId={projectId} />
-
           </aside>
         )}
         <section className='flex min-w-0 flex-1 flex-col'>
@@ -91,14 +138,24 @@ export default function ProjectPage() {
             activeSpaceId={activeSpaceId}
             onActivate={onActivate}
             onCreate={onCreateSpace}
+            onClose={onCloseSpace}
           />
           <div className='relative flex-1'>
-            <SpaceOutlet
-              projectId={projectId}
-              spaceId={activeSpace.id}
-              type={activeSpace.type}
-            />
-            {activeSpace.type === 'canvas' ? (
+            {activeSpace ? (
+              <SpaceOutlet
+                projectId={projectId}
+                spaceId={activeSpace.id}
+                type={activeSpace.type}
+              />
+            ) : (
+              <div
+                data-testid='no-active-space'
+                className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+              >
+                No spaces yet — click + to create one.
+              </div>
+            )}
+            {activeSpace?.type === 'canvas' ? (
               <>
                 <LeftFloatingMenu active={tool} onPick={setTool} />
                 <ViewportToolbar

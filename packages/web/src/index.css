@@ -1,8 +1,6 @@
-/* Project visual tokens (neutral / status / radius / brand-logo). */
+/* Project visual tokens (neutral / status / radius / brand / shadcn alias /
+   UI scale — chrome v4.x + ADR 14 amended, single source of truth). */
 @import './theme/tokens.css';
-
-/* shadcn token bridge — maps --primary etc. to project neutral. */
-@import './theme/shadcn-bridge.css';
 
 /* Tailwind base / components / utilities. */
 @tailwind base;
@@ -17,12 +15,8 @@ body,
 
 body {
   margin: 0;
-  font-family:
-    'Inter',
-    'Noto Sans SC',
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
   background-color: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
