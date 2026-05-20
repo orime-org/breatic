@@ -25,7 +25,8 @@ export function AgentColHeader({
   return (
     <header
       data-testid='agent-col-header'
-      className='flex h-10 items-center gap-1 border-b border-border bg-background px-2'
+      className='flex shrink-0 items-center border-b border-border bg-background'
+      style={{ height: 40, padding: '0 var(--space-4)', gap: 'var(--space-2)' }}
     >
       <Button
         variant='chrome-ghost'
