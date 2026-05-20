@@ -49,7 +49,7 @@ export function TopBar({
       data-testid='top-bar'
       role='banner'
       style={{ height: 40, padding: '0 var(--space-5)', gap: 'var(--space-4)' }}
-      className='flex items-center border-b border-border bg-background'
+      className='flex shrink-0 items-center border-b border-border bg-background'
     >
       <div
         className='flex min-w-0 flex-1 items-center'
