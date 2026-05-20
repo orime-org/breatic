@@ -46,7 +46,7 @@ export const MembersStack = React.forwardRef<
           aria-label={`Project members (${members.length})`}
           aria-haspopup='dialog'
           data-testid='members-trigger'
-          className='inline-flex shrink-0 items-center text-foreground transition-colors hover:bg-muted'
+          className='inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
           style={{
             height: 'var(--btn-chrome)',
             padding: '0 var(--space-2) 0 var(--space-2)',

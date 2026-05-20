@@ -25,8 +25,8 @@ export function SpaceHistoryButton({ hasUnread }: SpaceHistoryButtonProps) {
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant='chrome-ghost'
+          size='chrome'
           aria-label='Space activity history'
           data-testid='space-history-trigger'
           className='relative'

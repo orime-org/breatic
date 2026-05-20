@@ -27,8 +27,8 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant='ghost' size='icon' aria-label='Share'>
-          <Share2 className='h-4 w-4' />
+        <Button variant='chrome-ghost' size='chrome' aria-label='Share'>
+          <Share2 className='h-[18px] w-[18px]' />
         </Button>
       </DialogTrigger>
       <DialogContent data-testid='share-dialog'>

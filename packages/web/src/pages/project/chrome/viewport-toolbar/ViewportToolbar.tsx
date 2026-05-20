@@ -33,10 +33,10 @@ export function ViewportToolbar({
   return (
     <div
       data-testid='viewport-toolbar'
-      className='absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-sm'
+      className='absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow-sm'
     >
-      <Button variant='ghost' size='icon' aria-label='Zoom out' onClick={onZoomOut}>
-        <Minus className='h-4 w-4' />
+      <Button variant='chrome-ghost' size='chrome' aria-label='Zoom out' onClick={onZoomOut}>
+        <Minus className='h-[18px] w-[18px]' />
       </Button>
       <span
         className='min-w-[3.5rem] text-center text-xs tabular-nums text-muted-foreground'
@@ -44,29 +44,29 @@ export function ViewportToolbar({
       >
         {Math.round(zoom * 100)}%
       </span>
-      <Button variant='ghost' size='icon' aria-label='Zoom in' onClick={onZoomIn}>
-        <Plus className='h-4 w-4' />
+      <Button variant='chrome-ghost' size='chrome' aria-label='Zoom in' onClick={onZoomIn}>
+        <Plus className='h-[18px] w-[18px]' />
       </Button>
-      <Button variant='ghost' size='icon' aria-label='Fit to view' onClick={onFit}>
-        <Maximize className='h-4 w-4' />
+      <Button variant='chrome-ghost' size='chrome' aria-label='Fit to view' onClick={onFit}>
+        <Maximize className='h-[18px] w-[18px]' />
       </Button>
       <Button
-        variant='ghost'
-        size='icon'
+        variant='chrome-ghost'
+        size='chrome'
         aria-label={locked ? 'Unlock viewport' : 'Lock viewport'}
         aria-pressed={locked}
         onClick={onToggleLock}
       >
-        {locked ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
+        {locked ? <Lock className='h-[18px] w-[18px]' /> : <LockOpen className='h-[18px] w-[18px]' />}
       </Button>
       <Button
-        variant={minimapVisible ? 'secondary' : 'ghost'}
-        size='icon'
+        variant={minimapVisible ? 'secondary' : 'chrome-ghost'}
+        size='chrome'
         aria-label={minimapVisible ? 'Hide minimap' : 'Show minimap'}
         aria-pressed={minimapVisible}
         onClick={onToggleMinimap}
       >
-        <MinimapIcon className='h-4 w-4' />
+        <MinimapIcon className='h-[18px] w-[18px]' />
       </Button>
     </div>
   );

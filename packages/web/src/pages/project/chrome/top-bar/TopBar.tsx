@@ -136,8 +136,8 @@ function CreditsPill({
     <span
       data-testid='credits-chip'
       aria-label='Credits balance'
-      className='inline-flex h-7 shrink-0 items-center rounded-content-sm border border-border bg-card text-[12px] tabular-nums'
-      style={{ padding: '0 var(--space-3)', gap: 'var(--space-2)' }}
+      className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-[12px] tabular-nums'
+      style={{ padding: '0 2px 0 var(--space-4)', gap: 'var(--space-3)' }}
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       <span>{credits.toLocaleString()}</span>
@@ -145,7 +145,7 @@ function CreditsPill({
         type='button'
         onClick={onAdd}
         aria-label='Add credits'
-        className='-mr-2 inline-flex h-7 w-7 items-center justify-center rounded-r-content-sm hover:bg-muted'
+        className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted'
         data-testid='credits-add'
       >
         <Plus className='h-3.5 w-3.5' />

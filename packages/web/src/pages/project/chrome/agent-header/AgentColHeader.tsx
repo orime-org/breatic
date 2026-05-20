@@ -28,12 +28,12 @@ export function AgentColHeader({
       className='flex h-10 items-center gap-1 border-b border-border bg-background px-2'
     >
       <Button
-        variant='ghost'
-        size='icon'
+        variant='chrome-ghost'
+        size='chrome'
         aria-label='Open conversation history'
         onClick={onOpenHistory}
       >
-        <History className='h-4 w-4' />
+        <History className='h-[18px] w-[18px]' />
       </Button>
       <div className='flex min-w-0 flex-1 items-center gap-2'>
         <span className='truncate text-sm font-medium'>
@@ -47,13 +47,13 @@ export function AgentColHeader({
         </span>
       </div>
       <Button
-        variant='ghost'
-        size='icon'
+        variant='chrome-ghost'
+        size='chrome'
         aria-label='New conversation'
         onClick={onNewConversation}
         data-testid='new-conversation'
       >
-        <Plus className='h-4 w-4' />
+        <Plus className='h-[18px] w-[18px]' />
       </Button>
     </header>
   );

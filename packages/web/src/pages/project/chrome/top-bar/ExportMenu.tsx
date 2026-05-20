@@ -26,8 +26,8 @@ export function ExportMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant='ghost' size='icon' aria-label='Export'>
-          <Download className='h-4 w-4' />
+        <Button variant='chrome-ghost' size='chrome' aria-label='Export'>
+          <Download className='h-[18px] w-[18px]' />
         </Button>
       </PopoverTrigger>
       <PopoverContent

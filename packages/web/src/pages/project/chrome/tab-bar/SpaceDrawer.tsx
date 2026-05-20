@@ -35,8 +35,8 @@ export function SpaceDrawer({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant='chrome-ghost'
+          size='chrome'
           aria-label='All spaces'
           data-testid='space-drawer-trigger'
           style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
