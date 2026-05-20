@@ -40,7 +40,7 @@ export function ExportMenu({
             <Button
               key={f.id}
               variant='ghost'
-              size='sm'
+              size='menu-item'
               className='justify-start'
               onClick={() => onExport?.(f.id)}
             >

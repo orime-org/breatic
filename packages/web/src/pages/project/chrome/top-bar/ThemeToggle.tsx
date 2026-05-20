@@ -66,7 +66,7 @@ export function ThemeToggle() {
             <Button
               key={t.code}
               variant={theme === t.code ? 'secondary' : 'ghost'}
-              size='sm'
+              size='menu-item'
               className='justify-start'
               onClick={() => pick(t.code)}
               data-testid={`theme-option-${t.code}`}
