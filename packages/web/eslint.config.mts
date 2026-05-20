@@ -7,6 +7,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import pluginReact from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
+import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,7 @@ export default [
     },
     plugins: {
       'react-hooks': reactHooks,
+      'no-relative-import-paths': noRelativeImportPaths,
     },
     rules: {
       // React rules
@@ -120,24 +122,14 @@ export default [
       curly: 'off',
       'linebreak-style': ['off', 'unix'],
 
-      // Import path style — prefer @/ alias over parent-relative paths.
-      // Today this is `warn` so existing code (~159 cross-directory
-      // relative imports as of PR6) doesn't break CI. New code should
-      // use @/ for any cross-directory import. Same-directory `./X`
-      // remains acceptable per project naming convention.
-      // Full migration to派 1 (everything @/, error-level enforced
-      // across web + 4 backend packages) happens in PR9 (task #97).
-      'no-restricted-imports': [
-        'warn',
-        {
-          patterns: [
-            {
-              group: ['../*', '../../*', '../../../*', '../../../../*'],
-              message:
-                'Use @/ alias instead of parent-relative imports. tsconfig.json paths.@/* → src/*.',
-            },
-          ],
-        },
+      // Import path style — full migration to @/ alias for ALL imports
+      // (no `../` and no `./`). Plugin auto-fixes most violations.
+      // tsconfig.json `paths.@/* → src/*`. Choice B per DD
+      // orime-org/breatic-inner-design#152: allowSameFolder=false means
+      // even sibling `./Foo` imports rewrite to `@/path/Foo`.
+      'no-relative-import-paths/no-relative-import-paths': [
+        'error',
+        { allowSameFolder: false, rootDir: 'src', prefix: '@' },
       ],
     },
   },

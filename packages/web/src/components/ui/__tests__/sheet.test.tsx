@@ -7,7 +7,7 @@ import {
   SheetDescription,
   SheetTitle,
   SheetTrigger,
-} from '../sheet';
+} from '@/components/ui/sheet';
 
 function setup(open: boolean, side?: 'left' | 'right' | 'top' | 'bottom') {
   return render(

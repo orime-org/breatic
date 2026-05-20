@@ -2,7 +2,7 @@ import { CircleAlert, CircleCheck, Loader2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-import type { ToolCall } from './types';
+import type { ToolCall } from '@/pages/project/chat/types';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;

@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import type { AnnotationNodeData } from '@/spaces/canvas/types/node';
-import { NodeShell } from './_shared/NodeShell';
+import { NodeShell } from '@/spaces/canvas/nodes/_shared/NodeShell';
 
 interface AnnotationNodeProps {
   data: AnnotationNodeData;

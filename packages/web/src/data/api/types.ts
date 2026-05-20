@@ -1,10 +1,16 @@
 /**
  * Shared API envelope + error types (mirrors backend `AppError`).
  *
- * Backend uses Hono throwing `AppError(status, msg)` → handler returns
- * JSON `{ error: { code, message } }`. Successful responses return the
- * payload directly (no envelope).
+ * Backend wraps all successful responses in `{ data: T }` envelope
+ * (ApiResponse 规约; DD orime-org/breatic-inner-design#152). Errors throw
+ * `AppError(status, msg)` → handler returns JSON `{ error: { code, message } }`.
+ * Helpers in `request.ts` unwrap the `data` envelope on success and the
+ * `error` envelope on failure.
  */
+
+export interface ApiEnvelope<T> {
+  data: T;
+}
 
 export interface ApiError {
   /** HTTP status (4xx / 5xx). */

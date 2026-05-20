@@ -1,6 +1,6 @@
 import { sseStream } from '@/data/stream/sse';
 import type { ChatMessage } from '@/pages/project/chat/types';
-import { apiGet } from './request';
+import { apiGet } from '@/data/api/request';
 
 export interface ConversationSummary {
   id: string;
@@ -23,7 +23,7 @@ export interface ChatStreamEvent {
 export const chatApi = {
   listConversations(projectId: string) {
     return apiGet<{ conversations: ConversationSummary[] }>(
-      `/chat/conversations`,
+      '/chat/conversations',
       { params: { projectId } },
     );
   },

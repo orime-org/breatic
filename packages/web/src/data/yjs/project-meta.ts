@@ -2,8 +2,8 @@ import * as React from 'react';
 import * as Y from 'yjs';
 
 import type { SpaceType } from '@/spaces';
-import { docName, getDoc } from './manager';
-import { useSocket } from './use-socket';
+import { docName, getDoc } from '@/data/yjs/manager';
+import { useSocket } from '@/data/yjs/use-socket';
 
 /**
  * Project meta Yjs document — single source of truth for the project's

@@ -1,9 +1,10 @@
 import { RouterProvider } from 'react-router-dom';
 
+import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { injectDevUser } from './app/dev/inject-dev-user';
-import { QueryClientProvider } from './app/providers/QueryClientProvider';
-import { router } from './app/routes';
+import { injectDevUser } from '@/app/dev/inject-dev-user';
+import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
+import { router } from '@/app/routes';
 
 /**
  * App root — providers stack (outer to inner):
@@ -27,6 +28,7 @@ export default function App() {
     <QueryClientProvider>
       <TooltipProvider>
         <RouterProvider router={router} />
+        <Toaster richColors closeButton position='bottom-right' />
       </TooltipProvider>
     </QueryClientProvider>
   );

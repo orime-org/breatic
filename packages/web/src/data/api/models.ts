@@ -1,4 +1,4 @@
-import { apiGet } from './request';
+import { apiGet } from '@/data/api/request';
 
 export interface ModelDef {
   id: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as api from '../index';
+import * as api from '@/data/api/index';
 
 describe('data/api barrel', () => {
   it('exposes all 14 API client objects + request helpers', () => {

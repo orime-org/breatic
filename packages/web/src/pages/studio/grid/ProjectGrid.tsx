@@ -2,9 +2,9 @@ import * as React from 'react';
 
 import { useStudioStore } from '@/stores';
 
-import { NewProjectCard } from './NewProjectCard';
-import { NewProjectDialog, type SpaceTemplate } from './NewProjectDialog';
-import { ProjectCard, type ProjectSummary } from './ProjectCard';
+import { NewProjectCard } from '@/pages/studio/grid/NewProjectCard';
+import { NewProjectDialog, type SpaceTemplate } from '@/pages/studio/grid/NewProjectDialog';
+import { ProjectCard, type ProjectSummary } from '@/pages/studio/grid/ProjectCard';
 
 // Placeholder data until `data/api/projects` is wired (later PR).
 const DEMO_PROJECTS: ProjectSummary[] = [

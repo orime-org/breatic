@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './request';
+import { apiGet, apiPost } from '@/data/api/request';
 
 export interface CanvasTask {
   id: string;
@@ -33,7 +33,7 @@ export const canvasApi = {
     return apiPost<CanvasTask>('/canvas/understand', body);
   },
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {
-    return apiGet<{ tasks: CanvasTask[] }>(`/canvas/tasks`, {
+    return apiGet<{ tasks: CanvasTask[] }>('/canvas/tasks', {
       params: { projectId, ...params },
     });
   },

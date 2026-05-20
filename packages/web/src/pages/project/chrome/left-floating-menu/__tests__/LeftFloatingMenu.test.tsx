@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { LeftFloatingMenu } from '../LeftFloatingMenu';
+import { LeftFloatingMenu } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 function setup(active?: Parameters<typeof LeftFloatingMenu>[0]['active']) {

@@ -61,6 +61,12 @@ jobs:
         with:
           version: 9.15.0
 
+      - name: Install ffmpeg (worker video-handler tests)
+        # Worker `src/__tests__/handlers/local/video-*.test.ts` spawn
+        # ffmpeg for fixture generation + assertion. ubuntu-latest 不
+        # 自带,显式 apt-get。30 秒安装代价换 CI 真跑视频处理 unit。
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash
@@ -76,23 +82,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm turbo lint
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 
       - name: Typecheck
         run: pnpm turbo typecheck --filter=@breatic/server --filter=@breatic/collab
 
-      - name: Test server (unit)
-        run: cd packages/server && npx vitest run --exclude='**/db.test.ts' --exclude='**/redis.test.ts'
+      - name: Test (all packages)
+        # Runs vitest across every workspace package (shared / core /
+        # collab / worker / server / web). vitest configs already
+        # exclude integration tests (`*.integration.test.ts`) which
+        # require live Postgres / Redis; unit tests use mocks.
+        run: pnpm turbo test
         env:
           SESSION_SECRET_KEY: ci-test-key
           DATABASE_URL: postgres://localhost/test
           REDIS_URL: redis://localhost/0
           REDIS_QUEUE_URL: redis://localhost/1
           REDIS_STREAM_URL: redis://localhost/2
-
-      - name: Test shared (i18n)
-        run: cd packages/shared && npx vitest run
 
   docker:
     name: Docker Build

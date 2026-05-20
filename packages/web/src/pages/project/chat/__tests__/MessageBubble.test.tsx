@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { MessageBubble } from '../MessageBubble';
-import type { ChatMessage } from '../types';
+import { MessageBubble } from '@/pages/project/chat/MessageBubble';
+import type { ChatMessage } from '@/pages/project/chat/types';
 
 function setup(message: ChatMessage) {
   render(<MessageBubble message={message} />);

@@ -22,7 +22,7 @@ skills.use(requireAuth);
 /** `GET /skills` — list all built-in skill metadata. */
 skills.get("/", async (c) => {
   const list = skillService.listBuiltin();
-  return c.json(list);
+  return c.json({ data: list });
 });
 
 // ── User Skills ─────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ skills.get("/", async (c) => {
 skills.get("/mine", async (c) => {
   const user = c.get("user");
   const list = await skillService.listUserSkills(user.id);
-  return c.json(list);
+  return c.json({ data: list });
 });
 
 /** `DELETE /skills/mine/:id` — soft-delete a user-owned skill. */
@@ -51,7 +51,7 @@ skills.get(
   async (c) => {
     const { tags, offset, limit } = c.req.valid("query");
     const list = await skillService.listMarketSkills(tags, offset, limit);
-    return c.json(list);
+    return c.json({ data: list });
   },
 );
 
@@ -60,7 +60,7 @@ skills.post("/mine/:id/publish", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const skill = await skillService.publishSkill(id, user.id);
-  return c.json(skill as Record<string, unknown>);
+  return c.json({ data: skill as Record<string, unknown> });
 });
 
 /** `POST /skills/mine/:id/unpublish` — remove a skill from the marketplace. */
@@ -68,7 +68,7 @@ skills.post("/mine/:id/unpublish", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const skill = await skillService.unpublishSkill(id, user.id);
-  return c.json(skill as Record<string, unknown>);
+  return c.json({ data: skill as Record<string, unknown> });
 });
 
 /** `POST /skills/market/:id/install` — install a marketplace skill. */
@@ -76,7 +76,7 @@ skills.post("/market/:id/install", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const install = await skillService.installSkill(id, user.id);
-  return c.json(install as Record<string, unknown>, 201);
+  return c.json({ data: install as Record<string, unknown> }, 201);
 });
 
 /** `DELETE /skills/market/:id/install` — uninstall a marketplace skill. */

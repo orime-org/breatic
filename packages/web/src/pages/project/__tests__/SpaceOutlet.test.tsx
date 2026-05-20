@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { SpaceOutlet } from '../SpaceOutlet';
+import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
 
 describe('SpaceOutlet', () => {
   it('renders the canvas body for type=canvas', () => {

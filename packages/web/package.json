@@ -126,7 +126,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:smoke": "playwright test",
     "prepare": "husky install"
   },

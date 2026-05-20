@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { NodeLoadButton } from '../NodeLoadButton';
+import { NodeLoadButton } from '@/spaces/canvas/toolbars/NodeLoadButton';
 
 describe('NodeLoadButton', () => {
   it('renders the Load trigger', () => {

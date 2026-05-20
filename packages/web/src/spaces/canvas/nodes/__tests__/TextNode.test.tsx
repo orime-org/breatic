@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { TextNode } from '../TextNode';
+import { TextNode } from '@/spaces/canvas/nodes/TextNode';
 
 describe('TextNode', () => {
   it('renders placeholder when content is empty + status=idle', () => {

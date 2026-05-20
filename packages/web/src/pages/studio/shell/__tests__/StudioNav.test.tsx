@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { StudioNav } from '../StudioNav';
+import { StudioNav } from '@/pages/studio/shell/StudioNav';
 
 describe('StudioNav', () => {
   it('renders 4 items: Projects / Assets / Team / Settings', () => {

@@ -2,9 +2,9 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { Modality } from '@/spaces/canvas/types/node';
 
-import { NodeGeneratePopover } from './NodeGeneratePopover';
-import { NodeLoadButton } from './NodeLoadButton';
-import { MiniToolPicker } from './MiniToolPicker';
+import { NodeGeneratePopover } from '@/spaces/canvas/toolbars/NodeGeneratePopover';
+import { NodeLoadButton } from '@/spaces/canvas/toolbars/NodeLoadButton';
+import { MiniToolPicker } from '@/spaces/canvas/toolbars/MiniToolPicker';
 
 interface NodeToolbarProps {
   nodeId: string;

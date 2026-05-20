@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ChatComposer } from '../ChatComposer';
+import { ChatComposer } from '@/pages/project/chat/ChatComposer';
 
 function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}) {
   const onChange = vi.fn();

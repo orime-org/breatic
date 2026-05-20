@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from './request';
+import { apiDelete, apiGet, apiPost } from '@/data/api/request';
 
 export interface Skill {
   id: string;

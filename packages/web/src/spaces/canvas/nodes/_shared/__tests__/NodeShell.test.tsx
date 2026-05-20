@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { NodeShell } from '../NodeShell';
+import { NodeShell } from '@/spaces/canvas/nodes/_shared/NodeShell';
 
 describe('NodeShell', () => {
   it('renders children', () => {

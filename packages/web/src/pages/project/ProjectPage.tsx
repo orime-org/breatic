@@ -1,6 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { projectsApi, spacesApi } from '@/data/api';
 import {
@@ -12,16 +13,16 @@ import {
 import { useUIStore } from '@/stores';
 import type { SpaceType } from '@/spaces';
 
-import { ChatPanel } from './chat/ChatPanel';
-import { AgentColHeader } from './chrome/agent-header/AgentColHeader';
+import { ChatPanel } from '@/pages/project/chat/ChatPanel';
+import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
 import {
   LeftFloatingMenu,
   type LeftMenuTool,
-} from './chrome/left-floating-menu/LeftFloatingMenu';
-import { TopBar } from './chrome/top-bar/TopBar';
-import { SpaceTabBar } from './chrome/tab-bar/SpaceTabBar';
-import { ViewportToolbar } from './chrome/viewport-toolbar/ViewportToolbar';
-import { SpaceOutlet } from './SpaceOutlet';
+} from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
+import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
+import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
+import { ViewportToolbar } from '@/pages/project/chrome/viewport-toolbar/ViewportToolbar';
+import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
 
 /**
  * Project page shell — TopBar above two columns:
@@ -42,6 +43,7 @@ export default function ProjectPage() {
   const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
+  const queryClient = useQueryClient();
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
@@ -52,8 +54,37 @@ export default function ProjectPage() {
   // Credits live on the user; placeholder until /auth/me wires.
   const credits = 0;
 
+  /**
+   * Rename mutation — optimistic update + sonner toast + invalidate.
+   *
+   * onMutate snapshots the current cache and writes the new name
+   * immediately so the TopBar updates with no network round-trip wait.
+   * onError rolls back to the snapshot and surfaces the backend error
+   * message via sonner. onSuccess invalidates so the next read pulls
+   * the authoritative server copy (in case other fields changed).
+   */
   const renameMutation = useMutation({
     mutationFn: (name: string) => projectsApi.rename(projectId, name),
+    onMutate: async (next: string) => {
+      await queryClient.cancelQueries({ queryKey: ['project', projectId] });
+      const previous = queryClient.getQueryData(['project', projectId]);
+      queryClient.setQueryData(
+        ['project', projectId],
+        (old: { name: string } | undefined) =>
+          old ? { ...old, name: next } : old,
+      );
+      return { previous };
+    },
+    onError: (err, _next, ctx) => {
+      if (ctx && 'previous' in ctx) {
+        queryClient.setQueryData(['project', projectId], ctx.previous);
+      }
+      const message = err instanceof Error ? err.message : 'Rename failed';
+      toast.error('Project rename failed', { description: message });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    },
   });
 
   // ---- Spaces list (Yjs live) ----

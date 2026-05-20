@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { ThreeDNode } from '../ThreeDNode';
+import { ThreeDNode } from '@/spaces/canvas/nodes/ThreeDNode';
 
 describe('ThreeDNode', () => {
   it('renders placeholder when no url', () => {

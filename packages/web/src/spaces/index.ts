@@ -1,8 +1,8 @@
 import type { ComponentType } from 'react';
 
-import { CanvasSpace } from './canvas/CanvasSpace';
-import { DocumentSpace } from './document/DocumentSpace';
-import { TimelineSpace } from './timeline/TimelineSpace';
+import { CanvasSpace } from '@/spaces/canvas/CanvasSpace';
+import { DocumentSpace } from '@/spaces/document/DocumentSpace';
+import { TimelineSpace } from '@/spaces/timeline/TimelineSpace';
 
 export type SpaceType = 'canvas' | 'document' | 'timeline';
 

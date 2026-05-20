@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useMiniToolStore } from '../mini-tool';
+import { useMiniToolStore } from '@/stores/mini-tool';
 
 describe('useMiniToolStore', () => {
   beforeEach(() => {
