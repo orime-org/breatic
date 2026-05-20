@@ -1,33 +1,53 @@
 /**
  * tokens.css — web v14 visual token source of truth.
  *
- * Mirrors `breatic-inner-design/design/tokens.css` (private design source of
- * truth, 2026-05-14 ADR 14 amended) PLUS chrome-baseline mock v4.x UI scale
- * extensions (avatar / btn / icon / space / radius chrome/content split).
+ * Mirrors `breatic-inner-design/design/tokens.css` PLUS chrome-baseline
+ * mock v4.x UI scale extensions.
+ *
+ * Token layout (post-Tailwind v4 migration, inner DD #154):
+ *   - `@theme {}` block holds Tailwind 4 design-token namespaces
+ *     (--color-*, --radius-*, --font-*, --shadow-*) so utility classes
+ *     get full alpha-modifier support (`bg-muted/50`, `text-foreground/75`).
+ *   - `:root` keeps primitives (neutral / brand) so they're consumed
+ *     via `var()` for nested alias chains but DO NOT generate Tailwind
+ *     utility classes (project policy: `bg-neutral-N` / `bg-brand-N`
+ *     forbidden in chrome — use semantic `bg-muted` / `bg-card`).
+ *   - `:root` also keeps non-color tokens whose namespaces are not part
+ *     of Tailwind 4's design token system (--space-N, --btn-*, --avatar-*,
+ *     --icon-*, --ts, --font-size-base, --elevation-*). These stay as
+ *     CSS variables consumed via `var()` in inline styles / CSS rules.
+ *   - `html[data-theme='dark']` overrides neutral primitives + color
+ *     tokens that don't auto-invert. `@theme {}` can't be nested
+ *     (Tailwind 4 design limitation), so dark must live in a normal
+ *     selector with cascade-based runtime resolve.
  *
  * 4 token model decisions (user 拍板 2026-05-19):
  *   1. `-foreground` full names (shadcn standard) — NOT short `-fg`
  *   2. `--radius-chrome` (6px fixed) + `--radius-content-{sm,md,lg,xl}`
  *      (Tweaks-linked) — supersedes shadcn single `--radius` scale because
  *      Direction B Tweaks needs content-radius to respond to the slider
- *   3. `--primary` / `--primary-foreground` (ADR 14 amended) — `--brand-*`
- *      raw values reserved for logo SVG only (`--brand-logo-primary`)
- *   4. `--status-{name}-{bg,fg,border}` complete 5-palette set (selected /
- *      info / handling / locked / warning / error / success), light + dark
- *      mode variants (don't auto-invert from neutral)
+ *   3. `--color-primary` / `--color-primary-foreground` (ADR 14 amended)
+ *      — `--brand-*` raw values reserved for logo SVG only
+ *      (`--brand-logo-primary`)
+ *   4. `--color-status-{name}-{bg,foreground,border}` complete 5-palette
+ *      set (selected / info / handling / locked / warning / error / success),
+ *      light + dark mode variants (don't auto-invert from neutral)
  *
  * Provenance:
  *   - shadcn alias values: ADR 14 (canvas-neutral-first-status-colors)
  *   - UI scale (avatar/btn/icon/space/radius split): chrome-baseline mock
  *     `gstack/chrome-baseline-20260516/finalized.html` v4.x
  *   - status palette + dark variants: inner `design/tokens.css` full file
+ *   - Tailwind 4 `@theme {}` migration: inner DD #154
  */
 
+/* ============================================================
+   :root — primitives (neutral / brand) + non-Tailwind-namespace
+   tokens. Consumed via var() in CSS rules / inline styles.
+   ============================================================ */
 :root,
 html[data-theme='light'] {
-  /* ============================================================
-     Neutral · stone-warm 11-step (light mode default)
-     ============================================================ */
+  /* Neutral · stone-warm 11-step (light mode default) */
   --neutral-0: #ffffff;
   --neutral-50: #fafaf9;
   --neutral-100: #f5f5f4;
@@ -41,11 +61,8 @@ html[data-theme='light'] {
   --neutral-900: #1c1917;
   --neutral-950: #0c0a09;
 
-  /* ============================================================
-     Brand raw values · logo SVG only (ADR 13 / ADR 14 amended)
-     `--brand-logo-primary` is the only exported brand alias.
-     ANY chrome use of `--brand-*` triggers brand-guard CI.
-     ============================================================ */
+  /* Brand raw values · logo SVG only (ADR 13 / ADR 14 amended).
+     ANY chrome use of `--brand-*` triggers brand-guard CI. */
   --brand-50: hsl(8, 58%, 97%);
   --brand-100: hsl(8, 58%, 92%);
   --brand-200: hsl(8, 58%, 82%);
@@ -58,159 +75,141 @@ html[data-theme='light'] {
   --brand-900: hsl(8, 43%, 15%);
   --brand-logo-primary: var(--brand-500);
 
-  /* ============================================================
-     shadcn/ui standard tokens (CTA / Surface / Border / Ring)
-     Values follow Neutral-First ADR; names follow shadcn standard
-     ============================================================ */
-  --primary: var(--neutral-900);
-  --primary-foreground: var(--neutral-0);
-  --secondary: var(--neutral-100);
-  --secondary-foreground: var(--neutral-900);
-  --destructive: #dc2626; /* red-600 */
-  --destructive-foreground: #ffffff;
-  --background: var(--neutral-0);
-  --foreground: var(--neutral-900);
-  --card: var(--neutral-0);
-  --card-foreground: var(--neutral-900);
-  --popover: var(--neutral-0);
-  --popover-foreground: var(--neutral-900);
-  --muted: var(--neutral-100);
-  --muted-foreground: var(--neutral-500);
-  --accent: var(--neutral-100);
-  --accent-foreground: var(--neutral-900);
-  --border: var(--neutral-200);
-  --input: var(--neutral-200);
-  --ring: var(--neutral-900);
+  /* Space scale · 8pt grid (chrome v4.0) — discrete project scale,
+     NOT Tailwind 4's --spacing single multiplier. Consumed inline
+     via `var(--space-N)` or via tailwind.config.ts spacing entries. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
 
-  /* ============================================================
-     Status palette · 5 colors × 3-piece (bg / fg / border)
-     Not auto-inverted in dark mode (semantic contrast preserved)
-     ============================================================ */
-
-  /* Selected / Focused / Active (blue) */
-  --status-selected-bg: #dbeafe; /* blue-100 */
-  --status-selected-fg: #1d4ed8; /* blue-700 */
-  --status-selected-border: #3b82f6; /* blue-500 */
-  --status-selected-ring: rgba(59, 130, 246, 0.2);
-  --ring-focus: rgba(59, 130, 246, 0.4);
-
-  /* Info (blue) */
-  --status-info-bg: #eff6ff; /* blue-50 */
-  --status-info-fg: #1e3a8a; /* blue-900 */
-  --status-info-border: #3b82f6; /* blue-500 */
-
-  /* Handling / Loading (blue, lighter) */
-  --status-handling-bg: #dbeafe;
-  --status-handling-fg: #1e40af; /* blue-800 */
-  --status-handling-border: #60a5fa; /* blue-400 */
-
-  /* Locked (amber) */
-  --status-locked-bg: #fef3c7; /* amber-100 */
-  --status-locked-fg: #d97706; /* amber-600 */
-  --status-locked-border: #fbbf24; /* amber-400 */
-
-  /* Warning (amber, stronger) */
-  --status-warning-bg: #fef3c7;
-  --status-warning-fg: #78350f; /* amber-900 */
-  --status-warning-border: #fbbf24;
-
-  /* Error (red) */
-  --status-error-bg: #fee2e2; /* red-100 */
-  --status-error-fg: #991b1b; /* red-800 */
-  --status-error-border: #ef4444; /* red-500 */
-
-  /* Success (emerald) */
-  --status-success-bg: #d1fae5; /* emerald-100 */
-  --status-success-fg: #065f46; /* emerald-800 */
-  --status-success-border: #10b981; /* emerald-500 */
-
-  /* ============================================================
-     Radius · chrome FIXED / content responds to Tweaks
-     (chrome-baseline mock v4.x § F2)
-     ============================================================ */
-  --radius-chrome: 6px; /* fixed, not Tweaks-linked */
-  --radius-content-sm: 6px; /* Tight 4 / Medium 6 / Round 6 */
-  --radius-content-md: 12px; /* Tight 8 / Medium 10 / Round 12 */
-  --radius-content-lg: 16px; /* Tight 10 / Medium 14 / Round 16 */
-  --radius-content-xl: 20px; /* Tight 12 / Medium 16 / Round 20 */
-  /* shadcn primitives consume these aliases (mapped to content scale): */
-  --radius-sm: var(--radius-content-sm);
-  --radius-md: var(--radius-content-md);
-  --radius-lg: var(--radius-content-lg);
-  --radius-full: 9999px;
-
-  /* ============================================================
-     Space scale · 8pt grid (chrome v4.0)
-     ============================================================ */
-  --space-1: 2px; /* dense inner gap */
-  --space-2: 4px; /* tight gap · TabBar baseline */
-  --space-3: 6px; /* container edge / icon+text inline */
-  --space-4: 8px; /* regular gap / button H padding */
-  --space-5: 12px; /* spacious · Logo / nav grouping */
-  --space-6: 16px; /* section divider */
-
-  /* ============================================================
-     Button hit area · 4-step (chrome v4.0)
-     ============================================================ */
-  --btn-compact: 24px; /* inline chip / tag */
-  --btn-inline: 28px; /* inline action (skill / send / credits) */
-  --btn-chrome: 32px; /* chrome button (TopBar / TabBar / popover) */
-  --btn-menu: 40px; /* LeftMenu primary entry */
-  /* Convenience aliases (chrome v4.0): */
+  /* Button hit area · 4-step (chrome v4.0) */
+  --btn-compact: 24px;
+  --btn-inline: 28px;
+  --btn-chrome: 32px;
+  --btn-menu: 40px;
   --chrome-btn-size: var(--btn-chrome);
   --chrome-btn-gap: var(--space-4);
 
-  /* ============================================================
-     Icon size · 4-step (chrome v4.0 / v4.10)
-     ============================================================ */
+  /* Icon size · 4-step (chrome v4.0 / v4.10) */
   --icon-xs: 12px;
   --icon-sm: 14px;
   --icon-base: 18px;
   --icon-lg: 20px;
   --chrome-btn-icon: var(--icon-base);
 
-  /* ============================================================
-     Avatar size · 5-step (chrome v4.22)
-     ============================================================ */
-  --avatar-xs: 20px; /* TopBar Members stack / chip / awareness */
-  --avatar-sm: 26px; /* popover member row (compact) */
-  --avatar-md: 32px; /* section item / notif request */
-  --avatar-lg: 40px; /* modal / detail panel */
-  --avatar-xl: 64px; /* profile page header */
+  /* Avatar size · 5-step (chrome v4.22) */
+  --avatar-xs: 20px;
+  --avatar-sm: 26px;
+  --avatar-md: 32px;
+  --avatar-lg: 40px;
+  --avatar-xl: 64px;
 
-  /* ============================================================
-     Typography · Tweaks-linked
-     ============================================================ */
-  --ts: 1; /* text scale · Tweaks STATE_VERSION=3 · localStorage key breatic-tweaks-v3 */
+  /* Typography · Tweaks-linked text scale */
+  --ts: 1;
   --font-size-base: calc(14px * var(--ts));
-  --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',
-    system-ui, -apple-system, sans-serif;
 
-  /* ============================================================
-     Shadow · light mode subtle
-     ============================================================ */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06),
-    0 1px 2px -1px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08),
-    0 2px 4px -2px rgba(0, 0, 0, 0.04);
-
-  /* ============================================================
-     Elevation semantic layer
-     ============================================================ */
+  /* Elevation semantic layer (consumes --shadow-* below) */
   --elevation-0: none;
   --elevation-1: var(--shadow-sm);
   --elevation-2: var(--shadow-md);
 }
 
 /* ============================================================
-   Dark mode · [data-theme="dark"] inverts neutral + status
-   shadcn standard tokens auto-follow via var() references
+   @theme — Tailwind 4 design token namespaces.
+   Utility classes auto-generated; alpha modifiers work
+   (e.g. `bg-muted/50` → real color-mix-based semi-transparent).
+   ============================================================ */
+@theme {
+  /* ---- Color (CTA / Surface / Border / Ring) ---- */
+  --color-primary: var(--neutral-900);
+  --color-primary-foreground: var(--neutral-0);
+  --color-secondary: var(--neutral-100);
+  --color-secondary-foreground: var(--neutral-900);
+  --color-destructive: #dc2626; /* red-600 (dark override below) */
+  --color-destructive-foreground: #ffffff;
+  --color-background: var(--neutral-0);
+  --color-foreground: var(--neutral-900);
+  --color-card: var(--neutral-0);
+  --color-card-foreground: var(--neutral-900);
+  --color-popover: var(--neutral-0);
+  --color-popover-foreground: var(--neutral-900);
+  --color-muted: var(--neutral-100);
+  --color-muted-foreground: var(--neutral-500);
+  --color-accent: var(--neutral-100);
+  --color-accent-foreground: var(--neutral-900);
+  --color-border: var(--neutral-200);
+  --color-input: var(--neutral-200);
+  --color-ring: var(--neutral-900);
+
+  /* ---- Status palette · 5 colors × 3-piece ---- */
+  --color-status-selected-bg: #dbeafe;
+  --color-status-selected-foreground: #1d4ed8;
+  --color-status-selected-border: #3b82f6;
+
+  --color-status-info-bg: #eff6ff;
+  --color-status-info-foreground: #1e3a8a;
+  --color-status-info-border: #3b82f6;
+
+  --color-status-handling-bg: #dbeafe;
+  --color-status-handling-foreground: #1e40af;
+  --color-status-handling-border: #60a5fa;
+
+  --color-status-locked-bg: #fef3c7;
+  --color-status-locked-foreground: #d97706;
+  --color-status-locked-border: #fbbf24;
+
+  --color-status-warning-bg: #fef3c7;
+  --color-status-warning-foreground: #78350f;
+  --color-status-warning-border: #fbbf24;
+
+  --color-status-error-bg: #fee2e2;
+  --color-status-error-foreground: #991b1b;
+  --color-status-error-border: #ef4444;
+
+  --color-status-success-bg: #d1fae5;
+  --color-status-success-foreground: #065f46;
+  --color-status-success-border: #10b981;
+
+  /* ---- Radius · chrome FIXED / content responds to Tweaks ---- */
+  --radius-chrome: 6px;
+  --radius-content-sm: 6px;
+  --radius-content-md: 12px;
+  --radius-content-lg: 16px;
+  --radius-content-xl: 20px;
+  --radius-sm: var(--radius-content-sm);
+  --radius-md: var(--radius-content-md);
+  --radius-lg: var(--radius-content-lg);
+  --radius-full: 9999px;
+
+  /* ---- Font ---- */
+  --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',
+    system-ui, -apple-system, sans-serif;
+
+  /* ---- Shadow · light mode subtle ---- */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06),
+    0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08),
+    0 2px 4px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* ============================================================
+   Dark mode · [data-theme="dark"]
+   - Neutral inversion drives auto-inverting color tokens via cascade
+   - Explicit overrides for tokens that don't follow neutral
    ============================================================ */
 html[data-theme='dark'] {
-  /* Neutral inversion (stone-warm dark) */
-  --neutral-0: #1c1917;
-  --neutral-50: #201e1c;
+  /* Neutral inversion (stone-warm dark) — full reverse of stone scale
+     so --neutral-0 (canvas background) is the deepest stone-950, matching
+     chrome-baseline mock `finalized.html` ground truth. Inner tokens.css
+     v3 used #1C1917 (stone-900) here which diverged from the mock; this
+     full-reverse aligns chrome surfaces (TopBar / TabBar / Agent col)
+     to the mock's deeper bg. */
+  --neutral-0: #0c0a09;
+  --neutral-50: #1c1917;
   --neutral-100: #292524;
   --neutral-200: #44403c;
   --neutral-300: #57534e;
@@ -223,41 +222,39 @@ html[data-theme='dark'] {
   --neutral-950: #ffffff;
 
   /* Popover elevated surface (one step lighter than background) */
-  --popover: var(--neutral-50);
+  --color-popover: var(--neutral-50);
 
   /* shadcn destructive · lighter for dark contrast */
-  --destructive: #ef4444; /* red-500 */
+  --color-destructive: #ef4444;
 
-  /* Status palette · dark variants (manually set, not auto-inverted) */
-  --status-selected-bg: #1e3a8a;
-  --status-selected-fg: #dbeafe;
-  --status-selected-border: #60a5fa; /* blue-400 */
-  --status-selected-ring: rgba(96, 165, 250, 0.2);
-  --ring-focus: rgba(96, 165, 250, 0.4);
+  /* Status palette dark variants (manually set, not auto-inverted) */
+  --color-status-selected-bg: #1e3a8a;
+  --color-status-selected-foreground: #dbeafe;
+  --color-status-selected-border: #60a5fa;
 
-  --status-info-bg: #1e3a8a; /* blue-900 */
-  --status-info-fg: #dbeafe; /* blue-100 */
-  --status-info-border: #60a5fa;
+  --color-status-info-bg: #1e3a8a;
+  --color-status-info-foreground: #dbeafe;
+  --color-status-info-border: #60a5fa;
 
-  --status-handling-bg: #1e3a8a;
-  --status-handling-fg: #93c5fd; /* blue-300 */
-  --status-handling-border: #3b82f6; /* blue-500 */
+  --color-status-handling-bg: #1e3a8a;
+  --color-status-handling-foreground: #93c5fd;
+  --color-status-handling-border: #3b82f6;
 
-  --status-locked-bg: #78350f; /* amber-900 */
-  --status-locked-fg: #fde68a; /* amber-200 */
-  --status-locked-border: #f59e0b; /* amber-500 */
+  --color-status-locked-bg: #78350f;
+  --color-status-locked-foreground: #fde68a;
+  --color-status-locked-border: #f59e0b;
 
-  --status-warning-bg: #78350f;
-  --status-warning-fg: #fde68a;
-  --status-warning-border: #f59e0b;
+  --color-status-warning-bg: #78350f;
+  --color-status-warning-foreground: #fde68a;
+  --color-status-warning-border: #f59e0b;
 
-  --status-error-bg: #7f1d1d; /* red-900 */
-  --status-error-fg: #fca5a5; /* red-300 */
-  --status-error-border: #f87171; /* red-400 */
+  --color-status-error-bg: #7f1d1d;
+  --color-status-error-foreground: #fca5a5;
+  --color-status-error-border: #f87171;
 
-  --status-success-bg: #064e3b; /* emerald-900 */
-  --status-success-fg: #6ee7b7; /* emerald-300 */
-  --status-success-border: #34d399; /* emerald-400 */
+  --color-status-success-bg: #064e3b;
+  --color-status-success-foreground: #6ee7b7;
+  --color-status-success-border: #34d399;
 
   /* Shadow deepens in dark for visibility on dark background */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);

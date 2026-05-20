@@ -1,11 +1,13 @@
+/* Tailwind 4 entrypoint — must come before tokens import so @theme {}
+   inside tokens.css registers properly with the tailwind import. */
+@import 'tailwindcss';
+
+/* Animation utilities (replaces tailwindcss-animate plugin in v4). */
+@import 'tw-animate-css';
+
 /* Project visual tokens (neutral / status / radius / brand / shadcn alias /
    UI scale — chrome v4.x + ADR 14 amended, single source of truth). */
 @import './theme/tokens.css';
-
-/* Tailwind base / components / utilities. */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 html,
 body,
@@ -17,8 +19,8 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
