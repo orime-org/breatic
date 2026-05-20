@@ -21,13 +21,13 @@ export function BellMenu({ unreadCount = 0 }: BellMenuProps) {
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant='chrome-ghost'
+          size='chrome'
           aria-label='Notifications'
           className='relative'
           data-testid='bell-trigger'
         >
-          <Bell className='h-4 w-4' />
+          <Bell className='h-[18px] w-[18px]' />
           {unreadCount > 0 ? (
             <span className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive' />
           ) : null}

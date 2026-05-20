@@ -1,5 +1,27 @@
 import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+/**
+ * Register custom design-token radius keys with `tailwind-merge` so it
+ * recognises them as part of the `borderRadius` group. Without this,
+ * `cn('rounded-md', 'rounded-chrome')` would emit BOTH classes; the CSS
+ * source order then decides which wins (here `.rounded-md` is generated
+ * after `.rounded-chrome`, silently overriding the 6px chrome radius
+ * with 12px — every chrome icon button visible regression).
+ */
+const customTwMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      radius: [
+        'chrome',
+        'content-sm',
+        'content-md',
+        'content-lg',
+        'content-xl',
+      ],
+    },
+  },
+});
 
 /**
  * Combine class names with Tailwind conflict resolution.
@@ -12,5 +34,5 @@ import { twMerge } from 'tailwind-merge';
  * @returns Merged class name string with Tailwind conflicts resolved.
  */
 export function cn(...inputs: ClassValue[]): string {
-  return twMerge(clsx(inputs));
+  return customTwMerge(clsx(inputs));
 }

@@ -47,7 +47,7 @@ export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
     <nav
       aria-label='Canvas tools'
       data-testid='left-floating-menu'
-      className='absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 rounded-lg border border-border bg-background p-1 shadow-sm'
+      className='absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 rounded-[8px] border border-border bg-background py-1.5 shadow-sm'
     >
       {ITEMS.map((it) => {
         const Icon = it.icon;
@@ -56,14 +56,14 @@ export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
           <Tooltip key={it.id}>
             <TooltipTrigger asChild>
               <Button
-                variant={isActive ? 'secondary' : 'ghost'}
-                size='icon'
+                variant={isActive ? 'secondary' : 'chrome-ghost'}
+                size='chrome'
                 aria-label={it.label}
                 aria-pressed={isActive}
                 onClick={() => onPick(it.id)}
                 data-testid={`tool-${it.id}`}
               >
-                <Icon className='h-4 w-4' />
+                <Icon className='h-[18px] w-[18px]' />
               </Button>
             </TooltipTrigger>
             <TooltipContent side='right'>{it.label}</TooltipContent>

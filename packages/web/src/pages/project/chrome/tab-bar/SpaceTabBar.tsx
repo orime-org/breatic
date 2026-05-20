@@ -92,8 +92,8 @@ export function SpaceTabBar({
     disabled: boolean;
   }) => (
     <Button
-      variant='ghost'
-      size='icon'
+      variant='chrome-ghost'
+      size='chrome'
       aria-label={direction === 'left' ? 'Scroll tabs left' : 'Scroll tabs right'}
       onClick={onClick}
       disabled={disabled}
@@ -134,8 +134,8 @@ export function SpaceTabBar({
         data-testid='space-header-left'
       >
         <Button
-          variant='ghost'
-          size='icon'
+          variant='chrome-ghost'
+          size='chrome'
           aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
           aria-pressed={agentOpen}
           onClick={toggleAgent}
@@ -199,8 +199,8 @@ export function SpaceTabBar({
           onCreate={onCreate}
           trigger={
             <Button
-              variant='ghost'
-              size='icon'
+              variant='chrome-ghost'
+              size='chrome'
               aria-label='New space'
               data-testid='new-space-button'
               style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}

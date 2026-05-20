@@ -18,6 +18,11 @@ const buttonVariants = cva(
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
+        // Chrome variant — TopBar/TabBar 32px buttons default to muted
+        // foreground (mock §TopBar v4.0); hover lifts to foreground +
+        // accent bg (matches `finalized.html .tb-btn:hover` rule).
+        'chrome-ghost':
+          'text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
@@ -25,6 +30,12 @@ const buttonVariants = cva(
         sm: 'h-9 rounded-md px-3',
         lg: 'h-11 rounded-md px-8',
         icon: 'h-10 w-10',
+        // Chrome button hit area — 32×32 per `--btn-chrome` token +
+        // `--radius-chrome` 6px (overrides base `rounded-md` 12px which
+        // looked too round per user feedback). Chrome v4.0 spec used by
+        // TopBar / TabBar / popover triggers.
+        chrome:
+          'h-[var(--btn-chrome)] w-[var(--btn-chrome)] rounded-chrome',
       },
     },
     defaultVariants: {
