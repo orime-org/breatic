@@ -61,6 +61,12 @@ jobs:
         with:
           version: 9.15.0
 
+      - name: Install ffmpeg (worker video-handler tests)
+        # Worker `src/__tests__/handlers/local/video-*.test.ts` spawn
+        # ffmpeg for fixture generation + assertion. ubuntu-latest 不
+        # 自带,显式 apt-get。30 秒安装代价换 CI 真跑视频处理 unit。
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash
