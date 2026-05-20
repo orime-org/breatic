@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { applyAsNewNode } from '../apply-as-new-node';
+import { applyAsNewNode } from '@/pages/project/mini-tool-system/apply-as-new-node';
 
 describe('applyAsNewNode (unified Apply contract)', () => {
   it('creates a new sibling node placed 320px to the right of the source', () => {

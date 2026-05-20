@@ -2,13 +2,13 @@ import * as React from 'react';
 
 import { useChatStore } from '@/stores';
 
-import { ChatComposer } from './ChatComposer';
+import { ChatComposer } from '@/pages/project/chat/ChatComposer';
 import {
   ConversationHistorySheet,
   type ConversationSummary,
-} from './ConversationHistorySheet';
-import { MessageList } from './MessageList';
-import type { ChatMessage } from './types';
+} from '@/pages/project/chat/ConversationHistorySheet';
+import { MessageList } from '@/pages/project/chat/MessageList';
+import type { ChatMessage } from '@/pages/project/chat/types';
 
 interface ChatPanelProps {
   /** Project this chat belongs to — for the title bar / API scoping. */

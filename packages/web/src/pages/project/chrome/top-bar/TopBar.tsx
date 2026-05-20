@@ -2,14 +2,14 @@ import { ArrowLeft, Plus, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { cn } from '@/lib/utils';
-import { Logo28 } from './Logo28';
-import { TitleEditable } from './TitleEditable';
-import { MembersStack } from './MembersStack';
-import { LangSwitcher } from './LangSwitcher';
-import { ThemeToggle } from './ThemeToggle';
-import { ExportMenu } from './ExportMenu';
-import { ShareDialog } from './ShareDialog';
-import { BellMenu } from './BellMenu';
+import { Logo28 } from '@/pages/project/chrome/top-bar/Logo28';
+import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
+import { MembersStack } from '@/pages/project/chrome/top-bar/MembersStack';
+import { LangSwitcher } from '@/pages/project/chrome/top-bar/LangSwitcher';
+import { ThemeToggle } from '@/pages/project/chrome/top-bar/ThemeToggle';
+import { ExportMenu } from '@/pages/project/chrome/top-bar/ExportMenu';
+import { ShareDialog } from '@/pages/project/chrome/top-bar/ShareDialog';
+import { BellMenu } from '@/pages/project/chrome/top-bar/BellMenu';
 
 import type { ProjectRole } from '@/stores';
 
@@ -106,16 +106,19 @@ const ROLE_LABEL: Record<ProjectRole, string> = {
 };
 
 function RoleTag({ role }: { role: ProjectRole }) {
+  // All three roles share `.role-badge` shape — neutral pill, no brand color
+  // (ground truth `finalized.html:476` v4.2 monochrome). Owner uses a
+  // slightly darker text shade than viewer/editor to signal authority
+  // without leaning on brand orange.
   const isOwner = role === 'owner';
   return (
     <span
       data-testid='role-tag'
       className={cn(
-        'inline-flex shrink-0 items-center text-[11px] font-semibold',
-        isOwner
-          ? 'px-0 text-primary'
-          : 'rounded-content-sm bg-muted px-2 py-[2px] text-muted-foreground',
+        'inline-flex shrink-0 items-center rounded-chrome bg-muted text-[11px] font-medium',
+        isOwner ? 'text-foreground' : 'text-muted-foreground',
       )}
+      style={{ padding: '2px var(--space-3)' }}
     >
       {ROLE_LABEL[role]}
     </span>

@@ -85,18 +85,32 @@ describe("Projects routes", () => {
     });
   });
 
-  describe("PUT /projects/:id — update", () => {
-    it("updates project name", async () => {
+  describe("PATCH /projects/:id — partial update (DD #152)", () => {
+    it("PATCH updates project name (returns {data: ProjectEntity})", async () => {
       mocks.projectService.update.mockResolvedValue({ id: "proj-1", name: "New Name" });
 
       const app = createApp();
       const res = await app.request("/api/v1/projects/proj-1", {
-        method: "PUT",
+        method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ name: "New Name" }),
       });
 
       expect(res.status).toBe(200);
+      const body = await res.json() as { data: { id: string; name: string } };
+      expect(body.data.name).toBe("New Name");
+    });
+
+    it("PUT method is no longer accepted (DD #152 — REST semantic align with members.patch)", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/projects/proj-1", {
+        method: "PUT",
+        headers: AUTH,
+        body: JSON.stringify({ name: "Should Not Work" }),
+      });
+
+      // Hono router returns 404 for unregistered method on registered path
+      expect(res.status).toBe(404);
     });
   });
 

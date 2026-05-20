@@ -7,7 +7,7 @@ import {
   DialogDescription,
   DialogTitle,
   DialogTrigger,
-} from '../dialog';
+} from '@/components/ui/dialog';
 
 function setup(open: boolean) {
   return render(

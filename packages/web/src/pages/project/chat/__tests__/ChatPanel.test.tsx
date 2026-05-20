@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ChatPanel } from '../ChatPanel';
+import { ChatPanel } from '@/pages/project/chat/ChatPanel';
 import { useChatStore } from '@/stores';
-import type { ChatMessage } from '../types';
+import type { ChatMessage } from '@/pages/project/chat/types';
 
 const MESSAGES: ChatMessage[] = [
   { id: 'm1', role: 'user', content: 'Plan a launch' },

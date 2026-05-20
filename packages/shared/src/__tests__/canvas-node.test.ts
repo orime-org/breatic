@@ -5,6 +5,14 @@
  * Runtime value tests verify that the declared shapes accept valid objects.
  * @ts-expect-error tests verify that removed types/fields are truly gone.
  */
+/* eslint-disable @typescript-eslint/no-unused-expressions, @typescript-eslint/consistent-type-imports --
+ * Deliberate pattern for type-removal regression tests:
+ *   - bare-property-access expressions (`data.foo;`) pair with `@ts-expect-error`
+ *     to assert that the field is gone from the type;
+ *   - inline `import(...)` types are required because top-level `import type {X}`
+ *     would itself be a TS2305 error and there's no way to put `@ts-expect-error`
+ *     on a top-level import.
+ */
 
 import { describe, it, expect, expectTypeOf } from "vitest";
 import type {

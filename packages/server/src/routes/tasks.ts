@@ -21,7 +21,7 @@ tasks.get("/", zValidator("query", paginationSchema), async (c) => {
   const user = c.get("user");
   const { limit, offset } = c.req.valid("query");
   const list = await taskService.list(user.id, limit, offset);
-  return c.json(list);
+  return c.json({ data: list });
 });
 
 /** `GET /tasks/:id` — get a single task by ID. */
@@ -29,7 +29,7 @@ tasks.get("/:id", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const task = await taskService.get(id, user.id);
-  return c.json(task);
+  return c.json({ data: task });
 });
 
 export { tasks as tasksRoute };

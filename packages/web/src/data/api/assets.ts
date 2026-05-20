@@ -1,4 +1,4 @@
-import { apiGet, request } from './request';
+import { apiGet, request } from '@/data/api/request';
 
 export interface PresignedUpload {
   url: string;

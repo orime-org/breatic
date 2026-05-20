@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usePreferencesStore, type ThemeMode } from '@/stores';
-import { TopBarTextIconButton } from './TopBarTextIconButton';
+import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
 
 /**
  * Theme switcher · TopBar group A (mock § TopBar v4.0).

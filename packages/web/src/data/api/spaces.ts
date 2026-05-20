@@ -1,5 +1,5 @@
 import type { SpaceType } from '@/spaces';
-import { apiDelete, apiPost } from './request';
+import { apiDelete, apiPost } from '@/data/api/request';
 
 export interface SpaceSummary {
   id: string;

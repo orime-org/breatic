@@ -24,7 +24,7 @@ const payment = new Hono<{ Variables: AuthVariables }>();
  */
 payment.get("/tiers", async (c) => {
   const tiers = paymentService.listTiers();
-  return c.json(tiers);
+  return c.json({ data: tiers });
 });
 
 /** `POST /payment/checkout` — create a Stripe Checkout session. */
@@ -41,7 +41,7 @@ payment.post(
       body.success_url,
       body.cancel_url,
     );
-    return c.json(result, 201);
+    return c.json({ data: result }, 201);
   },
 );
 
@@ -90,7 +90,7 @@ payment.get(
     const user = c.get("user");
     const { limit, offset } = c.req.valid("query");
     const list = await paymentService.listPayments(user.id, limit, offset);
-    return c.json(list);
+    return c.json({ data: list });
   },
 );
 
@@ -99,7 +99,7 @@ payment.get("/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const result = await paymentService.getPayment(id, user.id);
-  return c.json(result);
+  return c.json({ data: result });
 });
 
 export { payment as paymentRoute };

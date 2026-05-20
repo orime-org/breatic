@@ -3,7 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import * as React from 'react';
 
 import type { SpaceBodyProps } from '@/spaces';
-import { DocumentToolbar } from './DocumentToolbar';
+import { DocumentToolbar } from '@/spaces/document/DocumentToolbar';
 
 /**
  * Document space body — minimal TipTap editor (StarterKit) wired to a

@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usePreferencesStore, type Language } from '@/stores';
-import { TopBarTextIconButton } from './TopBarTextIconButton';
+import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).

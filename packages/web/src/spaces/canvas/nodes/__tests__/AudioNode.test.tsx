@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { AudioNode } from '../AudioNode';
+import { AudioNode } from '@/spaces/canvas/nodes/AudioNode';
 
 describe('AudioNode', () => {
   it('renders placeholder when no url', () => {

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
-import { TopBar } from '../TopBar';
+import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
 
 function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   const onRename = vi.fn();

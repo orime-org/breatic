@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NODE_TYPES, NODE_KIND_LIST } from '../registry';
+import { NODE_TYPES, NODE_KIND_LIST } from '@/spaces/canvas/nodes/registry';
 
 describe('canvas NODE_TYPES registry', () => {
   it('exposes a component for every kind in NODE_KIND_LIST', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { Separator } from '../separator';
+import { Separator } from '@/components/ui/separator';
 
 describe('Separator', () => {
   it('renders a div with bg-border token class', () => {

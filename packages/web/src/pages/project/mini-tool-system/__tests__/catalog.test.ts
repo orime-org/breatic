@@ -4,7 +4,7 @@ import {
   MINI_TOOLS,
   getMiniTool,
   miniToolsForModality,
-} from '../catalog';
+} from '@/pages/project/mini-tool-system/catalog';
 
 describe('mini-tool catalog', () => {
   it('has exactly 47 tools (the unified catalog size)', () => {

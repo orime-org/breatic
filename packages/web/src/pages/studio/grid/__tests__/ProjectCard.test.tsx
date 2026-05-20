@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import { ProjectCard, type ProjectSummary } from '../ProjectCard';
+import { ProjectCard, type ProjectSummary } from '@/pages/studio/grid/ProjectCard';
 
 const project: ProjectSummary = {
   id: 'p1',

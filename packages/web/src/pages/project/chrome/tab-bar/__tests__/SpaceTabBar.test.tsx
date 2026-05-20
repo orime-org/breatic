@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { SpaceTabBar } from '../SpaceTabBar';
+import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import { useUIStore } from '@/stores';
 

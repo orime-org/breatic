@@ -1,6 +1,6 @@
 import type { ProjectRole } from '@/stores';
-import { apiDelete, apiGet, apiPatch, apiPost } from './request';
-import type { PageMeta, Pagination } from './types';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@/data/api/request';
+import type { PageMeta, Pagination } from '@/data/api/types';
 
 export interface ProjectSummary {
   id: string;

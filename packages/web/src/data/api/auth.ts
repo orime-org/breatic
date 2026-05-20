@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './request';
+import { apiGet, apiPost } from '@/data/api/request';
 
 export interface AuthUser {
   id: string;

@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { getMiniTool } from './catalog';
+import { getMiniTool } from '@/pages/project/mini-tool-system/catalog';
 
 interface MiniToolTriggerProps {
   toolId: string;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { destroyDoc, docName, getDoc, _resetForTests } from '../manager';
+import { destroyDoc, docName, getDoc, _resetForTests } from '@/data/yjs/manager';
 
 describe('Yjs manager', () => {
   beforeEach(() => {

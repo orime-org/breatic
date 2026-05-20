@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
-import StudioPage from '../StudioPage';
+import StudioPage from '@/pages/studio/StudioPage';
 import { useStudioStore } from '@/stores';
 
 function setup() {

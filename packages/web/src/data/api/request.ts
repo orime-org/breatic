@@ -5,7 +5,7 @@ import axios, {
 } from 'axios';
 
 import { useCurrentUserStore } from '@/stores';
-import { ApiException, type ApiError } from './types';
+import { ApiException, type ApiEnvelope, type ApiError } from '@/data/api/types';
 
 /**
  * Singleton axios instance configured for the breatic API.
@@ -61,40 +61,40 @@ function normalizeError(err: unknown): ApiError {
 
 export const request = createClient();
 
-/** Typed GET helper (returns `data` payload, throws `ApiException`). */
+/** Typed GET helper — unwraps `{ data: T }` envelope, throws `ApiException`. */
 export async function apiGet<T>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  const res = await request.get<T>(url, config);
-  return res.data;
+  const res = await request.get<ApiEnvelope<T>>(url, config);
+  return res.data.data;
 }
 
-/** Typed POST helper. */
+/** Typed POST helper — unwraps `{ data: T }` envelope. */
 export async function apiPost<T, B = unknown>(
   url: string,
   body?: B,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  const res = await request.post<T>(url, body, config);
-  return res.data;
+  const res = await request.post<ApiEnvelope<T>>(url, body, config);
+  return res.data.data;
 }
 
-/** Typed PATCH helper. */
+/** Typed PATCH helper — unwraps `{ data: T }` envelope. */
 export async function apiPatch<T, B = unknown>(
   url: string,
   body?: B,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  const res = await request.patch<T>(url, body, config);
-  return res.data;
+  const res = await request.patch<ApiEnvelope<T>>(url, body, config);
+  return res.data.data;
 }
 
-/** Typed DELETE helper. */
+/** Typed DELETE helper — unwraps `{ data: T }` envelope. */
 export async function apiDelete<T = void>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  const res = await request.delete<T>(url, config);
-  return res.data;
+  const res = await request.delete<ApiEnvelope<T>>(url, config);
+  return res.data.data;
 }

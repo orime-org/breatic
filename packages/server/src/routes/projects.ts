@@ -99,7 +99,7 @@ membershipScoped.get(
   },
 );
 
-/** Body schema for `PUT /projects/:id` — any subset of the mutable fields. */
+/** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
@@ -112,14 +112,16 @@ const projectUpdateSchema = z
   );
 
 /**
- * `PUT /projects/:id` — update name / description / thumbnail.
+ * `PATCH /projects/:id` — partial update of name / description / thumbnail.
  *
- * Requires `edit` (renaming etc. is content editing, not an
- * admin-only operation). v10 §7.2.1.
+ * PATCH semantic = client sends only fields to change (DD orime-org/
+ * breatic-inner-design#152 D1; aligns with `members.patch` precedent).
+ * Requires `edit` (renaming etc. is content editing, not an admin-only
+ * operation). v10 §7.2.1.
  *
  * @returns `200` with `{ data: ProjectEntity }`
  */
-membershipScoped.put(
+membershipScoped.patch(
   "/:id",
   requireRoleOnParam("id", "edit"),
   zValidator("json", projectUpdateSchema),

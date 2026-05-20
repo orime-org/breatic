@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { NodeContent } from '../NodeContent';
+import { NodeContent } from '@/spaces/canvas/nodes/_shared/NodeContent';
 
 describe('NodeContent', () => {
   it('renders placeholder when status=idle + no content', () => {

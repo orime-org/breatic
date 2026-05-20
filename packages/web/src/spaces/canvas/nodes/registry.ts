@@ -1,13 +1,13 @@
 import type { ComponentType } from 'react';
 
 import type { NodeKind } from '@/spaces/canvas/types/node';
-import { AnnotationNode } from './AnnotationNode';
-import { AudioNode } from './AudioNode';
-import { ImageNode } from './ImageNode';
-import { TextNode } from './TextNode';
-import { ThreeDNode } from './ThreeDNode';
-import { VideoNode } from './VideoNode';
-import { WebNode } from './WebNode';
+import { AnnotationNode } from '@/spaces/canvas/nodes/AnnotationNode';
+import { AudioNode } from '@/spaces/canvas/nodes/AudioNode';
+import { ImageNode } from '@/spaces/canvas/nodes/ImageNode';
+import { TextNode } from '@/spaces/canvas/nodes/TextNode';
+import { ThreeDNode } from '@/spaces/canvas/nodes/ThreeDNode';
+import { VideoNode } from '@/spaces/canvas/nodes/VideoNode';
+import { WebNode } from '@/spaces/canvas/nodes/WebNode';
 
 /**
  * Maps `NodeKind` → React component used by the ReactFlow `nodeTypes`

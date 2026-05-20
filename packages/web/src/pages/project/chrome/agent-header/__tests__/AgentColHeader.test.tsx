@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AgentColHeader } from '../AgentColHeader';
+import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onOpenHistory = vi.fn();

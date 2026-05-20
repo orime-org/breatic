@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { ApiException, type ApiError } from '../types';
+import { request, apiGet, apiPost, apiPatch, apiDelete } from '@/data/api/request';
+import { ApiException, type ApiError } from '@/data/api/types';
 
 describe('ApiException', () => {
   it('exposes status / message / code from the wrapped ApiError', () => {
@@ -23,5 +24,52 @@ describe('ApiException', () => {
   it('code is optional', () => {
     const ex = new ApiException({ status: 400, message: 'Bad request' });
     expect(ex.code).toBeUndefined();
+  });
+});
+
+// Envelope unwrap invariant — backend returns `{ data: T }` for all
+// endpoints (ApiResponse 规约; DD #152). Helpers must unwrap to T so
+// callers don't double-dot (`res.data.data`). RED test: current
+// implementation returns `res.data` = `{ data: T }`, not T.
+describe('helper envelope unwrap (DD #152)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('apiGet unwraps { data: T } envelope to T', async () => {
+    vi.spyOn(request, 'get').mockResolvedValueOnce({
+      data: { data: { id: 'p1', name: 'Demo' } },
+    } as never);
+    const result = await apiGet<{ id: string; name: string }>('/projects/p1');
+    expect(result).toEqual({ id: 'p1', name: 'Demo' });
+  });
+
+  it('apiPost unwraps { data: T } envelope to T (201 entity)', async () => {
+    vi.spyOn(request, 'post').mockResolvedValueOnce({
+      data: { data: { id: 'p2', name: 'New' } },
+    } as never);
+    const result = await apiPost<{ id: string; name: string }>('/projects', {
+      name: 'New',
+    });
+    expect(result).toEqual({ id: 'p2', name: 'New' });
+  });
+
+  it('apiPatch unwraps { data: T } envelope to T (partial update)', async () => {
+    vi.spyOn(request, 'patch').mockResolvedValueOnce({
+      data: { data: { id: 'p1', name: 'Updated' } },
+    } as never);
+    const result = await apiPatch<{ id: string; name: string }>(
+      '/projects/p1',
+      { name: 'Updated' },
+    );
+    expect(result).toEqual({ id: 'p1', name: 'Updated' });
+  });
+
+  it('apiDelete unwraps { data: T } envelope to T (success ack)', async () => {
+    vi.spyOn(request, 'delete').mockResolvedValueOnce({
+      data: { data: { success: true } },
+    } as never);
+    const result = await apiDelete<{ success: boolean }>('/projects/p1');
+    expect(result).toEqual({ success: true });
   });
 });

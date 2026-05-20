@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../select';
+} from '@/components/ui/select';
 
 // jsdom lacks ResizeObserver + hasPointerCapture used by Radix Select.
 // Provide minimal stubs to keep tests focused on contract.

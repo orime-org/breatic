@@ -1,7 +1,7 @@
 import type { WebNodeData } from '@/spaces/canvas/types/node';
-import { NodeShell } from './_shared/NodeShell';
-import { NodeContent } from './_shared/NodeContent';
-import { NodePlaceholder } from './_shared/NodePlaceholder';
+import { NodeShell } from '@/spaces/canvas/nodes/_shared/NodeShell';
+import { NodeContent } from '@/spaces/canvas/nodes/_shared/NodeContent';
+import { NodePlaceholder } from '@/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface WebNodeProps {
   data: WebNodeData;

@@ -2,8 +2,8 @@ import * as React from 'react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { MessageBubble } from './MessageBubble';
-import type { ChatMessage } from './types';
+import { MessageBubble } from '@/pages/project/chat/MessageBubble';
+import type { ChatMessage } from '@/pages/project/chat/types';
 
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;

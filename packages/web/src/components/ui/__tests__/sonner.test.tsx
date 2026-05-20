@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
 import { toast } from 'sonner';
 
-import { Toaster } from '../sonner';
+import { Toaster } from '@/components/ui/sonner';
 
 // NOTE: sonner does not fully render its <section> inside jsdom (it depends
 // on browser-only timing). We assert mount + API surface; full visual

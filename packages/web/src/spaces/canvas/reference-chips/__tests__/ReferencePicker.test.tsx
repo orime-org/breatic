@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ReferencePicker, type ReferenceCandidate } from '../ReferencePicker';
+import { ReferencePicker, type ReferenceCandidate } from '@/spaces/canvas/reference-chips/ReferencePicker';
 
 const CANDIDATES: ReferenceCandidate[] = [
   { id: 'n1', modality: 'image', label: 'cover.jpg' },

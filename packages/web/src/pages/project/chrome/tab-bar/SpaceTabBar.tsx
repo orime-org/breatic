@@ -12,10 +12,10 @@ import { cn } from '@/lib/utils';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
 import { useUIStore } from '@/stores';
-import { NewSpaceDialog } from './NewSpaceDialog';
-import { SpaceDrawer } from './SpaceDrawer';
-import { SpaceHistoryButton } from './SpaceHistoryButton';
-import { SpaceTab } from './SpaceTab';
+import { NewSpaceDialog } from '@/pages/project/chrome/tab-bar/NewSpaceDialog';
+import { SpaceDrawer } from '@/pages/project/chrome/tab-bar/SpaceDrawer';
+import { SpaceHistoryButton } from '@/pages/project/chrome/tab-bar/SpaceHistoryButton';
+import { SpaceTab } from '@/pages/project/chrome/tab-bar/SpaceTab';
 
 interface SpaceTabBarProps {
   spaces: ReadonlyArray<ProjectSpace>;
