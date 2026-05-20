@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react';
+import { Download, FileImage, FileJson, FileText } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -8,9 +8,9 @@ import {
 } from '@/components/ui/popover';
 
 const EXPORT_FORMATS = [
-  { id: 'png', label: 'PNG (current view)' },
-  { id: 'pdf', label: 'PDF (whole canvas)' },
-  { id: 'json', label: 'JSON (raw data)' },
+  { id: 'png', label: 'PNG (current view)', icon: FileImage },
+  { id: 'pdf', label: 'PDF (whole canvas)', icon: FileText },
+  { id: 'json', label: 'JSON (raw data)', icon: FileJson },
 ] as const;
 
 /**
@@ -36,17 +36,21 @@ export function ExportMenu({
         data-testid='export-popover'
       >
         <div className='flex flex-col gap-0.5'>
-          {EXPORT_FORMATS.map((f) => (
-            <Button
-              key={f.id}
-              variant='ghost'
-              size='sm'
-              className='justify-start'
-              onClick={() => onExport?.(f.id)}
-            >
-              {f.label}
-            </Button>
-          ))}
+          {EXPORT_FORMATS.map((f) => {
+            const ItemIcon = f.icon;
+            return (
+              <Button
+                key={f.id}
+                variant='ghost'
+                size='menu-item'
+                className='justify-start'
+                onClick={() => onExport?.(f.id)}
+              >
+                <ItemIcon className='h-4 w-4' />
+                {f.label}
+              </Button>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>

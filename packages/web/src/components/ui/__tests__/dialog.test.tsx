@@ -41,11 +41,13 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
-  it('content carries bg-background + rounded-lg + border tokens', () => {
+  it('content carries bg-popover + rounded-chrome + border tokens', () => {
     setup(true);
     const content = screen.getByTestId('content');
-    expect(content.className).toContain('bg-background');
-    expect(content.className).toContain('border');
+    expect(content.className).toContain('bg-popover');
+    expect(content.className).toContain('border-border');
+    expect(content.className).toContain('sm:rounded-chrome');
+    expect(content.className).toContain('shadow');
   });
 
   it('content merges custom className (tailwind-merge)', () => {

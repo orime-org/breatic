@@ -59,11 +59,17 @@ export function LangSwitcher() {
             <Button
               key={l.code}
               variant={language === l.code ? 'secondary' : 'ghost'}
-              size='sm'
+              size='menu-item'
               className='justify-start'
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >
+              <span
+                aria-hidden='true'
+                className='inline-flex w-4 shrink-0 justify-center text-[13px] font-medium text-muted-foreground'
+              >
+                {l.char}
+              </span>
               {l.label}
             </Button>
           ))}

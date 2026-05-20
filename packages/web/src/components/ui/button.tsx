@@ -36,6 +36,13 @@ const buttonVariants = cva(
         // TopBar / TabBar / popover triggers.
         chrome:
           'h-[var(--btn-chrome)] w-[var(--btn-chrome)] rounded-chrome',
+        // Menu-item size — for popover / dropdown internal options
+        // (LangSwitcher / ThemeToggle / ExportMenu list items). Matches
+        // mock `.menu-item` spec: auto height + `--radius-chrome` (6px)
+        // + 13px label + asymmetric padding so a stack of items in a
+        // 2px-padded popover lines up with the mock proportions.
+        'menu-item':
+          'h-auto gap-2 rounded-chrome px-2 py-1.5 text-[13px]',
       },
     },
     defaultVariants: {
