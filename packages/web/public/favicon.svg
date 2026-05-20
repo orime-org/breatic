@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Breatic favicon — mirrors inner-design `design/logo/tight/logo-color.svg`
-  (commit 6ba50ba) for browser tab icon clarity.
-
-  Source viewBox is -50 -50 100 100 (per design spec); tight variant
-  trims to -42 -42 84 84 (5% margin) so 16x16 favicon fills the visible
-  icon area without rendering at ~11x11 (loose viewBox aspect).
-
-  GEOMETRY IS COPIED EXACTLY from inner-design tight variant — only
-  viewBox + dimensions differ from the canonical SVG. Brand colors +
-  arc paths must match the design source.
+  Breatic logo — brand 彩色 / 透明底 / tight viewBox
+  跟 design/logo/logo-color.svg 几何完全相同(brand 三色 + 三段弧 + 三圆点)
+  唯一差异:viewBox 从 -50 -50 100 100 裁到 -42 -42 84 84(5% margin),
+           favicon / icon 在小尺寸下 logo 占满,视觉对齐主流 favicon padding
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-42 -42 84 84">
   <g transform="scale(1, -1)">
