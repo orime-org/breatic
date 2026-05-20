@@ -11,7 +11,7 @@ import { immer } from 'zustand/middleware/immer';
  *
  * Persistence to localStorage lands in a later PR.
  */
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'system';
 export type Language = 'zh-CN' | 'en' | 'ja' | 'zh-TW';
 
 interface PreferencesState {
@@ -23,7 +23,7 @@ interface PreferencesState {
 
 export const usePreferencesStore = create<PreferencesState>()(
   immer((set) => ({
-    theme: 'light',
+    theme: 'system',
     language: 'zh-CN',
     setTheme: (theme) =>
       set((s) => {

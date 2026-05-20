@@ -42,7 +42,7 @@ const buttonVariants = cva(
         // + 13px label + asymmetric padding so a stack of items in a
         // 2px-padded popover lines up with the mock proportions.
         'menu-item':
-          'h-auto rounded-chrome px-2 py-1.5 text-[13px]',
+          'h-auto gap-2 rounded-chrome px-2 py-1.5 text-[13px]',
       },
     },
     defaultVariants: {
