@@ -17,7 +17,11 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@/data/api/types'
  */
 function createClient(): AxiosInstance {
   const instance = axios.create({
-    baseURL: '/api',
+    // Server mounts every route under `/api/v1/*` (see packages/server/src/app.ts).
+    // Vite proxy `/api/*` → :3000/api/* in dev; nginx in prod. Client
+    // therefore points at `/api/v1` so per-resource paths stay `/projects`,
+    // `/chat` etc. without `v1` smeared everywhere.
+    baseURL: '/api/v1',
     timeout: 30_000,
     headers: { 'Content-Type': 'application/json' },
   });

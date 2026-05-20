@@ -90,13 +90,24 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
         // Safari 18.4+) makes the input width follow the content length up
         // to max-width — matching the span's inline-block content-grow
         // behaviour so the static/edit transition has no width jump.
-        className='inline-block min-w-[40px] border-0 bg-muted/50 align-middle text-[13px] font-medium text-foreground outline-none [field-sizing:content]'
+        //
+        // Background: `bg-muted` (solid token) so dark mode shows the dark
+        // stone-warm value — `bg-muted/50` opacity modifier fell back to
+        // browser-native input white in dark mode (Tailwind 4 + var color
+        // alpha quirk). Solid token keeps the contrast right both modes.
+        className='inline-block min-w-[40px] border-0 bg-muted align-middle text-[13px] font-medium text-foreground outline-none [field-sizing:content]'
         style={sharedStyle}
         data-testid='title-input'
       />
     );
   }
 
+  // Render `draft` (not `value`) so the optimistic title is visible
+  // immediately on commit — the parent's optimistic cache write goes
+  // through a microtask (onMutate awaits cancelQueries), so reading
+  // `value` here would briefly show the stale name for one frame.
+  // The useEffect above keeps `draft === value` whenever editing is
+  // false, so rollback on failure still flows back through `draft`.
   return (
     <span
       role='textbox'
@@ -109,12 +120,12 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
           setEditing(true);
         }
       }}
-      className='inline-block min-w-0 cursor-text truncate align-middle text-[13px] font-medium outline-none hover:bg-muted/50'
+      className='inline-block min-w-0 cursor-text truncate align-middle text-[13px] font-medium outline-none hover:bg-muted'
       style={sharedStyle}
       data-testid='title-display'
-      title={value}
+      title={draft}
     >
-      {value}
+      {draft}
     </span>
   );
 }

@@ -50,7 +50,7 @@ export default function ProjectPage() {
     enabled: projectId !== 'demo',
   });
   const projectName = projectQuery.data?.name ?? 'Untitled project';
-  const role = projectQuery.data?.role ?? 'owner';
+  const role = projectQuery.data?.myRole ?? 'owner';
   // Credits live on the user; placeholder until /auth/me wires.
   const credits = 0;
 

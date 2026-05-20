@@ -1,28 +1,35 @@
 import type { ProjectRole } from '@/stores';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/data/api/request';
-import type { PageMeta, Pagination } from '@/data/api/types';
+import type { Pagination } from '@/data/api/types';
 
+/**
+ * Project list row — mirrors backend `ProjectEntity` returned by
+ * `GET /api/v1/projects` (server sends an array, no `{projects, meta}`
+ * wrapper inside the envelope). `role` is not populated on the list
+ * endpoint — personal-studio v1 means every project is owner; per-row
+ * role lands when sharing UI ships.
+ */
 export interface ProjectSummary {
   id: string;
   name: string;
-  role: ProjectRole;
-  thumbnailUrl?: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
 export interface ProjectDetail extends ProjectSummary {
-  description?: string;
-  membersCount: number;
-}
-
-interface ProjectsList {
-  projects: ProjectSummary[];
-  meta: PageMeta;
+  studioId: string;
+  createdByUserId: string;
+  /** Caller's role on this project (membership-aware reads only). */
+  myRole?: ProjectRole;
+  /** Soft-delete marker; null for live projects. */
+  deletedAt: string | null;
 }
 
 export const projectsApi = {
   list(params: Pagination = {}) {
-    return apiGet<ProjectsList>('/projects', { params });
+    return apiGet<ProjectSummary[]>('/projects', { params });
   },
   get(id: string) {
     return apiGet<ProjectDetail>(`/projects/${id}`);
