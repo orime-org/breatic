@@ -2,19 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import { ProjectCard, type ProjectSummary } from '@/pages/studio/grid/ProjectCard';
+import type { ProjectSummary } from '@/data/api/projects';
+import { ProjectCard } from '@/pages/studio/grid/ProjectCard';
 
 const project: ProjectSummary = {
   id: 'p1',
   name: 'Cyberpunk Concept',
-  role: 'owner',
+  description: null,
+  thumbnailUrl: null,
+  createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
   updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 };
 
 function setup(p: ProjectSummary = project) {
   return render(
     <MemoryRouter>
-      <ProjectCard project={p} />
+      <ProjectCard project={p} role='owner' />
     </MemoryRouter>,
   );
 }

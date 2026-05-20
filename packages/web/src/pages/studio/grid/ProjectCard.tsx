@@ -1,18 +1,17 @@
 import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
+import type { ProjectSummary } from '@/data/api/projects';
 import type { ProjectRole } from '@/stores';
-
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  thumbnailUrl?: string;
-  role: ProjectRole;
-  updatedAt: string;
-}
 
 interface ProjectCardProps {
   project: ProjectSummary;
+  /**
+   * Caller's role on this project. Passed separately because the
+   * list endpoint (`GET /api/v1/projects`) does not currently return
+   * per-row role. Personal-studio v1 → owner everywhere.
+   */
+  role: ProjectRole;
 }
 
 const ROLE_LABEL: Record<ProjectRole, string> = {
@@ -27,7 +26,7 @@ const ROLE_LABEL: Record<ProjectRole, string> = {
  * Links to `/project/:id`. Header strip shows thumbnail (or a tinted
  * placeholder); footer shows name + role badge + relative updated time.
  */
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, role }: ProjectCardProps) {
   return (
     <Link
       to={`/project/${project.id}`}
@@ -52,7 +51,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </div>
         </div>
         <Badge variant='outline' className='shrink-0'>
-          {ROLE_LABEL[project.role]}
+          {ROLE_LABEL[role]}
         </Badge>
       </div>
     </Link>

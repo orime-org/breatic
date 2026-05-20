@@ -35,7 +35,13 @@ describe('routes', () => {
   // concrete page routes resolve to the correct components.
 
   it('/studio renders StudioPage', async () => {
-    render(<RouterProvider router={makeRouter('/studio')} />);
+    render(
+      <QueryClientProvider>
+        <TooltipProvider>
+          <RouterProvider router={makeRouter('/studio')} />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
     expect(
       await screen.findByRole('heading', { name: 'Projects', level: 1 }),
     ).toBeInTheDocument();

@@ -1,16 +1,61 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioPage from '@/pages/studio/StudioPage';
 import { useStudioStore } from '@/stores';
+import type { ProjectSummary } from '@/data/api/projects';
+
+const DEMO_PROJECTS: ProjectSummary[] = [
+  {
+    id: 'p-1',
+    name: 'Cyberpunk Concept',
+    description: null,
+    thumbnailUrl: null,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+  },
+  {
+    id: 'p-2',
+    name: 'BGM Exploration',
+    description: null,
+    thumbnailUrl: null,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 7).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+  },
+  {
+    id: 'p-3',
+    name: 'Trailer v2',
+    description: null,
+    thumbnailUrl: null,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+  },
+];
+
+vi.mock('@/data/api', () => ({
+  projectsApi: {
+    list: vi.fn(async () => DEMO_PROJECTS),
+    create: vi.fn(),
+    get: vi.fn(),
+    rename: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
 
 function setup() {
+  // Fresh QueryClient per test so cache doesn't leak between cases.
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return render(
-    <MemoryRouter>
-      <StudioPage />
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <StudioPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -30,10 +75,10 @@ describe('StudioPage', () => {
     expect(screen.getByRole('button', { name: /Projects/i })).toBeInTheDocument();
   });
 
-  it('renders 3 demo project cards + 1 new card', () => {
+  it('renders 3 demo project cards + 1 new card', async () => {
     setup();
-    // 3 demo cards link to /project/<id>; new card is a button.
-    const links = screen.getAllByRole('link', { name: /Open project/i });
+    // List query resolves asynchronously; await first card render.
+    const links = await screen.findAllByRole('link', { name: /Open project/i });
     expect(links).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Create new project' })).toBeInTheDocument();
   });
@@ -48,6 +93,8 @@ describe('StudioPage', () => {
   it('search filter narrows visible cards', async () => {
     const user = userEvent.setup();
     setup();
+    // Wait for initial render before typing into search.
+    await screen.findAllByRole('link', { name: /Open project/i });
     await user.type(screen.getByPlaceholderText('Search…'), 'cyber');
     const links = screen.getAllByRole('link', { name: /Open project/i });
     expect(links).toHaveLength(1);
