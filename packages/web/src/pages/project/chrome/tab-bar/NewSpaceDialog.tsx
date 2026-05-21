@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -84,7 +85,7 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
             Pick a space type and give it a short name.
           </DialogDescription>
         </DialogHeader>
-        <div className='space-y-3'>
+        <DialogBody>
           <div className='space-y-1'>
             <Label htmlFor='new-space-type'>Type</Label>
             <Select
@@ -121,7 +122,7 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
               {error}
             </div>
           ) : null}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button
             variant='ghost'

@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -75,12 +76,12 @@ export function NewProjectDialog({
         </DialogHeader>
 
         <form
-          className='space-y-4'
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
+          <DialogBody>
           <div className='flex flex-col gap-1.5'>
             <Label htmlFor='np-name'>Name</Label>
             <input
@@ -91,7 +92,7 @@ export function NewProjectDialog({
               onChange={(e) => setName(e.target.value)}
               placeholder='e.g. Cyberpunk Concept'
               className={cn(
-                'flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors',
+                'flex h-9 w-full rounded-chrome border border-border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors',
                 'placeholder:text-muted-foreground',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 showError ? 'border-destructive' : 'border-input',
@@ -127,18 +128,19 @@ export function NewProjectDialog({
               </SelectContent>
             </Select>
           </div>
+          </DialogBody>
 
           <DialogFooter>
             <button
               type='button'
               onClick={() => onOpenChange(false)}
-              className='inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted'
+              className='inline-flex h-9 items-center justify-center rounded-chrome border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted'
             >
               Cancel
             </button>
             <button
               type='submit'
-              className='inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50'
+              className='inline-flex h-9 items-center justify-center rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50'
               disabled={empty}
             >
               Create

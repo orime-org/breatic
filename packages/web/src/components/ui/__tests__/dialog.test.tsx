@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
@@ -16,8 +17,10 @@ function setup(open: boolean) {
         <button type='button'>Open</button>
       </DialogTrigger>
       <DialogContent data-testid='content'>
-        <DialogTitle>Title</DialogTitle>
-        <DialogDescription>Description</DialogDescription>
+        <DialogHeader>
+          <DialogTitle>Title</DialogTitle>
+          <DialogDescription>Description</DialogDescription>
+        </DialogHeader>
       </DialogContent>
     </Dialog>,
   );
@@ -48,6 +51,8 @@ describe('Dialog', () => {
     expect(content.className).toContain('border-border');
     expect(content.className).toContain('sm:rounded-chrome');
     expect(content.className).toContain('shadow');
+    expect(content.className).toContain('max-w-[520px]');
+    expect(content.className).toContain('p-0');
   });
 
   it('content merges custom className (tailwind-merge)', () => {
@@ -57,12 +62,14 @@ describe('Dialog', () => {
           <button>x</button>
         </DialogTrigger>
         <DialogContent data-testid='content' className='max-w-2xl'>
-          <DialogTitle>T</DialogTitle>
+          <DialogHeader>
+            <DialogTitle>T</DialogTitle>
+          </DialogHeader>
         </DialogContent>
       </Dialog>,
     );
     const content = screen.getByTestId('content');
     expect(content.className).toContain('max-w-2xl');
-    expect(content.className).not.toContain('max-w-lg');
+    expect(content.className).not.toContain('max-w-[520px]');
   });
 });

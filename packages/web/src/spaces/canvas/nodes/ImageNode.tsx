@@ -42,7 +42,7 @@ export function ImageNode({
             src={data.url ?? ''}
             alt=''
             data-testid='image-node-img'
-            className='block h-auto w-full rounded-md'
+            className='block h-auto w-full rounded-[var(--radius-content-sm)]'
           />
         }
       />

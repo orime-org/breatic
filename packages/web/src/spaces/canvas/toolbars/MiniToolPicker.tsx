@@ -49,7 +49,7 @@ export function MiniToolPicker({ modality, onPick }: MiniToolPickerProps) {
               <Button
                 key={t.id}
                 variant='ghost'
-                size='sm'
+                size='menu-item'
                 className='justify-between'
                 onClick={() => onPick?.(t.id)}
                 data-testid={`mini-tool-${t.id}`}

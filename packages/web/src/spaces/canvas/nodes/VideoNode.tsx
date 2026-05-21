@@ -43,7 +43,7 @@ export function VideoNode({
             src={data.url}
             poster={data.coverUrl}
             data-testid='video-node-video'
-            className='block w-full rounded-md'
+            className='block w-full rounded-[var(--radius-content-sm)]'
           />
         }
       />
