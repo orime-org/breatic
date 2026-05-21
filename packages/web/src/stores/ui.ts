@@ -17,12 +17,18 @@ interface UIState {
   drawerOpen: boolean;
   sidebarOpen: boolean;
   modalStack: string[];
+  /** Share popover open state — controlled so other surfaces can open it. */
+  shareOpen: boolean;
+  /** Members management modal open state. */
+  membersModalOpen: boolean;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
   setDrawerOpen: (open: boolean) => void;
   setSidebarOpen: (open: boolean) => void;
   pushModal: (id: string) => void;
   popModal: () => void;
+  setShareOpen: (open: boolean) => void;
+  setMembersModalOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -31,6 +37,8 @@ export const useUIStore = create<UIState>()(
     drawerOpen: false,
     sidebarOpen: true,
     modalStack: [],
+    shareOpen: false,
+    membersModalOpen: false,
     setChatPanelCollapsed: (collapsed) =>
       set((s) => {
         s.chatPanelCollapsed = collapsed;
@@ -54,6 +62,14 @@ export const useUIStore = create<UIState>()(
     popModal: () =>
       set((s) => {
         s.modalStack.pop();
+      }),
+    setShareOpen: (open) =>
+      set((s) => {
+        s.shareOpen = open;
+      }),
+    setMembersModalOpen: (open) =>
+      set((s) => {
+        s.membersModalOpen = open;
       }),
   })),
 );

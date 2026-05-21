@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Logo28 } from '@/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
+import { MembersModal } from '@/pages/project/chrome/top-bar/MembersModal';
 import { MembersStack } from '@/pages/project/chrome/top-bar/MembersStack';
 import { LangSwitcher } from '@/pages/project/chrome/top-bar/LangSwitcher';
 import { ThemeToggle } from '@/pages/project/chrome/top-bar/ThemeToggle';
@@ -81,6 +82,7 @@ export function TopBar({
           <BellMenu />
         </div>
       </div>
+      <MembersModal />
     </header>
   );
 }

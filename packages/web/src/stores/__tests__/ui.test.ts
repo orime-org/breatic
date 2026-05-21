@@ -8,6 +8,8 @@ describe('useUIStore', () => {
       drawerOpen: false,
       sidebarOpen: true,
       modalStack: [],
+      shareOpen: false,
+      membersModalOpen: false,
     });
   });
 
@@ -32,5 +34,17 @@ describe('useUIStore', () => {
     expect(useUIStore.getState().modalStack).toEqual(['a', 'b']);
     useUIStore.getState().popModal();
     expect(useUIStore.getState().modalStack).toEqual(['a']);
+  });
+
+  it('setShareOpen / setMembersModalOpen toggle independent state', () => {
+    const s = useUIStore.getState();
+    expect(s.shareOpen).toBe(false);
+    expect(s.membersModalOpen).toBe(false);
+    s.setShareOpen(true);
+    expect(useUIStore.getState().shareOpen).toBe(true);
+    expect(useUIStore.getState().membersModalOpen).toBe(false);
+    useUIStore.getState().setMembersModalOpen(true);
+    expect(useUIStore.getState().shareOpen).toBe(true);
+    expect(useUIStore.getState().membersModalOpen).toBe(true);
   });
 });
