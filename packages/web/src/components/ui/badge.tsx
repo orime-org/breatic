@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
  * `<StatusBadge>` (added in a later PR) rather than extending this primitive.
  */
 const badgeVariants = cva(
-  'inline-flex items-center rounded-chrome border px-2.5 py-0.5 text-xs font-semibold transition-opacity focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  'inline-flex items-center rounded-chrome border px-2.5 py-0.5 text-xs font-semibold transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
   {
     variants: {
       variant: {
