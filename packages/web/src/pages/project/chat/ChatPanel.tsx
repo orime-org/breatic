@@ -18,6 +18,12 @@ interface ChatPanelProps {
   conversations?: ReadonlyArray<ConversationSummary>;
   onSend?: (text: string) => void;
   onAbort?: () => void;
+  /**
+   * Called when the user picks a quick-action chip in the empty state.
+   * Wiring loads the label into the composer draft so the user can edit
+   * before sending; default behaviour just sets the draft.
+   */
+  onQuickAction?: (label: string) => void;
 }
 
 /**
@@ -33,6 +39,7 @@ export function ChatPanel({
   conversations = [],
   onSend,
   onAbort,
+  onQuickAction,
 }: ChatPanelProps) {
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
@@ -58,7 +65,13 @@ export function ChatPanel({
       data-project-id={projectId}
       className='flex h-full w-full flex-col'
     >
-      <MessageList messages={initialMessages} />
+      <MessageList
+        messages={initialMessages}
+        onQuickAction={(label) => {
+          if (onQuickAction) onQuickAction(label);
+          else setDraft(label);
+        }}
+      />
       <ChatComposer
         draft={draft}
         streaming={streaming}

@@ -7,16 +7,18 @@ import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHead
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onOpenHistory = vi.fn();
   const onNewConversation = vi.fn();
+  const onRenameConversation = vi.fn();
   render(
     <AgentColHeader
       conversationName='Onboarding'
       messageCount={3}
       onOpenHistory={onOpenHistory}
       onNewConversation={onNewConversation}
+      onRenameConversation={onRenameConversation}
       {...overrides}
     />,
   );
-  return { onOpenHistory, onNewConversation };
+  return { onOpenHistory, onNewConversation, onRenameConversation };
 }
 
 describe('AgentColHeader', () => {
@@ -30,9 +32,11 @@ describe('AgentColHeader', () => {
     expect(screen.getByText('Bug triage')).toBeInTheDocument();
   });
 
-  it('renders the message-count chip', () => {
+  it('renders the count chip immediately right of the history icon', () => {
     setup({ messageCount: 12 });
-    expect(screen.getByTestId('message-chip')).toHaveTextContent('12');
+    expect(screen.getByTestId('conversation-count-chip')).toHaveTextContent(
+      '12',
+    );
   });
 
   it('clicking history opens it', async () => {
@@ -47,5 +51,15 @@ describe('AgentColHeader', () => {
     const { onNewConversation } = setup();
     await user.click(screen.getByTestId('new-conversation'));
     expect(onNewConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('renames the conversation when the title is edited and Enter is pressed', async () => {
+    const user = userEvent.setup();
+    const { onRenameConversation } = setup({ conversationName: 'Old name' });
+    await user.click(screen.getByTestId('title-display'));
+    const input = screen.getByTestId('title-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'New name{Enter}');
+    expect(onRenameConversation).toHaveBeenCalledWith('New name');
   });
 });

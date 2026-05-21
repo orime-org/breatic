@@ -3,12 +3,19 @@ import * as React from 'react';
 interface TitleEditableProps {
   value: string;
   onChange: (next: string) => void;
+  /**
+   * Visible width cap (px). Defaults to 320 (= Agent column width) for
+   * the TopBar project title; callers in tighter containers (e.g. Agent
+   * column header sharing 40px row with icons + chip + button) should
+   * pass a smaller value so truncation kicks in at the right boundary.
+   */
+  maxWidth?: number;
 }
 
 /** Project title length cap — system-wide limit, enforced on backend too. */
 const MAX_TITLE_LEN = 80;
-/** Visible width cap (= Agent column width). Both modes share this. */
-const TITLE_MAX_WIDTH = 320;
+/** Default visible width cap when caller doesn't override. */
+const DEFAULT_TITLE_MAX_WIDTH = 320;
 
 /**
  * Project title — dual-mode inline title bar element.
@@ -31,7 +38,11 @@ const TITLE_MAX_WIDTH = 320;
  *     reject empty).
  *   - Escape cancel (restore previous value, exit edit mode).
  */
-export function TitleEditable({ value, onChange }: TitleEditableProps) {
+export function TitleEditable({
+  value,
+  onChange,
+  maxWidth = DEFAULT_TITLE_MAX_WIDTH,
+}: TitleEditableProps) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -64,7 +75,7 @@ export function TitleEditable({ value, onChange }: TitleEditableProps) {
   const sharedStyle: React.CSSProperties = {
     padding: '2px var(--space-2)',
     borderRadius: 'var(--radius-chrome)',
-    maxWidth: TITLE_MAX_WIDTH,
+    maxWidth,
   };
 
   if (editing) {
