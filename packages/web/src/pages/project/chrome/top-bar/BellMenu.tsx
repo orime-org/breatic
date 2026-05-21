@@ -101,7 +101,7 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
 
 function RequestItem({ request }: { request: AccessRequest }) {
   return (
-    <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent/40'>
+    <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
           <AvatarFallback className='text-[12px] font-semibold'>

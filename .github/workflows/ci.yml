@@ -85,6 +85,13 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
+      - name: Lint hover patterns
+        # Enforce inner ADR 2026-05-21-hover-pattern-standard: ban
+        # `hover:bg-<token>/<2-digit>` Tailwind alpha-modifier hovers
+        # in packages/web/src — solid token swap or `hover:opacity-90`
+        # only. Fast grep; hard-fails the PR on violation.
+        run: pnpm lint:hover
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 

@@ -9,14 +9,20 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Primary CTA (neutral) — bg-primary, hover via opacity. Mock
+        // chrome-baseline uses transition opacity 120ms + opacity 0.9
+        // on hover for all CTAs; avoids the shadcn-default alpha-on-
+        // self pattern that mixes with the background and gives weak
+        // visible feedback. See inner ADR 2026-05-21-hover-pattern-
+        // standard for rationale.
         default:
-          'bg-primary text-primary-foreground hover:bg-primary/90',
+          'bg-primary text-primary-foreground transition-opacity hover:opacity-90',
         destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+          'bg-destructive text-destructive-foreground transition-opacity hover:opacity-90',
         outline:
           'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+          'bg-secondary text-secondary-foreground hover:bg-muted',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         // Chrome variant — TopBar/TabBar 32px buttons default to muted
         // foreground (mock §TopBar v4.0); hover lifts to foreground +

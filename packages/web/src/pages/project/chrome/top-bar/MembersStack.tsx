@@ -167,7 +167,7 @@ MembersStack.displayName = 'MembersStack';
 
 function MemberRow({ member }: { member: Member }) {
   return (
-    <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent/40'>
+    <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <Avatar className='h-8 w-8 shrink-0'>
         <AvatarFallback className='text-[12px] font-semibold'>
           {member.initials}
