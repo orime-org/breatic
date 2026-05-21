@@ -75,9 +75,9 @@ export function ChatComposer({
   return (
     <div
       data-testid='chat-composer'
-      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-muted transition-colors focus-within:border-muted-foreground'
+      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-popover transition-colors focus-within:border-muted-foreground'
     >
-      <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-3 border-b border-border px-4 py-2'>
+      <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <button
           type='button'
           aria-label='选中模式 — 在画布点节点添加引用'
@@ -88,7 +88,7 @@ export function ChatComposer({
           className={`inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
             selectMode
               ? 'bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+              : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <SquareMousePointer className='h-4 w-4' />
@@ -103,7 +103,7 @@ export function ChatComposer({
             <span
               key={chip.id}
               role='listitem'
-              className='inline-flex h-6 items-center gap-2 rounded-sm border border-border bg-muted pl-2 pr-1 text-[12px] text-foreground'
+              className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-[12px] text-foreground'
               data-testid={`chat-chip-${chip.id}`}
             >
               {chip.type ? (
@@ -141,17 +141,17 @@ export function ChatComposer({
         aria-label='Chat 输入'
         data-testid='chat-composer-textarea'
       />
-      <div className='flex items-center justify-between gap-4 px-4 pb-4 pt-3'>
+      <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
         <button
           type='button'
           aria-label='选择 Skill 限定 agent 行为'
           title='选择 Skill'
           onClick={onPickSkill}
           data-testid='chat-composer-skill'
-          className={`inline-flex h-[var(--btn-inline)] items-center gap-3 rounded-chrome border border-transparent px-4 text-[12px] font-medium transition-colors ${
+          className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-[12px] font-medium transition-colors ${
             activeSkillLabel
               ? 'border-foreground bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+              : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <Wand2 className='h-4 w-4' />
@@ -178,7 +178,7 @@ export function ChatComposer({
             className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
               ready
                 ? 'bg-foreground text-background hover:opacity-90'
-                : 'bg-accent text-muted-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
             }`}
           >
             <ArrowUp className='h-4 w-4' />
