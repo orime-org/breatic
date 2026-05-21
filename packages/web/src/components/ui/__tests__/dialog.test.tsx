@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
@@ -16,8 +17,10 @@ function setup(open: boolean) {
         <button type='button'>Open</button>
       </DialogTrigger>
       <DialogContent data-testid='content'>
-        <DialogTitle>Title</DialogTitle>
-        <DialogDescription>Description</DialogDescription>
+        <DialogHeader>
+          <DialogTitle>Title</DialogTitle>
+          <DialogDescription>Description</DialogDescription>
+        </DialogHeader>
       </DialogContent>
     </Dialog>,
   );
@@ -41,11 +44,15 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
-  it('content carries bg-background + rounded-lg + border tokens', () => {
+  it('content carries bg-popover + rounded-chrome + border tokens', () => {
     setup(true);
     const content = screen.getByTestId('content');
-    expect(content.className).toContain('bg-background');
-    expect(content.className).toContain('border');
+    expect(content.className).toContain('bg-popover');
+    expect(content.className).toContain('border-border');
+    expect(content.className).toContain('sm:rounded-chrome');
+    expect(content.className).toContain('shadow');
+    expect(content.className).toContain('max-w-[520px]');
+    expect(content.className).toContain('p-0');
   });
 
   it('content merges custom className (tailwind-merge)', () => {
@@ -55,12 +62,14 @@ describe('Dialog', () => {
           <button>x</button>
         </DialogTrigger>
         <DialogContent data-testid='content' className='max-w-2xl'>
-          <DialogTitle>T</DialogTitle>
+          <DialogHeader>
+            <DialogTitle>T</DialogTitle>
+          </DialogHeader>
         </DialogContent>
       </Dialog>,
     );
     const content = screen.getByTestId('content');
     expect(content.className).toContain('max-w-2xl');
-    expect(content.className).not.toContain('max-w-lg');
+    expect(content.className).not.toContain('max-w-[520px]');
   });
 });

@@ -50,7 +50,7 @@ export function NodeToolbar({
       data-node-id={nodeId}
       aria-hidden={!visible}
       className={cn(
-        'absolute -top-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-background p-1 shadow-md transition-opacity',
+        'absolute -top-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow transition-opacity',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >

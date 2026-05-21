@@ -35,8 +35,9 @@ describe('Popover', () => {
     const content = screen.getByTestId('content');
     expect(content.className).toContain('bg-popover');
     expect(content.className).toContain('text-popover-foreground');
-    expect(content.className).toContain('rounded-md');
-    expect(content.className).toContain('border');
+    expect(content.className).toContain('rounded-chrome');
+    expect(content.className).toContain('border-border');
+    expect(content.className).toContain('shadow');
   });
 
   it('content merges custom className (tailwind-merge)', () => {

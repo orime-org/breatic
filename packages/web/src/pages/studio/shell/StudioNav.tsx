@@ -47,7 +47,7 @@ export function StudioNav({ active, onChange }: StudioNavProps) {
             aria-current={isActive ? 'page' : undefined}
             onClick={() => !item.disabled && onChange(item.key)}
             className={cn(
-              'inline-flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+              'inline-flex w-full items-center gap-2 rounded-chrome px-3 py-2 text-sm transition-colors',
               isActive
                 ? 'bg-muted text-foreground font-medium'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',

@@ -36,7 +36,7 @@ export function BrushControls({
   return (
     <div
       data-testid='brush-controls'
-      className='flex items-center gap-3 rounded-md border border-border bg-background px-2 py-1 shadow-sm'
+      className='flex items-center gap-3 rounded-chrome border border-border bg-popover px-2 py-1 shadow'
     >
       <div className='flex items-center gap-1'>
         <Button
