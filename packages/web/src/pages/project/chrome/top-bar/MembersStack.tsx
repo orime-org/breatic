@@ -1,4 +1,4 @@
-import { Plus, Settings2, X } from 'lucide-react';
+import { Plus, Settings2 } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -168,36 +168,39 @@ MembersStack.displayName = 'MembersStack';
 function MemberRow({ member }: { member: Member }) {
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent/40'>
-      <Avatar className='h-7 w-7 shrink-0'>
-        <AvatarFallback className='text-[11px] font-semibold'>
+      <Avatar className='h-8 w-8 shrink-0'>
+        <AvatarFallback className='text-[12px] font-semibold'>
           {member.initials}
         </AvatarFallback>
       </Avatar>
-      <div className='flex min-w-0 flex-1 items-center gap-1.5 text-[13px]'>
-        <span className='truncate text-foreground'>{member.name}</span>
-        {member.isMe ? (
-          <span className='text-[11px] text-muted-foreground'>(你)</span>
-        ) : null}
+      <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+        <span className='flex items-center gap-1.5 truncate text-[13px] text-foreground'>
+          {member.name}
+          {member.isMe ? (
+            <span className='text-[12px] text-muted-foreground'>(你)</span>
+          ) : null}
+        </span>
+        <span
+          className={cn(
+            'text-[12px]',
+            member.role === 'owner'
+              ? 'font-medium text-foreground'
+              : 'text-muted-foreground',
+          )}
+        >
+          {ROLE_LABEL[member.role]}
+        </span>
       </div>
-      <span
-        className={cn(
-          'shrink-0 text-[11px] tabular-nums',
-          member.role === 'owner'
-            ? 'font-medium text-foreground'
-            : 'text-muted-foreground',
-        )}
-      >
-        {ROLE_LABEL[member.role]}
-      </span>
       {member.role !== 'owner' ? (
-        <button
-          type='button'
+        <Button
+          variant='outline'
+          size='sm'
           aria-label={`Remove ${member.name}`}
-          className='inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100'
+          className='h-7 shrink-0 px-3 text-[12px] opacity-0 transition-opacity group-hover:opacity-100'
           data-testid={`members-remove-${member.id}`}
         >
-          <X className='h-3.5 w-3.5' />
-        </button>
+          移除
+        </Button>
       ) : null}
     </div>
   );
@@ -215,8 +218,8 @@ function AvatarChip({
   return (
     <Avatar
       style={{
-        width: 'var(--avatar-xs)',
-        height: 'var(--avatar-xs)',
+        width: 'var(--avatar-sm)',
+        height: 'var(--avatar-sm)',
         ...style,
       }}
       className={cn(
