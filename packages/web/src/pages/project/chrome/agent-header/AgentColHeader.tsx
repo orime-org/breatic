@@ -1,4 +1,4 @@
-import { PanelLeftOpen, Plus } from 'lucide-react';
+import { MessagesSquare, Plus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 
@@ -14,12 +14,13 @@ interface AgentColHeaderProps {
 
 /**
  * Agent column header — sits above the ChatPanel:
- *   [📂 open history] [count chip] [conversation name (editable)] [+ new]
+ *   [💬 open history] [count chip] [conversation name (editable)] [+ new]
  *
- * Layout (2026-05-21 user spec):
- *   - History trigger uses `PanelLeftOpen` icon — semantics "open the
- *     left-side history drawer", not a clock/history glyph. Chosen over
- *     mock's `messages-square` per user direction.
+ * Layout (2026-05-21 user spec, revised):
+ *   - History trigger uses `MessagesSquare` icon (the mock's original
+ *     glyph) — semantics "list of past conversations", which the user
+ *     judged more accurate than `PanelLeftOpen` ("open a side panel")
+ *     after seeing the first cut.
  *   - Count chip sits immediately to the right of the icon, NOT inside
  *     the title, so it visually pairs with the history action ("how many
  *     conversations behind that button").
@@ -49,7 +50,7 @@ export function AgentColHeader({
         onClick={onOpenHistory}
         data-testid='open-conversation-history'
       >
-        <PanelLeftOpen className='h-[18px] w-[18px]' />
+        <MessagesSquare className='h-[18px] w-[18px]' />
       </Button>
       <span
         className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-[11px] font-medium tabular-nums text-muted-foreground'

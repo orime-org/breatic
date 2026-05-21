@@ -23,23 +23,34 @@ interface ChatComposerProps {
 
 /**
  * Bottom-of-panel chat composer — single outer container, 3 stacked
- * sections sharing one border + focus-within (mirrors mock `.composer`
- * lines 627-758):
+ * sections sharing one border + focus-within. Sizing + colour match
+ * chrome-baseline mock `.composer` (finalized.html lines 627-758) so
+ * the elevated card visually sits on top of the panel surface.
  *
- *   ┌───────────────────────────────────┐
- *   │ [📐 select mode] [chip] [chip]…   │  ← composer-top (24px row)
- *   │ ─────────────────────────────────── │  ← chips/input divider
- *   │ describe what you want…              │  ← composer-input (rows=3)
+ *   ┌───────────────────────────────────┐  bg = --neutral-50 (elevated)
+ *   │ [📐 select mode] [chip] [chip]…   │  composer-top   p 8/16, min-h 32
+ *   │ ─────────────────────────────────── │  chips/input divider
+ *   │ describe what you want…            │  composer-input p 10/12/4
  *   │ ─────────────────────────────────── │
- *   │ [✨ Skill]                  [↑]    │  ← composer-actions
- *   └───────────────────────────────────┘
+ *   │ [✨ Skill]                  [↑]    │  composer-actions p 12/16/16
+ *   └───────────────────────────────────┘  radius = --radius-content-md (12px)
  *
- * Enter submits, Shift+Enter inserts a newline. While streaming, the
- * send button swaps to an Abort (Square) icon so users can stop runaway
- * responses. Send button has 3 visual states:
- *   - disabled:   empty draft, muted gray
- *   - ready:      has text, solid foreground bg + background text
- *   - streaming:  destructive accent
+ * Visual tokens (mock-aligned, see CSS lines 627-758):
+ *   - Outer card uses `bg-muted` (closest semantic to mock's
+ *     `--neutral-50` elevated step; ADR 14 brand-guard forbids raw
+ *     `bg-neutral-*` in chrome surfaces)
+ *   - Outer radius is `rounded-md` (= `--radius-content-md` 12px,
+ *     Tweaks-linked so the slider can resize content-region radius)
+ *   - Focus-within border uses `border-muted-foreground` (closest
+ *     semantic to mock's `--neutral-700` darken on focus)
+ *   - Select-mode toggle and send button use the same 32 / 28 px hit
+ *     areas as the mock (`--btn-chrome` and `--btn-inline`)
+ *
+ * Behaviour:
+ *   - Enter without Shift submits; Shift+Enter newlines
+ *   - Send button has 3 visual states: disabled (empty draft),
+ *     ready (foreground/background swap), streaming (destructive
+ *     accent → Abort with Square icon)
  */
 export function ChatComposer({
   draft,
@@ -62,118 +73,117 @@ export function ChatComposer({
   };
 
   return (
-    <div className='p-2'>
-      <div
-        data-testid='chat-composer'
-        className='flex flex-col rounded-chrome border border-border bg-background transition-colors focus-within:border-muted-foreground'
-      >
-        <div className='flex min-h-[28px] items-center gap-2 px-2 py-1'>
+    <div
+      data-testid='chat-composer'
+      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-muted transition-colors focus-within:border-muted-foreground'
+    >
+      <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-3 border-b border-border px-4 py-2'>
+        <button
+          type='button'
+          aria-label='选中模式 — 在画布点节点添加引用'
+          title='选中模式'
+          onClick={onToggleSelectMode}
+          data-testid='chat-composer-select-mode'
+          aria-pressed={selectMode}
+          className={`inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
+            selectMode
+              ? 'bg-foreground text-background'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          }`}
+        >
+          <SquareMousePointer className='h-4 w-4' />
+        </button>
+        <div
+          className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
+          data-testid='chat-composer-chips'
+          role='list'
+          aria-label='已选 chips'
+        >
+          {chips.map((chip) => (
+            <span
+              key={chip.id}
+              role='listitem'
+              className='inline-flex h-6 items-center gap-2 rounded-sm border border-border bg-muted pl-2 pr-1 text-[12px] text-foreground'
+              data-testid={`chat-chip-${chip.id}`}
+            >
+              {chip.type ? (
+                <span className='text-[11px] text-muted-foreground'>
+                  {chip.type}
+                </span>
+              ) : null}
+              <span className='truncate'>{chip.label}</span>
+              {onRemoveChip ? (
+                <button
+                  type='button'
+                  aria-label={`Remove ${chip.label}`}
+                  onClick={() => onRemoveChip(chip.id)}
+                  className='inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-[12px] leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
+                >
+                  ×
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder='描述你想做什么(用 @ 引用上方 chips)…'
+        rows={3}
+        className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-[13px] leading-normal text-foreground outline-none placeholder:text-muted-foreground'
+        aria-label='Chat 输入'
+        data-testid='chat-composer-textarea'
+      />
+      <div className='flex items-center justify-between gap-4 px-4 pb-4 pt-3'>
+        <button
+          type='button'
+          aria-label='选择 Skill 限定 agent 行为'
+          title='选择 Skill'
+          onClick={onPickSkill}
+          data-testid='chat-composer-skill'
+          className={`inline-flex h-[var(--btn-inline)] items-center gap-3 rounded-chrome border border-transparent px-4 text-[12px] font-medium transition-colors ${
+            activeSkillLabel
+              ? 'border-foreground bg-foreground text-background'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          }`}
+        >
+          <Wand2 className='h-4 w-4' />
+          <span>{activeSkillLabel ?? 'Skill'}</span>
+        </button>
+        {streaming ? (
           <button
             type='button'
-            aria-label='选中模式 — 在画布点节点添加引用'
-            title='选中模式'
-            onClick={onToggleSelectMode}
-            data-testid='chat-composer-select-mode'
-            aria-pressed={selectMode}
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] transition-colors hover:bg-muted ${
-              selectMode
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground'
-            }`}
+            aria-label='Abort'
+            onClick={onAbort}
+            data-testid='chat-composer-abort'
+            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome bg-destructive text-destructive-foreground transition-opacity hover:opacity-90'
           >
-            <SquareMousePointer className='h-4 w-4' />
+            <Square className='h-4 w-4' />
           </button>
-          <div
-            className='flex min-w-0 flex-1 flex-wrap items-center gap-1'
-            data-testid='chat-composer-chips'
-            role='list'
-            aria-label='已选 chips'
-          >
-            {chips.map((chip) => (
-              <span
-                key={chip.id}
-                role='listitem'
-                className='inline-flex h-5 items-center gap-1 rounded-[4px] bg-muted px-1.5 text-[11px] text-foreground'
-                data-testid={`chat-chip-${chip.id}`}
-              >
-                {chip.type ? (
-                  <span className='text-muted-foreground'>{chip.type}</span>
-                ) : null}
-                <span className='truncate'>{chip.label}</span>
-                {onRemoveChip ? (
-                  <button
-                    type='button'
-                    aria-label={`Remove ${chip.label}`}
-                    onClick={() => onRemoveChip(chip.id)}
-                    className='ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground'
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className='border-t border-border' />
-        <textarea
-          value={draft}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder='描述你想做什么(用 @ 引用上方 chips)…'
-          rows={3}
-          className='block w-full resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground'
-          aria-label='Chat 输入'
-          data-testid='chat-composer-textarea'
-        />
-        <div className='flex items-center justify-between border-t border-border px-2 py-1'>
+        ) : (
           <button
             type='button'
-            aria-label='选择 Skill 限定 agent 行为'
-            title='选择 Skill'
-            onClick={onPickSkill}
-            data-testid='chat-composer-skill'
-            className={`inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[12px] transition-colors hover:bg-muted ${
-              activeSkillLabel
-                ? 'text-foreground'
-                : 'text-muted-foreground'
+            aria-label='发送'
+            title='发送'
+            disabled={!ready}
+            onClick={submit}
+            data-testid='chat-composer-send'
+            className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
+              ready
+                ? 'bg-foreground text-background hover:opacity-90'
+                : 'bg-accent text-muted-foreground'
             }`}
           >
-            <Wand2 className='h-4 w-4' />
-            <span>{activeSkillLabel ?? 'Skill'}</span>
+            <ArrowUp className='h-4 w-4' />
           </button>
-          {streaming ? (
-            <button
-              type='button'
-              aria-label='Abort'
-              onClick={onAbort}
-              data-testid='chat-composer-abort'
-              className='inline-flex h-7 w-7 items-center justify-center rounded-[4px] bg-destructive text-destructive-foreground transition-opacity hover:opacity-90'
-            >
-              <Square className='h-4 w-4' />
-            </button>
-          ) : (
-            <button
-              type='button'
-              aria-label='发送'
-              title='发送'
-              disabled={!ready}
-              onClick={submit}
-              data-testid='chat-composer-send'
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-[4px] transition-opacity disabled:cursor-not-allowed ${
-                ready
-                  ? 'bg-foreground text-background hover:opacity-90'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              <ArrowUp className='h-4 w-4' />
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
