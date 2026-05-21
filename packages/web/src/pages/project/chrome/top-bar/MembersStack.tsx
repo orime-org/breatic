@@ -1,4 +1,4 @@
-import { Plus, Settings2 } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -137,11 +137,11 @@ export const MembersStack = React.forwardRef<
           ))}
         </ul>
         <Separator className='my-1' />
-        <div className='flex flex-col gap-1 px-1 pb-1 pt-0.5'>
+        <div className='flex flex-col gap-2 p-2'>
           <Button
-            variant='ghost'
-            size='menu-item'
-            className='justify-start'
+            variant='outline'
+            size='sm'
+            className='w-full justify-center gap-2 text-[13px]'
             onClick={openInvite}
             data-testid='members-invite-trigger'
           >
@@ -149,14 +149,14 @@ export const MembersStack = React.forwardRef<
             邀请新成员
           </Button>
           <Button
-            variant='ghost'
-            size='menu-item'
-            className='justify-start'
+            variant='outline'
+            size='sm'
+            className='w-full justify-center gap-2 text-[13px]'
             onClick={openManage}
             data-testid='members-manage-trigger'
           >
-            <Settings2 className='h-4 w-4' />
-            查看完整管理
+            <Users className='h-4 w-4' />
+            管理协作者
           </Button>
         </div>
       </PopoverContent>
