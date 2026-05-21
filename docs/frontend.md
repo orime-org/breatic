@@ -75,6 +75,16 @@ lib/        utils (cn, format, env, analytics)
   position; the backend only updates `data` fields.
 - **ChatPanel is per-user, not Yjs-bound** — agent conversations stream via
   SSE, scoped to the viewer; chat content never enters Yjs.
+- **Hover pattern standard** — Tailwind `hover:bg-<token>/<2-digit>` alpha
+  modifiers (e.g. `hover:bg-accent/40`, `hover:bg-primary/90`) are banned
+  in `packages/web/src/`. Use either a solid token swap
+  (`hover:bg-accent`, `hover:bg-muted`) for transparent-default rows /
+  outline / ghost buttons, or `transition-opacity hover:opacity-90` for
+  solid CTA buttons. Enforced by `pnpm lint:hover` (CI hard-fail) +
+  shadcn primitive defaults in `components/ui/`. Rationale: alpha hovers
+  blend with the underlying surface so contrast depends on context;
+  solid swaps + opacity-90 match the chrome-baseline mock and are
+  visually consistent across surfaces.
 - **Unified type nodes (2026-05-19)** — one node per modality:
   `text` / `image` / `audio` / `video` / `3d` / `web` (6 content types)
   plus `annotation` (standalone collaboration sticky). No asset/generator

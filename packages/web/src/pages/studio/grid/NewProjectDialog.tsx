@@ -140,7 +140,7 @@ export function NewProjectDialog({
             </button>
             <button
               type='submit'
-              className='inline-flex h-9 items-center justify-center rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50'
+              className='inline-flex h-9 items-center justify-center rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50'
               disabled={empty}
             >
               Create

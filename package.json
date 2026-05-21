@@ -15,6 +15,7 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "lint": "turbo run lint",
+    "lint:hover": "bash scripts/lint-hover-pattern.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",

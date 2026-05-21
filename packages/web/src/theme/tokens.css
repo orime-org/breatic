@@ -280,3 +280,37 @@ html[data-theme='dark'] {
 @utility shadow-md {
   box-shadow: var(--shadow-md);
 }
+
+/* ============================================================
+   Input autofill reset — browser autofill (Chrome / Safari)
+   injects a light-blue (or yellow) -webkit-box-shadow as bg and
+   a dark -webkit-text-fill-color on autofilled inputs, bypassing
+   our `bg-transparent` + `text-foreground` token chain. Result:
+   dark-mode form inputs flash a bright pale bg after autofill.
+
+   Standard counter: paint over the browser bg with a 1000px inset
+   box-shadow in the form's surface color, override text-fill-color,
+   and set a 5000s background-color transition to suppress the
+   brief autofill yellow flash before the shadow lands. `--color-popover`
+   matches Dialog / Popover surfaces, where 99% of autofillable
+   forms live (auth / invite / settings). Use `!important` because
+   `:-webkit-autofill` rules are also browser-injected via
+   `!important` and can only be defeated in kind.
+   ============================================================ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-popover) inset !important;
+  -webkit-text-fill-color: var(--color-foreground) !important;
+  caret-color: var(--color-foreground);
+  transition: background-color 5000s ease-in-out 0s;
+}

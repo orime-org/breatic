@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores';
 
 interface ShareDialogProps {
   projectId: string;
@@ -28,6 +29,8 @@ interface ShareDialogProps {
  */
 export function ShareDialog({ projectId }: ShareDialogProps) {
   const inviteUrl = `https://breatic.ai/invite/${projectId}`;
+  const open = useUIStore((s) => s.shareOpen);
+  const setOpen = useUIStore((s) => s.setShareOpen);
   const [invite, setInvite] = React.useState('');
   const [publicLink, setPublicLink] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -43,7 +46,7 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
   };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant='chrome-ghost' size='chrome' aria-label='Share'>
           <Share2 className='h-[18px] w-[18px]' />

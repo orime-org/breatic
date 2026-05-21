@@ -21,7 +21,7 @@ export function ThinkingFold({ thinking }: ThinkingFoldProps) {
       <button
         type='button'
         onClick={() => setOpen((o) => !o)}
-        className='flex w-full items-center gap-1 px-2 py-1 text-muted-foreground hover:bg-muted/50'
+        className='flex w-full items-center gap-1 px-2 py-1 text-muted-foreground hover:bg-muted'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'
       >

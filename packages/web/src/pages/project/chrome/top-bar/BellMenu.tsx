@@ -2,7 +2,6 @@ import { Bell } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -101,7 +100,7 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
 
 function RequestItem({ request }: { request: AccessRequest }) {
   return (
-    <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent/40'>
+    <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
           <AvatarFallback className='text-[12px] font-semibold'>
@@ -116,9 +115,9 @@ function RequestItem({ request }: { request: AccessRequest }) {
             {request.message}
           </span>
         </div>
-        <Badge variant='outline' className='shrink-0 text-[11px]'>
+        <span className='shrink-0 self-start rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
           {request.roleHint === 'edit' ? '编辑' : '查看'}
-        </Badge>
+        </span>
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-[11px] text-muted-foreground'>

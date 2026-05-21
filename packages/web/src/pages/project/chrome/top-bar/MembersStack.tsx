@@ -1,16 +1,25 @@
+import { Plus, Users } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores';
 
-interface Member {
+export type MemberRole = 'owner' | 'editor' | 'viewer';
+
+export interface Member {
   id: string;
   name: string;
+  initials: string;
+  role: MemberRole;
+  isMe?: boolean;
 }
 
 interface MembersStackProps {
@@ -18,27 +27,57 @@ interface MembersStackProps {
   members?: ReadonlyArray<Member>;
 }
 
-const DEFAULT_MEMBERS: ReadonlyArray<Member> = [{ id: 'me', name: 'You' }];
+const STUB_MEMBERS: ReadonlyArray<Member> = [
+  { id: 'me', name: 'Songxiu Lei', initials: 'SX', role: 'owner', isMe: true },
+  { id: 'yj', name: 'Yuki Jia', initials: 'YJ', role: 'editor' },
+  { id: 'dm', name: 'Diana Marquez', initials: 'DM', role: 'editor' },
+  { id: 'rt', name: 'Ryo Tanaka', initials: 'RT', role: 'viewer' },
+  { id: 'pl', name: 'Priya Lokesh', initials: 'PL', role: 'viewer' },
+];
+
+const ROLE_LABEL: Record<MemberRole, string> = {
+  owner: '所有者',
+  editor: '编辑',
+  viewer: '只读',
+};
 
 /**
- * Stacked members avatars · TopBar group A (mock § TopBar v4.0).
+ * Members trigger + popover · TopBar group A (mock § TopBar v4.0).
  *
  * Layout:
- *   - 2-3 visible avatars at `--avatar-xs` (20px) overlapping by 4px
- *   - 4th+ collapsed into a `+N` chip (same size as an avatar)
- *   - inline chevron-down indicates popover trigger
+ *   - trigger: 2 visible avatars at `--avatar-xs` overlapping by 4 px;
+ *     a `+N` chip collapses the rest, inline chevron-down
+ *   - popover content (chrome-baseline `.menu-popover.anchor-members.large`):
+ *       项目成员 [count]
+ *       member rows (avatar + name + role tag + 移除 on hover)
+ *       ────────
+ *       [+ 邀请新成员]  → close popover + open Share popover
+ *       [⚙ 查看完整管理] → close popover + open Members Modal
  *
- * Clicking opens the members popover (full list + invite — wired in a
- * later PR; PR shows a placeholder body).
+ * Member data is currently a 5-row stub; real backend wiring lands
+ * with the project-members API in a later PR.
  */
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ projectId, members = DEFAULT_MEMBERS }, ref) => {
+>(({ members = STUB_MEMBERS }, ref) => {
   const visible = members.slice(0, 2);
   const overflow = members.length - visible.length;
+  const [open, setOpen] = React.useState(false);
+  const setShareOpen = useUIStore((s) => s.setShareOpen);
+  const setMembersModalOpen = useUIStore((s) => s.setMembersModalOpen);
+
+  const openInvite = () => {
+    setOpen(false);
+    setShareOpen(true);
+  };
+  const openManage = () => {
+    setOpen(false);
+    setMembersModalOpen(true);
+  };
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           ref={ref}
@@ -61,14 +100,14 @@ export const MembersStack = React.forwardRef<
             {visible.map((m, i) => (
               <AvatarChip
                 key={m.id}
-                name={m.name}
+                initials={m.initials}
                 style={{ marginLeft: i === 0 ? 0 : '-4px', zIndex: 10 - i }}
               />
             ))}
             {overflow > 0 ? (
               <AvatarChip
                 key='overflow'
-                name={`+${overflow}`}
+                initials={`+${overflow}`}
                 muted
                 style={{ marginLeft: '-4px', zIndex: 1 }}
               />
@@ -79,11 +118,46 @@ export const MembersStack = React.forwardRef<
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-64'
+        className='w-72 p-1'
         data-testid='members-popover'
       >
-        <div className='text-sm text-muted-foreground'>
-          Members of project {projectId} (popover body wired in a later PR)
+        <div className='flex items-center justify-between px-2 pb-1 pt-2'>
+          <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+            项目成员
+          </span>
+          <span className='text-[11px] tabular-nums text-muted-foreground'>
+            {members.length}
+          </span>
+        </div>
+        <ul className='flex flex-col gap-0.5'>
+          {members.map((m) => (
+            <li key={m.id} data-testid={`members-row-${m.id}`}>
+              <MemberRow member={m} />
+            </li>
+          ))}
+        </ul>
+        <Separator className='my-1' />
+        <div className='flex flex-col gap-2 p-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            className='w-full justify-center gap-2 text-[13px]'
+            onClick={openInvite}
+            data-testid='members-invite-trigger'
+          >
+            <Plus className='h-4 w-4' />
+            邀请新成员
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            className='w-full justify-center gap-2 text-[13px]'
+            onClick={openManage}
+            data-testid='members-manage-trigger'
+          >
+            <Users className='h-4 w-4' />
+            管理协作者
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -91,20 +165,61 @@ export const MembersStack = React.forwardRef<
 });
 MembersStack.displayName = 'MembersStack';
 
+function MemberRow({ member }: { member: Member }) {
+  return (
+    <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
+      <Avatar className='h-8 w-8 shrink-0'>
+        <AvatarFallback className='text-[12px] font-semibold'>
+          {member.initials}
+        </AvatarFallback>
+      </Avatar>
+      <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+        <span className='flex items-center gap-1.5 truncate text-[13px] text-foreground'>
+          {member.name}
+          {member.isMe ? (
+            <span className='text-[12px] text-muted-foreground'>(你)</span>
+          ) : null}
+        </span>
+        <span
+          className={cn(
+            'text-[12px]',
+            member.role === 'owner'
+              ? 'font-medium text-foreground'
+              : 'text-muted-foreground',
+          )}
+        >
+          {ROLE_LABEL[member.role]}
+        </span>
+      </div>
+      {member.role !== 'owner' ? (
+        <Button
+          variant='outline'
+          size='sm'
+          aria-label={`Remove ${member.name}`}
+          className='h-7 shrink-0 px-3 text-[12px] opacity-0 transition-opacity group-hover:opacity-100'
+          data-testid={`members-remove-${member.id}`}
+        >
+          移除
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function AvatarChip({
-  name,
+  initials,
   muted,
   style,
 }: {
-  name: string;
+  initials: string;
   muted?: boolean;
   style?: React.CSSProperties;
 }) {
   return (
     <Avatar
       style={{
-        width: 'var(--avatar-xs)',
-        height: 'var(--avatar-xs)',
+        width: 'var(--avatar-sm)',
+        height: 'var(--avatar-sm)',
         ...style,
       }}
       className={cn(
@@ -113,7 +228,7 @@ function AvatarChip({
       )}
     >
       <AvatarFallback className='text-[10px] font-semibold'>
-        {name.slice(0, 2).toUpperCase()}
+        {initials.slice(0, 2).toUpperCase()}
       </AvatarFallback>
     </Avatar>
   );
