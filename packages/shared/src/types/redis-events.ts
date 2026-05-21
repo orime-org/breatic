@@ -81,6 +81,23 @@ export interface SpaceDeletedEvent {
   ts: number;
 }
 
+/**
+ * A Space's `locked` flag changed. Collab updates
+ * `meta.spaces[spaceId].locked` so all clients see the lock indicator
+ * (UX guard against accidental delete; not a security boundary —
+ * anyone with edit role can still write the doc).
+ */
+export interface SpaceLockedEvent {
+  type: "project-space:locked";
+  projectId: string;
+  spaceId: string;
+  locked: boolean;
+  /** User who toggled the lock (audit). */
+  actorId: string;
+  /** Epoch ms. */
+  ts: number;
+}
+
 // ── Channel names (single source of truth) ──────────────────────────
 
 /** Channel pattern for `members:changed`. */
@@ -96,6 +113,11 @@ export function spaceCreatedChannel(projectId: string): string {
 /** Channel pattern for `space:deleted`. */
 export function spaceDeletedChannel(projectId: string): string {
   return `project:${projectId}:space:deleted`;
+}
+
+/** Channel pattern for `space:locked` (toggle on / off). */
+export function spaceLockedChannel(projectId: string): string {
+  return `project:${projectId}:space:locked`;
 }
 
 /**

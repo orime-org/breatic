@@ -5,20 +5,23 @@ import { toast } from 'sonner';
 
 import { projectsApi, spacesApi } from '@/data/api';
 import {
-  appendSpace,
-  removeSpace,
+  closeSpaceTab,
+  openSpaceTab,
+  setActiveSpace,
   useProjectMeta,
   type ProjectSpace,
 } from '@/data/yjs/project-meta';
-import { useUIStore } from '@/stores';
+import { useCurrentUserStore, useUIStore } from '@/stores';
 import type { SpaceType } from '@/spaces';
 
 import { ChatPanel } from '@/pages/project/chat/ChatPanel';
 import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
+import { LoadingOverlay } from '@/pages/project/chrome/LoadingOverlay';
 import {
   LeftFloatingMenu,
   type LeftMenuTool,
 } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
+import { SpaceReadOnlySheet } from '@/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
 import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -29,14 +32,28 @@ import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
  *   - left:  Agent column (320 px, collapsible) — ChatPanel
  *   - right: SpaceTabBar + Space body + floating menus
  *
- * Data source (B mode infrastructure):
- *   - Project meta (name + credits + role)        → projects.get REST
- *   - Spaces list (live)                          → Yjs project-meta doc
- *   - Create / delete space                       → spaces.* REST + Yjs append/remove
- *   - Active space id                             → URL `:spaceId` param
+ * State model (2026-05-21 redesign):
+ *   - Shared `spaces` list  → Yjs project-meta `Y.Array('spaces')`
+ *   - Per-user `openTabIds` → Yjs project-meta `perUser[userId].openTabIds`
+ *   - Per-user `activeSpaceId` → same subtree, same key
+ *   - URL `:spaceId` param is treated as a *navigation request* — when
+ *     present it triggers `setActiveSpace` (and `openSpaceTab` if needed)
+ *     so deep links work, but the source of truth lives in Yjs so the
+ *     tab bar + active tab can be restored across machines.
+ *
+ * Server-driven event flow (K.1 + I.2):
+ *   - Create / delete / lock all go through HTTP → server publishes a
+ *     Redis pub/sub event → collab service mutates the meta doc → all
+ *     clients receive the WS broadcast.
+ *   - The client does NOT write `spaces` directly — it just calls HTTP
+ *     and waits for the doc to update (a global loading overlay covers
+ *     the 50-200ms round trip; a 10-second timeout guards against a
+ *     wedged collab).
  */
+const SPACE_OP_TIMEOUT_MS = 10_000;
+
 export default function ProjectPage() {
-  const { projectId = 'demo', spaceId } = useParams<{
+  const { projectId = 'demo', spaceId: urlSpaceId } = useParams<{
     projectId: string;
     spaceId?: string;
   }>();
@@ -51,18 +68,8 @@ export default function ProjectPage() {
   });
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   const role = projectQuery.data?.myRole ?? 'owner';
-  // Credits live on the user; placeholder until /auth/me wires.
   const credits = 0;
 
-  /**
-   * Rename mutation — optimistic update + sonner toast + invalidate.
-   *
-   * onMutate snapshots the current cache and writes the new name
-   * immediately so the TopBar updates with no network round-trip wait.
-   * onError rolls back to the snapshot and surfaces the backend error
-   * message via sonner. onSuccess invalidates so the next read pulls
-   * the authoritative server copy (in case other fields changed).
-   */
   const renameMutation = useMutation({
     mutationFn: (name: string) => projectsApi.rename(projectId, name),
     onMutate: async (next: string) => {
@@ -87,53 +94,152 @@ export default function ProjectPage() {
     },
   });
 
-  // ---- Spaces list (Yjs live) ----
-  const { spaces } = useProjectMeta(projectId);
-  const activeSpaceId = spaceId ?? spaces[0]?.id ?? '';
-  const activeSpace: ProjectSpace | undefined =
-    spaces.find((s) => s.id === activeSpaceId) ?? spaces[0];
+  // ---- Current user + Yjs meta ----
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  const { spaces, openTabIds, activeSpaceId } = useProjectMeta(
+    projectId,
+    userId,
+  );
 
-  // ---- Local UI state ----
+  // Tabs shown in the tab bar = each open tab id resolved against the
+  // shared spaces list (drop missing ids — happens if another user
+  // deleted a Space while we had it open).
+  const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
+    () =>
+      openTabIds
+        .map((id) => spaces.find((s) => s.id === id))
+        .filter((s): s is ProjectSpace => Boolean(s)),
+    [openTabIds, spaces],
+  );
+
+  const activeSpace: ProjectSpace | undefined =
+    spaces.find((s) => s.id === activeSpaceId) ?? openTabs[0];
+
+  // ---- URL → Yjs reconcile (deep-link support) ----
+  // If the URL names a space we're not active on, set it active + open it.
+  React.useEffect(() => {
+    if (!userId || !urlSpaceId) return;
+    if (urlSpaceId === activeSpaceId) return;
+    if (!spaces.some((s) => s.id === urlSpaceId)) return;
+    openSpaceTab(projectId, userId, urlSpaceId);
+    setActiveSpace(projectId, userId, urlSpaceId);
+  }, [userId, urlSpaceId, projectId, activeSpaceId, spaces]);
+
+  // Keep the URL in sync with the active tab so refresh / back button
+  // land on the same Space. Only navigate if URL diverges.
+  React.useEffect(() => {
+    if (!activeSpaceId) return;
+    if (urlSpaceId === activeSpaceId) return;
+    navigate(`/project/${projectId}/space/${activeSpaceId}`, { replace: true });
+  }, [activeSpaceId, urlSpaceId, projectId, navigate]);
+
+  // ---- Loading overlay tracking ----
+  const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
+  const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
+  const readOnlyViewSpaceId = useUIStore((s) => s.readOnlyViewSpaceId);
+  const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
+
+  const pendingCreateIdRef = React.useRef<string | null>(null);
+  const pendingDeleteIdRef = React.useRef<string | null>(null);
+
+  // Auto-dismiss loading overlay when the Yjs doc catches up to the
+  // pending operation (created id appears / deleted id vanishes).
+  React.useEffect(() => {
+    if (spaceOpInProgress === 'creating' && pendingCreateIdRef.current) {
+      const id = pendingCreateIdRef.current;
+      if (spaces.some((s) => s.id === id)) {
+        pendingCreateIdRef.current = null;
+        setSpaceOpInProgress(null);
+        if (userId) {
+          openSpaceTab(projectId, userId, id);
+          setActiveSpace(projectId, userId, id);
+        }
+      }
+    }
+    if (spaceOpInProgress === 'deleting' && pendingDeleteIdRef.current) {
+      const id = pendingDeleteIdRef.current;
+      if (!spaces.some((s) => s.id === id)) {
+        pendingDeleteIdRef.current = null;
+        setSpaceOpInProgress(null);
+      }
+    }
+  }, [spaces, spaceOpInProgress, projectId, userId, setSpaceOpInProgress]);
+
+  // Safety timeout — if the collab broadcast never lands, free the UI
+  // and surface a toast so the user can retry rather than stare at a
+  // wedged spinner.
+  React.useEffect(() => {
+    if (spaceOpInProgress === null) return;
+    const phase = spaceOpInProgress;
+    const handle = setTimeout(() => {
+      setSpaceOpInProgress(null);
+      pendingCreateIdRef.current = null;
+      pendingDeleteIdRef.current = null;
+      toast.error(
+        phase === 'creating' ? 'Space 创建超时' : 'Space 删除超时',
+        { description: '请刷新页面重试' },
+      );
+    }, SPACE_OP_TIMEOUT_MS);
+    return () => clearTimeout(handle);
+  }, [spaceOpInProgress, setSpaceOpInProgress]);
+
+  // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
-  const [tool, setTool] = React.useState<LeftMenuTool>('select');
+  const [tool, setTool] = React.useState<LeftMenuTool>('nodes');
   const [zoom, setZoom] = React.useState(1);
-  const [locked, setLocked] = React.useState(false);
   const [minimapVisible, setMinimapVisible] = React.useState(true);
+  const [snapToGrid, setSnapToGrid] = React.useState(false);
+  const [alignActive, setAlignActive] = React.useState(false);
 
   // ---- Handlers ----
-  const onActivate = (id: string) =>
-    navigate(`/project/${projectId}/space/${id}`);
 
-  const onCreateSpace = async (type: SpaceType, name: string) => {
-    // REST first (authoritative id from backend), then Yjs append so all
-    // collaborators see the new space immediately.
-    const created = await spacesApi.create(projectId, { name, type });
-    appendSpace(projectId, {
-      id: created.id,
-      name: created.name,
-      type: created.type,
-    });
-    navigate(`/project/${projectId}/space/${created.id}`);
+  /** Activate a Space — open the tab if not open + mark active. */
+  const onActivate = (id: string) => {
+    if (!userId) {
+      navigate(`/project/${projectId}/space/${id}`);
+      return;
+    }
+    openSpaceTab(projectId, userId, id);
+    setActiveSpace(projectId, userId, id);
   };
 
-  const onCloseSpace = async (id: string) => {
-    // Optimistic Yjs remove, then REST delete. If REST fails the page
-    // requery on next render will surface the inconsistency (good enough
-    // for v1; full optimistic rollback lands when we add toast).
-    removeSpace(projectId, id);
-    try {
-      await spacesApi.delete(projectId, id);
-    } catch {
-      // The Yjs binding will eventually re-sync from server-stored state
-      // on the next provider connect; nothing to do here.
-    }
-    // If we just closed the active space, jump to the first remaining one.
+  /** Close a Space tab — does NOT delete the Space; just removes from
+   *  this user's tab bar. */
+  const onCloseTab = (id: string) => {
+    if (!userId) return;
+    closeSpaceTab(projectId, userId, id);
     if (id === activeSpaceId) {
-      const next = spaces.find((s) => s.id !== id);
-      if (next) navigate(`/project/${projectId}/space/${next.id}`);
-      else navigate(`/project/${projectId}`);
+      const next = openTabs.find((s) => s.id !== id);
+      setActiveSpace(projectId, userId, next?.id ?? null);
     }
   };
+
+  /** Create a Space — HTTP → server publishes event → collab mutates
+   *  the doc → effect above auto-opens the new tab and dismisses
+   *  the overlay. */
+  const onCreateSpace = async (type: SpaceType, name: string) => {
+    setSpaceOpInProgress('creating');
+    try {
+      const created = await spacesApi.create(projectId, { name, type });
+      pendingCreateIdRef.current = created.id;
+    } catch (err) {
+      setSpaceOpInProgress(null);
+      pendingCreateIdRef.current = null;
+      const message = err instanceof Error ? err.message : 'Space 创建失败';
+      toast.error('Space 创建失败', { description: message });
+      throw err;
+    }
+  };
+
+  /** Open the read-only preview sheet for a Space. */
+  const onViewSpace = (id: string) => setReadOnlyViewSpaceId(id);
+
+  // Resolve the currently-previewed Space (if any) for the read-only
+  // sheet. Bail to null if it's missing (race with deletion).
+  const readOnlySpace = React.useMemo(() => {
+    if (!readOnlyViewSpaceId) return null;
+    return spaces.find((s) => s.id === readOnlyViewSpaceId) ?? null;
+  }, [readOnlyViewSpaceId, spaces]);
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
@@ -165,11 +271,15 @@ export default function ProjectPage() {
         )}
         <section className='flex min-w-0 flex-1 flex-col'>
           <SpaceTabBar
-            spaces={spaces}
-            activeSpaceId={activeSpaceId}
+            spaces={openTabs}
+            allSpaces={spaces}
+            openTabIds={openTabIds}
+            activeSpaceId={activeSpaceId ?? ''}
+            projectId={projectId}
             onActivate={onActivate}
             onCreate={onCreateSpace}
-            onClose={onCloseSpace}
+            onClose={onCloseTab}
+            onViewSpace={onViewSpace}
           />
           <div className='relative flex-1'>
             {activeSpace ? (
@@ -183,7 +293,7 @@ export default function ProjectPage() {
                 data-testid='no-active-space'
                 className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
               >
-                No spaces yet — click + to create one.
+                没有打开的工作面 — 点抽屉里的工作面打开,或点 + 新建。
               </div>
             )}
             {activeSpace?.type === 'canvas' ? (
@@ -191,12 +301,18 @@ export default function ProjectPage() {
                 <LeftFloatingMenu active={tool} onPick={setTool} />
                 <ViewportToolbar
                   zoom={zoom}
-                  locked={locked}
                   minimapVisible={minimapVisible}
+                  snapToGrid={snapToGrid}
+                  alignActive={alignActive}
                   onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
                   onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
+                  onZoomReset={() => setZoom(1)}
                   onFit={() => setZoom(1)}
-                  onToggleLock={() => setLocked((l) => !l)}
+                  onExpand={() => {
+                    /* M0' placeholder; full-screen toggle wired when API lands */
+                  }}
+                  onToggleSnap={() => setSnapToGrid((v) => !v)}
+                  onToggleAlign={() => setAlignActive((v) => !v)}
                   onToggleMinimap={() => setMinimapVisible((v) => !v)}
                 />
               </>
@@ -204,6 +320,22 @@ export default function ProjectPage() {
           </div>
         </section>
       </div>
+      <SpaceReadOnlySheet
+        space={readOnlySpace}
+        onClose={() => setReadOnlyViewSpaceId(null)}
+      />
+      {spaceOpInProgress === 'creating' ? (
+        <LoadingOverlay
+          message='正在创建 Space…'
+          testId='creating-space-overlay'
+        />
+      ) : null}
+      {spaceOpInProgress === 'deleting' ? (
+        <LoadingOverlay
+          message='正在删除 Space…'
+          testId='deleting-space-overlay'
+        />
+      ) : null}
     </div>
   );
 }

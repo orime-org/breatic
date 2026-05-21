@@ -18,12 +18,22 @@ import { SpaceHistoryButton } from '@/pages/project/chrome/tab-bar/SpaceHistoryB
 import { SpaceTab } from '@/pages/project/chrome/tab-bar/SpaceTab';
 
 interface SpaceTabBarProps {
+  /** Tabs currently open in the bar (resolved from per-user openTabIds). */
   spaces: ReadonlyArray<ProjectSpace>;
+  /** All Spaces in the project — used by the drawer to list everything. */
+  allSpaces: ReadonlyArray<ProjectSpace>;
+  /** Per-user open tab id list, for the drawer's status chip computation. */
+  openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
+  /** Project id — drawer passes this to spacesApi for lock / delete. */
+  projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
   onCreate: (type: SpaceType, name: string) => Promise<void> | void;
+  /** Close a tab — does NOT delete the Space, just removes from the bar. */
   onClose?: (id: string) => void;
+  /** Open the read-only preview sheet for a Space (drawer 查看 action). */
+  onViewSpace: (id: string) => void;
 }
 
 /**
@@ -38,10 +48,14 @@ interface SpaceTabBarProps {
  */
 export function SpaceTabBar({
   spaces,
+  allSpaces,
+  openTabIds,
   activeSpaceId,
+  projectId,
   onActivate,
   onCreate,
   onClose,
+  onViewSpace,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -210,9 +224,12 @@ export function SpaceTabBar({
           }
         />
         <SpaceDrawer
-          spaces={spaces}
+          spaces={allSpaces}
+          openTabIds={openTabIds}
           activeSpaceId={activeSpaceId}
+          projectId={projectId}
           onActivate={onActivate}
+          onView={onViewSpace}
         />
         <SpaceHistoryButton />
       </div>

@@ -30,6 +30,7 @@ import { yjsDocRepo } from "@breatic/core";
 import {
   publishSpaceCreated,
   publishSpaceDeleted,
+  publishSpaceLocked,
 } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { ValidationError } from "@breatic/core";
@@ -134,5 +135,48 @@ spaces.delete(
     return c.json({ data: { ok: true } });
   },
 );
+
+/**
+ * `POST /api/v1/projects/:pid/spaces/:sid/lock` — mark a Space as locked.
+ *
+ * Lock is a UX guard ("don't accidentally delete") — `meta.spaces[id].locked = true`
+ * disables the SpaceDrawer's delete action on every client. It does
+ * NOT restrict editing the Space's content doc; any user with `edit`
+ * role can still mutate. Permission therefore matches DELETE (any
+ * editor can toggle).
+ */
+spaces.post("/:sid/lock", requireRole("edit"), async (c) => {
+  const user = c.get("user");
+  const projectId = c.get("projectId");
+  const spaceId = c.req.param("sid");
+
+  await publishSpaceLocked(projectId, {
+    spaceId,
+    locked: true,
+    actorId: user.id,
+  });
+
+  return c.json({ data: { ok: true, locked: true } });
+});
+
+/**
+ * `DELETE /api/v1/projects/:pid/spaces/:sid/lock` — clear the Space's
+ * locked flag. Symmetric counterpart to `POST /:sid/lock` so the
+ * frontend's `spacesApi.setLocked(false)` call has a dedicated route
+ * (vs. overloading `PATCH` which has no soft-delete semantics here).
+ */
+spaces.delete("/:sid/lock", requireRole("edit"), async (c) => {
+  const user = c.get("user");
+  const projectId = c.get("projectId");
+  const spaceId = c.req.param("sid");
+
+  await publishSpaceLocked(projectId, {
+    spaceId,
+    locked: false,
+    actorId: user.id,
+  });
+
+  return c.json({ data: { ok: true, locked: false } });
+});
 
 export { spaces as spacesRoute };

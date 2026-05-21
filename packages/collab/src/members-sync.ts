@@ -37,6 +37,7 @@ import {
   type MembersChangedEvent,
   type SpaceCreatedEvent,
   type SpaceDeletedEvent,
+  type SpaceLockedEvent,
 } from "@breatic/shared";
 import { createLogger } from "./logger.js";
 
@@ -45,7 +46,8 @@ const logger = createLogger("members-sync");
 type ProjectControlEvent =
   | MembersChangedEvent
   | SpaceCreatedEvent
-  | SpaceDeletedEvent;
+  | SpaceDeletedEvent
+  | SpaceLockedEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
@@ -130,6 +132,36 @@ async function applySpaceDeleted(
       const spaces = doc.getMap("spaces");
       if (spaces.has(ev.spaceId)) {
         spaces.delete(ev.spaceId);
+      }
+    });
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * Toggle `meta.spaces[spaceId].locked` to the value in the event.
+ *
+ * Idempotent — if the entry doesn't exist (race with deletion) we
+ * skip; if it already has the requested value, the second `set` is
+ * a no-op. The frontend's drawer relies on the `locked` field to
+ * gate the delete action UI; the server uses this only as a UX
+ * hint, not a security guard.
+ */
+async function applySpaceLocked(
+  hocuspocus: Hocuspocus,
+  ev: SpaceLockedEvent,
+): Promise<void> {
+  const docName = projectMetaDocName(ev.projectId);
+  const conn = await hocuspocus.openDirectConnection(docName, {
+    context: { user: { id: "system" }, source: "members-sync" },
+  });
+  try {
+    await conn.transact((doc: Y.Doc) => {
+      const spaces = doc.getMap("spaces");
+      const entry = spaces.get(ev.spaceId);
+      if (entry instanceof Y.Map) {
+        entry.set("locked", ev.locked);
       }
     });
   } finally {
@@ -229,6 +261,24 @@ async function handleEvent(
       );
     } catch (err) {
       logger.error({ err, event }, "space_deleted_apply_failed");
+    }
+    return;
+  }
+
+  if (event.type === "project-space:locked") {
+    try {
+      await applySpaceLocked(hocuspocus, event);
+      broadcastInvalidate(hocuspocus, event.projectId, event);
+      logger.info(
+        {
+          projectId: event.projectId,
+          spaceId: event.spaceId,
+          locked: event.locked,
+        },
+        "space_locked_handled",
+      );
+    } catch (err) {
+      logger.error({ err, event }, "space_locked_apply_failed");
     }
     return;
   }

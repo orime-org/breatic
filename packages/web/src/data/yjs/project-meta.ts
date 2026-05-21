@@ -7,14 +7,44 @@ import { useSocket } from '@/data/yjs/use-socket';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
- * spaces list + project-level settings.
+ * spaces list, plus per-user UI state (tab bar + active tab).
  *
  * Y.Doc structure:
- *   - Y.Array("spaces") of Y.Map<{ id, name, type, locked? }>
  *
- * The frontend owns `create / delete / reorder` of spaces; the backend
- * only ever reads the resulting document.
+ *   spaces:  Y.Array<Y.Map<{ id, name, type, locked? }>>     shared (all members)
+ *   perUser: Y.Map<userId, Y.Map<{                            per-user (each
+ *     openTabIds:    Y.Array<string>,                          user has their
+ *     activeSpaceId: string | null,                            own tab bar +
+ *   }>>                                                        active across
+ *                                                              machines)
+ *
+ * Why per-user state lives in the same shared doc (not localStorage or
+ * an isolated awareness state):
+ *   - Awareness is session-scoped — switching machines loses the work
+ *     scene (which tabs were open, which one was active).
+ *   - Hocuspocus persists the Y.Doc to PG, so per-user keys persist by
+ *     default — a user logging in on a new machine receives the full
+ *     Y.Doc on sync and can restore their open tabs + active tab in
+ *     one round trip.
+ *   - Yjs CRDT semantics scope writes by Y.Map key (userId); a malicious
+ *     client trying to write another user's key is rejected by the
+ *     Hocuspocus `beforeHandleMessage` extension (collab F.2 hook).
+ *
+ * Write boundaries:
+ *   - Shared `spaces` writes (create / delete / lock) flow through the
+ *     server REST endpoints + Redis pub/sub event → collab listener
+ *     mutates the doc → all clients receive WS broadcast. The client
+ *     does NOT write `spaces` directly (eliminates double-write).
+ *   - Per-user writes (`openSpaceTab` / `closeSpaceTab` /
+ *     `setActiveSpace`) write the client's OWN `perUser[userId]`
+ *     subtree directly; the Hocuspocus extension ensures the user
+ *     can't write another user's subtree.
  */
+
+const SPACES_KEY = 'spaces';
+const PER_USER_KEY = 'perUser';
+const OPEN_TAB_IDS_KEY = 'openTabIds';
+const ACTIVE_SPACE_ID_KEY = 'activeSpaceId';
 
 export interface ProjectSpace {
   id: string;
@@ -23,41 +53,128 @@ export interface ProjectSpace {
   locked?: boolean;
 }
 
-interface ProjectMetaState {
+export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
+  /** Spaces the current user has open in their tab bar. */
+  openTabIds: ReadonlyArray<string>;
+  /** Currently active tab for the current user (null when no tab open). */
+  activeSpaceId: string | null;
+  /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
 }
 
-const SPACES_KEY = 'spaces';
-
 /**
  * Subscribe to a project's meta document. Returns the live spaces list
- * + initial sync flag; updates trigger re-renders.
+ * + this user's open tabs + their active tab; updates trigger
+ * re-renders.
+ *
+ * `userId` is required to read the per-user subtree. If undefined (e.g.
+ * pre-auth dev mode), the hook falls back to "all spaces open, first
+ * one active" so the UI doesn't blank out.
  */
-export function useProjectMeta(projectId: string): ProjectMetaState {
+export function useProjectMeta(
+  projectId: string,
+  userId?: string,
+): ProjectMetaState {
   const doc = React.useMemo(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
   const { synced } = useSocket({ name: docName.projectMeta(projectId), doc });
-  const [spaces, setSpaces] = React.useState<ReadonlyArray<ProjectSpace>>(() =>
-    readSpaces(doc),
-  );
+
+  const [state, setState] = React.useState<{
+    spaces: ReadonlyArray<ProjectSpace>;
+    openTabIds: ReadonlyArray<string>;
+    activeSpaceId: string | null;
+  }>(() => readMetaState(doc, userId));
 
   React.useEffect(() => {
-    const update = () => setSpaces(readSpaces(doc));
+    const update = () => setState(readMetaState(doc, userId));
     const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
+    const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
     spacesArr.observeDeep(update);
+    perUser.observeDeep(update);
     update();
-    return () => spacesArr.unobserveDeep(update);
-  }, [doc]);
+    return () => {
+      spacesArr.unobserveDeep(update);
+      perUser.unobserveDeep(update);
+    };
+  }, [doc, userId]);
 
-  return { spaces, synced };
+  return { ...state, synced };
 }
 
 /**
- * Append a new space at the end of the spaces array. Yjs ensures the
- * write replicates to all collaborators connected to the same project.
+ * Open a Space tab for the given user. No-op if the tab is already
+ * open. Always appends at the end of `openTabIds` so the most recently
+ * opened tab is rightmost — matches user expectation that "new things
+ * appear on the right".
+ */
+export function openSpaceTab(
+  projectId: string,
+  userId: string,
+  spaceId: string,
+): void {
+  const doc = getDoc(docName.projectMeta(projectId));
+  doc.transact(() => {
+    const userMap = ensureUserMap(doc, userId);
+    const openTabIds = userMap.get(OPEN_TAB_IDS_KEY) as
+      | Y.Array<string>
+      | undefined;
+    const arr = openTabIds ?? new Y.Array<string>();
+    if (!openTabIds) userMap.set(OPEN_TAB_IDS_KEY, arr);
+    const existing = arr.toArray();
+    if (!existing.includes(spaceId)) arr.push([spaceId]);
+  });
+}
+
+/**
+ * Close a Space tab for the given user. No-op if the tab is not open.
+ * Does NOT delete the Space — the Space stays in `spaces`; the user's
+ * tab bar just stops showing it. To fully delete a Space, call the
+ * server `DELETE /spaces/:id` endpoint.
+ */
+export function closeSpaceTab(
+  projectId: string,
+  userId: string,
+  spaceId: string,
+): void {
+  const doc = getDoc(docName.projectMeta(projectId));
+  doc.transact(() => {
+    const userMap = ensureUserMap(doc, userId);
+    const arr = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
+    if (!arr) return;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr.get(i) === spaceId) arr.delete(i, 1);
+    }
+  });
+}
+
+/**
+ * Set the active Space tab for the given user. Setting to a Space not
+ * in `openTabIds` is allowed; the caller is expected to also
+ * `openSpaceTab` first.
+ */
+export function setActiveSpace(
+  projectId: string,
+  userId: string,
+  spaceId: string | null,
+): void {
+  const doc = getDoc(docName.projectMeta(projectId));
+  doc.transact(() => {
+    const userMap = ensureUserMap(doc, userId);
+    if (spaceId === null) userMap.delete(ACTIVE_SPACE_ID_KEY);
+    else userMap.set(ACTIVE_SPACE_ID_KEY, spaceId);
+  });
+}
+
+/**
+ * Legacy direct-write helper, kept for tests and demo scaffolding. New
+ * code SHOULD use the server REST endpoint + Redis pub/sub flow so the
+ * server stays the single source of truth.
+ *
+ * @deprecated Use `spacesApi.create` HTTP route; let the server-driven
+ *   event flow add the Space to the doc.
  */
 export function appendSpace(projectId: string, space: ProjectSpace): void {
   const doc = getDoc(docName.projectMeta(projectId));
@@ -73,18 +190,29 @@ export function appendSpace(projectId: string, space: ProjectSpace): void {
 }
 
 /**
- * Remove the space with the given id. No-op if id is unknown.
+ * Legacy direct-write helper, kept for tests and demo scaffolding.
+ *
+ * @deprecated Use `spacesApi.delete` HTTP route; let the server-driven
+ *   event flow remove the Space from the doc.
  */
 export function removeSpace(projectId: string, spaceId: string): void {
   const doc = getDoc(docName.projectMeta(projectId));
   const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
   doc.transact(() => {
     for (let i = spacesArr.length - 1; i >= 0; i--) {
-      if (spacesArr.get(i).get('id') === spaceId) {
-        spacesArr.delete(i, 1);
-      }
+      if (spacesArr.get(i).get('id') === spaceId) spacesArr.delete(i, 1);
     }
   });
+}
+
+function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
+  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
+  let userMap = perUser.get(userId);
+  if (!userMap) {
+    userMap = new Y.Map<unknown>();
+    perUser.set(userId, userMap);
+  }
+  return userMap;
 }
 
 function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
@@ -100,4 +228,41 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
     });
   }
   return out;
+}
+
+function readMetaState(
+  doc: Y.Doc,
+  userId: string | undefined,
+): {
+  spaces: ReadonlyArray<ProjectSpace>;
+  openTabIds: ReadonlyArray<string>;
+  activeSpaceId: string | null;
+} {
+  const spaces = readSpaces(doc);
+  if (!userId) {
+    // Pre-auth fallback: open every space, first one active.
+    return {
+      spaces,
+      openTabIds: spaces.map((s) => s.id),
+      activeSpaceId: spaces[0]?.id ?? null,
+    };
+  }
+  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
+  const userMap = perUser.get(userId);
+  if (!userMap) {
+    // First time this user sees the project — default to "active space
+    // open + active" (decision G.2) so the workspace is never blank.
+    return {
+      spaces,
+      openTabIds: spaces[0] ? [spaces[0].id] : [],
+      activeSpaceId: spaces[0]?.id ?? null,
+    };
+  }
+  const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
+    | Y.Array<string>
+    | undefined;
+  const openTabIds = openTabIdsArr ? openTabIdsArr.toArray() : [];
+  const activeSpaceId = (userMap.get(ACTIVE_SPACE_ID_KEY) as string | null) ??
+    (openTabIds[0] ?? spaces[0]?.id ?? null);
+  return { spaces, openTabIds, activeSpaceId };
 }
