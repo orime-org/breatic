@@ -87,6 +87,7 @@ export function NewProjectDialog({
               <input
                 id='np-name'
                 type='text'
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- dialog first input; users open the dialog expecting to type a name immediately
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}

@@ -39,6 +39,7 @@ export function AudioNode({
         }
         content={
           <div className='p-3'>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded audio asset; the upload flow does not produce a caption track. Add a <track> when caption authoring lands. */}
             <audio
               controls
               src={data.url}

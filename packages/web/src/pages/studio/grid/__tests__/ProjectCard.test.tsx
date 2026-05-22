@@ -17,6 +17,7 @@ const project: ProjectSummary = {
 function setup(p: ProjectSummary = project) {
   return render(
     <MemoryRouter>
+      {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a ProjectCard component prop, not a DOM ARIA role */}
       <ProjectCard project={p} role='owner' />
     </MemoryRouter>,
   );

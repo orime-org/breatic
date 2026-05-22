@@ -202,6 +202,7 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
               placeholder={t('spaces.create.namePlaceholder')}
               data-testid='new-space-name'
               disabled={submitting}
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- dialog first input; users open the dialog expecting to type a name immediately
               autoFocus
             />
           </div>
