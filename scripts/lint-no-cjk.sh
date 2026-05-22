@@ -39,8 +39,16 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# CJK Unified Ideographs U+4E00 – U+9FFF
-CJK_REGEX='[一-鿿]'
+# Forbid CJK across the full set of Unicode blocks that commonly
+# leak into source comments / string literals / class names:
+#
+#   U+3000–303F  CJK Symbols and Punctuation     (、。「」・)
+#   U+3040–309F  Hiragana                        (ぁ-ゟ)
+#   U+30A0–30FF  Katakana                        (゠-ヿ)
+#   U+4E00–9FFF  CJK Unified Ideographs          (一-鿿)
+#   U+AC00–D7AF  Hangul Syllables                (가-힣)
+#   U+FF00–FFEF  Halfwidth and Fullwidth Forms   (全角 ０-９Ａ-Ｚ)
+CJK_REGEX='[぀-ヿ一-鿿가-힣＀-￯]'
 
 # Glob include — production TS / TSX / CSS in any package.
 INCLUDES=(
