@@ -19,7 +19,7 @@ const CONVS: ConversationSummary[] = [
   {
     id: 'c2',
     name: 'Character design',
-    preview: "Lin Xia's growth arc and motives…",
+    preview: 'Lin Xia\'s growth arc and motives…',
     updatedAt: new Date(Date.now() - 26 * 3_600_000).toISOString(),
     messageCount: 12,
   },

@@ -82,52 +82,52 @@ export function NewProjectDialog({
           }}
         >
           <DialogBody>
-          <div className='flex flex-col gap-1.5'>
-            <Label htmlFor='np-name'>Name</Label>
-            <input
-              id='np-name'
-              type='text'
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder='e.g. Cyberpunk Concept'
-              className={cn(
-                'flex h-9 w-full rounded-chrome border border-border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors',
-                'placeholder:text-muted-foreground',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                showError ? 'border-destructive' : 'border-input',
-              )}
-              aria-invalid={showError}
-              aria-describedby={showError ? 'np-name-error' : undefined}
-            />
-            {showError && (
-              <p
-                id='np-name-error'
-                className='text-xs font-medium text-destructive'
-              >
+            <div className='flex flex-col gap-1.5'>
+              <Label htmlFor='np-name'>Name</Label>
+              <input
+                id='np-name'
+                type='text'
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder='e.g. Cyberpunk Concept'
+                className={cn(
+                  'flex h-9 w-full rounded-chrome border border-border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors',
+                  'placeholder:text-muted-foreground',
+                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  showError ? 'border-destructive' : 'border-input',
+                )}
+                aria-invalid={showError}
+                aria-describedby={showError ? 'np-name-error' : undefined}
+              />
+              {showError && (
+                <p
+                  id='np-name-error'
+                  className='text-xs font-medium text-destructive'
+                >
                 Name is required.
-              </p>
-            )}
-          </div>
+                </p>
+              )}
+            </div>
 
-          <div className='flex flex-col gap-1.5'>
-            <Label htmlFor='np-template'>Template</Label>
-            <Select
-              value={template}
-              onValueChange={(v) => setTemplate(v as SpaceTemplate)}
-            >
-              <SelectTrigger id='np-template'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TEMPLATE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className='flex flex-col gap-1.5'>
+              <Label htmlFor='np-template'>Template</Label>
+              <Select
+                value={template}
+                onValueChange={(v) => setTemplate(v as SpaceTemplate)}
+              >
+                <SelectTrigger id='np-template'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEMPLATE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </DialogBody>
 
           <DialogFooter>
