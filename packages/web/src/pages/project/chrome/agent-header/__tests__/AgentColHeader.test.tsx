@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onOpenHistory = vi.fn();
@@ -25,6 +26,11 @@ describe('AgentColHeader', () => {
   it('renders the agent column header landmark', () => {
     setup();
     expect(screen.getByTestId('agent-col-header')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    setup();
+    await expectNoA11yViolations(document.body);
   });
 
   it('renders the conversation name', () => {

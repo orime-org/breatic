@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import { LeftFloatingMenu } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup() {
   const onPick = vi.fn();
@@ -19,6 +20,11 @@ describe('LeftFloatingMenu', () => {
   it('renders the nav landmark', () => {
     setup();
     expect(screen.getByTestId('left-floating-menu')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    setup();
+    await expectNoA11yViolations(document.body);
   });
 
   it('exposes the 6 mock-spec tools (3 upper + 3 placeholder lower)', () => {

@@ -127,9 +127,15 @@ export function SpaceTabBar({
   );
 
   return (
+    // ARIA structure: outer container is a `toolbar` because it mixes
+    // tabs (the space list) with chrome controls (agent toggle, new,
+    // drawer, history, scroll arrows). The actual `role='tablist'` is
+    // nested around just the SpaceTab list below, satisfying
+    // axe-core's `aria-required-children` rule (a tablist may only
+    // contain `role='tab'` children).
     <div
       data-testid='space-tab-bar'
-      role='tablist'
+      role='toolbar'
       aria-label='Spaces'
       className='flex shrink-0 items-center border-b border-border bg-background'
       style={{
@@ -179,6 +185,8 @@ export function SpaceTabBar({
           height: '100%',
           padding: '0 var(--space-2)',
         }}
+        role='tablist'
+        aria-label='Open spaces'
       >
         {spaces.map((s) => (
           <SpaceTab

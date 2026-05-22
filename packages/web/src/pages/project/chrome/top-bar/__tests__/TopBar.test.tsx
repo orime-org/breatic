@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   const onRename = vi.fn();
@@ -27,6 +28,11 @@ describe('TopBar', () => {
   it('renders the top-bar landmark', () => {
     setup();
     expect(screen.getByTestId('top-bar')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    setup();
+    await expectNoA11yViolations(document.body);
   });
 
   it('shows the role tag with the uppercase label (OWNER)', () => {

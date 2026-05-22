@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import StudioPage from '@/pages/studio/StudioPage';
 import { useStudioStore } from '@/stores';
 import type { ProjectSummary } from '@/data/api/projects';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 const DEMO_PROJECTS: ProjectSummary[] = [
   {
@@ -60,6 +61,13 @@ function setup() {
 }
 
 describe('StudioPage', () => {
+  it('has no a11y violations', async () => {
+    const { container } = setup();
+    // Wait for the project list to settle so axe scans the loaded UI.
+    await screen.findByText('Cyberpunk Concept');
+    await expectNoA11yViolations(container);
+  });
+
   beforeEach(() => {
     useStudioStore.setState({
       search: '',

@@ -154,6 +154,7 @@ function ModalMemberRow({ member }: { member: Member }) {
           <SelectTrigger
             className='h-8 w-24 text-[13px]'
             data-testid={`members-modal-role-${member.id}`}
+            aria-label={t('members.modal.roleSelectAria', { name: member.name })}
           >
             <SelectValue />
           </SelectTrigger>

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChatComposer } from '@/pages/project/chat/ChatComposer';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}) {
   const onChange = vi.fn();
@@ -25,6 +26,11 @@ describe('ChatComposer', () => {
     setup();
     expect(screen.getByTestId('chat-composer-textarea')).toBeInTheDocument();
     expect(screen.getByTestId('chat-composer-send')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    setup();
+    await expectNoA11yViolations(document.body);
   });
 
   it('renders the abort button while streaming', () => {

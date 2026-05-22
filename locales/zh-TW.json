@@ -880,6 +880,7 @@
       "inviteButton": "邀請",
       "membersSection": "成員 ({count})",
       "ownerNote": "擁有者永久綁定專案建立者",
+      "roleSelectAria": "修改 {name} 的角色",
       "isMe": "(你)",
       "remove": "移除"
     }

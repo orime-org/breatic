@@ -7,6 +7,7 @@ import {
   relativeTime,
   type ConversationSummary,
 } from '@/pages/project/chat/ConversationHistorySheet';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 const CONVS: ConversationSummary[] = [
   {
@@ -54,6 +55,19 @@ describe('relativeTime', () => {
 });
 
 describe('ConversationHistorySheet', () => {
+  it('has no a11y violations when open with content', async () => {
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => {}}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => {}}
+      />,
+    );
+    await expectNoA11yViolations(document.body);
+  });
+
   it('renders the empty fallback when there are no conversations', () => {
     render(
       <ConversationHistorySheet

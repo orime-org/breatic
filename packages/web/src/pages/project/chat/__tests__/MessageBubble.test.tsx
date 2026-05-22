@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 import { MessageBubble } from '@/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@/pages/project/chat/types';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup(message: ChatMessage) {
   render(<MessageBubble message={message} />);
@@ -14,6 +15,11 @@ describe('MessageBubble', () => {
     const b = screen.getByTestId('message-bubble');
     expect(b.className).toContain('justify-end');
     expect(b.getAttribute('data-role')).toBe('user');
+  });
+
+  it('has no a11y violations', async () => {
+    setup({ id: 'm1', role: 'user', content: 'hi' });
+    await expectNoA11yViolations(document.body);
   });
 
   it('renders assistant role bubbles left-aligned', () => {

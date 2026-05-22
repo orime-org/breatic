@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { ChatPanel } from '@/pages/project/chat/ChatPanel';
 import { useChatStore } from '@/stores';
 import type { ChatMessage } from '@/pages/project/chat/types';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 const MESSAGES: ChatMessage[] = [
   { id: 'm1', role: 'user', content: 'Plan a launch' },
@@ -16,6 +17,11 @@ describe('ChatPanel', () => {
     useChatStore.getState().clearComposerDraft();
     useChatStore.getState().setStreaming(false);
     useChatStore.getState().setActiveConversationId(null);
+  });
+
+  it('has no a11y violations', async () => {
+    const { container } = render(<ChatPanel projectId='p1' />);
+    await expectNoA11yViolations(container);
   });
 
   it('renders the panel landmark with the projectId attribute', () => {

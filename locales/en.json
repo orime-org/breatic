@@ -880,6 +880,7 @@
       "inviteButton": "Invite",
       "membersSection": "Members ({count})",
       "ownerNote": "Owner is permanently bound to the project creator",
+      "roleSelectAria": "Change role for {name}",
       "isMe": "(you)",
       "remove": "Remove"
     }

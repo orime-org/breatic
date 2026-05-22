@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { StudioNav } from '@/pages/studio/shell/StudioNav';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('StudioNav', () => {
   it('renders 4 items: Projects / Assets / Team / Settings', () => {
@@ -43,5 +44,10 @@ describe('StudioNav', () => {
     render(<StudioNav active='home' onChange={onChange} />);
     await user.click(screen.getByRole('button', { name: /Assets/i }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('has no a11y violations', async () => {
+    const { container } = render(<StudioNav active='home' onChange={() => {}} />);
+    await expectNoA11yViolations(container);
   });
 });

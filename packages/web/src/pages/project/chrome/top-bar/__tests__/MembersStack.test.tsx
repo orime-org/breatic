@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import { MembersStack } from '@/pages/project/chrome/top-bar/MembersStack';
 import { useUIStore } from '@/stores/ui';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('MembersStack', () => {
   beforeEach(() => {
@@ -11,6 +12,11 @@ describe('MembersStack', () => {
       shareOpen: false,
       membersModalOpen: false,
     });
+  });
+
+  it('has no a11y violations', async () => {
+    const { container } = render(<MembersStack projectId='p1' />);
+    await expectNoA11yViolations(container);
   });
 
   it('trigger button exposes member count in aria-label', () => {

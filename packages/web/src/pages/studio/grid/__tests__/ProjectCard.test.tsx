@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import type { ProjectSummary } from '@/data/api/projects';
 import { ProjectCard } from '@/pages/studio/grid/ProjectCard';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 const project: ProjectSummary = {
   id: 'p1',
@@ -24,6 +25,11 @@ function setup(p: ProjectSummary = project) {
 }
 
 describe('ProjectCard', () => {
+  it('has no a11y violations', async () => {
+    const { container } = setup();
+    await expectNoA11yViolations(container);
+  });
+
   it('renders the project name', () => {
     setup();
     expect(screen.getByText('Cyberpunk Concept')).toBeInTheDocument();
