@@ -21,7 +21,7 @@
  *     (Tailwind 4 design limitation), so dark must live in a normal
  *     selector with cascade-based runtime resolve.
  *
- * 4 token model decisions (user 拍板 2026-05-19):
+ * 4 token model decisions (user-confirmed 2026-05-19):
  *   1. `-foreground` full names (shadcn standard) — NOT short `-fg`
  *   2. `--radius-chrome` (6px fixed) + `--radius-content-{sm,md,lg,xl}`
  *      (Tweaks-linked) — supersedes shadcn single `--radius` scale because

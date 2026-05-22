@@ -110,7 +110,19 @@
       "uploadFiles": "上傳檔案",
       "attachment": "附件",
       "removeUpload": "移除附件",
-      "addToInput": "加到輸入框"
+      "addToInput": "加到輸入框",
+      "selectMode": {
+        "label": "選取模式 — 在畫布點節點加入引用",
+        "title": "選取模式"
+      },
+      "chipsAria": "已選 chips",
+      "placeholder": "描述你想做什麼(用 @ 引用上方 chips)…",
+      "inputAria": "Chat 輸入",
+      "skill": {
+        "label": "選擇 Skill 限定 agent 行為",
+        "title": "選擇 Skill"
+      },
+      "send": "傳送"
     },
     "panel": {
       "newConversation": "新建對話",
@@ -118,6 +130,30 @@
     },
     "recognizedPick": {
       "fallback": "識別結果"
+    },
+    "empty": {
+      "greetingWithName": "嗨,{name}!",
+      "greetingDefault": "嗨!",
+      "hintNodes": "試試 @ 節點提問",
+      "hintDirect": "或直接在下方輸入對話 ↓",
+      "quick": {
+        "image": "生成一張賽博龐克風格圖",
+        "music": "配一段 lo-fi 背景音樂",
+        "writing": "幫我寫一段產品描述"
+      }
+    },
+    "history": {
+      "title": "Session 列表",
+      "empty": "尚無歷史對話"
+    },
+    "relative": {
+      "justNow": "剛剛",
+      "minutesAgo": "{count, plural, other {# 分鐘前}}",
+      "hoursAgo": "{count, plural, other {# 小時前}}",
+      "yesterday": "昨天",
+      "daysAgo": "{count, plural, other {# 天前}}",
+      "weeksAgo": "{count, plural, other {# 週前}}",
+      "monthsAgo": "{count, plural, other {# 月前}}"
     }
   },
   "canvas": {
@@ -147,8 +183,8 @@
       "replyPlaceholder": "回覆討論...",
       "send": "傳送評論",
       "timeJustNow": "剛剛",
-      "timeMinutesAgo": "{{count}} 分鐘前",
-      "timeHoursAgo": "{{count}} 小時前",
+      "timeMinutesAgo": "{count} 分鐘前",
+      "timeHoursAgo": "{count} 小時前",
       "timeEarlier": "更早"
     },
     "handle": {
@@ -199,6 +235,10 @@
       "orderedList": "有序清單",
       "unorderedList": "無序清單",
       "bold": "粗體"
+    },
+    "emptyState": {
+      "title": "畫布是空的",
+      "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
     }
   },
   "editor": {
@@ -417,6 +457,21 @@
     "modal": {
       "confirm": "確認",
       "cancel": "取消"
+    },
+    "space": {
+      "timeout": {
+        "create": "Space 建立逾時",
+        "retry": "請重新整理頁面再試一次",
+        "delete": "Space 刪除逾時"
+      },
+      "error": {
+        "create": "Space 建立失敗"
+      },
+      "loading": {
+        "create": "正在建立 Space…",
+        "delete": "正在刪除 Space…"
+      },
+      "noActive": "沒有開啟的工作面 — 點抽屜裡的工作面開啟,或點 + 新增。"
     }
   },
   "common": {
@@ -797,7 +852,8 @@
       "invite": "邀請新成員",
       "manage": "管理協作者",
       "remove": "移除",
-      "self_label": "(你)"
+      "self_label": "(你)",
+      "isMe": "(你)"
     },
     "panel": {
       "title": "協作者管理",
@@ -805,7 +861,7 @@
       "invite_section": "邀請新協作者",
       "invite_placeholder": "電子郵件或使用者 ID",
       "invite_button": "邀請",
-      "list_count": "成員 ({{count}})",
+      "list_count": "成員 ({count})",
       "list_note": "所有者永久綁定專案建立者",
       "confirm_remove": "確認移除此協作者?",
       "done": "完成"
@@ -814,6 +870,17 @@
       "owner": "所有者",
       "edit": "編輯",
       "view": "檢視"
+    },
+    "modal": {
+      "title": "協作者管理",
+      "description": "管理專案成員及其權限",
+      "inviteSection": "邀請新協作者",
+      "invitePlaceholder": "電子郵件或使用者 ID",
+      "inviteButton": "邀請",
+      "membersSection": "成員 ({count})",
+      "ownerNote": "擁有者永久綁定專案建立者",
+      "isMe": "(你)",
+      "remove": "移除"
     }
   },
   "credits": {
@@ -846,15 +913,34 @@
       "kind_timeline": "時間軸"
     },
     "drawer": {
-      "title": "所有 Space",
+      "title": "所有工作面",
       "count": "個",
       "tag_open": "已開啟",
       "tag_active": "目前",
-      "nodes_count": "{{count}} 節點",
+      "nodes_count": "{count} 節點",
       "confirm_delete": "確認刪除此 Space?",
       "new_canvas": "新增畫布",
       "new_document": "新增文件",
-      "new_timeline": "新增時間軸"
+      "new_timeline": "新增時間軸",
+      "label": "所有工作面",
+      "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
+      "empty": "尚無工作面",
+      "openAria": "開啟 {name}",
+      "status": {
+        "editing": "編輯中",
+        "open": "已開啟"
+      },
+      "action": {
+        "view": "檢視",
+        "lock": "鎖定",
+        "unlock": "解鎖",
+        "delete": "刪除",
+        "deleteLocked": "鎖定的工作面無法刪除",
+        "lockFail": "鎖定失敗",
+        "unlockFail": "解鎖失敗",
+        "operationFail": "操作失敗",
+        "deleteFail": "刪除失敗"
+      }
     },
     "new_dialog": {
       "title": "新增 Space",
@@ -863,11 +949,66 @@
       "name_placeholder": "如 場景 v3",
       "create": "建立",
       "cancel": "取消",
-      "placeholder_kind_unsupported": "{{kind}} 類型 Space 暫未支援。"
+      "placeholder_kind_unsupported": "{kind} 類型 Space 暫未支援。"
     },
     "placeholder": {
       "title": "即將上線",
-      "description": "{{kind}} 類型的 Space 將在未來版本支援。"
+      "description": "{kind} 類型的 Space 將在未來版本支援。"
+    },
+    "kind": {
+      "canvas": "畫布",
+      "canvasSub": "無限畫布 + 節點",
+      "document": "文件",
+      "documentSub": "富文本 + 協作",
+      "timeline": "時間軸",
+      "timelineSub": "影片 / 音訊剪輯"
+    },
+    "history": {
+      "label": "Space 活動歷史",
+      "title": "Space 建立 / 刪除 / 鎖定歷史",
+      "header": "系統訊息",
+      "description": "{count, plural, other {# 筆 · 專案共享資料的事件紀錄}}",
+      "empty": "尚無空間活動。建立 / 刪除 / 鎖定事件會顯示在這裡。",
+      "markRead": "已讀",
+      "markUnread": "標記為已讀",
+      "relative": {
+        "justNow": "剛剛",
+        "minutesAgo": "{count, plural, other {# 分鐘前}}",
+        "hoursAgo": "{count, plural, other {# 小時前}}",
+        "yesterday": "昨天",
+        "daysAgo": "{count, plural, other {# 天前}}",
+        "weeksAgo": "{count, plural, other {# 週前}}",
+        "monthsAgo": "{count, plural, other {# 月前}}"
+      }
+    },
+    "create": {
+      "title": "新增 Space",
+      "description": "選 Space 類型 + 命名",
+      "typeLabel": "類型",
+      "typeAria": "Space 類型",
+      "notAvailable": "未實作",
+      "nameLabel": "名稱",
+      "namePlaceholder": "例:Cyberpunk Concept",
+      "cancel": "取消",
+      "submit": "建立",
+      "submitting": "建立中…"
+    },
+    "readonly": {
+      "label": "唯讀",
+      "description": "此 Space 未在標籤列開啟;唯讀預覽,可縮放與複製內容,不可編輯。",
+      "close": "關閉唯讀預覽",
+      "canvas": {
+        "title": "唯讀畫布",
+        "description": "真實 ReactFlow viewer 在 canvas-space 完整實作時接入;此處展示節點與邊的唯讀快照,支援縮放與複製。"
+      },
+      "document": {
+        "title": "唯讀文件",
+        "description": "TipTap 唯讀 viewer 在 document-space 實作時接入;此處展示富文本快照,支援複製段落。"
+      },
+      "timeline": {
+        "title": "唯讀時間軸",
+        "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
+      }
     }
   },
   "image": {
@@ -902,5 +1043,85 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "檔案處理失敗"
+  },
+  "menu": {
+    "createAria": "建立選單",
+    "item": {
+      "nodes": "節點庫 — 4 類生成節點",
+      "upload": "上傳素材(多檔案混合)",
+      "comment": "在畫布加註解",
+      "assetGroup": "資產組 — 跨專案共享素材(敬請期待)",
+      "help": "說明(敬請期待)",
+      "feedback": "意見回饋 / 客服(敬請期待)"
+    }
+  },
+  "viewportToolbar": {
+    "aria": "視口工具",
+    "zoomOut": "縮小",
+    "zoomResetAria": "縮放重設 100%",
+    "zoomReset": "重設縮放",
+    "zoomIn": "放大",
+    "fit": "適應",
+    "fitAria": "適應視窗",
+    "expand": "全螢幕",
+    "snap": {
+      "on": "啟用對齊格線",
+      "off": "停用對齊格線",
+      "label": "對齊格線"
+    },
+    "guides": {
+      "on": "啟用對齊參考線",
+      "off": "停用對齊參考線",
+      "label": "對齊參考線"
+    },
+    "minimap": {
+      "show": "顯示縮圖",
+      "hide": "隱藏縮圖",
+      "label": "縮圖"
+    }
+  },
+  "lang": {
+    "en": {
+      "label": "English",
+      "glyph": "EN"
+    },
+    "zhCN": {
+      "label": "簡體中文",
+      "glyph": "中"
+    },
+    "zhTW": {
+      "label": "繁體中文",
+      "glyph": "繁"
+    },
+    "ja": {
+      "label": "日本語",
+      "glyph": "日"
+    }
+  },
+  "role": {
+    "owner": "擁有者",
+    "editor": "編輯",
+    "viewer": "唯讀"
+  },
+  "share": {
+    "inviteSection": "邀請協作者",
+    "invitePlaceholder": "電子郵件或 @使用者名",
+    "inviteButton": "傳送邀請",
+    "linkSection": "分享連結",
+    "linkAccess": "任何人憑連結可存取"
+  },
+  "notifications": {
+    "title": "存取申請",
+    "empty": "沒有待處理通知",
+    "roleHint": {
+      "editor": "編輯",
+      "viewer": "檢視"
+    },
+    "reject": "拒絕",
+    "approve": "核准",
+    "request": {
+      "audio": "想加入做配音和 BGM 部分",
+      "project": "想參考你的 prompt 風格做我自己的專案"
+    }
   }
 }

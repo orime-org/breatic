@@ -71,7 +71,7 @@
   - canvas-native mini-tools：image.crop / image.adjust / image.remove-bg / video tools / audio tools 逐条接入（前端 `new/` 分支开发中）
   - 节点悬浮菜单（selected 节点上方）+ 底部工具栏：PR-C 范畴
   - text mini-tools UI：10 个 text mini-tool 的 slash-menu 接入待确认
-- [ ] i18n 前端接入：统一 i18n 方案（前后端共享或独立），语言切换 UI
+- [x] **i18n 前端接入（PR #117, 2026-05-22）**：前后端共享 `@breatic/shared/i18n`（`intl-messageformat` / ICU 引擎），web 通过 `useTranslation` hook + `locale-bootstrap` (`localStorage` → `navigator.languages` → `en`)；TopBar `LangSwitcher` 切换语言；`pnpm lint:no-cjk` CI gate 防 hardcoded CJK 回潮
 
 ### 画布协作
 

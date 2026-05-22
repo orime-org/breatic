@@ -1,4 +1,5 @@
 import type { SpaceBodyProps } from '@/spaces';
+import { useTranslation } from '@/i18n/use-translation';
 
 /**
  * Canvas space body — chrome-baseline mock `.canvas-area` (finalized.html
@@ -14,7 +15,7 @@ import type { SpaceBodyProps } from '@/spaces';
  *
  * Empty state (when no nodes exist yet, M0' placeholder):
  *   - centered hint card with dashed border + content radius (`rounded-lg`)
- *   - title "画布是空的" + sub-hint "拖入素材到画布,或从左侧菜单选择节点类型创建"
+ *   - title + sub-hint loaded via i18n (`canvas.emptyState.*`)
  *
  * The full ReactFlow + Yjs binding + node toolbar + reference chips
  * wiring lands in later PRs; this PR just gets the surface visually
@@ -22,6 +23,7 @@ import type { SpaceBodyProps } from '@/spaces';
  * ViewportToolbar) sit on the mock-aligned canvas.
  */
 export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
+  const t = useTranslation();
   return (
     <div
       data-testid='canvas-space'
@@ -40,9 +42,9 @@ export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
         className='absolute inset-0 flex items-center justify-center text-center text-[13px] leading-relaxed text-muted-foreground'
       >
         <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-elevated px-6 py-4'>
-          <strong className='block text-foreground'>画布是空的</strong>
+          <strong className='block text-foreground'>{t('canvas.emptyState.title')}</strong>
           <span className='text-[12px] text-muted-foreground'>
-            拖入素材到画布,或从左侧菜单选择节点类型创建
+            {t('canvas.emptyState.hint')}
           </span>
         </div>
       </div>

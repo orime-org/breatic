@@ -24,6 +24,7 @@ import { spacesApi } from '@/data/api';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
 import { useUIStore } from '@/stores';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface SpaceDrawerProps {
   spaces: ReadonlyArray<ProjectSpace>;
@@ -32,35 +33,36 @@ interface SpaceDrawerProps {
   projectId: string;
   /** Activate a Space (opens its tab if not open + makes it active). */
   onActivate: (id: string) => void;
-  /** Open a Space in the read-only preview sheet (used for "查看"). */
+  /** Open a Space in the read-only preview sheet (used for the "view" action). */
   onView: (id: string) => void;
 }
 
 const TYPE_META: Record<
   SpaceType,
-  { icon: typeof Palette; label: string }
+  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' }
 > = {
-  canvas: { icon: Palette, label: '画布' },
-  document: { icon: FileText, label: '文档' },
-  timeline: { icon: Clock, label: '时间线' },
+  canvas: { icon: Palette, labelKey: 'spaces.kind.canvas' },
+  document: { icon: FileText, labelKey: 'spaces.kind.document' },
+  timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
 };
 
 /**
  * "All Spaces" drawer — every Space in the project, with status chip,
  * metadata row, and hover actions. Mirrors user spec from image 43
- * (2026-05-21): "所有工作面 / 10 个 · 点击切换或右侧操作".
+ * (2026-05-21): all spaces / N entries · click to switch or use right
+ * menu.
  *
  * Row anatomy:
  *
- *   ┌─[type icon]  Space name  [editing / opened chip] [lock 🔒 if locked]
- *   │              type · N 节点 · @author · time
- *   │
- *   │  hover actions (right):
- *   │    [👁 view] [🔒 lock toggle] [✖ delete (disabled if locked)]
+ *   [type icon]  Space name  [editing / open chip] [lock if locked]
+ *                type · N nodes · @author · time
+ *
+ *   hover actions (right):
+ *     [view] [lock toggle] [delete (disabled if locked)]
  *
  * Status chip (decision B.1):
- *   - 编辑中  → bg-status-info  (this user's active tab)
- *   - 已打开  → bg-muted        (this user's open tab, not active)
+ *   - editing → bg-status-info  (this user's active tab)
+ *   - open    → bg-muted        (this user's open tab, not active)
  *   - (none)  → no chip         (Space exists but this user hasn't opened it)
  *
  * View action (decision E.1):
@@ -91,6 +93,7 @@ export function SpaceDrawer({
   onActivate,
   onView,
 }: SpaceDrawerProps) {
+  const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
   return (
@@ -99,7 +102,7 @@ export function SpaceDrawer({
         <Button
           variant='chrome-ghost'
           size='chrome'
-          aria-label='所有工作面'
+          aria-label={t('spaces.drawer.label')}
           data-testid='space-drawer-trigger'
           style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
         >
@@ -113,10 +116,10 @@ export function SpaceDrawer({
       >
         <SheetHeader className='border-b border-border px-4 py-3'>
           <SheetTitle className='text-[15px] font-semibold text-foreground'>
-            所有工作面
+            {t('spaces.drawer.title')}
           </SheetTitle>
           <p className='text-[12px] text-muted-foreground'>
-            {spaces.length} 个 · 点击切换或右侧操作
+            {t('spaces.drawer.description', { count: spaces.length })}
           </p>
         </SheetHeader>
         <ul
@@ -126,7 +129,7 @@ export function SpaceDrawer({
         >
           {spaces.length === 0 ? (
             <li className='px-4 py-3 text-[13px] text-muted-foreground'>
-              暂无工作面
+              {t('spaces.drawer.empty')}
             </li>
           ) : (
             spaces.map((s) => (
@@ -178,6 +181,7 @@ function SpaceDrawerRow({
   onView,
   onDeleted,
 }: SpaceDrawerRowProps) {
+  const t = useTranslation();
   const meta = TYPE_META[space.type];
   const Icon = meta.icon;
   const [lockBusy, setLockBusy] = React.useState(false);
@@ -190,10 +194,16 @@ function SpaceDrawerRow({
     try {
       await spacesApi.setLocked(projectId, space.id, !space.locked);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '操作失败';
-      toast.error(space.locked ? '解锁失败' : '加锁失败', {
-        description: message,
-      });
+      const message =
+        err instanceof Error ? err.message : t('spaces.drawer.action.operationFail');
+      toast.error(
+        space.locked
+          ? t('spaces.drawer.action.unlockFail')
+          : t('spaces.drawer.action.lockFail'),
+        {
+          description: message,
+        },
+      );
     } finally {
       setLockBusy(false);
     }
@@ -210,8 +220,9 @@ function SpaceDrawerRow({
       // ProjectPage effect will pick a new active tab + clear the
       // loading overlay.
     } catch (err) {
-      const message = err instanceof Error ? err.message : '操作失败';
-      toast.error('删除失败', { description: message });
+      const message =
+        err instanceof Error ? err.message : t('spaces.drawer.action.operationFail');
+      toast.error(t('spaces.drawer.action.deleteFail'), { description: message });
       setDeleteBusy(false);
     }
   };
@@ -228,7 +239,7 @@ function SpaceDrawerRow({
         <button
           type='button'
           onClick={onActivate}
-          aria-label={`打开 ${space.name}`}
+          aria-label={t('spaces.drawer.openAria', { name: space.name })}
           aria-current={isActive ? 'true' : undefined}
           className='flex min-w-0 flex-1 items-start gap-3 text-left'
         >
@@ -242,11 +253,11 @@ function SpaceDrawerRow({
               </span>
               {isActive ? (
                 <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
-                  编辑中
+                  {t('spaces.drawer.status.editing')}
                 </span>
               ) : isOpen ? (
                 <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
-                  已打开
+                  {t('spaces.drawer.status.open')}
                 </span>
               ) : null}
               {space.locked ? (
@@ -258,7 +269,7 @@ function SpaceDrawerRow({
               ) : null}
             </span>
             <span className='truncate text-[12px] text-muted-foreground'>
-              {meta.label}
+              {t(meta.labelKey)}
             </span>
           </span>
         </button>
@@ -267,14 +278,18 @@ function SpaceDrawerRow({
           data-testid={`space-drawer-actions-${space.id}`}
         >
           <RowAction
-            label='查看'
+            label={t('spaces.drawer.action.view')}
             testId={`space-drawer-view-${space.id}`}
             onClick={onView}
           >
             <Eye className='h-4 w-4' />
           </RowAction>
           <RowAction
-            label={space.locked ? '解锁' : '加锁'}
+            label={
+              space.locked
+                ? t('spaces.drawer.action.unlock')
+                : t('spaces.drawer.action.lock')
+            }
             testId={`space-drawer-lock-${space.id}`}
             onClick={onToggleLock}
             busy={lockBusy}
@@ -286,7 +301,11 @@ function SpaceDrawerRow({
             )}
           </RowAction>
           <RowAction
-            label={space.locked ? '锁住的工作面无法删除' : '删除'}
+            label={
+              space.locked
+                ? t('spaces.drawer.action.deleteLocked')
+                : t('spaces.drawer.action.delete')
+            }
             testId={`space-drawer-delete-${space.id}`}
             onClick={onDelete}
             disabled={space.locked || deleteBusy}

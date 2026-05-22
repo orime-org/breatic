@@ -33,7 +33,7 @@ import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
  * Format the user's attached canvas chips as a structured prelude to
- * the chat message (spec/07 §10.18.2 v13 — chat 消息级 snapshot).
+ * the chat message (spec/07 §10.18.2 v13 — chat-message-level snapshot).
  *
  * Chips are independent C1 copies fixed at attach-time on the frontend;
  * here we serialize them into a prose section the LLM sees alongside
@@ -49,10 +49,10 @@ function formatChipsForLLM(
   const sections = chips
     .map(
       (c) =>
-        `### ${c.name}(类型:${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
+        `### ${c.name} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
     )
     .join("\n\n");
-  return `## 用户附加的 Space 内容(snapshot,后续节点改不影响这些)\n\n${sections}\n\n## 用户消息\n\n${message}`;
+  return `## Attached Space content (snapshot — later canvas edits do not mutate these)\n\n${sections}\n\n## User message\n\n${message}`;
 }
 
 const chat = new Hono<{ Variables: AuthVariables }>();

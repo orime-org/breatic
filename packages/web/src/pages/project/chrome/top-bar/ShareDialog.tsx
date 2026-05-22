@@ -11,6 +11,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface ShareDialogProps {
   projectId: string;
@@ -23,11 +24,12 @@ interface ShareDialogProps {
  * project-members API wiring in a later PR; this PR ships the chrome.
  *
  * Layout follows mock:
- *   - 邀请协作者 section (title + invite input row + send button)
+ *   - "Invite collaborators" section (title + invite input row + send button)
  *   - separator
- *   - 分享链接 section (title + URL row + copy button + public toggle row)
+ *   - "Share link" section (title + URL row + copy button + public toggle row)
  */
 export function ShareDialog({ projectId }: ShareDialogProps) {
+  const t = useTranslation();
   const inviteUrl = `https://breatic.ai/invite/${projectId}`;
   const open = useUIStore((s) => s.shareOpen);
   const setOpen = useUIStore((s) => s.setShareOpen);
@@ -57,12 +59,12 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
         className='w-80 p-1'
         data-testid='share-popover'
       >
-        <SectionTitle>邀请协作者</SectionTitle>
+        <SectionTitle>{t('share.inviteSection')}</SectionTitle>
         <div className='flex items-center gap-2 px-2 pb-2'>
           <Input
             value={invite}
             onChange={(e) => setInvite(e.target.value)}
-            placeholder='邮箱或 @用户名'
+            placeholder={t('share.invitePlaceholder')}
             className='h-8 flex-1 text-[13px]'
             data-testid='share-invite-input'
           />
@@ -75,13 +77,13 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
             data-testid='share-send-invite'
           >
             <Send className='h-4 w-4' />
-            发送邀请
+            {t('share.inviteButton')}
           </Button>
         </div>
 
         <Separator className='my-1' />
 
-        <SectionTitle>分享链接</SectionTitle>
+        <SectionTitle>{t('share.linkSection')}</SectionTitle>
         <div className='flex items-center gap-2 px-2 pb-2'>
           <Input
             readOnly
@@ -101,7 +103,7 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
         </div>
         <div className='flex items-center justify-between gap-2 px-2 py-2'>
           <span className='text-[13px] text-foreground'>
-            任何人凭链接可访问
+            {t('share.linkAccess')}
           </span>
           <button
             type='button'

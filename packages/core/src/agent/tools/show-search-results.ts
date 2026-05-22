@@ -6,7 +6,7 @@
  * Per spec/07-chat-agent.md §10.18.4 (v13 Agent rich output protocol):
  * the LLM uses this to display image / video / audio / link results
  * (typically gathered via the real `web_search` tool) as a thumbnail
- * grid. Each thumbnail has a hover "+ 添加到 space" button that, when
+ * grid. Each thumbnail has a hover "+ Add to space" button that, when
  * clicked, creates a corresponding image/video/audio node in the user's
  * active canvas Space. Node `data` carries `derivedFrom: { sourceQuery,
  * source }` for audit.
@@ -48,7 +48,7 @@ const inputSchema = z.object({
 export const showSearchResults = tool({
   description:
     "Display search results (images / videos / audios / links) to " +
-    "the user as a thumbnail grid. Each thumbnail has '+ 添加到 " +
+    "the user as a thumbnail grid. Each thumbnail has '+ Add to " +
     "space' which creates a corresponding canvas node. Use AFTER " +
     "you've gathered results via web_search (or similar) and want " +
     "to surface a curated subset visually. Do NOT call to embed " +

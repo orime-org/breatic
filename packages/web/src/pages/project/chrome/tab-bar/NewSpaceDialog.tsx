@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { SPACE_TYPE_LIST, type SpaceType } from '@/spaces';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface NewSpaceDialogProps {
   trigger: React.ReactNode;
@@ -31,11 +32,14 @@ interface NewSpaceDialogProps {
 interface TypeCardMeta {
   type: SpaceType;
   icon: typeof Palette;
-  title: string;
-  subtitle: string;
+  titleKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline';
+  subtitleKey:
+    | 'spaces.kind.canvasSub'
+    | 'spaces.kind.documentSub'
+    | 'spaces.kind.timelineSub';
   /**
    * V1 only ships `canvas`; document + timeline are visually present
-   * but disabled with a "未实现" label per decision D (2026-05-21).
+   * but disabled with a "not available" label per decision D (2026-05-21).
    */
   available: boolean;
 }
@@ -44,35 +48,36 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
   {
     type: 'canvas',
     icon: Palette,
-    title: '画布',
-    subtitle: '无限画布 + 节点',
+    titleKey: 'spaces.kind.canvas',
+    subtitleKey: 'spaces.kind.canvasSub',
     available: true,
   },
   {
     type: 'document',
     icon: FileText,
-    title: '文档',
-    subtitle: '富文本 + 协作',
+    titleKey: 'spaces.kind.document',
+    subtitleKey: 'spaces.kind.documentSub',
     available: false,
   },
   {
     type: 'timeline',
     icon: Clock,
-    title: '时间线',
-    subtitle: '视频 / 音频剪辑',
+    titleKey: 'spaces.kind.timeline',
+    subtitleKey: 'spaces.kind.timelineSub',
     available: false,
   },
 ];
 
 /**
  * New-space dialog — picks a Space type via a 3-card segmented control
- * (画布 / 文档 / 时间线), accepts a name, then delegates the actual
- * create call to the page (which calls `spacesApi.create` + waits for
- * the collab-driven Y.Doc broadcast to add the tab, per K.1).
+ * (canvas / document / timeline), accepts a name, then delegates the
+ * actual create call to the page (which calls `spacesApi.create` + waits
+ * for the collab-driven Y.Doc broadcast to add the tab, per K.1).
  *
  * Per decision D (2026-05-21): all three cards are visible so the
  * product roadmap is legible, but document + timeline are disabled
- * with "未实现" until those Space types ship. Only canvas is selectable.
+ * with "not available" until those Space types ship. Only canvas is
+ * selectable.
  *
  * Mock alignment: mirrors `.type-segmented` (finalized.html lines
  * 1428-1432) — flex row of 3 cards, active card uses brand border on
@@ -84,6 +89,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * registry pruning a type the dialog still lists).
  */
 export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
+  const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [type, setType] = React.useState<SpaceType>('canvas');
   const [name, setName] = React.useState('');
@@ -130,16 +136,16 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent data-testid='new-space-dialog'>
         <DialogHeader>
-          <DialogTitle>新建 Space</DialogTitle>
-          <DialogDescription>选 Space 类型 + 命名</DialogDescription>
+          <DialogTitle>{t('spaces.create.title')}</DialogTitle>
+          <DialogDescription>{t('spaces.create.description')}</DialogDescription>
         </DialogHeader>
         <DialogBody>
           <div className='flex flex-col gap-2'>
-            <Label>类型</Label>
+            <Label>{t('spaces.create.typeLabel')}</Label>
             <div
               className='flex gap-2'
               role='radiogroup'
-              aria-label='Space 类型'
+              aria-label={t('spaces.create.typeAria')}
               data-testid='new-space-type-segmented'
             >
               {cards.map((card) => {
@@ -172,14 +178,14 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
                       )}
                     />
                     <span className='text-[13px] font-medium'>
-                      {card.title}
+                      {t(card.titleKey)}
                     </span>
                     <span className='text-[11px] text-muted-foreground'>
-                      {card.subtitle}
+                      {t(card.subtitleKey)}
                     </span>
                     {!card.available ? (
                       <span className='rounded-[4px] bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground'>
-                        未实现
+                        {t('spaces.create.notAvailable')}
                       </span>
                     ) : null}
                   </button>
@@ -188,12 +194,12 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
             </div>
           </div>
           <div className='flex flex-col gap-2'>
-            <Label htmlFor='new-space-name'>名称</Label>
+            <Label htmlFor='new-space-name'>{t('spaces.create.nameLabel')}</Label>
             <Input
               id='new-space-name'
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder='例:Cyberpunk Concept'
+              placeholder={t('spaces.create.namePlaceholder')}
               data-testid='new-space-name'
               disabled={submitting}
               autoFocus
@@ -218,14 +224,16 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
             }}
             disabled={submitting}
           >
-            取消
+            {t('spaces.create.cancel')}
           </Button>
           <Button
             onClick={submit}
             disabled={name.trim().length === 0 || submitting}
             data-testid='new-space-submit'
           >
-            {submitting ? '创建中…' : '创建'}
+            {submitting
+              ? t('spaces.create.submitting')
+              : t('spaces.create.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

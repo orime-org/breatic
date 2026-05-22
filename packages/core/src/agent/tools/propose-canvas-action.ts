@@ -7,7 +7,7 @@
  * nodes. The frontend renders a button "+ apply (N nodes)" with the
  * agent's rationale; user clicks → frontend writes Yjs (does the
  * canvas mutation locally). Backend does NOT mutate canvas — that's
- * frontend's job per spec §12.3 用户主动控制 + memory canvas
+ * frontend's job per spec §12.3 (user-driven control) + memory canvas
  * architecture (frontend owns node creation).
  *
  * @module

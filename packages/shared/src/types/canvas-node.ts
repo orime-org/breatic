@@ -229,8 +229,8 @@ export interface CanvasNodeFields {
     outputType?: 'text' | 'image' | 'video' | 'audio';
     /**
      * Sub-task variant within an `outputType` (spec §10.13.1 v13).
-     *  - image: '文生图' / '图生图'
-     *  - audio: 'music' / 'tts' / '旋律' / '环境音'
+     *  - image: 'text-to-image' / 'image-to-image'
+     *  - audio: 'music' / 'tts' / 'melody' / 'ambient'
      *  - video / text / 3d: single kind, value still required for forward compat.
      */
     kind?: string;

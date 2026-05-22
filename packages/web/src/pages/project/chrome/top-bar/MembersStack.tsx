@@ -11,6 +11,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores';
+import { useTranslation } from '@/i18n/use-translation';
 
 export type MemberRole = 'owner' | 'editor' | 'viewer';
 
@@ -35,10 +36,10 @@ const STUB_MEMBERS: ReadonlyArray<Member> = [
   { id: 'pl', name: 'Priya Lokesh', initials: 'PL', role: 'viewer' },
 ];
 
-const ROLE_LABEL: Record<MemberRole, string> = {
-  owner: '所有者',
-  editor: '编辑',
-  viewer: '只读',
+const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
+  owner: 'role.owner',
+  editor: 'role.editor',
+  viewer: 'role.viewer',
 };
 
 /**
@@ -48,11 +49,11 @@ const ROLE_LABEL: Record<MemberRole, string> = {
  *   - trigger: 2 visible avatars at `--avatar-xs` overlapping by 4 px;
  *     a `+N` chip collapses the rest, inline chevron-down
  *   - popover content (chrome-baseline `.menu-popover.anchor-members.large`):
- *       项目成员 [count]
- *       member rows (avatar + name + role tag + 移除 on hover)
- *       ────────
- *       [+ 邀请新成员]  → close popover + open Share popover
- *       [⚙ 查看完整管理] → close popover + open Members Modal
+ *       Project members [count]
+ *       member rows (avatar + name + role tag + remove on hover)
+ *       --------
+ *       [+ Invite new member]  → close popover + open Share popover
+ *       [Manage collaborators] → close popover + open Members Modal
  *
  * Member data is currently a 5-row stub; real backend wiring lands
  * with the project-members API in a later PR.
@@ -61,6 +62,7 @@ export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
 >(({ members = STUB_MEMBERS }, ref) => {
+  const t = useTranslation();
   const visible = members.slice(0, 2);
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
@@ -123,7 +125,7 @@ export const MembersStack = React.forwardRef<
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
           <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-            项目成员
+            {t('members.popover.title')}
           </span>
           <span className='text-[11px] tabular-nums text-muted-foreground'>
             {members.length}
@@ -146,7 +148,7 @@ export const MembersStack = React.forwardRef<
             data-testid='members-invite-trigger'
           >
             <Plus className='h-4 w-4' />
-            邀请新成员
+            {t('members.popover.invite')}
           </Button>
           <Button
             variant='outline'
@@ -156,7 +158,7 @@ export const MembersStack = React.forwardRef<
             data-testid='members-manage-trigger'
           >
             <Users className='h-4 w-4' />
-            管理协作者
+            {t('members.popover.manage')}
           </Button>
         </div>
       </PopoverContent>
@@ -166,6 +168,7 @@ export const MembersStack = React.forwardRef<
 MembersStack.displayName = 'MembersStack';
 
 function MemberRow({ member }: { member: Member }) {
+  const t = useTranslation();
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <Avatar className='h-8 w-8 shrink-0'>
@@ -177,7 +180,9 @@ function MemberRow({ member }: { member: Member }) {
         <span className='flex items-center gap-1.5 truncate text-[13px] text-foreground'>
           {member.name}
           {member.isMe ? (
-            <span className='text-[12px] text-muted-foreground'>(你)</span>
+            <span className='text-[12px] text-muted-foreground'>
+              {t('members.popover.isMe')}
+            </span>
           ) : null}
         </span>
         <span
@@ -188,7 +193,7 @@ function MemberRow({ member }: { member: Member }) {
               : 'text-muted-foreground',
           )}
         >
-          {ROLE_LABEL[member.role]}
+          {t(ROLE_KEY[member.role])}
         </span>
       </div>
       {member.role !== 'owner' ? (
@@ -199,7 +204,7 @@ function MemberRow({ member }: { member: Member }) {
           className='h-7 shrink-0 px-3 text-[12px] opacity-0 transition-opacity group-hover:opacity-100'
           data-testid={`members-remove-${member.id}`}
         >
-          移除
+          {t('members.popover.remove')}
         </Button>
       ) : null}
     </div>

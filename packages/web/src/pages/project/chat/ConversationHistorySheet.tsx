@@ -4,6 +4,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { useTranslation } from '@/i18n/use-translation';
 
 export interface ConversationSummary {
   id: string;
@@ -24,40 +25,61 @@ interface ConversationHistorySheetProps {
 }
 
 /**
- * Convert ISO timestamp to a localized relative time label
- * (`X 分钟前 / X 小时前 / 昨天 / X 天前 / X 周前 / X 月前`).
- * Falls back to ISO date when older than a year.
+ * Bucket of the relative timestamp + the params needed for an ICU
+ * MessageFormat plural string. Pure — no React, no `t()` call — so
+ * the buckets can be tested without an i18n runtime.
  */
-function formatRelative(iso: string, now = Date.now()): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const diffMs = now - t;
+export interface RelativeTime {
+  key:
+    | 'chat.relative.justNow'
+    | 'chat.relative.minutesAgo'
+    | 'chat.relative.hoursAgo'
+    | 'chat.relative.yesterday'
+    | 'chat.relative.daysAgo'
+    | 'chat.relative.weeksAgo'
+    | 'chat.relative.monthsAgo'
+    | 'chat.relative.isoDate';
+  params?: Record<string, string | number>;
+}
+
+/**
+ * Bucket an ISO timestamp into a relative-time key + params, so callers
+ * can `t(rel.key, rel.params)` to render the localized label. Falls back
+ * to ISO date when the timestamp is older than a year (or unparseable).
+ */
+function relativeTime(iso: string, now = Date.now()): RelativeTime {
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return { key: 'chat.relative.isoDate', params: { date: iso } };
+  const diffMs = now - parsed;
   const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min} 分钟前`;
+  if (min < 1) return { key: 'chat.relative.justNow' };
+  if (min < 60) return { key: 'chat.relative.minutesAgo', params: { count: min } };
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} 小时前`;
-  if (hr < 48) return '昨天';
+  if (hr < 24) return { key: 'chat.relative.hoursAgo', params: { count: hr } };
+  if (hr < 48) return { key: 'chat.relative.yesterday' };
   const day = Math.floor(hr / 24);
-  if (day < 7) return `${day} 天前`;
-  if (day < 30) return `${Math.floor(day / 7)} 周前`;
-  if (day < 365) return `${Math.floor(day / 30)} 月前`;
-  return new Date(t).toISOString().slice(0, 10);
+  if (day < 7) return { key: 'chat.relative.daysAgo', params: { count: day } };
+  if (day < 30) return { key: 'chat.relative.weeksAgo', params: { count: Math.floor(day / 7) } };
+  if (day < 365) return { key: 'chat.relative.monthsAgo', params: { count: Math.floor(day / 30) } };
+  return {
+    key: 'chat.relative.isoDate',
+    params: { date: new Date(parsed).toISOString().slice(0, 10) },
+  };
 }
 
 /**
  * Side sheet that lists the project's previous conversations.
  *
  * Layout (2026-05-21 spec):
- *   SESSION 列表                                            [X]
+ *   SESSION list                                            [X]
  *   ───────────────────────────────────────────────────────
- *   ●  主线剧情研究                       ← active row + dot
- *      我们讨论了赛博朋克设定和…
- *      5 分钟前
+ *   ●  Main plot research                  ← active row + dot
+ *      We discussed cyberpunk setting and…
+ *      5 minutes ago
  *   ───────────────────────────────────────────────────────
- *   ○  角色性格设计
- *      林夏的成长弧线和动机…
- *      昨天
+ *   ○  Character design
+ *      Lin Xia's growth arc and motives…
+ *      yesterday
  *
  * Active state uses `bg-accent` row highlight + `bg-foreground` dot
  * (neutral, no brand) per ADR 14 brand-guard policy — Direction B
@@ -70,6 +92,7 @@ export function ConversationHistorySheet({
   activeId,
   onPick,
 }: ConversationHistorySheetProps) {
+  const t = useTranslation();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -79,7 +102,7 @@ export function ConversationHistorySheet({
       >
         <SheetHeader className='px-4 py-3'>
           <SheetTitle className='text-[13px] font-medium uppercase tracking-wide text-muted-foreground'>
-            Session 列表
+            {t('chat.history.title')}
           </SheetTitle>
         </SheetHeader>
         <ul
@@ -89,11 +112,12 @@ export function ConversationHistorySheet({
         >
           {conversations.length === 0 ? (
             <li className='px-4 py-3 text-[13px] text-muted-foreground'>
-              暂无历史会话
+              {t('chat.history.empty')}
             </li>
           ) : (
             conversations.map((c) => {
               const isActive = c.id === activeId;
+              const rel = relativeTime(c.updatedAt);
               return (
                 <li key={c.id} role='listitem'>
                   <button
@@ -121,7 +145,7 @@ export function ConversationHistorySheet({
                         </span>
                       ) : null}
                       <span className='text-[11px] tabular-nums text-muted-foreground'>
-                        {formatRelative(c.updatedAt)}
+                        {t(rel.key, rel.params)}
                       </span>
                     </span>
                   </button>
@@ -135,4 +159,4 @@ export function ConversationHistorySheet({
   );
 }
 
-export { formatRelative };
+export { relativeTime };

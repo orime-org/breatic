@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "../i18n/index.js";
+import { t, setLocale, getLocale, getAvailableLocales, resetLocales } from "../i18n/index.js";
+import { loadLocales } from "../i18n/load-node.js";
 import { resolve } from "node:path";
 
 describe("i18n", () => {

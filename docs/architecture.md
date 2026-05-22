@@ -39,7 +39,7 @@ packages/
 ├── worker/   # BullMQ 壳: handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
 ├── collab/   # Hocuspocus 独立进程: server/auth/persistence/event-stream/task-listener
 └── web/      # React app — see frontend.md
-config/ agents/ skills/ locales/ uploads/ (git-ignored)
+config/ agents/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 ```
 
 **包依赖方向:** `shared(零依赖) ← core, collab(独立进程,只依赖 shared) ← server / worker / web`。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。

@@ -49,7 +49,7 @@ projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
  *
  * V1 personal-Studio mode: every user has one studio. Projects shared
  * with the caller but owned by someone else (Studio-phase feature)
- * are not exposed here yet — see spec §16 ★ "/studio 协作中的项目入口".
+ * are not exposed here yet — see spec §16 ★ "shared-projects entry on /studio".
  *
  * @returns `200` with `{ data: ProjectEntity[] }`
  */

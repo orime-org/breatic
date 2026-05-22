@@ -44,9 +44,9 @@ describe('ViewportToolbar', () => {
   it('clicking Zoom in / out / reset invoke their handlers', async () => {
     const user = userEvent.setup();
     const handlers = setup();
-    await user.click(screen.getByLabelText('放大'));
-    await user.click(screen.getByLabelText('缩小'));
-    await user.click(screen.getByLabelText('缩放重置 100%'));
+    await user.click(screen.getByLabelText('Zoom in'));
+    await user.click(screen.getByLabelText('Zoom out'));
+    await user.click(screen.getByLabelText('Reset zoom to 100%'));
     expect(handlers.onZoomIn).toHaveBeenCalledTimes(1);
     expect(handlers.onZoomOut).toHaveBeenCalledTimes(1);
     expect(handlers.onZoomReset).toHaveBeenCalledTimes(1);
@@ -55,11 +55,11 @@ describe('ViewportToolbar', () => {
   it('fit / expand / snap / align / minimap buttons all wired', async () => {
     const user = userEvent.setup();
     const handlers = setup();
-    await user.click(screen.getByLabelText('适应窗口'));
-    await user.click(screen.getByLabelText('全屏'));
-    await user.click(screen.getByLabelText('开启网格吸附'));
-    await user.click(screen.getByLabelText('开启对齐参考线'));
-    await user.click(screen.getByLabelText('隐藏缩略图'));
+    await user.click(screen.getByLabelText('Fit to viewport'));
+    await user.click(screen.getByLabelText('Fullscreen'));
+    await user.click(screen.getByLabelText('Enable snap to grid'));
+    await user.click(screen.getByLabelText('Enable alignment guides'));
+    await user.click(screen.getByLabelText('Hide minimap'));
     expect(handlers.onFit).toHaveBeenCalledTimes(1);
     expect(handlers.onExpand).toHaveBeenCalledTimes(1);
     expect(handlers.onToggleSnap).toHaveBeenCalledTimes(1);

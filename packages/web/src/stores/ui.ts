@@ -32,7 +32,7 @@ interface UIState {
   spaceOpInProgress: null | 'creating' | 'deleting';
   /**
    * Space id currently being previewed in the read-only sheet (drawer
-   * 查看 action). `null` = sheet closed.
+   * "View" action). `null` = sheet closed.
    */
   readOnlyViewSpaceId: string | null;
   setChatPanelCollapsed: (collapsed: boolean) => void;

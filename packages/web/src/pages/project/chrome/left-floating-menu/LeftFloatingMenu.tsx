@@ -10,6 +10,7 @@ import {
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n/use-translation';
 
 export type LeftMenuTool =
   | 'nodes'
@@ -19,10 +20,18 @@ export type LeftMenuTool =
   | 'help'
   | 'feedback';
 
+type MenuLabelKey =
+  | 'menu.item.nodes'
+  | 'menu.item.upload'
+  | 'menu.item.comment'
+  | 'menu.item.assetGroup'
+  | 'menu.item.help'
+  | 'menu.item.feedback';
+
 interface MenuItem {
   id: LeftMenuTool;
   icon: LucideIcon;
-  label: string;
+  labelKey: MenuLabelKey;
   placeholder?: boolean;
 }
 
@@ -31,38 +40,38 @@ interface MenuItem {
  * (finalized.html lines 1248-1258):
  *
  *   Upper zone — core 3 (M0' functional placeholder):
- *     - nodes (节点库,sparkles)
- *     - upload (上传素材,upload)
- *     - comment (批注,message-circle)
+ *     - nodes (node library, sparkles)
+ *     - upload (upload assets, upload)
+ *     - comment (annotate, message-circle)
  *   Divider
  *   Lower zone — placeholders (M1+, muted color, toast on click):
- *     - asset-group (资产组,folders)
- *     - help (帮助,help-circle)
- *     - feedback (反馈,headphones)
+ *     - asset-group (asset group, folders)
+ *     - help (help, help-circle)
+ *     - feedback (feedback, headphones)
  */
 const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
-  { id: 'nodes', icon: Sparkles, label: '节点库 — 4 类生成节点' },
-  { id: 'upload', icon: Upload, label: '上传素材(多文件混合)' },
-  { id: 'comment', icon: MessageCircle, label: '在画布加批注' },
+  { id: 'nodes', icon: Sparkles, labelKey: 'menu.item.nodes' },
+  { id: 'upload', icon: Upload, labelKey: 'menu.item.upload' },
+  { id: 'comment', icon: MessageCircle, labelKey: 'menu.item.comment' },
 ];
 
 const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
   {
     id: 'asset-group',
     icon: Folders,
-    label: '资产组 — 跨项目共享素材(敬请期待)',
+    labelKey: 'menu.item.assetGroup',
     placeholder: true,
   },
   {
     id: 'help',
     icon: HelpCircle,
-    label: '帮助(敬请期待)',
+    labelKey: 'menu.item.help',
     placeholder: true,
   },
   {
     id: 'feedback',
     icon: Headphones,
-    label: '反馈 / 客服(敬请期待)',
+    labelKey: 'menu.item.feedback',
     placeholder: true,
   },
 ];
@@ -94,9 +103,10 @@ interface LeftFloatingMenuProps {
  *   - 28px wide, 1px border-color line, 4px vertical margin
  */
 export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
+  const t = useTranslation();
   return (
     <nav
-      aria-label='创建菜单'
+      aria-label={t('menu.createAria')}
       data-testid='left-floating-menu'
       className='absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm'
     >
@@ -134,13 +144,15 @@ function MenuButton({
   active: boolean;
   onPick: (tool: LeftMenuTool) => void;
 }) {
+  const t = useTranslation();
   const Icon = item.icon;
+  const label = t(item.labelKey);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type='button'
-          aria-label={item.label}
+          aria-label={label}
           aria-pressed={active}
           onClick={() => onPick(item.id)}
           data-testid={`tool-${item.id}`}
@@ -156,7 +168,7 @@ function MenuButton({
           <Icon className='h-5 w-5' />
         </button>
       </TooltipTrigger>
-      <TooltipContent side='right'>{item.label}</TooltipContent>
+      <TooltipContent side='right'>{label}</TooltipContent>
     </Tooltip>
   );
 }
