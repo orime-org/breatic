@@ -1,11 +1,11 @@
 import {
-  AlignCenterHorizontal,
-  Expand,
   Grid3x3,
   Map as MinimapIcon,
   Maximize2,
   Minus,
   Plus,
+  Redo2,
+  Undo2,
 } from 'lucide-react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,49 +16,62 @@ interface ViewportToolbarProps {
   zoom: number;
   minimapVisible: boolean;
   snapToGrid: boolean;
-  alignActive: boolean;
+  /**
+   * Canvas history availability. Both default to `false` so the toolbar
+   * renders the undo / redo buttons in their disabled state until a
+   * future PR wires the canvas history engine (Yjs `UndoManager` or
+   * equivalent). When that lands, drive these flags from the history
+   * snapshot — the props surface is intentionally minimal so the
+   * toolbar stays presentation-only.
+   */
+  canUndo?: boolean;
+  canRedo?: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
   onFit: () => void;
-  onExpand: () => void;
   onToggleSnap: () => void;
-  onToggleAlign: () => void;
   onToggleMinimap: () => void;
+  /** Optional — wired when the history engine lands. */
+  onUndo?: () => void;
+  /** Optional — wired when the history engine lands. */
+  onRedo?: () => void;
 }
 
 /**
- * Floating overlay sitting in the canvas viewport's bottom-right —
- * chrome-baseline mock `.viewport-toolbar` (finalized.html CSS 984-1008
- * + HTML 1260-1278).
+ * Floating overlay sitting in the canvas viewport's bottom-right.
  *
- * Four groups separated by 1px dividers (`.group + .group { border-left }`):
- *   1. Zoom: -  100%  +
- *   2. Fit / expand
- *   3. Grid snap / align
- *   4. Minimap toggle
+ * Eight buttons in four groups separated by 1px dividers:
+ *   1. History:  ↶ undo  ↷ redo
+ *   2. Zoom:     -  100%  +
+ *   3. Fit:      ⤢ fit
+ *   4. View aux: ▦ snap-to-grid   ▤ minimap
  *
  * Notes:
- *   - This toolbar has NO viewport-lock button (the "lock" concept in
- *     breatic is space-level, surfaced only in the SpaceDrawer hover
- *     actions and the SpaceTab indicator — not a per-user view state).
+ *   - History buttons render but stay disabled until the canvas undo
+ *     engine is wired (props default `canUndo` / `canRedo` to `false`,
+ *     and `onUndo` / `onRedo` are optional). Source comment + the
+ *     button's disabled visual state document this placeholder status.
  *   - 32px (`--btn-chrome`) hit areas, 6px chrome radius.
  *   - `bg-popover` elevated surface + `shadow` so it floats above the
  *     dot-grid canvas.
+ *   - No viewport-lock button (lock is space-level, surfaced in the
+ *     SpaceDrawer hover actions and SpaceTab indicator).
  */
 export function ViewportToolbar({
   zoom,
   minimapVisible,
   snapToGrid,
-  alignActive,
+  canUndo = false,
+  canRedo = false,
   onZoomIn,
   onZoomOut,
   onZoomReset,
   onFit,
-  onExpand,
   onToggleSnap,
-  onToggleAlign,
   onToggleMinimap,
+  onUndo,
+  onRedo,
 }: ViewportToolbarProps) {
   const t = useTranslation();
   return (
@@ -68,6 +81,24 @@ export function ViewportToolbar({
       aria-label={t('viewportToolbar.aria')}
       className='absolute bottom-4 right-4 z-10 flex rounded-chrome border border-border bg-popover p-1 shadow'
     >
+      <Group>
+        <VtButton
+          aria-label={t('viewportToolbar.undo')}
+          tooltip={t('viewportToolbar.undo')}
+          onClick={onUndo}
+          disabled={!canUndo}
+        >
+          <Undo2 className='h-3.5 w-3.5' />
+        </VtButton>
+        <VtButton
+          aria-label={t('viewportToolbar.redo')}
+          tooltip={t('viewportToolbar.redo')}
+          onClick={onRedo}
+          disabled={!canRedo}
+        >
+          <Redo2 className='h-3.5 w-3.5' />
+        </VtButton>
+      </Group>
       <Group>
         <VtButton
           aria-label={t('viewportToolbar.zoomOut')}
@@ -104,15 +135,8 @@ export function ViewportToolbar({
         >
           <Maximize2 className='h-3.5 w-3.5' />
         </VtButton>
-        <VtButton
-          aria-label={t('viewportToolbar.expand')}
-          tooltip={t('viewportToolbar.expand')}
-          onClick={onExpand}
-        >
-          <Expand className='h-3.5 w-3.5' />
-        </VtButton>
       </Group>
-      <Group>
+      <Group last>
         <VtButton
           aria-label={
             snapToGrid
@@ -126,21 +150,6 @@ export function ViewportToolbar({
         >
           <Grid3x3 className='h-3.5 w-3.5' />
         </VtButton>
-        <VtButton
-          aria-label={
-            alignActive
-              ? t('viewportToolbar.guides.off')
-              : t('viewportToolbar.guides.on')
-          }
-          tooltip={t('viewportToolbar.guides.label')}
-          onClick={onToggleAlign}
-          aria-pressed={alignActive}
-          active={alignActive}
-        >
-          <AlignCenterHorizontal className='h-3.5 w-3.5' />
-        </VtButton>
-      </Group>
-      <Group last>
         <VtButton
           aria-label={
             minimapVisible
@@ -183,18 +192,27 @@ interface VtButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   active?: boolean;
 }
 
-function VtButton({ tooltip, active, children, ...rest }: VtButtonProps) {
+function VtButton({
+  tooltip,
+  active,
+  disabled,
+  children,
+  ...rest
+}: VtButtonProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type='button'
           {...rest}
+          disabled={disabled}
           className={cn(
             'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-chrome text-[13px] transition-colors',
-            active
-              ? 'bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+            disabled
+              ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
+              : active
+                ? 'bg-foreground text-background'
+                : 'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
           )}
         >
           {children}

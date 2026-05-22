@@ -193,7 +193,6 @@ export default function ProjectPage() {
   const [zoom, setZoom] = React.useState(1);
   const [minimapVisible, setMinimapVisible] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
-  const [alignActive, setAlignActive] = React.useState(false);
 
   // ---- Handlers ----
 
@@ -311,17 +310,14 @@ export default function ProjectPage() {
                   zoom={zoom}
                   minimapVisible={minimapVisible}
                   snapToGrid={snapToGrid}
-                  alignActive={alignActive}
                   onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
                   onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
                   onZoomReset={() => setZoom(1)}
                   onFit={() => setZoom(1)}
-                  onExpand={() => {
-                    /* M0' placeholder; full-screen toggle wired when API lands */
-                  }}
                   onToggleSnap={() => setSnapToGrid((v) => !v)}
-                  onToggleAlign={() => setAlignActive((v) => !v)}
                   onToggleMinimap={() => setMinimapVisible((v) => !v)}
+                  // Undo/redo render disabled until the canvas history
+                  // engine lands; canUndo/canRedo default to false.
                 />
               </>
             ) : null}

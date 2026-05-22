@@ -1078,7 +1078,9 @@
       "show": "Show minimap",
       "hide": "Hide minimap",
       "label": "Minimap"
-    }
+    },
+    "undo": "Undo",
+    "redo": "Redo"
   },
   "lang": {
     "en": {
