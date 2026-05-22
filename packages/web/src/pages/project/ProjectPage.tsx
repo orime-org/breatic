@@ -312,7 +312,6 @@ export default function ProjectPage() {
                   snapToGrid={snapToGrid}
                   onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
                   onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
-                  onZoomReset={() => setZoom(1)}
                   onZoomChange={(z) => setZoom(z)}
                   onFit={() => setZoom(1)}
                   onToggleSnap={() => setSnapToGrid((v) => !v)}

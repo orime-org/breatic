@@ -12,7 +12,6 @@ function setup(
   const handlers = {
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
-    onZoomReset: vi.fn(),
     onZoomChange: vi.fn(),
     onFit: vi.fn(),
     onToggleSnap: vi.fn(),
@@ -61,12 +60,14 @@ describe('ViewportToolbar', () => {
     expect(await screen.findByTestId('zoom-menu')).toBeInTheDocument();
   });
 
-  it('100% preset invokes onZoomReset (keeps the reset behavior)', async () => {
+  it('every preset (including 100%) calls onZoomChange and closes the popover', async () => {
     const user = userEvent.setup();
     const handlers = setup();
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     await user.click(await screen.findByTestId('zoom-preset-100'));
-    expect(handlers.onZoomReset).toHaveBeenCalledTimes(1);
+    expect(handlers.onZoomChange).toHaveBeenCalledWith(1);
+    // popover should be closed after applying
+    expect(screen.queryByTestId('zoom-menu')).not.toBeInTheDocument();
   });
 
   it('non-100% preset calls onZoomChange with the preset value', async () => {

@@ -39,9 +39,8 @@ interface ViewportToolbarProps {
   canRedo?: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onZoomReset: () => void;
   /** Apply an arbitrary zoom (popover preset / custom input). */
-  onZoomChange?: (zoom: number) => void;
+  onZoomChange: (zoom: number) => void;
   onFit: () => void;
   onToggleSnap: () => void;
   onToggleMinimap: () => void;
@@ -79,7 +78,6 @@ export function ViewportToolbar({
   canRedo = false,
   onZoomIn,
   onZoomOut,
-  onZoomReset,
   onZoomChange,
   onFit,
   onToggleSnap,
@@ -121,11 +119,7 @@ export function ViewportToolbar({
         >
           <Minus className='h-3.5 w-3.5' />
         </VtButton>
-        <ZoomMenu
-          zoom={zoom}
-          onZoomChange={onZoomChange ?? onZoomReset.bind(null)}
-          onZoomReset={onZoomReset}
-        />
+        <ZoomMenu zoom={zoom} onZoomChange={onZoomChange} />
         <VtButton
           aria-label={t('viewportToolbar.zoomIn')}
           tooltip={t('viewportToolbar.zoomIn')}
@@ -238,7 +232,6 @@ function VtButton({
 interface ZoomMenuProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
-  onZoomReset: () => void;
 }
 
 /**
@@ -250,11 +243,16 @@ interface ZoomMenuProps {
  * popover; the value is clamped to [10%, 400%]. Input accepts
  * `"150"` or `"150%"`.
  *
+ * Every preset (including 100%) goes through the same `apply` path —
+ * there is no "reset" specialcase. "Going back to 100%" is just
+ * applying the 100% preset; treating it differently was the source of
+ * a missing-close bug in the first cut.
+ *
  * Zoom is currently a ProjectPage local state placeholder — when
  * ReactFlow integration lands, `onZoomChange` should drive the
  * `setViewport` API and `zoom` should read back from it.
  */
-function ZoomMenu({ zoom, onZoomChange, onZoomReset }: ZoomMenuProps) {
+function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState('');
@@ -316,21 +314,16 @@ function ZoomMenu({ zoom, onZoomChange, onZoomReset }: ZoomMenuProps) {
               <button
                 key={preset}
                 type='button'
-                onClick={() => (preset === 1 ? onZoomReset() : apply(preset))}
+                onClick={() => apply(preset)}
                 data-testid={`zoom-preset-${Math.round(preset * 100)}`}
                 className={cn(
-                  'inline-flex h-7 items-center justify-between rounded-chrome px-2 text-[12px] transition-colors',
+                  'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-[12px] transition-colors',
                   isCurrent
                     ? 'bg-foreground text-background'
                     : 'bg-transparent text-foreground hover:bg-chrome-hover',
                 )}
               >
-                <span>{label}</span>
-                {preset === 1 ? (
-                  <span className='text-[10px] text-muted-foreground'>
-                    {t('viewportToolbar.zoomReset')}
-                  </span>
-                ) : null}
+                {label}
               </button>
             );
           })}
