@@ -105,14 +105,14 @@ export function SpaceTab({
           aria-label='Locked'
         />
       ) : null}
-      {onClose && !locked ? (
+      {onClose ? (
         <span
           role='button'
           tabIndex={-1}
-          aria-label='Close space'
+          aria-label='Close space tab'
           onClick={onCloseClick}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity hover:bg-neutral-200 hover:text-foreground group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>

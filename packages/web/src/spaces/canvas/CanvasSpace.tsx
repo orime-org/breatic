@@ -1,24 +1,49 @@
 import type { SpaceBodyProps } from '@/spaces';
 
 /**
- * Canvas space body — placeholder for PR 4. The full ReactFlow + Yjs
- * binding + node toolbar + reference chips wiring lands in later PRs
- * (PR 5: shared atoms; PR 6: typed nodes; PR 7: toolbar; PR 8: annotation).
+ * Canvas space body — chrome-baseline mock `.canvas-area` (finalized.html
+ * CSS 904-929 + HTML 1239-1245).
  *
- * For now this is the structural slot the SpaceOutlet renders so the chrome
- * layer (top-bar / tab-bar / left-menu / viewport-toolbar) has a body to
- * frame.
+ * Background:
+ *   - 24px dot grid (radial-gradient circle 1px on neutral-200) over a
+ *     `--neutral-50` elevated surface; light + dark auto-invert via the
+ *     neutral token cascade
+ *   - dot grid is painted via inline `background-image` because Tailwind
+ *     can't express the `radial-gradient + solid color` composite without
+ *     a custom utility, and this lives on exactly one element
+ *
+ * Empty state (when no nodes exist yet, M0' placeholder):
+ *   - centered hint card with dashed border + content radius (`rounded-lg`)
+ *   - title "画布是空的" + sub-hint "拖入素材到画布,或从左侧菜单选择节点类型创建"
+ *
+ * The full ReactFlow + Yjs binding + node toolbar + reference chips
+ * wiring lands in later PRs; this PR just gets the surface visually
+ * correct so chrome layered components (LeftFloatingMenu /
+ * ViewportToolbar) sit on the mock-aligned canvas.
  */
 export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
   return (
     <div
       data-testid='canvas-space'
-      className='relative flex h-full w-full items-center justify-center bg-muted text-sm text-muted-foreground'
+      data-project-id={projectId}
+      data-space-id={spaceId}
+      className='relative h-full w-full overflow-hidden bg-popover'
+      style={{
+        backgroundImage:
+          'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
+        backgroundSize: '24px 24px',
+        backgroundPosition: '0 0',
+      }}
     >
-      <div className='text-center'>
-        <div>Canvas space</div>
-        <div className='mt-1 text-xs opacity-60'>
-          project {projectId} · space {spaceId}
+      <div
+        data-testid='canvas-empty'
+        className='absolute inset-0 flex items-center justify-center text-center text-[13px] leading-relaxed text-muted-foreground'
+      >
+        <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
+          <strong className='block text-foreground'>画布是空的</strong>
+          <span className='text-[12px] text-muted-foreground'>
+            拖入素材到画布,或从左侧菜单选择节点类型创建
+          </span>
         </div>
       </div>
     </div>

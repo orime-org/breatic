@@ -49,6 +49,7 @@ export type {
   MembersChangedEvent,
   SpaceCreatedEvent,
   SpaceDeletedEvent,
+  SpaceLockedEvent,
 } from "./types/index.js";
 
 export {
@@ -56,6 +57,7 @@ export {
   membersChangedChannel,
   spaceCreatedChannel,
   spaceDeletedChannel,
+  spaceLockedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
 } from "./types/index.js";
 

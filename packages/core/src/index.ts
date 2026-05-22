@@ -36,6 +36,7 @@ export {
   publishMembersChanged,
   publishSpaceCreated,
   publishSpaceDeleted,
+  publishSpaceLocked,
 } from "./infra/control-events.js";
 export { sendMail } from "./infra/mailer.js";
 export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";

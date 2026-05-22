@@ -16,17 +16,22 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onActivate = vi.fn();
   const onCreate = vi.fn();
   const onClose = vi.fn();
+  const onViewSpace = vi.fn();
   render(
     <SpaceTabBar
       spaces={SPACES}
+      allSpaces={SPACES}
+      openTabIds={SPACES.map((s) => s.id)}
       activeSpaceId='s1'
+      projectId='p1'
       onActivate={onActivate}
       onCreate={onCreate}
       onClose={onClose}
+      onViewSpace={onViewSpace}
       {...overrides}
     />,
   );
-  return { onActivate, onCreate, onClose };
+  return { onActivate, onCreate, onClose, onViewSpace };
 }
 
 describe('SpaceTabBar', () => {
@@ -34,7 +39,7 @@ describe('SpaceTabBar', () => {
     useUIStore.getState().setChatPanelCollapsed(false);
   });
 
-  it('renders one tab per space', () => {
+  it('renders one tab per open space', () => {
     setup();
     expect(screen.getByTestId('space-tab-s1')).toBeInTheDocument();
     expect(screen.getByTestId('space-tab-s2')).toBeInTheDocument();
@@ -62,11 +67,10 @@ describe('SpaceTabBar', () => {
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
   });
 
-  it('locked space does NOT render a close button', () => {
+  it('close button is rendered for every tab regardless of lock (close ≠ delete)', () => {
     setup();
-    expect(
-      screen.queryByTestId('space-tab-close-s3'),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('space-tab-close-s1')).toBeInTheDocument();
+    expect(screen.getByTestId('space-tab-close-s3')).toBeInTheDocument();
   });
 
   it('+ button, drawer trigger, history trigger all present (right group)', () => {

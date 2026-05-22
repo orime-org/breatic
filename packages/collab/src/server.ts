@@ -130,7 +130,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     // Document size limit — reject updates that would exceed max
-    onChange: async ({ documentName, document }) => {
+    onChange: async ({ documentName, document, context }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
         if (size > cfg.max_document_bytes) {
@@ -141,6 +141,37 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           // Note: Hocuspocus does not support rejecting individual updates.
           // This log serves as an alert. To enforce hard limits, implement
           // a custom extension that closes connections on oversized documents.
+        }
+      }
+
+      // Per-user write boundary audit (decision F.2).
+      // The `perUser` Y.Map in `projectMetaDocName` partitions per-user
+      // UI state (openTabIds + activeSpaceId) by userId. A correctly
+      // behaving client only writes its OWN userId key. This audit walks
+      // perUser keys and warns if the connected user.id is missing from
+      // perUser entirely (suggesting they wrote zero keys, fine) but
+      // there are keys we don't have a way to attribute — flag for
+      // future strict enforcement.
+      //
+      // True strict enforcement requires `beforeHandleMessage` to parse
+      // the binary Y.Doc update and reject cross-user writes before
+      // they apply. Scoped to follow-up PR — the audit log here gives
+      // us telemetry to size the threat before paying the parsing cost.
+      const ctx = context as { user?: { id?: string } };
+      const userId = ctx.user?.id;
+      if (userId && documentName.endsWith("/meta")) {
+        const perUser = document.getMap("perUser");
+        const keys = Array.from(perUser.keys());
+        const foreignKeys = keys.filter((k) => k !== userId && k !== "system");
+        if (foreignKeys.length > 0) {
+          logger.warn(
+            {
+              documentName,
+              userId,
+              foreignKeys,
+            },
+            "per_user_write_boundary_audit — connected user observed peers' perUser keys; expected with multi-user collaboration but track for follow-up strict enforcement",
+          );
         }
       }
     },

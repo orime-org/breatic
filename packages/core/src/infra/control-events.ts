@@ -39,9 +39,11 @@ import {
   membersChangedChannel,
   spaceCreatedChannel,
   spaceDeletedChannel,
+  spaceLockedChannel,
   type MembersChangedEvent,
   type SpaceCreatedEvent,
   type SpaceDeletedEvent,
+  type SpaceLockedEvent,
 } from "@breatic/shared";
 
 /**
@@ -126,5 +128,34 @@ export async function publishSpaceDeleted(
   logger.debug(
     { projectId, spaceId: detail.spaceId },
     "space_deleted_published",
+  );
+}
+
+/**
+ * Publish a `space:locked` event for a project (toggle on / off).
+ *
+ * The lock is a UX guard against accidental deletion — `meta.spaces[id].locked = true`
+ * makes the SpaceDrawer disable the delete action. Anyone with edit
+ * role can still mutate the doc itself; this is not a security
+ * boundary.
+ *
+ * @param projectId - Project UUID
+ * @param detail - Space id, new lock state, actor (without auto-stamped fields)
+ */
+export async function publishSpaceLocked(
+  projectId: string,
+  detail: Omit<SpaceLockedEvent, "type" | "projectId" | "ts">,
+): Promise<void> {
+  const event: SpaceLockedEvent = {
+    type: "project-space:locked",
+    projectId,
+    ts: Date.now(),
+    ...detail,
+  };
+  const redis = getStreamRedis();
+  await redis.publish(spaceLockedChannel(projectId), JSON.stringify(event));
+  logger.debug(
+    { projectId, spaceId: detail.spaceId, locked: detail.locked },
+    "space_locked_published",
   );
 }

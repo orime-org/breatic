@@ -21,6 +21,20 @@ interface UIState {
   shareOpen: boolean;
   /** Members management modal open state. */
   membersModalOpen: boolean;
+  /**
+   * Loading overlay phase for Space-level operations. `null` = no overlay.
+   * `"creating"` = waiting for server-published create event to propagate
+   * through collab → Y.Doc → WS. `"deleting"` = same flow for soft-delete.
+   * The overlay sits above the Project page and blocks duplicate clicks
+   * during the round trip; auto-dismisses on Y.Doc sync or after the
+   * 10-second safety timeout.
+   */
+  spaceOpInProgress: null | 'creating' | 'deleting';
+  /**
+   * Space id currently being previewed in the read-only sheet (drawer
+   * 查看 action). `null` = sheet closed.
+   */
+  readOnlyViewSpaceId: string | null;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
   setDrawerOpen: (open: boolean) => void;
@@ -29,6 +43,8 @@ interface UIState {
   popModal: () => void;
   setShareOpen: (open: boolean) => void;
   setMembersModalOpen: (open: boolean) => void;
+  setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
+  setReadOnlyViewSpaceId: (id: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -39,6 +55,8 @@ export const useUIStore = create<UIState>()(
     modalStack: [],
     shareOpen: false,
     membersModalOpen: false,
+    spaceOpInProgress: null,
+    readOnlyViewSpaceId: null,
     setChatPanelCollapsed: (collapsed) =>
       set((s) => {
         s.chatPanelCollapsed = collapsed;
@@ -70,6 +88,14 @@ export const useUIStore = create<UIState>()(
     setMembersModalOpen: (open) =>
       set((s) => {
         s.membersModalOpen = open;
+      }),
+    setSpaceOpInProgress: (op) =>
+      set((s) => {
+        s.spaceOpInProgress = op;
+      }),
+    setReadOnlyViewSpaceId: (id) =>
+      set((s) => {
+        s.readOnlyViewSpaceId = id;
       }),
   })),
 );
