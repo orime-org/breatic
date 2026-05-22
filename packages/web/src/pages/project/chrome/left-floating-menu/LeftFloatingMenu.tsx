@@ -159,10 +159,18 @@ function MenuButton({
           className={cn(
             'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
             active
-              ? 'bg-foreground text-background shadow-sm'
+              ? // Active button: solid swap to `--color-primary-hover` (light
+                // = neutral-700, dark = neutral-500) — same hover treatment
+                // Button / Badge / ChatComposer send use for foreground-bg
+                // buttons, so chrome stays consistent.
+                'bg-foreground text-background shadow-sm hover:bg-primary-hover'
               : item.placeholder
                 ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
-                : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+                : // Inactive hover: solid swap to `--color-chrome-hover` (=
+                  // neutral-200, mode-swapping via the neutral primitive) —
+                  // one step darker than `--color-muted` so the hover reads
+                  // against the popover surface in both light + dark.
+                  'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
           )}
         >
           <Icon className='h-5 w-5' />

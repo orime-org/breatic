@@ -173,6 +173,16 @@ html[data-theme='light'] {
   --color-muted-foreground: var(--neutral-500);
   --color-accent: var(--neutral-100);
   --color-accent-foreground: var(--neutral-900);
+  /* Chrome hover — one step darker than `--color-muted` so the hover
+     state remains visible against the popover surface in both modes.
+     `--color-muted` (= neutral-100) collapses to ~5% delta against
+     the white popover in light mode and reads as no-hover. neutral-200
+     (#e7e5e4 light / #44403c dark) lands at ~10%/~18% delta, which
+     is the same perceptual band as PR #115's `--color-primary-hover`
+     uses for foreground-bg buttons, so chrome buttons match. No dark
+     override needed — `var(--neutral-200)` mode-swaps via the
+     neutral primitive. */
+  --color-chrome-hover: var(--neutral-200);
   --color-border: var(--neutral-200);
   --color-input: var(--neutral-200);
   --color-ring: var(--neutral-900);
