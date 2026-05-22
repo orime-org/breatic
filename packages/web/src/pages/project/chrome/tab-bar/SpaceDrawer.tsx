@@ -107,7 +107,7 @@ export function SpaceDrawer({
         </Button>
       </SheetTrigger>
       <SheetContent
-        side='right'
+        side='right-floating'
         className='flex w-[min(420px,90vw)] flex-col p-0 sm:max-w-none'
         data-testid='space-drawer'
       >

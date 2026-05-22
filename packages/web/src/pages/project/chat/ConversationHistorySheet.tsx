@@ -73,7 +73,7 @@ export function ConversationHistorySheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side='left'
+        side='left-floating'
         className='w-80 p-0'
         data-testid='conversation-history-sheet'
       >

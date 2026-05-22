@@ -75,7 +75,7 @@ export function ChatComposer({
   return (
     <div
       data-testid='chat-composer'
-      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-popover transition-colors focus-within:border-muted-foreground'
+      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-elevated transition-colors focus-within:border-muted-foreground'
     >
       <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <button
@@ -177,7 +177,7 @@ export function ChatComposer({
             data-testid='chat-composer-send'
             className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
               ready
-                ? 'bg-foreground text-background hover:opacity-90'
+                ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
                 : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
             }`}
           >

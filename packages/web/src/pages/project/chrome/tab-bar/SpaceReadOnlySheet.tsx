@@ -47,7 +47,7 @@ export function SpaceReadOnlySheet({
   return (
     <Sheet open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
       <SheetContent
-        side='right'
+        side='right-floating'
         className='flex w-[min(720px,90vw)] flex-col p-0 sm:max-w-none'
         data-testid='space-read-only-sheet'
       >

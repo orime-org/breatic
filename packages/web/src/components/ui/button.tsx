@@ -16,7 +16,7 @@ const buttonVariants = cva(
         // visible feedback. See inner ADR 2026-05-21-hover-pattern-
         // standard for rationale.
         default:
-          'bg-primary text-primary-foreground transition-opacity hover:opacity-90',
+          'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
         destructive:
           'bg-destructive text-destructive-foreground transition-opacity hover:opacity-90',
         outline:

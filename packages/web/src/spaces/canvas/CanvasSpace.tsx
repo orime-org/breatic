@@ -27,7 +27,7 @@ export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
       data-testid='canvas-space'
       data-project-id={projectId}
       data-space-id={spaceId}
-      className='relative h-full w-full overflow-hidden bg-popover'
+      className='relative h-full w-full overflow-hidden bg-elevated'
       style={{
         backgroundImage:
           'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
@@ -39,7 +39,7 @@ export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
         data-testid='canvas-empty'
         className='absolute inset-0 flex items-center justify-center text-center text-[13px] leading-relaxed text-muted-foreground'
       >
-        <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
+        <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-elevated px-6 py-4'>
           <strong className='block text-foreground'>画布是空的</strong>
           <span className='text-[12px] text-muted-foreground'>
             拖入素材到画布,或从左侧菜单选择节点类型创建
