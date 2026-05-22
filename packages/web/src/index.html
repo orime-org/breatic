@@ -11,6 +11,29 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="alternate icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script>
+      // Apply persisted theme before React mounts so a cold load does
+      // not flash the default theme then snap to the user's choice
+      // (FOUC). Mirrors the `breatic.preferences` Zustand persist
+      // key shape — update both sites if the storage shape changes.
+      (function () {
+        try {
+          var raw = localStorage.getItem('breatic.preferences');
+          var stored = raw ? (JSON.parse(raw).state || {}).theme : null;
+          var effective = stored;
+          if (!stored || stored === 'system') {
+            effective = window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+          }
+          document.documentElement.dataset.theme = effective;
+        } catch (e) {
+          // localStorage or JSON parse may fail (private mode, quota,
+          // corrupted value); React's ThemeToggle effect will repair
+          // on mount.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
