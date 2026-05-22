@@ -3,7 +3,7 @@
  *
  * Unlike AIGC mini-tools (async Worker + Yjs), text tools stream
  * results directly to the requesting client via SSE. The user
- * sees a打字机 effect and can abort mid-stream.
+ * sees a typewriter effect and can abort mid-stream.
  */
 
 import { randomUUID } from "node:crypto";

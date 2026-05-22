@@ -2,7 +2,7 @@
  * Shared API envelope + error types (mirrors backend `AppError`).
  *
  * Backend wraps all successful responses in `{ data: T }` envelope
- * (ApiResponse 规约; DD orime-org/breatic-inner-design#152). Errors throw
+ * (ApiResponse contract; DD orime-org/breatic-inner-design#152). Errors throw
  * `AppError(status, msg)` → handler returns JSON `{ error: { code, message } }`.
  * Helpers in `request.ts` unwrap the `data` envelope on success and the
  * `error` envelope on failure.

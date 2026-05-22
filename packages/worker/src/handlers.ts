@@ -148,7 +148,7 @@ function resolveCanvasDocName(
  *     so it's a no-op if the TTL already expired or another task reclaimed
  *     the node.
  *
- * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 异常路径
+ * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 (error path)
  * (Worker crash → finally block del lock; if that also fails, the TTL is
  * the safety net).
  */

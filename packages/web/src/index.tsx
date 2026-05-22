@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import App from '@/App';
 import '@/index.css';
+import { bootstrapLocale } from '@/i18n/locale-bootstrap';
+
+// i18n must initialize before any component renders useTranslation().
+bootstrapLocale();
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,

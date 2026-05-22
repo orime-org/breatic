@@ -10,6 +10,7 @@ import {
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface ViewportToolbarProps {
   zoom: number;
@@ -59,20 +60,25 @@ export function ViewportToolbar({
   onToggleAlign,
   onToggleMinimap,
 }: ViewportToolbarProps) {
+  const t = useTranslation();
   return (
     <div
       data-testid='viewport-toolbar'
       role='toolbar'
-      aria-label='视口工具'
+      aria-label={t('viewportToolbar.aria')}
       className='absolute bottom-4 right-4 z-10 flex rounded-chrome border border-border bg-popover p-1 shadow'
     >
       <Group>
-        <VtButton aria-label='缩小' tooltip='缩小' onClick={onZoomOut}>
+        <VtButton
+          aria-label={t('viewportToolbar.zoomOut')}
+          tooltip={t('viewportToolbar.zoomOut')}
+          onClick={onZoomOut}
+        >
           <Minus className='h-3.5 w-3.5' />
         </VtButton>
         <VtButton
-          aria-label='缩放重置 100%'
-          tooltip='重置缩放'
+          aria-label={t('viewportToolbar.zoomResetAria')}
+          tooltip={t('viewportToolbar.zoomReset')}
           onClick={onZoomReset}
         >
           <span
@@ -82,22 +88,38 @@ export function ViewportToolbar({
             {Math.round(zoom * 100)}%
           </span>
         </VtButton>
-        <VtButton aria-label='放大' tooltip='放大' onClick={onZoomIn}>
+        <VtButton
+          aria-label={t('viewportToolbar.zoomIn')}
+          tooltip={t('viewportToolbar.zoomIn')}
+          onClick={onZoomIn}
+        >
           <Plus className='h-3.5 w-3.5' />
         </VtButton>
       </Group>
       <Group>
-        <VtButton aria-label='适应窗口' tooltip='适应' onClick={onFit}>
+        <VtButton
+          aria-label={t('viewportToolbar.fitAria')}
+          tooltip={t('viewportToolbar.fit')}
+          onClick={onFit}
+        >
           <Maximize2 className='h-3.5 w-3.5' />
         </VtButton>
-        <VtButton aria-label='全屏' tooltip='全屏' onClick={onExpand}>
+        <VtButton
+          aria-label={t('viewportToolbar.expand')}
+          tooltip={t('viewportToolbar.expand')}
+          onClick={onExpand}
+        >
           <Expand className='h-3.5 w-3.5' />
         </VtButton>
       </Group>
       <Group>
         <VtButton
-          aria-label={snapToGrid ? '关闭网格吸附' : '开启网格吸附'}
-          tooltip='网格吸附'
+          aria-label={
+            snapToGrid
+              ? t('viewportToolbar.snap.off')
+              : t('viewportToolbar.snap.on')
+          }
+          tooltip={t('viewportToolbar.snap.label')}
           onClick={onToggleSnap}
           aria-pressed={snapToGrid}
           active={snapToGrid}
@@ -105,8 +127,12 @@ export function ViewportToolbar({
           <Grid3x3 className='h-3.5 w-3.5' />
         </VtButton>
         <VtButton
-          aria-label={alignActive ? '关闭对齐参考线' : '开启对齐参考线'}
-          tooltip='对齐参考线'
+          aria-label={
+            alignActive
+              ? t('viewportToolbar.guides.off')
+              : t('viewportToolbar.guides.on')
+          }
+          tooltip={t('viewportToolbar.guides.label')}
           onClick={onToggleAlign}
           aria-pressed={alignActive}
           active={alignActive}
@@ -116,8 +142,12 @@ export function ViewportToolbar({
       </Group>
       <Group last>
         <VtButton
-          aria-label={minimapVisible ? '隐藏缩略图' : '显示缩略图'}
-          tooltip='缩略图'
+          aria-label={
+            minimapVisible
+              ? t('viewportToolbar.minimap.hide')
+              : t('viewportToolbar.minimap.show')
+          }
+          tooltip={t('viewportToolbar.minimap.label')}
           onClick={onToggleMinimap}
           aria-pressed={minimapVisible}
           active={minimapVisible}

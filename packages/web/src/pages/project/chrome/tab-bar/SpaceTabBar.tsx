@@ -32,7 +32,7 @@ interface SpaceTabBarProps {
   onCreate: (type: SpaceType, name: string) => Promise<void> | void;
   /** Close a tab — does NOT delete the Space, just removes from the bar. */
   onClose?: (id: string) => void;
-  /** Open the read-only preview sheet for a Space (drawer 查看 action). */
+  /** Open the read-only preview sheet for a Space (drawer "view" action). */
   onViewSpace: (id: string) => void;
 }
 

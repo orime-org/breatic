@@ -1,6 +1,8 @@
 import { ArrowUp, Square, SquareMousePointer, Wand2 } from 'lucide-react';
 import * as React from 'react';
 
+import { useTranslation } from '@/i18n/use-translation';
+
 interface ReferenceChip {
   id: string;
   label: string;
@@ -65,6 +67,7 @@ export function ChatComposer({
   onPickSkill,
   onRemoveChip,
 }: ChatComposerProps) {
+  const t = useTranslation();
   const ready = draft.trim().length > 0 && !streaming;
 
   const submit = () => {
@@ -80,8 +83,8 @@ export function ChatComposer({
       <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <button
           type='button'
-          aria-label='选中模式 — 在画布点节点添加引用'
-          title='选中模式'
+          aria-label={t('chat.composer.selectMode.label')}
+          title={t('chat.composer.selectMode.title')}
           onClick={onToggleSelectMode}
           data-testid='chat-composer-select-mode'
           aria-pressed={selectMode}
@@ -97,7 +100,7 @@ export function ChatComposer({
           className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
           data-testid='chat-composer-chips'
           role='list'
-          aria-label='已选 chips'
+          aria-label={t('chat.composer.chipsAria')}
         >
           {chips.map((chip) => (
             <span
@@ -135,17 +138,17 @@ export function ChatComposer({
             submit();
           }
         }}
-        placeholder='描述你想做什么(用 @ 引用上方 chips)…'
+        placeholder={t('chat.composer.placeholder')}
         rows={3}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-[13px] leading-normal text-foreground outline-none placeholder:text-muted-foreground'
-        aria-label='Chat 输入'
+        aria-label={t('chat.composer.inputAria')}
         data-testid='chat-composer-textarea'
       />
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
         <button
           type='button'
-          aria-label='选择 Skill 限定 agent 行为'
-          title='选择 Skill'
+          aria-label={t('chat.composer.skill.label')}
+          title={t('chat.composer.skill.title')}
           onClick={onPickSkill}
           data-testid='chat-composer-skill'
           className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-[12px] font-medium transition-colors ${
@@ -170,8 +173,8 @@ export function ChatComposer({
         ) : (
           <button
             type='button'
-            aria-label='发送'
-            title='发送'
+            aria-label={t('chat.composer.send')}
+            title={t('chat.composer.send')}
             disabled={!ready}
             onClick={submit}
             data-testid='chat-composer-send'

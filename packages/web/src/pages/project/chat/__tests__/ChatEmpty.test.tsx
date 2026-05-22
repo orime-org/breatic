@@ -12,7 +12,7 @@ describe('ChatEmpty', () => {
 
   it('renders a generic greeting when no user is signed in', () => {
     render(<ChatEmpty />);
-    expect(screen.getByTestId('chat-empty')).toHaveTextContent('嗨!');
+    expect(screen.getByTestId('chat-empty')).toHaveTextContent('Hi!');
   });
 
   it('personalizes the greeting with the current user name', () => {
@@ -23,7 +23,7 @@ describe('ChatEmpty', () => {
     });
     render(<ChatEmpty />);
     expect(screen.getByTestId('chat-empty')).toHaveTextContent(
-      '嗨, Songxiulei!',
+      'Hi, Songxiulei!',
     );
   });
 
@@ -39,6 +39,8 @@ describe('ChatEmpty', () => {
     const onQuickAction = vi.fn();
     render(<ChatEmpty onQuickAction={onQuickAction} />);
     await user.click(screen.getByTestId('chat-empty-qa-image'));
-    expect(onQuickAction).toHaveBeenCalledWith('生成一张赛博朋克风格图');
+    expect(onQuickAction).toHaveBeenCalledWith(
+      'Generate a cyberpunk-style image',
+    );
   });
 });

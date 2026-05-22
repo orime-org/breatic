@@ -144,7 +144,7 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  *
  * V1 personal-Studio mode: every user has exactly one studio.
  * "Projects shared with me but owned by others" is a Studio-phase
- * feature (see spec §16 ★ "/studio 协作中的项目入口"); not exposed
+ * feature (see spec §16 ★ "shared-projects entry on /studio"); not exposed
  * here in V1.
  */
 export async function list(

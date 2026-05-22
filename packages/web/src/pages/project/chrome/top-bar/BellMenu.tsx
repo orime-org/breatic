@@ -8,16 +8,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface BellMenuProps {
   unreadCount?: number;
 }
 
+type RequestMessageKey =
+  | 'notifications.request.audio'
+  | 'notifications.request.project';
+
 interface AccessRequest {
   id: string;
   initials: string;
   name: string;
-  message: string;
+  messageKey: RequestMessageKey;
   roleHint: 'edit' | 'view';
   timeLabel: string;
 }
@@ -27,17 +32,17 @@ const STUB_REQUESTS: ReadonlyArray<AccessRequest> = [
     id: 'req-lh',
     initials: 'LH',
     name: 'Linh Huang',
-    message: '想加入做配音和 BGM 部分',
+    messageKey: 'notifications.request.audio',
     roleHint: 'edit',
-    timeLabel: '2 分钟前',
+    timeLabel: '2m ago',
   },
   {
     id: 'req-mk',
     initials: 'MK',
     name: 'Mika Kobayashi',
-    message: '想参考你的 prompt 风格做我自己的项目',
+    messageKey: 'notifications.request.project',
     roleHint: 'view',
-    timeLabel: '15 分钟前',
+    timeLabel: '15m ago',
   },
 ];
 
@@ -49,6 +54,7 @@ const STUB_REQUESTS: ReadonlyArray<AccessRequest> = [
  * arrive.
  */
 export function BellMenu({ unreadCount }: BellMenuProps) {
+  const t = useTranslation();
   const requests = STUB_REQUESTS;
   const count = unreadCount ?? requests.length;
   return (
@@ -74,7 +80,7 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
           <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-            访问申请
+            {t('notifications.title')}
           </span>
           <span className='text-[11px] tabular-nums text-muted-foreground'>
             {count}
@@ -82,7 +88,7 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
         </div>
         {requests.length === 0 ? (
           <div className='px-3 py-2 text-[13px] text-muted-foreground'>
-            没有待处理通知
+            {t('notifications.empty')}
           </div>
         ) : (
           <ul className='flex flex-col gap-1'>
@@ -99,6 +105,7 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
 }
 
 function RequestItem({ request }: { request: AccessRequest }) {
+  const t = useTranslation();
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
@@ -112,11 +119,13 @@ function RequestItem({ request }: { request: AccessRequest }) {
             {request.name}
           </span>
           <span className='truncate text-[12px] text-muted-foreground'>
-            {request.message}
+            {t(request.messageKey)}
           </span>
         </div>
         <span className='shrink-0 self-start rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
-          {request.roleHint === 'edit' ? '编辑' : '查看'}
+          {request.roleHint === 'edit'
+            ? t('notifications.roleHint.editor')
+            : t('notifications.roleHint.viewer')}
         </span>
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
@@ -125,10 +134,10 @@ function RequestItem({ request }: { request: AccessRequest }) {
         </span>
         <div className='flex items-center gap-2'>
           <Button variant='outline' size='sm' className='h-7 px-3 text-[12px]'>
-            拒绝
+            {t('notifications.reject')}
           </Button>
           <Button size='sm' className='h-7 px-3 text-[12px]'>
-            批准
+            {t('notifications.approve')}
           </Button>
         </div>
       </div>

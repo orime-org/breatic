@@ -12,6 +12,14 @@
     "./yjs-doc-names": {
       "import": "./dist/yjs-doc-names.js",
       "types": "./src/yjs-doc-names.ts"
+    },
+    "./i18n": {
+      "import": "./dist/i18n/index.js",
+      "types": "./src/i18n/index.ts"
+    },
+    "./i18n-node": {
+      "import": "./dist/i18n/load-node.js",
+      "types": "./src/i18n/load-node.ts"
     }
   },
   "scripts": {
@@ -23,6 +31,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "intl-messageformat": "^11.2.7",
     "yaml": "^2.7.0",
     "zod": "^4.3.6"
   },

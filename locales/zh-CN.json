@@ -110,7 +110,19 @@
       "uploadFiles": "上传文件",
       "attachment": "附件",
       "removeUpload": "移除附件",
-      "addToInput": "添加到输入框"
+      "addToInput": "添加到输入框",
+      "selectMode": {
+        "label": "选中模式 — 在画布点节点添加引用",
+        "title": "选中模式"
+      },
+      "chipsAria": "已选 chips",
+      "placeholder": "描述你想做什么(用 @ 引用上方 chips)…",
+      "inputAria": "Chat 输入",
+      "skill": {
+        "label": "选择 Skill 限定 agent 行为",
+        "title": "选择 Skill"
+      },
+      "send": "发送"
     },
     "panel": {
       "newConversation": "新建对话",
@@ -118,6 +130,30 @@
     },
     "recognizedPick": {
       "fallback": "识别结果"
+    },
+    "empty": {
+      "greetingWithName": "嗨, {name}!",
+      "greetingDefault": "嗨!",
+      "hintNodes": "试试 @ 节点提问",
+      "hintDirect": "或直接在下方输入对话 ↓",
+      "quick": {
+        "image": "生成一张赛博朋克风格图",
+        "music": "配一段 lo-fi 背景音乐",
+        "writing": "帮我写一段产品描述"
+      }
+    },
+    "history": {
+      "title": "Session 列表",
+      "empty": "暂无历史会话"
+    },
+    "relative": {
+      "justNow": "刚刚",
+      "minutesAgo": "{count, plural, other {# 分钟前}}",
+      "hoursAgo": "{count, plural, other {# 小时前}}",
+      "yesterday": "昨天",
+      "daysAgo": "{count, plural, other {# 天前}}",
+      "weeksAgo": "{count, plural, other {# 周前}}",
+      "monthsAgo": "{count, plural, other {# 月前}}"
     }
   },
   "canvas": {
@@ -147,8 +183,8 @@
       "replyPlaceholder": "回复讨论...",
       "send": "发送评论",
       "timeJustNow": "刚刚",
-      "timeMinutesAgo": "{{count}} 分钟前",
-      "timeHoursAgo": "{{count}} 小时前",
+      "timeMinutesAgo": "{count} 分钟前",
+      "timeHoursAgo": "{count} 小时前",
       "timeEarlier": "更早"
     },
     "handle": {
@@ -199,6 +235,10 @@
       "orderedList": "有序列表",
       "unorderedList": "无序列表",
       "bold": "加粗"
+    },
+    "emptyState": {
+      "title": "画布是空的",
+      "hint": "拖入素材到画布,或从左侧菜单选择节点类型创建"
     }
   },
   "editor": {
@@ -417,6 +457,21 @@
     "modal": {
       "confirm": "确认",
       "cancel": "取消"
+    },
+    "space": {
+      "timeout": {
+        "create": "Space 创建超时",
+        "retry": "请刷新页面重试",
+        "delete": "Space 删除超时"
+      },
+      "error": {
+        "create": "Space 创建失败"
+      },
+      "loading": {
+        "create": "正在创建 Space…",
+        "delete": "正在删除 Space…"
+      },
+      "noActive": "没有打开的工作面 — 点抽屉里的工作面打开,或点 + 新建。"
     }
   },
   "common": {
@@ -797,7 +852,8 @@
       "invite": "邀请新成员",
       "manage": "管理协作者",
       "remove": "移除",
-      "self_label": "(你)"
+      "self_label": "(你)",
+      "isMe": "(你)"
     },
     "panel": {
       "title": "协作者管理",
@@ -805,7 +861,7 @@
       "invite_section": "邀请新协作者",
       "invite_placeholder": "邮箱或用户 ID",
       "invite_button": "邀请",
-      "list_count": "成员 ({{count}})",
+      "list_count": "成员 ({count})",
       "list_note": "所有者永久绑定项目创建者",
       "confirm_remove": "确认移除此协作者?",
       "done": "完成"
@@ -814,6 +870,17 @@
       "owner": "所有者",
       "edit": "编辑",
       "view": "只读"
+    },
+    "modal": {
+      "title": "协作者管理",
+      "description": "管理项目成员及其权限",
+      "inviteSection": "邀请新协作者",
+      "invitePlaceholder": "邮箱或用户 ID",
+      "inviteButton": "邀请",
+      "membersSection": "成员 ({count})",
+      "ownerNote": "所有者永久绑定项目创建者",
+      "isMe": "(你)",
+      "remove": "移除"
     }
   },
   "credits": {
@@ -846,15 +913,34 @@
       "kind_timeline": "时间线"
     },
     "drawer": {
-      "title": "所有 Space",
+      "title": "所有工作面",
       "count": "个",
       "tag_open": "已打开",
       "tag_active": "当前",
-      "nodes_count": "{{count}} 节点",
+      "nodes_count": "{count} 节点",
       "confirm_delete": "确认删除此 Space?",
       "new_canvas": "新建画布",
       "new_document": "新建文档",
-      "new_timeline": "新建时间线"
+      "new_timeline": "新建时间线",
+      "label": "所有工作面",
+      "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
+      "empty": "暂无工作面",
+      "openAria": "打开 {name}",
+      "status": {
+        "editing": "编辑中",
+        "open": "已打开"
+      },
+      "action": {
+        "view": "查看",
+        "lock": "加锁",
+        "unlock": "解锁",
+        "delete": "删除",
+        "deleteLocked": "锁住的工作面无法删除",
+        "lockFail": "加锁失败",
+        "unlockFail": "解锁失败",
+        "operationFail": "操作失败",
+        "deleteFail": "删除失败"
+      }
     },
     "new_dialog": {
       "title": "新建 Space",
@@ -863,11 +949,66 @@
       "name_placeholder": "如 场景 v3",
       "create": "创建",
       "cancel": "取消",
-      "placeholder_kind_unsupported": "{{kind}} 类型 Space 暂未支持。"
+      "placeholder_kind_unsupported": "{kind} 类型 Space 暂未支持。"
     },
     "placeholder": {
       "title": "即将上线",
-      "description": "{{kind}} 类型的 Space 将在未来版本中支持。"
+      "description": "{kind} 类型的 Space 将在未来版本中支持。"
+    },
+    "kind": {
+      "canvas": "画布",
+      "canvasSub": "无限画布 + 节点",
+      "document": "文档",
+      "documentSub": "富文本 + 协作",
+      "timeline": "时间线",
+      "timelineSub": "视频 / 音频剪辑"
+    },
+    "history": {
+      "label": "Space 活动历史",
+      "title": "Space 创建 / 删除 / 锁定历史",
+      "header": "系统消息",
+      "description": "{count, plural, other {# 条 · 项目共享数据的事件记录}}",
+      "empty": "暂无空间活动。创建 / 删除 / 锁定事件会显示在这里。",
+      "markRead": "已读",
+      "markUnread": "标为已读",
+      "relative": {
+        "justNow": "刚刚",
+        "minutesAgo": "{count, plural, other {# 分钟前}}",
+        "hoursAgo": "{count, plural, other {# 小时前}}",
+        "yesterday": "昨天",
+        "daysAgo": "{count, plural, other {# 天前}}",
+        "weeksAgo": "{count, plural, other {# 周前}}",
+        "monthsAgo": "{count, plural, other {# 月前}}"
+      }
+    },
+    "create": {
+      "title": "新建 Space",
+      "description": "选 Space 类型 + 命名",
+      "typeLabel": "类型",
+      "typeAria": "Space 类型",
+      "notAvailable": "未实现",
+      "nameLabel": "名称",
+      "namePlaceholder": "例:Cyberpunk Concept",
+      "cancel": "取消",
+      "submit": "创建",
+      "submitting": "创建中…"
+    },
+    "readonly": {
+      "label": "只读",
+      "description": "此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。",
+      "close": "关闭只读预览",
+      "canvas": {
+        "title": "只读画布",
+        "description": "真实 ReactFlow viewer 在 canvas-space 完整实现时接入; 此处展示节点与边的只读快照,支持缩放与复制。"
+      },
+      "document": {
+        "title": "只读文档",
+        "description": "TipTap 只读 viewer 在 document-space 实施时接入; 此处展示富文本快照,支持复制段落。"
+      },
+      "timeline": {
+        "title": "只读时间线",
+        "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
+      }
     }
   },
   "image": {
@@ -902,5 +1043,85 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "文件处理失败"
+  },
+  "menu": {
+    "createAria": "创建菜单",
+    "item": {
+      "nodes": "节点库 — 4 类生成节点",
+      "upload": "上传素材(多文件混合)",
+      "comment": "在画布加批注",
+      "assetGroup": "资产组 — 跨项目共享素材(敬请期待)",
+      "help": "帮助(敬请期待)",
+      "feedback": "反馈 / 客服(敬请期待)"
+    }
+  },
+  "viewportToolbar": {
+    "aria": "视口工具",
+    "zoomOut": "缩小",
+    "zoomResetAria": "缩放重置 100%",
+    "zoomReset": "重置缩放",
+    "zoomIn": "放大",
+    "fit": "适应",
+    "fitAria": "适应窗口",
+    "expand": "全屏",
+    "snap": {
+      "on": "开启网格吸附",
+      "off": "关闭网格吸附",
+      "label": "网格吸附"
+    },
+    "guides": {
+      "on": "开启对齐参考线",
+      "off": "关闭对齐参考线",
+      "label": "对齐参考线"
+    },
+    "minimap": {
+      "show": "显示缩略图",
+      "hide": "隐藏缩略图",
+      "label": "缩略图"
+    }
+  },
+  "lang": {
+    "en": {
+      "label": "English",
+      "glyph": "EN"
+    },
+    "zhCN": {
+      "label": "简体中文",
+      "glyph": "中"
+    },
+    "zhTW": {
+      "label": "繁體中文",
+      "glyph": "繁"
+    },
+    "ja": {
+      "label": "日本語",
+      "glyph": "日"
+    }
+  },
+  "role": {
+    "owner": "所有者",
+    "editor": "编辑",
+    "viewer": "只读"
+  },
+  "share": {
+    "inviteSection": "邀请协作者",
+    "invitePlaceholder": "邮箱或 @用户名",
+    "inviteButton": "发送邀请",
+    "linkSection": "分享链接",
+    "linkAccess": "任何人凭链接可访问"
+  },
+  "notifications": {
+    "title": "访问申请",
+    "empty": "没有待处理通知",
+    "roleHint": {
+      "editor": "编辑",
+      "viewer": "查看"
+    },
+    "reject": "拒绝",
+    "approve": "批准",
+    "request": {
+      "audio": "想加入做配音和 BGM 部分",
+      "project": "想参考你的 prompt 风格做我自己的项目"
+    }
   }
 }

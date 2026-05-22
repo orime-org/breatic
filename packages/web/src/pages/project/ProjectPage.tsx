@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { projectsApi, spacesApi } from '@/data/api';
+import { useTranslation } from '@/i18n/use-translation';
 import {
   closeSpaceTab,
   openSpaceTab,
@@ -53,6 +54,7 @@ import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
 export default function ProjectPage() {
+  const t = useTranslation();
   const { projectId = 'demo', spaceId: urlSpaceId } = useParams<{
     projectId: string;
     spaceId?: string;
@@ -176,8 +178,10 @@ export default function ProjectPage() {
       pendingCreateIdRef.current = null;
       pendingDeleteIdRef.current = null;
       toast.error(
-        phase === 'creating' ? 'Space 创建超时' : 'Space 删除超时',
-        { description: '请刷新页面重试' },
+        phase === 'creating'
+          ? t('project.space.timeout.create')
+          : t('project.space.timeout.delete'),
+        { description: t('project.space.timeout.retry') },
       );
     }, SPACE_OP_TIMEOUT_MS);
     return () => clearTimeout(handle);
@@ -225,8 +229,9 @@ export default function ProjectPage() {
     } catch (err) {
       setSpaceOpInProgress(null);
       pendingCreateIdRef.current = null;
-      const message = err instanceof Error ? err.message : 'Space 创建失败';
-      toast.error('Space 创建失败', { description: message });
+      const message =
+        err instanceof Error ? err.message : t('project.space.error.create');
+      toast.error(t('project.space.error.create'), { description: message });
       throw err;
     }
   };
@@ -296,7 +301,7 @@ export default function ProjectPage() {
                 data-testid='no-active-space'
                 className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
               >
-                没有打开的工作面 — 点抽屉里的工作面打开,或点 + 新建。
+                {t('project.space.noActive')}
               </div>
             )}
             {activeSpace?.type === 'canvas' ? (
@@ -329,13 +334,13 @@ export default function ProjectPage() {
       />
       {spaceOpInProgress === 'creating' ? (
         <LoadingOverlay
-          message='正在创建 Space…'
+          message={t('project.space.loading.create')}
           testId='creating-space-overlay'
         />
       ) : null}
       {spaceOpInProgress === 'deleting' ? (
         <LoadingOverlay
-          message='正在删除 Space…'
+          message={t('project.space.loading.delete')}
           testId='deleting-space-overlay'
         />
       ) : null}

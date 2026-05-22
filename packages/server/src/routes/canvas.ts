@@ -131,7 +131,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     }
     // Lock acquired. Publish a `state='handling'` event right away so
     // collaborators see the node enter handling without waiting for the
-    // worker to start (spec §10.15.4 协作可见性).
+    // worker to start (spec §10.15.4 — collaboration visibility).
     try {
       await publishNodeEvent(getStreamRedis(), {
         type: "node-state-update",

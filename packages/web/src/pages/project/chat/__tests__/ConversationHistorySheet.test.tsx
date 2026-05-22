@@ -4,52 +4,52 @@ import userEvent from '@testing-library/user-event';
 
 import {
   ConversationHistorySheet,
-  formatRelative,
+  relativeTime,
   type ConversationSummary,
 } from '@/pages/project/chat/ConversationHistorySheet';
 
 const CONVS: ConversationSummary[] = [
   {
     id: 'c1',
-    name: '主线剧情研究',
-    preview: '我们讨论了赛博朋克设定和…',
+    name: 'Main plot research',
+    preview: 'We discussed cyberpunk setting and…',
     updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     messageCount: 5,
   },
   {
     id: 'c2',
-    name: '角色性格设计',
-    preview: '林夏的成长弧线和动机…',
+    name: 'Character design',
+    preview: "Lin Xia's growth arc and motives…",
     updatedAt: new Date(Date.now() - 26 * 3_600_000).toISOString(),
     messageCount: 12,
   },
 ];
 
-describe('formatRelative', () => {
+describe('relativeTime', () => {
   const NOW = Date.parse('2026-05-21T12:00:00Z');
 
-  it('returns minute granularity within the hour', () => {
+  it('returns minute bucket within the hour', () => {
     expect(
-      formatRelative(new Date(NOW - 5 * 60_000).toISOString(), NOW),
-    ).toBe('5 分钟前');
+      relativeTime(new Date(NOW - 5 * 60_000).toISOString(), NOW),
+    ).toEqual({ key: 'chat.relative.minutesAgo', params: { count: 5 } });
   });
 
-  it('returns hour granularity within the day', () => {
+  it('returns hour bucket within the day', () => {
     expect(
-      formatRelative(new Date(NOW - 3 * 3_600_000).toISOString(), NOW),
-    ).toBe('3 小时前');
+      relativeTime(new Date(NOW - 3 * 3_600_000).toISOString(), NOW),
+    ).toEqual({ key: 'chat.relative.hoursAgo', params: { count: 3 } });
   });
 
-  it('returns "昨天" for 24-48h ago', () => {
+  it('returns yesterday bucket for 24-48h ago', () => {
     expect(
-      formatRelative(new Date(NOW - 26 * 3_600_000).toISOString(), NOW),
-    ).toBe('昨天');
+      relativeTime(new Date(NOW - 26 * 3_600_000).toISOString(), NOW),
+    ).toEqual({ key: 'chat.relative.yesterday' });
   });
 
-  it('returns "N 天前" within the week', () => {
+  it('returns day bucket within the week', () => {
     expect(
-      formatRelative(new Date(NOW - 3 * 86_400_000).toISOString(), NOW),
-    ).toBe('3 天前');
+      relativeTime(new Date(NOW - 3 * 86_400_000).toISOString(), NOW),
+    ).toEqual({ key: 'chat.relative.daysAgo', params: { count: 3 } });
   });
 });
 
@@ -65,7 +65,7 @@ describe('ConversationHistorySheet', () => {
     );
     expect(
       screen.getByTestId('conversation-history-list'),
-    ).toHaveTextContent('暂无历史会话');
+    ).toHaveTextContent('No previous conversations');
   });
 
   it('renders one row per conversation', () => {

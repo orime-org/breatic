@@ -31,7 +31,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * position ignores `overflow:hidden`, so an editing user sees the cursor
  * drift outside the 320 cap. A native `<input>` keeps caret + content in
  * the visible window via horizontal scroll, which is exactly what user
- * expects ("内容从右往左移动 caret 跟随").
+ * expects (content scrolls right-to-left while the caret stays put).
  *
  * Commit semantics:
  *   - Enter / blur commit (trim, drop newlines, slice to MAX_TITLE_LEN,

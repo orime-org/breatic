@@ -36,7 +36,7 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
  * from a Space and attached to this message (spec/07-chat-agent.md
  * §10.18.2 v13). The `dataSnapshot` is a deep copy taken at attach
  * time; subsequent Space-side edits / deletions of the source node
- * do NOT mutate the chip (C1 全副本 model — same philosophy as
+ * do NOT mutate the chip (C1 full-snapshot model — same philosophy as
  * spec §6.2 Studio→Space copies).
  */
 export const chatAttachedChipSchema = z.object({
@@ -70,9 +70,10 @@ export const chatMessageSchema = z.object({
    */
   skill: z.string().optional(),
   /**
-   * V13: model override. Spec §10.18.5 v13 删除了输入框模型 picker
-   * (model 由 Skill 内部决定 / 全局 settings),但保留 wire 字段以便
-   * SDK / 测试用例显式覆盖。常规 chat 不传。
+   * V13: model override. Spec §10.18.5 v13 dropped the in-composer
+   * model picker (model is now decided by the Skill or global
+   * settings), but we keep the wire field so SDK callers and test
+   * cases can override explicitly. Normal chat omits this.
    */
   model: z.string().optional(),
 });

@@ -28,10 +28,10 @@ describe('MembersStack', () => {
     expect(screen.getByTestId('members-row-yj')).toBeInTheDocument();
     expect(screen.getByTestId('members-row-pl')).toBeInTheDocument();
     expect(screen.getByText('Songxiu Lei')).toBeInTheDocument();
-    expect(screen.getByText('所有者')).toBeInTheDocument();
+    expect(screen.getByText('Owner')).toBeInTheDocument();
   });
 
-  it('clicking 邀请新成员 closes popover + opens shareOpen', async () => {
+  it('clicking Invite new member closes popover + opens shareOpen', async () => {
     const user = userEvent.setup();
     render(<MembersStack projectId='p1' />);
     await user.click(screen.getByTestId('members-trigger'));
@@ -40,7 +40,7 @@ describe('MembersStack', () => {
     expect(useUIStore.getState().membersModalOpen).toBe(false);
   });
 
-  it('clicking 查看完整管理 closes popover + opens membersModalOpen', async () => {
+  it('clicking Manage collaborators closes popover + opens membersModalOpen', async () => {
     const user = userEvent.setup();
     render(<MembersStack projectId='p1' />);
     await user.click(screen.getByTestId('members-trigger'));

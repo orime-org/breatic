@@ -21,8 +21,10 @@ describe('MembersModal', () => {
     });
     render(<MembersModal />);
     expect(screen.getByTestId('members-modal')).toBeInTheDocument();
-    expect(screen.getByText('协作者管理')).toBeInTheDocument();
-    expect(screen.getByText('管理项目成员及其权限')).toBeInTheDocument();
+    expect(screen.getByText('Collaborators')).toBeInTheDocument();
+    expect(
+      screen.getByText('Manage project members and their roles'),
+    ).toBeInTheDocument();
     expect(
       screen.getByTestId('members-modal-invite-input'),
     ).toBeInTheDocument();
@@ -34,7 +36,7 @@ describe('MembersModal', () => {
     ).toBeInTheDocument();
   });
 
-  it('owner row has 所有者 label, non-owner rows have role select', () => {
+  it('owner row has Owner label, non-owner rows have role select', () => {
     act(() => {
       useUIStore.getState().setMembersModalOpen(true);
     });

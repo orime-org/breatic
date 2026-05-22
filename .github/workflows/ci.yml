@@ -92,6 +92,15 @@ jobs:
         # only. Fast grep; hard-fails the PR on violation.
         run: pnpm lint:hover
 
+      - name: Lint no-CJK in production source
+        # Enforce inner DD 2026-05-22-breatic-i18n-migration-rev-3:
+        # every user-facing string must live in locales/*.json and be
+        # routed through the shared t() helper. This grep hard-fails the
+        # PR if any production .ts / .tsx / .css carries hardcoded
+        # CJK Unified Ideographs (tests + vendored shadcn primitives
+        # are exempted; see scripts/lint-no-cjk.sh).
+        run: pnpm lint:no-cjk
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 

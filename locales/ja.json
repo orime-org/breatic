@@ -110,7 +110,19 @@
       "uploadFiles": "ファイルをアップロード",
       "attachment": "添付ファイル",
       "removeUpload": "添付を削除",
-      "addToInput": "入力欄に追加"
+      "addToInput": "入力欄に追加",
+      "selectMode": {
+        "label": "選択モード — キャンバスでノードをクリックして参照を追加",
+        "title": "選択モード"
+      },
+      "chipsAria": "選択された chips",
+      "placeholder": "やりたいことを入力(@ で上の chips を参照)…",
+      "inputAria": "Chat 入力",
+      "skill": {
+        "label": "Skill を選んで agent の動作を絞り込む",
+        "title": "Skill を選択"
+      },
+      "send": "送信"
     },
     "panel": {
       "newConversation": "新しい会話",
@@ -118,6 +130,30 @@
     },
     "recognizedPick": {
       "fallback": "認識結果"
+    },
+    "empty": {
+      "greetingWithName": "やあ、{name} さん!",
+      "greetingDefault": "やあ!",
+      "hintNodes": "@ でノードに質問してみよう",
+      "hintDirect": "または下に直接プロンプトを入力 ↓",
+      "quick": {
+        "image": "サイバーパンク風の画像を生成",
+        "music": "lo-fi な BGM を作る",
+        "writing": "プロダクトの説明文を書く"
+      }
+    },
+    "history": {
+      "title": "セッション一覧",
+      "empty": "履歴の会話はまだありません"
+    },
+    "relative": {
+      "justNow": "たった今",
+      "minutesAgo": "{count, plural, other {# 分前}}",
+      "hoursAgo": "{count, plural, other {# 時間前}}",
+      "yesterday": "昨日",
+      "daysAgo": "{count, plural, other {# 日前}}",
+      "weeksAgo": "{count, plural, other {# 週間前}}",
+      "monthsAgo": "{count, plural, other {# ヶ月前}}"
     }
   },
   "canvas": {
@@ -147,8 +183,8 @@
       "replyPlaceholder": "ディスカッションに返信...",
       "send": "コメントを送信",
       "timeJustNow": "たった今",
-      "timeMinutesAgo": "{{count}} 分前",
-      "timeHoursAgo": "{{count}} 時間前",
+      "timeMinutesAgo": "{count} 分前",
+      "timeHoursAgo": "{count} 時間前",
       "timeEarlier": "それ以前"
     },
     "handle": {
@@ -199,6 +235,10 @@
       "orderedList": "番号付きリスト",
       "unorderedList": "箇条書き",
       "bold": "太字"
+    },
+    "emptyState": {
+      "title": "キャンバスは空です",
+      "hint": "素材をキャンバスにドラッグするか、左メニューからノードタイプを選んで作成してください。"
     }
   },
   "editor": {
@@ -417,6 +457,21 @@
     "modal": {
       "confirm": "確認",
       "cancel": "キャンセル"
+    },
+    "space": {
+      "timeout": {
+        "create": "Space の作成がタイムアウトしました",
+        "retry": "ページを更新して再試行してください",
+        "delete": "Space の削除がタイムアウトしました"
+      },
+      "error": {
+        "create": "Space の作成に失敗しました"
+      },
+      "loading": {
+        "create": "Space を作成中…",
+        "delete": "Space を削除中…"
+      },
+      "noActive": "開いている作業面がありません — ドロワーから開くか、+ で新規作成してください。"
     }
   },
   "common": {
@@ -793,11 +848,12 @@
   },
   "members": {
     "popover": {
-      "title": "メンバー",
-      "invite": "メンバー招待",
-      "manage": "メンバー管理",
+      "title": "プロジェクトメンバー",
+      "invite": "新しいメンバーを招待",
+      "manage": "コラボレーターを管理",
       "remove": "削除",
-      "self_label": "(あなた)"
+      "self_label": "(あなた)",
+      "isMe": "(自分)"
     },
     "panel": {
       "title": "メンバー管理",
@@ -805,7 +861,7 @@
       "invite_section": "新規メンバーを招待",
       "invite_placeholder": "メールまたはユーザー ID",
       "invite_button": "招待",
-      "list_count": "メンバー ({{count}})",
+      "list_count": "メンバー ({count})",
       "list_note": "オーナーは作成者に固定",
       "confirm_remove": "このメンバーを削除しますか?",
       "done": "完了"
@@ -814,6 +870,17 @@
       "owner": "オーナー",
       "edit": "編集",
       "view": "閲覧"
+    },
+    "modal": {
+      "title": "コラボレーター管理",
+      "description": "プロジェクトメンバーと権限を管理",
+      "inviteSection": "新しいコラボレーターを招待",
+      "invitePlaceholder": "メールまたはユーザー ID",
+      "inviteButton": "招待",
+      "membersSection": "メンバー ({count})",
+      "ownerNote": "オーナーはプロジェクト作成者に永久に紐づきます",
+      "isMe": "(自分)",
+      "remove": "削除"
     }
   },
   "credits": {
@@ -846,15 +913,34 @@
       "kind_timeline": "タイムライン"
     },
     "drawer": {
-      "title": "すべての Space",
+      "title": "すべての作業面",
       "count": "個",
       "tag_open": "開いた",
       "tag_active": "現在",
-      "nodes_count": "{{count}} ノード",
+      "nodes_count": "{count} ノード",
       "confirm_delete": "この Space を削除しますか?",
       "new_canvas": "新規キャンバス",
       "new_document": "新規ドキュメント",
-      "new_timeline": "新規タイムライン"
+      "new_timeline": "新規タイムライン",
+      "label": "すべての作業面",
+      "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
+      "empty": "作業面はまだありません",
+      "openAria": "{name} を開く",
+      "status": {
+        "editing": "編集中",
+        "open": "開いています"
+      },
+      "action": {
+        "view": "表示",
+        "lock": "ロック",
+        "unlock": "解除",
+        "delete": "削除",
+        "deleteLocked": "ロックされた作業面は削除できません",
+        "lockFail": "ロックに失敗しました",
+        "unlockFail": "解除に失敗しました",
+        "operationFail": "操作に失敗しました",
+        "deleteFail": "削除に失敗しました"
+      }
     },
     "new_dialog": {
       "title": "新規 Space",
@@ -863,11 +949,66 @@
       "name_placeholder": "例: シーン v3",
       "create": "作成",
       "cancel": "キャンセル",
-      "placeholder_kind_unsupported": "{{kind}} はまだサポートされていません。"
+      "placeholder_kind_unsupported": "{kind} はまだサポートされていません。"
     },
     "placeholder": {
       "title": "近日公開",
-      "description": "{{kind}} タイプの Space は今後のリリースで対応予定です。"
+      "description": "{kind} タイプの Space は今後のリリースで対応予定です。"
+    },
+    "kind": {
+      "canvas": "キャンバス",
+      "canvasSub": "無限キャンバス + ノード",
+      "document": "ドキュメント",
+      "documentSub": "リッチテキスト + 共同編集",
+      "timeline": "タイムライン",
+      "timelineSub": "ビデオ / オーディオ編集"
+    },
+    "history": {
+      "label": "Space アクティビティ履歴",
+      "title": "Space 作成 / 削除 / ロック履歴",
+      "header": "システムメッセージ",
+      "description": "{count, plural, other {# 件 · プロジェクト共有データのイベント記録}}",
+      "empty": "アクティビティはまだありません。作成 / 削除 / ロックイベントがここに表示されます。",
+      "markRead": "既読",
+      "markUnread": "既読にする",
+      "relative": {
+        "justNow": "たった今",
+        "minutesAgo": "{count, plural, other {# 分前}}",
+        "hoursAgo": "{count, plural, other {# 時間前}}",
+        "yesterday": "昨日",
+        "daysAgo": "{count, plural, other {# 日前}}",
+        "weeksAgo": "{count, plural, other {# 週間前}}",
+        "monthsAgo": "{count, plural, other {# ヶ月前}}"
+      }
+    },
+    "create": {
+      "title": "新規 Space",
+      "description": "Space タイプを選んで名前を付ける",
+      "typeLabel": "タイプ",
+      "typeAria": "Space タイプ",
+      "notAvailable": "未実装",
+      "nameLabel": "名前",
+      "namePlaceholder": "例:Cyberpunk Concept",
+      "cancel": "キャンセル",
+      "submit": "作成",
+      "submitting": "作成中…"
+    },
+    "readonly": {
+      "label": "読み取り専用",
+      "description": "この Space はタブバーで開いていません。読み取り専用プレビューでズームとコピーは可能ですが編集はできません。",
+      "close": "読み取り専用プレビューを閉じる",
+      "canvas": {
+        "title": "読み取り専用キャンバス",
+        "description": "実際の ReactFlow viewer は canvas-space 実装完了時に接続。ここではノードとエッジの読み取り専用スナップショットを表示します(ズーム/コピー可)。"
+      },
+      "document": {
+        "title": "読み取り専用ドキュメント",
+        "description": "TipTap の読み取り専用 viewer は document-space 実装時に接続。ここではリッチテキストのスナップショットを表示します(段落コピー可)。"
+      },
+      "timeline": {
+        "title": "読み取り専用タイムライン",
+        "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
+      }
     }
   },
   "image": {
@@ -902,5 +1043,85 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "ファイル処理に失敗しました"
+  },
+  "menu": {
+    "createAria": "作成メニュー",
+    "item": {
+      "nodes": "ノードライブラリ — 4 種類の生成ノード",
+      "upload": "素材をアップロード(混在ファイル可)",
+      "comment": "キャンバスに注釈を追加",
+      "assetGroup": "アセットグループ — プロジェクト横断共有(近日対応)",
+      "help": "ヘルプ(近日対応)",
+      "feedback": "フィードバック / サポート(近日対応)"
+    }
+  },
+  "viewportToolbar": {
+    "aria": "ビューポートツール",
+    "zoomOut": "縮小",
+    "zoomResetAria": "ズームを 100% にリセット",
+    "zoomReset": "ズームをリセット",
+    "zoomIn": "拡大",
+    "fit": "フィット",
+    "fitAria": "ビューポートにフィット",
+    "expand": "全画面",
+    "snap": {
+      "on": "グリッドにスナップを有効化",
+      "off": "グリッドにスナップを無効化",
+      "label": "グリッドにスナップ"
+    },
+    "guides": {
+      "on": "整列ガイドを有効化",
+      "off": "整列ガイドを無効化",
+      "label": "整列ガイド"
+    },
+    "minimap": {
+      "show": "ミニマップを表示",
+      "hide": "ミニマップを非表示",
+      "label": "ミニマップ"
+    }
+  },
+  "lang": {
+    "en": {
+      "label": "English",
+      "glyph": "EN"
+    },
+    "zhCN": {
+      "label": "簡体字中国語",
+      "glyph": "中"
+    },
+    "zhTW": {
+      "label": "繁体字中国語",
+      "glyph": "繁"
+    },
+    "ja": {
+      "label": "日本語",
+      "glyph": "日"
+    }
+  },
+  "role": {
+    "owner": "オーナー",
+    "editor": "編集者",
+    "viewer": "閲覧者"
+  },
+  "share": {
+    "inviteSection": "コラボレーターを招待",
+    "invitePlaceholder": "メールまたは @ユーザー名",
+    "inviteButton": "招待を送信",
+    "linkSection": "共有リンク",
+    "linkAccess": "リンクを知っている全員がアクセス可"
+  },
+  "notifications": {
+    "title": "アクセス申請",
+    "empty": "保留中の通知はありません",
+    "roleHint": {
+      "editor": "編集",
+      "viewer": "閲覧"
+    },
+    "reject": "却下",
+    "approve": "承認",
+    "request": {
+      "audio": "ボイスオーバーと BGM 部分に参加したい",
+      "project": "あなたの prompt スタイルを自分のプロジェクトで参考にしたい"
+    }
   }
 }

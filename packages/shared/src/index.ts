@@ -96,7 +96,15 @@ export type {
   ChatConversationsQueryInput,
 } from "./schemas/index.js";
 
-export { t, setLocale, getLocale, getAvailableLocales, loadLocales, resetLocales } from "./i18n/index.js";
+export {
+  t,
+  setLocale,
+  getLocale,
+  getAvailableLocales,
+  setLocaleMessages,
+  onLocaleChange,
+  resetLocales,
+} from "./i18n/index.js";
 export type { Locale } from "./i18n/index.js";
 
 export {

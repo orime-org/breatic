@@ -110,7 +110,19 @@
       "uploadFiles": "Upload files",
       "attachment": "Attachment",
       "removeUpload": "Remove upload",
-      "addToInput": "Add to input"
+      "addToInput": "Add to input",
+      "selectMode": {
+        "label": "Select mode — click nodes on the canvas to add references",
+        "title": "Select mode"
+      },
+      "chipsAria": "Selected chips",
+      "placeholder": "Describe what you want to do (use @ to reference chips above)…",
+      "inputAria": "Chat input",
+      "skill": {
+        "label": "Pick a Skill to scope the agent's behavior",
+        "title": "Pick Skill"
+      },
+      "send": "Send"
     },
     "panel": {
       "newConversation": "New conversation",
@@ -118,6 +130,30 @@
     },
     "recognizedPick": {
       "fallback": "Recognized result"
+    },
+    "empty": {
+      "greetingWithName": "Hi, {name}!",
+      "greetingDefault": "Hi!",
+      "hintNodes": "Try asking @ a node",
+      "hintDirect": "Or type your prompt below ↓",
+      "quick": {
+        "image": "Generate a cyberpunk-style image",
+        "music": "Compose a lo-fi background track",
+        "writing": "Write a product description"
+      }
+    },
+    "history": {
+      "title": "Session list",
+      "empty": "No previous conversations"
+    },
+    "relative": {
+      "justNow": "just now",
+      "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",
+      "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
+      "yesterday": "yesterday",
+      "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+      "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
+      "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}"
     }
   },
   "canvas": {
@@ -147,8 +183,8 @@
       "replyPlaceholder": "Reply to discussion...",
       "send": "Send comment",
       "timeJustNow": "Just now",
-      "timeMinutesAgo": "{{count}} minutes ago",
-      "timeHoursAgo": "{{count}} hours ago",
+      "timeMinutesAgo": "{count} minutes ago",
+      "timeHoursAgo": "{count} hours ago",
       "timeEarlier": "Earlier"
     },
     "handle": {
@@ -199,6 +235,10 @@
       "orderedList": "Ordered list",
       "unorderedList": "Unordered list",
       "bold": "Bold"
+    },
+    "emptyState": {
+      "title": "The canvas is empty",
+      "hint": "Drag assets onto the canvas, or pick a node type from the left menu to create one."
     }
   },
   "editor": {
@@ -417,6 +457,21 @@
     "modal": {
       "confirm": "Confirm",
       "cancel": "Cancel"
+    },
+    "space": {
+      "timeout": {
+        "create": "Space creation timed out",
+        "retry": "Refresh the page and try again",
+        "delete": "Space deletion timed out"
+      },
+      "error": {
+        "create": "Failed to create space"
+      },
+      "loading": {
+        "create": "Creating Space…",
+        "delete": "Deleting Space…"
+      },
+      "noActive": "No open spaces — open one from the drawer or click + to create."
     }
   },
   "common": {
@@ -793,11 +848,12 @@
   },
   "members": {
     "popover": {
-      "title": "Members",
-      "invite": "Invite member",
-      "manage": "Manage members",
+      "title": "Project members",
+      "invite": "Invite new member",
+      "manage": "Manage collaborators",
       "remove": "Remove",
-      "self_label": "(you)"
+      "self_label": "(you)",
+      "isMe": "(you)"
     },
     "panel": {
       "title": "Member management",
@@ -805,7 +861,7 @@
       "invite_section": "Invite collaborator",
       "invite_placeholder": "Email or user ID",
       "invite_button": "Invite",
-      "list_count": "Members ({{count}})",
+      "list_count": "Members ({count})",
       "list_note": "Owner is permanently bound to project creator",
       "confirm_remove": "Remove this collaborator?",
       "done": "Done"
@@ -814,6 +870,17 @@
       "owner": "Owner",
       "edit": "Editor",
       "view": "Viewer"
+    },
+    "modal": {
+      "title": "Collaborators",
+      "description": "Manage project members and their roles",
+      "inviteSection": "Invite a new collaborator",
+      "invitePlaceholder": "Email or user ID",
+      "inviteButton": "Invite",
+      "membersSection": "Members ({count})",
+      "ownerNote": "Owner is permanently bound to the project creator",
+      "isMe": "(you)",
+      "remove": "Remove"
     }
   },
   "credits": {
@@ -846,15 +913,34 @@
       "kind_timeline": "Timeline"
     },
     "drawer": {
-      "title": "All Spaces",
+      "title": "All spaces",
       "count": "total",
       "tag_open": "Open",
       "tag_active": "Active",
-      "nodes_count": "{{count}} nodes",
+      "nodes_count": "{count} nodes",
       "confirm_delete": "Delete this space?",
       "new_canvas": "New canvas",
       "new_document": "New document",
-      "new_timeline": "New timeline"
+      "new_timeline": "New timeline",
+      "label": "All spaces",
+      "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
+      "empty": "No spaces yet",
+      "openAria": "Open {name}",
+      "status": {
+        "editing": "Editing",
+        "open": "Open"
+      },
+      "action": {
+        "view": "View",
+        "lock": "Lock",
+        "unlock": "Unlock",
+        "delete": "Delete",
+        "deleteLocked": "Locked spaces can't be deleted",
+        "lockFail": "Failed to lock",
+        "unlockFail": "Failed to unlock",
+        "operationFail": "Operation failed",
+        "deleteFail": "Failed to delete"
+      }
     },
     "new_dialog": {
       "title": "New space",
@@ -863,11 +949,66 @@
       "name_placeholder": "e.g. Scene v3",
       "create": "Create",
       "cancel": "Cancel",
-      "placeholder_kind_unsupported": "{{kind}} spaces are not yet supported in V1."
+      "placeholder_kind_unsupported": "{kind} spaces are not yet supported in V1."
     },
     "placeholder": {
       "title": "Coming soon",
-      "description": "The {{kind}} space type will be available in a future release."
+      "description": "The {kind} space type will be available in a future release."
+    },
+    "kind": {
+      "canvas": "Canvas",
+      "canvasSub": "Infinite canvas + nodes",
+      "document": "Document",
+      "documentSub": "Rich text + collaboration",
+      "timeline": "Timeline",
+      "timelineSub": "Video / audio editing"
+    },
+    "history": {
+      "label": "Space activity history",
+      "title": "Space create / delete / lock history",
+      "header": "System messages",
+      "description": "{count, plural, one {# event · shared project event log} other {# events · shared project event log}}",
+      "empty": "No space activity yet. Create / delete / lock events will appear here.",
+      "markRead": "Read",
+      "markUnread": "Mark as read",
+      "relative": {
+        "justNow": "just now",
+        "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",
+        "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
+        "yesterday": "yesterday",
+        "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+        "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
+        "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}"
+      }
+    },
+    "create": {
+      "title": "New space",
+      "description": "Pick a space type and name it",
+      "typeLabel": "Type",
+      "typeAria": "Space type",
+      "notAvailable": "Not available",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Cyberpunk Concept",
+      "cancel": "Cancel",
+      "submit": "Create",
+      "submitting": "Creating…"
+    },
+    "readonly": {
+      "label": "Read-only",
+      "description": "This space is not open in the tab bar; read-only preview lets you pan/zoom and copy content, but not edit.",
+      "close": "Close read-only preview",
+      "canvas": {
+        "title": "Read-only canvas",
+        "description": "Real ReactFlow viewer plugs in once canvas-space is complete; here we show a read-only snapshot of nodes and edges, with zoom and copy."
+      },
+      "document": {
+        "title": "Read-only document",
+        "description": "TipTap read-only viewer plugs in when document-space ships; here we show a rich-text snapshot, with paragraph copy."
+      },
+      "timeline": {
+        "title": "Read-only timeline",
+        "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
+      }
     }
   },
   "image": {
@@ -902,5 +1043,85 @@
   },
   "mediaUploader": {
     "fileProcessFailed": "File processing failed"
+  },
+  "menu": {
+    "createAria": "Create menu",
+    "item": {
+      "nodes": "Node library — 4 generative node types",
+      "upload": "Upload assets (mixed files)",
+      "comment": "Annotate on canvas",
+      "assetGroup": "Asset group — share across projects (coming soon)",
+      "help": "Help (coming soon)",
+      "feedback": "Feedback / Support (coming soon)"
+    }
+  },
+  "viewportToolbar": {
+    "aria": "Viewport tools",
+    "zoomOut": "Zoom out",
+    "zoomResetAria": "Reset zoom to 100%",
+    "zoomReset": "Reset zoom",
+    "zoomIn": "Zoom in",
+    "fit": "Fit",
+    "fitAria": "Fit to viewport",
+    "expand": "Fullscreen",
+    "snap": {
+      "on": "Enable snap to grid",
+      "off": "Disable snap to grid",
+      "label": "Snap to grid"
+    },
+    "guides": {
+      "on": "Enable alignment guides",
+      "off": "Disable alignment guides",
+      "label": "Alignment guides"
+    },
+    "minimap": {
+      "show": "Show minimap",
+      "hide": "Hide minimap",
+      "label": "Minimap"
+    }
+  },
+  "lang": {
+    "en": {
+      "label": "English",
+      "glyph": "EN"
+    },
+    "zhCN": {
+      "label": "Simplified Chinese",
+      "glyph": "中"
+    },
+    "zhTW": {
+      "label": "Traditional Chinese",
+      "glyph": "繁"
+    },
+    "ja": {
+      "label": "Japanese",
+      "glyph": "日"
+    }
+  },
+  "role": {
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
+  },
+  "share": {
+    "inviteSection": "Invite collaborators",
+    "invitePlaceholder": "Email or @username",
+    "inviteButton": "Send invite",
+    "linkSection": "Share link",
+    "linkAccess": "Anyone with the link can access"
+  },
+  "notifications": {
+    "title": "Access requests",
+    "empty": "No pending notifications",
+    "roleHint": {
+      "editor": "Edit",
+      "viewer": "View"
+    },
+    "reject": "Reject",
+    "approve": "Approve",
+    "request": {
+      "audio": "Wants to join for voice-over and BGM",
+      "project": "Wants to reference your prompt style for their project"
+    }
   }
 }

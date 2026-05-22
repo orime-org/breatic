@@ -13,9 +13,14 @@ import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
 import { checkInfraReady } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { loadLocales } from "@breatic/shared/i18n-node";
 
 // Fail-fast: verify PG + Redis are reachable before starting the server.
 await checkInfraReady();
+
+// i18n: register all locale catalogs once at boot so `t()` callers
+// in services/middleware have messages available on the first request.
+loadLocales();
 
 const app = createApp();
 

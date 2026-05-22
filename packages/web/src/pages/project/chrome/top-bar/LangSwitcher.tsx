@@ -9,24 +9,29 @@ import {
 } from '@/components/ui/popover';
 import { usePreferencesStore, type Language } from '@/stores';
 import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
+import { useTranslation } from '@/i18n/use-translation';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).
  *
  * Renders the current language single-char label inline so the user
- * sees the active locale at a glance (mock: "中" for zh-CN). Click opens
- * a popover of all 4 supported locales; picking one closes the popover.
+ * sees the active locale at a glance (mock: a single char for each
+ * locale). Click opens a popover of all 4 supported locales; picking
+ * one closes the popover.
  *
  * The actual i18n translation provider is wired in a later PR.
  */
-const LANGS: Array<{ code: Language; label: string; char: string }> = [
-  { code: 'zh-CN', label: '简体中文', char: '中' },
-  { code: 'en', label: 'English', char: 'EN' },
-  { code: 'ja', label: '日本語', char: '日' },
-  { code: 'zh-TW', label: '繁體中文', char: '繁' },
+type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja';
+
+const LANGS: Array<{ code: Language; slug: LangSlug }> = [
+  { code: 'zh-CN', slug: 'zhCN' },
+  { code: 'en', slug: 'en' },
+  { code: 'ja', slug: 'ja' },
+  { code: 'zh-TW', slug: 'zhTW' },
 ];
 
 export function LangSwitcher() {
+  const t = useTranslation();
   const language = usePreferencesStore((s) => s.language);
   const setLanguage = usePreferencesStore((s) => s.setLanguage);
   const current = LANGS.find((l) => l.code === language) ?? LANGS[0];
@@ -41,12 +46,12 @@ export function LangSwitcher() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Language: ${current.label}`}
+          aria-label={`Language: ${t(`lang.${current.slug}.label`)}`}
           data-testid='lang-trigger'
           icon={<Globe className='h-[18px] w-[18px]' />}
           withChevron
         >
-          {current.char}
+          {t(`lang.${current.slug}.glyph`)}
         </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent
@@ -68,9 +73,9 @@ export function LangSwitcher() {
                 aria-hidden='true'
                 className='inline-flex w-4 shrink-0 justify-center text-[13px] font-medium text-muted-foreground'
               >
-                {l.char}
+                {t(`lang.${l.slug}.glyph`)}
               </span>
-              {l.label}
+              {t(`lang.${l.slug}.label`)}
             </Button>
           ))}
         </div>

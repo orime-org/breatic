@@ -125,7 +125,7 @@ export async function loginOrCreateGoogle(
   // accounts. Idempotent — also called from project.service.create.
   await studioService.ensurePersonalStudio(user.id, user.username);
 
-  // 每次 Google 登录都同步最新的昵称和头像
+  // Sync the latest nickname + avatar on every Google sign-in
   const updates: Parameters<typeof userRepo.updateUser>[1] = { emailVerified: true };
   if (name && !user.username) updates.username = name;
   if (avatar) updates.avatarUrl = avatar;

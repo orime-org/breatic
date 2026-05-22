@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/sheet';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
+import { useTranslation } from '@/i18n/use-translation';
 
 interface SpaceReadOnlySheetProps {
   space: ProjectSpace | null;
@@ -16,17 +17,17 @@ interface SpaceReadOnlySheetProps {
 
 const TYPE_META: Record<
   SpaceType,
-  { icon: typeof Palette; label: string }
+  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' }
 > = {
-  canvas: { icon: Palette, label: '画布' },
-  document: { icon: FileText, label: '文档' },
-  timeline: { icon: Clock, label: '时间线' },
+  canvas: { icon: Palette, labelKey: 'spaces.kind.canvas' },
+  document: { icon: FileText, labelKey: 'spaces.kind.document' },
+  timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
 };
 
 /**
  * Read-only "peek" sheet for spaces not currently in the tab bar.
  *
- * Triggered from the SpaceDrawer "查看" hover action when the picked
+ * Triggered from the SpaceDrawer "view" hover action when the picked
  * space is NOT already open in the tab bar. The sheet lets the user
  * browse, zoom, and copy content from another space without opening
  * an editable tab. If the space is already open in the tab bar, the
@@ -41,6 +42,7 @@ export function SpaceReadOnlySheet({
   space,
   onClose,
 }: SpaceReadOnlySheetProps) {
+  const t = useTranslation();
   const open = space !== null;
   const meta = space ? TYPE_META[space.type] : null;
   const Icon = meta?.icon ?? Palette;
@@ -57,20 +59,20 @@ export function SpaceReadOnlySheet({
               <Icon className='h-4 w-4 text-muted-foreground' aria-hidden />
               <span className='truncate'>{space?.name ?? ''}</span>
               <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
-                {meta?.label ?? ''}
+                {meta ? t(meta.labelKey) : ''}
               </span>
               <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
-                只读
+                {t('spaces.readonly.label')}
               </span>
             </SheetTitle>
             <p className='text-[12px] text-muted-foreground'>
-              此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。
+              {t('spaces.readonly.description')}
             </p>
           </div>
           <button
             type='button'
             onClick={onClose}
-            aria-label='关闭只读预览'
+            aria-label={t('spaces.readonly.close')}
             data-testid='space-read-only-close'
             className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
           >
@@ -81,9 +83,7 @@ export function SpaceReadOnlySheet({
           className='flex-1 overflow-auto p-4 text-[13px] text-muted-foreground'
           data-testid='space-read-only-body'
         >
-          {space ? (
-            <ReadOnlyBody space={space} />
-          ) : null}
+          {space ? <ReadOnlyBody space={space} /> : null}
         </div>
       </SheetContent>
     </Sheet>
@@ -91,15 +91,17 @@ export function SpaceReadOnlySheet({
 }
 
 function ReadOnlyBody({ space }: { space: ProjectSpace }) {
+  const t = useTranslation();
   switch (space.type) {
     case 'canvas':
       return (
         <div className='flex h-full items-center justify-center text-center'>
           <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>只读画布</strong>
+            <strong className='block text-foreground'>
+              {t('spaces.readonly.canvas.title')}
+            </strong>
             <span className='text-[12px]'>
-              真实 ReactFlow viewer 在 canvas-space 完整实现时接入;
-              此处展示节点与边的只读快照,支持缩放与复制。
+              {t('spaces.readonly.canvas.description')}
             </span>
           </div>
         </div>
@@ -108,10 +110,11 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }) {
       return (
         <div className='flex h-full items-center justify-center text-center'>
           <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>只读文档</strong>
+            <strong className='block text-foreground'>
+              {t('spaces.readonly.document.title')}
+            </strong>
             <span className='text-[12px]'>
-              TipTap 只读 viewer 在 document-space 实施时接入;
-              此处展示富文本快照,支持复制段落。
+              {t('spaces.readonly.document.description')}
             </span>
           </div>
         </div>
@@ -120,10 +123,11 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }) {
       return (
         <div className='flex h-full items-center justify-center text-center'>
           <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>只读时间线</strong>
+            <strong className='block text-foreground'>
+              {t('spaces.readonly.timeline.title')}
+            </strong>
             <span className='text-[12px]'>
-              Timeline viewer 在 timeline-space 实施时接入;
-              此处展示轨道快照,支持复制片段。
+              {t('spaces.readonly.timeline.description')}
             </span>
           </div>
         </div>

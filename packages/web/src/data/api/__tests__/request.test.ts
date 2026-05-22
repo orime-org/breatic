@@ -28,7 +28,7 @@ describe('ApiException', () => {
 });
 
 // Envelope unwrap invariant — backend returns `{ data: T }` for all
-// endpoints (ApiResponse 规约; DD #152). Helpers must unwrap to T so
+// endpoints (ApiResponse contract; DD #152). Helpers must unwrap to T so
 // callers don't double-dot (`res.data.data`). RED test: current
 // implementation returns `res.data` = `{ data: T }`, not T.
 describe('helper envelope unwrap (DD #152)', () => {
