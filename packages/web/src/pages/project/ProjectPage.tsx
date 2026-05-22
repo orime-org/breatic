@@ -184,7 +184,7 @@ export default function ProjectPage() {
       );
     }, SPACE_OP_TIMEOUT_MS);
     return () => clearTimeout(handle);
-  }, [spaceOpInProgress, setSpaceOpInProgress]);
+  }, [spaceOpInProgress, setSpaceOpInProgress, t]);
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);

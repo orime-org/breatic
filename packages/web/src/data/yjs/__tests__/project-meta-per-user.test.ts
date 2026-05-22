@@ -110,7 +110,7 @@ describe('project-meta per-user state machine', () => {
 function readUserState(): {
   openTabIds: string[];
   activeSpaceId: string | null;
-} {
+  } {
   // Read state directly from the Y.Doc (the hook needs a React tree to
   // run; tests sidestep React by reading the doc).
   const doc = getDoc(docName.projectMeta('p1'));
