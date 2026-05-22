@@ -20,7 +20,6 @@ import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHead
 import { LoadingOverlay } from '@/pages/project/chrome/LoadingOverlay';
 import {
   LeftFloatingMenu,
-  type LeftMenuTool,
 } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
@@ -189,7 +188,6 @@ export default function ProjectPage() {
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
-  const [tool, setTool] = React.useState<LeftMenuTool>('nodes');
   const [zoom, setZoom] = React.useState(1);
   const [minimapVisible, setMinimapVisible] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
@@ -305,7 +303,18 @@ export default function ProjectPage() {
             )}
             {activeSpace?.type === 'canvas' ? (
               <>
-                <LeftFloatingMenu active={tool} onPick={setTool} />
+                <LeftFloatingMenu
+                  onPick={(_tool) => {
+                    // TODO: dispatch per-button actions
+                    //   nodes        — open node-library popover
+                    //   upload       — open file picker (presigned URL upload)
+                    //   comment      — enter annotation mode
+                    //   asset-group  — placeholder (M1+)
+                    //   help         — placeholder (M1+)
+                    //   feedback     — placeholder (M1+)
+                    // Buttons never store a "selected" state — they fire and forget.
+                  }}
+                />
                 <ViewportToolbar
                   zoom={zoom}
                   minimapVisible={minimapVisible}

@@ -5,11 +5,11 @@ import userEvent from '@testing-library/user-event';
 import { LeftFloatingMenu } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-function setup(active?: Parameters<typeof LeftFloatingMenu>[0]['active']) {
+function setup() {
   const onPick = vi.fn();
   render(
     <TooltipProvider>
-      <LeftFloatingMenu active={active} onPick={onPick} />
+      <LeftFloatingMenu onPick={onPick} />
     </TooltipProvider>,
   );
   return { onPick };
@@ -43,17 +43,35 @@ describe('LeftFloatingMenu', () => {
     expect(onPick).toHaveBeenCalledWith('upload');
   });
 
-  it('active tool has aria-pressed=true', () => {
-    setup('nodes');
-    expect(
-      screen.getByTestId('tool-nodes').getAttribute('aria-pressed'),
-    ).toBe('true');
+  it('node-library entry carries the permanent featured highlight', () => {
+    setup();
+    // Featured = solid foreground swap. The class set is documented in
+    // LeftFloatingMenu.tsx; we assert the marker class that drives it
+    // so the visual stays anchored to the node-library entry.
+    expect(screen.getByTestId('tool-nodes').className).toContain(
+      'bg-foreground',
+    );
   });
 
-  it('non-active tools have aria-pressed=false', () => {
-    setup('nodes');
-    expect(
-      screen.getByTestId('tool-upload').getAttribute('aria-pressed'),
-    ).toBe('false');
+  it('no action button (upload / comment / placeholders) carries a featured / pressed visual', () => {
+    setup();
+    // Pure action buttons must never enter a pressed or pinned state —
+    // not via aria-pressed (we removed the prop entirely) and not via
+    // any active background class.
+    for (const id of ['upload', 'comment', 'asset-group', 'help', 'feedback']) {
+      const btn = screen.getByTestId(`tool-${id}`);
+      expect(btn.hasAttribute('aria-pressed')).toBe(false);
+      expect(btn.className).not.toContain('bg-foreground');
+    }
+  });
+
+  it('clicking action buttons does not leave behind any aria-pressed mutation', async () => {
+    const user = userEvent.setup();
+    setup();
+    const upload = screen.getByTestId('tool-upload');
+    await user.click(upload);
+    // Still no aria-pressed attribute after click — pure action, no
+    // pinned / activated state survives the click.
+    expect(upload.hasAttribute('aria-pressed')).toBe(false);
   });
 });

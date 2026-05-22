@@ -33,6 +33,14 @@ interface MenuItem {
   icon: LucideIcon;
   labelKey: MenuLabelKey;
   placeholder?: boolean;
+  /**
+   * Only the node-library entry sets this. The featured visual is a
+   * permanent highlight flagging the canvas's primary surface — NOT a
+   * "selected tool" or "currently active" state. Every other button is
+   * a fire-and-forget action with idle + hover only; they never enter
+   * any pressed / pinned / activated visual at any moment.
+   */
+  featured?: boolean;
 }
 
 /**
@@ -40,9 +48,9 @@ interface MenuItem {
  * (finalized.html lines 1248-1258):
  *
  *   Upper zone — core 3 (M0' functional placeholder):
- *     - nodes (node library, sparkles)
- *     - upload (upload assets, upload)
- *     - comment (annotate, message-circle)
+ *     - nodes (node library, sparkles) — FEATURED, always highlighted
+ *     - upload (upload assets, upload) — pure action
+ *     - comment (annotate, message-circle) — pure action
  *   Divider
  *   Lower zone — placeholders (M1+, muted color, toast on click):
  *     - asset-group (asset group, folders)
@@ -50,7 +58,7 @@ interface MenuItem {
  *     - feedback (feedback, headphones)
  */
 const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
-  { id: 'nodes', icon: Sparkles, labelKey: 'menu.item.nodes' },
+  { id: 'nodes', icon: Sparkles, labelKey: 'menu.item.nodes', featured: true },
   { id: 'upload', icon: Upload, labelKey: 'menu.item.upload' },
   { id: 'comment', icon: MessageCircle, labelKey: 'menu.item.comment' },
 ];
@@ -77,7 +85,6 @@ const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
 ];
 
 interface LeftFloatingMenuProps {
-  active?: LeftMenuTool;
   onPick: (tool: LeftMenuTool) => void;
 }
 
@@ -94,15 +101,17 @@ interface LeftFloatingMenuProps {
  * Items:
  *   - 40x40 hit area (`--btn-menu`), 8px rounded-lg
  *   - 20px lucide icons (`--icon-lg`)
- *   - rest: transparent / muted-foreground
- *   - hover: bg-muted / foreground
- *   - active: bg-foreground / background, shadow-sm
+ *   - featured (node library only): solid bg-foreground, permanent
+ *     highlight flagging the canvas's primary surface
+ *   - regular action: transparent / muted-foreground, hover lifts to
+ *     bg-accent / foreground; click fires onPick once and does not
+ *     leave any pressed / pinned state behind
  *   - placeholder: muted-foreground/50 color, hover lifts to muted-foreground
  *
  * Divider:
  *   - 28px wide, 1px border-color line, 4px vertical margin
  */
-export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
+export function LeftFloatingMenu({ onPick }: LeftFloatingMenuProps) {
   const t = useTranslation();
   return (
     <nav
@@ -111,12 +120,7 @@ export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
       className='absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm'
     >
       {UPPER_ITEMS.map((it) => (
-        <MenuButton
-          key={it.id}
-          item={it}
-          active={it.id === active}
-          onPick={onPick}
-        />
+        <MenuButton key={it.id} item={it} onPick={onPick} />
       ))}
       <div
         aria-hidden
@@ -124,12 +128,7 @@ export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
         className='my-1 h-px w-7 bg-border'
       />
       {LOWER_ITEMS.map((it) => (
-        <MenuButton
-          key={it.id}
-          item={it}
-          active={it.id === active}
-          onPick={onPick}
-        />
+        <MenuButton key={it.id} item={it} onPick={onPick} />
       ))}
     </nav>
   );
@@ -137,11 +136,9 @@ export function LeftFloatingMenu({ active, onPick }: LeftFloatingMenuProps) {
 
 function MenuButton({
   item,
-  active,
   onPick,
 }: {
   item: MenuItem;
-  active: boolean;
   onPick: (tool: LeftMenuTool) => void;
 }) {
   const t = useTranslation();
@@ -153,24 +150,15 @@ function MenuButton({
         <button
           type='button'
           aria-label={label}
-          aria-pressed={active}
           onClick={() => onPick(item.id)}
           data-testid={`tool-${item.id}`}
           className={cn(
             'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
-            active
-              ? // Active button: solid swap to `--color-primary-hover` (light
-                // = neutral-700, dark = neutral-500) — same hover treatment
-                // Button / Badge / ChatComposer send use for foreground-bg
-                // buttons, so chrome stays consistent.
-                'bg-foreground text-background shadow-sm hover:bg-primary-hover'
+            item.featured
+              ? 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
               : item.placeholder
                 ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
-                : // Inactive hover: solid swap to `--color-chrome-hover` (=
-                  // neutral-200, mode-swapping via the neutral primitive) —
-                  // one step darker than `--color-muted` so the hover reads
-                  // against the popover surface in both light + dark.
-                  'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
+                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           <Icon className='h-5 w-5' />

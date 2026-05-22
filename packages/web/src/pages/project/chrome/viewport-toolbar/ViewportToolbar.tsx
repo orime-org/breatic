@@ -218,7 +218,7 @@ function VtButton({
               ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
               : active
                 ? 'bg-foreground text-background'
-                : 'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
+                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           {children}
@@ -289,7 +289,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
-              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-[11px] tabular-nums text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground'
+              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-[11px] tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
             >
               <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>
             </button>
@@ -319,8 +319,8 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
                 className={cn(
                   'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-[12px] transition-colors',
                   isCurrent
-                    ? 'bg-foreground text-background'
-                    : 'bg-transparent text-foreground hover:bg-chrome-hover',
+                    ? 'bg-secondary text-secondary-foreground'
+                    : 'bg-transparent text-foreground hover:bg-accent',
                 )}
               >
                 {label}
