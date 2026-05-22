@@ -25,7 +25,7 @@ branch `feat/web-visual-alignment`.
 | Audio / Video | WaveSurfer.js / video.js |
 | 3D | Three.js + @react-three/fiber |
 | Data fetching | Axios + @microsoft/fetch-event-source (SSE) + React Query |
-| i18n | i18next (zh-CN / en / ja / zh-TW) |
+| i18n | `intl-messageformat` (ICU) via shared `t()` + `useTranslation` hook (en / zh-CN / zh-TW / ja) |
 | Routing | React Router 7 |
 | Test | Vitest + Playwright + @testing-library + fast-check |
 | Monitoring | Sentry |
@@ -56,7 +56,7 @@ data/       I/O boundary (api / yjs / stream / storage)
 ui/         Cross-feature business atoms (Avatar, StatusBadge, etc.)
 components/ui/  shadcn primitives (vendor; ESLint-ignored)
 theme/      tokens.css + shadcn-bridge.css + tailwind extensions
-i18n/       react-i18next setup + locale JSON files
+i18n/       locale-bootstrap + useTranslation hook (engine in @breatic/shared/i18n)
 lib/        utils (cn, format, env, analytics)
 ```
 
@@ -127,7 +127,7 @@ packages/web/
 │   ├── ui/                  # business atoms
 │   ├── components/ui/       # shadcn primitives (vendor)
 │   ├── theme/               # tokens.css (single token source)
-│   ├── i18n/                # react-i18next + locales
+│   ├── i18n/                # locale-bootstrap + useTranslation (engine in @breatic/shared/i18n)
 │   ├── lib/                 # utils (cn, etc.)
 │   ├── styles/              # global css overrides
 │   ├── App.tsx · index.tsx · index.css · index.html
