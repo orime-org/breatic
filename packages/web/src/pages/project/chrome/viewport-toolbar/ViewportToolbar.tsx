@@ -1,10 +1,10 @@
 import {
   Grid3x3,
   Map as MinimapIcon,
-  Maximize2,
   Minus,
   Plus,
   Redo2,
+  Scan,
   Undo2,
 } from 'lucide-react';
 
@@ -133,7 +133,12 @@ export function ViewportToolbar({
           tooltip={t('viewportToolbar.fit')}
           onClick={onFit}
         >
-          <Maximize2 className='h-3.5 w-3.5' />
+          {/* Scan = four corner brackets, semantically "frame everything"
+              — read as "fit all nodes into the viewport" (ReactFlow
+              fitView). The previous Maximize2 (four outward arrows)
+              read as "expand / fullscreen" which conflicts with the
+              actual action. */}
+          <Scan className='h-3.5 w-3.5' />
         </VtButton>
       </Group>
       <Group last>
