@@ -14,6 +14,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Mirror vite.config.mts so vitest can resolve `@locales/*.json`
+      // imports from src/i18n/locale-bootstrap.ts (and any test that
+      // transitively imports it, e.g. via TopBar → LangSwitcher).
+      '@locales': path.resolve(__dirname, '../../locales'),
     },
   },
   esbuild: {

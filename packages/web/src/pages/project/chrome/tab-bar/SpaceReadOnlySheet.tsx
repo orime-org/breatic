@@ -1,4 +1,4 @@
-import { Clock, FileText, Palette, X } from 'lucide-react';
+import { Clock, FileText, Palette } from 'lucide-react';
 
 import {
   Sheet,
@@ -53,31 +53,20 @@ export function SpaceReadOnlySheet({
         className='flex w-[min(720px,90vw)] flex-col p-0 sm:max-w-none'
         data-testid='space-read-only-sheet'
       >
-        <SheetHeader className='flex flex-row items-start justify-between gap-4 border-b border-border px-4 py-3'>
-          <div className='flex min-w-0 flex-col gap-1'>
-            <SheetTitle className='flex items-center gap-2 text-[15px] font-semibold text-foreground'>
-              <Icon className='h-4 w-4 text-muted-foreground' aria-hidden />
-              <span className='truncate'>{space?.name ?? ''}</span>
-              <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
-                {meta ? t(meta.labelKey) : ''}
-              </span>
-              <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
-                {t('spaces.readonly.label')}
-              </span>
-            </SheetTitle>
-            <p className='text-[12px] text-muted-foreground'>
-              {t('spaces.readonly.description')}
-            </p>
-          </div>
-          <button
-            type='button'
-            onClick={onClose}
-            aria-label={t('spaces.readonly.close')}
-            data-testid='space-read-only-close'
-            className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-          >
-            <X className='h-[18px] w-[18px]' />
-          </button>
+        <SheetHeader className='flex flex-col gap-1 border-b border-border px-4 py-3 pr-14'>
+          <SheetTitle className='flex min-w-0 items-center gap-2 text-[15px] font-semibold text-foreground'>
+            <Icon className='h-4 w-4 text-muted-foreground' aria-hidden />
+            <span className='truncate'>{space?.name ?? ''}</span>
+            <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
+              {meta ? t(meta.labelKey) : ''}
+            </span>
+            <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
+              {t('spaces.readonly.label')}
+            </span>
+          </SheetTitle>
+          <p className='text-[12px] text-muted-foreground'>
+            {t('spaces.readonly.description')}
+          </p>
         </SheetHeader>
         <div
           className='flex-1 overflow-auto p-4 text-[13px] text-muted-foreground'

@@ -7,38 +7,68 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { usePreferencesStore, type Language } from '@/stores';
+import { getLocale, type Locale } from '@breatic/shared/i18n';
 import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
+import { changeLocale } from '@/i18n/locale-bootstrap';
 import { useTranslation } from '@/i18n/use-translation';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).
  *
- * Renders the current language single-char label inline so the user
+ * Renders the current language single-char glyph inline so the user
  * sees the active locale at a glance (mock: a single char for each
  * locale). Click opens a popover of all 4 supported locales; picking
- * one closes the popover.
+ * one closes the popover and applies the choice immediately.
  *
- * The actual i18n translation provider is wired in a later PR.
+ * Wires straight to the shared i18n engine via `changeLocale()`
+ * (`@/i18n/locale-bootstrap`):
+ *   1. persists the choice to `localStorage["breatic.locale"]`
+ *   2. calls `setLocale()` which notifies every `useTranslation`
+ *      subscriber so the chrome / chat / drawer surfaces re-render
+ *      with the new strings on the same tick.
+ *
+ * The locale is the single source of truth — no separate Zustand
+ * mirror. Reading the current locale uses `useTranslation()` for
+ * its `useSyncExternalStore` subscription (so this component
+ * re-renders when the locale changes through any code path) and
+ * `getLocale()` to read the current value.
  */
 type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja';
 
-const LANGS: Array<{ code: Language; slug: LangSlug }> = [
-  { code: 'zh-CN', slug: 'zhCN' },
-  { code: 'en', slug: 'en' },
-  { code: 'ja', slug: 'ja' },
-  { code: 'zh-TW', slug: 'zhTW' },
+/**
+ * Each entry uses its **own** native name + glyph — the popover must
+ * read correctly to a user who only speaks that language. Translating
+ * "Japanese" → 日本語 only when the active locale is ja defeats the
+ * purpose: a Chinese-only user with the UI in en would see "Japanese"
+ * and not know which option matches their preference.
+ *
+ * `nativeName` is intentionally hardcoded (not in locale JSON) so it
+ * is identical regardless of active locale.
+ */
+const LANGS: Array<{
+  code: Locale;
+  slug: LangSlug;
+  glyph: string;
+  nativeName: string;
+}> = [
+  { code: 'zh-CN', slug: 'zhCN', glyph: '中', nativeName: '简体中文' },
+  { code: 'en', slug: 'en', glyph: 'EN', nativeName: 'English' },
+  { code: 'ja', slug: 'ja', glyph: '日', nativeName: '日本語' },
+  { code: 'zh-TW', slug: 'zhTW', glyph: '繁', nativeName: '繁體中文' },
 ];
 
+function langFor(code: Locale): (typeof LANGS)[number] {
+  return LANGS.find((l) => l.code === code) ?? LANGS[1];
+}
+
 export function LangSwitcher() {
-  const t = useTranslation();
-  const language = usePreferencesStore((s) => s.language);
-  const setLanguage = usePreferencesStore((s) => s.setLanguage);
-  const current = LANGS.find((l) => l.code === language) ?? LANGS[0];
+  useTranslation(); // subscribe so the trigger glyph re-renders on locale change
+  const language = getLocale();
+  const current = langFor(language);
   const [open, setOpen] = React.useState(false);
 
-  const pick = (code: Language) => {
-    setLanguage(code);
+  const pick = (code: Locale) => {
+    changeLocale(code);
     setOpen(false);
   };
 
@@ -46,17 +76,17 @@ export function LangSwitcher() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Language: ${t(`lang.${current.slug}.label`)}`}
+          aria-label={`Language: ${current.nativeName}`}
           data-testid='lang-trigger'
           icon={<Globe className='h-[18px] w-[18px]' />}
           withChevron
         >
-          {t(`lang.${current.slug}.glyph`)}
+          {current.glyph}
         </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-40 p-1'
+        className='w-44 p-1'
         data-testid='lang-popover'
       >
         <div className='flex flex-col gap-0.5'>
@@ -73,9 +103,9 @@ export function LangSwitcher() {
                 aria-hidden='true'
                 className='inline-flex w-4 shrink-0 justify-center text-[13px] font-medium text-muted-foreground'
               >
-                {t(`lang.${l.slug}.glyph`)}
+                {l.glyph}
               </span>
-              {t(`lang.${l.slug}.label`)}
+              {l.nativeName}
             </Button>
           ))}
         </div>
