@@ -303,7 +303,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
         align='center'
         side='top'
         sideOffset={8}
-        className='w-44 p-1'
+        className='w-36 p-1'
         data-testid='zoom-menu'
       >
         <div className='flex flex-col gap-0.5'>
