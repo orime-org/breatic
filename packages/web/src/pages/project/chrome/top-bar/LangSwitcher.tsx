@@ -7,38 +7,53 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { usePreferencesStore, type Language } from '@/stores';
+import { getLocale, type Locale } from '@breatic/shared/i18n';
 import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
+import { changeLocale } from '@/i18n/locale-bootstrap';
 import { useTranslation } from '@/i18n/use-translation';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).
  *
- * Renders the current language single-char label inline so the user
+ * Renders the current language single-char glyph inline so the user
  * sees the active locale at a glance (mock: a single char for each
  * locale). Click opens a popover of all 4 supported locales; picking
- * one closes the popover.
+ * one closes the popover and applies the choice immediately.
  *
- * The actual i18n translation provider is wired in a later PR.
+ * Wires straight to the shared i18n engine via `changeLocale()`
+ * (`@/i18n/locale-bootstrap`):
+ *   1. persists the choice to `localStorage["breatic.locale"]`
+ *   2. calls `setLocale()` which notifies every `useTranslation`
+ *      subscriber so the chrome / chat / drawer surfaces re-render
+ *      with the new strings on the same tick.
+ *
+ * The locale is the single source of truth — no separate Zustand
+ * mirror. Reading the current locale uses `useTranslation()` for
+ * its `useSyncExternalStore` subscription (so this component
+ * re-renders when the locale changes through any code path) and
+ * `getLocale()` to read the current value.
  */
 type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja';
 
-const LANGS: Array<{ code: Language; slug: LangSlug }> = [
+const LANGS: Array<{ code: Locale; slug: LangSlug }> = [
   { code: 'zh-CN', slug: 'zhCN' },
   { code: 'en', slug: 'en' },
   { code: 'ja', slug: 'ja' },
   { code: 'zh-TW', slug: 'zhTW' },
 ];
 
+function slugFor(code: Locale): LangSlug {
+  return LANGS.find((l) => l.code === code)?.slug ?? 'en';
+}
+
 export function LangSwitcher() {
   const t = useTranslation();
-  const language = usePreferencesStore((s) => s.language);
-  const setLanguage = usePreferencesStore((s) => s.setLanguage);
-  const current = LANGS.find((l) => l.code === language) ?? LANGS[0];
+  const language = getLocale();
+  const currentSlug = slugFor(language);
   const [open, setOpen] = React.useState(false);
 
-  const pick = (code: Language) => {
-    setLanguage(code);
+  const pick = (code: Locale) => {
+    changeLocale(code);
     setOpen(false);
   };
 
@@ -46,12 +61,12 @@ export function LangSwitcher() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Language: ${t(`lang.${current.slug}.label`)}`}
+          aria-label={`Language: ${t(`lang.${currentSlug}.label`)}`}
           data-testid='lang-trigger'
           icon={<Globe className='h-[18px] w-[18px]' />}
           withChevron
         >
-          {t(`lang.${current.slug}.glyph`)}
+          {t(`lang.${currentSlug}.glyph`)}
         </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent

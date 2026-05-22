@@ -12,7 +12,7 @@
 
 export { useUIStore } from './ui';
 export { usePreferencesStore } from './preferences';
-export type { ThemeMode, Language } from './preferences';
+export type { ThemeMode } from './preferences';
 export { useCurrentUserStore } from './current-user';
 export type { CurrentUser, UserRole } from './current-user';
 export { useCanvasStore } from './canvas';
