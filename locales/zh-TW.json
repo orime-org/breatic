@@ -1080,7 +1080,8 @@
       "label": "縮圖"
     },
     "undo": "復原",
-    "redo": "重做"
+    "redo": "重做",
+    "zoomCustomAria": "自訂縮放(%)"
   },
   "lang": {
     "en": {

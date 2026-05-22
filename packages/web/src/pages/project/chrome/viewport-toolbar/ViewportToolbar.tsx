@@ -1,3 +1,4 @@
+import * as React from 'react';
 import {
   Grid3x3,
   Minus,
@@ -9,8 +10,18 @@ import {
 } from 'lucide-react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/use-translation';
+
+/** Hard limits on canvas zoom (matches ReactFlow defaults: 0.1 – 4). */
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 4;
+const ZOOM_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
 
 interface ViewportToolbarProps {
   zoom: number;
@@ -29,6 +40,8 @@ interface ViewportToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
+  /** Apply an arbitrary zoom (popover preset / custom input). */
+  onZoomChange?: (zoom: number) => void;
   onFit: () => void;
   onToggleSnap: () => void;
   onToggleMinimap: () => void;
@@ -67,6 +80,7 @@ export function ViewportToolbar({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  onZoomChange,
   onFit,
   onToggleSnap,
   onToggleMinimap,
@@ -107,18 +121,11 @@ export function ViewportToolbar({
         >
           <Minus className='h-3.5 w-3.5' />
         </VtButton>
-        <VtButton
-          aria-label={t('viewportToolbar.zoomResetAria')}
-          tooltip={t('viewportToolbar.zoomReset')}
-          onClick={onZoomReset}
-        >
-          <span
-            className='text-[11px] tabular-nums'
-            data-testid='zoom-readout'
-          >
-            {Math.round(zoom * 100)}%
-          </span>
-        </VtButton>
+        <ZoomMenu
+          zoom={zoom}
+          onZoomChange={onZoomChange ?? onZoomReset.bind(null)}
+          onZoomReset={onZoomReset}
+        />
         <VtButton
           aria-label={t('viewportToolbar.zoomIn')}
           tooltip={t('viewportToolbar.zoomIn')}
@@ -225,5 +232,134 @@ function VtButton({
       </TooltipTrigger>
       <TooltipContent side='top'>{tooltip}</TooltipContent>
     </Tooltip>
+  );
+}
+
+interface ZoomMenuProps {
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  onZoomReset: () => void;
+}
+
+/**
+ * Zoom readout + popover with preset shortcuts and a custom input.
+ *
+ * Click the readout → popover opens with six preset rows
+ * (25/50/100/150/200/400%) and a custom-value input. Picking a preset
+ * or pressing Enter on the input applies the zoom and closes the
+ * popover; the value is clamped to [10%, 400%]. Input accepts
+ * `"150"` or `"150%"`.
+ *
+ * Zoom is currently a ProjectPage local state placeholder — when
+ * ReactFlow integration lands, `onZoomChange` should drive the
+ * `setViewport` API and `zoom` should read back from it.
+ */
+function ZoomMenu({ zoom, onZoomChange, onZoomReset }: ZoomMenuProps) {
+  const t = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+
+  // Seed the draft with the current zoom each time the popover opens.
+  // No focus race here — the `<input autoFocus>` handles focus, and
+  // we deliberately do not auto-select() so a `user.type()` test can
+  // append characters without fighting an asynchronous selection.
+  React.useEffect(() => {
+    if (open) setDraft(String(Math.round(zoom * 100)));
+  }, [open, zoom]);
+
+  const apply = (next: number) => {
+    const clamped = Math.min(Math.max(next, ZOOM_MIN), ZOOM_MAX);
+    onZoomChange(clamped);
+    setOpen(false);
+  };
+
+  const applyDraft = () => {
+    const parsed = Number.parseFloat(draft.replace('%', '').trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      apply(parsed / 100);
+    } else {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type='button'
+              aria-label={t('viewportToolbar.zoomResetAria')}
+              data-testid='zoom-readout-trigger'
+              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-[11px] tabular-nums text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground'
+            >
+              <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='top'>
+          {t('viewportToolbar.zoomReset')}
+        </TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        align='center'
+        side='top'
+        sideOffset={8}
+        className='w-44 p-1'
+        data-testid='zoom-menu'
+      >
+        <div className='flex flex-col gap-0.5'>
+          {ZOOM_PRESETS.map((preset) => {
+            const isCurrent = Math.abs(preset - zoom) < 0.001;
+            const label = `${Math.round(preset * 100)}%`;
+            return (
+              <button
+                key={preset}
+                type='button'
+                onClick={() => (preset === 1 ? onZoomReset() : apply(preset))}
+                data-testid={`zoom-preset-${Math.round(preset * 100)}`}
+                className={cn(
+                  'inline-flex h-7 items-center justify-between rounded-chrome px-2 text-[12px] transition-colors',
+                  isCurrent
+                    ? 'bg-foreground text-background'
+                    : 'bg-transparent text-foreground hover:bg-chrome-hover',
+                )}
+              >
+                <span>{label}</span>
+                {preset === 1 ? (
+                  <span className='text-[10px] text-muted-foreground'>
+                    {t('viewportToolbar.zoomReset')}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className='my-1 h-px bg-border' />
+        <div className='flex items-center gap-1 px-1 py-1'>
+          <input
+            autoFocus
+            type='text'
+            inputMode='numeric'
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyDraft();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setOpen(false);
+              }
+            }}
+            aria-label={t('viewportToolbar.zoomCustomAria')}
+            placeholder='100'
+            data-testid='zoom-custom-input'
+            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-[12px] tabular-nums text-foreground outline-none transition-colors focus-visible:border-foreground'
+          />
+          <span className='text-[12px] text-muted-foreground'>%</span>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
