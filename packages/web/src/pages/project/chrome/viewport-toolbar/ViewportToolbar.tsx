@@ -319,7 +319,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
                 className={cn(
                   'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-[12px] transition-colors',
                   isCurrent
-                    ? 'bg-foreground text-background'
+                    ? 'bg-secondary text-secondary-foreground'
                     : 'bg-transparent text-foreground hover:bg-accent',
                 )}
               >
