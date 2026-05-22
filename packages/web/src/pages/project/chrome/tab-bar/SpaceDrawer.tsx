@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -118,9 +119,9 @@ export function SpaceDrawer({
           <SheetTitle className='text-[15px] font-semibold text-foreground'>
             {t('spaces.drawer.title')}
           </SheetTitle>
-          <p className='text-[12px] text-muted-foreground'>
+          <SheetDescription className='text-[12px] text-muted-foreground'>
             {t('spaces.drawer.description', { count: spaces.length })}
-          </p>
+          </SheetDescription>
         </SheetHeader>
         <ul
           className='flex flex-col overflow-y-auto'

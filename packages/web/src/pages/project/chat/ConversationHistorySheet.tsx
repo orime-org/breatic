@@ -1,6 +1,7 @@
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -104,6 +105,9 @@ export function ConversationHistorySheet({
           <SheetTitle className='text-[13px] font-medium uppercase tracking-wide text-muted-foreground'>
             {t('chat.history.title')}
           </SheetTitle>
+          <SheetDescription className='sr-only'>
+            {t('chat.history.description')}
+          </SheetDescription>
         </SheetHeader>
         <ul
           className='flex flex-col gap-px overflow-y-auto'

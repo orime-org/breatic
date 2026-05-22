@@ -144,6 +144,7 @@
     },
     "history": {
       "title": "Session 列表",
+      "description": "切换或回顾之前的对话。",
       "empty": "暂无历史会话"
     },
     "relative": {

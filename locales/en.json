@@ -144,6 +144,7 @@
     },
     "history": {
       "title": "Session list",
+      "description": "Switch to or review previous conversations.",
       "empty": "No previous conversations"
     },
     "relative": {

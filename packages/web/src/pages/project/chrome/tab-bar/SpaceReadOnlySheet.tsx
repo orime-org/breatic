@@ -3,6 +3,7 @@ import { Clock, FileText, Palette } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -64,9 +65,9 @@ export function SpaceReadOnlySheet({
               {t('spaces.readonly.label')}
             </span>
           </SheetTitle>
-          <p className='text-[12px] text-muted-foreground'>
+          <SheetDescription className='text-[12px] text-muted-foreground'>
             {t('spaces.readonly.description')}
-          </p>
+          </SheetDescription>
         </SheetHeader>
         <div
           className='flex-1 overflow-auto p-4 text-[13px] text-muted-foreground'
