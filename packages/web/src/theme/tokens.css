@@ -126,6 +126,30 @@ html[data-theme='light'] {
   /* ---- Color (CTA / Surface / Border / Ring) ---- */
   --color-primary: var(--neutral-900);
   --color-primary-foreground: var(--neutral-0);
+  /* Primary CTA hover state.
+     Design principle: hover color vs base color must satisfy a
+     *relative* lightness delta (perceptual / Weber-Fechner), NOT an
+     absolute delta. Humans perceive small absolute deltas only on
+     dark bases; on light bases a small delta is invisible (~2%).
+     Current primary inverts across modes (light=black / dark=white),
+     so a per-mode override approximates a "switch by base color"
+     mapping. Light uses neutral-700 (dark base jumps to mid-dark,
+     ~200% relative delta — clearly visible). Dark overrides to
+     neutral-500 in the `[data-theme='dark']` block (light base jumps
+     to mid-light, ~35% relative delta — clearly visible).
+     Mock `.composer-send.ready:hover` (finalized line 758) only
+     specifies neutral-700 for both modes; empirically the dark mode
+     hover is too weak there, so this project corrects to one step
+     deeper for dark to keep perceptual symmetry.
+     **Future warning**: if a non-mode-reflexive dark-base button
+     ever ships (e.g. a `bg-foreground` button used in light mode
+     too), do NOT reuse this alias — introduce a separate
+     `--color-cta-on-dark-hover` instead, because this alias assumes
+     the base color follows the mode 1:1.
+     `hover:opacity-90` on the pure-white / pure-black primary fails
+     visually (<2% perceived delta) — solid swap is the only pattern
+     that works on saturated extremes. */
+  --color-primary-hover: var(--neutral-700);
   --color-secondary: var(--neutral-100);
   --color-secondary-foreground: var(--neutral-900);
   --color-destructive: #dc2626; /* red-600 (dark override below) */
@@ -136,6 +160,15 @@ html[data-theme='light'] {
   --color-card-foreground: var(--neutral-900);
   --color-popover: var(--neutral-0);
   --color-popover-foreground: var(--neutral-900);
+  /* Elevated surface — for content-bearing panes like Canvas and
+     Composer; one step lighter than the page background in both
+     light and dark mode (elevated effect). Reuses the --neutral-50
+     primitive (light #fafaf9 / dark #1c1917 via the dark block's
+     neutral override) so a single alias auto-inverts across modes
+     without a separate dark override. Matches the chrome-baseline
+     mock — both `.canvas-area` and `.composer` use
+     `background: var(--neutral-50)`. */
+  --color-elevated: var(--neutral-50);
   --color-muted: var(--neutral-100);
   --color-muted-foreground: var(--neutral-500);
   --color-accent: var(--neutral-100);
@@ -223,6 +256,16 @@ html[data-theme='dark'] {
 
   /* Popover elevated surface (one step lighter than background) */
   --color-popover: var(--neutral-50);
+
+  /* Primary CTA hover — dark override. The dark mode primary is a
+     near-white base; the light-mode default of neutral-700 (a
+     mid-dark gray) yields only ~8% perceived delta against that
+     white base and is effectively invisible. Override to
+     neutral-500 (a mid-light gray) so the dark hover lands at ~35%
+     relative delta — perceptually symmetric with the light mode
+     hover. See the @theme block's --color-primary-hover comment
+     for the full design rationale. */
+  --color-primary-hover: var(--neutral-500);
 
   /* shadcn destructive · lighter for dark contrast */
   --color-destructive: #ef4444;
