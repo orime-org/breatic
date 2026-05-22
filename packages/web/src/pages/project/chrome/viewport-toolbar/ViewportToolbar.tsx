@@ -1,7 +1,7 @@
 import {
   Grid3x3,
-  Map as MinimapIcon,
   Minus,
+  PictureInPicture2 as MinimapIcon,
   Plus,
   Redo2,
   Scan,
