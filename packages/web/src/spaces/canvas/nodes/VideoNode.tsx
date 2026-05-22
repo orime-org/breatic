@@ -38,6 +38,7 @@ export function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
+          // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video asset; the upload flow does not produce a caption track. Add a <track> when caption authoring lands.
           <video
             controls
             src={data.url}

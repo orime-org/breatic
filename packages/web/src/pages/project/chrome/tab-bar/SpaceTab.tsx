@@ -106,13 +106,26 @@ export function SpaceTab({
         />
       ) : null}
       {onClose ? (
+        // Span (not button) because the outer SpaceTab is itself a
+        // <button>, and button-in-button is invalid HTML — browsers
+        // silently reparent it (see [[feedback_html_validity_check]]).
+        // The span manually replicates button semantics via role +
+        // tabIndex + onClick + onKeyDown so keyboard users can still
+        // close the tab.
         <span
           role='button'
-          tabIndex={-1}
+          tabIndex={0}
           aria-label='Close space tab'
           onClick={onCloseClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose?.();
+            }
+          }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>

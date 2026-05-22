@@ -91,6 +91,7 @@ export function ProjectGrid() {
         {visible.map((p) => (
           // Personal-studio v1 → every project is owner. When the list
           // endpoint returns per-row role we'll pass `p.role` instead.
+          // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a ProjectCard component prop, not a DOM ARIA role
           <ProjectCard key={p.id} project={p} role='owner' />
         ))}
       </div>

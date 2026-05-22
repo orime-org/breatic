@@ -12,6 +12,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
       <TopBar
         projectId='p1'
         projectName='Demo'
+        // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a TopBar component prop (owner | editor | viewer), not a DOM ARIA role
         role='owner'
         credits={42}
         onRename={onRename}

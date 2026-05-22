@@ -63,6 +63,7 @@ export function TextNode({
           <div
             ref={ref}
             role='textbox'
+            tabIndex={0}
             aria-multiline='true'
             aria-readonly={!editing}
             data-testid='text-node-body'
