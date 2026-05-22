@@ -166,11 +166,7 @@ function MenuButton({
                 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
               : item.placeholder
                 ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
-                : // Inactive hover: solid swap to `--color-chrome-hover` (=
-                  // neutral-200, mode-swapping via the neutral primitive) —
-                  // one step darker than `--color-muted` so the hover reads
-                  // against the popover surface in both light + dark.
-                  'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
+                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           <Icon className='h-5 w-5' />
