@@ -159,10 +159,20 @@ function MenuButton({
           className={cn(
             'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
             active
-              ? 'bg-foreground text-background shadow-sm'
+              ? // Active button: pair `transition-opacity` with `hover:opacity-90` for a
+                // subtle hover feedback. Solid color swaps don't help here because the
+                // `bg-foreground` swap target (`bg-neutral-X`) would have to flip per
+                // theme, and a 10% opacity dim reads clearly in both light + dark.
+                'bg-foreground text-background shadow-sm transition-opacity hover:opacity-90'
               : item.placeholder
                 ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
-                : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+                : // Inactive hover: light mode needs a darker step than `bg-muted`
+                  // (= --neutral-100 = #f5f5f4) which is near-invisible against the
+                  // white popover surface. Raw `neutral-200` / `neutral-100` here is a
+                  // local surgical override; if a third chrome hover surface needs the
+                  // same treatment, promote this to a `--color-chrome-hover` semantic
+                  // token in tokens.css.
+                  'bg-transparent text-muted-foreground hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-100',
           )}
         >
           <Icon className='h-5 w-5' />
