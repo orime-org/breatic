@@ -55,3 +55,6 @@ api-reference/
 # Local brainstorm/preview cache (not part of the public repo)
 .superpowers/
 .gstack/
+
+# watcher project-level config — private to each contributor, do not commit
+.watcher/
