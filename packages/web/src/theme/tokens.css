@@ -177,12 +177,17 @@ html[data-theme='light'] {
      state remains visible against the popover surface in both modes.
      `--color-muted` (= neutral-100) collapses to ~5% delta against
      the white popover in light mode and reads as no-hover. neutral-200
-     (#e7e5e4 light / #44403c dark) lands at ~10%/~18% delta, which
-     is the same perceptual band as PR #115's `--color-primary-hover`
-     uses for foreground-bg buttons, so chrome buttons match. No dark
-     override needed — `var(--neutral-200)` mode-swaps via the
-     neutral primitive. */
-  --color-chrome-hover: var(--neutral-200);
+     (#44403c dark) lands at ~18% delta, the same perceptual band as
+     PR #115's `--color-primary-hover` uses for foreground-bg buttons.
+
+     Light mode hardcodes a pure neutral `#ebebeb` instead of warm-zinc
+     `var(--neutral-200) = #e7e5e4`. The warm-zinc palette's slight
+     yellow-brown tint, when blown up by the brief hover transition on
+     a pure white popover, reads as "dirty" (user feedback after PR
+     #122 / #123). Dark mode keeps `var(--neutral-200)` — at dark
+     mode's lower brightness, the warm tint disappears into the dim
+     surface and looks fine. */
+  --color-chrome-hover: #ebebeb;
   --color-border: var(--neutral-200);
   --color-input: var(--neutral-200);
   --color-ring: var(--neutral-900);
@@ -276,6 +281,13 @@ html[data-theme='dark'] {
      hover. See the @theme block's --color-primary-hover comment
      for the full design rationale. */
   --color-primary-hover: var(--neutral-500);
+
+  /* Chrome hover — dark override back to warm-zinc neutral-200
+     (#44403c). The @theme block hardcodes light to pure neutral
+     `#ebebeb` to avoid a "dirty" warm tint on the white popover;
+     dark mode does not suffer the same artifact (lower brightness
+     hides the tint), so we restore the neutral primitive here. */
+  --color-chrome-hover: var(--neutral-200);
 
   /* shadcn destructive · lighter for dark contrast */
   --color-destructive: #ef4444;
