@@ -159,20 +159,18 @@ function MenuButton({
           className={cn(
             'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
             active
-              ? // Active button: pair `transition-opacity` with `hover:opacity-90` for a
-                // subtle hover feedback. Solid color swaps don't help here because the
-                // `bg-foreground` swap target (`bg-neutral-X`) would have to flip per
-                // theme, and a 10% opacity dim reads clearly in both light + dark.
-                'bg-foreground text-background shadow-sm transition-opacity hover:opacity-90'
+              ? // Active button: solid swap to `--color-primary-hover` (light
+                // = neutral-700, dark = neutral-500) — same hover treatment
+                // Button / Badge / ChatComposer send use for foreground-bg
+                // buttons, so chrome stays consistent.
+                'bg-foreground text-background shadow-sm hover:bg-primary-hover'
               : item.placeholder
                 ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
-                : // Inactive hover: light mode needs a darker step than `bg-muted`
-                  // (= --neutral-100 = #f5f5f4) which is near-invisible against the
-                  // white popover surface. Raw `neutral-200` / `neutral-100` here is a
-                  // local surgical override; if a third chrome hover surface needs the
-                  // same treatment, promote this to a `--color-chrome-hover` semantic
-                  // token in tokens.css.
-                  'bg-transparent text-muted-foreground hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-100',
+                : // Inactive hover: solid swap to `--color-chrome-hover` (=
+                  // neutral-200, mode-swapping via the neutral primitive) —
+                  // one step darker than `--color-muted` so the hover reads
+                  // against the popover surface in both light + dark.
+                  'bg-transparent text-muted-foreground hover:bg-chrome-hover hover:text-foreground',
           )}
         >
           <Icon className='h-5 w-5' />
