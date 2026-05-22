@@ -38,6 +38,15 @@ const FALLBACK_LOCALE: Locale = 'en';
 const STORAGE_KEY = 'breatic.locale';
 
 /**
+ * Old localStorage keys that previous app versions used to persist
+ * language preference. We delete them at bootstrap so the browser
+ * devtools view stays clean and no stale reader can latch onto a
+ * stranded value. Safe to remove this list a few releases later once
+ * every active install has been visited at least once.
+ */
+const LEGACY_LANGUAGE_STORAGE_KEYS = ['Breatic-language', 'language'] as const;
+
+/**
  * Initialize the i18n runtime. Must be called once at app startup,
  * before any component renders `useTranslation()`.
  */
@@ -48,9 +57,23 @@ export function bootstrapLocale(): void {
   setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
   setLocaleMessages('ja', ja as Record<string, unknown>);
 
-  // 2. Resolve the initial active locale.
+  // 2. Prune stale localStorage keys from older app versions so devtools
+  //    doesn't show 3 conflicting "language" entries side by side.
+  pruneLegacyLanguageKeys();
+
+  // 3. Resolve the initial active locale.
   const initial = resolveInitialLocale();
   setLocale(initial);
+}
+
+function pruneLegacyLanguageKeys(): void {
+  try {
+    for (const key of LEGACY_LANGUAGE_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // localStorage may be unavailable; safe to ignore.
+  }
 }
 
 /**

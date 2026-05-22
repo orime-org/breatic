@@ -35,21 +35,36 @@ import { useTranslation } from '@/i18n/use-translation';
  */
 type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja';
 
-const LANGS: Array<{ code: Locale; slug: LangSlug }> = [
-  { code: 'zh-CN', slug: 'zhCN' },
-  { code: 'en', slug: 'en' },
-  { code: 'ja', slug: 'ja' },
-  { code: 'zh-TW', slug: 'zhTW' },
+/**
+ * Each entry uses its **own** native name + glyph — the popover must
+ * read correctly to a user who only speaks that language. Translating
+ * "Japanese" → 日本語 only when the active locale is ja defeats the
+ * purpose: a Chinese-only user with the UI in en would see "Japanese"
+ * and not know which option matches their preference.
+ *
+ * `nativeName` is intentionally hardcoded (not in locale JSON) so it
+ * is identical regardless of active locale.
+ */
+const LANGS: Array<{
+  code: Locale;
+  slug: LangSlug;
+  glyph: string;
+  nativeName: string;
+}> = [
+  { code: 'zh-CN', slug: 'zhCN', glyph: '中', nativeName: '简体中文' },
+  { code: 'en', slug: 'en', glyph: 'EN', nativeName: 'English' },
+  { code: 'ja', slug: 'ja', glyph: '日', nativeName: '日本語' },
+  { code: 'zh-TW', slug: 'zhTW', glyph: '繁', nativeName: '繁體中文' },
 ];
 
-function slugFor(code: Locale): LangSlug {
-  return LANGS.find((l) => l.code === code)?.slug ?? 'en';
+function langFor(code: Locale): (typeof LANGS)[number] {
+  return LANGS.find((l) => l.code === code) ?? LANGS[1];
 }
 
 export function LangSwitcher() {
-  const t = useTranslation();
+  useTranslation(); // subscribe so the trigger glyph re-renders on locale change
   const language = getLocale();
-  const currentSlug = slugFor(language);
+  const current = langFor(language);
   const [open, setOpen] = React.useState(false);
 
   const pick = (code: Locale) => {
@@ -61,17 +76,17 @@ export function LangSwitcher() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Language: ${t(`lang.${currentSlug}.label`)}`}
+          aria-label={`Language: ${current.nativeName}`}
           data-testid='lang-trigger'
           icon={<Globe className='h-[18px] w-[18px]' />}
           withChevron
         >
-          {t(`lang.${currentSlug}.glyph`)}
+          {current.glyph}
         </TopBarTextIconButton>
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-40 p-1'
+        className='w-44 p-1'
         data-testid='lang-popover'
       >
         <div className='flex flex-col gap-0.5'>
@@ -88,9 +103,9 @@ export function LangSwitcher() {
                 aria-hidden='true'
                 className='inline-flex w-4 shrink-0 justify-center text-[13px] font-medium text-muted-foreground'
               >
-                {t(`lang.${l.slug}.glyph`)}
+                {l.glyph}
               </span>
-              {t(`lang.${l.slug}.label`)}
+              {l.nativeName}
             </Button>
           ))}
         </div>
