@@ -159,6 +159,9 @@ export default function ProjectPage() {
               onNewConversation={() => {
                 /* wired in ChatPanel B-mode round */
               }}
+              onRenameConversation={() => {
+                /* wired when conversation API lands */
+              }}
             />
             <ChatPanel projectId={projectId} />
           </aside>
