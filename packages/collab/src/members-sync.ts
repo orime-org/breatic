@@ -1,5 +1,5 @@
 /**
- * Cross-process control-plane subscriber (v10).
+ * Cross-process control-plane subscriber (members channel only).
  *
  * The API server publishes pub/sub events on Redis DB2:
  *
@@ -8,46 +8,36 @@
  *     onAuthenticate re-check), then broadcastStateless an
  *     invalidate signal to the project's `meta` doc so other
  *     connected clients re-fetch their members cache.
- *   - `project:{pid}:space:created` — apply
- *     `meta.spaces[spaceId] = {...}` so connected frontends see the
- *     new tab via Yjs sync.
- *   - `project:{pid}:space:deleted` — apply
- *     `meta.spaces.delete(spaceId)`. The API has already
- *     soft-deleted the corresponding `yjs_documents` row directly.
  *
  * Why pub/sub (not Streams):
  *
- *   - These are notification-only events. A consumer that's
- *     offline can safely miss a message; reconnect re-queries PG /
- *     reads Yjs.
+ *   - Notification-only event. A consumer that's offline can safely
+ *     miss a message; reconnect re-queries PG.
  *   - No replay / consumer-group semantics needed.
  *
- * One `psubscribe('project:*')` covers all topics — we discriminate
- * by event payload `type` field. Channel name parsing is avoided to
- * keep the listener simple.
+ * Space lifecycle (create / delete / lock / restore) used to flow
+ * through this same subscriber via `project:{pid}:space:*` channels —
+ * removed 2026-05-23 (ADR yjs-collab-only-write-authz). Space writes
+ * now happen inside `space-rpc.ts` as collab stateless RPC, so no
+ * Redis round-trip is needed.
+ *
+ * One `psubscribe('project:*')` covers the remaining channel — kept
+ * as a pattern subscription in case future control-plane events join.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import type Redis from "ioredis";
-import * as Y from "yjs";
 import {
   ALL_PROJECT_CHANNELS_PATTERN,
   parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
-  type SpaceCreatedEvent,
-  type SpaceDeletedEvent,
-  type SpaceLockedEvent,
 } from "@breatic/shared";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("members-sync");
 
-type ProjectControlEvent =
-  | MembersChangedEvent
-  | SpaceCreatedEvent
-  | SpaceDeletedEvent
-  | SpaceLockedEvent;
+type ProjectControlEvent = MembersChangedEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
@@ -78,107 +68,12 @@ function kickUserFromProject(
 }
 
 /**
- * Apply `meta.spaces[spaceId] = {...}` on the project's meta doc.
- *
- * Idempotent — if the entry already exists (replay or duplicate
- * publish), the second `set` is a no-op (Y.Map last-write-wins).
- */
-async function applySpaceCreated(
-  hocuspocus: Hocuspocus,
-  ev: SpaceCreatedEvent,
-): Promise<void> {
-  const docName = projectMetaDocName(ev.projectId);
-  const conn = await hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: "system" }, source: "members-sync" },
-  });
-  try {
-    await conn.transact((doc: Y.Doc) => {
-      // Origin tag is set inside the inner Y.Doc.transact below;
-      // DirectConnection.transact itself does not take an origin arg.
-      const spaces = doc.getMap("spaces");
-      const existing = spaces.get(ev.spaceId);
-      if (existing instanceof Y.Map) {
-        // Idempotent reapply — leave the existing entry untouched.
-        return;
-      }
-      const entry = new Y.Map();
-      entry.set("id", ev.spaceId);
-      entry.set("type", ev.spaceType);
-      entry.set("name", ev.name);
-      entry.set("order", spaces.size);
-      entry.set("locked", false);
-      entry.set("createdAt", ev.ts);
-      entry.set("createdBy", ev.createdBy);
-      spaces.set(ev.spaceId, entry);
-    });
-  } finally {
-    await conn.disconnect();
-  }
-}
-
-/** Remove `meta.spaces[spaceId]` from the project's meta doc. */
-async function applySpaceDeleted(
-  hocuspocus: Hocuspocus,
-  ev: SpaceDeletedEvent,
-): Promise<void> {
-  const docName = projectMetaDocName(ev.projectId);
-  const conn = await hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: "system" }, source: "members-sync" },
-  });
-  try {
-    await conn.transact((doc: Y.Doc) => {
-      // Origin tag is set inside the inner Y.Doc.transact below;
-      // DirectConnection.transact itself does not take an origin arg.
-      const spaces = doc.getMap("spaces");
-      if (spaces.has(ev.spaceId)) {
-        spaces.delete(ev.spaceId);
-      }
-    });
-  } finally {
-    await conn.disconnect();
-  }
-}
-
-/**
- * Toggle `meta.spaces[spaceId].locked` to the value in the event.
- *
- * Idempotent — if the entry doesn't exist (race with deletion) we
- * skip; if it already has the requested value, the second `set` is
- * a no-op. The frontend's drawer relies on the `locked` field to
- * gate the delete action UI; the server uses this only as a UX
- * hint, not a security guard.
- */
-async function applySpaceLocked(
-  hocuspocus: Hocuspocus,
-  ev: SpaceLockedEvent,
-): Promise<void> {
-  const docName = projectMetaDocName(ev.projectId);
-  const conn = await hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: "system" }, source: "members-sync" },
-  });
-  try {
-    await conn.transact((doc: Y.Doc) => {
-      const spaces = doc.getMap("spaces");
-      const entry = spaces.get(ev.spaceId);
-      if (entry instanceof Y.Map) {
-        entry.set("locked", ev.locked);
-      }
-    });
-  } finally {
-    await conn.disconnect();
-  }
-}
-
-/**
  * Broadcast a stateless invalidate signal on the project's meta
  * doc. Frontend clients subscribed via
  * `metaProvider.on('stateless', handler)` re-fetch their members
  * cache (and any other invalidated state).
  *
- * `broadcastStateless` lives on the per-Document instance, not on
- * the Hocuspocus server itself — we look up the Document via
- * `hocuspocus.documents.get(docName)` and broadcast directly. If
- * no client is connected (Document not loaded), this is a no-op
+ * If no client is connected (Document not loaded), this is a no-op
  * — connected clients will rehydrate via REST on next page load.
  */
 function broadcastInvalidate(
@@ -188,7 +83,7 @@ function broadcastInvalidate(
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
-  if (!doc) return; // No client connected to this project's meta — nothing to invalidate.
+  if (!doc) return;
   try {
     doc.broadcastStateless(JSON.stringify(payload));
   } catch (err) {
@@ -229,57 +124,6 @@ async function handleEvent(
       },
       "members_changed_handled",
     );
-    return;
-  }
-
-  if (event.type === "project-space:created") {
-    try {
-      await applySpaceCreated(hocuspocus, event);
-      // Stateless broadcast is optional for spaces (the meta-doc
-      // mutation already propagates via Yjs sync), but we do it for
-      // parity so any future client-side logic that listens to the
-      // generic `project-{pid}/meta` stateless channel sees a single
-      // event shape across all control-plane changes.
-      broadcastInvalidate(hocuspocus, event.projectId, event);
-      logger.info(
-        { projectId: event.projectId, spaceId: event.spaceId },
-        "space_created_handled",
-      );
-    } catch (err) {
-      logger.error({ err, event }, "space_created_apply_failed");
-    }
-    return;
-  }
-
-  if (event.type === "project-space:deleted") {
-    try {
-      await applySpaceDeleted(hocuspocus, event);
-      broadcastInvalidate(hocuspocus, event.projectId, event);
-      logger.info(
-        { projectId: event.projectId, spaceId: event.spaceId },
-        "space_deleted_handled",
-      );
-    } catch (err) {
-      logger.error({ err, event }, "space_deleted_apply_failed");
-    }
-    return;
-  }
-
-  if (event.type === "project-space:locked") {
-    try {
-      await applySpaceLocked(hocuspocus, event);
-      broadcastInvalidate(hocuspocus, event.projectId, event);
-      logger.info(
-        {
-          projectId: event.projectId,
-          spaceId: event.spaceId,
-          locked: event.locked,
-        },
-        "space_locked_handled",
-      );
-    } catch (err) {
-      logger.error({ err, event }, "space_locked_apply_failed");
-    }
     return;
   }
 

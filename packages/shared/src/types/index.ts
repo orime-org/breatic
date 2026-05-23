@@ -66,14 +66,6 @@ export type {
 
 export {
   membersChangedChannel,
-  spaceCreatedChannel,
-  spaceDeletedChannel,
-  spaceLockedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
 } from "./redis-events.js";
-export type {
-  MembersChangedEvent,
-  SpaceCreatedEvent,
-  SpaceDeletedEvent,
-  SpaceLockedEvent,
-} from "./redis-events.js";
+export type { MembersChangedEvent } from "./redis-events.js";
