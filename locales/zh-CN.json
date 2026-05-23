@@ -966,13 +966,25 @@
       "timelineSub": "视频 / 音频剪辑"
     },
     "history": {
-      "label": "Space 活动历史",
-      "title": "Space 创建 / 删除 / 锁定历史",
-      "header": "系统消息",
-      "description": "{count, plural, other {# 条 · 项目共享数据的事件记录}}",
-      "empty": "暂无空间活动。创建 / 删除 / 锁定事件会显示在这里。",
+      "label": "项目消息",
+      "title": "项目消息 — 节点缺失 + Space 生命周期",
+      "header": "项目消息",
+      "description": "{count, plural, other {# 条消息}}",
+      "empty": "暂无消息。节点缺失提示和 Space 创建 / 删除 / 锁定事件会显示在这里。",
       "markRead": "已读",
       "markUnread": "标为已读",
+      "kind": {
+        "missingNode": "引用的节点已不存在",
+        "spaceCreated": "{actor} 创建了 Space {spaceName}",
+        "spaceDeleted": "{actor} 删除了 Space {spaceName}",
+        "spaceLocked": "{actor} 锁定了 Space {spaceName}",
+        "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
+        "spaceRestored": "{actor} 恢复了 Space {spaceName}"
+      },
+      "action": {
+        "restore": "恢复",
+        "clearAll": "清空"
+      },
       "relative": {
         "justNow": "刚刚",
         "minutesAgo": "{count, plural, other {# 分钟前}}",

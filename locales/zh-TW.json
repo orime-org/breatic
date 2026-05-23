@@ -966,13 +966,25 @@
       "timelineSub": "影片 / 音訊剪輯"
     },
     "history": {
-      "label": "Space 活動歷史",
-      "title": "Space 建立 / 刪除 / 鎖定歷史",
-      "header": "系統訊息",
-      "description": "{count, plural, other {# 筆 · 專案共享資料的事件紀錄}}",
-      "empty": "尚無空間活動。建立 / 刪除 / 鎖定事件會顯示在這裡。",
+      "label": "專案訊息",
+      "title": "專案訊息 — 節點遺失 + Space 生命週期",
+      "header": "專案訊息",
+      "description": "{count, plural, other {# 則訊息}}",
+      "empty": "尚無訊息。節點遺失提示和 Space 建立 / 刪除 / 鎖定事件會顯示在這裡。",
       "markRead": "已讀",
       "markUnread": "標記為已讀",
+      "kind": {
+        "missingNode": "引用的節點已不存在",
+        "spaceCreated": "{actor} 建立了 Space {spaceName}",
+        "spaceDeleted": "{actor} 刪除了 Space {spaceName}",
+        "spaceLocked": "{actor} 鎖定了 Space {spaceName}",
+        "spaceUnlocked": "{actor} 解鎖了 Space {spaceName}",
+        "spaceRestored": "{actor} 還原了 Space {spaceName}"
+      },
+      "action": {
+        "restore": "還原",
+        "clearAll": "清空"
+      },
       "relative": {
         "justNow": "剛剛",
         "minutesAgo": "{count, plural, other {# 分鐘前}}",

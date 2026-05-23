@@ -87,10 +87,10 @@ describe('SpaceTabBar', () => {
     expect(screen.getByTestId('space-tab-close-s3')).toBeInTheDocument();
   });
 
-  it('+ button, drawer trigger, history trigger all present (right group)', () => {
+  it('+ button, drawer trigger, project-messages trigger all present (right group)', () => {
     setup();
     expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
     expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('space-history-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
   });
 });
