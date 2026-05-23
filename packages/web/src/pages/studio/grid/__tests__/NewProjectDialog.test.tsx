@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NewProjectDialog } from '@/pages/studio/grid/NewProjectDialog';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('NewProjectDialog', () => {
   it('does NOT render content when closed', () => {
@@ -15,6 +16,11 @@ describe('NewProjectDialog', () => {
     expect(screen.getByText('New project')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
     expect(screen.getByLabelText('Template')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations when open', async () => {
+    render(<NewProjectDialog open onOpenChange={() => {}} onCreate={() => {}} />);
+    await expectNoA11yViolations(document.body);
   });
 
   it('Create button disabled when name is empty', () => {

@@ -4,6 +4,7 @@ import { act } from 'react';
 
 import { MembersModal } from '@/pages/project/chrome/top-bar/MembersModal';
 import { useUIStore } from '@/stores/ui';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('MembersModal', () => {
   beforeEach(() => {
@@ -13,6 +14,14 @@ describe('MembersModal', () => {
   it('is hidden when membersModalOpen is false', () => {
     render(<MembersModal />);
     expect(screen.queryByTestId('members-modal')).not.toBeInTheDocument();
+  });
+
+  it('has no a11y violations when open', async () => {
+    act(() => {
+      useUIStore.getState().setMembersModalOpen(true);
+    });
+    render(<MembersModal />);
+    await expectNoA11yViolations(document.body);
   });
 
   it('renders header / invite input / 5 stub member rows when open', () => {

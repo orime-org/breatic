@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import { ViewportToolbar } from '@/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 function setup(
   zoom = 1,
@@ -37,6 +38,11 @@ describe('ViewportToolbar', () => {
   it('renders the toolbar overlay', () => {
     setup();
     expect(screen.getByTestId('viewport-toolbar')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    setup();
+    await expectNoA11yViolations(document.body);
   });
 
   it('zoom readout shows zoom * 100 rounded as %', () => {

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import { ThemeToggle } from '@/pages/project/chrome/top-bar/ThemeToggle';
 import { usePreferencesStore } from '@/stores';
+import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('ThemeToggle', () => {
   beforeEach(() => {
@@ -14,6 +15,11 @@ describe('ThemeToggle', () => {
   it('mirrors the current theme onto <html data-theme>', () => {
     render(<ThemeToggle />);
     expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('has no a11y violations', async () => {
+    const { container } = render(<ThemeToggle />);
+    await expectNoA11yViolations(container);
   });
 
   it('opens the theme popover and selecting Dark sets the theme', async () => {

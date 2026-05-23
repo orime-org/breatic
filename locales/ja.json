@@ -880,6 +880,7 @@
       "inviteButton": "招待",
       "membersSection": "メンバー ({count})",
       "ownerNote": "オーナーはプロジェクト作成者に永久に紐づきます",
+      "roleSelectAria": "{name} のロールを変更",
       "isMe": "(自分)",
       "remove": "削除"
     }
