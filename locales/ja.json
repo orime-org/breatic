@@ -466,7 +466,8 @@
         "delete": "Space の削除がタイムアウトしました"
       },
       "error": {
-        "create": "Space の作成に失敗しました"
+        "create": "Space の作成に失敗しました",
+        "notSynced": "プロジェクトを同期中です。しばらくしてから再試行してください"
       },
       "loading": {
         "create": "Space を作成中…",

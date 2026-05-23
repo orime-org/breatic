@@ -26,7 +26,7 @@ interface SpaceTabBarProps {
   /** Per-user open tab id list, for the drawer's status chip computation. */
   openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
-  /** Project id — drawer passes this to spacesApi for lock / delete. */
+  /** Project id — drawer uses it for row test ids only (RPCs are by handler). */
   projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
@@ -46,6 +46,10 @@ interface SpaceTabBarProps {
   onRestoreSpace?: (spaceId: string) => Promise<void> | void;
   /** Owner-only: clear all entries in `meta.projectMessages`. */
   onClearMessages?: () => Promise<void> | void;
+  /** Soft-delete a Space (drawer row × button). RPC handler from ProjectPage. */
+  onDeleteSpace?: (spaceId: string) => Promise<void> | void;
+  /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
+  onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
 }
 
 /**
@@ -72,6 +76,8 @@ export function SpaceTabBar({
   currentUserRole,
   onRestoreSpace,
   onClearMessages,
+  onDeleteSpace,
+  onSetSpaceLocked,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -254,6 +260,8 @@ export function SpaceTabBar({
           projectId={projectId}
           onActivate={onActivate}
           onView={onViewSpace}
+          onDeleteSpace={onDeleteSpace}
+          onSetSpaceLocked={onSetSpaceLocked}
         />
         <ProjectMessagesButton
           messages={projectMessages}

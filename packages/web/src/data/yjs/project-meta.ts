@@ -225,12 +225,11 @@ export function setActiveSpace(
 }
 
 /**
- * Legacy direct-write helper, kept for tests and demo scaffolding. New
- * code SHOULD use the server REST endpoint + Redis pub/sub flow so the
- * server stays the single source of truth.
+ * Legacy direct-write helper, kept for tests and demo scaffolding only.
  *
- * @deprecated Use `spacesApi.create` HTTP route; let the server-driven
- *   event flow add the Space to the doc.
+ * @internal — production writes route through collab via
+ * `sendSpaceRpc({ type: 'space:create', ... })`; the client write here
+ * is rejected by `beforeHandleMessage` in collab in connected sessions.
  */
 export function appendSpace(projectId: string, space: ProjectSpace): void {
   const doc = getDoc(docName.projectMeta(projectId));
@@ -246,10 +245,10 @@ export function appendSpace(projectId: string, space: ProjectSpace): void {
 }
 
 /**
- * Legacy direct-write helper, kept for tests and demo scaffolding.
+ * Legacy direct-write helper, kept for tests and demo scaffolding only.
  *
- * @deprecated Use `spacesApi.delete` HTTP route; let the server-driven
- *   event flow remove the Space from the doc.
+ * @internal — production deletes route through collab via
+ * `sendSpaceRpc({ type: 'space:delete', ... })`.
  */
 export function removeSpace(projectId: string, spaceId: string): void {
   const doc = getDoc(docName.projectMeta(projectId));

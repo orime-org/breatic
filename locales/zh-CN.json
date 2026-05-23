@@ -466,7 +466,8 @@
         "delete": "Space 删除超时"
       },
       "error": {
-        "create": "Space 创建失败"
+        "create": "Space 创建失败",
+        "notSynced": "项目正在同步,请稍后再试"
       },
       "loading": {
         "create": "正在创建 Space…",

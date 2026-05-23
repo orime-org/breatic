@@ -21,8 +21,8 @@ import { useTranslation } from '@/i18n/use-translation';
 interface NewSpaceDialogProps {
   trigger: React.ReactNode;
   /**
-   * Returns a promise when the create call is async (calls
-   * `spacesApi.create` HTTP + the server-driven event flow). The
+   * Returns a promise when the create call is async (the parent
+   * routes through `sendSpaceRpc({ type: 'space:create' })`). The
    * dialog disables the form while the promise is in flight and
    * shows the error message inline if the call rejects.
    */
@@ -71,8 +71,9 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
 /**
  * New-space dialog — picks a Space type via a 3-card segmented control
  * (canvas / document / timeline), accepts a name, then delegates the
- * actual create call to the page (which calls `spacesApi.create` + waits
- * for the collab-driven Y.Doc broadcast to add the tab, per K.1).
+ * actual create call to the page (which sends `space:create` RPC over
+ * the live meta-doc Hocuspocus connection + waits for the broadcast
+ * back).
  *
  * Per decision D (2026-05-21): all three cards are visible so the
  * product roadmap is legible, but document + timeline are disabled

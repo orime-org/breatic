@@ -466,7 +466,8 @@
         "delete": "Space deletion timed out"
       },
       "error": {
-        "create": "Failed to create space"
+        "create": "Failed to create space",
+        "notSynced": "Project is still syncing — try again in a moment"
       },
       "loading": {
         "create": "Creating Space…",

@@ -466,7 +466,8 @@
         "delete": "Space 刪除逾時"
       },
       "error": {
-        "create": "Space 建立失敗"
+        "create": "Space 建立失敗",
+        "notSynced": "專案正在同步,請稍後再試"
       },
       "loading": {
         "create": "正在建立 Space…",

@@ -21,10 +21,8 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { spacesApi } from '@/data/api';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
-import { useUIStore } from '@/stores';
 import { useTranslation } from '@/i18n/use-translation';
 
 interface SpaceDrawerProps {
@@ -36,6 +34,14 @@ interface SpaceDrawerProps {
   onActivate: (id: string) => void;
   /** Open a Space in the read-only preview sheet (used for the "view" action). */
   onView: (id: string) => void;
+  /**
+   * RPC handlers injected by ProjectPage (it owns the live meta-doc
+   * provider). Drawer rows call these; ProjectPage routes through
+   * `sendSpaceRpc`. Optional so tests / storybook can render the row
+   * read-only.
+   */
+  onDeleteSpace?: (spaceId: string) => Promise<void> | void;
+  onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
 }
 
 const TYPE_META: Record<
@@ -72,19 +78,13 @@ const TYPE_META: Record<
  *   - otherwise → open the read-only preview sheet (browse + copy,
  *     no edit)
  *
- * Lock action (decision H + I.2):
- *   - calls `spacesApi.setLocked` HTTP; server publishes
- *     `space:locked` event; collab mutates Y.Doc; this drawer sees
- *     the update via the live `spaces` array. Inline spinner during
- *     the round trip (decision L.1 — quick op uses inline, not
- *     full-screen overlay).
- *
- * Delete action (decision K.1):
- *   - calls `spacesApi.delete` HTTP; server soft-deletes the
- *     yjs_documents row + publishes `space:deleted` event; collab
- *     removes from meta.spaces; full-screen overlay (decision L.1)
- *     during the round trip.
- *   - disabled when the Space is locked.
+ * Lock + Delete actions (ADR 2026-05-23 yjs-collab-only-write-authz):
+ *   - Both round-trip via `sendSpaceRpc` (caller: ProjectPage). The
+ *     collab process authorizes the role + applies the privileged Yjs
+ *     write; this drawer reflects the result via the live `spaces`
+ *     array. Lock uses inline spinner (quick op); delete uses the
+ *     full-screen overlay owned by ProjectPage.
+ *   - Delete is disabled when the Space is locked.
  */
 export function SpaceDrawer({
   spaces,
@@ -93,10 +93,11 @@ export function SpaceDrawer({
   projectId,
   onActivate,
   onView,
+  onDeleteSpace,
+  onSetSpaceLocked,
 }: SpaceDrawerProps) {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -139,7 +140,6 @@ export function SpaceDrawer({
                 space={s}
                 isActive={s.id === activeSpaceId}
                 isOpen={openTabIds.includes(s.id)}
-                projectId={projectId}
                 onActivate={() => {
                   onActivate(s.id);
                   setOpen(false);
@@ -153,7 +153,8 @@ export function SpaceDrawer({
                     setOpen(false);
                   }
                 }}
-                onDeleted={() => setSpaceOpInProgress('deleting')}
+                onDeleteSpace={onDeleteSpace}
+                onSetSpaceLocked={onSetSpaceLocked}
               />
             ))
           )}
@@ -167,20 +168,20 @@ interface SpaceDrawerRowProps {
   space: ProjectSpace;
   isActive: boolean;
   isOpen: boolean;
-  projectId: string;
   onActivate: () => void;
   onView: () => void;
-  onDeleted: () => void;
+  onDeleteSpace?: (spaceId: string) => Promise<void> | void;
+  onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
 }
 
 function SpaceDrawerRow({
   space,
   isActive,
   isOpen,
-  projectId,
   onActivate,
   onView,
-  onDeleted,
+  onDeleteSpace,
+  onSetSpaceLocked,
 }: SpaceDrawerRowProps) {
   const t = useTranslation();
   const meta = TYPE_META[space.type];
@@ -190,10 +191,10 @@ function SpaceDrawerRow({
 
   const onToggleLock = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (lockBusy) return;
+    if (lockBusy || !onSetSpaceLocked) return;
     setLockBusy(true);
     try {
-      await spacesApi.setLocked(projectId, space.id, !space.locked);
+      await onSetSpaceLocked(space.id, !space.locked);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t('spaces.drawer.action.operationFail');
@@ -212,18 +213,14 @@ function SpaceDrawerRow({
 
   const onDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (deleteBusy || space.locked) return;
+    if (deleteBusy || space.locked || !onDeleteSpace) return;
     setDeleteBusy(true);
-    onDeleted();
     try {
-      await spacesApi.delete(projectId, space.id);
+      await onDeleteSpace(space.id);
       // The collab Y.Doc update will drive the spaces list shrink + the
-      // ProjectPage effect will pick a new active tab + clear the
-      // loading overlay.
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : t('spaces.drawer.action.operationFail');
-      toast.error(t('spaces.drawer.action.deleteFail'), { description: message });
+      // ProjectPage effect picks a new active tab + clears the loading
+      // overlay. Errors surface via toast inside ProjectPage.callRpc.
+    } catch {
       setDeleteBusy(false);
     }
   };
