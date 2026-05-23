@@ -603,6 +603,13 @@ const bytea = customType<{ data: Buffer }>({
 export const yjsDocuments = pgTable("yjs_documents", {
   name: text("name").primaryKey(),
   data: bytea("data").notNull(),
+  // `createdAt` aligns with the project-wide rule: every PG table has
+  // a createdAt timestamp (see CLAUDE.md "关键规范"). For existing rows
+  // backfilled from `updated_at` — the earliest update is the create
+  // time (Hocuspocus's persistence extension upserts on store).
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   // Soft-delete support — aligns with the project-wide "soft delete only"
   // rule (CLAUDE.md). Set by deleteProject() cascade when the owning
