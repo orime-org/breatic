@@ -35,7 +35,8 @@ describe('Popover', () => {
     const content = screen.getByTestId('content');
     expect(content.className).toContain('bg-popover');
     expect(content.className).toContain('text-popover-foreground');
-    expect(content.className).toContain('rounded-chrome');
+    // #385+#387: unified overlay radius token (replaces rounded-chrome).
+    expect(content.className).toContain('rounded-overlay');
     expect(content.className).toContain('border-border');
     expect(content.className).toContain('shadow');
   });

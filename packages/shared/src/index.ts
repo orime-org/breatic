@@ -47,17 +47,11 @@ export type {
   SpaceType,
   Space,
   MembersChangedEvent,
-  SpaceCreatedEvent,
-  SpaceDeletedEvent,
-  SpaceLockedEvent,
 } from "./types/index.js";
 
 export {
   ROLE_RANK,
   membersChangedChannel,
-  spaceCreatedChannel,
-  spaceDeletedChannel,
-  spaceLockedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
   SpaceTypeSchema,
   SpaceRpcRequestSchema,

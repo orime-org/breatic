@@ -1,16 +1,16 @@
 /**
- * Cross-process control-plane events (v10).
+ * Cross-process control-plane events.
  *
- * Server publishes via Redis pub/sub on DB2 (REDIS_STREAM_URL). The
- * Collab process subscribes and reacts:
+ * One pub/sub channel remains:
  *
  *   - `members:changed`  — kick affected user's ws + broadcast
  *                          stateless invalidate signal to the
  *                          project's connected clients
- *   - `space:created`    — apply `meta.spaces[id] = {...}`
- *   - `space:deleted`    — apply `meta.spaces.delete(id)`; the API
- *                          handler also soft-deletes the canvas-{sid}
- *                          row in `yjs_documents`
+ *
+ * Space lifecycle (`space:created` / `:deleted` / `:locked`) used
+ * to live here but moved to collab stateless RPC 2026-05-23 (ADR
+ * yjs-collab-only-write-authz). The `SpaceRpc*` schemas in
+ * `./space-rpc.ts` replace those event types.
  *
  * Channel naming convention: `project:{projectId}:{topic}`.
  *
@@ -22,7 +22,6 @@
  */
 
 import type { ProjectRole } from "./role.js";
-import type { SpaceType } from "./space.js";
 
 // ── Members ─────────────────────────────────────────────────────────
 
@@ -46,78 +45,11 @@ export interface MembersChangedEvent {
   ts: number;
 }
 
-// ── Spaces ──────────────────────────────────────────────────────────
-
-/**
- * A Space was created. Collab must apply the `meta.spaces[spaceId]`
- * Y.Map entry. Frontend observers see the change and render the new
- * tab once the Yjs sync arrives.
- */
-export interface SpaceCreatedEvent {
-  type: "project-space:created";
-  projectId: string;
-  spaceId: string;
-  spaceType: SpaceType;
-  name: string;
-  /** User who created the Space. */
-  createdBy: string;
-  /** Epoch ms. */
-  ts: number;
-}
-
-/**
- * A Space was soft-deleted. Collab removes `meta.spaces[spaceId]`.
- * The API handler also marks the corresponding `yjs_documents` row
- * (`project-{pid}/canvas-{sid}` etc.) as soft-deleted directly via
- * SQL — no need to round-trip that part through collab.
- */
-export interface SpaceDeletedEvent {
-  type: "project-space:deleted";
-  projectId: string;
-  spaceId: string;
-  /** User who deleted the Space (audit). */
-  deletedBy: string;
-  /** Epoch ms. */
-  ts: number;
-}
-
-/**
- * A Space's `locked` flag changed. Collab updates
- * `meta.spaces[spaceId].locked` so all clients see the lock indicator
- * (UX guard against accidental delete; not a security boundary —
- * anyone with edit role can still write the doc).
- */
-export interface SpaceLockedEvent {
-  type: "project-space:locked";
-  projectId: string;
-  spaceId: string;
-  locked: boolean;
-  /** User who toggled the lock (audit). */
-  actorId: string;
-  /** Epoch ms. */
-  ts: number;
-}
-
 // ── Channel names (single source of truth) ──────────────────────────
 
 /** Channel pattern for `members:changed`. */
 export function membersChangedChannel(projectId: string): string {
   return `project:${projectId}:members:changed`;
-}
-
-/** Channel pattern for `space:created`. */
-export function spaceCreatedChannel(projectId: string): string {
-  return `project:${projectId}:space:created`;
-}
-
-/** Channel pattern for `space:deleted`. */
-export function spaceDeletedChannel(projectId: string): string {
-  return `project:${projectId}:space:deleted`;
-}
-
-/** Channel pattern for `space:locked` (toggle on / off). */
-export function spaceLockedChannel(projectId: string): string {
-  return `project:${projectId}:space:locked`;
 }
 
 /**

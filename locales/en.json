@@ -466,7 +466,8 @@
         "delete": "Space deletion timed out"
       },
       "error": {
-        "create": "Failed to create space"
+        "create": "Failed to create space",
+        "notSynced": "Project is still syncing — try again in a moment"
       },
       "loading": {
         "create": "Creating Space…",
@@ -966,13 +967,25 @@
       "timelineSub": "Video / audio editing"
     },
     "history": {
-      "label": "Space activity history",
-      "title": "Space create / delete / lock history",
-      "header": "System messages",
-      "description": "{count, plural, one {# event · shared project event log} other {# events · shared project event log}}",
-      "empty": "No space activity yet. Create / delete / lock events will appear here.",
+      "label": "Project messages",
+      "title": "Project messages — missing nodes + Space lifecycle",
+      "header": "Project messages",
+      "description": "{count, plural, one {# message} other {# messages}}",
+      "empty": "No messages yet. Missing-node banners and Space create / delete / lock events will appear here.",
       "markRead": "Read",
       "markUnread": "Mark as read",
+      "kind": {
+        "missingNode": "A referenced node went missing",
+        "spaceCreated": "{actor} created space {spaceName}",
+        "spaceDeleted": "{actor} deleted space {spaceName}",
+        "spaceLocked": "{actor} locked space {spaceName}",
+        "spaceUnlocked": "{actor} unlocked space {spaceName}",
+        "spaceRestored": "{actor} restored space {spaceName}"
+      },
+      "action": {
+        "restore": "Restore",
+        "clearAll": "Clear all"
+      },
       "relative": {
         "justNow": "just now",
         "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",

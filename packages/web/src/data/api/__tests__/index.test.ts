@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as api from '@/data/api/index';
 
 describe('data/api barrel', () => {
-  it('exposes all 14 API client objects + request helpers', () => {
+  it('exposes the remaining 13 REST API clients + request helpers (spaces moved to collab RPC 2026-05-23)', () => {
     expect(typeof api.request).toBe('function');
     expect(typeof api.apiGet).toBe('function');
     expect(typeof api.apiPost).toBe('function');
@@ -12,7 +12,6 @@ describe('data/api barrel', () => {
     expect(api.authApi).toBeDefined();
     expect(api.usersApi).toBeDefined();
     expect(api.projectsApi).toBeDefined();
-    expect(api.spacesApi).toBeDefined();
     expect(api.membersApi).toBeDefined();
     expect(api.chatApi).toBeDefined();
     expect(api.canvasApi).toBeDefined();

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
+import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
@@ -14,7 +15,7 @@ import type { SpaceType } from '@/spaces';
 import { useUIStore } from '@/stores';
 import { NewSpaceDialog } from '@/pages/project/chrome/tab-bar/NewSpaceDialog';
 import { SpaceDrawer } from '@/pages/project/chrome/tab-bar/SpaceDrawer';
-import { SpaceHistoryButton } from '@/pages/project/chrome/tab-bar/SpaceHistoryButton';
+import { ProjectMessagesButton } from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
 import { SpaceTab } from '@/pages/project/chrome/tab-bar/SpaceTab';
 
 interface SpaceTabBarProps {
@@ -25,7 +26,7 @@ interface SpaceTabBarProps {
   /** Per-user open tab id list, for the drawer's status chip computation. */
   openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
-  /** Project id — drawer passes this to spacesApi for lock / delete. */
+  /** Project id — drawer uses it for row test ids only (RPCs are by handler). */
   projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
@@ -34,6 +35,21 @@ interface SpaceTabBarProps {
   onClose?: (id: string) => void;
   /** Open the read-only preview sheet for a Space (drawer "view" action). */
   onViewSpace: (id: string) => void;
+  /**
+   * Project-wide message channel (missing nodes + Space lifecycle).
+   * Defaults to empty when the parent hasn't wired it yet.
+   */
+  projectMessages?: ReadonlyArray<ProjectMessageEntry>;
+  /** Caller's role on the project — drives owner-only message actions. */
+  currentUserRole?: ProjectRole;
+  /** Owner-only: restore a soft-deleted Space via collab `space:restore` RPC. */
+  onRestoreSpace?: (spaceId: string) => Promise<void> | void;
+  /** Owner-only: clear all entries in `meta.projectMessages`. */
+  onClearMessages?: () => Promise<void> | void;
+  /** Soft-delete a Space (drawer row × button). RPC handler from ProjectPage. */
+  onDeleteSpace?: (spaceId: string) => Promise<void> | void;
+  /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
+  onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
 }
 
 /**
@@ -41,7 +57,7 @@ interface SpaceTabBarProps {
  *
  * Layout (mock § space-header):
  *   [agent-toggle | divider] [scroll-left] [.space-tabs] [scroll-right]
- *   [divider | new-space + drawer + history]
+ *   [divider | new-space + drawer + project-messages]
  *
  * Scroll arrows hide when content doesn't overflow + show disabled
  * state at boundaries (industry standard pattern per mock v4.27/v4.29).
@@ -56,6 +72,12 @@ export function SpaceTabBar({
   onCreate,
   onClose,
   onViewSpace,
+  projectMessages = [],
+  currentUserRole,
+  onRestoreSpace,
+  onClearMessages,
+  onDeleteSpace,
+  onSetSpaceLocked,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -129,7 +151,7 @@ export function SpaceTabBar({
   return (
     // ARIA structure: outer container is a `toolbar` because it mixes
     // tabs (the space list) with chrome controls (agent toggle, new,
-    // drawer, history, scroll arrows). The actual `role='tablist'` is
+    // drawer, project-messages, scroll arrows). The actual `role='tablist'` is
     // nested around just the SpaceTab list below, satisfying
     // axe-core's `aria-required-children` rule (a tablist may only
     // contain `role='tab'` children).
@@ -238,8 +260,15 @@ export function SpaceTabBar({
           projectId={projectId}
           onActivate={onActivate}
           onView={onViewSpace}
+          onDeleteSpace={onDeleteSpace}
+          onSetSpaceLocked={onSetSpaceLocked}
         />
-        <SpaceHistoryButton />
+        <ProjectMessagesButton
+          messages={projectMessages}
+          currentUserRole={currentUserRole}
+          onRestore={onRestoreSpace}
+          onClearAll={onClearMessages}
+        />
       </div>
     </div>
   );

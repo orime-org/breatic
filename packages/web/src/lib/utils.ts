@@ -18,6 +18,15 @@ const customTwMerge = extendTailwindMerge({
         'content-md',
         'content-lg',
         'content-xl',
+        // Floating overlay family — Sheet / Dialog / Popover. See
+        // `--radius-overlay` in tokens.css (#385 + #387).
+        'overlay',
+      ],
+      color: [
+        // Active-state border color used by NewSpaceDialog selected
+        // card + ChatComposer focus-within. See `--color-active-border`
+        // in tokens.css (#388).
+        'active-border',
       ],
     },
   },

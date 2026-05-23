@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { nanoid } from 'nanoid';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { projectsApi, spacesApi } from '@/data/api';
+import type { SpaceRpcResponse } from '@breatic/shared';
+import { projectsApi } from '@/data/api';
+import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
 import { useTranslation } from '@/i18n/use-translation';
 import {
   closeSpaceTab,
   openSpaceTab,
   setActiveSpace,
   useProjectMeta,
+  useProjectMessages,
   type ProjectSpace,
 } from '@/data/yjs/project-meta';
 import { useCurrentUserStore, useUIStore } from '@/stores';
@@ -41,14 +45,16 @@ import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
  *     so deep links work, but the source of truth lives in Yjs so the
  *     tab bar + active tab can be restored across machines.
  *
- * Server-driven event flow (K.1 + I.2):
- *   - Create / delete / lock all go through HTTP → server publishes a
- *     Redis pub/sub event → collab service mutates the meta doc → all
- *     clients receive the WS broadcast.
- *   - The client does NOT write `spaces` directly — it just calls HTTP
- *     and waits for the doc to update (a global loading overlay covers
- *     the 50-200ms round trip; a 10-second timeout guards against a
- *     wedged collab).
+ * Collab-only write flow (ADR 2026-05-23 yjs-collab-only-write-authz):
+ *   - Create / delete / lock / restore + projectMessages clear all go
+ *     through `sendSpaceRpc` (stateless RPC over the live Hocuspocus
+ *     connection on the meta doc). Collab authorizes the caller's role,
+ *     performs the privileged Yjs write, and broadcasts back. Server
+ *     REST routes + Redis pub/sub are gone.
+ *   - The client does NOT write `meta.spaces` / `meta.projectMessages`
+ *     directly — `beforeHandleMessage` would reject it. A global
+ *     loading overlay covers the 50-200ms round trip; a 10-second
+ *     timeout guards against a wedged collab.
  */
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
@@ -95,12 +101,13 @@ export default function ProjectPage() {
     },
   });
 
-  // ---- Current user + Yjs meta ----
+  // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
-  const { spaces, openTabIds, activeSpaceId } = useProjectMeta(
+  const { spaces, openTabIds, activeSpaceId, provider } = useProjectMeta(
     projectId,
     userId,
   );
+  const { messages: projectMessages } = useProjectMessages(projectId);
 
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids — happens if another user
@@ -215,22 +222,98 @@ export default function ProjectPage() {
     }
   };
 
-  /** Create a Space — HTTP → server publishes event → collab mutates
-   *  the doc → effect above auto-opens the new tab and dismisses
-   *  the overlay. */
+  /**
+   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
+   * connection. Throws if the provider isn't mounted yet (the UI gates
+   * actions behind `synced`) or the server reports a non-ok response.
+   */
+  const callRpc = React.useCallback(
+    async (
+      req: Parameters<typeof sendSpaceRpc>[1],
+      errorToastKey: string,
+    ): Promise<SpaceRpcResponse> => {
+      if (!provider) {
+        throw new Error(t('project.space.error.notSynced'));
+      }
+      const res = await sendSpaceRpc(provider, req);
+      if (!res.ok) {
+        toast.error(t(errorToastKey), { description: res.error.message });
+        throw new Error(res.error.message);
+      }
+      return res;
+    },
+    [provider, t],
+  );
+
+  /**
+   * Create a Space — client-side nanoid id (ADR B1.1) + `space:create`
+   * RPC. The collab process applies the write under the system user;
+   * the effect above auto-opens the new tab and dismisses the overlay
+   * when the doc broadcast lands.
+   */
   const onCreateSpace = async (type: SpaceType, name: string) => {
     setSpaceOpInProgress('creating');
+    const spaceId = nanoid();
     try {
-      const created = await spacesApi.create(projectId, { name, type });
-      pendingCreateIdRef.current = created.id;
+      await callRpc(
+        {
+          type: 'space:create',
+          payload: { spaceId, type, name },
+        },
+        'project.space.error.create',
+      );
+      pendingCreateIdRef.current = spaceId;
     } catch (err) {
       setSpaceOpInProgress(null);
       pendingCreateIdRef.current = null;
-      const message =
-        err instanceof Error ? err.message : t('project.space.error.create');
-      toast.error(t('project.space.error.create'), { description: message });
+      // toast already raised inside callRpc when the RPC reports !ok
+      if (!(err instanceof Error) || !err.message.length) {
+        toast.error(t('project.space.error.create'));
+      }
       throw err;
     }
+  };
+
+  /** Soft-delete a Space — `space:delete` RPC. */
+  const onDeleteSpace = async (spaceId: string) => {
+    setSpaceOpInProgress('deleting');
+    pendingDeleteIdRef.current = spaceId;
+    try {
+      await callRpc(
+        { type: 'space:delete', payload: { spaceId } },
+        'spaces.drawer.action.deleteFail',
+      );
+    } catch (err) {
+      setSpaceOpInProgress(null);
+      pendingDeleteIdRef.current = null;
+      throw err;
+    }
+  };
+
+  /** Toggle Space lock — `space:lock` RPC (lock + unlock same handler). */
+  const onSetSpaceLocked = async (spaceId: string, locked: boolean) => {
+    await callRpc(
+      { type: 'space:lock', payload: { spaceId, locked } },
+      locked
+        ? 'spaces.drawer.action.lockFail'
+        : 'spaces.drawer.action.unlockFail',
+    );
+  };
+
+  /** Owner-only: restore a soft-deleted Space — `space:restore` RPC. */
+  const onRestoreSpace = async (spaceId: string) => {
+    await callRpc(
+      { type: 'space:restore', payload: { spaceId } },
+      'project.space.error.create',
+    );
+  };
+
+  /** Owner-only: clear all entries in `meta.projectMessages`. */
+  const onClearMessages = async () => {
+    await callRpc(
+      { type: 'messages:clear', payload: { all: true } },
+      'project.space.error.create',
+    );
   };
 
   /** Open the read-only preview sheet for a Space. */
@@ -285,6 +368,12 @@ export default function ProjectPage() {
             onCreate={onCreateSpace}
             onClose={onCloseTab}
             onViewSpace={onViewSpace}
+            onDeleteSpace={onDeleteSpace}
+            onSetSpaceLocked={onSetSpaceLocked}
+            projectMessages={projectMessages}
+            currentUserRole={role}
+            onRestoreSpace={onRestoreSpace}
+            onClearMessages={onClearMessages}
           />
           <div className='relative flex-1'>
             {activeSpace ? (

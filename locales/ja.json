@@ -466,7 +466,8 @@
         "delete": "Space の削除がタイムアウトしました"
       },
       "error": {
-        "create": "Space の作成に失敗しました"
+        "create": "Space の作成に失敗しました",
+        "notSynced": "プロジェクトを同期中です。しばらくしてから再試行してください"
       },
       "loading": {
         "create": "Space を作成中…",
@@ -966,13 +967,25 @@
       "timelineSub": "ビデオ / オーディオ編集"
     },
     "history": {
-      "label": "Space アクティビティ履歴",
-      "title": "Space 作成 / 削除 / ロック履歴",
-      "header": "システムメッセージ",
-      "description": "{count, plural, other {# 件 · プロジェクト共有データのイベント記録}}",
-      "empty": "アクティビティはまだありません。作成 / 削除 / ロックイベントがここに表示されます。",
+      "label": "プロジェクトメッセージ",
+      "title": "プロジェクトメッセージ — 欠落ノード + Space ライフサイクル",
+      "header": "プロジェクトメッセージ",
+      "description": "{count, plural, other {# 件のメッセージ}}",
+      "empty": "メッセージはまだありません。欠落ノードの通知や Space 作成 / 削除 / ロックイベントがここに表示されます。",
       "markRead": "既読",
       "markUnread": "既読にする",
+      "kind": {
+        "missingNode": "参照されているノードが見つかりません",
+        "spaceCreated": "{actor} が Space {spaceName} を作成しました",
+        "spaceDeleted": "{actor} が Space {spaceName} を削除しました",
+        "spaceLocked": "{actor} が Space {spaceName} をロックしました",
+        "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
+        "spaceRestored": "{actor} が Space {spaceName} を復元しました"
+      },
+      "action": {
+        "restore": "復元",
+        "clearAll": "すべて削除"
+      },
       "relative": {
         "justNow": "たった今",
         "minutesAgo": "{count, plural, other {# 分前}}",

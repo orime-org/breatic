@@ -54,9 +54,9 @@ const sheetVariants = cva(
          *   - ConversationHistorySheet (left-floating)
          */
         'right-floating':
-          'top-12 bottom-20 right-1 h-auto w-3/4 rounded-md border border-border shadow data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
+          'top-12 bottom-20 right-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
         'left-floating':
-          'top-12 bottom-20 left-1 h-auto w-3/4 rounded-md border border-border shadow data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
+          'top-12 bottom-20 left-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
       },
     },
     defaultVariants: {
