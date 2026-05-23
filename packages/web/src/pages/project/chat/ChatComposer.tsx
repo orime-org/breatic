@@ -78,7 +78,7 @@ export function ChatComposer({
   return (
     <div
       data-testid='chat-composer'
-      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-elevated transition-colors focus-within:border-muted-foreground'
+      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-elevated transition-colors focus-within:border-active-border'
     >
       <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <button

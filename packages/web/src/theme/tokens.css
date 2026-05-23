@@ -216,6 +216,21 @@ html[data-theme='light'] {
   --radius-md: var(--radius-content-md);
   --radius-lg: var(--radius-content-lg);
   --radius-full: 9999px;
+  /*
+   * Floating overlay radius — Sheet / Dialog / Popover share one
+   * token so the "popup family" stays visually consistent (issues
+   * #385 + #387). Aliased to chrome 6px today; change here to retune
+   * the whole popup family in one stop.
+   */
+  --radius-overlay: var(--radius-chrome);
+
+  /*
+   * Active-state border (issue #388) — used by NewSpaceDialog
+   * selected card and ChatComposer focus-within. Aliased to
+   * foreground (high-contrast black/white per theme) so the
+   * activated state always stands out against the page surface.
+   */
+  --color-active-border: var(--color-foreground);
 
   /* ---- Font ---- */
   --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',

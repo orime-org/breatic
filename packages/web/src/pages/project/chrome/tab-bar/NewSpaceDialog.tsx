@@ -165,7 +165,7 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
                     className={cn(
                       'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
                       selected
-                        ? 'border-foreground bg-accent text-foreground'
+                        ? 'border-active-border bg-accent text-foreground'
                         : 'border-border bg-transparent text-foreground',
                       card.available
                         ? 'hover:bg-muted'

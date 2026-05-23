@@ -44,12 +44,14 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
-  it('content carries bg-popover + rounded-chrome + border tokens', () => {
+  it('content carries bg-popover + rounded-overlay + border tokens', () => {
     setup(true);
     const content = screen.getByTestId('content');
     expect(content.className).toContain('bg-popover');
     expect(content.className).toContain('border-border');
-    expect(content.className).toContain('sm:rounded-chrome');
+    // #385+#387: unified overlay radius token (replaces sm:rounded-chrome
+    // so Sheet / Dialog / Popover all share one radius source).
+    expect(content.className).toContain('sm:rounded-overlay');
     expect(content.className).toContain('shadow');
     expect(content.className).toContain('max-w-[520px]');
     expect(content.className).toContain('p-0');
