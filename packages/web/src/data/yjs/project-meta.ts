@@ -1,6 +1,11 @@
+import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
+import {
+  type ProjectMessageEntry,
+  ProjectMessageEntrySchema,
+} from '@breatic/shared';
 import type { SpaceType } from '@/spaces';
 import { docName, getDoc } from '@/data/yjs/manager';
 import { useSocket } from '@/data/yjs/use-socket';
@@ -45,6 +50,12 @@ const SPACES_KEY = 'spaces';
 const PER_USER_KEY = 'perUser';
 const OPEN_TAB_IDS_KEY = 'openTabIds';
 const ACTIVE_SPACE_ID_KEY = 'activeSpaceId';
+/**
+ * Y.Array key for project-wide notifications (missing nodes, Space
+ * lifecycle, owner manage actions). Mirrors the collab-side constant
+ * `packages/collab/src/space-rpc.ts` — both must agree.
+ */
+const PROJECT_MESSAGES_KEY = 'projectMessages';
 
 export interface ProjectSpace {
   id: string;
@@ -61,6 +72,12 @@ export interface ProjectMetaState {
   activeSpaceId: string | null;
   /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
+  /**
+   * Live Hocuspocus provider for the project's meta doc. Callers that
+   * need to issue Space-lifecycle RPCs (`sendSpaceRpc`) pass this in.
+   * `null` while the socket is still mounting.
+   */
+  provider: HocuspocusProvider | null;
 }
 
 /**
@@ -80,7 +97,10 @@ export function useProjectMeta(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
-  const { synced } = useSocket({ name: docName.projectMeta(projectId), doc });
+  const { synced, provider } = useSocket({
+    name: docName.projectMeta(projectId),
+    doc,
+  });
 
   const [state, setState] = React.useState<{
     spaces: ReadonlyArray<ProjectSpace>;
@@ -101,7 +121,43 @@ export function useProjectMeta(
     };
   }, [doc, userId]);
 
-  return { ...state, synced };
+  return { ...state, synced, provider };
+}
+
+/**
+ * Live view of `meta.projectMessages` for the project — the channel
+ * surfaced by the [🔔] bell in the tab bar (missing-node banners +
+ * Space lifecycle audit trail).
+ *
+ * Returns an immutable array snapshot; re-renders on any push / delete
+ * coming from collab.
+ */
+export function useProjectMessages(projectId: string): {
+  messages: ReadonlyArray<ProjectMessageEntry>;
+  synced: boolean;
+} {
+  const doc = React.useMemo(
+    () => getDoc(docName.projectMeta(projectId)),
+    [projectId],
+  );
+  const { synced } = useSocket({
+    name: docName.projectMeta(projectId),
+    doc,
+  });
+
+  const [messages, setMessages] = React.useState<
+    ReadonlyArray<ProjectMessageEntry>
+  >(() => readProjectMessages(doc));
+
+  React.useEffect(() => {
+    const arr = doc.getArray<Y.Map<unknown>>(PROJECT_MESSAGES_KEY);
+    const update = () => setMessages(readProjectMessages(doc));
+    arr.observeDeep(update);
+    update();
+    return () => arr.unobserveDeep(update);
+  }, [doc]);
+
+  return { messages, synced };
 }
 
 /**
@@ -203,6 +259,55 @@ export function removeSpace(projectId: string, spaceId: string): void {
       if (spacesArr.get(i).get('id') === spaceId) spacesArr.delete(i, 1);
     }
   });
+}
+
+/**
+ * Test / scaffolding helper. Production writes to `projectMessages`
+ * happen exclusively inside the collab process via `space-rpc.ts`; the
+ * client never writes directly (rejected by `beforeHandleMessage`).
+ *
+ * @internal — use only from tests + storybook fixtures.
+ */
+export function appendProjectMessage(
+  projectId: string,
+  entry: ProjectMessageEntry,
+): void {
+  const doc = getDoc(docName.projectMeta(projectId));
+  const arr = doc.getArray<Y.Map<unknown>>(PROJECT_MESSAGES_KEY);
+  doc.transact(() => {
+    const m = new Y.Map<unknown>();
+    m.set('id', entry.id);
+    m.set('kind', entry.kind);
+    if (entry.actor !== undefined) m.set('actor', entry.actor);
+    if (entry.spaceId !== undefined) m.set('spaceId', entry.spaceId);
+    if (entry.spaceName !== undefined) m.set('spaceName', entry.spaceName);
+    if (entry.message !== undefined) m.set('message', entry.message);
+    if (entry.context !== undefined) m.set('context', entry.context);
+    m.set('createdAt', entry.createdAt);
+    arr.push([m]);
+  });
+}
+
+/**
+ * Read all `meta.projectMessages` entries as plain objects. Skips entries
+ * that fail Zod parsing (defensive — collab is the only writer but a
+ * forward-compat schema change could leak a malformed entry).
+ */
+export function readProjectMessages(
+  doc: Y.Doc,
+): ReadonlyArray<ProjectMessageEntry> {
+  const arr = doc.getArray<Y.Map<unknown>>(PROJECT_MESSAGES_KEY);
+  const out: ProjectMessageEntry[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    const m = arr.get(i);
+    const raw: Record<string, unknown> = {};
+    m.forEach((v, k) => {
+      raw[k] = v;
+    });
+    const parsed = ProjectMessageEntrySchema.safeParse(raw);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
 }
 
 function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
