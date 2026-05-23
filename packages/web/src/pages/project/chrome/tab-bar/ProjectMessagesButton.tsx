@@ -3,10 +3,12 @@ import { useState } from 'react';
 
 import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/use-translation';
@@ -139,8 +141,8 @@ export function ProjectMessagesButton({
   };
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <Sheet>
+      <SheetTrigger asChild>
         <Button
           variant='chrome-ghost'
           size='chrome'
@@ -159,20 +161,26 @@ export function ProjectMessagesButton({
             />
           ) : null}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align='end'
-        className='w-[420px] p-0'
-        data-testid='project-messages-popover'
+      </SheetTrigger>
+      {/*
+        side='right-floating' = same variant as SpaceDrawer (sits between
+        TabBar and ViewportToolbar). Width 315px = 75 % of the prior
+        Popover width (420 × 0.75), product-confirmed. Sheet primitive
+        ships the top-right [X] close button by default.
+      */}
+      <SheetContent
+        side='right-floating'
+        className='w-[315px] p-0'
+        data-testid='project-messages-sheet'
       >
-        <header className='flex items-baseline justify-between border-b border-border px-4 py-3'>
+        <header className='flex items-baseline justify-between gap-3 border-b border-border px-4 py-3 pr-12'>
           <div>
-            <h3 className='text-[14px] font-semibold text-foreground'>
+            <SheetTitle className='text-[14px] font-semibold text-foreground'>
               {t('spaces.history.header')}
-            </h3>
-            <p className='text-[12px] text-muted-foreground'>
+            </SheetTitle>
+            <SheetDescription className='text-[12px] text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
-            </p>
+            </SheetDescription>
           </div>
           {isOwner && messages.length > 0 ? (
             <button
@@ -253,8 +261,8 @@ export function ProjectMessagesButton({
             })
           )}
         </ul>
-      </PopoverContent>
-    </Popover>
+      </SheetContent>
+    </Sheet>
   );
 }
 
