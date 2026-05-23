@@ -227,10 +227,12 @@ html[data-theme='light'] {
   /*
    * Active-state border (issue #388) — used by NewSpaceDialog
    * selected card and ChatComposer focus-within. Aliased to
-   * foreground (high-contrast black/white per theme) so the
-   * activated state always stands out against the page surface.
+   * muted-foreground (mid-gray in light, light-gray in dark) so
+   * the activated state reads as "focused / picked" without
+   * shouting. Both modes auto-flip via the underlying neutral-500
+   * dark-override in tokens.css.
    */
-  --color-active-border: var(--color-foreground);
+  --color-active-border: var(--color-muted-foreground);
 
   /* ---- Font ---- */
   --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',
