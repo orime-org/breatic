@@ -21,7 +21,15 @@
  * route surface is forward-compatible, but the route layer rejects
  * non-canvas creation in V1.
  */
-export type SpaceType = "canvas" | "document" | "timeline";
+import { z } from "zod";
+
+/**
+ * Zod schema mirror of {@link SpaceType}. Used by cross-process RPC
+ * payloads (e.g. `space-rpc.ts`) for runtime validation.
+ */
+export const SpaceTypeSchema = z.enum(["canvas", "document", "timeline"]);
+
+export type SpaceType = z.infer<typeof SpaceTypeSchema>;
 
 /**
  * One entry in `meta.spaces` (the canonical Space record).

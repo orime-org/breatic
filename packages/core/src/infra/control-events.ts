@@ -81,6 +81,13 @@ export async function publishMembersChanged(
  * spaceId. Collab's subscriber turns this into the actual
  * `meta.spaces.set(spaceId, {...})` Y.Map mutation.
  *
+ * @deprecated Since 2026-05-23 (ADR breatic-inner-design
+ *   engineering/decisions/2026-05-23-yjs-collab-only-write-authz.md).
+ *   Space create / delete / lock now run as collab stateless RPC
+ *   (see `packages/collab/src/space-rpc.ts`); this Redis pub/sub
+ *   path remains for backwards compatibility during the PR-a/PR-b
+ *   transition and is scheduled for removal in PR-b.
+ *
  * @param projectId - Project UUID
  * @param detail - Spec of the created Space (without auto-stamped fields)
  */
@@ -110,6 +117,8 @@ export async function publishSpaceCreated(
  * `meta.spaces[spaceId]` Y.Map entry so other clients' tab bars
  * update.
  *
+ * @deprecated Since 2026-05-23. See {@link publishSpaceCreated}.
+ *
  * @param projectId - Project UUID
  * @param detail - Identifier of the deleted Space + audit
  */
@@ -138,6 +147,8 @@ export async function publishSpaceDeleted(
  * makes the SpaceDrawer disable the delete action. Anyone with edit
  * role can still mutate the doc itself; this is not a security
  * boundary.
+ *
+ * @deprecated Since 2026-05-23. See {@link publishSpaceCreated}.
  *
  * @param projectId - Project UUID
  * @param detail - Space id, new lock state, actor (without auto-stamped fields)

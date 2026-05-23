@@ -59,6 +59,30 @@ export {
   spaceDeletedChannel,
   spaceLockedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
+  SpaceTypeSchema,
+  SpaceRpcRequestSchema,
+  SpaceRpcResponseSchema,
+  SpaceRpcErrorCodeSchema,
+  SpaceCreatePayloadSchema,
+  SpaceDeletePayloadSchema,
+  SpaceLockPayloadSchema,
+  SpaceRestorePayloadSchema,
+  MessagesClearPayloadSchema,
+  ProjectMessageKindSchema,
+  ProjectMessageEntrySchema,
+} from "./types/index.js";
+
+export type {
+  SpaceRpcRequest,
+  SpaceRpcResponse,
+  SpaceRpcErrorCode,
+  SpaceCreatePayload,
+  SpaceDeletePayload,
+  SpaceLockPayload,
+  SpaceRestorePayload,
+  MessagesClearPayload,
+  ProjectMessageKind,
+  ProjectMessageEntry,
 } from "./types/index.js";
 
 export type {

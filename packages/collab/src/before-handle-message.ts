@@ -1,0 +1,171 @@
+/**
+ * Hocuspocus `beforeHandleMessage` hook — client write authorization.
+ *
+ * Per ADR 2026-05-23-yjs-collab-only-write-authz (breatic-inner-design):
+ * client-side writes to certain meta-doc paths must be rejected at the
+ * collab process so editor / owner users cannot bypass the stateless
+ * RPC layer and tamper with shared state directly.
+ *
+ * Refused on the meta doc (`project-{pid}/meta`):
+ *
+ *   - `meta.spaces` — any structural change (create / delete / modify
+ *     a Space entry). Must go through `space:*` stateless RPC.
+ *   - `meta.projectMessages` — any push / delete. Must go through
+ *     `messages:*` RPC (push is collab-only side-effect of space:*
+ *     handlers; clear is owner-only RPC).
+ *   - `meta.perUser[X]` where X is not the connected user's id. Each
+ *     user may only write their own perUser entry (open tabs +
+ *     active tab id).
+ *
+ * Allowed on the meta doc:
+ *
+ *   - `meta.projectMeta` (name / description) — write power is gated
+ *     by Hocuspocus role-level readOnly (view = readOnly).
+ *   - `meta.perUser[<own userId>]` — the client's own UI state.
+ *
+ * Other docs (`project-{pid}/canvas-{spaceId}` etc.) are not gated
+ * here — canvas / document / timeline content authoring runs the
+ * full collaborative editing pipeline. The auth hook already refuses
+ * connections to deleted Spaces and applies role-level readOnly.
+ *
+ * `context.user.id === 'system'` is the collab process's own privileged
+ * writer (used by `space-rpc` handlers via `openDirectConnection`) and
+ * is allowed to bypass this gate.
+ */
+import * as Y from "yjs";
+
+/**
+ * Subset of Hocuspocus's `beforeHandleMessagePayload` we actually need.
+ * Declared locally so this module does not depend on hocuspocus types.
+ */
+export interface CheckWriteAuthzInput {
+  documentName: string;
+  document: Y.Doc;
+  update: Uint8Array;
+  context: { user?: { id?: string } };
+}
+
+export class WriteAuthzError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WriteAuthzError";
+  }
+}
+
+/**
+ * Throws {@link WriteAuthzError} if the incoming update violates the
+ * key-level write rules above. Returns silently otherwise.
+ *
+ * Implementation: clone the current document, apply the incoming
+ * update on the clone, then diff the relevant paths against the
+ * original. Reject if any forbidden path changed.
+ *
+ * Cost note: cloning the meta doc on every meta-doc write costs O(n)
+ * in document size. Meta doc is small (a few hundred bytes to ~10 KB
+ * for projects with many Spaces + projectMessages history), so the
+ * cost is acceptable. For canvas / document / timeline docs we skip
+ * this hook entirely — those documents can be megabytes and the
+ * field-level gating isn't needed there.
+ */
+export function checkWriteAuthz({
+  documentName,
+  document,
+  update,
+  context,
+}: CheckWriteAuthzInput): void {
+  // Only gate the meta doc — other docs are content / canvas / etc.
+  if (!documentName.endsWith("/meta")) return;
+
+  // Collab's own privileged writer (openDirectConnection) is allowed.
+  // The 'system' marker is set by space-rpc handlers (see space-rpc.ts).
+  const userId = context.user?.id;
+  if (userId === "system") return;
+
+  // Anonymous / no-user contexts must not write to the meta doc.
+  // (onAuthenticate normally guarantees user.id, but defensive.)
+  if (!userId) {
+    throw new WriteAuthzError("Anonymous write to meta doc is not allowed");
+  }
+
+  // Clone the doc and apply the incoming update on the clone, so the
+  // original document remains pristine if we end up rejecting.
+  const clone = new Y.Doc();
+  Y.applyUpdate(clone, Y.encodeStateAsUpdate(document));
+
+  const beforeSpaces = JSON.stringify(clone.getMap("spaces").toJSON());
+  const beforeMessages = JSON.stringify(
+    clone.getArray("projectMessages").toJSON(),
+  );
+  const beforePerUser = clone.getMap("perUser").toJSON() as Record<
+    string,
+    unknown
+  >;
+  const beforePerUserKeys = new Set(Object.keys(beforePerUser));
+  const beforePerUserSnapshot = JSON.stringify(beforePerUser);
+
+  Y.applyUpdate(clone, update);
+
+  const afterSpaces = JSON.stringify(clone.getMap("spaces").toJSON());
+  const afterMessages = JSON.stringify(
+    clone.getArray("projectMessages").toJSON(),
+  );
+  const afterPerUser = clone.getMap("perUser").toJSON() as Record<
+    string,
+    unknown
+  >;
+  const afterPerUserKeys = new Set(Object.keys(afterPerUser));
+
+  if (beforeSpaces !== afterSpaces) {
+    throw new WriteAuthzError(
+      "Direct write to meta.spaces is not allowed — use space:* stateless RPC",
+    );
+  }
+
+  if (beforeMessages !== afterMessages) {
+    throw new WriteAuthzError(
+      "Direct write to meta.projectMessages is not allowed — collab writes via space:* / messages:* RPC handlers only",
+    );
+  }
+
+  // perUser: client may only mutate their own entry.
+  //
+  // Check 1: any new key (added by the incoming update) must equal
+  // the connected userId.
+  for (const k of afterPerUserKeys) {
+    if (!beforePerUserKeys.has(k) && k !== userId) {
+      throw new WriteAuthzError(
+        `Cannot create meta.perUser entry for another user (${k})`,
+      );
+    }
+  }
+
+  // Check 2: any pre-existing key other than the user's must be
+  // byte-identical post-update (i.e. the incoming update did not
+  // touch it). We re-serialize per-key for a granular diff so the
+  // userId entry's freedom to change does not mask sibling tampering.
+  for (const k of beforePerUserKeys) {
+    if (k === userId) continue;
+    if (JSON.stringify(beforePerUser[k]) !== JSON.stringify(afterPerUser[k])) {
+      throw new WriteAuthzError(
+        `Cannot modify meta.perUser entry for another user (${k})`,
+      );
+    }
+  }
+
+  // The (rare) case where a pre-existing peer entry got removed by
+  // the incoming update is also a tamper:
+  for (const k of beforePerUserKeys) {
+    if (k === userId) continue;
+    if (!afterPerUserKeys.has(k)) {
+      throw new WriteAuthzError(
+        `Cannot delete meta.perUser entry for another user (${k})`,
+      );
+    }
+  }
+
+  // All checks passed — incoming update is allowed.
+  // (Note: this snapshot var is kept for future telemetry hooks if
+  // we ever want to log "what changed" on accepted writes. Currently
+  // unused; suppress unused-var lint locally.)
+  void beforePerUserSnapshot;
+}

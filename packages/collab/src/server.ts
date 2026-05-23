@@ -15,11 +15,20 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import IoRedis from "ioredis";
+import postgres from "postgres";
 import * as Y from "yjs";
+import {
+  parseDocName,
+  SpaceRpcRequestSchema,
+  type ProjectRole,
+  type SpaceRpcResponse,
+} from "@breatic/shared";
 import { createAuthHook } from "./auth.js";
+import { checkWriteAuthz, WriteAuthzError } from "./before-handle-message.js";
 import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
 import { cleanupOnDisconnect } from "./disconnect-cleanup.js";
+import { handleSpaceRpc } from "./space-rpc.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("hocuspocus");
@@ -47,6 +56,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const cfg = getCollabConfig();
 
   const authRedis = new IoRedis(infra.redisUrl);
+  // Shared PG pool for space-rpc handlers (soft-delete / restore the
+  // canvas-{spaceId} `yjs_documents` row). Auth and persistence each
+  // own their own pool today — consolidating is a follow-up cleanup.
+  const sharedSql = postgres(infra.databaseUrl, { max: 5 });
 
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,8 +142,75 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
+    // Client write authorization — refuses direct writes to
+    // meta.spaces / meta.projectMessages / meta.perUser[someone else].
+    // Per ADR 2026-05-23-yjs-collab-only-write-authz.
+    beforeHandleMessage: async ({ documentName, document, update, context }) => {
+      try {
+        checkWriteAuthz({
+          documentName,
+          document,
+          update,
+          context: context as { user?: { id?: string } },
+        });
+      } catch (e) {
+        if (e instanceof WriteAuthzError) {
+          logger.warn(
+            { documentName, err: e.message },
+            "write_authz_rejected",
+          );
+        }
+        throw e;
+      }
+    },
+
+    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
+    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc;
+    // we parse, route to the handler, and broadcast the response back
+    // to all connected clients of this meta doc (caller filters by
+    // request `id`).
+    onStateless: async ({ documentName, document, payload, connection }) => {
+      const parsed = parseDocName(documentName);
+      if (!parsed || parsed.kind !== "meta") return;
+
+      let json: unknown;
+      try {
+        json = JSON.parse(payload);
+      } catch {
+        return; // not a JSON message; ignore (could be a frontend cache invalidate signal)
+      }
+
+      const reqResult = SpaceRpcRequestSchema.safeParse(json);
+      if (!reqResult.success) return;
+      const req = reqResult.data;
+
+      const ctx = (connection.context ?? {}) as {
+        user?: { id?: string; role?: ProjectRole };
+      };
+      const callerId = ctx.user?.id;
+      const callerRole = ctx.user?.role;
+      if (!callerId || !callerRole) {
+        document.broadcastStateless(
+          JSON.stringify({
+            id: req.id,
+            ok: false,
+            error: { code: "FORBIDDEN", message: "Anonymous caller" },
+          } satisfies SpaceRpcResponse),
+        );
+        return;
+      }
+
+      const response = await handleSpaceRpc(
+        { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
+        parsed.projectId,
+        { userId: callerId, role: callerRole },
+        req,
+      );
+      document.broadcastStateless(JSON.stringify(response));
+    },
+
     // Document size limit — reject updates that would exceed max
-    onChange: async ({ documentName, document, context }) => {
+    onChange: async ({ documentName, document }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
         if (size > cfg.max_document_bytes) {
@@ -144,36 +224,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
 
-      // Per-user write boundary audit (decision F.2).
-      // The `perUser` Y.Map in `projectMetaDocName` partitions per-user
-      // UI state (openTabIds + activeSpaceId) by userId. A correctly
-      // behaving client only writes its OWN userId key. This audit walks
-      // perUser keys and warns if the connected user.id is missing from
-      // perUser entirely (suggesting they wrote zero keys, fine) but
-      // there are keys we don't have a way to attribute — flag for
-      // future strict enforcement.
-      //
-      // True strict enforcement requires `beforeHandleMessage` to parse
-      // the binary Y.Doc update and reject cross-user writes before
-      // they apply. Scoped to follow-up PR — the audit log here gives
-      // us telemetry to size the threat before paying the parsing cost.
-      const ctx = context as { user?: { id?: string } };
-      const userId = ctx.user?.id;
-      if (userId && documentName.endsWith("/meta")) {
-        const perUser = document.getMap("perUser");
-        const keys = Array.from(perUser.keys());
-        const foreignKeys = keys.filter((k) => k !== userId && k !== "system");
-        if (foreignKeys.length > 0) {
-          logger.warn(
-            {
-              documentName,
-              userId,
-              foreignKeys,
-            },
-            "per_user_write_boundary_audit — connected user observed peers' perUser keys; expected with multi-user collaboration but track for follow-up strict enforcement",
-          );
-        }
-      }
+      // (Per-user write-boundary enforcement now lives in
+      // `beforeHandleMessage` → `checkWriteAuthz`, per ADR
+      // 2026-05-23-yjs-collab-only-write-authz. The old onChange
+      // audit-log was telemetry-only and has been retired.)
     },
   });
 
