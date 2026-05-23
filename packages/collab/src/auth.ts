@@ -30,7 +30,8 @@
 
 import type Redis from "ioredis";
 import postgres from "postgres";
-import { DEV_USER_ID, parseDocName } from "@breatic/shared";
+import * as Y from "yjs";
+import { DEV_USER_ID, parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /** Resolved user context returned to Hocuspocus. */
@@ -52,6 +53,44 @@ export interface CreateAuthHookOptions {
   redis: Redis;
   envPrefix: string;
   databaseUrl: string;
+}
+
+/**
+ * Load the set of Space ids currently listed in the project's meta
+ * Yjs doc. Used to refuse a WebSocket connection to a
+ * `project-{pid}/canvas-{deletedSpaceId}` after the Space has been
+ * removed from `meta.spaces` (per ADR 2026-05-23-yjs-collab-only-write-authz
+ * §"Bootstrap 边界例外" and §"删除可恢复"):
+ *
+ *   - `meta.spaces[id] = {...}` is the source of truth for "this
+ *     Space exists right now". A soft-deleted `yjs_documents` row for
+ *     `canvas-{id}` may still hold the old binary blob for recovery,
+ *     but the Space is considered gone the moment its id leaves
+ *     `meta.spaces`. New WebSocket connections to that doc name must
+ *     be refused so a stale tab cannot resurrect the data.
+ *
+ * Returns an empty set when the meta row does not exist (a freshly
+ * created project's meta doc is always seeded by `yjs-bootstrap`, so
+ * the empty-set path is a defensive fallback rather than a real
+ * expected state).
+ */
+async function loadProjectSpaceIds(
+  sql: ReturnType<typeof postgres>,
+  projectId: string,
+): Promise<Set<string>> {
+  const docName = projectMetaDocName(projectId);
+  const rows = await sql<{ data: Buffer }[]>`
+    SELECT data
+    FROM yjs_documents
+    WHERE name = ${docName} AND deleted_at IS NULL
+    LIMIT 1
+  `;
+  if (rows.length === 0 || !rows[0]?.data) return new Set();
+
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, new Uint8Array(rows[0].data));
+  const spaces = doc.getMap("spaces");
+  return new Set(spaces.keys());
 }
 
 /**
@@ -141,6 +180,20 @@ export function createAuthHook({
       throw new Error(
         `User ${userId} is not authorized to access project ${parsed.projectId}`,
       );
+    }
+
+    // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
+    // refuse the connection if the spaceId is no longer in `meta.spaces`.
+    // This is the runtime half of "delete a Space = remove its id from
+    // meta.spaces; PG row stays for recovery but new connections cannot
+    // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
+    if (parsed.kind !== "meta") {
+      const ids = await loadProjectSpaceIds(sql, parsed.projectId);
+      if (!ids.has(parsed.spaceId)) {
+        throw new Error(
+          `Space ${parsed.spaceId} does not exist (or has been deleted) in project ${parsed.projectId}`,
+        );
+      }
     }
 
     return {
