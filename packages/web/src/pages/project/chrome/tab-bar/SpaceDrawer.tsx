@@ -31,6 +31,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
@@ -287,7 +292,13 @@ function SpaceDrawerRow({
           </span>
         </button>
         <div
-          className='flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'
+          // `self-center` overrides the row's `items-start` for this one
+          // child — the row keeps the icon + 2-line text top-aligned on
+          // the left, while the action group (single-row, smaller height)
+          // sits vertically centered in the row. Without `self-center`
+          // the action buttons hugged the top edge (PR after #140 user
+          // report 2026-05-25).
+          className='flex shrink-0 self-center items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'
           data-testid={`space-drawer-actions-${space.id}`}
         >
           <RowAction
@@ -384,23 +395,35 @@ function RowAction({
   disabled,
   busy,
 }: RowActionProps) {
+  // Wrap the icon button in a shadcn Tooltip (visual / timing
+  // consistent with the rest of the chrome). Native `title` attribute
+  // was inconsistent across OS/browsers (long delay, OS-themed bubble
+  // that breaks dark mode, unreliable on touch). `aria-label` stays
+  // for screen readers; TooltipContent text duplicates it for sighted
+  // mouse / keyboard users (PR after #140, 2026-05-25 user ask).
+  // TooltipProvider is mounted globally in App.tsx, so no per-instance
+  // provider needed here.
   return (
-    <button
-      type='button'
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled || busy}
-      data-testid={testId}
-      className={cn(
-        'inline-flex h-7 w-7 items-center justify-center rounded-chrome transition-colors',
-        disabled
-          ? 'cursor-not-allowed text-muted-foreground/40'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        busy && 'animate-pulse',
-      )}
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type='button'
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled || busy}
+          data-testid={testId}
+          className={cn(
+            'inline-flex h-7 w-7 items-center justify-center rounded-chrome transition-colors',
+            disabled
+              ? 'cursor-not-allowed text-muted-foreground/40'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            busy && 'animate-pulse',
+          )}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
