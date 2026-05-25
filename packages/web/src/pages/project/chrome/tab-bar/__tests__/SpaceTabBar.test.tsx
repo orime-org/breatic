@@ -156,6 +156,32 @@ describe('SpaceTabBar', () => {
       );
     });
 
+    it('disables the left arrow when scrollLeft lands on a sub-pixel float (≤1px from start, atStart tolerance)', () => {
+      setup();
+      const scroller = screen.getByRole('tablist');
+      Object.defineProperty(scroller, 'scrollWidth', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroller, 'clientWidth', {
+        value: 200,
+        configurable: true,
+      });
+      // Sub-pixel float — what smooth scrollIntoView leaves on high-DPI
+      // displays after animating back to the start. Without the 1-px
+      // tolerance the strict `<= 0` check failed and the left arrow
+      // stayed enabled at the boundary (PR #140 user report).
+      Object.defineProperty(scroller, 'scrollLeft', {
+        value: 0.5,
+        configurable: true,
+        writable: true,
+      });
+      act(() => {
+        scroller.dispatchEvent(new Event('scroll'));
+      });
+      expect(screen.getByTestId('tabs-scroll-left')).toBeDisabled();
+    });
+
     it('left arrow snaps the last off-screen tab flush-left (inline: start)', async () => {
       const user = userEvent.setup();
       setup();

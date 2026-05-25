@@ -102,8 +102,15 @@ export function SpaceTabBar({
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
+    // 1-px tolerance on BOTH ends (symmetric with `atEnd`). `scrollLeft`
+    // can land on sub-pixel float values (e.g. 0.3, 0.5) after a
+    // smooth `scrollIntoView` animation, especially on high-DPI
+    // displays — `<= 0` strict compare leaves the left arrow stuck in
+    // the enabled state after the user scrolls back to the boundary.
+    // PR #140 commit 4870de6 (point-and-scroll) exposed this; prior
+    // fixed-px `scrollBy(±120)` kept `scrollLeft` integer-aligned.
     const overflow = el.scrollWidth > el.clientWidth + 1;
-    const atStart = el.scrollLeft <= 0;
+    const atStart = el.scrollLeft <= 1;
     const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
     setScrollState({ overflow, atStart, atEnd });
   }, []);
