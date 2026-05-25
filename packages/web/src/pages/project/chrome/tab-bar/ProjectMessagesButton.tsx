@@ -164,7 +164,7 @@ export function ProjectMessagesButton({
       */}
       <SheetContent
         side='right-floating'
-        className='w-[315px] p-0'
+        className='flex w-[315px] flex-col p-0'
         data-testid='project-messages-sheet'
       >
         <header className='flex items-baseline justify-between gap-3 border-b border-border px-4 py-3 pr-12'>
@@ -190,7 +190,11 @@ export function ProjectMessagesButton({
           ) : null}
         </header>
         <ul
-          className='flex max-h-[420px] flex-col overflow-y-auto'
+          // `flex-1` (not a hard `max-h-[420px]`) lets the list fill the
+          // remaining sheet height below the header. The prior cap caused
+          // a visible empty band inside the sheet when the floating sheet
+          // is taller than 420 + header (see PR #135 bug report).
+          className='flex flex-1 flex-col overflow-y-auto'
           role='list'
           data-testid='project-messages-list'
         >
