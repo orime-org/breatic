@@ -18,18 +18,23 @@ import { cn } from '@/lib/utils';
  *   - `<DialogFooter>` aligns buttons to the right
  */
 /**
- * Project default (2026-05-25): Dialogs are **non-modal** unless the
- * caller explicitly opts in by passing `modal={true}`. Same rule as
- * `Sheet` — see `components/ui/sheet.tsx`. Use the global
- * `useExclusiveOverlay(id)` hook so only one overlay is visible at a
- * time.
+ * Project default (2026-05-25, corrected):
+ *   - **Dialog is modal-by-default** — Radix `<Dialog.Root>` ships
+ *     `modal=true` (backdrop + body scroll lock + focus trap) and
+ *     `DialogContent` below always renders `<DialogOverlay />`. The
+ *     half-transparent backdrop is non-negotiable for modal semantics.
+ *   - **Sheet is non-modal-by-default** — see `components/ui/sheet.tsx`.
+ * Use the global `useExclusiveOverlay(id)` hook so only one overlay is
+ * visible at a time (independent of modal/non-modal).
+ *
+ * Earlier (PR #135 prior) Dialog defaulted to `modal=false` + no
+ * overlay by mis-applying the Sheet rule. Reverted because all three
+ * dialog consumers (NewProjectDialog / NewSpaceDialog / MembersModal)
+ * need modal semantics.
  */
-const Dialog = ({
-  modal = false,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) => (
-  <DialogPrimitive.Root modal={modal} {...props} />
-);
+const Dialog = (
+  props: React.ComponentProps<typeof DialogPrimitive.Root>,
+) => <DialogPrimitive.Root {...props} />;
 Dialog.displayName = 'Dialog';
 
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -51,22 +56,12 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-interface DialogContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  /**
-   * Show the half-transparent backdrop overlay. Default `false` per
-   * 2026-05-25 user decision — Dialogs are non-modal by default so
-   * sibling UI stays clickable. Pass `true` for destructive confirms.
-   */
-  withOverlay?: boolean;
-}
-
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  DialogContentProps
->(({ className, children, withOverlay = false, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    {withOverlay ? <DialogOverlay /> : null}
+    <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
