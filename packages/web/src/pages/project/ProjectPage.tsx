@@ -134,10 +134,10 @@ export default function ProjectPage() {
   const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
 
   const pendingCreateIdRef = React.useRef<string | null>(null);
-  const pendingDeleteIdRef = React.useRef<string | null>(null);
 
-  // Auto-dismiss loading overlay when the Yjs doc catches up to the
-  // pending operation (created id appears / deleted id vanishes).
+  // Auto-dismiss the create loading overlay when the new space id
+  // appears in the live Yjs spaces map. Delete intentionally has no
+  // overlay (fast op, the tab vanishing is the user-visible signal).
   React.useEffect(() => {
     if (spaceOpInProgress === 'creating' && pendingCreateIdRef.current) {
       const id = pendingCreateIdRef.current;
@@ -150,13 +150,7 @@ export default function ProjectPage() {
         }
       }
     }
-    if (spaceOpInProgress === 'deleting' && pendingDeleteIdRef.current) {
-      const id = pendingDeleteIdRef.current;
-      if (!spaces.some((s) => s.id === id)) {
-        pendingDeleteIdRef.current = null;
-        setSpaceOpInProgress(null);
-      }
-    }
+    // Delete no longer uses spaceOpInProgress — see onDeleteSpace.
   }, [spaces, spaceOpInProgress, projectId, userId, setSpaceOpInProgress]);
 
   // Safety timeout — if the collab broadcast never lands, free the UI
@@ -164,17 +158,12 @@ export default function ProjectPage() {
   // wedged spinner.
   React.useEffect(() => {
     if (spaceOpInProgress === null) return;
-    const phase = spaceOpInProgress;
     const handle = setTimeout(() => {
       setSpaceOpInProgress(null);
       pendingCreateIdRef.current = null;
-      pendingDeleteIdRef.current = null;
-      toast.error(
-        phase === 'creating'
-          ? t('project.space.timeout.create')
-          : t('project.space.timeout.delete'),
-        { description: t('project.space.timeout.retry') },
-      );
+      toast.error(t('project.space.timeout.create'), {
+        description: t('project.space.timeout.retry'),
+      });
     }, SPACE_OP_TIMEOUT_MS);
     return () => clearTimeout(handle);
   }, [spaceOpInProgress, setSpaceOpInProgress, t]);
@@ -266,19 +255,21 @@ export default function ProjectPage() {
   };
 
   /** Soft-delete a Space — `space:delete` RPC. */
+  /**
+   * Delete is fast (~50-200ms) and already self-evident in the UI —
+   * the deleted tab vanishes the moment Yjs sync lands. Showing the
+   * full-screen LoadingOverlay for that window just flashes a black
+   * backdrop in and out, which the user reads as flicker rather than
+   * progress. The SpaceDrawer row keeps its own inline `deleteBusy`
+   * spinner to prevent double-click within the same row.
+   *
+   * Errors still surface — callRpc raises a toast on RPC failure.
+   */
   const onDeleteSpace = async (spaceId: string) => {
-    setSpaceOpInProgress('deleting');
-    pendingDeleteIdRef.current = spaceId;
-    try {
-      await callRpc(
-        { type: 'space:delete', payload: { spaceId } },
-        'spaces.drawer.action.deleteFail',
-      );
-    } catch (err) {
-      setSpaceOpInProgress(null);
-      pendingDeleteIdRef.current = null;
-      throw err;
-    }
+    await callRpc(
+      { type: 'space:delete', payload: { spaceId } },
+      'spaces.drawer.action.deleteFail',
+    );
   };
 
   /** Toggle Space lock — `space:lock` RPC (lock + unlock same handler). */
@@ -421,12 +412,6 @@ export default function ProjectPage() {
         <LoadingOverlay
           message={t('project.space.loading.create')}
           testId='creating-space-overlay'
-        />
-      ) : null}
-      {spaceOpInProgress === 'deleting' ? (
-        <LoadingOverlay
-          message={t('project.space.loading.delete')}
-          testId='deleting-space-overlay'
         />
       ) : null}
     </div>
