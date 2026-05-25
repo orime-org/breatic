@@ -121,7 +121,13 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
     // RPC round-trips. Errors surface via toast from ProjectPage's
     // callRpc — no need to keep the dialog open for inline display.
     setError(null);
-    reset();
+    // NOTE: do NOT call `reset()` here. Resetting `name` synchronously
+    // would flip the submit button into the `disabled` state during
+    // the dialog's close animation (300ms), and PR #137's primitive
+    // `disabled:cursor-not-allowed` rule would surface a momentary
+    // 🚫 stop-sign cursor as a visible flash on the create button.
+    // Instead, the form clears once the dialog is fully closed (see
+    // the `useEffect` watching `open` below).
     setOpen(false);
     void Promise.resolve(onCreate(type, trimmed)).catch(() => {
       // Swallow — ProjectPage already raised the user-facing toast
@@ -129,11 +135,31 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
     });
   };
 
+  // Defer the form reset until after the dialog close animation has
+  // finished. This keeps the submit button enabled (and the cursor
+  // unchanged) during the close transition — see the `submit` comment
+  // above for the full rationale. 300ms matches Radix Dialog's stock
+  // close-state duration.
+  React.useEffect(() => {
+    if (open) return;
+    const timer = window.setTimeout(() => {
+      reset();
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // `reset` is stable-by-convention (only flips local setters); not
+    // listing it avoids re-arming the timer on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) reset();
+        // Form reset lives in the `useEffect([open])` above so the
+        // close animation can play out with the button still showing
+        // its enabled cursor — same rationale as the submit path.
         setOpen(next);
       }}
     >

@@ -114,6 +114,30 @@ export function SpaceTabBar({
     };
   }, [updateScrollState, spaces.length]);
 
+  // When the active space changes (e.g. user picks a space from the
+  // drawer), make sure the corresponding tab is visible inside the
+  // scrollable tab strip. Without this, picking an off-screen space
+  // from the drawer left the tab bar frozen and the user with no
+  // visual confirmation that the selection landed.
+  //
+  // `inline: 'nearest'` is the key choice: it scrolls only as much
+  // as needed (the tab snaps to the nearest edge of the scroller),
+  // matching the standard IDE / browser tab strip behavior.
+  React.useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !activeSpaceId) return;
+    const activeTab = scroller.querySelector(
+      `[data-testid="space-tab-${activeSpaceId}"]`,
+    );
+    if (activeTab instanceof HTMLElement) {
+      activeTab.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+  }, [activeSpaceId]);
+
   const scrollBy = (delta: number) => {
     scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   };
