@@ -178,8 +178,15 @@ export function ProjectMessagesButton({
         className='flex w-[315px] flex-col p-0'
         data-testid='project-messages-sheet'
       >
-        <header className='flex flex-col gap-2 border-b border-border px-4 py-3 pr-12'>
-          <SheetTitle className='text-[14px] font-semibold text-foreground'>
+        <header className='flex flex-col gap-2 border-b border-border px-4 py-3'>
+          {/*
+            Only the title row reserves space (pr-10) for the absolute
+            X close button in the top-right of the SheetContent. The
+            meta row below has no pr — it can extend to the inner right
+            edge of the header (px-4), letting `justify-between` push
+            the clear button fully to the right.
+          */}
+          <SheetTitle className='pr-10 text-[14px] font-semibold text-foreground'>
             {t('spaces.history.header')}
           </SheetTitle>
           {/*
@@ -220,7 +227,11 @@ export function ProjectMessagesButton({
                     <AlertDialogAction
                       onClick={onClickClear}
                       data-testid='project-messages-clear-confirm-action'
-                      className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                      // Use `transition-opacity` + `hover:opacity-90`
+                      // for destructive hover. Project bans alpha-
+                      // modifier hover variants on bg tokens; see
+                      // ADR 2026-05-21-hover-pattern-standard.
+                      className='bg-destructive text-destructive-foreground transition-opacity hover:opacity-90'
                     >
                       {t('spaces.history.action.clearAll')}
                     </AlertDialogAction>
