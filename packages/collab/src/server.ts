@@ -177,7 +177,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       try {
         json = JSON.parse(payload);
       } catch {
-        return; // not a JSON message; ignore (could be a frontend cache invalidate signal)
+        return; // non-JSON stateless message (e.g. frontend cache invalidate)
       }
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
