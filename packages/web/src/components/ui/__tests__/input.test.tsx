@@ -11,13 +11,18 @@ describe('Input', () => {
     expect(el).toHaveAttribute('type', 'email');
   });
 
-  it('applies project token classes (border-input + bg-transparent)', () => {
+  it('applies project token classes (border-active-border + bg-transparent + no shadow)', () => {
     render(<Input data-testid='input' />);
     const el = screen.getByTestId('input');
-    // shadcn-bridge.css aliases --input to var(--neutral-200), so this class
-    // is the contract between primitive and design system.
-    expect(el.className).toContain('border-input');
+    // Per 2026-05-25 (PR #135): Input border is unified to
+    // `border-active-border` (= `--color-muted-foreground`, middle gray)
+    // so it visually matches NewSpaceDialog selected segmented-control
+    // card border + ChatComposer focus-within border. The prior
+    // `shadow-sm` was dropped to keep chrome-flat parity with sibling
+    // unselected cards (which carry no shadow).
+    expect(el.className).toContain('border-active-border');
     expect(el.className).toContain('bg-transparent');
+    expect(el.className).not.toContain('shadow-sm');
   });
 
   it('exposes placeholder + disabled + readonly to a11y tree', () => {
