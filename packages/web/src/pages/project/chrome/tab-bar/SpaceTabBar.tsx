@@ -50,6 +50,12 @@ interface SpaceTabBarProps {
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
   /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
+  /**
+   * Rename a Space inline from the tab strip. Caller role ≥ edit;
+   * locked Spaces refuse rename on the server side. Handler from
+   * ProjectPage wraps `space:rename` RPC via callRpc.
+   */
+  onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
 }
 
 /**
@@ -78,6 +84,7 @@ export function SpaceTabBar({
   onClearMessages,
   onDeleteSpace,
   onSetSpaceLocked,
+  onRenameSpace,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -249,6 +256,11 @@ export function SpaceTabBar({
             locked={s.locked}
             onActivate={() => onActivate(s.id)}
             onClose={onClose ? () => onClose(s.id) : undefined}
+            onRename={
+              onRenameSpace
+                ? (next) => onRenameSpace(s.id, next)
+                : undefined
+            }
           />
         ))}
       </div>

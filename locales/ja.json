@@ -1006,9 +1006,17 @@
       "notAvailable": "未実装",
       "nameLabel": "名前",
       "namePlaceholder": "例:Cyberpunk Concept",
+      "nameRemaining": "{count, plural, other {残り # 文字}}",
       "cancel": "キャンセル",
       "submit": "作成",
       "submitting": "作成中…"
+    },
+    "rename": {
+      "inputAriaLabel": "Space の名前を変更",
+      "locked": "ロック中 — 名前を変更するにはロックを解除してください。",
+      "error": {
+        "failed": "名前の変更に失敗しました。もう一度お試しください。"
+      }
     },
     "readonly": {
       "label": "読み取り専用",

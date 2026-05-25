@@ -3,8 +3,8 @@
  *
  * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  *
- *   - create / delete / lock / unlock — caller role ≥ edit
- *   - restore / messages:clear         — caller role = owner
+ *   - create / delete / lock / unlock / rename — caller role ≥ edit
+ *   - restore / messages:clear                  — caller role = owner
  *
  * Each handler:
  *
@@ -293,6 +293,57 @@ async function handleLock(
   }
 }
 
+/**
+ * Rename an existing Space's `name`. Caller role ≥ edit. Refuses
+ * with `FORBIDDEN` if the Space is currently locked — locked Spaces
+ * must be unlocked before any metadata mutation.
+ */
+async function handleRename(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "space:rename" }>,
+): Promise<SpaceRpcResponse> {
+  if (!requireAtLeast(caller.role, "edit")) {
+    return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot rename Space`);
+  }
+  const { spaceId, name } = req.payload;
+  const docName = projectMetaDocName(projectId);
+  const conn = await ctx.hocuspocus.openDirectConnection(docName, {
+    context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
+  });
+  try {
+    let notFound = false;
+    let locked = false;
+    await conn.transact((doc: Y.Doc) => {
+      const spaces = doc.getMap("spaces");
+      const entry = spaces.get(spaceId);
+      if (!(entry instanceof Y.Map)) {
+        notFound = true;
+        return;
+      }
+      if (entry.get("locked") === true) {
+        locked = true;
+        return;
+      }
+      entry.set("name", name);
+    });
+    if (notFound) {
+      return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
+    }
+    if (locked) {
+      return err(
+        req.id,
+        "FORBIDDEN",
+        `Space ${spaceId} is locked; unlock before renaming`,
+      );
+    }
+    return ok(req.id);
+  } finally {
+    await conn.disconnect();
+  }
+}
+
 async function handleRestore(
   ctx: SpaceRpcContext,
   projectId: string,
@@ -441,6 +492,8 @@ export async function handleSpaceRpc(
         return await handleDelete(ctx, projectId, caller, request);
       case "space:lock":
         return await handleLock(ctx, projectId, caller, request);
+      case "space:rename":
+        return await handleRename(ctx, projectId, caller, request);
       case "space:restore":
         return await handleRestore(ctx, projectId, caller, request);
       case "messages:clear":

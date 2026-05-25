@@ -1,6 +1,7 @@
 import { Clock, FileText, Palette } from 'lucide-react';
 import * as React from 'react';
 
+import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -224,10 +225,32 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
             </div>
           </div>
           <div className='flex flex-col gap-2'>
-            <Label htmlFor='new-space-name'>{t('spaces.create.nameLabel')}</Label>
+            <div className='flex items-baseline justify-between gap-3'>
+              <Label htmlFor='new-space-name'>
+                {t('spaces.create.nameLabel')}
+              </Label>
+              {/* Live remaining-character hint. Turns warning color in
+                  the last ~10% of the cap so the user sees the wall
+                  coming before the maxLength hard-stops them. */}
+              <span
+                className={cn(
+                  'text-[11px] tabular-nums',
+                  name.length >= SPACE_NAME_MAX_LEN - 8
+                    ? 'text-status-warning-foreground'
+                    : 'text-muted-foreground',
+                )}
+                data-testid='new-space-name-counter'
+                aria-live='polite'
+              >
+                {t('spaces.create.nameRemaining', {
+                  count: Math.max(0, SPACE_NAME_MAX_LEN - name.length),
+                })}
+              </span>
+            </div>
             <Input
               id='new-space-name'
               value={name}
+              maxLength={SPACE_NAME_MAX_LEN}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('spaces.create.namePlaceholder')}
               data-testid='new-space-name'

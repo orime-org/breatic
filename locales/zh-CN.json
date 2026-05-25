@@ -1006,9 +1006,17 @@
       "notAvailable": "未实现",
       "nameLabel": "名称",
       "namePlaceholder": "例:Cyberpunk Concept",
+      "nameRemaining": "{count, plural, other {还可输入 # 个字符}}",
       "cancel": "取消",
       "submit": "创建",
       "submitting": "创建中…"
+    },
+    "rename": {
+      "inputAriaLabel": "重命名 Space",
+      "locked": "已锁定 — 解锁后才能修改名称。",
+      "error": {
+        "failed": "重命名失败,请重试。"
+      }
     },
     "readonly": {
       "label": "只读",

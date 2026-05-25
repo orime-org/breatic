@@ -28,7 +28,12 @@ export default function App() {
     <QueryClientProvider>
       <TooltipProvider>
         <RouterProvider router={router} />
-        <Toaster richColors closeButton position='bottom-right' />
+        {/* Toast surface mounts at the top-center of the viewport so
+            critical / interaction-blocking messages (lock notice,
+            RPC failures, rename refusals) sit in the user's primary
+            sight line — the bottom-right corner was easy to miss
+            during canvas-focused work (2026-05-25 user spec). */}
+        <Toaster richColors closeButton position='top-center' />
       </TooltipProvider>
     </QueryClientProvider>
   );

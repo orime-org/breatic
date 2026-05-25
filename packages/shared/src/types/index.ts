@@ -40,12 +40,14 @@ export type { SpaceType, Space } from "./space.js";
 export { SpaceTypeSchema } from "./space.js";
 
 export {
+  SPACE_NAME_MAX_LEN,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
   SpaceRpcErrorCodeSchema,
   SpaceCreatePayloadSchema,
   SpaceDeletePayloadSchema,
   SpaceLockPayloadSchema,
+  SpaceRenamePayloadSchema,
   SpaceRestorePayloadSchema,
   MessagesClearPayloadSchema,
   ProjectMessageKindSchema,
@@ -58,6 +60,7 @@ export type {
   SpaceCreatePayload,
   SpaceDeletePayload,
   SpaceLockPayload,
+  SpaceRenamePayload,
   SpaceRestorePayload,
   MessagesClearPayload,
   ProjectMessageKind,
