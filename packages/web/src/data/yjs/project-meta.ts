@@ -110,13 +110,19 @@ export function useProjectMeta(
 
   React.useEffect(() => {
     const update = () => setState(readMetaState(doc, userId));
-    const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
+    // SPACES is a Y.Map keyed by spaceId on the collab side (see
+    // `packages/collab/src/space-rpc.ts` + `auth.ts` +
+    // `core/src/db/yjs-bootstrap.ts`). Client must observe the same
+    // root collection or Yjs treats `getArray("spaces")` and
+    // `getMap("spaces")` as separate, ghost roots and sync silently
+    // never lands changes here — see PR-b post-merge bug.
+    const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
     const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-    spacesArr.observeDeep(update);
+    spacesMap.observeDeep(update);
     perUser.observeDeep(update);
     update();
     return () => {
-      spacesArr.unobserveDeep(update);
+      spacesMap.unobserveDeep(update);
       perUser.unobserveDeep(update);
     };
   }, [doc, userId]);
@@ -233,14 +239,14 @@ export function setActiveSpace(
  */
 export function appendSpace(projectId: string, space: ProjectSpace): void {
   const doc = getDoc(docName.projectMeta(projectId));
-  const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
+  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
   doc.transact(() => {
-    const map = new Y.Map<unknown>();
-    map.set('id', space.id);
-    map.set('name', space.name);
-    map.set('type', space.type);
-    if (space.locked) map.set('locked', true);
-    spacesArr.push([map]);
+    const entry = new Y.Map<unknown>();
+    entry.set('id', space.id);
+    entry.set('name', space.name);
+    entry.set('type', space.type);
+    if (space.locked) entry.set('locked', true);
+    spacesMap.set(space.id, entry);
   });
 }
 
@@ -252,11 +258,9 @@ export function appendSpace(projectId: string, space: ProjectSpace): void {
  */
 export function removeSpace(projectId: string, spaceId: string): void {
   const doc = getDoc(docName.projectMeta(projectId));
-  const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
+  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
   doc.transact(() => {
-    for (let i = spacesArr.length - 1; i >= 0; i--) {
-      if (spacesArr.get(i).get('id') === spaceId) spacesArr.delete(i, 1);
-    }
+    if (spacesMap.has(spaceId)) spacesMap.delete(spaceId);
   });
 }
 
@@ -320,17 +324,16 @@ function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
 }
 
 function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
-  const spacesArr = doc.getArray<Y.Map<unknown>>(SPACES_KEY);
+  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
   const out: ProjectSpace[] = [];
-  for (let i = 0; i < spacesArr.length; i++) {
-    const m = spacesArr.get(i);
+  spacesMap.forEach((m) => {
     out.push({
       id: String(m.get('id') ?? ''),
       name: String(m.get('name') ?? ''),
       type: (m.get('type') as SpaceType) ?? 'canvas',
       locked: Boolean(m.get('locked') ?? false),
     });
-  }
+  });
   return out;
 }
 

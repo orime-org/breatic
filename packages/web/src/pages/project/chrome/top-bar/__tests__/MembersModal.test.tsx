@@ -8,17 +8,17 @@ import { expectNoA11yViolations } from '@/test-utils/a11y';
 
 describe('MembersModal', () => {
   beforeEach(() => {
-    useUIStore.setState({ membersModalOpen: false });
+    useUIStore.setState({ activeOverlayId: null });
   });
 
-  it('is hidden when membersModalOpen is false', () => {
+  it('is hidden when activeOverlayId is not members-modal', () => {
     render(<MembersModal />);
     expect(screen.queryByTestId('members-modal')).not.toBeInTheDocument();
   });
 
   it('has no a11y violations when open', async () => {
     act(() => {
-      useUIStore.getState().setMembersModalOpen(true);
+      useUIStore.getState().setActiveOverlayId('members-modal');
     });
     render(<MembersModal />);
     await expectNoA11yViolations(document.body);
@@ -26,7 +26,7 @@ describe('MembersModal', () => {
 
   it('renders header / invite input / 5 stub member rows when open', () => {
     act(() => {
-      useUIStore.getState().setMembersModalOpen(true);
+      useUIStore.getState().setActiveOverlayId('members-modal');
     });
     render(<MembersModal />);
     expect(screen.getByTestId('members-modal')).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe('MembersModal', () => {
 
   it('owner row has Owner label, non-owner rows have role select', () => {
     act(() => {
-      useUIStore.getState().setMembersModalOpen(true);
+      useUIStore.getState().setActiveOverlayId('members-modal');
     });
     render(<MembersModal />);
     // owner row: no role select

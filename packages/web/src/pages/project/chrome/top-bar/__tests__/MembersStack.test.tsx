@@ -10,7 +10,7 @@ describe('MembersStack', () => {
   beforeEach(() => {
     useUIStore.setState({
       shareOpen: false,
-      membersModalOpen: false,
+      activeOverlayId: null,
     });
   });
 
@@ -43,15 +43,15 @@ describe('MembersStack', () => {
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-invite-trigger'));
     expect(useUIStore.getState().shareOpen).toBe(true);
-    expect(useUIStore.getState().membersModalOpen).toBe(false);
+    expect(useUIStore.getState().activeOverlayId).toBeNull();
   });
 
-  it('clicking Manage collaborators closes popover + opens membersModalOpen', async () => {
+  it('clicking Manage collaborators closes popover + opens members-modal overlay', async () => {
     const user = userEvent.setup();
     render(<MembersStack projectId='p1' />);
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-manage-trigger'));
-    expect(useUIStore.getState().membersModalOpen).toBe(true);
+    expect(useUIStore.getState().activeOverlayId).toBe('members-modal');
     expect(useUIStore.getState().shareOpen).toBe(false);
   });
 });

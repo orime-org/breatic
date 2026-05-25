@@ -12,7 +12,11 @@ import PrimitivesGallery from '@/pages/_dev/PrimitivesGallery';
  * `/`                      → redirect to /studio
  * `/studio`                → StudioPage (project list + nav)
  * `/project/:projectId`    → ProjectPage (canvas + chat)
- * `/project/:projectId/space/:spaceId?` → ProjectPage (space-scoped deep link)
+ *
+ * Space is a type / template inside a Project, NOT a route segment
+ * (per `[[feedback_space_type_vs_route]]` user decision). The active
+ * Space tab + open-tab list live in Yjs `meta.perUser[userId]` and
+ * sync per-user across machines automatically — no URL state needed.
  * `/login` `/reset-password` → auth flows
  * `/dev/*`                 → dev-only routes, only mounted when
  *                            `import.meta.env.DEV` is true. Used for token
@@ -27,7 +31,6 @@ const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
   { path: '/studio', element: <StudioPage /> },
   { path: '/project/:projectId', element: <ProjectPage /> },
-  { path: '/project/:projectId/space/:spaceId', element: <ProjectPage /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
 ];

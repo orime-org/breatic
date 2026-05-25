@@ -20,7 +20,8 @@ interface UIState {
   /** Share popover open state — controlled so other surfaces can open it. */
   shareOpen: boolean;
   /** Members management modal open state. */
-  membersModalOpen: boolean;
+  // membersModalOpen removed 2026-05-25: superseded by activeOverlayId
+  // exclusive overlay (MembersModal uses useExclusiveOverlay('members-modal')).
   /**
    * Loading overlay phase for Space-level operations. `null` = no overlay.
    * `"creating"` = waiting for server-published create event to propagate
@@ -35,6 +36,15 @@ interface UIState {
    * "View" action). `null` = sheet closed.
    */
   readOnlyViewSpaceId: string | null;
+  /**
+   * Currently visible Sheet / Dialog id. There may only be one open
+   * at a time per the design rule "Sheet/Dialog 默认 non-modal + 全局
+   * exclusive(2026-05-25)". Switching to a new overlay automatically
+   * closes the previously active one (each consumer's
+   * `useExclusiveOverlay(id)` watches this and clears its own open
+   * state when `activeOverlayId !== id`).
+   */
+  activeOverlayId: string | null;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
   setDrawerOpen: (open: boolean) => void;
@@ -42,9 +52,10 @@ interface UIState {
   pushModal: (id: string) => void;
   popModal: () => void;
   setShareOpen: (open: boolean) => void;
-  setMembersModalOpen: (open: boolean) => void;
+  // setMembersModalOpen removed — use setActiveOverlayId('members-modal')
   setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
   setReadOnlyViewSpaceId: (id: string | null) => void;
+  setActiveOverlayId: (id: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -54,9 +65,10 @@ export const useUIStore = create<UIState>()(
     sidebarOpen: true,
     modalStack: [],
     shareOpen: false,
-    membersModalOpen: false,
+    // (membersModalOpen field removed — see activeOverlayId)
     spaceOpInProgress: null,
     readOnlyViewSpaceId: null,
+    activeOverlayId: null,
     setChatPanelCollapsed: (collapsed) =>
       set((s) => {
         s.chatPanelCollapsed = collapsed;
@@ -85,10 +97,7 @@ export const useUIStore = create<UIState>()(
       set((s) => {
         s.shareOpen = open;
       }),
-    setMembersModalOpen: (open) =>
-      set((s) => {
-        s.membersModalOpen = open;
-      }),
+    // setMembersModalOpen removed — see setActiveOverlayId('members-modal')
     setSpaceOpInProgress: (op) =>
       set((s) => {
         s.spaceOpInProgress = op;
@@ -96,6 +105,10 @@ export const useUIStore = create<UIState>()(
     setReadOnlyViewSpaceId: (id) =>
       set((s) => {
         s.readOnlyViewSpaceId = id;
+      }),
+    setActiveOverlayId: (id) =>
+      set((s) => {
+        s.activeOverlayId = id;
       }),
   })),
 );

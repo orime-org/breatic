@@ -21,6 +21,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
 import { useTranslation } from '@/i18n/use-translation';
@@ -97,7 +98,7 @@ export function SpaceDrawer({
   onSetSpaceLocked,
 }: SpaceDrawerProps) {
   const t = useTranslation();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useExclusiveOverlay('space-drawer');
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>

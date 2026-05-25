@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useChatStore } from '@/stores';
 
 import { ChatComposer } from '@/pages/project/chat/ChatComposer';
@@ -50,7 +51,7 @@ export function ChatPanel({
     (s) => s.setActiveConversationId,
   );
 
-  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
 
   const submit = () => {
     const trimmed = draft.trim();

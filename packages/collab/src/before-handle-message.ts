@@ -32,11 +32,32 @@
  * writer (used by `space-rpc` handlers via `openDirectConnection`) and
  * is allowed to bypass this gate.
  */
+import * as decoding from "lib0/decoding";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
+
+/**
+ * Hocuspocus protocol message type byte (mirrors
+ * `@hocuspocus/server` `MessageType` enum). Only `Sync` carries
+ * payloads that mutate the Y.Doc; all other types (Awareness, Auth,
+ * QueryAwareness, SyncReply, Stateless, BroadcastStateless, CLOSE,
+ * SyncStatus) leave document content untouched and must skip the
+ * clone-and-diff gate.
+ */
+const HOCUSPOCUS_MESSAGE_TYPE_SYNC = 0;
 
 /**
  * Subset of Hocuspocus's `beforeHandleMessagePayload` we actually need.
  * Declared locally so this module does not depend on hocuspocus types.
+ *
+ * NOTE on `update`: this is the **raw Hocuspocus WebSocket frame**, not
+ * a bare Yjs update. The frame is `[messageType varUint][payload]`; for
+ * a sync message the payload is `[syncSubType varUint][updateBytes]`.
+ * Calling `Y.applyUpdate` directly on the frame throws lib0 binary-
+ * decoding errors (`Invalid typed array length` / `Unexpected end of
+ * array`) and Hocuspocus then closes the connection — the PR-a bug
+ * fixed here. See `checkWriteAuthz` body for the correct envelope
+ * unwrap.
  */
 export interface CheckWriteAuthzInput {
   documentName: string;
@@ -53,6 +74,34 @@ export class WriteAuthzError extends Error {
 }
 
 /**
+ * Parse a Hocuspocus WebSocket frame and return the underlying Yjs
+ * update bytes — but only when the frame is a sync-update (the only
+ * message kind that mutates document content). Returns `null` for:
+ *
+ *   - non-sync messages (awareness / auth / stateless / etc.) — these
+ *     never touch the doc and don't need gating
+ *   - sync-step-1 / sync-step-2 — handshake messages, sync-step-2 may
+ *     carry remote state diff but it's server-authoritative; client
+ *     send of step-2 happens in rare reconnect scenarios and the gate
+ *     model would conflict with the bootstrap path
+ *   - malformed frames — let Hocuspocus's MessageReceiver handle them
+ *     (it will close the connection); returning null here avoids
+ *     double-throwing on the same bad bytes
+ */
+function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
+  try {
+    const decoder = decoding.createDecoder(frame);
+    const messageType = decoding.readVarUint(decoder);
+    if (messageType !== HOCUSPOCUS_MESSAGE_TYPE_SYNC) return null;
+    const syncSubType = decoding.readVarUint(decoder);
+    if (syncSubType !== syncProtocol.messageYjsUpdate) return null;
+    return decoding.readVarUint8Array(decoder);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Throws {@link WriteAuthzError} if the incoming update violates the
  * key-level write rules above. Returns silently otherwise.
  *
@@ -60,11 +109,11 @@ export class WriteAuthzError extends Error {
  * update on the clone, then diff the relevant paths against the
  * original. Reject if any forbidden path changed.
  *
- * Cost note: cloning the meta doc on every meta-doc write costs O(n)
- * in document size. Meta doc is small (a few hundred bytes to ~10 KB
- * for projects with many Spaces + projectMessages history), so the
- * cost is acceptable. For canvas / document / timeline docs we skip
- * this hook entirely — those documents can be megabytes and the
+ * Cost note: cloning the meta doc on every meta-doc sync-update costs
+ * O(n) in document size. Meta doc is small (a few hundred bytes to
+ * ~10 KB for projects with many Spaces + projectMessages history), so
+ * the cost is acceptable. For canvas / document / timeline docs we
+ * skip this hook entirely — those documents can be megabytes and the
  * field-level gating isn't needed there.
  */
 export function checkWriteAuthz({
@@ -87,6 +136,12 @@ export function checkWriteAuthz({
     throw new WriteAuthzError("Anonymous write to meta doc is not allowed");
   }
 
+  // Unwrap Hocuspocus frame to the bare Yjs update. Non-sync /
+  // non-update messages (awareness, auth, stateless, sync-step-1/2)
+  // don't carry client document changes — skip the gate.
+  const updateBytes = unwrapHocuspocusUpdate(update);
+  if (updateBytes === null) return;
+
   // Clone the doc and apply the incoming update on the clone, so the
   // original document remains pristine if we end up rejecting.
   const clone = new Y.Doc();
@@ -103,7 +158,7 @@ export function checkWriteAuthz({
   const beforePerUserKeys = new Set(Object.keys(beforePerUser));
   const beforePerUserSnapshot = JSON.stringify(beforePerUser);
 
-  Y.applyUpdate(clone, update);
+  Y.applyUpdate(clone, updateBytes);
 
   const afterSpaces = JSON.stringify(clone.getMap("spaces").toJSON());
   const afterMessages = JSON.stringify(

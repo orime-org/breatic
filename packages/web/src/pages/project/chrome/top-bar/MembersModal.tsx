@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { useUIStore } from '@/stores';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useTranslation } from '@/i18n/use-translation';
 
 import type { Member, MemberRole } from '@/pages/project/chrome/top-bar/MembersStack';
@@ -62,8 +62,7 @@ const ROLE_OPTIONS: ReadonlyArray<{
  */
 export function MembersModal({ members = STUB_MEMBERS }: MembersModalProps) {
   const t = useTranslation();
-  const open = useUIStore((s) => s.membersModalOpen);
-  const setOpen = useUIStore((s) => s.setMembersModalOpen);
+  const [open, setOpen] = useExclusiveOverlay('members-modal');
   const [invite, setInvite] = React.useState('');
 
   return (

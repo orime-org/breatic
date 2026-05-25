@@ -67,7 +67,7 @@ export const MembersStack = React.forwardRef<
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
   const setShareOpen = useUIStore((s) => s.setShareOpen);
-  const setMembersModalOpen = useUIStore((s) => s.setMembersModalOpen);
+  const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
 
   const openInvite = () => {
     setOpen(false);
@@ -75,7 +75,7 @@ export const MembersStack = React.forwardRef<
   };
   const openManage = () => {
     setOpen(false);
-    setMembersModalOpen(true);
+    setActiveOverlayId('members-modal');
   };
 
   return (

@@ -9,7 +9,7 @@ describe('useUIStore', () => {
       sidebarOpen: true,
       modalStack: [],
       shareOpen: false,
-      membersModalOpen: false,
+      activeOverlayId: null,
     });
   });
 
@@ -36,15 +36,21 @@ describe('useUIStore', () => {
     expect(useUIStore.getState().modalStack).toEqual(['a']);
   });
 
-  it('setShareOpen / setMembersModalOpen toggle independent state', () => {
+  it('setShareOpen toggles share state independently', () => {
     const s = useUIStore.getState();
     expect(s.shareOpen).toBe(false);
-    expect(s.membersModalOpen).toBe(false);
     s.setShareOpen(true);
     expect(useUIStore.getState().shareOpen).toBe(true);
-    expect(useUIStore.getState().membersModalOpen).toBe(false);
-    useUIStore.getState().setMembersModalOpen(true);
-    expect(useUIStore.getState().shareOpen).toBe(true);
-    expect(useUIStore.getState().membersModalOpen).toBe(true);
+  });
+
+  it('setActiveOverlayId enforces single-overlay rule', () => {
+    expect(useUIStore.getState().activeOverlayId).toBeNull();
+    useUIStore.getState().setActiveOverlayId('space-drawer');
+    expect(useUIStore.getState().activeOverlayId).toBe('space-drawer');
+    // Opening a new overlay replaces the previous one — single-source.
+    useUIStore.getState().setActiveOverlayId('new-space-dialog');
+    expect(useUIStore.getState().activeOverlayId).toBe('new-space-dialog');
+    useUIStore.getState().setActiveOverlayId(null);
+    expect(useUIStore.getState().activeOverlayId).toBeNull();
   });
 });

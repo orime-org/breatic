@@ -19,7 +19,7 @@ export interface RpcCapableProvider {
 }
 
 export interface SendSpaceRpcOptions {
-  /** Round-trip timeout in ms. Default 8000. */
+  /** Round-trip timeout in ms. Default 10000 (user-confirmed 2026-05-25). */
   timeoutMs?: number;
   /** Override the correlation id generator (tests). */
   idGen?: () => string;
@@ -44,7 +44,7 @@ export async function sendSpaceRpc(
   opts: SendSpaceRpcOptions = {},
 ): Promise<SpaceRpcResponse> {
   const id = opts.idGen?.() ?? nanoid();
-  const timeoutMs = opts.timeoutMs ?? 8000;
+  const timeoutMs = opts.timeoutMs ?? 10000;
 
   return new Promise<SpaceRpcResponse>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | null = null;

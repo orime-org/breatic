@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import * as React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import type { SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@/data/api';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
 import { useTranslation } from '@/i18n/use-translation';
 import {
@@ -60,11 +61,9 @@ const SPACE_OP_TIMEOUT_MS = 10_000;
 
 export default function ProjectPage() {
   const t = useTranslation();
-  const { projectId = 'demo', spaceId: urlSpaceId } = useParams<{
+  const { projectId = 'demo' } = useParams<{
     projectId: string;
-    spaceId?: string;
   }>();
-  const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
   const queryClient = useQueryClient();
@@ -123,35 +122,26 @@ export default function ProjectPage() {
   const activeSpace: ProjectSpace | undefined =
     spaces.find((s) => s.id === activeSpaceId) ?? openTabs[0];
 
-  // ---- URL → Yjs reconcile (deep-link support) ----
-  // If the URL names a space we're not active on, set it active + open it.
-  React.useEffect(() => {
-    if (!userId || !urlSpaceId) return;
-    if (urlSpaceId === activeSpaceId) return;
-    if (!spaces.some((s) => s.id === urlSpaceId)) return;
-    openSpaceTab(projectId, userId, urlSpaceId);
-    setActiveSpace(projectId, userId, urlSpaceId);
-  }, [userId, urlSpaceId, projectId, activeSpaceId, spaces]);
-
-  // Keep the URL in sync with the active tab so refresh / back button
-  // land on the same Space. Only navigate if URL diverges.
-  React.useEffect(() => {
-    if (!activeSpaceId) return;
-    if (urlSpaceId === activeSpaceId) return;
-    navigate(`/project/${projectId}/space/${activeSpaceId}`, { replace: true });
-  }, [activeSpaceId, urlSpaceId, projectId, navigate]);
+  // Note: NO URL ↔ active-space reconcile. Per user decision
+  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
+  // a route segment; the active tab + open-tab list are per-user UI
+  // state living in Yjs `meta.perUser[userId]`, which already syncs
+  // across the same user's machines. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
   const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
   const readOnlyViewSpaceId = useUIStore((s) => s.readOnlyViewSpaceId);
   const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
+  const [roSheetOpen, setRoSheetOpen] = useExclusiveOverlay(
+    'space-readonly-sheet',
+  );
 
   const pendingCreateIdRef = React.useRef<string | null>(null);
-  const pendingDeleteIdRef = React.useRef<string | null>(null);
 
-  // Auto-dismiss loading overlay when the Yjs doc catches up to the
-  // pending operation (created id appears / deleted id vanishes).
+  // Auto-dismiss the create loading overlay when the new space id
+  // appears in the live Yjs spaces map. Delete intentionally has no
+  // overlay (fast op, the tab vanishing is the user-visible signal).
   React.useEffect(() => {
     if (spaceOpInProgress === 'creating' && pendingCreateIdRef.current) {
       const id = pendingCreateIdRef.current;
@@ -164,13 +154,7 @@ export default function ProjectPage() {
         }
       }
     }
-    if (spaceOpInProgress === 'deleting' && pendingDeleteIdRef.current) {
-      const id = pendingDeleteIdRef.current;
-      if (!spaces.some((s) => s.id === id)) {
-        pendingDeleteIdRef.current = null;
-        setSpaceOpInProgress(null);
-      }
-    }
+    // Delete no longer uses spaceOpInProgress — see onDeleteSpace.
   }, [spaces, spaceOpInProgress, projectId, userId, setSpaceOpInProgress]);
 
   // Safety timeout — if the collab broadcast never lands, free the UI
@@ -178,17 +162,12 @@ export default function ProjectPage() {
   // wedged spinner.
   React.useEffect(() => {
     if (spaceOpInProgress === null) return;
-    const phase = spaceOpInProgress;
     const handle = setTimeout(() => {
       setSpaceOpInProgress(null);
       pendingCreateIdRef.current = null;
-      pendingDeleteIdRef.current = null;
-      toast.error(
-        phase === 'creating'
-          ? t('project.space.timeout.create')
-          : t('project.space.timeout.delete'),
-        { description: t('project.space.timeout.retry') },
-      );
+      toast.error(t('project.space.timeout.create'), {
+        description: t('project.space.timeout.retry'),
+      });
     }, SPACE_OP_TIMEOUT_MS);
     return () => clearTimeout(handle);
   }, [spaceOpInProgress, setSpaceOpInProgress, t]);
@@ -203,10 +182,7 @@ export default function ProjectPage() {
 
   /** Activate a Space — open the tab if not open + mark active. */
   const onActivate = (id: string) => {
-    if (!userId) {
-      navigate(`/project/${projectId}/space/${id}`);
-      return;
-    }
+    if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
     openSpaceTab(projectId, userId, id);
     setActiveSpace(projectId, userId, id);
   };
@@ -254,6 +230,15 @@ export default function ProjectPage() {
   const onCreateSpace = async (type: SpaceType, name: string) => {
     setSpaceOpInProgress('creating');
     const spaceId = nanoid();
+    // Pin the pending id BEFORE the RPC await — Yjs sync from collab
+    // can race ahead of the RPC ack (collab broadcasts the meta-doc
+    // mutation as soon as space-rpc transact runs, which often beats
+    // the broadcastStateless response by a few ms). If we only set
+    // pendingCreateIdRef after `await callRpc`, the spaces-watching
+    // effect re-runs on the Yjs update with the ref still null,
+    // misses the match, and the safety timeout (SPACE_OP_TIMEOUT_MS)
+    // fires even though everything succeeded.
+    pendingCreateIdRef.current = spaceId;
     try {
       await callRpc(
         {
@@ -262,7 +247,6 @@ export default function ProjectPage() {
         },
         'project.space.error.create',
       );
-      pendingCreateIdRef.current = spaceId;
     } catch (err) {
       setSpaceOpInProgress(null);
       pendingCreateIdRef.current = null;
@@ -275,19 +259,21 @@ export default function ProjectPage() {
   };
 
   /** Soft-delete a Space — `space:delete` RPC. */
+  /**
+   * Delete is fast (~50-200ms) and already self-evident in the UI —
+   * the deleted tab vanishes the moment Yjs sync lands. Showing the
+   * full-screen LoadingOverlay for that window just flashes a black
+   * backdrop in and out, which the user reads as flicker rather than
+   * progress. The SpaceDrawer row keeps its own inline `deleteBusy`
+   * spinner to prevent double-click within the same row.
+   *
+   * Errors still surface — callRpc raises a toast on RPC failure.
+   */
   const onDeleteSpace = async (spaceId: string) => {
-    setSpaceOpInProgress('deleting');
-    pendingDeleteIdRef.current = spaceId;
-    try {
-      await callRpc(
-        { type: 'space:delete', payload: { spaceId } },
-        'spaces.drawer.action.deleteFail',
-      );
-    } catch (err) {
-      setSpaceOpInProgress(null);
-      pendingDeleteIdRef.current = null;
-      throw err;
-    }
+    await callRpc(
+      { type: 'space:delete', payload: { spaceId } },
+      'spaces.drawer.action.deleteFail',
+    );
   };
 
   /** Toggle Space lock — `space:lock` RPC (lock + unlock same handler). */
@@ -317,7 +303,10 @@ export default function ProjectPage() {
   };
 
   /** Open the read-only preview sheet for a Space. */
-  const onViewSpace = (id: string) => setReadOnlyViewSpaceId(id);
+  const onViewSpace = (id: string) => {
+    setReadOnlyViewSpaceId(id);
+    setRoSheetOpen(true);
+  };
 
   // Resolve the currently-previewed Space (if any) for the read-only
   // sheet. Bail to null if it's missing (race with deletion).
@@ -423,19 +412,17 @@ export default function ProjectPage() {
         </section>
       </div>
       <SpaceReadOnlySheet
+        open={roSheetOpen}
         space={readOnlySpace}
-        onClose={() => setReadOnlyViewSpaceId(null)}
+        onClose={() => {
+          setRoSheetOpen(false);
+          setReadOnlyViewSpaceId(null);
+        }}
       />
       {spaceOpInProgress === 'creating' ? (
         <LoadingOverlay
           message={t('project.space.loading.create')}
           testId='creating-space-overlay'
-        />
-      ) : null}
-      {spaceOpInProgress === 'deleting' ? (
-        <LoadingOverlay
-          message={t('project.space.loading.delete')}
-          testId='deleting-space-overlay'
         />
       ) : null}
     </div>

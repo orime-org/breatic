@@ -12,6 +12,14 @@ import type { SpaceType } from '@/spaces';
 import { useTranslation } from '@/i18n/use-translation';
 
 interface SpaceReadOnlySheetProps {
+  /** Whether the sheet is open. Controlled by the parent (typically via
+   * `useExclusiveOverlay('space-readonly-sheet')` in ProjectPage so it
+   * participates in the global single-overlay rule). */
+  open: boolean;
+  /** Space being previewed. May be `null` briefly while the
+   * `readOnlyViewSpaceId` carry value clears asynchronously — the
+   * sheet renders a blank shell rather than unmounting so the close
+   * animation stays smooth. */
   space: ProjectSpace | null;
   onClose: () => void;
 }
@@ -40,11 +48,11 @@ const TYPE_META: Record<
  * arrives in later PRs.
  */
 export function SpaceReadOnlySheet({
+  open,
   space,
   onClose,
 }: SpaceReadOnlySheetProps) {
   const t = useTranslation();
-  const open = space !== null;
   const meta = space ? TYPE_META[space.type] : null;
   const Icon = meta?.icon ?? Palette;
   return (
