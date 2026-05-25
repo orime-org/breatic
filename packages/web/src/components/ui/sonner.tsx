@@ -68,8 +68,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
       style={{ '--width': 'max-content' } as React.CSSProperties}
       toastOptions={{
         classNames: {
+          // bg-popover matches the rest of the chrome overlay surfaces
+          // (Popover / Sheet / Tooltip all read --color-popover); the
+          // prior `bg-background` was the page bg token, leaving the
+          // toast visually disconnected from the floating overlay
+          // language (2026-05-25 user ask).
+          // min-h-0 + py-2 px-3 shrinks the toast height from sonner's
+          // default ~56px to ~36px — top-center toasts should be
+          // compact info bars, not large modal-like cards. Tailwind
+          // class on the toast element has same specificity as the
+          // vendor `[data-sonner-toast][data-styled=true]` selector
+          // but loads after, so cascade wins without !important.
           toast:
-            'group toast max-w-md group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast max-w-md min-h-0 py-2 px-3 group-[.toaster]:bg-popover group-[.toaster]:text-popover-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

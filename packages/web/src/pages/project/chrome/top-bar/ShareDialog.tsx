@@ -71,8 +71,15 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
         </div>
         <div className='px-2 pb-2'>
           <Button
+            // outline variant matches the "邀请新成员" button in
+            // MembersStack popover (2026-05-25 user ask:发送邀请
+            // should share visual language with the members popover
+            // invite CTA — both are "open invite intent" buttons
+            // inside a chrome popover, neither warrants prominent
+            // primary solid bg).
+            variant='outline'
             size='sm'
-            className='w-full'
+            className='w-full justify-center gap-2 text-[13px]'
             disabled={invite.trim().length === 0}
             data-testid='share-send-invite'
           >
