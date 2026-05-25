@@ -94,7 +94,10 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
   const [open, setOpen] = React.useState(false);
   const [type, setType] = React.useState<SpaceType>('canvas');
   const [name, setName] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
+  // submitting state removed 2026-05-25: dialog now closes optimistically
+  // on submit (fire-and-forget), so there is no in-dialog pending phase.
+  // The full-screen LoadingOverlay (owned by ProjectPage) is the user-
+  // facing pending affordance, and callRpc raises the failure toast.
   const [error, setError] = React.useState<string | null>(null);
 
   const registry = React.useMemo(
@@ -107,29 +110,28 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
     setName('');
     setType('canvas');
     setError(null);
-    setSubmitting(false);
   };
 
-  const submit = async () => {
+  const submit = () => {
     const trimmed = name.trim();
-    if (trimmed.length === 0 || submitting) return;
-    setSubmitting(true);
+    if (trimmed.length === 0) return;
+    // Optimistic close: dismiss the dialog immediately so the
+    // ProjectPage full-screen LoadingOverlay is visible while the
+    // RPC round-trips. Errors surface via toast from ProjectPage's
+    // callRpc — no need to keep the dialog open for inline display.
     setError(null);
-    try {
-      await onCreate(type, trimmed);
-      reset();
-      setOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create space');
-      setSubmitting(false);
-    }
+    reset();
+    setOpen(false);
+    void Promise.resolve(onCreate(type, trimmed)).catch(() => {
+      // Swallow — ProjectPage already raised the user-facing toast
+      // inside callRpc. We just don't want an unhandled rejection.
+    });
   };
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next && submitting) return;
         if (!next) reset();
         setOpen(next);
       }}
@@ -158,8 +160,8 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
                     type='button'
                     role='radio'
                     aria-checked={selected}
-                    aria-disabled={!card.available || submitting}
-                    disabled={!card.available || submitting}
+                    aria-disabled={!card.available}
+                    disabled={!card.available}
                     onClick={() => card.available && setType(card.type)}
                     data-testid={`new-space-type-${card.type}`}
                     className={cn(
@@ -202,7 +204,6 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder={t('spaces.create.namePlaceholder')}
               data-testid='new-space-name'
-              disabled={submitting}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- dialog first input; users open the dialog expecting to type a name immediately
               autoFocus
             />
@@ -220,22 +221,18 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
           <Button
             variant='outline'
             onClick={() => {
-              if (submitting) return;
               reset();
               setOpen(false);
             }}
-            disabled={submitting}
           >
             {t('spaces.create.cancel')}
           </Button>
           <Button
             onClick={submit}
-            disabled={name.trim().length === 0 || submitting}
+            disabled={name.trim().length === 0}
             data-testid='new-space-submit'
           >
-            {submitting
-              ? t('spaces.create.submitting')
-              : t('spaces.create.submit')}
+            {t('spaces.create.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>
