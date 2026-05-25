@@ -47,15 +47,20 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className='toaster group'
+      // Sonner ships a runtime-injected CSS rule
+      //   `[data-sonner-toaster] { width: var(--width); }`
+      // with `--width: 356px` as the default. Toast `<li>` inherits
+      // that width (100% of the ol). A Tailwind `w-fit` on the toast
+      // className therefore loses to the vendor CSS — the toast stays
+      // 356px wide regardless. The only treatment that survives is
+      // changing the var: setting `--width: fit-content` makes the ol
+      // (and its toast child) shrink to the message text. `max-w-md`
+      // on the toast className still caps long messages at 28rem.
+      style={{ '--width': 'fit-content' } as React.CSSProperties}
       toastOptions={{
-        // `w-fit max-w-md` shrinks the toast so it hugs the message
-        // text (sonner's default `--width: 356px` left a wide empty
-        // bar for short messages like "已锁定"). max-w-md (28rem)
-        // caps long messages so they don't span the whole viewport
-        // at top-center. PR #140 — user-driven sizing fix.
         classNames: {
           toast:
-            'group toast w-fit max-w-md group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast max-w-md group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
