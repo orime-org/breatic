@@ -12,7 +12,24 @@ import { cn } from '@/lib/utils';
  * in from `top` / `right` (default) / `bottom` / `left`. Useful for drawers
  * (e.g. SpaceDrawer, ConversationHistorySheet, mobile menus).
  */
-const Sheet = SheetPrimitive.Root;
+/**
+ * Project default (2026-05-25): Sheets are **non-modal** unless the
+ * caller explicitly opts in by passing `modal={true}`. Non-modal:
+ *   - no backdrop overlay (no half-transparent darkening of the page)
+ *   - sibling UI (tab bar, top bar, other buttons) stay clickable
+ *   - Esc / click-outside still close the sheet
+ * Combined with `useExclusiveOverlay`, only one Sheet / Dialog is
+ * visible at a time across the app (opening a new one closes any
+ * peer). See `lib/use-exclusive-overlay.ts`.
+ */
+const Sheet = ({
+  modal = false,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) => (
+  <SheetPrimitive.Root modal={modal} {...props} />
+);
+Sheet.displayName = 'Sheet';
+
 const SheetTrigger = SheetPrimitive.Trigger;
 const SheetClose = SheetPrimitive.Close;
 const SheetPortal = SheetPrimitive.Portal;
@@ -67,14 +84,22 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  /**
+   * Show the half-transparent backdrop overlay. Default `false` per
+   * 2026-05-25 user decision — Sheets are non-modal by default so
+   * sibling UI stays clickable. Pass `true` for the rare case the
+   * sheet must steal full attention (destructive confirms etc.).
+   */
+  withOverlay?: boolean;
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
+>(({ side = 'right', className, children, withOverlay = false, ...props }, ref) => (
   <SheetPortal>
-    <SheetOverlay />
+    {withOverlay ? <SheetOverlay /> : null}
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { projectsApi } from '@/data/api';
 import type { ProjectSummary } from '@/data/api/projects';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useStudioStore } from '@/stores';
 
 import { NewProjectCard } from '@/pages/studio/grid/NewProjectCard';
@@ -26,7 +27,7 @@ export function ProjectGrid() {
   const sortOrder = useStudioStore((s) => s.sortOrder);
   const setSearch = useStudioStore((s) => s.setSearch);
 
-  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [dialogOpen, setDialogOpen] = useExclusiveOverlay('new-project-dialog');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 

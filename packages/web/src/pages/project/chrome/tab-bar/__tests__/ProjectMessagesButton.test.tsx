@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -7,6 +7,14 @@ import {
   ProjectMessagesButton,
   relativeTime,
 } from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { useUIStore } from '@/stores/ui';
+
+beforeEach(() => {
+  // Reset the global exclusive-overlay state — `useExclusiveOverlay`
+  // reads it, so a leftover `activeOverlayId` from a sibling test
+  // would either open or block this test's sheet incorrectly.
+  useUIStore.setState({ activeOverlayId: null });
+});
 
 const M_DELETED: ProjectMessageEntry = {
   id: 'm-del',

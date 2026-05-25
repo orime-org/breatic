@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import type { SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@/data/api';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
 import { useTranslation } from '@/i18n/use-translation';
 import {
@@ -132,6 +133,9 @@ export default function ProjectPage() {
   const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
   const readOnlyViewSpaceId = useUIStore((s) => s.readOnlyViewSpaceId);
   const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
+  const [roSheetOpen, setRoSheetOpen] = useExclusiveOverlay(
+    'space-readonly-sheet',
+  );
 
   const pendingCreateIdRef = React.useRef<string | null>(null);
 
@@ -299,7 +303,10 @@ export default function ProjectPage() {
   };
 
   /** Open the read-only preview sheet for a Space. */
-  const onViewSpace = (id: string) => setReadOnlyViewSpaceId(id);
+  const onViewSpace = (id: string) => {
+    setReadOnlyViewSpaceId(id);
+    setRoSheetOpen(true);
+  };
 
   // Resolve the currently-previewed Space (if any) for the read-only
   // sheet. Bail to null if it's missing (race with deletion).
@@ -405,8 +412,12 @@ export default function ProjectPage() {
         </section>
       </div>
       <SpaceReadOnlySheet
+        open={roSheetOpen}
         space={readOnlySpace}
-        onClose={() => setReadOnlyViewSpaceId(null)}
+        onClose={() => {
+          setRoSheetOpen(false);
+          setReadOnlyViewSpaceId(null);
+        }}
       />
       {spaceOpInProgress === 'creating' ? (
         <LoadingOverlay

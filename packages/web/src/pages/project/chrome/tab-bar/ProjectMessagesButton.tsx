@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useTranslation } from '@/i18n/use-translation';
 
 /**
@@ -115,6 +116,7 @@ export function ProjectMessagesButton({
   onClearAll,
 }: ProjectMessagesButtonProps) {
   const t = useTranslation();
+  const [open, setOpen] = useExclusiveOverlay('project-messages');
   const isOwner = currentUserRole === 'owner';
   // Last 100 cap — older auditing belongs in a dedicated dashboard.
   const visible = messages.slice(-100).reverse();
@@ -141,7 +143,7 @@ export function ProjectMessagesButton({
   };
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
           variant='chrome-ghost'

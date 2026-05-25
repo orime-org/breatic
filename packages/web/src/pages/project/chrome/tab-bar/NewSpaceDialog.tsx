@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { SPACE_TYPE_LIST, type SpaceType } from '@/spaces';
 import { useTranslation } from '@/i18n/use-translation';
 
@@ -91,7 +92,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  */
 export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
   const t = useTranslation();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useExclusiveOverlay('new-space-dialog');
   const [type, setType] = React.useState<SpaceType>('canvas');
   const [name, setName] = React.useState('');
   // submitting state removed 2026-05-25: dialog now closes optimistically

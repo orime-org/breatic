@@ -17,7 +17,21 @@ import { cn } from '@/lib/utils';
  *   - inner sections each pad themselves (mock `.modal-section` style)
  *   - `<DialogFooter>` aligns buttons to the right
  */
-const Dialog = DialogPrimitive.Root;
+/**
+ * Project default (2026-05-25): Dialogs are **non-modal** unless the
+ * caller explicitly opts in by passing `modal={true}`. Same rule as
+ * `Sheet` — see `components/ui/sheet.tsx`. Use the global
+ * `useExclusiveOverlay(id)` hook so only one overlay is visible at a
+ * time.
+ */
+const Dialog = ({
+  modal = false,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) => (
+  <DialogPrimitive.Root modal={modal} {...props} />
+);
+Dialog.displayName = 'Dialog';
+
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
@@ -37,12 +51,22 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+interface DialogContentProps
+  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+  /**
+   * Show the half-transparent backdrop overlay. Default `false` per
+   * 2026-05-25 user decision — Dialogs are non-modal by default so
+   * sibling UI stays clickable. Pass `true` for destructive confirms.
+   */
+  withOverlay?: boolean;
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, withOverlay = false, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    {withOverlay ? <DialogOverlay /> : null}
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
