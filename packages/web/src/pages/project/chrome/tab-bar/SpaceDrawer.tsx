@@ -114,7 +114,10 @@ export function SpaceDrawer({
       </SheetTrigger>
       <SheetContent
         side='right-floating'
-        className='flex w-[min(420px,90vw)] flex-col p-0 sm:max-w-none'
+        // Width matches ProjectMessagesButton sheet (315px) for a
+        // consistent right-floating sheet footprint across the chrome
+        // (PR #138 user-driven alignment).
+        className='flex w-[315px] flex-col p-0'
         data-testid='space-drawer'
       >
         <SheetHeader className='border-b border-border px-4 py-3'>
