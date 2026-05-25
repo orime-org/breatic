@@ -136,7 +136,17 @@ export function SpaceTabBar({
       data-testid={direction === 'left' ? 'tabs-scroll-left' : 'tabs-scroll-right'}
       className={cn(
         !scrollState.overflow && 'hidden',
-        disabled && 'pointer-events-none opacity-35',
+        // Disabled state: keep `opacity-35` for visual dim + add
+        // `cursor-not-allowed` for the universal "not clickable"
+        // affordance (stop sign cursor). Do NOT use
+        // `pointer-events-none` here — that lets the click pass
+        // through to whatever sits behind the button, so consecutive
+        // clicks on a boundary-disabled arrow land on the adjacent
+        // tab label and trigger the browser's native double-click
+        // word-selection on the tab text. HTML's native `disabled`
+        // attribute (already on the Button) is enough to swallow the
+        // click without forwarding.
+        disabled && 'cursor-not-allowed opacity-35',
       )}
       style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
     >
