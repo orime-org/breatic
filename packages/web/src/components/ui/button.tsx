@@ -4,8 +4,19 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+// Disabled state (2026-05-25, PR #137):
+//   - `disabled:cursor-not-allowed` — universal stop-sign cursor.
+//   - `disabled:opacity-50` — visual dim.
+//   - **NO** `disabled:pointer-events-none`. The shadcn vendor default
+//     ships `pointer-events-none` here, which lets clicks on a
+//     disabled button pass through to whatever sits behind/beside it
+//     — silently breaking sibling UX (e.g. tab scroll arrow at the
+//     boundary → click lands on adjacent tab → native dblclick selects
+//     the tab text). HTML's native `disabled` attribute already swallows
+//     the click without forwarding; `pointer-events-none` is redundant
+//     and harmful. See memory `feedback_disabled_button_pointer_events_trap`.
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-chrome text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-chrome text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
