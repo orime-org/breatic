@@ -49,14 +49,23 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className='toaster group'
       // Sonner ships a runtime-injected CSS rule
       //   `[data-sonner-toaster] { width: var(--width); }`
-      // with `--width: 356px` as the default. Toast `<li>` inherits
-      // that width (100% of the ol). A Tailwind `w-fit` on the toast
-      // className therefore loses to the vendor CSS — the toast stays
-      // 356px wide regardless. The only treatment that survives is
-      // changing the var: setting `--width: fit-content` makes the ol
-      // (and its toast child) shrink to the message text. `max-w-md`
-      // on the toast className still caps long messages at 28rem.
-      style={{ '--width': 'fit-content' } as React.CSSProperties}
+      //   `[data-sonner-toast][data-styled=true] { width: var(--width); }`
+      // BOTH the ol AND the li (toast) read the same `--width` var
+      // (default 356px). A Tailwind `w-fit` on the toast className
+      // therefore loses to the vendor CSS — the toast stays 356px.
+      //
+      // Setting `--width: fit-content` (earlier attempt) caused the
+      // toast to collapse into a vertical column of single CJK
+      // characters: with the toast container `display: flex; gap: 6px`
+      // and CJK characters being default-breakable, `fit-content`
+      // inside the nested flex layout shrank to `min-content`
+      // (= one CJK character wide).
+      //
+      // `max-content` does NOT take available size into account — it
+      // sizes to the content's natural one-line width, regardless of
+      // the parent. Short toasts get a tight one-line box; long toasts
+      // are capped at 28rem by `max-w-md` on the toast className.
+      style={{ '--width': 'max-content' } as React.CSSProperties}
       toastOptions={{
         classNames: {
           toast:
