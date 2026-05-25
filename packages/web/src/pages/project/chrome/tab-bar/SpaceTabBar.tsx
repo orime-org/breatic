@@ -102,16 +102,31 @@ export function SpaceTabBar({
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    // 1-px tolerance on BOTH ends (symmetric with `atEnd`). `scrollLeft`
-    // can land on sub-pixel float values (e.g. 0.3, 0.5) after a
-    // smooth `scrollIntoView` animation, especially on high-DPI
-    // displays — `<= 0` strict compare leaves the left arrow stuck in
-    // the enabled state after the user scrolls back to the boundary.
-    // PR #140 commit 4870de6 (point-and-scroll) exposed this; prior
-    // fixed-px `scrollBy(±120)` kept `scrollLeft` integer-aligned.
+    // atStart / atEnd are DOM-rect-based — same yardstick as the
+    // `scrollOneTab` algorithm below, so the arrow's enabled predicate
+    // ("can we still scroll?") always matches what the arrow click
+    // would actually do ("is there a tab left to bring on-screen?").
+    //
+    // Why not scrollLeft-based (prior approach, commit 626ec56 + 4870de6):
+    // smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft at
+    // the scroller's content-area edge — that's `padding-left` (~8 px
+    // with `padding: 0 var(--space-2)`), NOT zero. A `scrollLeft <= 1`
+    // boundary check therefore stayed false at the visual left edge,
+    // leaving the arrow stuck enabled. Mouse-wheel scroll did snap to
+    // scrollLeft=0 (browser clamp), which is why the bug only showed
+    // up via arrow clicks. DOM rects sidestep the scroll-position
+    // arithmetic entirely.
     const overflow = el.scrollWidth > el.clientWidth + 1;
-    const atStart = el.scrollLeft <= 1;
-    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    const scrollerRect = el.getBoundingClientRect();
+    const tabs = Array.from(el.children).filter(
+      (c): c is HTMLElement => c instanceof HTMLElement,
+    );
+    const atStart = !tabs.some(
+      (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
+    );
+    const atEnd = !tabs.some(
+      (t) => t.getBoundingClientRect().right > scrollerRect.right + 1,
+    );
     setScrollState({ overflow, atStart, atEnd });
   }, []);
 

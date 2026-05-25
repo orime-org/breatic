@@ -117,10 +117,12 @@ describe('SpaceTabBar', () => {
     }
 
     /**
-     * Force the scroller into the overflow state so the arrows un-hide,
-     * then return the tablist element for caller-side rect mocking. The
-     * `act` wrap flushes the `setScrollState` setState triggered by the
-     * scroll-event listener so the arrows actually re-render enabled.
+     * Mock the scroller into the overflow state (scrollWidth > clientWidth).
+     * Does NOT dispatch the scroll event — the test must call
+     * `flushScrollState` AFTER all rect mocks are in place, because the
+     * post-PR #140 DOM-rect-based `updateScrollState` reads tab + scroller
+     * rects (defaults to 0 in jsdom, which falsely yields atStart=atEnd=true
+     * and disables the arrows before the test can click them).
      */
     function makeOverflow(): HTMLElement {
       const scroller = screen.getByRole('tablist');
@@ -132,10 +134,13 @@ describe('SpaceTabBar', () => {
         value: 200,
         configurable: true,
       });
+      return scroller;
+    }
+
+    function flushScrollState(scroller: HTMLElement) {
       act(() => {
         scroller.dispatchEvent(new Event('scroll'));
       });
-      return scroller;
     }
 
     it('right arrow snaps the first off-screen tab flush-right (inline: end)', async () => {
@@ -147,6 +152,7 @@ describe('SpaceTabBar', () => {
       mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
       mockRect(screen.getByTestId('space-tab-s2'), { left: 220, right: 320 });
       mockRect(screen.getByTestId('space-tab-s3'), { left: 330, right: 430 });
+      flushScrollState(scroller);
       const s2 = screen.getByTestId('space-tab-s2');
       const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
 
@@ -156,7 +162,7 @@ describe('SpaceTabBar', () => {
       );
     });
 
-    it('disables the left arrow when scrollLeft lands on a sub-pixel float (≤1px from start, atStart tolerance)', () => {
+    it('disables the left arrow when no tab is off-screen-left, regardless of scrollLeft (DOM-rect, PR #140)', () => {
       setup();
       const scroller = screen.getByRole('tablist');
       Object.defineProperty(scroller, 'scrollWidth', {
@@ -167,18 +173,23 @@ describe('SpaceTabBar', () => {
         value: 200,
         configurable: true,
       });
-      // Sub-pixel float — what smooth scrollIntoView leaves on high-DPI
-      // displays after animating back to the start. Without the 1-px
-      // tolerance the strict `<= 0` check failed and the left arrow
-      // stayed enabled at the boundary (PR #140 user report).
+      // Smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft
+      // at scroller padding-left (~8 px), NOT zero. The prior
+      // scrollLeft-based atStart check (commit 626ec56) failed here
+      // — `8 <= 1` false → arrow stayed enabled. The DOM-rect check
+      // looks at tab positions; if all tabs sit inside the viewport
+      // (none cut off the left), atStart is true regardless of
+      // scrollLeft's exact value.
       Object.defineProperty(scroller, 'scrollLeft', {
-        value: 0.5,
+        value: 8,
         configurable: true,
         writable: true,
       });
-      act(() => {
-        scroller.dispatchEvent(new Event('scroll'));
-      });
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 140, right: 200 });
+      flushScrollState(scroller);
       expect(screen.getByTestId('tabs-scroll-left')).toBeDisabled();
     });
 
@@ -193,14 +204,12 @@ describe('SpaceTabBar', () => {
         configurable: true,
         writable: true,
       });
-      act(() => {
-        scroller.dispatchEvent(new Event('scroll'));
-      });
       // s1 + s2 sit off-screen-left of the scroller viewport.
       mockRect(scroller, { left: 100, right: 300 });
       mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
       mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 170 });
       mockRect(screen.getByTestId('space-tab-s3'), { left: 180, right: 280 });
+      flushScrollState(scroller);
       const s2 = screen.getByTestId('space-tab-s2');
       const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
 
