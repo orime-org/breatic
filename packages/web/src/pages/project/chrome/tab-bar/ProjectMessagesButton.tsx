@@ -151,17 +151,9 @@ export function ProjectMessagesButton({
           aria-label={t('spaces.history.label')}
           title={t('spaces.history.title')}
           data-testid='project-messages-trigger'
-          className='relative'
           style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
         >
           <History className='h-[18px] w-[18px]' />
-          {messages.length > 0 ? (
-            <span
-              className='absolute rounded-full bg-status-error-border'
-              style={{ top: 5, right: 5, width: 6, height: 6 }}
-              data-testid='project-messages-dot'
-            />
-          ) : null}
         </Button>
       </SheetTrigger>
       {/*

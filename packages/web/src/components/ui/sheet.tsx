@@ -62,20 +62,22 @@ const sheetVariants = cva(
           'inset-y-0 right-0 h-full w-3/4 border-l border-border data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
         /**
          * Floating variants — sheet sits inside the chrome instead of
-         * covering full vh. Top edge aligns with the TabBar bottom
-         * edge (TopBar 40px + TabBar 40px = top-20 = 80px), bottom
-         * leaves room for the ViewportToolbar (~bottom-4 + toolbar
-         * ~40 + buffer 24), small lateral inset (4px) so the sheet
-         * looks like a floating card. Used by:
+         * covering full vh. Top edge sits 4px below the chrome row
+         * above it (right-floating: TopBar 40 + TabBar 40 + 4 gap =
+         * 84px; left-floating: TopBar 40 + Agent header 40 + 4 gap =
+         * 84px — both share the same `top-[84px]`). Bottom leaves
+         * room for the ViewportToolbar (~bottom-4 + toolbar ~40 +
+         * buffer 24). Lateral inset 4px so the sheet floats off the
+         * viewport edge. Used by:
          *   - SpaceDrawer (right-floating)
          *   - SpaceReadOnlySheet (right-floating)
          *   - ProjectMessagesButton (right-floating)
          *   - ConversationHistorySheet (left-floating)
          */
         'right-floating':
-          'top-20 bottom-20 right-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
+          'top-[84px] bottom-20 right-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
         'left-floating':
-          'top-20 bottom-20 left-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
+          'top-[84px] bottom-20 left-1 h-auto w-3/4 rounded-overlay border border-border shadow data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
       },
     },
     defaultVariants: {
