@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Breatic logo — brand 彩色 / 透明底 / tight viewBox
+  Breatic logo — brand 彩色 / 透明底 / full-bleed viewBox
   跟 design/logo/logo-color.svg 几何完全相同(brand 三色 + 三段弧 + 三圆点)
-  唯一差异:viewBox 从 -50 -50 100 100 裁到 -42 -42 84 84(5% margin),
-           favicon / icon 在小尺寸下 logo 占满,视觉对齐主流 favicon padding
+  viewBox 演进:
+    - 原 -50 -50 100 100(20% safe margin,正式 brand asset)
+    - 旧 -42 -42 84 84(~10% margin,2026-05 初步 tight)
+    - 现 -40 -40 80 80(2026-05-25 user 反馈 favicon 看着比 GitHub 等小;
+                       最远点 = 大圆球 outer 40,viewBox tight 到无 margin,
+                       browser tab 16px 视区内 logo 占满,跟主流 favicon
+                       full-bleed 风格一致)
+  注意:favicon-16.png / favicon-32.png / favicon.ico 是 raster,本次未重制 —
+  仅 SVG 路径(现代 Chrome / Firefox / Safari 优先 svg)立刻见效;
+  Edge / 老 browser fallback PNG 仍是旧 margin,后续需用 rsvg-convert
+  从本 SVG 重新生成 PNG / ICO。
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-42 -42 84 84">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-40 -40 80 80">
   <g transform="scale(1, -1)">
     <circle cx="25.98" cy="-15" r="10" fill="#BC4B36"/>
     <path d="M 25.98 -15 A 30 30 0 0 0 -25.98 -15" fill="none" stroke="#BC4B36" stroke-width="8" stroke-linecap="round"/>
