@@ -11,7 +11,9 @@
  *   - `context.user.id === 'system'` bypasses the gate (collab self-write)
  *   - Non-meta docs (canvas / document / timeline) are not gated here
  */
+import * as encoding from "lib0/encoding";
 import { describe, it, expect } from "vitest";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { checkWriteAuthz, WriteAuthzError } from "../before-handle-message.js";
@@ -19,23 +21,68 @@ import { checkWriteAuthz, WriteAuthzError } from "../before-handle-message.js";
 const PID = "11111111-1111-4111-8111-111111111111";
 const META = `project-${PID}/meta`;
 
-/** Build a seed meta doc + return both the doc and an encoded update
- * representing the seed (so tests can apply it to a fresh "current"
- * doc and then encode a follow-up mutation as the `update` argument). */
+/**
+ * Hocuspocus protocol message types (mirror `@hocuspocus/server`
+ * `MessageType` enum). Used by tests to forge envelope-skip paths.
+ */
+const HC_MESSAGE_TYPE_SYNC = 0;
+const HC_MESSAGE_TYPE_AWARENESS = 1;
+const HC_MESSAGE_TYPE_STATELESS = 5;
+
+/** Build a seed meta doc + return the doc. */
 function makeSeededMetaDoc(seed: (doc: Y.Doc) => void): Y.Doc {
   const doc = new Y.Doc();
   doc.transact(() => seed(doc));
   return doc;
 }
 
-/** Encode a mutation as a binary update — what Hocuspocus actually
- * passes to `beforeHandleMessage` from the wire. */
+/**
+ * Encode a mutation as a real **Hocuspocus WebSocket frame** wrapping
+ * a Yjs sync-update message: `[Sync=0][messageYjsUpdate=2][updateBytes]`.
+ *
+ * Production `beforeHandleMessage` receives bytes in this shape, NOT
+ * a bare Yjs update. Earlier versions of these tests fed bare updates
+ * and silently passed while the real gate crashed on every client
+ * connection (lib0 `Invalid typed array length`). Wrapping at the
+ * helper level keeps each test focused on the policy it pins, while
+ * still exercising the envelope-unwrap branch end-to-end.
+ */
 function encodeMutation(start: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
   const before = Y.encodeStateVector(start);
   const tmp = new Y.Doc();
   Y.applyUpdate(tmp, Y.encodeStateAsUpdate(start));
   tmp.transact(() => mutate(tmp));
-  return Y.encodeStateAsUpdate(tmp, before);
+  const updateBytes = Y.encodeStateAsUpdate(tmp, before);
+
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, HC_MESSAGE_TYPE_SYNC);
+  encoding.writeVarUint(encoder, syncProtocol.messageYjsUpdate);
+  encoding.writeVarUint8Array(encoder, updateBytes);
+  return encoding.toUint8Array(encoder);
+}
+
+/**
+ * Build a Hocuspocus frame with the given top-level messageType + a
+ * single varUint payload (`payloadByte`). Used to forge non-sync
+ * messages (awareness / stateless / etc.) that must skip the gate.
+ */
+function encodeNonSyncFrame(messageType: number, payloadByte = 0): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, messageType);
+  encoding.writeVarUint(encoder, payloadByte);
+  return encoding.toUint8Array(encoder);
+}
+
+/** Build a sync frame with a non-update sub-type (step 1 / step 2). */
+function encodeSyncFrameWithSubType(syncSubType: number): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, HC_MESSAGE_TYPE_SYNC);
+  encoding.writeVarUint(encoder, syncSubType);
+  // sync-step-1 payload is a state vector; sync-step-2 carries an
+  // update. We don't need a valid payload to test that the gate
+  // skips early — gate returns before reading further.
+  encoding.writeVarUint8Array(encoder, new Uint8Array([0]));
+  return encoding.toUint8Array(encoder);
 }
 
 describe("checkWriteAuthz — meta.spaces", () => {
@@ -254,5 +301,124 @@ describe("checkWriteAuthz — system bypass + non-meta docs", () => {
         context: {},
       }),
     ).toThrow(/Anonymous/);
+  });
+});
+
+/**
+ * Regression pins for the Hocuspocus envelope handling bug. The PR-a
+ * version of this hook treated the `update` arg as a bare Yjs update,
+ * so EVERY meta connection died with lib0 `Invalid typed array length`
+ * the first time the client sent any frame (sync-step-1, awareness,
+ * etc.). These cases lock in that:
+ *
+ *   - non-sync messageTypes (awareness, stateless) skip the gate
+ *   - sync sub-types other than `messageYjsUpdate` skip the gate
+ *   - malformed envelope bytes skip the gate (MessageReceiver will
+ *     close the connection on its own; we don't double-throw)
+ */
+describe("checkWriteAuthz — Hocuspocus envelope handling", () => {
+  it("skips the gate for awareness messages (messageType=1)", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("spaces");
+    });
+    const update = encodeNonSyncFrame(HC_MESSAGE_TYPE_AWARENESS);
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("skips the gate for stateless RPC messages (messageType=5)", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("spaces");
+    });
+    const update = encodeNonSyncFrame(HC_MESSAGE_TYPE_STATELESS);
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("skips the gate for sync-step-1 sub-type (state vector handshake)", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("spaces");
+    });
+    const update = encodeSyncFrameWithSubType(
+      syncProtocol.messageYjsSyncStep1,
+    );
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("skips the gate for sync-step-2 sub-type (reconnect bootstrap)", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("spaces");
+    });
+    const update = encodeSyncFrameWithSubType(
+      syncProtocol.messageYjsSyncStep2,
+    );
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("skips the gate for malformed envelope bytes (Hocuspocus closes elsewhere)", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("spaces");
+    });
+    // Truncated / random bytes — no valid envelope to decode.
+    const update = new Uint8Array([0xff, 0xff, 0xff]);
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("does NOT throw lib0 binary errors on a real-shaped sync-update frame (PR-a regression)", () => {
+    // This is the exact failure mode PR-a shipped with: any sync-
+    // update frame would crash Y.applyUpdate(clone, rawFrame) with
+    // 'Invalid typed array length' inside lib0 before the gate logic
+    // even ran, and Hocuspocus would close the connection.
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("perUser");
+    });
+    const update = encodeMutation(current, (doc) => {
+      const own = new Y.Map();
+      own.set("activeSpaceId", "sp-1");
+      doc.getMap("perUser").set("user-1", own);
+    });
+    // Should be allowed (perUser self-write) AND not throw any
+    // RangeError / "Unexpected end of array" coming from lib0.
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).not.toThrow();
   });
 });
