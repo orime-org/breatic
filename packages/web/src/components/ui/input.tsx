@@ -10,7 +10,9 @@ import { cn } from '@/lib/utils';
  *   - `bg-transparent`      → inherits parent background
  *   - `text-foreground`     → text color
  *   - `placeholder:text-muted-foreground`
- *   - `focus-visible:ring-ring` → focus ring (--ring)
+ *   - `focus-visible:ring-active-border` → focus ring (#388 unified,
+ *     muted-foreground / light gray, matches NewSpaceDialog selected
+ *     card border + ChatComposer focus-within border)
  *   - `disabled:opacity-50`
  *
  * Pass through all native `<input>` props. Use with `<Label>` for a11y.
@@ -24,7 +26,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
           'flex h-9 w-full rounded-chrome border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors',
           'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground',
           'placeholder:text-muted-foreground',
-          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-active-border',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'md:text-sm',
           className,
