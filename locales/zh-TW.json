@@ -939,6 +939,8 @@
         "unlock": "解鎖",
         "delete": "刪除",
         "deleteLocked": "鎖定的工作面無法刪除",
+        "deleteConfirmTitle": "刪除工作面「{name}」？",
+        "deleteConfirmDescription": "此工作面及其內容將被軟刪除。Owner 可從專案訊息頻道還原。",
         "lockFail": "鎖定失敗",
         "unlockFail": "解鎖失敗",
         "operationFail": "操作失敗",

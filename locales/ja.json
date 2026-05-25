@@ -939,6 +939,8 @@
         "unlock": "解除",
         "delete": "削除",
         "deleteLocked": "ロックされた作業面は削除できません",
+        "deleteConfirmTitle": "作業面「{name}」を削除しますか？",
+        "deleteConfirmDescription": "この作業面と内容はソフト削除されます。オーナーはプロジェクトメッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
         "operationFail": "操作に失敗しました",

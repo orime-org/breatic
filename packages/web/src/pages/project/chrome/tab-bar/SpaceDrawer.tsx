@@ -5,12 +5,23 @@ import {
   Lock,
   Menu,
   Palette,
+  Trash2,
   Unlock,
-  X,
 } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -302,18 +313,54 @@ function SpaceDrawerRow({
               <Lock className='h-4 w-4' />
             )}
           </RowAction>
-          <RowAction
-            label={
-              space.locked
-                ? t('spaces.drawer.action.deleteLocked')
-                : t('spaces.drawer.action.delete')
-            }
-            testId={`space-drawer-delete-${space.id}`}
-            onClick={onDelete}
-            disabled={space.locked || deleteBusy}
-          >
-            <X className='h-4 w-4' />
-          </RowAction>
+          {space.locked ? (
+            <RowAction
+              label={t('spaces.drawer.action.deleteLocked')}
+              testId={`space-drawer-delete-${space.id}`}
+              onClick={(e) => e.stopPropagation()}
+              disabled
+            >
+              <Trash2 className='h-4 w-4' />
+            </RowAction>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <RowAction
+                  label={t('spaces.drawer.action.delete')}
+                  testId={`space-drawer-delete-${space.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={deleteBusy}
+                >
+                  <Trash2 className='h-4 w-4' />
+                </RowAction>
+              </AlertDialogTrigger>
+              <AlertDialogContent
+                data-testid={`space-drawer-delete-confirm-${space.id}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t('spaces.drawer.action.deleteConfirmTitle', {
+                      name: space.name,
+                    })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('spaces.drawer.action.deleteConfirmDescription')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant='destructive'
+                    onClick={onDelete}
+                    data-testid={`space-drawer-delete-confirm-action-${space.id}`}
+                  >
+                    {t('spaces.drawer.action.delete')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
     </li>

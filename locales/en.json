@@ -939,6 +939,8 @@
         "unlock": "Unlock",
         "delete": "Delete",
         "deleteLocked": "Locked spaces can't be deleted",
+        "deleteConfirmTitle": "Delete space \"{name}\"?",
+        "deleteConfirmDescription": "This space and its content will be soft-deleted. Owners can restore it from the project messages channel.",
         "lockFail": "Failed to lock",
         "unlockFail": "Failed to unlock",
         "operationFail": "Operation failed",

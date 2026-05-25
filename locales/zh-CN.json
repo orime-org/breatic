@@ -939,6 +939,8 @@
         "unlock": "解锁",
         "delete": "删除",
         "deleteLocked": "锁住的工作面无法删除",
+        "deleteConfirmTitle": "删除工作面「{name}」？",
+        "deleteConfirmDescription": "此工作面及其内容将被软删除。Owner 可从项目消息频道恢复。",
         "lockFail": "加锁失败",
         "unlockFail": "解锁失败",
         "operationFail": "操作失败",
