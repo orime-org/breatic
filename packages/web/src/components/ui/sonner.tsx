@@ -67,20 +67,34 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // are capped at 28rem by `max-w-md` on the toast className.
       style={{ '--width': 'max-content' } as React.CSSProperties}
       toastOptions={{
+        // Inline style (specificity 1,0,0,0) is the only reliable way
+        // to override sonner's vendor CSS for bg / text / border /
+        // padding / minHeight — its `[data-sonner-toast][data-styled=true]`
+        // selector specificity (0,2,0) beats any Tailwind utility class
+        // (0,1,0), and cascade order is irrelevant. Prior PR #142
+        // attempt used `bg-popover`/`min-h-0`/`py-2 px-3` classNames
+        // and they were silently dropped (2026-05-25 user smoke caught
+        // it). See memory `feedback_sonner_inline_style_not_class_for_vendor_override`.
+        //
+        // Token references:
+        //   --color-popover           — same surface bg as Popover/Sheet/Tooltip
+        //   --color-popover-foreground — paired text color (auto dark/light)
+        //   --color-border             — chrome divider token
+        // Padding 8px 12px + minHeight 0 brings toast height from sonner
+        // default ~56px down to ~36px — compact info bar feel.
+        style: {
+          background: 'var(--color-popover)',
+          color: 'var(--color-popover-foreground)',
+          borderColor: 'var(--color-border)',
+          padding: '8px 12px',
+          minHeight: 0,
+        },
         classNames: {
-          // bg-popover matches the rest of the chrome overlay surfaces
-          // (Popover / Sheet / Tooltip all read --color-popover); the
-          // prior `bg-background` was the page bg token, leaving the
-          // toast visually disconnected from the floating overlay
-          // language (2026-05-25 user ask).
-          // min-h-0 + py-2 px-3 shrinks the toast height from sonner's
-          // default ~56px to ~36px — top-center toasts should be
-          // compact info bars, not large modal-like cards. Tailwind
-          // class on the toast element has same specificity as the
-          // vendor `[data-sonner-toast][data-styled=true]` selector
-          // but loads after, so cascade wins without !important.
-          toast:
-            'group toast max-w-md min-h-0 py-2 px-3 group-[.toaster]:bg-popover group-[.toaster]:text-popover-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+          // max-w-md (max-width) is NOT shadowed by vendor (sonner sets
+          // `width: var(--width)`, not `max-width`), so this class
+          // genuinely caps long toasts at 28rem. shadow-lg same — vendor
+          // shadow is read from CSS var, not directly set on selector.
+          toast: 'group toast max-w-md group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
