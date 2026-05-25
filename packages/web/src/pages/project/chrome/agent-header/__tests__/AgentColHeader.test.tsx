@@ -59,10 +59,11 @@ describe('AgentColHeader', () => {
     expect(onNewConversation).toHaveBeenCalledTimes(1);
   });
 
-  it('renames the conversation when the title is edited and Enter is pressed', async () => {
+  it('renames the conversation when the title is double-clicked + Enter pressed', async () => {
     const user = userEvent.setup();
     const { onRenameConversation } = setup({ conversationName: 'Old name' });
-    await user.click(screen.getByTestId('title-display'));
+    // PR #140: edit trigger is double-click, not single-click.
+    await user.dblClick(screen.getByTestId('title-display'));
     const input = screen.getByTestId('title-input') as HTMLInputElement;
     await user.clear(input);
     await user.type(input, 'New name{Enter}');
