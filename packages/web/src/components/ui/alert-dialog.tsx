@@ -1,6 +1,8 @@
 import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
+import type { VariantProps } from 'class-variance-authority';
 
+import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
@@ -106,16 +108,28 @@ const AlertDialogDescription = React.forwardRef<
 AlertDialogDescription.displayName =
   AlertDialogPrimitive.Description.displayName;
 
+// Reuse the project's Button primitive (`buttonVariants`) so AlertDialog
+// action / cancel pick up the exact same radius / size / hover-pattern
+// tokens as every other <Button> in the app. The vendor shadcn defaults
+// hard-coded `rounded-md` (12px) on Cancel and `rounded-chrome` (6px)
+// on Action — visually inconsistent inside the same dialog AND
+// inconsistent with Dialog footers built from <Button>. See PR #138.
+// Accepts the Button primitive's `variant` + `size` props so destructive
+// alerts (e.g. "Clear all messages?") can opt into `variant='destructive'`
+// without resorting to className overrides — those couldn't suppress the
+// default variant's `hover:bg-primary-hover` cascade.
+type AlertDialogActionProps = React.ComponentPropsWithoutRef<
+  typeof AlertDialogPrimitive.Action
+> &
+  VariantProps<typeof buttonVariants>;
+
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => (
+  AlertDialogActionProps
+>(({ className, variant, size, ...props }, ref) => (
   <AlertDialogPrimitive.Action
     ref={ref}
-    className={cn(
-      'inline-flex h-9 items-center justify-center rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-      className,
-    )}
+    className={cn(buttonVariants({ variant, size }), className)}
     {...props}
   />
 ));
@@ -128,7 +142,8 @@ const AlertDialogCancel = React.forwardRef<
   <AlertDialogPrimitive.Cancel
     ref={ref}
     className={cn(
-      'mt-2 inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 sm:mt-0',
+      buttonVariants({ variant: 'outline' }),
+      'mt-2 sm:mt-0',
       className,
     )}
     {...props}

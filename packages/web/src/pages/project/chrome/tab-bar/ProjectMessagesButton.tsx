@@ -225,13 +225,9 @@ export function ProjectMessagesButton({
                   <AlertDialogFooter>
                     <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                     <AlertDialogAction
+                      variant='destructive'
                       onClick={onClickClear}
                       data-testid='project-messages-clear-confirm-action'
-                      // Use `transition-opacity` + `hover:opacity-90`
-                      // for destructive hover. Project bans alpha-
-                      // modifier hover variants on bg tokens; see
-                      // ADR 2026-05-21-hover-pattern-standard.
-                      className='bg-destructive text-destructive-foreground transition-opacity hover:opacity-90'
                     >
                       {t('spaces.history.action.clearAll')}
                     </AlertDialogAction>
