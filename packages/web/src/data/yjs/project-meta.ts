@@ -8,7 +8,7 @@ import {
 } from '@breatic/shared';
 import type { SpaceType } from '@/spaces';
 import { docName, getDoc } from '@/data/yjs/manager';
-import { useSocket } from '@/data/yjs/use-socket';
+import { useSocket, type ConnectionStatus } from '@/data/yjs/use-socket';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
@@ -78,6 +78,10 @@ export interface ProjectMetaState {
    * `null` while the socket is still mounting.
    */
   provider: HocuspocusProvider | null;
+  /** High-level connection lifecycle for `ConnectionBanner`. */
+  status: ConnectionStatus;
+  /** Server-provided auth-failure reason (only set when status='authFailed'). */
+  authFailedReason: string | null;
 }
 
 /**
@@ -97,7 +101,7 @@ export function useProjectMeta(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
-  const { synced, provider } = useSocket({
+  const { synced, provider, status, authFailedReason } = useSocket({
     name: docName.projectMeta(projectId),
     doc,
   });
@@ -127,7 +131,7 @@ export function useProjectMeta(
     };
   }, [doc, userId]);
 
-  return { ...state, synced, provider };
+  return { ...state, synced, provider, status, authFailedReason };
 }
 
 /**

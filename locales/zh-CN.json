@@ -1153,5 +1153,17 @@
       "audio": "想加入做配音和 BGM 部分",
       "project": "想参考你的 prompt 风格做我自己的项目"
     }
+  },
+  "connection": {
+    "banner": {
+      "authFailed": {
+        "text": "登录已失效 — 项目内容无法加载,请重新登录。",
+        "action": "重新登录"
+      },
+      "disconnected": {
+        "text": "跟服务器的连接断了 — 你看到的内容可能不是最新的。"
+      },
+      "reload": "刷新"
+    }
   }
 }
