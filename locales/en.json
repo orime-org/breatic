@@ -984,7 +984,9 @@
       },
       "action": {
         "restore": "Restore",
-        "clearAll": "Clear all"
+        "clearAll": "Clear all",
+        "clearAllConfirmTitle": "Clear all messages?",
+        "clearAllConfirmDescription": "This action cannot be undone. All entries in the project message channel will be permanently removed."
       },
       "relative": {
         "justNow": "just now",

@@ -98,7 +98,7 @@ describe('ProjectMessagesButton', () => {
     ).toBeNull();
   });
 
-  it('shows Clear all only for owner with non-empty list', async () => {
+  it('shows Clear all only for owner with non-empty list + requires confirm dialog before firing', async () => {
     const user = userEvent.setup();
     const onClearAll = vi.fn();
     render(
@@ -109,8 +109,15 @@ describe('ProjectMessagesButton', () => {
       />,
     );
     await user.click(screen.getByTestId('project-messages-trigger'));
+    // First click opens the AlertDialog — does NOT fire the handler.
     const clearBtn = screen.getByTestId('project-messages-clear-all');
     await user.click(clearBtn);
+    expect(onClearAll).not.toHaveBeenCalled();
+    // Confirm button inside the dialog fires the handler.
+    const confirmBtn = screen.getByTestId(
+      'project-messages-clear-confirm-action',
+    );
+    await user.click(confirmBtn);
     expect(onClearAll).toHaveBeenCalled();
   });
 
