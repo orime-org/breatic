@@ -939,6 +939,8 @@
         "unlock": "解除",
         "delete": "削除",
         "deleteLocked": "ロックされた作業面は削除できません",
+        "deleteConfirmTitle": "作業面「{name}」を削除しますか？",
+        "deleteConfirmDescription": "この作業面と内容はソフト削除されます。オーナーはプロジェクトメッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
         "operationFail": "操作に失敗しました",
@@ -1006,9 +1008,17 @@
       "notAvailable": "未実装",
       "nameLabel": "名前",
       "namePlaceholder": "例:Cyberpunk Concept",
+      "nameRemaining": "{count, plural, other {残り # 文字}}",
       "cancel": "キャンセル",
       "submit": "作成",
       "submitting": "作成中…"
+    },
+    "rename": {
+      "inputAriaLabel": "Space の名前を変更",
+      "locked": "ロック中 — 名前を変更するにはロックを解除してください。",
+      "error": {
+        "failed": "名前の変更に失敗しました。もう一度お試しください。"
+      }
     },
     "readonly": {
       "label": "読み取り専用",

@@ -939,6 +939,8 @@
         "unlock": "解锁",
         "delete": "删除",
         "deleteLocked": "锁住的工作面无法删除",
+        "deleteConfirmTitle": "删除工作面「{name}」？",
+        "deleteConfirmDescription": "此工作面及其内容将被软删除。Owner 可从项目消息频道恢复。",
         "lockFail": "加锁失败",
         "unlockFail": "解锁失败",
         "operationFail": "操作失败",
@@ -1006,9 +1008,17 @@
       "notAvailable": "未实现",
       "nameLabel": "名称",
       "namePlaceholder": "例:Cyberpunk Concept",
+      "nameRemaining": "{count, plural, other {还可输入 # 个字符}}",
       "cancel": "取消",
       "submit": "创建",
       "submitting": "创建中…"
+    },
+    "rename": {
+      "inputAriaLabel": "重命名 Space",
+      "locked": "已锁定 — 解锁后才能修改名称。",
+      "error": {
+        "failed": "重命名失败,请重试。"
+      }
     },
     "readonly": {
       "label": "只读",

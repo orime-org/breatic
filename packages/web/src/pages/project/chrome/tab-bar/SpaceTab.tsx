@@ -14,8 +14,11 @@ import {
   X,
 } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
 
+import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n/use-translation';
 import type { SpaceType } from '@/spaces';
 
 interface SpaceTabProps {
@@ -26,6 +29,13 @@ interface SpaceTabProps {
   locked?: boolean;
   onActivate: () => void;
   onClose?: () => void;
+  /**
+   * Commit a new name for this Space. Double-click on the tab
+   * enters inline edit; Enter / blur commits via this callback;
+   * Esc cancels (no callback). When the Space is locked, double-
+   * click instead raises a toast and does NOT enter edit mode.
+   */
+  onRename?: (name: string) => Promise<void> | void;
 }
 
 const TYPE_ICON: Record<SpaceType, typeof FileText> = {
@@ -64,12 +74,59 @@ export function SpaceTab({
   locked,
   onActivate,
   onClose,
+  onRename,
 }: SpaceTabProps) {
+  const t = useTranslation();
   const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(name);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Keep `draft` aligned with external `name` updates (collab broadcast)
+  // when we are not currently editing.
+  React.useEffect(() => {
+    if (!editing) setDraft(name);
+  }, [name, editing]);
+
+  React.useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
 
   const onCloseClick: React.MouseEventHandler<HTMLSpanElement> = (e) => {
     e.stopPropagation();
     onClose?.();
+  };
+
+  const onNameDoubleClick: React.MouseEventHandler<HTMLSpanElement> = (e) => {
+    if (!onRename) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (locked) {
+      toast(t('spaces.rename.locked'));
+      return;
+    }
+    setDraft(name);
+    setEditing(true);
+  };
+
+  const commit = () => {
+    const trimmed = draft.trim().slice(0, SPACE_NAME_MAX_LEN);
+    setEditing(false);
+    if (trimmed.length === 0 || trimmed === name) {
+      setDraft(name);
+      return;
+    }
+    void Promise.resolve(onRename?.(trimmed)).catch(() => {
+      // toast already raised by callRpc in ProjectPage
+    });
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setDraft(name);
   };
 
   return (
@@ -77,7 +134,7 @@ export function SpaceTab({
       type='button'
       role='tab'
       aria-selected={active}
-      onClick={onActivate}
+      onClick={editing ? undefined : onActivate}
       data-testid={`space-tab-${id}`}
       className={cn(
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-[13px]',
@@ -97,7 +154,38 @@ export function SpaceTab({
         style={{ width: 14, height: 14 }}
         aria-hidden='true'
       />
-      <span>{name}</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          maxLength={SPACE_NAME_MAX_LEN}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancel();
+            }
+            e.stopPropagation();
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          data-testid={`space-tab-name-input-${id}`}
+          aria-label={t('spaces.rename.inputAriaLabel')}
+          className='border-0 bg-transparent p-0 text-[13px] text-foreground outline-none'
+          style={{ width: `${Math.max(draft.length, 1) + 1}ch` }}
+        />
+      ) : (
+        <span
+          onDoubleClick={onNameDoubleClick}
+          data-testid={`space-tab-name-${id}`}
+        >
+          {name}
+        </span>
+      )}
       {locked ? (
         <Lock
           className='shrink-0 text-muted-foreground'

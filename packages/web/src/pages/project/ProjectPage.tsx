@@ -286,6 +286,20 @@ export default function ProjectPage() {
     );
   };
 
+  /**
+   * Rename a Space's name — `space:rename` RPC. Caller role ≥ edit.
+   * Locked Spaces refuse rename on the server side and the failure
+   * toast surfaces via callRpc. The 80-char cap mirrors the project
+   * title — enforced both on the client (`SPACE_NAME_MAX_LEN`) and
+   * on the server (`SpaceRenamePayloadSchema`).
+   */
+  const onRenameSpace = async (spaceId: string, name: string) => {
+    await callRpc(
+      { type: 'space:rename', payload: { spaceId, name } },
+      'spaces.rename.error.failed',
+    );
+  };
+
   /** Owner-only: restore a soft-deleted Space — `space:restore` RPC. */
   const onRestoreSpace = async (spaceId: string) => {
     await callRpc(
@@ -359,6 +373,7 @@ export default function ProjectPage() {
             onViewSpace={onViewSpace}
             onDeleteSpace={onDeleteSpace}
             onSetSpaceLocked={onSetSpaceLocked}
+            onRenameSpace={onRenameSpace}
             projectMessages={projectMessages}
             currentUserRole={role}
             onRestoreSpace={onRestoreSpace}

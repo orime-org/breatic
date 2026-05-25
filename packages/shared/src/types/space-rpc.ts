@@ -62,12 +62,28 @@ export type SpaceRpcErrorCode = z.infer<typeof SpaceRpcErrorCodeSchema>;
  * so a nanoid collision is reported as `CONFLICT` and the client
  * retries with a fresh id.
  */
+// Space name length cap shared across create + rename (and the web
+// TitleEditable primitive). 80 matches the project-title cap so users
+// have a single mental model for "how long can I make a name".
+export const SPACE_NAME_MAX_LEN = 80;
+
 export const SpaceCreatePayloadSchema = z.object({
   spaceId: z.string().min(1).max(64),
   type: SpaceTypeSchema,
-  name: z.string().min(1).max(60),
+  name: z.string().min(1).max(SPACE_NAME_MAX_LEN),
 });
 export type SpaceCreatePayload = z.infer<typeof SpaceCreatePayloadSchema>;
+
+/**
+ * Rename an existing Space's name. Caller role ≥ edit. Refuses with
+ * `FORBIDDEN` if the Space is locked (per design — locked Spaces
+ * cannot have their metadata mutated until unlocked).
+ */
+export const SpaceRenamePayloadSchema = z.object({
+  spaceId: z.string().min(1).max(64),
+  name: z.string().min(1).max(SPACE_NAME_MAX_LEN),
+});
+export type SpaceRenamePayload = z.infer<typeof SpaceRenamePayloadSchema>;
 
 export const SpaceDeletePayloadSchema = z.object({
   spaceId: z.string().min(1).max(64),
@@ -127,6 +143,11 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("space:lock"),
     payload: SpaceLockPayloadSchema,
+  }),
+  z.object({
+    id: RpcIdSchema,
+    type: z.literal("space:rename"),
+    payload: SpaceRenamePayloadSchema,
   }),
   z.object({
     id: RpcIdSchema,

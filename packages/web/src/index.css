@@ -24,3 +24,17 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Stop the browser's native overscroll actions on the root scroll
+   container: trackpad / touch left-right swipe → history back/forward
+   (macOS Safari + Chrome default), pull-to-refresh (mobile), and
+   overscroll bounce. The Canvas + Document spaces are workspaces —
+   losing scroll position or being navigated away by an edge swipe
+   is hostile. Industry standard for design / editing tools (Figma,
+   Notion, Excalidraw, Canva all do this). Set on both html and body
+   because which one is the "root scrolling element" varies by browser
+   (quirks vs standards mode, Safari vs Chrome). 2026-05-25 PR #140. */
+html,
+body {
+  overscroll-behavior: none;
+}

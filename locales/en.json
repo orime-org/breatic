@@ -939,6 +939,8 @@
         "unlock": "Unlock",
         "delete": "Delete",
         "deleteLocked": "Locked spaces can't be deleted",
+        "deleteConfirmTitle": "Delete space \"{name}\"?",
+        "deleteConfirmDescription": "This space and its content will be soft-deleted. Owners can restore it from the project messages channel.",
         "lockFail": "Failed to lock",
         "unlockFail": "Failed to unlock",
         "operationFail": "Operation failed",
@@ -1006,9 +1008,17 @@
       "notAvailable": "Not available",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Cyberpunk Concept",
+      "nameRemaining": "{count, plural, one {# character left} other {# characters left}}",
       "cancel": "Cancel",
       "submit": "Create",
       "submitting": "Creating…"
+    },
+    "rename": {
+      "inputAriaLabel": "Rename space",
+      "locked": "Locked — unlock the space before renaming.",
+      "error": {
+        "failed": "Could not rename the space. Please try again."
+      }
     },
     "readonly": {
       "label": "Read-only",

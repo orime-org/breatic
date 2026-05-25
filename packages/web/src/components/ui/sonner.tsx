@@ -47,10 +47,29 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className='toaster group'
+      // Sonner ships a runtime-injected CSS rule
+      //   `[data-sonner-toaster] { width: var(--width); }`
+      //   `[data-sonner-toast][data-styled=true] { width: var(--width); }`
+      // BOTH the ol AND the li (toast) read the same `--width` var
+      // (default 356px). A Tailwind `w-fit` on the toast className
+      // therefore loses to the vendor CSS — the toast stays 356px.
+      //
+      // Setting `--width: fit-content` (earlier attempt) caused the
+      // toast to collapse into a vertical column of single CJK
+      // characters: with the toast container `display: flex; gap: 6px`
+      // and CJK characters being default-breakable, `fit-content`
+      // inside the nested flex layout shrank to `min-content`
+      // (= one CJK character wide).
+      //
+      // `max-content` does NOT take available size into account — it
+      // sizes to the content's natural one-line width, regardless of
+      // the parent. Short toasts get a tight one-line box; long toasts
+      // are capped at 28rem by `max-w-md` on the toast className.
+      style={{ '--width': 'max-content' } as React.CSSProperties}
       toastOptions={{
         classNames: {
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast max-w-md group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

@@ -20,12 +20,23 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
 /**
  * Project title — dual-mode inline title bar element.
  *
- * Two visual modes (transition triggered by focus/blur, no explicit button):
+ * Two visual modes:
  *
- *   - **Static** (blur)  → `<span>` with `truncate` + ellipsis. Over-long
+ *   - **Static**         → `<span>` with `truncate` + ellipsis. Over-long
  *     text is left-aligned and clipped with "…". Width capped at 320px.
  *   - **Edit** (focus)   → `<input>`. Native caret + horizontal scroll
  *     follows the cursor; no ellipsis. Width still capped at 320px.
+ *
+ * Edit trigger (2026-05-25, PR #140): **double-click** the static span
+ * enters edit mode. Single-click does nothing — consistent with the
+ * inline rename rule across the app (SpaceTab name, etc.). Keyboard
+ * a11y is preserved: Enter / Space on the focused span still enters
+ * edit so keyboard-only users aren't locked out.
+ *
+ * Why double-click (not single-click): a single-click on the chrome
+ * title is a common cursor-park gesture; making single-click toggle
+ * edit produces accidental rename mode whenever the user clicks the
+ * title bar.
  *
  * Why dual mode (not `<span contenteditable>`): contenteditable's caret
  * position ignores `overflow:hidden`, so an editing user sees the cursor
@@ -123,9 +134,10 @@ export function TitleEditable({
     <span
       role='textbox'
       tabIndex={0}
-      onClick={() => setEditing(true)}
+      onDoubleClick={() => setEditing(true)}
       onKeyDown={(e) => {
-        // Keyboard a11y: Enter or Space starts edit mode.
+        // Keyboard a11y: Enter or Space starts edit mode (no double-
+        // key needed — keyboard users couldn't double-click anyway).
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           setEditing(true);

@@ -50,6 +50,12 @@ interface SpaceTabBarProps {
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
   /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
+  /**
+   * Rename a Space inline from the tab strip. Caller role ≥ edit;
+   * locked Spaces refuse rename on the server side. Handler from
+   * ProjectPage wraps `space:rename` RPC via callRpc.
+   */
+  onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
 }
 
 /**
@@ -78,6 +84,7 @@ export function SpaceTabBar({
   onClearMessages,
   onDeleteSpace,
   onSetSpaceLocked,
+  onRenameSpace,
 }: SpaceTabBarProps) {
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -95,9 +102,31 @@ export function SpaceTabBar({
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
+    // atStart / atEnd are DOM-rect-based — same yardstick as the
+    // `scrollOneTab` algorithm below, so the arrow's enabled predicate
+    // ("can we still scroll?") always matches what the arrow click
+    // would actually do ("is there a tab left to bring on-screen?").
+    //
+    // Why not scrollLeft-based (prior approach, commit 626ec56 + 4870de6):
+    // smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft at
+    // the scroller's content-area edge — that's `padding-left` (~8 px
+    // with `padding: 0 var(--space-2)`), NOT zero. A `scrollLeft <= 1`
+    // boundary check therefore stayed false at the visual left edge,
+    // leaving the arrow stuck enabled. Mouse-wheel scroll did snap to
+    // scrollLeft=0 (browser clamp), which is why the bug only showed
+    // up via arrow clicks. DOM rects sidestep the scroll-position
+    // arithmetic entirely.
     const overflow = el.scrollWidth > el.clientWidth + 1;
-    const atStart = el.scrollLeft <= 0;
-    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    const scrollerRect = el.getBoundingClientRect();
+    const tabs = Array.from(el.children).filter(
+      (c): c is HTMLElement => c instanceof HTMLElement,
+    );
+    const atStart = !tabs.some(
+      (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
+    );
+    const atEnd = !tabs.some(
+      (t) => t.getBoundingClientRect().right > scrollerRect.right + 1,
+    );
     setScrollState({ overflow, atStart, atEnd });
   }, []);
 
@@ -138,8 +167,52 @@ export function SpaceTabBar({
     }
   }, [activeSpaceId]);
 
-  const scrollBy = (delta: number) => {
-    scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  /**
+   * Scroll one tab into view (point-and-scroll model, IDE / browser tab
+   * strip standard).
+   *
+   * Why not a fixed pixel `scrollBy(±120)` like the prior implementation:
+   * tab width is content-driven (short "Main" ≈ 60px, long "你叫什么名字
+   * ..." ≈ 280px). A fixed delta either over- or under-scrolls; long-name
+   * tabs took 2–3 clicks to fully reveal (PR #140 user report 2026-05-25).
+   *
+   * Algorithm:
+   *   - **right**: find the first tab whose right edge sits beyond the
+   *     scroller's right edge → `scrollIntoView({ inline: 'end' })` snaps
+   *     it flush right.
+   *   - **left**: find the last tab whose left edge sits before the
+   *     scroller's left edge → `scrollIntoView({ inline: 'start' })`
+   *     snaps it flush left.
+   *
+   * A 1-px tolerance absorbs sub-pixel rounding from CSS gap / padding.
+   */
+  const scrollOneTab = (direction: 'left' | 'right') => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const tabs = Array.from(scroller.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement,
+    );
+    if (tabs.length === 0) return;
+    const scrollerRect = scroller.getBoundingClientRect();
+
+    const target =
+      direction === 'right'
+        ? tabs.find(
+            (tab) =>
+              tab.getBoundingClientRect().right > scrollerRect.right + 1,
+          )
+        : [...tabs]
+            .reverse()
+            .find(
+              (tab) =>
+                tab.getBoundingClientRect().left < scrollerRect.left - 1,
+            );
+
+    target?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: direction === 'right' ? 'end' : 'start',
+    });
   };
 
   const ArrowButton = ({
@@ -223,7 +296,7 @@ export function SpaceTabBar({
 
       <ArrowButton
         direction='left'
-        onClick={() => scrollBy(-120)}
+        onClick={() => scrollOneTab('left')}
         disabled={scrollState.atStart}
       />
 
@@ -249,13 +322,18 @@ export function SpaceTabBar({
             locked={s.locked}
             onActivate={() => onActivate(s.id)}
             onClose={onClose ? () => onClose(s.id) : undefined}
+            onRename={
+              onRenameSpace
+                ? (next) => onRenameSpace(s.id, next)
+                : undefined
+            }
           />
         ))}
       </div>
 
       <ArrowButton
         direction='right'
-        onClick={() => scrollBy(120)}
+        onClick={() => scrollOneTab('right')}
         disabled={scrollState.atEnd}
       />
 

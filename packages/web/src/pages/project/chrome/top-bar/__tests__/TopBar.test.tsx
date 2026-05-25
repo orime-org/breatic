@@ -45,13 +45,14 @@ describe('TopBar', () => {
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
-  it('title click swaps to <input>; typing + Enter commits the new name', async () => {
+  it('title double-click swaps to <input>; typing + Enter commits the new name', async () => {
     const user = userEvent.setup();
     const { onRename } = setup({ projectName: 'Old' });
     // Static mode: visible <span>
     const display = screen.getByTestId('title-display');
     expect(display).toBeInTheDocument();
-    await user.click(display);
+    // PR #140: edit trigger is double-click, not single-click.
+    await user.dblClick(display);
     // Edit mode: <input> autofocused + text selected
     const input = await screen.findByTestId('title-input');
     expect(input.tagName).toBe('INPUT');
