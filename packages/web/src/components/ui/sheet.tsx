@@ -49,8 +49,16 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
+// Drops vendor shadcn's default `gap-4` from the base class
+// (PR #138 followup, user-reported "blank purple band"). The gap was
+// harmless for sheets using the default block layout, but as soon as
+// a consumer opts into `flex flex-col` (the common pattern when
+// SheetContent contains a fixed header + a flex-1 scrollable list),
+// the inherited `gap-4` injected an unwanted 16px gap between the
+// header and the list. Consumers that genuinely want spacing between
+// children can add `gap-N` themselves.
 const sheetVariants = cva(
-  'fixed z-50 gap-4 bg-popover p-6 shadow transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
+  'fixed z-50 bg-popover p-6 shadow transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
   {
     variants: {
       side: {

@@ -9,6 +9,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
@@ -167,27 +178,64 @@ export function ProjectMessagesButton({
         className='flex w-[315px] flex-col p-0'
         data-testid='project-messages-sheet'
       >
-        <header className='flex items-baseline justify-between gap-3 border-b border-border px-4 py-3 pr-12'>
-          <div>
-            <SheetTitle className='text-[14px] font-semibold text-foreground'>
-              {t('spaces.history.header')}
-            </SheetTitle>
+        <header className='flex flex-col gap-2 border-b border-border px-4 py-3'>
+          {/*
+            Only the title row reserves space (pr-10) for the absolute
+            X close button in the top-right of the SheetContent. The
+            meta row below has no pr — it can extend to the inner right
+            edge of the header (px-4), letting `justify-between` push
+            the clear button fully to the right.
+          */}
+          <SheetTitle className='pr-10 text-[14px] font-semibold text-foreground'>
+            {t('spaces.history.header')}
+          </SheetTitle>
+          {/*
+            Meta row: count on the left, owner-only "clear all" on the
+            right (justify-between). Non-owner sees only the left count
+            and an empty right side — natural since meta is left-aligned.
+            Wrapping the destructive button in AlertDialog forces a
+            confirm step (PR #138 — prevent accidental data loss).
+          */}
+          <div className='flex items-center justify-between gap-3'>
             <SheetDescription className='text-[12px] text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
             </SheetDescription>
+            {isOwner && messages.length > 0 ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    type='button'
+                    disabled={clearing}
+                    data-testid='project-messages-clear-all'
+                    className='inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50'
+                  >
+                    <Trash2 className='h-3 w-3' aria-hidden />
+                    {t('spaces.history.action.clearAll')}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent data-testid='project-messages-clear-confirm'>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t('spaces.history.action.clearAllConfirmTitle')}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('spaces.history.action.clearAllConfirmDescription')}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant='destructive'
+                      onClick={onClickClear}
+                      data-testid='project-messages-clear-confirm-action'
+                    >
+                      {t('spaces.history.action.clearAll')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
           </div>
-          {isOwner && messages.length > 0 ? (
-            <button
-              type='button'
-              onClick={onClickClear}
-              disabled={clearing}
-              data-testid='project-messages-clear-all'
-              className='inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50'
-            >
-              <Trash2 className='h-3 w-3' aria-hidden />
-              {t('spaces.history.action.clearAll')}
-            </button>
-          ) : null}
         </header>
         <ul
           // `flex-1` (not a hard `max-h-[420px]`) lets the list fill the
