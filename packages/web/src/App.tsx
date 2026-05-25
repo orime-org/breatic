@@ -32,8 +32,14 @@ export default function App() {
             critical / interaction-blocking messages (lock notice,
             RPC failures, rename refusals) sit in the user's primary
             sight line — the bottom-right corner was easy to miss
-            during canvas-focused work (2026-05-25 user spec). */}
-        <Toaster richColors closeButton position='top-center' />
+            during canvas-focused work (2026-05-25 user spec).
+            `duration={3000}` shortens the sonner default (4000ms)
+            because top-center toasts hover over the user's primary
+            content; 3s is long enough to read a short message and
+            short enough not to linger on the canvas.
+            No `closeButton` — top-center toasts auto-dismiss; the X
+            in the corner only added clutter without helping. */}
+        <Toaster richColors position='top-center' duration={3000} />
       </TooltipProvider>
     </QueryClientProvider>
   );

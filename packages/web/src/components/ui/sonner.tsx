@@ -48,9 +48,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme}
       className='toaster group'
       toastOptions={{
+        // `w-fit max-w-md` shrinks the toast so it hugs the message
+        // text (sonner's default `--width: 356px` left a wide empty
+        // bar for short messages like "已锁定"). max-w-md (28rem)
+        // caps long messages so they don't span the whole viewport
+        // at top-center. PR #140 — user-driven sizing fix.
         classNames: {
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast w-fit max-w-md group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
