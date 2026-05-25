@@ -145,8 +145,52 @@ export function SpaceTabBar({
     }
   }, [activeSpaceId]);
 
-  const scrollBy = (delta: number) => {
-    scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  /**
+   * Scroll one tab into view (point-and-scroll model, IDE / browser tab
+   * strip standard).
+   *
+   * Why not a fixed pixel `scrollBy(±120)` like the prior implementation:
+   * tab width is content-driven (short "Main" ≈ 60px, long "你叫什么名字
+   * ..." ≈ 280px). A fixed delta either over- or under-scrolls; long-name
+   * tabs took 2–3 clicks to fully reveal (PR #140 user report 2026-05-25).
+   *
+   * Algorithm:
+   *   - **right**: find the first tab whose right edge sits beyond the
+   *     scroller's right edge → `scrollIntoView({ inline: 'end' })` snaps
+   *     it flush right.
+   *   - **left**: find the last tab whose left edge sits before the
+   *     scroller's left edge → `scrollIntoView({ inline: 'start' })`
+   *     snaps it flush left.
+   *
+   * A 1-px tolerance absorbs sub-pixel rounding from CSS gap / padding.
+   */
+  const scrollOneTab = (direction: 'left' | 'right') => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const tabs = Array.from(scroller.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement,
+    );
+    if (tabs.length === 0) return;
+    const scrollerRect = scroller.getBoundingClientRect();
+
+    const target =
+      direction === 'right'
+        ? tabs.find(
+            (tab) =>
+              tab.getBoundingClientRect().right > scrollerRect.right + 1,
+          )
+        : [...tabs]
+            .reverse()
+            .find(
+              (tab) =>
+                tab.getBoundingClientRect().left < scrollerRect.left - 1,
+            );
+
+    target?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: direction === 'right' ? 'end' : 'start',
+    });
   };
 
   const ArrowButton = ({
@@ -230,7 +274,7 @@ export function SpaceTabBar({
 
       <ArrowButton
         direction='left'
-        onClick={() => scrollBy(-120)}
+        onClick={() => scrollOneTab('left')}
         disabled={scrollState.atStart}
       />
 
@@ -267,7 +311,7 @@ export function SpaceTabBar({
 
       <ArrowButton
         direction='right'
-        onClick={() => scrollBy(120)}
+        onClick={() => scrollOneTab('right')}
         disabled={scrollState.atEnd}
       />
 

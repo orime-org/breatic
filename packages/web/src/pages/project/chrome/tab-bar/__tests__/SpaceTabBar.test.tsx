@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
@@ -92,5 +92,96 @@ describe('SpaceTabBar', () => {
     expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
     expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
+  });
+
+  // PR #140 (2026-05-25): scroll arrows use point-and-scroll (one tab per
+  // click via `scrollIntoView`), not fixed `scrollBy(±120)`. A fixed delta
+  // under-shoots long-name tabs (took 2–3 clicks to fully reveal). These
+  // two tests pin the contract: right-arrow snaps the first off-screen
+  // tab flush-right, left-arrow snaps the last off-screen tab flush-left.
+  describe('scroll arrows (point-and-scroll, PR #140)', () => {
+    function mockRect(
+      el: HTMLElement,
+      rect: Pick<DOMRect, 'left' | 'right'>,
+    ) {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+        ...rect,
+        top: 0,
+        bottom: 40,
+        width: rect.right - rect.left,
+        height: 40,
+        x: rect.left,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    }
+
+    /**
+     * Force the scroller into the overflow state so the arrows un-hide,
+     * then return the tablist element for caller-side rect mocking. The
+     * `act` wrap flushes the `setScrollState` setState triggered by the
+     * scroll-event listener so the arrows actually re-render enabled.
+     */
+    function makeOverflow(): HTMLElement {
+      const scroller = screen.getByRole('tablist');
+      Object.defineProperty(scroller, 'scrollWidth', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroller, 'clientWidth', {
+        value: 200,
+        configurable: true,
+      });
+      act(() => {
+        scroller.dispatchEvent(new Event('scroll'));
+      });
+      return scroller;
+    }
+
+    it('right arrow snaps the first off-screen tab flush-right (inline: end)', async () => {
+      const user = userEvent.setup();
+      setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      // s1 fully visible; s2 first off-screen on the right; s3 further.
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 220, right: 320 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 330, right: 430 });
+      const s2 = screen.getByTestId('space-tab-s2');
+      const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
+
+      await user.click(screen.getByTestId('tabs-scroll-right'));
+      expect(scrollSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ inline: 'end', block: 'nearest' }),
+      );
+    });
+
+    it('left arrow snaps the last off-screen tab flush-left (inline: start)', async () => {
+      const user = userEvent.setup();
+      setup();
+      const scroller = makeOverflow();
+      // Pretend the user has scrolled right; without this, scrollLeft=0
+      // makes `atStart=true` and disables the left arrow.
+      Object.defineProperty(scroller, 'scrollLeft', {
+        value: 100,
+        configurable: true,
+        writable: true,
+      });
+      act(() => {
+        scroller.dispatchEvent(new Event('scroll'));
+      });
+      // s1 + s2 sit off-screen-left of the scroller viewport.
+      mockRect(scroller, { left: 100, right: 300 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 170 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 180, right: 280 });
+      const s2 = screen.getByTestId('space-tab-s2');
+      const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
+
+      await user.click(screen.getByTestId('tabs-scroll-left'));
+      expect(scrollSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ inline: 'start', block: 'nearest' }),
+      );
+    });
   });
 });
