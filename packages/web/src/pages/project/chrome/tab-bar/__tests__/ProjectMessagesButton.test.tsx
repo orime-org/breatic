@@ -43,14 +43,10 @@ const M_MISSING: ProjectMessageEntry = {
 };
 
 describe('ProjectMessagesButton', () => {
-  it('renders trigger with red dot when messages list is non-empty', () => {
+  it('renders trigger without any unread / dot indicator', () => {
+    // Project messages channel has no read / unread state — the trigger
+    // never decorates with a dot, regardless of message count.
     render(<ProjectMessagesButton messages={[M_DELETED]} />);
-    expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-dot')).toBeInTheDocument();
-  });
-
-  it('omits red dot when messages list is empty', () => {
-    render(<ProjectMessagesButton messages={[]} />);
     expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
     expect(screen.queryByTestId('project-messages-dot')).toBeNull();
   });
