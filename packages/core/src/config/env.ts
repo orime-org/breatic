@@ -47,7 +47,6 @@ export const env = createEnv({
 
     // ── Auth ──────────────────────────────────────────
     SESSION_SECRET_KEY: z.string().min(1),
-    LOGIN_MODE: z.enum(["WithAccount", "NoAccount"]).default("WithAccount"),
 
     // ── Database ──────────────────────────────────────
     DATABASE_URL: z.string().url(),
@@ -125,6 +124,16 @@ export const env = createEnv({
     UPLOAD_MAX_DOCUMENT_MB: z.coerce.number().positive().default(20),
 
     // ── Email ────────────────────────────────────────
+    // Mailer backend dispatch — self-host friendly default. See
+    // `packages/core/src/infra/mailer.ts:sendMail` for routing.
+    //   disabled : noop (no email, returns false). Pair with recovery-code
+    //              based password reset for SMTP-less self-hosts.
+    //   console  : logs subject + html to server log (dev: lift magic
+    //              link / verify token straight out of stdout).
+    //   smtp     : dispatch via nodemailer using SMTP_* below. Any SMTP
+    //              relay works (self-hosted postfix, Resend, SendGrid,
+    //              AWS SES — all expose RFC 5321 SMTP).
+    EMAIL_BACKEND: z.enum(["disabled", "console", "smtp"]).default("disabled"),
     SMTP_HOST: z.string().default(""),
     SMTP_PORT: z.coerce.number().default(587),
     SMTP_USER: z.string().default(""),
@@ -136,16 +145,6 @@ export const env = createEnv({
 });
 
 // ── Startup safety check ─────────────────────────────────────
-// NoAccount mode disables ALL authentication. It must never run
-// in production — a single misconfigured env var would expose
-// every user's data to anonymous access.
-if (env.LOGIN_MODE === "NoAccount" && env.ENV === "prod") {
-  throw new Error(
-    "FATAL: LOGIN_MODE=NoAccount is forbidden when ENV=prod. " +
-    "This would disable all authentication. Refusing to start.",
-  );
-}
-
 // Stripe secrets must be present (and non-whitespace) when payments are on.
 // Both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET default to "" in the
 // Zod schema so the app boots fine when PAYMENT_ENABLED=false. But if

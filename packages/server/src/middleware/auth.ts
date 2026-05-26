@@ -7,8 +7,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { authService, env, rawPg } from "@breatic/core";
-import { DEV_USER_ID } from "@breatic/shared";
+import { authService } from "@breatic/core";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
@@ -21,47 +20,12 @@ export interface AuthVariables {
   };
 }
 
-/** Default dev user for NoAccount mode. */
-const DEV_USER = {
-  id: DEV_USER_ID,
-  email: "dev@localhost",
-  username: "Dev User",
-  avatarUrl: null,
-  credits: 99999,
-};
-
-/** Ensure the dev user row exists in the DB (NoAccount mode only, runs once). */
-let devUserEnsured = false;
-async function ensureDevUser(): Promise<void> {
-  if (devUserEnsured || env.LOGIN_MODE !== "NoAccount") return;
-  await rawPg`
-    INSERT INTO users (id, email, username, email_verified, credits)
-    VALUES (${DEV_USER.id}, ${DEV_USER.email}, 'Dev User', true, 99999)
-    ON CONFLICT (id) DO NOTHING
-  `;
-  devUserEnsured = true;
-}
-
 /**
  * Require authentication — returns 401 if token is missing or invalid.
- *
- * In `NoAccount` mode (LOGIN_MODE=NoAccount), authentication is skipped
- * and a default dev user is injected. This is for local development only.
  */
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;
 }> = async (c, next) => {
-  // NoAccount mode: skip auth, inject dev user (dev/test only).
-  if (env.LOGIN_MODE === "NoAccount") {
-    if (env.ENV === "prod") {
-      return c.json({ error: { code: 500, message: "NoAccount mode forbidden in production" } }, 500);
-    }
-    await ensureDevUser();
-    c.set("user", DEV_USER);
-    await next();
-    return;
-  }
-
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return c.json({ error: { code: 401, message: "Missing authorization token" } }, 401);

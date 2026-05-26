@@ -69,7 +69,6 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
   // ENV must be "dev" | "staging" | "prod" (see core/config/env.ts)
   process.env.ENV = "dev";
-  process.env.LOGIN_MODE = "WithAccount";
   process.env.SESSION_SECRET_KEY = "test-secret-key-for-integration-tests";
   process.env.STORAGE_PROVIDER = "local";
   process.env.ALLOWED_ORIGINS = "http://localhost:3001";

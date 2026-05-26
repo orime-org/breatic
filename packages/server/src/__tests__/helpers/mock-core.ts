@@ -61,6 +61,12 @@ export const mocks = {
     }),
     getUserByToken: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
     logout: vi.fn(),
+    forgotPassword: vi.fn().mockResolvedValue(undefined),
+    resetPassword: vi.fn().mockResolvedValue(undefined),
+    resetPasswordWithRecoveryCode: vi.fn(),
+    generateVerifyEmailToken: vi.fn(),
+    verifyEmail: vi.fn().mockResolvedValue(undefined),
+    resendVerificationEmail: vi.fn().mockResolvedValue(undefined),
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),
@@ -188,7 +194,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     setSession: vi.fn(),
     getSession: vi.fn(),
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, LOGIN_MODE: "WithAccount" },
+    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Logger

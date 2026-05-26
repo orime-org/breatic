@@ -131,6 +131,63 @@ export async function updatePassword(userId: string, hashedPassword: string): Pr
 }
 
 /**
+ * Set / replace the user's recovery code hash and clear `used_at`.
+ *
+ * Called at registration (initial code) and after a successful
+ * recovery-code-based password reset (rotate to a fresh code).
+ */
+export async function setRecoveryCode(
+  userId: string,
+  recoveryCodeHash: string,
+): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      recoveryCodeHash,
+      recoveryCodeUsedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+/**
+ * Fetch the recovery code hash + used-at timestamp for verification.
+ *
+ * Returns `null` when the user has no recovery code set (legacy
+ * accounts predating PR-a) or when the user does not exist / is
+ * soft-deleted.
+ */
+export async function getRecoveryCode(
+  userId: string,
+): Promise<{ hash: string; usedAt: Date | null } | null> {
+  const rows = await db
+    .select({
+      recoveryCodeHash: users.recoveryCodeHash,
+      recoveryCodeUsedAt: users.recoveryCodeUsedAt,
+    })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+  const row = rows[0];
+  if (!row || !row.recoveryCodeHash) return null;
+  return { hash: row.recoveryCodeHash, usedAt: row.recoveryCodeUsedAt };
+}
+
+/**
+ * Mark the user's recovery code as consumed (single-use).
+ *
+ * Caller must immediately set a fresh code via `setRecoveryCode` and
+ * return the plaintext to the user — losing access to the new code
+ * after a reset would lock them out for future resets.
+ */
+export async function markRecoveryCodeUsed(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ recoveryCodeUsedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+/**
  * Atomically deduct credits. Fails if insufficient balance.
  *
  * @returns `true` if deduction succeeded, `false` if insufficient credits

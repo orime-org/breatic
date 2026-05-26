@@ -10,6 +10,11 @@ import bcrypt from "bcryptjs";
 
 import * as userRepo from "./user.repo.js";
 import * as studioService from "./studio.service.js";
+import {
+  generateRecoveryCode,
+  hashRecoveryCode,
+  verifyRecoveryCode,
+} from "./recovery-code.service.js";
 import { getRedis } from "../infra/redis.js";
 import { sendMail } from "../infra/mailer.js";
 import { env } from "../config/env.js";
@@ -32,15 +37,22 @@ const BCRYPT_ROUNDS = 12;
 /**
  * Register a new user with email and password.
  *
+ * Generates a one-time recovery code (GitHub backup-codes pattern) so
+ * the user can reset their password without an SMTP backend
+ * (self-host friendly). The plaintext code is returned exactly once
+ * — callers MUST display it to the user with a "save this now" UX;
+ * only the bcrypt hash is persisted server-side.
+ *
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
- * @returns The newly created user entity
+ * @returns `{ user, recoveryCode }` — recoveryCode is plaintext
+ *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
  */
 export async function register(
   email: string,
   password: string,
-): Promise<UserEntity> {
+): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
     throw new ConflictError(t("server.auth.email_taken"));
@@ -49,12 +61,22 @@ export async function register(
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const username = email.split("@")[0];
   const user = await userRepo.createUser({ email, hashedPassword, username });
+
+  // Generate + store recovery code. Done after createUser so we have
+  // a user.id to attach to. Failures here bubble up before studio
+  // setup — the user row will still exist (no transaction wrap) but
+  // recovery_code_hash will be NULL; the user can request a fresh
+  // code via reset-with-recovery-code → resend flow.
+  const recoveryCode = generateRecoveryCode();
+  const recoveryCodeHash = await hashRecoveryCode(recoveryCode);
+  await userRepo.setRecoveryCode(user.id, recoveryCodeHash);
+
   // Personal studio is the FK target for the user's projects (v10
   // §6). Idempotent — also called from project.service.create as
   // belt-and-suspenders if the register hook ever races.
   await studioService.ensurePersonalStudio(user.id, user.username);
   logger.info({ userId: user.id, email }, "user_registered");
-  return user;
+  return { user, recoveryCode };
 }
 
 /**
@@ -230,4 +252,140 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await deleteAllSessions(redis, userId);
 
   logger.info({ userId }, "Password reset completed");
+}
+
+/**
+ * Reset password using the one-time recovery code shown at
+ * registration. No email backend required — designed for self-host
+ * installs where `EMAIL_BACKEND=disabled`.
+ *
+ * Flow:
+ *   1. Find user by email; reject generically if not found
+ *      (avoids leaking account existence vs. wrong-code)
+ *   2. Load stored recovery_code_hash + used_at;
+ *      reject if no code stored or already used
+ *   3. bcrypt.compare(code, hash); reject on mismatch
+ *   4. Update password (bcrypt cost 12, same as `resetPassword`)
+ *   5. markRecoveryCodeUsed (used_at = now)
+ *   6. Generate + store a fresh recovery code (rotate-on-use —
+ *      old one cannot reset again, new one shown to user)
+ *   7. deleteAllSessions (force re-login on all devices)
+ *   8. Return the new plaintext code (shown once — frontend MUST
+ *      re-prompt user to save it)
+ *
+ * @returns `{ newRecoveryCode }` — fresh plaintext code to display
+ * @throws {UnauthorizedError} on any failure (uniform error to
+ *   prevent oracle attacks on email vs. code)
+ */
+export async function resetPasswordWithRecoveryCode(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<{ newRecoveryCode: string }> {
+  const user = await userRepo.getUserByEmail(email);
+  if (!user) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  const stored = await userRepo.getRecoveryCode(user.id);
+  if (!stored || stored.usedAt !== null) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  const valid = await verifyRecoveryCode(code, stored.hash);
+  if (!valid) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  // 1. Update password (bcrypt cost 12).
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await userRepo.updatePassword(user.id, hashedPassword);
+
+  // 2. Mark current code consumed.
+  await userRepo.markRecoveryCodeUsed(user.id);
+
+  // 3. Rotate to fresh code (return plaintext to caller).
+  const newRecoveryCode = generateRecoveryCode();
+  const newHash = await hashRecoveryCode(newRecoveryCode);
+  await userRepo.setRecoveryCode(user.id, newHash);
+
+  // 4. Force re-login (security: all existing tokens revoked).
+  const redis = getRedis();
+  await deleteAllSessions(redis, user.id);
+
+  logger.info({ userId: user.id }, "password_reset_via_recovery_code");
+  return { newRecoveryCode };
+}
+
+// ── Email verification ───────────────────────────────────────────
+
+const EMAIL_VERIFY_TTL = 24 * 3600; // 24 hours
+
+/**
+ * Generate a one-time email-verification token (PR-a task 9).
+ *
+ * Stored in Redis (`${env.ENV}:email-verify:{token}` → userId) with
+ * 24h TTL. Caller is responsible for sending the user a link that
+ * embeds the returned token. Auto-removed on consume or expiry.
+ *
+ * @returns The 64-char hex token to embed in the verify URL.
+ */
+export async function generateVerifyEmailToken(userId: string): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  const redis = getRedis();
+  const key = `${env.ENV}:email-verify:${token}`;
+  await redis.set(key, userId, "EX", EMAIL_VERIFY_TTL);
+  return token;
+}
+
+/**
+ * Consume an email-verification token (PR-a task 9).
+ *
+ * Looks up the token in Redis, flips `users.email_verified = true`
+ * for the resolved user, deletes the token (single-use), and logs.
+ *
+ * @throws {UnauthorizedError} if the token is missing / expired / used.
+ */
+export async function verifyEmail(token: string): Promise<void> {
+  const redis = getRedis();
+  const key = `${env.ENV}:email-verify:${token}`;
+  const userId = await redis.get(key);
+  if (!userId) {
+    throw new UnauthorizedError("Invalid or expired verification token");
+  }
+  await userRepo.updateUser(userId, { emailVerified: true });
+  await redis.del(key);
+  logger.info({ userId }, "email_verified");
+}
+
+/**
+ * Resend the verification email for a given user (PR-a task 9).
+ *
+ * Generates a fresh token (invalidating any previous tokens once the
+ * key collides — extremely unlikely, but functionally a no-op since
+ * each token is fresh-random and TTL'd) and dispatches via the
+ * configured mailer backend. Caller decides whether the user is
+ * already verified (skip in that case).
+ *
+ * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` — caller
+ * should gate accordingly; this function will still run (Redis token
+ * stored) but `sendMail` will no-op + return false in disabled mode.
+ */
+export async function resendVerificationEmail(
+  userId: string,
+  email: string,
+  verifyBaseUrl: string,
+): Promise<void> {
+  const token = await generateVerifyEmailToken(userId);
+  const verifyUrl = `${verifyBaseUrl}?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: "Breatic — Verify your email",
+    html: `
+      <p>Welcome to Breatic. Click below to verify your email address:</p>
+      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+      <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
+    `,
+  });
+  logger.info({ userId }, "verification_email_sent");
 }

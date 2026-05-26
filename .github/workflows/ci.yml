@@ -44,6 +44,23 @@ jobs:
           fi
           echo "✅ vite.config.ts proxy targets are localhost-only"
 
+  no-noaccount-residue:
+    name: No NoAccount Mode Residue
+    runs-on: ubuntu-latest
+
+    # Defense against re-introduction of the deprecated NoAccount dev-bypass
+    # auth mode (deleted in PR-a 2026-05-26). Scans backend code + scripts
+    # + turbo.json for forbidden tokens (LOGIN_MODE / NoAccount /
+    # dev-fixed-token / DEV_USER_ID). PR-b will extend the script's scan
+    # range to packages/web/ + docs/ + .env.* templates once the frontend
+    # bypass code is cleaned. See spec amend 2026-05-26 § 8.1 for the
+    # invariant + scripts/check-no-noaccount.sh for scan logic.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run check-no-noaccount.sh
+        run: ./scripts/check-no-noaccount.sh
+
   lint-typecheck-test:
     name: Lint + Typecheck + Test
     runs-on: ubuntu-latest

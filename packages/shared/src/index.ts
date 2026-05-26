@@ -1,14 +1,11 @@
 export {
   Environment,
-  LoginMode,
   TaskStatus,
   StorageProvider,
-  DEV_USER_ID,
 } from "./constants/index.js";
 
 export type {
   Environment as EnvironmentType,
-  LoginMode as LoginModeType,
   TaskStatus as TaskStatusType,
   StorageProvider as StorageProviderType,
 } from "./constants/index.js";

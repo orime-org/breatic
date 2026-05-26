@@ -1,9 +1,19 @@
 /**
- * SMTP email sender.
+ * Email sender — EMAIL_BACKEND 3-state dispatch.
  *
- * Uses nodemailer to send transactional emails (password reset, etc.).
- * Configured via SMTP_* env vars. Fails silently in dev when SMTP
- * is not configured (logs warning instead of throwing).
+ * `env.EMAIL_BACKEND` routes `sendMail` to one of three backends:
+ *
+ *   disabled : no email sent, returns false silently. Self-host
+ *              default — pair with recovery-code based password reset
+ *              for SMTP-less installs.
+ *   console  : email content logged to server log (dev: lift magic
+ *              link / verify token straight out of stdout). Returns true.
+ *   smtp     : dispatch via nodemailer using SMTP_* env. Returns true
+ *              on success; returns false + warns if SMTP_HOST/USER
+ *              not configured (legacy fallback preserved).
+ *
+ * Any SMTP-compatible service works under `smtp` (self-hosted postfix,
+ * Resend, SendGrid, AWS SES, Gmail — all expose RFC 5321 SMTP).
  */
 
 import nodemailer from "nodemailer";
@@ -40,9 +50,26 @@ export interface SendMailOptions {
 }
 
 /**
- * Send an email. Returns true if sent, false if SMTP not configured.
+ * Send an email per `env.EMAIL_BACKEND` dispatch.
+ *
+ * @returns `true` if email was dispatched (smtp success) or logged
+ *   (console), `false` if disabled or SMTP fallback to silent-skip
+ *   (smtp mode but unconfigured).
  */
 export async function sendMail(options: SendMailOptions): Promise<boolean> {
+  if (env.EMAIL_BACKEND === "disabled") {
+    return false;
+  }
+
+  if (env.EMAIL_BACKEND === "console") {
+    logger.info(
+      { to: options.to, subject: options.subject, html: options.html },
+      "[console] email",
+    );
+    return true;
+  }
+
+  // smtp path
   const t = getTransporter();
   if (!t) {
     logger.warn({ to: options.to, subject: options.subject }, "Email not sent — SMTP not configured");

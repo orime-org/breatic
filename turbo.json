@@ -7,8 +7,14 @@
     "REDIS_QUEUE_URL",
     "REDIS_STREAM_URL",
     "NODE_ENV",
-    "LOGIN_MODE",
-    "ENV"
+    "ENV",
+    "EMAIL_BACKEND",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET"
   ],
   "tasks": {
     "build": {
