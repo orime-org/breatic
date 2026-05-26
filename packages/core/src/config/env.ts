@@ -125,6 +125,16 @@ export const env = createEnv({
     UPLOAD_MAX_DOCUMENT_MB: z.coerce.number().positive().default(20),
 
     // ── Email ────────────────────────────────────────
+    // Mailer backend dispatch — self-host friendly default. See
+    // `packages/core/src/infra/mailer.ts:sendMail` for routing.
+    //   disabled : noop (no email, returns false). Pair with recovery-code
+    //              based password reset for SMTP-less self-hosts.
+    //   console  : logs subject + html to server log (dev: lift magic
+    //              link / verify token straight out of stdout).
+    //   smtp     : dispatch via nodemailer using SMTP_* below. Any SMTP
+    //              relay works (self-hosted postfix, Resend, SendGrid,
+    //              AWS SES — all expose RFC 5321 SMTP).
+    EMAIL_BACKEND: z.enum(["disabled", "console", "smtp"]).default("disabled"),
     SMTP_HOST: z.string().default(""),
     SMTP_PORT: z.coerce.number().default(587),
     SMTP_USER: z.string().default(""),
