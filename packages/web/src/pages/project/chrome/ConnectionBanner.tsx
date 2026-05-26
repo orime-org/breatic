@@ -50,12 +50,23 @@ function BannerButton({
         'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
         'border border-white/30 bg-black/30 px-3',
         'text-[13px] font-medium text-white',
-        // Brightness filter for hover feedback — opacity-90 was visually
-        // imperceptible (only 10% change on already-dark button on dark
-        // bg). brightness-125 lifts the whole button noticeably without
-        // tripping the lint:hover ADR ban on `hover:bg-X/N` patterns.
-        // active:brightness-95 gives a press-down feedback.
-        'transition hover:brightness-125 active:brightness-95',
+        // Hover feedback: solid color swap (bg + border). Aligns with the
+        // rest of the project's hover convention (bg/text-color change,
+        // not transform / filter). Uses Tailwind static `zinc-700` /
+        // `zinc-800` solid colors — does NOT trip the lint:hover ADR
+        // ban (which only forbids `hover:bg-X/N` alpha-modifier patterns
+        // for Tailwind v4 silent-fail prevention; solid colors are fine).
+        //
+        // Prior attempts (chrome MCP-verified 2026-05-26):
+        //   - `hover:opacity-90` — 10% change on dark button: invisible
+        //   - `hover:brightness-125` — no-op on pure-black/white palette
+        //     (RGB 0×N=0; 255 clamps)
+        //   - `hover:scale-105` — physical feedback but introduced a
+        //     third hover-feedback standard inconsistent with the rest
+        //     of the project; user rejected as cross-standard.
+        'transition-colors duration-150',
+        'hover:border-white/70 hover:bg-zinc-700',
+        'active:bg-zinc-800',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
         className,
       )}
