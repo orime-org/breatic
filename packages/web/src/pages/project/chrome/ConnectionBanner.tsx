@@ -50,7 +50,12 @@ function BannerButton({
         'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
         'border border-white/30 bg-black/30 px-3',
         'text-[13px] font-medium text-white',
-        'transition-opacity hover:opacity-90',
+        // Brightness filter for hover feedback — opacity-90 was visually
+        // imperceptible (only 10% change on already-dark button on dark
+        // bg). brightness-125 lifts the whole button noticeably without
+        // tripping the lint:hover ADR ban on `hover:bg-X/N` patterns.
+        // active:brightness-95 gives a press-down feedback.
+        'transition hover:brightness-125 active:brightness-95',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
         className,
       )}
@@ -103,15 +108,27 @@ export function ConnectionBanner({
 }: ConnectionBannerProps) {
   const t = useTranslation();
 
-  if (status === 'connected' || status === 'connecting') {
-    // `connecting` is intentionally silent — a half-second blip during
-    // normal navigation shouldn't flash a red bar.
-    return null;
-  }
-
+  // `connecting` is intentionally silent — a half-second blip during
+  // normal navigation shouldn't surface as an alarm. Visible status
+  // set is therefore just authFailed + disconnected.
+  const visible = status === 'authFailed' || status === 'disconnected';
   const isAuthFailed = status === 'authFailed';
 
+  // Wrapper stays in the DOM at all times so that the transition from
+  // hidden → visible (and back) animates smoothly via max-height. If
+  // we early-returned null the banner would *insert* into layout on
+  // first ws fail, pushing the entire workspace down in a single
+  // frame — visually feels like "TopBar suddenly gets shoved down by
+  // banner" (2026-05-26 user smoke report). Always-mounted wrapper +
+  // max-height transition gives a smooth slide-in instead.
   return (
+    <div
+      className={cn(
+        'overflow-hidden transition-[max-height] duration-200 ease-out',
+        visible ? 'max-h-[60px]' : 'max-h-0',
+      )}
+      aria-hidden={!visible || undefined}
+    >
     <div
       role='status'
       aria-live='polite'
@@ -157,6 +174,7 @@ export function ConnectionBanner({
           </BannerButton>
         ) : null}
       </div>
+    </div>
     </div>
   );
 }
