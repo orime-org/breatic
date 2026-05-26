@@ -18,6 +18,7 @@ import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";
+import { t } from "@breatic/shared";
 import {
   setSessionCookie,
   clearSessionCookie,
@@ -33,7 +34,7 @@ function rateLimit(opts: { prefix: string; max: number; windowSeconds: number })
     const allowed = await checkRateLimit(redis, `${opts.prefix}:${ip}`, opts.max, opts.windowSeconds);
     if (!allowed) {
       return c.json(
-        { error: { code: 429, message: "Too many requests. Try again later." } },
+        { error: { code: 429, message: t("server.error.rate_limited") } },
         429,
         { "Retry-After": String(opts.windowSeconds) },
       );
@@ -75,7 +76,7 @@ function getGoogleClient(): OAuth2Client {
  * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
  * @throws `409` if email is already registered
  */
-auth.post("/register", rateLimit({ prefix: "register", max: 3, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
+auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
@@ -137,7 +138,7 @@ const googleAuthSchema = z.object({
 auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
-    return c.json({ error: { code: 503, message: "Google OAuth is not configured on this server" } }, 503);
+    return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
   }
 
   const { credential } = c.req.valid("json");
@@ -152,26 +153,26 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
     payload = ticket.getPayload();
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "google_id_token_verification_failed");
-    return c.json({ error: { code: 401, message: "Invalid Google credential" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
   }
 
   if (!payload) {
-    return c.json({ error: { code: 401, message: "Invalid Google credential: empty payload" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
   }
 
   // `verifyIdToken` already enforces aud/iss/exp, but double-check iss
   // in case the library ever changes defaults. Google emits both forms.
   const VALID_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
   if (!payload.iss || !VALID_ISSUERS.has(payload.iss)) {
-    return c.json({ error: { code: 401, message: "Invalid Google credential: wrong issuer" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
   }
 
   if (!payload.sub || !payload.email) {
-    return c.json({ error: { code: 401, message: "Invalid Google credential: missing sub or email" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
   }
 
   if (payload.email_verified !== true) {
-    return c.json({ error: { code: 401, message: "Google account email is not verified" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.google_email_unverified") } }, 401);
   }
 
   const { user, token } = await authService.loginOrCreateGoogle(
@@ -202,7 +203,7 @@ auth.post("/logout", requireAuth, async (c) => {
     await authService.logout(token);
   }
   clearSessionCookie(c);
-  return c.json({ message: "Logged out" });
+  return c.json({ message: t("server.auth.logout_success") });
 });
 
 // ── Password Reset ───────────────────────────────────────────────
@@ -224,7 +225,7 @@ auth.post(
     await authService.forgotPassword(email, resetBaseUrl);
 
     // Always return success (don't reveal if email exists)
-    return c.json({ message: "If this email is registered, a reset link has been sent." });
+    return c.json({ message: t("server.auth.reset_link_sent") });
   },
 );
 
@@ -240,7 +241,7 @@ auth.post(
   async (c) => {
     const { token, password } = c.req.valid("json");
     await authService.resetPassword(token, password);
-    return c.json({ message: "Password reset successful. Please log in." });
+    return c.json({ message: t("server.auth.reset_success") });
   },
 );
 
@@ -280,7 +281,7 @@ auth.post(
     );
     return c.json({
       data: { newRecoveryCode },
-      message: "Password reset successful. Save your new recovery code.",
+      message: t("server.auth.reset_recovery_success"),
     });
   },
 );
@@ -309,7 +310,7 @@ auth.post(
   async (c) => {
     const { token } = c.req.valid("json");
     await authService.verifyEmail(token);
-    return c.json({ message: "Email verified." });
+    return c.json({ message: t("server.auth.email_verified") });
   },
 );
 
@@ -333,7 +334,7 @@ auth.post(
       ? `${c.req.header("Origin")}/verify-email`
       : "http://localhost:8000/verify-email";
     await authService.resendVerificationEmail(user.id, user.email, verifyBaseUrl);
-    return c.json({ message: "Verification email sent. Check your inbox." });
+    return c.json({ message: t("server.auth.verify_email_sent") });
   },
 );
 

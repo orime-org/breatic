@@ -51,7 +51,11 @@ describe("POST /auth/google — env toggle invariant (锁现状回归)", () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: { code: number; message: string } };
     expect(body.error.code).toBe(503);
-    expect(body.error.message).toMatch(/not configured/i);
+    // Server returns the i18n key (or its English locale value once
+    // `loadLocales()` has run). The route test environment doesn't
+    // boot the locale loader, so `t()` falls back to the key itself;
+    // we assert the key directly to keep the test hermetic.
+    expect(body.error.message).toBe("server.auth.google_oauth_unconfigured");
   });
 
   it("does NOT return 404 — endpoint exists, just surfaces misconfig (route mounted unconditionally)", async () => {

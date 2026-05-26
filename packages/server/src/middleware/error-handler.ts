@@ -8,6 +8,7 @@
 import type { ErrorHandler } from "hono";
 import { AppError, ConflictLockedError } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 /** Global error handler for the Hono app. */
 export const errorHandler: ErrorHandler = (err, c) => {
@@ -37,7 +38,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
 
   logger.error({ err }, "Unhandled error");
   return c.json(
-    { error: { code: 500, message: "Internal server error" } },
+    { error: { code: 500, message: t("server.error.internal") } },
     500,
   );
 };

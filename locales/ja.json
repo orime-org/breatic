@@ -10,7 +10,8 @@
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "internal": "内部サーバーエラー",
       "stripe_not_configured": "決済システムが設定されていません",
-      "storage_not_configured": "ストレージシステムが設定されていません"
+      "storage_not_configured": "ストレージシステムが設定されていません",
+      "field_required": "少なくとも 1 つのフィールドを指定してください"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -18,7 +19,16 @@
       "no_password": "このアカウントはソーシャルログインを使用しています",
       "token_expired": "セッションが期限切れです。再度ログインしてください",
       "register_success": "アカウントが作成されました",
-      "logout_success": "ログアウトしました"
+      "logout_success": "ログアウトしました",
+      "not_authenticated": "認証されていません",
+      "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
+      "invalid_google_credential": "Google アカウントを確認できませんでした",
+      "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
+      "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
+      "reset_success": "パスワードをリセットしました。サインインしてください。",
+      "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
+      "email_verified": "メールアドレスを確認しました。",
+      "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。"
     },
     "payment": {
       "checkout_created": "決済セッションが作成されました",
@@ -73,6 +83,9 @@
         "elevenlabs-v3": "最も自然、52種の声色",
         "gemini-tts": "複数話者の対話"
       }
+    },
+    "text_tool": {
+      "already_running": "別のテキストツールが実行中です。お待ちください。"
     }
   },
   "save": "保存",
@@ -265,15 +278,86 @@
     "save_percent": "{percent}% お得"
   },
   "auth": {
-    "login": "ログイン",
-    "register": "新規登録",
-    "logout": "ログアウト",
     "email": "メールアドレス",
     "password": "パスワード",
-    "forgot_password": "パスワードを忘れた？",
-    "or_continue_with": "または以下で続ける",
-    "google": "Google",
-    "tagline": "AI クリエイティブプラットフォーム"
+    "name": "名前",
+    "or": "または",
+    "invalidEmail": "有効なメールアドレスを入力してください。",
+    "passwordTooShort": "パスワードは 8 文字以上にしてください。",
+    "nameRequired": "名前を入力してください。",
+    "passwordShow": "パスワードを表示",
+    "passwordHide": "パスワードを非表示",
+    "login": {
+      "title": "サインイン",
+      "subtitle": "おかえりなさい。",
+      "signIn": "サインイン",
+      "signingIn": "サインイン中...",
+      "signUp": "登録",
+      "noAccount": "アカウントをお持ちでないですか?",
+      "forgotPassword": "パスワードをお忘れですか?",
+      "continueWithGoogle": "Google で続ける",
+      "googleSoon": "Google サインインは近日公開予定です。",
+      "failed": "サインインに失敗しました。もう一度お試しください。"
+    },
+    "register": {
+      "title": "アカウントを作成",
+      "subtitle": "breatic で創作を始めましょう。",
+      "create": "アカウントを作成",
+      "creating": "作成中...",
+      "haveAccount": "すでにアカウントをお持ちですか?",
+      "signIn": "サインイン",
+      "passwordHint": "8 文字以上にしてください。",
+      "failed": "登録に失敗しました。もう一度お試しください。"
+    },
+    "recovery": {
+      "title": "リカバリーコードを保存してください",
+      "subtitle": "メールを受け取れない場合、これがパスワードをリセットする唯一の方法です。安全な場所に保管してください — 二度と表示されません。",
+      "copy": "コピー",
+      "copied": "リカバリーコードをクリップボードにコピーしました。",
+      "copyFailed": "クリップボードへのコピーに失敗しました。",
+      "download": "ダウンロード",
+      "ack": "リカバリーコードを安全な場所に保存しました。",
+      "continue": "続ける"
+    },
+    "forgot": {
+      "title": "パスワードをお忘れですか?",
+      "subtitle": "リセットリンクをメールでお送りするか、リカバリーコードをお使いください。",
+      "sendResetLink": "リセットリンクをメール送信",
+      "sending": "送信中...",
+      "useRecoveryCode": "リカバリーコードを使う",
+      "sentTitle": "受信トレイをご確認ください",
+      "sentSubtitle": "そのアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
+      "sentBody": "{email} にリセットリンクを送信しました。数分経っても届かない場合は、迷惑メールをご確認いただくか、リカバリーコードをご利用ください。",
+      "backToSignIn": "サインインに戻る",
+      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。"
+    },
+    "reset": {
+      "titleToken": "新しいパスワードを設定",
+      "subtitleToken": "強いパスワードをお選びください — 8 文字以上。",
+      "titleRecovery": "リカバリーコードでリセット",
+      "subtitleRecovery": "登録時に保存したリカバリーコードを入力し、新しいパスワードを設定してください。",
+      "recoveryCode": "リカバリーコード",
+      "recoveryCodeRequired": "リカバリーコードを入力してください。",
+      "newPassword": "新しいパスワード",
+      "save": "パスワードを保存",
+      "saving": "保存中...",
+      "success": "パスワードを更新しました。サインインしてください。",
+      "failed": "パスワードのリセットに失敗しました。もう一度お試しください。",
+      "backToSignIn": "サインインに戻る"
+    },
+    "verify": {
+      "verifying": "メールアドレスを確認中...",
+      "pleaseWait": "少々お待ちください。",
+      "successTitle": "メールアドレスが確認されました",
+      "successBody": "メールアドレスが確認されました。breatic のすべての機能をご利用いただけます。",
+      "goToStudio": "Studio へ",
+      "failedTitle": "メールアドレスの確認に失敗しました",
+      "failedBody": "リンクの有効期限が切れているか、既に使用済みの可能性があります。サインイン後、アカウント設定から新しい確認メールをリクエストしてください。",
+      "checkInboxTitle": "受信トレイをご確認ください",
+      "checkInboxBody": "先ほどお送りした確認リンクを開いてください。届いていない場合は、アカウント設定から再送できます。",
+      "signIn": "サインイン",
+      "failed": "メールアドレスの確認に失敗しました。"
+    }
   },
   "breatic_slogan": "AIで創造性を可視化",
   "about_us": "私たちについて",
@@ -1169,88 +1253,6 @@
   "studio": {
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
-    }
-  },
-  "auth": {
-    "email": "メールアドレス",
-    "password": "パスワード",
-    "name": "名前",
-    "or": "または",
-    "invalidEmail": "有効なメールアドレスを入力してください。",
-    "passwordTooShort": "パスワードは 8 文字以上にしてください。",
-    "nameRequired": "名前を入力してください。",
-    "passwordShow": "パスワードを表示",
-    "passwordHide": "パスワードを非表示",
-    "login": {
-      "title": "サインイン",
-      "subtitle": "おかえりなさい。",
-      "signIn": "サインイン",
-      "signingIn": "サインイン中...",
-      "signUp": "登録",
-      "noAccount": "アカウントをお持ちでないですか?",
-      "forgotPassword": "パスワードをお忘れですか?",
-      "continueWithGoogle": "Google で続ける",
-      "googleSoon": "Google サインインは近日公開予定です。",
-      "failed": "サインインに失敗しました。もう一度お試しください。"
-    },
-    "register": {
-      "title": "アカウントを作成",
-      "subtitle": "breatic で創作を始めましょう。",
-      "create": "アカウントを作成",
-      "creating": "作成中...",
-      "haveAccount": "すでにアカウントをお持ちですか?",
-      "signIn": "サインイン",
-      "passwordHint": "8 文字以上にしてください。",
-      "failed": "登録に失敗しました。もう一度お試しください。"
-    },
-    "recovery": {
-      "title": "リカバリーコードを保存してください",
-      "subtitle": "メールを受け取れない場合、これがパスワードをリセットする唯一の方法です。安全な場所に保管してください — 二度と表示されません。",
-      "copy": "コピー",
-      "copied": "リカバリーコードをクリップボードにコピーしました。",
-      "copyFailed": "クリップボードへのコピーに失敗しました。",
-      "download": "ダウンロード",
-      "ack": "リカバリーコードを安全な場所に保存しました。",
-      "continue": "続ける"
-    },
-    "forgot": {
-      "title": "パスワードをお忘れですか?",
-      "subtitle": "リセットリンクをメールでお送りするか、リカバリーコードをお使いください。",
-      "sendResetLink": "リセットリンクをメール送信",
-      "sending": "送信中...",
-      "useRecoveryCode": "リカバリーコードを使う",
-      "sentTitle": "受信トレイをご確認ください",
-      "sentSubtitle": "そのアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
-      "sentBody": "{email} にリセットリンクを送信しました。数分経っても届かない場合は、迷惑メールをご確認いただくか、リカバリーコードをご利用ください。",
-      "backToSignIn": "サインインに戻る",
-      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。"
-    },
-    "reset": {
-      "titleToken": "新しいパスワードを設定",
-      "subtitleToken": "強いパスワードをお選びください — 8 文字以上。",
-      "titleRecovery": "リカバリーコードでリセット",
-      "subtitleRecovery": "登録時に保存したリカバリーコードを入力し、新しいパスワードを設定してください。",
-      "recoveryCode": "リカバリーコード",
-      "recoveryCodeRequired": "リカバリーコードを入力してください。",
-      "newPassword": "新しいパスワード",
-      "save": "パスワードを保存",
-      "saving": "保存中...",
-      "success": "パスワードを更新しました。サインインしてください。",
-      "failed": "パスワードのリセットに失敗しました。もう一度お試しください。",
-      "backToSignIn": "サインインに戻る"
-    },
-    "verify": {
-      "verifying": "メールアドレスを確認中...",
-      "pleaseWait": "少々お待ちください。",
-      "successTitle": "メールアドレスが確認されました",
-      "successBody": "メールアドレスが確認されました。breatic のすべての機能をご利用いただけます。",
-      "goToStudio": "Studio へ",
-      "failedTitle": "メールアドレスの確認に失敗しました",
-      "failedBody": "リンクの有効期限が切れているか、既に使用済みの可能性があります。サインイン後、アカウント設定から新しい確認メールをリクエストしてください。",
-      "checkInboxTitle": "受信トレイをご確認ください",
-      "checkInboxBody": "先ほどお送りした確認リンクを開いてください。届いていない場合は、アカウント設定から再送できます。",
-      "signIn": "サインイン",
-      "failed": "メールアドレスの確認に失敗しました。"
     }
   }
 }

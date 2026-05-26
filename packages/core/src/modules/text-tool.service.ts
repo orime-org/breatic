@@ -8,6 +8,7 @@
  */
 
 import { streamText, stepCountIs } from "ai";
+import { t } from "@breatic/shared";
 import { getModel } from "../agent/llm.js";
 import { getModelForTool, getPromptForTool } from "../config/text-tools.js";
 import { env } from "../config/env.js";
@@ -118,7 +119,7 @@ export async function* executeTextTool(
   // Concurrency lock
   const locked = await acquireLock(userId);
   if (!locked) {
-    yield { type: "error", message: "Another text tool is already running. Please wait." };
+    yield { type: "error", message: t("server.text_tool.already_running") };
     return;
   }
 

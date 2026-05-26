@@ -12,6 +12,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@breatic/core";
+import { t } from "@breatic/shared";
 import { readSessionCookie } from "./session-cookie.js";
 
 /** Hono context variables set by auth middleware. */
@@ -34,12 +35,12 @@ export const requireAuth: MiddlewareHandler<{
 }> = async (c, next) => {
   const token = readSessionCookie(c);
   if (!token) {
-    return c.json({ error: { code: 401, message: "Not authenticated" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
   }
 
   const user = await authService.getUserByToken(token);
   if (!user) {
-    return c.json({ error: { code: 401, message: "Invalid or expired session" } }, 401);
+    return c.json({ error: { code: 401, message: t("server.auth.token_expired") } }, 401);
   }
 
   c.set("user", {
