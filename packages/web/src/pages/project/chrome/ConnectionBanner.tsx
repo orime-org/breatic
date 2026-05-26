@@ -51,9 +51,11 @@ function BannerButton({
         'border border-white/30 bg-black/30 px-3',
         'text-[13px] font-medium text-white',
         // Hover feedback: solid color swap (bg + border). Aligns with the
-        // rest of the project's hover convention (bg/text-color change,
-        // not transform / filter). Uses Tailwind static `zinc-700` /
-        // `zinc-800` solid colors — does NOT trip the lint:hover ADR
+        // rest of the project's hover-only convention — project-wide
+        // rule is "hover state, no active state" per user 2026-05-26
+        // (chrome-ghost was the lone exception with active:bg-secondary
+        // and has been removed in the same commit). Uses Tailwind static
+        // `zinc-800` solid color — does NOT trip the lint:hover ADR
         // ban (which only forbids `hover:bg-X/N` alpha-modifier patterns
         // for Tailwind v4 silent-fail prevention; solid colors are fine).
         //
@@ -65,8 +67,7 @@ function BannerButton({
         //     third hover-feedback standard inconsistent with the rest
         //     of the project; user rejected as cross-standard.
         'transition-colors duration-150',
-        'hover:border-white/70 hover:bg-zinc-700',
-        'active:bg-zinc-800',
+        'hover:border-white/70 hover:bg-zinc-800',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
         className,
       )}
