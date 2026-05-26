@@ -175,6 +175,16 @@ export function useProjectMessages(projectId: string): {
  * open. Always appends at the end of `openTabIds` so the most recently
  * opened tab is rightmost — matches user expectation that "new things
  * appear on the right".
+ *
+ * Q6 first-write snapshot: when this is the very first interaction
+ * for `userId` on the project (no `openTabIds` Y.Array yet), seed the
+ * array with ALL currently-visible Space ids before appending the
+ * requested one. Without the snapshot, the user's first click /
+ * create would set `openTabIds = [thatOneId]` — and the
+ * `readMetaState` `!userMap`-fallback (`openTabIds: [spaces[0].id]`)
+ * would no longer fire, so every Space EXCEPT the one just opened
+ * would silently disappear from the tab bar (`Y.Map.forEach` order
+ * is not insertion order, so even the "first" tab is unstable).
  */
 export function openSpaceTab(
   projectId: string,
@@ -187,10 +197,21 @@ export function openSpaceTab(
     const openTabIds = userMap.get(OPEN_TAB_IDS_KEY) as
       | Y.Array<string>
       | undefined;
-    const arr = openTabIds ?? new Y.Array<string>();
-    if (!openTabIds) userMap.set(OPEN_TAB_IDS_KEY, arr);
-    const existing = arr.toArray();
-    if (!existing.includes(spaceId)) arr.push([spaceId]);
+    if (!openTabIds) {
+      // First-write snapshot — see docstring (Q6).
+      const arr = new Y.Array<string>();
+      userMap.set(OPEN_TAB_IDS_KEY, arr);
+      const allSpaceIds = Array.from(
+        doc.getMap<Y.Map<unknown>>(SPACES_KEY).keys(),
+      );
+      const initial = allSpaceIds.includes(spaceId)
+        ? allSpaceIds
+        : [...allSpaceIds, spaceId];
+      arr.push(initial);
+      return;
+    }
+    const existing = openTabIds.toArray();
+    if (!existing.includes(spaceId)) openTabIds.push([spaceId]);
   });
 }
 
@@ -361,11 +382,17 @@ function readMetaState(
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
   if (!userMap) {
-    // First time this user sees the project — default to "active space
-    // open + active" (decision G.2) so the workspace is never blank.
+    // First time this user sees the project — show ALL existing
+    // spaces in the tab bar so the workspace surfaces everything the
+    // user can act on. The previous `[spaces[0].id]` shape collapsed
+    // the bar to one tab and the chosen tab was unstable across
+    // Y.Map.forEach iteration order, so creating a new Space made
+    // the original Space silently disappear (Q6). The `openSpaceTab`
+    // snapshot persists this state to the perUser subtree the moment
+    // the user clicks anything.
     return {
       spaces,
-      openTabIds: spaces[0] ? [spaces[0].id] : [],
+      openTabIds: spaces.map((s) => s.id),
       activeSpaceId: spaces[0]?.id ?? null,
     };
   }

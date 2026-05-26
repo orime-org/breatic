@@ -64,6 +64,13 @@ export interface AuthContext {
   user: {
     id: string;
     role: ProjectRole;
+    /**
+     * Human-readable display name (`users.username ?? users.email`),
+     * resolved at handshake time so downstream consumers
+     * (`space-rpc` actor field on projectMessages) do not have to
+     * re-query Postgres on every Space lifecycle event.
+     */
+    name: string;
   };
   connection: {
     readOnly: boolean;
@@ -119,16 +126,23 @@ async function loadProjectSpaceIds(
 }
 
 /**
- * Resolve the caller's role on a project, or `null` if the project
- * does not exist (or is soft-deleted) OR the user has no active
- * membership. Both branches return null so the caller surfaces a
- * single error and never leaks project existence.
+ * Resolve the caller's role on a project + display name, or `null` if
+ * the project does not exist (or is soft-deleted) OR the user has no
+ * active membership. Both branches return null so the caller surfaces
+ * a single error and never leaks project existence.
+ *
+ * `userName` falls back through `users.username` → `users.email` so
+ * downstream `actor` fields on projectMessages always render a
+ * human-readable string, even for accounts that signed up without a
+ * username (Google OAuth path leaves `username` null until profile
+ * edit). The fallback chain mirrors `server/src/routes/canvas.ts`
+ * `holdingByName` for consistency.
  */
 async function loadProjectRole(
   sql: ReturnType<typeof postgres>,
   userId: string,
   projectId: string,
-): Promise<ProjectRole | null> {
+): Promise<{ role: ProjectRole; userName: string } | null> {
   const projectRows = await sql<{ id: string }[]>`
     SELECT id
     FROM projects
@@ -138,15 +152,22 @@ async function loadProjectRole(
   `;
   if (projectRows.length === 0) return null;
 
-  const memberRows = await sql<{ role: string }[]>`
-    SELECT role
-    FROM project_members
-    WHERE project_id = ${projectId}
-      AND user_id = ${userId}
-      AND deleted_at IS NULL
+  const memberRows = await sql<{ role: string; username: string | null; email: string }[]>`
+    SELECT pm.role, u.username, u.email
+    FROM project_members pm
+    JOIN users u ON u.id = pm.user_id
+    WHERE pm.project_id = ${projectId}
+      AND pm.user_id = ${userId}
+      AND pm.deleted_at IS NULL
+      AND u.deleted_at IS NULL
     LIMIT 1
   `;
-  return (memberRows[0]?.role as ProjectRole | undefined) ?? null;
+  const row = memberRows[0];
+  if (!row) return null;
+  return {
+    role: row.role as ProjectRole,
+    userName: row.username ?? row.email,
+  };
 }
 
 /**
@@ -197,12 +218,13 @@ export function createAuthHook({
       );
     }
 
-    const role = await loadProjectRole(sql, userId, parsed.projectId);
-    if (!role) {
+    const member = await loadProjectRole(sql, userId, parsed.projectId);
+    if (!member) {
       throw new Error(
         `User ${userId} is not authorized to access project ${parsed.projectId}`,
       );
     }
+    const { role, userName } = member;
 
     // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
     // refuse the connection if the spaceId is no longer in `meta.spaces`.
@@ -219,7 +241,7 @@ export function createAuthHook({
     }
 
     return {
-      user: { id: userId, role },
+      user: { id: userId, role, name: userName },
       connection: {
         readOnly: role === "view",
       },

@@ -36,21 +36,61 @@ describe('project-meta per-user state machine', () => {
   });
 
   it('openSpaceTab appends and is idempotent (no duplicate ids)', () => {
+    // First call snapshots the current spaces (Q6 fix — see invariant
+    // below for the rationale). With 3 spaces seeded in beforeEach,
+    // the snapshot brings them all into openTabIds; subsequent opens
+    // of already-known ids are no-ops.
     openSpaceTab(projectId, userId, 's1');
     openSpaceTab(projectId, userId, 's1');
     openSpaceTab(projectId, userId, 's2');
     const { openTabIds } = readUserState();
-    expect(openTabIds).toEqual(['s1', 's2']);
+    expect(openTabIds).toEqual(expect.arrayContaining(['s1', 's2', 's3']));
+    expect(openTabIds).toHaveLength(3);
+  });
+
+  it('Q6 invariant: first openSpaceTab snapshots all existing spaces (no tab disappears)', () => {
+    // Scenario: user lands on a project with 3 existing spaces but has
+    // never interacted before (perUser is empty). They click the "+"
+    // button to create a new space, which triggers openSpaceTab for the
+    // new id. Without the snapshot, the first openSpaceTab would set
+    // openTabIds = [newId], and ALL 3 existing tabs would vanish from
+    // the tab bar — recoverable only via the SpaceDrawer (the Q6 bug).
+    openSpaceTab(projectId, userId, 's2');
+    const { openTabIds } = readUserState();
+    expect(openTabIds).toContain('s1');
+    expect(openTabIds).toContain('s2');
+    expect(openTabIds).toContain('s3');
+    expect(openTabIds).toHaveLength(3);
+  });
+
+  it('Q6 invariant: subsequent openSpaceTab only appends new ids (no re-snapshot)', () => {
+    // First call snapshots {s1, s2, s3}. After a close + re-open of s1,
+    // s1 should sit at the end (the snapshot is a one-shot init, not
+    // a recurring overwrite).
+    openSpaceTab(projectId, userId, 's2');
+    closeSpaceTab(projectId, userId, 's1');
+    openSpaceTab(projectId, userId, 's1');
+    const { openTabIds } = readUserState();
+    expect(openTabIds).toContain('s1');
+    expect(openTabIds).toContain('s2');
+    expect(openTabIds).toContain('s3');
+    // s1 is last because re-open appends to the end.
+    expect(openTabIds[openTabIds.length - 1]).toBe('s1');
   });
 
   it('closeSpaceTab removes the id (and is idempotent for missing ids)', () => {
+    // First openSpaceTab snapshots all 3 spaces (Q6) → openTabIds is
+    // now {s1, s2, s3}. Closing s1 leaves {s2, s3}; subsequent closes
+    // of s1 / a missing id are no-ops.
     openSpaceTab(projectId, userId, 's1');
     openSpaceTab(projectId, userId, 's2');
     closeSpaceTab(projectId, userId, 's1');
     closeSpaceTab(projectId, userId, 's1'); // no-op
     closeSpaceTab(projectId, userId, 's-missing');
     const { openTabIds } = readUserState();
-    expect(openTabIds).toEqual(['s2']);
+    expect(openTabIds).toEqual(expect.arrayContaining(['s2', 's3']));
+    expect(openTabIds).toHaveLength(2);
+    expect(openTabIds).not.toContain('s1');
   });
 
   it('setActiveSpace stores the id (and null clears the entry)', () => {

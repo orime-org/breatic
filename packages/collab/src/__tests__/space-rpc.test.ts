@@ -60,7 +60,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "view", userName: "Viewer Vera" },
       {
         id: "r1",
         type: "space:create",
@@ -75,7 +75,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "view", userName: "Viewer Vera" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -85,7 +85,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "view", userName: "Viewer Vera" },
       {
         id: "r1",
         type: "space:lock",
@@ -99,7 +99,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "edit" },
+      { userId: "u", role: "edit", userName: "Editor Eli" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -110,7 +110,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "edit" },
+      { userId: "u", role: "edit", userName: "Editor Eli" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
     );
     expect(res.ok).toBe(false);
@@ -122,7 +122,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "edit", userName: "Alice" },
       {
         id: "r1",
         type: "space:create",
@@ -137,7 +137,11 @@ describe("handleSpaceRpc — happy paths", () => {
     const m = messages.get(0) as Y.Map<unknown>;
     expect(m.get("kind")).toBe("space-created");
     expect(m.get("spaceId")).toBe(SID);
-    expect(m.get("actor")).toBe("u-1");
+    // Q7 invariant: actor is the human-readable userName, not the
+    // opaque UUID — ProjectMessagesButton renders this string verbatim
+    // into "{actor} 创建了 Space {spaceName}".
+    expect(m.get("actor")).toBe("Alice");
+    expect(m.get("actor")).not.toBe("u-1");
   });
 
   it("space:create returns CONFLICT when spaceId already exists", async () => {
@@ -148,7 +152,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "edit", userName: "Alice" },
       {
         id: "r1",
         type: "space:create",
@@ -172,7 +176,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "edit", userName: "Alice" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
@@ -192,7 +196,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "edit", userName: "Alice" },
       { id: "r1", type: "space:delete", payload: { spaceId: "missing" } },
     );
     expect(res.ok).toBe(false);
@@ -209,7 +213,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "edit", userName: "Alice" },
       {
         id: "r1",
         type: "space:lock",
@@ -244,7 +248,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql },
       PID,
-      { userId: "owner-1", role: "owner" },
+      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
@@ -259,7 +263,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "owner-1", role: "owner" },
+      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -276,7 +280,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "owner-1", role: "owner" },
+      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
     );
     expect(res.ok).toBe(true);

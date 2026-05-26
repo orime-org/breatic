@@ -51,6 +51,13 @@ export interface SpaceRpcContext {
 export interface SpaceRpcCaller {
   userId: string;
   role: ProjectRole;
+  /**
+   * Human-readable caller name (`users.username ?? users.email`),
+   * resolved by the auth hook from the session cookie. Stored as the
+   * `actor` on every projectMessages entry so the [项目消息] bell
+   * surfaces "Alice 创建了 Space X" instead of the raw UUID.
+   */
+  userName: string;
 }
 
 const SYSTEM_USER_ID = "system";
@@ -189,7 +196,7 @@ async function handleCreate(
       spaces.set(spaceId, entry);
       pushProjectMessage(doc, {
         kind: "space-created",
-        actor: caller.userId,
+        actor: caller.userName,
         spaceId,
         spaceName: name,
       });
@@ -233,7 +240,7 @@ async function handleDelete(
       spaces.delete(spaceId);
       pushProjectMessage(doc, {
         kind: "space-deleted",
-        actor: caller.userId,
+        actor: caller.userName,
         spaceId,
         spaceName,
         spaceSnapshot: snapshot ?? undefined,
@@ -279,7 +286,7 @@ async function handleLock(
       entry.set("locked", locked);
       pushProjectMessage(doc, {
         kind: locked ? "space-locked" : "space-unlocked",
-        actor: caller.userId,
+        actor: caller.userName,
         spaceId,
         spaceName: entry.get("name") as string | undefined,
       });
@@ -400,7 +407,7 @@ async function handleRestore(
       spaces.set(spaceId, entry);
       pushProjectMessage(doc, {
         kind: "space-restored",
-        actor: caller.userId,
+        actor: caller.userName,
         spaceId,
         spaceName: snapshot.name as string | undefined,
       });

@@ -185,11 +185,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       const req = reqResult.data;
 
       const ctx = (connection.context ?? {}) as {
-        user?: { id?: string; role?: ProjectRole };
+        user?: { id?: string; role?: ProjectRole; name?: string };
       };
       const callerId = ctx.user?.id;
       const callerRole = ctx.user?.role;
-      if (!callerId || !callerRole) {
+      const callerName = ctx.user?.name;
+      if (!callerId || !callerRole || !callerName) {
         document.broadcastStateless(
           JSON.stringify({
             id: req.id,
@@ -203,7 +204,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       const response = await handleSpaceRpc(
         { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
         parsed.projectId,
-        { userId: callerId, role: callerRole },
+        { userId: callerId, role: callerRole, userName: callerName },
         req,
       );
       document.broadcastStateless(JSON.stringify(response));
