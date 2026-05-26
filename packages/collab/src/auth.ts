@@ -31,7 +31,7 @@
 import type Redis from "ioredis";
 import postgres from "postgres";
 import * as Y from "yjs";
-import { DEV_USER_ID, parseDocName, projectMetaDocName } from "@breatic/shared";
+import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /** Resolved user context returned to Hocuspocus. */
@@ -146,19 +146,6 @@ export function createAuthHook({
     token: string;
     documentName: string;
   }): Promise<AuthContext> => {
-    // NoAccount mode: skip auth, use dev user with full permission.
-    // Dev/test only — startup gate (collab/index.ts) refuses to start
-    // in production with LOGIN_MODE=NoAccount.
-    if (process.env["LOGIN_MODE"] === "NoAccount") {
-      if (process.env["ENV"] === "prod") {
-        throw new Error("NoAccount mode forbidden in production");
-      }
-      return {
-        user: { id: DEV_USER_ID, role: "owner" },
-        connection: { readOnly: false },
-      };
-    }
-
     if (!token) {
       throw new Error("No authentication token provided");
     }

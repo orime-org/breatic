@@ -45,7 +45,6 @@ if (urls) {
 // We use "dev" so that the stream key published by the worker
 // (dev:stream:task-events) matches the key the task-listener reads.
 process.env.ENV = "dev";
-process.env.LOGIN_MODE = "WithAccount";
 process.env.SESSION_SECRET_KEY = "test-secret-key-for-integration-tests";
 process.env.STORAGE_PROVIDER = "local";
 process.env.ALLOWED_ORIGINS = "http://localhost:3001";

@@ -47,7 +47,6 @@ export const env = createEnv({
 
     // ── Auth ──────────────────────────────────────────
     SESSION_SECRET_KEY: z.string().min(1),
-    LOGIN_MODE: z.enum(["WithAccount", "NoAccount"]).default("WithAccount"),
 
     // ── Database ──────────────────────────────────────
     DATABASE_URL: z.string().url(),
@@ -146,16 +145,6 @@ export const env = createEnv({
 });
 
 // ── Startup safety check ─────────────────────────────────────
-// NoAccount mode disables ALL authentication. It must never run
-// in production — a single misconfigured env var would expose
-// every user's data to anonymous access.
-if (env.LOGIN_MODE === "NoAccount" && env.ENV === "prod") {
-  throw new Error(
-    "FATAL: LOGIN_MODE=NoAccount is forbidden when ENV=prod. " +
-    "This would disable all authentication. Refusing to start.",
-  );
-}
-
 // Stripe secrets must be present (and non-whitespace) when payments are on.
 // Both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET default to "" in the
 // Zod schema so the app boots fine when PAYMENT_ENABLED=false. But if
