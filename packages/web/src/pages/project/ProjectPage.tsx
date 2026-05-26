@@ -100,6 +100,13 @@ export default function ProjectPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      // Studio's ProjectGrid keys its list query on `['projects', 'list']`
+      // (see `pages/studio/grid/ProjectGrid.tsx`). Without this second
+      // invalidation, hitting Back → Studio after a rename would show
+      // the cached old name until the user manually refreshed — the
+      // Q5 bug. Invalidating both keys keeps the in-project header
+      // and the Studio list in sync on the next focus / refetch.
+      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
     },
   });
 

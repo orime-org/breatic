@@ -26,9 +26,6 @@ import { NotFoundError, ForbiddenError } from "../errors.js";
 import { ROLE_RANK } from "@breatic/shared";
 import type { ProjectEntity, ProjectRole } from "@breatic/shared";
 
-/** Default Space name used at project creation. Localizable later. */
-const DEFAULT_SPACE_NAME = "Untitled";
-
 /**
  * Throw if the user does not have at least `minRole` on the project.
  *
@@ -105,10 +102,15 @@ export async function create(
     );
 
     const spaceId = randomUUID();
+    // The first Space inherits the Project name. NewProjectDialog
+    // only collects one text field (the Project name), so users
+    // expect the seeded canvas tab to read what they just typed —
+    // not a placeholder. Tab-level rename ships via the inline
+    // dblclick edit (`SpaceTab.tsx`) once they're inside.
     const initialState = encodeInitialMetaState({
       spaceId,
       kind: "canvas",
-      name: DEFAULT_SPACE_NAME,
+      name: project.name,
       createdBy: userId,
       ts: Date.now(),
     });
