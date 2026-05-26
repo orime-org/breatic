@@ -155,6 +155,26 @@ export default defineConfig(({ command, mode }) => {
           target: 'ws://localhost:1234',
           ws: true,
           changeOrigin: true,
+          // Explicit cookie forwarding on the WS upgrade request.
+          // `http-proxy` (under the hood) forwards request headers on
+          // HTTP proxies by default, but the WS-upgrade code path has
+          // historically been less reliable about `Cookie` when
+          // `changeOrigin: true` rewrites the Host header — issues
+          // open against http-party/node-http-proxy track this. The
+          // `proxyReqWs` hook is the documented way to guarantee the
+          // session cookie reaches the collab process at :1234 so
+          // `onAuthenticate` can parse `breatic_session` out of
+          // `requestHeaders.cookie`. Without this the WS auth fails
+          // (4401) even when the same browser session can hit /api
+          // fine, because the API proxy keeps the cookie and the WS
+          // proxy was silently dropping it.
+          configure(proxy) {
+            proxy.on('proxyReqWs', (proxyReq, req) => {
+              if (req.headers.cookie) {
+                proxyReq.setHeader('Cookie', req.headers.cookie);
+              }
+            });
+          },
         },
       },
     },
