@@ -102,7 +102,7 @@ export function ConnectionBanner({
             // Override: outline default would render white pill on
             // deep-red bg in light mode — use translucent-black + white
             // border + white text for strong contrast on both red+amber.
-            className='border-white/30 bg-black/30 text-white hover:bg-black/50 hover:text-white'
+            className='border-white/30 bg-black/30 text-white hover:opacity-90'
           >
             {t('connection.banner.authFailed.action')}
           </Button>
@@ -114,7 +114,7 @@ export function ConnectionBanner({
             onClick={onReload}
             data-testid='connection-banner-reload'
             // Same override as re-login button — see above.
-            className='gap-1.5 border-white/30 bg-black/30 text-white hover:bg-black/50 hover:text-white'
+            className='gap-1.5 border-white/30 bg-black/30 text-white hover:opacity-90'
           >
             <RefreshCw className='h-3.5 w-3.5' aria-hidden />
             {t('connection.banner.reload')}
