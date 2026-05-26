@@ -11,6 +11,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import { corsMiddleware } from "./middleware/cors.js";
+import { localeMiddleware } from "./middleware/i18n.js";
 import { loggerMiddleware } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { healthRoute } from "./routes/health.js";
@@ -38,6 +39,11 @@ export function createApp(): Hono {
 
   // ── Middleware ─────────────────────────────────
   app.use("*", corsMiddleware);
+  // Locale must wrap BEFORE the route handlers so service-layer
+  // `t("server.…")` calls inside them see the per-request locale.
+  // It also runs before `onError` so error responses honour the
+  // caller's language.
+  app.use("*", localeMiddleware);
   app.use("*", loggerMiddleware);
   app.onError(errorHandler);
 

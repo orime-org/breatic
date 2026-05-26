@@ -86,6 +86,22 @@ export default function RegisterPage() {
     navigate('/studio', { replace: true });
   }
 
+  // Once registration succeeds we have a recovery code to reveal —
+  // unmount the registration form entirely instead of leaving it
+  // visible behind the dialog overlay. Dialog overlay is semi-
+  // transparent, so a residual form would show through; conditional
+  // render keeps the focus where it belongs and matches the
+  // single-task-at-a-time UX user spec called for.
+  if (recoveryCode !== null) {
+    return (
+      <RecoveryCodeDialog
+        open={true}
+        code={recoveryCode}
+        onContinue={handleContinue}
+      />
+    );
+  }
+
   return (
     <>
       <AuthCardShell
@@ -175,12 +191,6 @@ export default function RegisterPage() {
           </Button>
         </form>
       </AuthCardShell>
-
-      <RecoveryCodeDialog
-        open={recoveryCode !== null}
-        code={recoveryCode ?? ''}
-        onContinue={handleContinue}
-      />
     </>
   );
 }

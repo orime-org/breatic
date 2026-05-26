@@ -34,6 +34,34 @@ const _formatterCache = new Map<string, IntlMessageFormat>();
 let _currentLocale: Locale = "en";
 
 /**
+ * Active-locale resolver hook. When set, `t()` calls
+ * `_localeResolver()` first; only falls back to the process-global
+ * `_currentLocale` when the resolver returns `undefined`.
+ *
+ * Wired by `@breatic/shared/i18n-node` at module load time so server
+ * code paths read the per-request locale from an AsyncLocalStorage
+ * store. The web bundle never installs a resolver, so `_currentLocale`
+ * (driven by `setLocale()` from the locale-bootstrap) stays
+ * authoritative there.
+ */
+let _localeResolver: (() => Locale | undefined) | null = null;
+
+/**
+ * Install a per-call locale resolver. Called once by the node-side
+ * loader during boot — never by application code.
+ */
+export function setLocaleResolver(
+  resolver: (() => Locale | undefined) | null,
+): void {
+  _localeResolver = resolver;
+}
+
+/** Resolve the effective locale for a single `t()` call. */
+function activeLocale(): Locale {
+  return _localeResolver?.() ?? _currentLocale;
+}
+
+/**
  * Set messages for a locale. Called by the web bootstrap with JSON
  * imported via the Vite `@locales` alias, and by the Node-only
  * `loadLocales()` loader on the server.
@@ -87,11 +115,12 @@ export function t(
     return message;
   }
 
-  const cacheKey = `${_currentLocale}|${key}`;
+  const locale = activeLocale();
+  const cacheKey = `${locale}|${key}`;
   let formatter = _formatterCache.get(cacheKey);
   if (!formatter) {
     try {
-      formatter = new IntlMessageFormat(message, _currentLocale);
+      formatter = new IntlMessageFormat(message, locale);
       _formatterCache.set(cacheKey, formatter);
     } catch {
       // Malformed ICU — return the raw message so a typo in a locale
@@ -107,7 +136,8 @@ export function t(
 
 /** Resolve a key against current locale → en fallback → undefined. */
 function resolveMessage(key: string): string | undefined {
-  const current = _locales.get(_currentLocale);
+  const locale = activeLocale();
+  const current = _locales.get(locale);
   const fallback = _locales.get("en");
   return (current ? resolveKey(current, key) : undefined)
     ?? (fallback ? resolveKey(fallback, key) : undefined);
@@ -128,6 +158,7 @@ export function resetLocales(): void {
   _locales.clear();
   _formatterCache.clear();
   _currentLocale = "en";
+  _localeResolver = null;
   _localeListeners.clear();
 }
 

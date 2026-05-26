@@ -170,6 +170,20 @@ function RecoveryResetForm() {
     navigate('/login', { replace: true });
   }
 
+  // Once the recovery-code reset succeeds we have a fresh recovery
+  // code to reveal — unmount the form for the same reasons as
+  // RegisterPage (overlay is semi-transparent, residual form would
+  // show through; single-task-at-a-time UX).
+  if (newCode !== null) {
+    return (
+      <RecoveryCodeDialog
+        open={true}
+        code={newCode}
+        onContinue={handleContinue}
+      />
+    );
+  }
+
   return (
     <>
       <AuthCardShell
@@ -252,12 +266,6 @@ function RecoveryResetForm() {
           </Button>
         </form>
       </AuthCardShell>
-
-      <RecoveryCodeDialog
-        open={newCode !== null}
-        code={newCode ?? ''}
-        onContinue={handleContinue}
-      />
     </>
   );
 }
