@@ -24,8 +24,12 @@ interface LoadingOverlayProps {
  *   - 50-200ms typical (per server route note); 10-second timeout
  *     guards against a wedged collab or wedged WS.
  *
- * Visual: dark scrim + centered spinner + message, `bg-background/80`
- * blur for readability. Sits at z-index 50 so it covers chrome layers.
+ * Visual: scrim matches Radix `DialogOverlay` exactly (`bg-black/80`, no
+ * backdrop blur) so a LoadingOverlay opened from inside / right after a
+ * Dialog reads as the same surface and doesn't visibly tint-shift. Sits
+ * at z-index 50 so it covers chrome layers. Inner card uses
+ * `bg-popover` — same token as Dialog content for surface consistency.
+ * (2026-05-25 user ask: bg + 透明度 必须跟 Dialog 一致。)
  */
 export function LoadingOverlay({
   message,
@@ -36,7 +40,7 @@ export function LoadingOverlay({
       data-testid={testId}
       role='status'
       aria-live='polite'
-      className='fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm'
+      className='fixed inset-0 z-50 flex items-center justify-center bg-black/80'
     >
       <div className='flex flex-col items-center gap-3 rounded-md border border-border bg-popover px-6 py-4 shadow'>
         <Loader2 className='h-6 w-6 animate-spin text-foreground' />

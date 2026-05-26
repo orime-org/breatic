@@ -6,7 +6,9 @@
     "REDIS_URL",
     "REDIS_QUEUE_URL",
     "REDIS_STREAM_URL",
-    "NODE_ENV"
+    "NODE_ENV",
+    "LOGIN_MODE",
+    "ENV"
   ],
   "tasks": {
     "build": {
