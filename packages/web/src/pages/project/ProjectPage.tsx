@@ -340,6 +340,22 @@ export default function ProjectPage() {
     return spaces.find((s) => s.id === readOnlyViewSpaceId) ?? null;
   }, [readOnlyViewSpaceId, spaces]);
 
+  // When the WS auth has failed, the workspace below the banner is
+  // unusable — any mutation (create space, send chat, edit node) will
+  // silently fail because the same expired token is sent to the API +
+  // collab. Cover it with a full-area `bg-black/80` overlay that
+  // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
+  //     elsewhere in the app (single visual vocabulary for "blocked"),
+  // (b) intercepts clicks via `onClick` + `preventDefault` so users
+  //     can't trigger half-broken flows like "正在创建 Space..." that
+  //     never resolves (2026-05-26 user smoke report),
+  // (c) surfaces the OS-level "not-allowed" cursor on hover so users
+  //     get an instant, language-agnostic affordance that this region
+  //     is intentionally inert.
+  // Banner itself sits OUTSIDE the wrapper so its "重新登录" / "刷新"
+  // actions stay clickable.
+  const workspaceDisabled = connectionStatus === 'authFailed';
+
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
       <ConnectionBanner
@@ -351,73 +367,78 @@ export default function ProjectPage() {
           window.location.reload();
         }}
       />
-      <TopBar
-        projectId={projectId}
-        projectName={projectName}
-        role={role}
-        credits={credits}
-        onRename={(next) => renameMutation.mutate(next)}
-      />
-      <div className='flex min-h-0 flex-1'>
-        {collapsed ? null : (
-          <aside
-            data-testid='agent-column'
-            className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'
-          >
-            <AgentColHeader
-              conversationName='New conversation'
-              messageCount={0}
-              onOpenHistory={() => {
+      <div
+        className='relative flex min-h-0 flex-1 flex-col'
+        aria-hidden={workspaceDisabled || undefined}
+        data-workspace-disabled={workspaceDisabled || undefined}
+      >
+        <TopBar
+          projectId={projectId}
+          projectName={projectName}
+          role={role}
+          credits={credits}
+          onRename={(next) => renameMutation.mutate(next)}
+        />
+        <div className='flex min-h-0 flex-1'>
+          {collapsed ? null : (
+            <aside
+              data-testid='agent-column'
+              className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'
+            >
+              <AgentColHeader
+                conversationName='New conversation'
+                messageCount={0}
+                onOpenHistory={() => {
                 /* wired in ChatPanel B-mode round */
-              }}
-              onNewConversation={() => {
+                }}
+                onNewConversation={() => {
                 /* wired in ChatPanel B-mode round */
-              }}
-              onRenameConversation={() => {
+                }}
+                onRenameConversation={() => {
                 /* wired when conversation API lands */
-              }}
-            />
-            <ChatPanel projectId={projectId} />
-          </aside>
-        )}
-        <section className='flex min-w-0 flex-1 flex-col'>
-          <SpaceTabBar
-            spaces={openTabs}
-            allSpaces={spaces}
-            openTabIds={openTabIds}
-            activeSpaceId={activeSpaceId ?? ''}
-            projectId={projectId}
-            onActivate={onActivate}
-            onCreate={onCreateSpace}
-            onClose={onCloseTab}
-            onViewSpace={onViewSpace}
-            onDeleteSpace={onDeleteSpace}
-            onSetSpaceLocked={onSetSpaceLocked}
-            onRenameSpace={onRenameSpace}
-            projectMessages={projectMessages}
-            currentUserRole={role}
-            onRestoreSpace={onRestoreSpace}
-            onClearMessages={onClearMessages}
-          />
-          <div className='relative flex-1'>
-            {activeSpace ? (
-              <SpaceOutlet
-                projectId={projectId}
-                spaceId={activeSpace.id}
-                type={activeSpace.type}
+                }}
               />
-            ) : (
-              <div
-                data-testid='no-active-space'
-                className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-              >
-                {t('project.space.noActive')}
-              </div>
-            )}
-            {activeSpace?.type === 'canvas' ? (
-              <>
-                <LeftFloatingMenu
-                  onPick={(_tool) => {
+              <ChatPanel projectId={projectId} />
+            </aside>
+          )}
+          <section className='flex min-w-0 flex-1 flex-col'>
+            <SpaceTabBar
+              spaces={openTabs}
+              allSpaces={spaces}
+              openTabIds={openTabIds}
+              activeSpaceId={activeSpaceId ?? ''}
+              projectId={projectId}
+              onActivate={onActivate}
+              onCreate={onCreateSpace}
+              onClose={onCloseTab}
+              onViewSpace={onViewSpace}
+              onDeleteSpace={onDeleteSpace}
+              onSetSpaceLocked={onSetSpaceLocked}
+              onRenameSpace={onRenameSpace}
+              projectMessages={projectMessages}
+              currentUserRole={role}
+              onRestoreSpace={onRestoreSpace}
+              onClearMessages={onClearMessages}
+            />
+            <div className='relative flex-1'>
+              {activeSpace ? (
+                <SpaceOutlet
+                  projectId={projectId}
+                  spaceId={activeSpace.id}
+                  type={activeSpace.type}
+                />
+              ) : (
+                <div
+                  data-testid='no-active-space'
+                  className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                >
+                  {t('project.space.noActive')}
+                </div>
+              )}
+              {activeSpace?.type === 'canvas' ? (
+                <>
+                  <LeftFloatingMenu
+                    onPick={(_tool) => {
                     // TODO: dispatch per-button actions
                     //   nodes        — open node-library popover
                     //   upload       — open file picker (presigned URL upload)
@@ -426,25 +447,35 @@ export default function ProjectPage() {
                     //   help         — placeholder (M1+)
                     //   feedback     — placeholder (M1+)
                     // Buttons never store a "selected" state — they fire and forget.
-                  }}
-                />
-                <ViewportToolbar
-                  zoom={zoom}
-                  minimapVisible={minimapVisible}
-                  snapToGrid={snapToGrid}
-                  onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
-                  onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
-                  onZoomChange={(z) => setZoom(z)}
-                  onFit={() => setZoom(1)}
-                  onToggleSnap={() => setSnapToGrid((v) => !v)}
-                  onToggleMinimap={() => setMinimapVisible((v) => !v)}
+                    }}
+                  />
+                  <ViewportToolbar
+                    zoom={zoom}
+                    minimapVisible={minimapVisible}
+                    snapToGrid={snapToGrid}
+                    onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
+                    onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
+                    onZoomChange={(z) => setZoom(z)}
+                    onFit={() => setZoom(1)}
+                    onToggleSnap={() => setSnapToGrid((v) => !v)}
+                    onToggleMinimap={() => setMinimapVisible((v) => !v)}
                   // Undo/redo render disabled until the canvas history
                   // engine lands; canUndo/canRedo default to false.
-                />
-              </>
-            ) : null}
-          </div>
-        </section>
+                  />
+                </>
+              ) : null}
+            </div>
+          </section>
+        </div>
+        {workspaceDisabled ? (
+          <div
+            className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+            onClick={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            aria-hidden
+            data-testid='workspace-disabled-overlay'
+          />
+        ) : null}
       </div>
       <SpaceReadOnlySheet
         open={roSheetOpen}

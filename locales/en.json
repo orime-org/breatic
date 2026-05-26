@@ -1165,5 +1165,10 @@
       },
       "reload": "Reload"
     }
+  },
+  "studio": {
+    "createProject": {
+      "failed": "Failed to create project: {reason}"
+    }
   }
 }

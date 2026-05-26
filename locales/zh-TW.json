@@ -1165,5 +1165,10 @@
       },
       "reload": "重新整理"
     }
+  },
+  "studio": {
+    "createProject": {
+      "failed": "建立專案失敗:{reason}"
+    }
   }
 }

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { projectsApi } from '@/data/api';
 import type { ProjectSummary } from '@/data/api/projects';
+import { useTranslation } from '@/i18n/use-translation';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useStudioStore } from '@/stores';
 
@@ -22,6 +23,7 @@ import { ProjectCard } from '@/pages/studio/grid/ProjectCard';
  *   - filter / sort run client-side on whatever the server returned
  */
 export function ProjectGrid() {
+  const t = useTranslation();
   const search = useStudioStore((s) => s.search);
   const sortKey = useStudioStore((s) => s.sortKey);
   const sortOrder = useStudioStore((s) => s.sortOrder);
@@ -48,8 +50,12 @@ export function ProjectGrid() {
       navigate(`/project/${project.id}`);
     },
     onError: (err) => {
-      const message = err instanceof Error ? err.message : 'Create project failed';
-      toast.error('Failed to create project', { description: message });
+      const reason = err instanceof Error ? err.message : 'unknown';
+      // Single-line toast (no title+description stack) per 2026-05-26 user
+      // ask — vertical stack felt heavy in the studio grid. Reason
+      // string is interpolated via ICU `{reason}` (single curly per
+      // [[feedback_icu_handlebars_brace_mismatch]]).
+      toast.error(t('studio.createProject.failed', { reason }));
     },
   });
 
