@@ -1179,6 +1179,8 @@
     "invalidEmail": "請輸入有效的電子郵件地址。",
     "passwordTooShort": "密碼至少 8 個字元。",
     "nameRequired": "請填寫你的名稱。",
+    "passwordShow": "顯示密碼",
+    "passwordHide": "隱藏密碼",
     "login": {
       "title": "登入",
       "subtitle": "歡迎回來。",
@@ -1229,6 +1231,7 @@
       "titleRecovery": "使用復原碼重設",
       "subtitleRecovery": "輸入註冊時保存的復原碼,然後設定新密碼。",
       "recoveryCode": "復原碼",
+      "recoveryCodeRequired": "請填寫復原碼。",
       "newPassword": "新密碼",
       "save": "儲存密碼",
       "saving": "儲存中...",

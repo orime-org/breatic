@@ -1179,6 +1179,8 @@
     "invalidEmail": "Please enter a valid email address.",
     "passwordTooShort": "Password must be at least 8 characters.",
     "nameRequired": "Please enter your name.",
+    "passwordShow": "Show password",
+    "passwordHide": "Hide password",
     "login": {
       "title": "Sign in",
       "subtitle": "Welcome back.",
@@ -1229,6 +1231,7 @@
       "titleRecovery": "Reset with recovery code",
       "subtitleRecovery": "Enter the recovery code you saved at sign-up and choose a new password.",
       "recoveryCode": "Recovery code",
+      "recoveryCodeRequired": "Please enter your recovery code.",
       "newPassword": "New password",
       "save": "Save password",
       "saving": "Saving...",

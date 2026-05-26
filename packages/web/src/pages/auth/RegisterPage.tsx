@@ -1,15 +1,16 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 
 import { authApi } from '@/data/api/auth';
 import { ApiException } from '@/data/api/types';
 import { useCurrentUserStore } from '@/stores';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@/pages/auth/_shared/FieldError';
 import { RecoveryCodeDialog } from '@/pages/auth/_shared/RecoveryCodeDialog';
 
 /**
@@ -36,24 +37,28 @@ export default function RegisterPage() {
   const [name, setName] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [recoveryCode, setRecoveryCode] = React.useState<string | null>(null);
+  const [errors, setErrors] = React.useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+  }>({});
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    setFormError(null);
     const trimmedEmail = email.trim();
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      toast.error(t('auth.nameRequired'), { id: 'auth-feedback' });
-      return;
-    }
+    const nextErrors: typeof errors = {};
+    if (!trimmedName) nextErrors.name = t('auth.nameRequired');
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      toast.error(t('auth.invalidEmail'), { id: 'auth-feedback' });
-      return;
+      nextErrors.email = t('auth.invalidEmail');
     }
-    if (password.length < 8) {
-      toast.error(t('auth.passwordTooShort'), { id: 'auth-feedback' });
-      return;
-    }
+    if (password.length < 8) nextErrors.password = t('auth.passwordTooShort');
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setSubmitting(true);
     try {
       const { user, recoveryCode: code } = await authApi.register({
@@ -70,15 +75,13 @@ export default function RegisterPage() {
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.register.failed');
-      toast.error(message, { id: 'auth-feedback' });
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleContinue() {
-    // Clear the code from React state before navigating so the only
-    // copy in memory dies with this component's unmount.
     setRecoveryCode(null);
     navigate('/studio', { replace: true });
   }
@@ -103,9 +106,17 @@ export default function RegisterPage() {
               type='text'
               autoComplete='name'
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (errors.name) setErrors((p) => ({ ...p, name: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.name || undefined}
+              aria-describedby={errors.name ? 'register-name-error' : undefined}
             />
+            {errors.name ? (
+              <FieldError id='register-name-error'>{errors.name}</FieldError>
+            ) : null}
           </div>
 
           <div className='flex flex-col gap-1'>
@@ -115,25 +126,47 @@ export default function RegisterPage() {
               type='email'
               autoComplete='email'
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.email || undefined}
+              aria-describedby={errors.email ? 'register-email-error' : undefined}
             />
+            {errors.email ? (
+              <FieldError id='register-email-error'>{errors.email}</FieldError>
+            ) : null}
           </div>
 
           <div className='flex flex-col gap-1'>
             <Label htmlFor='register-password'>{t('auth.password')}</Label>
-            <Input
+            <PasswordInput
               id='register-password'
-              type='password'
               autoComplete='new-password'
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.password || undefined}
+              aria-describedby={errors.password ? 'register-password-error' : undefined}
+              showLabel={t('auth.passwordShow')}
+              hideLabel={t('auth.passwordHide')}
             />
-            <p className='text-xs text-muted-foreground'>
-              {t('auth.register.passwordHint')}
-            </p>
+            {errors.password ? (
+              <FieldError id='register-password-error'>{errors.password}</FieldError>
+            ) : (
+              <p className='text-xs text-muted-foreground'>
+                {t('auth.register.passwordHint')}
+              </p>
+            )}
           </div>
+
+          {formError ? (
+            <FieldError role='alert' className='mt-1'>{formError}</FieldError>
+          ) : null}
 
           <Button type='submit' disabled={submitting} className='mt-2'>
             {submitting

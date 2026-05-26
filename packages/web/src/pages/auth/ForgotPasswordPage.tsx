@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 
 import { authApi } from '@/data/api/auth';
 import { ApiException } from '@/data/api/types';
@@ -9,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@/pages/auth/_shared/FieldError';
 
 /**
  * Forgot-password entry — dual-path UX:
@@ -39,15 +39,19 @@ export default function ForgotPasswordPage() {
   const [step, setStep] = React.useState<Step>('choose');
   const [email, setEmail] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    setFormError(null);
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      toast.error(t('auth.invalidEmail'), { id: 'auth-feedback' });
+      setEmailError(t('auth.invalidEmail'));
       return;
     }
+    setEmailError(null);
     setSubmitting(true);
     try {
       await authApi.forgotPassword({ email: trimmedEmail });
@@ -55,7 +59,7 @@ export default function ForgotPasswordPage() {
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.forgot.failed');
-      toast.error(message, { id: 'auth-feedback' });
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -89,10 +93,22 @@ export default function ForgotPasswordPage() {
             type='email'
             autoComplete='email'
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (emailError) setEmailError(null);
+            }}
             disabled={submitting}
+            aria-invalid={!!emailError || undefined}
+            aria-describedby={emailError ? 'forgot-email-error' : undefined}
           />
+          {emailError ? (
+            <FieldError id='forgot-email-error'>{emailError}</FieldError>
+          ) : null}
         </div>
+
+        {formError ? (
+          <FieldError role='alert' className='mt-1'>{formError}</FieldError>
+        ) : null}
 
         <Button type='submit' disabled={submitting} className='mt-2'>
           {submitting

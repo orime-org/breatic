@@ -1179,6 +1179,8 @@
     "invalidEmail": "请输入有效的邮箱地址。",
     "passwordTooShort": "密码至少 8 个字符。",
     "nameRequired": "请填写你的名字。",
+    "passwordShow": "显示密码",
+    "passwordHide": "隐藏密码",
     "login": {
       "title": "登录",
       "subtitle": "欢迎回来。",
@@ -1229,6 +1231,7 @@
       "titleRecovery": "用恢复码重置",
       "subtitleRecovery": "输入注册时保存的恢复码,然后设置新密码。",
       "recoveryCode": "恢复码",
+      "recoveryCodeRequired": "请填写恢复码。",
       "newPassword": "新密码",
       "save": "保存密码",
       "saving": "保存中...",

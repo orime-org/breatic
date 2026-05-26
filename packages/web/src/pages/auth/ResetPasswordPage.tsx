@@ -6,9 +6,11 @@ import { authApi } from '@/data/api/auth';
 import { ApiException } from '@/data/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@/pages/auth/_shared/FieldError';
 import { RecoveryCodeDialog } from '@/pages/auth/_shared/RecoveryCodeDialog';
 
 /**
@@ -28,7 +30,6 @@ import { RecoveryCodeDialog } from '@/pages/auth/_shared/RecoveryCodeDialog';
 type Mode = 'token' | 'recovery';
 
 export default function ResetPasswordPage() {
-  const t = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
@@ -51,10 +52,18 @@ function TokenResetForm({
   const t = useTranslation();
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    setFormError(null);
+    if (password.length < 8) {
+      setPasswordError(t('auth.passwordTooShort'));
+      return;
+    }
+    setPasswordError(null);
     setSubmitting(true);
     try {
       await authApi.resetPasswordWithToken({ token, password });
@@ -63,7 +72,7 @@ function TokenResetForm({
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.reset.failed');
-      toast.error(message, { id: 'auth-feedback' });
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -78,15 +87,28 @@ function TokenResetForm({
       <form onSubmit={handleSubmit} noValidate className='flex flex-col gap-3'>
         <div className='flex flex-col gap-1'>
           <Label htmlFor='reset-password'>{t('auth.reset.newPassword')}</Label>
-          <Input
+          <PasswordInput
             id='reset-password'
-            type='password'
             autoComplete='new-password'
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (passwordError) setPasswordError(null);
+            }}
             disabled={submitting}
+            aria-invalid={!!passwordError || undefined}
+            aria-describedby={passwordError ? 'reset-password-error' : undefined}
+            showLabel={t('auth.passwordShow')}
+            hideLabel={t('auth.passwordHide')}
           />
+          {passwordError ? (
+            <FieldError id='reset-password-error'>{passwordError}</FieldError>
+          ) : null}
         </div>
+
+        {formError ? (
+          <FieldError role='alert' className='mt-1'>{formError}</FieldError>
+        ) : null}
 
         <Button type='submit' disabled={submitting} className='mt-2'>
           {submitting ? t('auth.reset.saving') : t('auth.reset.save')}
@@ -104,22 +126,40 @@ function RecoveryResetForm() {
   const [newPassword, setNewPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [newCode, setNewCode] = React.useState<string | null>(null);
+  const [errors, setErrors] = React.useState<{
+    email?: string;
+    recoveryCode?: string;
+    newPassword?: string;
+  }>({});
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    setFormError(null);
+    const trimmedEmail = email.trim();
+    const trimmedCode = recoveryCode.trim();
+    const nextErrors: typeof errors = {};
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      nextErrors.email = t('auth.invalidEmail');
+    }
+    if (!trimmedCode) nextErrors.recoveryCode = t('auth.reset.recoveryCodeRequired');
+    if (newPassword.length < 8) nextErrors.newPassword = t('auth.passwordTooShort');
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setSubmitting(true);
     try {
       const { newRecoveryCode } = await authApi.resetPasswordWithRecoveryCode({
-        email,
-        recoveryCode,
+        email: trimmedEmail,
+        recoveryCode: trimmedCode,
         newPassword,
       });
       setNewCode(newRecoveryCode);
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.reset.failed');
-      toast.error(message, { id: 'auth-feedback' });
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -145,9 +185,17 @@ function RecoveryResetForm() {
               type='email'
               autoComplete='email'
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.email || undefined}
+              aria-describedby={errors.email ? 'recovery-email-error' : undefined}
             />
+            {errors.email ? (
+              <FieldError id='recovery-email-error'>{errors.email}</FieldError>
+            ) : null}
           </div>
 
           <div className='flex flex-col gap-1'>
@@ -158,26 +206,46 @@ function RecoveryResetForm() {
               autoComplete='off'
               placeholder='XXXX-XXXX-XXXX-XXXX'
               value={recoveryCode}
-              onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setRecoveryCode(e.target.value.toUpperCase());
+                if (errors.recoveryCode) setErrors((p) => ({ ...p, recoveryCode: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.recoveryCode || undefined}
+              aria-describedby={errors.recoveryCode ? 'recovery-code-error' : undefined}
               className='font-mono tracking-wider'
             />
+            {errors.recoveryCode ? (
+              <FieldError id='recovery-code-error'>{errors.recoveryCode}</FieldError>
+            ) : null}
           </div>
 
           <div className='flex flex-col gap-1'>
             <Label htmlFor='recovery-new-password'>
               {t('auth.reset.newPassword')}
             </Label>
-            <Input
+            <PasswordInput
               id='recovery-new-password'
-              type='password'
               autoComplete='new-password'
-              minLength={8}
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                if (errors.newPassword) setErrors((p) => ({ ...p, newPassword: undefined }));
+              }}
               disabled={submitting}
+              aria-invalid={!!errors.newPassword || undefined}
+              aria-describedby={errors.newPassword ? 'recovery-new-password-error' : undefined}
+              showLabel={t('auth.passwordShow')}
+              hideLabel={t('auth.passwordHide')}
             />
+            {errors.newPassword ? (
+              <FieldError id='recovery-new-password-error'>{errors.newPassword}</FieldError>
+            ) : null}
           </div>
+
+          {formError ? (
+            <FieldError role='alert' className='mt-1'>{formError}</FieldError>
+          ) : null}
 
           <Button type='submit' disabled={submitting} className='mt-2'>
             {submitting ? t('auth.reset.saving') : t('auth.reset.save')}

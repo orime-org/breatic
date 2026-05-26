@@ -1179,6 +1179,8 @@
     "invalidEmail": "有効なメールアドレスを入力してください。",
     "passwordTooShort": "パスワードは 8 文字以上にしてください。",
     "nameRequired": "名前を入力してください。",
+    "passwordShow": "パスワードを表示",
+    "passwordHide": "パスワードを非表示",
     "login": {
       "title": "サインイン",
       "subtitle": "おかえりなさい。",
@@ -1229,6 +1231,7 @@
       "titleRecovery": "リカバリーコードでリセット",
       "subtitleRecovery": "登録時に保存したリカバリーコードを入力し、新しいパスワードを設定してください。",
       "recoveryCode": "リカバリーコード",
+      "recoveryCodeRequired": "リカバリーコードを入力してください。",
       "newPassword": "新しいパスワード",
       "save": "パスワードを保存",
       "saving": "保存中...",

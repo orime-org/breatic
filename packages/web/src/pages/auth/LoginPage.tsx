@@ -7,9 +7,11 @@ import { ApiException } from '@/data/api/types';
 import { useCurrentUserStore } from '@/stores';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@/pages/auth/_shared/FieldError';
 
 /**
  * Email + password login.
@@ -21,8 +23,11 @@ import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
  * during the 401 bounce), otherwise to `/studio`.
  *
  * Failure path: server returns 401 with a generic message ("Invalid
- * email or password"). We surface that as a toast — never as a field
- * error — to avoid leaking which input is wrong.
+ * email or password"). We surface that as a form-level FieldError
+ * line above the submit button (role=alert) — not pinned to either
+ * input, so we never leak which input is wrong, and not as a toast
+ * because form errors belong with the form, not the global
+ * cross-page notification surface.
  *
  * Google OAuth: conditionally rendered if the backend was started
  * with `GOOGLE_CLIENT_ID`. The id is injected at build time via
@@ -40,22 +45,30 @@ export default function LoginPage() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  // Field-level errors (inline below each input). `formError` is the
+  // single async / server failure line that sits above the submit
+  // button — kept out of toasts because form failures are tied to
+  // this form, not the global cross-page notification surface.
+  const [errors, setErrors] = React.useState<{
+    email?: string;
+    password?: string;
+  }>({});
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
-    // Inline validation — form is `noValidate` so we own messaging and
-    // the OS-level browser tooltip never shows. Toast id `auth-feedback`
-    // replaces any prior toast from this page instead of stacking.
+    setFormError(null);
     const trimmedEmail = email.trim();
+    const nextErrors: typeof errors = {};
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      toast.error(t('auth.invalidEmail'), { id: 'auth-feedback' });
-      return;
+      nextErrors.email = t('auth.invalidEmail');
     }
     if (password.length < 8) {
-      toast.error(t('auth.passwordTooShort'), { id: 'auth-feedback' });
-      return;
+      nextErrors.password = t('auth.passwordTooShort');
     }
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     setSubmitting(true);
     try {
       const { user } = await authApi.login({ email: trimmedEmail, password });
@@ -68,7 +81,7 @@ export default function LoginPage() {
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
-      toast.error(message, { id: 'auth-feedback' });
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -96,9 +109,17 @@ export default function LoginPage() {
             type='email'
             autoComplete='email'
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
+            }}
             disabled={submitting}
+            aria-invalid={!!errors.email || undefined}
+            aria-describedby={errors.email ? 'login-email-error' : undefined}
           />
+          {errors.email ? (
+            <FieldError id='login-email-error'>{errors.email}</FieldError>
+          ) : null}
         </div>
 
         <div className='flex flex-col gap-1'>
@@ -108,15 +129,28 @@ export default function LoginPage() {
               {t('auth.login.forgotPassword')}
             </AuthLink>
           </div>
-          <Input
+          <PasswordInput
             id='login-password'
-            type='password'
             autoComplete='current-password'
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
+            }}
             disabled={submitting}
+            aria-invalid={!!errors.password || undefined}
+            aria-describedby={errors.password ? 'login-password-error' : undefined}
+            showLabel={t('auth.passwordShow')}
+            hideLabel={t('auth.passwordHide')}
           />
+          {errors.password ? (
+            <FieldError id='login-password-error'>{errors.password}</FieldError>
+          ) : null}
         </div>
+
+        {formError ? (
+          <FieldError role='alert' className='mt-1'>{formError}</FieldError>
+        ) : null}
 
         <Button type='submit' disabled={submitting} className='mt-2'>
           {submitting ? t('auth.login.signingIn') : t('auth.login.signIn')}
