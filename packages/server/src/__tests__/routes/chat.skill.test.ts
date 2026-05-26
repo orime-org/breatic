@@ -18,7 +18,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 
-const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
+const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
 describe("POST /chat/skill — skill enforcement", () => {
   it("rejects skill_creator with 403", async () => {

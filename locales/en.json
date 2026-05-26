@@ -1170,5 +1170,84 @@
     "createProject": {
       "failed": "Failed to create project: {reason}"
     }
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "or": "or",
+    "invalidEmail": "Please enter a valid email address.",
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "nameRequired": "Please enter your name.",
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Welcome back.",
+      "signIn": "Sign in",
+      "signingIn": "Signing in...",
+      "signUp": "Sign up",
+      "noAccount": "Don't have an account?",
+      "forgotPassword": "Forgot password?",
+      "continueWithGoogle": "Continue with Google",
+      "googleSoon": "Google sign-in is coming soon.",
+      "failed": "Sign-in failed. Please try again."
+    },
+    "register": {
+      "title": "Create an account",
+      "subtitle": "Start creating with breatic.",
+      "create": "Create account",
+      "creating": "Creating...",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "passwordHint": "At least 8 characters.",
+      "failed": "Registration failed. Please try again."
+    },
+    "recovery": {
+      "title": "Save your recovery code",
+      "subtitle": "This is the only way to reset your password if you cannot receive email. Save it somewhere safe — we cannot show it to you again.",
+      "copy": "Copy",
+      "copied": "Recovery code copied to clipboard.",
+      "copyFailed": "Could not copy to clipboard.",
+      "download": "Download",
+      "ack": "I have saved this recovery code in a safe place.",
+      "continue": "Continue"
+    },
+    "forgot": {
+      "title": "Forgot your password?",
+      "subtitle": "We can email you a reset link, or you can use your recovery code.",
+      "sendResetLink": "Email me a reset link",
+      "sending": "Sending...",
+      "useRecoveryCode": "Use recovery code instead",
+      "sentTitle": "Check your inbox",
+      "sentSubtitle": "If an account exists for that address, a reset link is on its way.",
+      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam or use the recovery code.",
+      "backToSignIn": "Back to sign in",
+      "failed": "Could not send the reset link. Please try again."
+    },
+    "reset": {
+      "titleToken": "Set a new password",
+      "subtitleToken": "Pick a strong password — at least 8 characters.",
+      "titleRecovery": "Reset with recovery code",
+      "subtitleRecovery": "Enter the recovery code you saved at sign-up and choose a new password.",
+      "recoveryCode": "Recovery code",
+      "newPassword": "New password",
+      "save": "Save password",
+      "saving": "Saving...",
+      "success": "Password updated. Please sign in.",
+      "failed": "Could not reset your password. Please try again.",
+      "backToSignIn": "Back to sign in"
+    },
+    "verify": {
+      "verifying": "Verifying your email...",
+      "pleaseWait": "One moment please.",
+      "successTitle": "Email verified",
+      "successBody": "Your email is confirmed. You can now use everything breatic has to offer.",
+      "goToStudio": "Go to studio",
+      "failedTitle": "Could not verify your email",
+      "failedBody": "The link may have expired or already been used. Sign in and request a fresh verification email from your account settings.",
+      "checkInboxTitle": "Check your inbox",
+      "checkInboxBody": "Open the verify-email link we just sent you. If it didn't arrive, you can request a new one from your account settings.",
+      "signIn": "Sign in",
+      "failed": "Email verification failed."
+    }
   }
 }

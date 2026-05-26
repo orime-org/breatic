@@ -22,7 +22,6 @@ export default defineConfig(({ command, mode }) => {
     envDir: path.resolve(__dirname, '../..'),
     // Inject backend-only env vars into frontend (avoids duplicating VITE_ prefixed vars)
     define: {
-      'import.meta.env.VITE_LOGIN_MODE': JSON.stringify(env.LOGIN_MODE || 'WithAccount'),
       '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
     },
     plugins: [

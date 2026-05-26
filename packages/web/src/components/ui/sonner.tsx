@@ -47,24 +47,21 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className='toaster group'
-      // Sonner ships a runtime-injected CSS rule
-      //   `[data-sonner-toaster] { width: var(--width); }`
-      //   `[data-sonner-toast][data-styled=true] { width: var(--width); }`
-      // BOTH the ol AND the li (toast) read the same `--width` var
-      // (default 356px). A Tailwind `w-fit` on the toast className
-      // therefore loses to the vendor CSS — the toast stays 356px.
+      // `--width: max-content` lets each toast shrink-wrap its own text
+      // (replacing sonner default 356px). Pairs with the global CSS in
+      // `src/index.css` that switches the ol to `display: inline-flex`
+      // + the li from `position: absolute` to relative so the ol
+      // actually fits its children — without that override the ol
+      // collapses to width 0 and top-center centering computes around
+      // a zero-width box (toast renders right-of-center, see chrome
+      // MCP smoke 2026-05-26).
       //
-      // Setting `--width: fit-content` (earlier attempt) caused the
-      // toast to collapse into a vertical column of single CJK
-      // characters: with the toast container `display: flex; gap: 6px`
-      // and CJK characters being default-breakable, `fit-content`
-      // inside the nested flex layout shrank to `min-content`
-      // (= one CJK character wide).
-      //
-      // `max-content` does NOT take available size into account — it
-      // sizes to the content's natural one-line width, regardless of
-      // the parent. Short toasts get a tight one-line box; long toasts
-      // are capped at 28rem by `max-w-md` on the toast className.
+      // Earlier `fit-content` attempt caused CJK toasts to collapse
+      // to one-character columns: with the toast container
+      // `display: flex; gap: 6px` and CJK characters being default-
+      // breakable, `fit-content` inside the nested flex shrank to
+      // `min-content`. `max-content` takes the natural one-line width
+      // and is capped at 28rem by the `max-w-md` toast className.
       style={{ '--width': 'max-content' } as React.CSSProperties}
       toastOptions={{
         // Inline style (specificity 1,0,0,0) is the only reliable way

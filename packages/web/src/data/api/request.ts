@@ -4,15 +4,20 @@ import axios, {
   AxiosError,
 } from 'axios';
 
-import { useCurrentUserStore } from '@/stores';
 import { ApiException, type ApiEnvelope, type ApiError } from '@/data/api/types';
 
 /**
  * Singleton axios instance configured for the breatic API.
  *
+ * Auth: `withCredentials: true` makes the browser attach the
+ * httpOnly `breatic_session` cookie on every cross-origin XHR. The
+ * cookie is the single authentication channel since 2026-05-26 — no
+ * Bearer token is read from JS, no Authorization header is set.
+ * That removes the XSS exfiltration surface entirely (a JS payload
+ * cannot read an httpOnly cookie).
+ *
  * - `baseURL` defaults to `/api` so production nginx routes everything
  *   under one origin; dev uses Vite proxy.
- * - Request interceptor: attach `Bearer <token>` from current-user store.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.
  */
 function createClient(): AxiosInstance {
@@ -24,14 +29,7 @@ function createClient(): AxiosInstance {
     baseURL: '/api/v1',
     timeout: 30_000,
     headers: { 'Content-Type': 'application/json' },
-  });
-
-  instance.interceptors.request.use((config) => {
-    const token = useCurrentUserStore.getState().token;
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
+    withCredentials: true,
   });
 
   instance.interceptors.response.use(

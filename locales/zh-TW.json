@@ -1170,5 +1170,84 @@
     "createProject": {
       "failed": "建立專案失敗:{reason}"
     }
+  },
+  "auth": {
+    "email": "電子郵件",
+    "password": "密碼",
+    "name": "名稱",
+    "or": "或",
+    "invalidEmail": "請輸入有效的電子郵件地址。",
+    "passwordTooShort": "密碼至少 8 個字元。",
+    "nameRequired": "請填寫你的名稱。",
+    "login": {
+      "title": "登入",
+      "subtitle": "歡迎回來。",
+      "signIn": "登入",
+      "signingIn": "登入中...",
+      "signUp": "註冊",
+      "noAccount": "還沒有帳號?",
+      "forgotPassword": "忘記密碼?",
+      "continueWithGoogle": "使用 Google 繼續",
+      "googleSoon": "Google 登入即將推出。",
+      "failed": "登入失敗,請重試。"
+    },
+    "register": {
+      "title": "建立帳號",
+      "subtitle": "開始用 breatic 創作。",
+      "create": "建立帳號",
+      "creating": "建立中...",
+      "haveAccount": "已有帳號?",
+      "signIn": "登入",
+      "passwordHint": "至少 8 個字元。",
+      "failed": "註冊失敗,請重試。"
+    },
+    "recovery": {
+      "title": "保存你的復原碼",
+      "subtitle": "若你無法收到電子郵件,這是唯一能重設密碼的方式。請妥善保存 — 我們不會再次顯示。",
+      "copy": "複製",
+      "copied": "復原碼已複製到剪貼簿。",
+      "copyFailed": "複製到剪貼簿失敗。",
+      "download": "下載",
+      "ack": "我已將復原碼保存到安全的地方。",
+      "continue": "繼續"
+    },
+    "forgot": {
+      "title": "忘記密碼?",
+      "subtitle": "我們可以將重設連結寄到你的信箱,或者你也可以使用復原碼。",
+      "sendResetLink": "寄送重設連結",
+      "sending": "寄送中...",
+      "useRecoveryCode": "改用復原碼",
+      "sentTitle": "請查收郵件",
+      "sentSubtitle": "若該電子郵件已註冊帳號,重設連結已在送出中。",
+      "sentBody": "我們已向 {email} 寄送重設連結。若數分鐘內未收到,請檢查垃圾郵件,或改用復原碼。",
+      "backToSignIn": "返回登入",
+      "failed": "重設連結寄送失敗,請重試。"
+    },
+    "reset": {
+      "titleToken": "設定新密碼",
+      "subtitleToken": "請使用一個強密碼 — 至少 8 個字元。",
+      "titleRecovery": "使用復原碼重設",
+      "subtitleRecovery": "輸入註冊時保存的復原碼,然後設定新密碼。",
+      "recoveryCode": "復原碼",
+      "newPassword": "新密碼",
+      "save": "儲存密碼",
+      "saving": "儲存中...",
+      "success": "密碼已更新,請登入。",
+      "failed": "密碼重設失敗,請重試。",
+      "backToSignIn": "返回登入"
+    },
+    "verify": {
+      "verifying": "正在驗證你的電子郵件...",
+      "pleaseWait": "請稍候。",
+      "successTitle": "電子郵件已驗證",
+      "successBody": "你的電子郵件已確認,現在可以使用 breatic 的全部功能。",
+      "goToStudio": "進入 Studio",
+      "failedTitle": "電子郵件驗證失敗",
+      "failedBody": "連結可能已過期或已使用。請登入後,於帳號設定重新寄送驗證郵件。",
+      "checkInboxTitle": "請查收郵件",
+      "checkInboxBody": "開啟我們剛才寄給你的驗證連結。若未收到,可在帳號設定重新寄送。",
+      "signIn": "登入",
+      "failed": "電子郵件驗證失敗。"
+    }
   }
 }

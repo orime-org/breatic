@@ -86,10 +86,9 @@ function BannerButton({
  * a short explanation + an action button so the user is never left in
  * the dark about why content stopped updating.
  *
- * Design per 2026-05-25 user ask (after a `LOGIN_MODE` env strip caused
- * silent ws auth failures + 14 spaces invisible). Industry standard
- * pattern — Figma / Notion / GitHub / VSCode all show a connection
- * banner of this shape when the realtime channel fails.
+ * Industry standard pattern — Figma / Notion / GitHub / VSCode all
+ * show a connection banner of this shape when the realtime channel
+ * fails.
  *
  * State → visual:
  *   connecting   → no banner (avoid flash on every quick reconnect)

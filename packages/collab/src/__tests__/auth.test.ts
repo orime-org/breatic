@@ -3,7 +3,7 @@
  *
  * Pins these properties:
  *
- *   1. A missing or expired session token → error
+ *   1. A missing or expired session cookie → error
  *   2. A session belonging to user A cannot open documents for a
  *      project they have no `project_members` row in
  *   3. A document name not in the v10 multi-doc shape is rejected
@@ -15,13 +15,25 @@
  *      member's role echoed back; view → readOnly:true, others →
  *      readOnly:false
  *
+ * Auth is cookie-based since 2026-05-26: the Hocuspocus client sends
+ * a placeholder `token` solely to trip the hook, and the real session
+ * token travels in the `breatic_session` cookie on the WebSocket
+ * upgrade request (Hocuspocus exposes the upgrade-request headers via
+ * `requestHeaders`).
+ *
  * Both Redis and postgres are mocked so the test is hermetic.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type Redis from "ioredis";
+import type { IncomingHttpHeaders } from "node:http";
 import * as Y from "yjs";
 import { createAuthHook } from "../auth.js";
+
+/** Helper — build the headers stub with `breatic_session={token}`. */
+function withCookie(token: string): IncomingHttpHeaders {
+  return { cookie: `breatic_session=${token}` };
+}
 
 /**
  * Build a binary blob of a meta doc whose `spaces` Y.Map already
@@ -57,6 +69,7 @@ const mockRedis = { get: redisGet } as unknown as Redis;
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
+const PLACEHOLDER_TOKEN = "__cookie_auth__";
 
 describe("createAuthHook", () => {
   beforeEach(() => {
@@ -71,18 +84,37 @@ describe("createAuthHook", () => {
       databaseUrl: "postgres://x",
     });
 
-  it("rejects an empty token", async () => {
+  it("rejects when the session cookie is missing", async () => {
     const hook = buildHook();
     await expect(
-      hook({ token: "", documentName: `project-${PID}/meta` }),
-    ).rejects.toThrow(/token/i);
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: {},
+      }),
+    ).rejects.toThrow(/cookie/i);
+  });
+
+  it("rejects when the cookie header is present but `breatic_session=` is not", async () => {
+    const hook = buildHook();
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: { cookie: "other_app=xyz" },
+      }),
+    ).rejects.toThrow(/cookie/i);
   });
 
   it("rejects an expired / unknown session token", async () => {
     redisGet.mockResolvedValue(null);
     const hook = buildHook();
     await expect(
-      hook({ token: "bad-token", documentName: `project-${PID}/meta` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: withCookie("bad-token"),
+      }),
     ).rejects.toThrow(/session/i);
   });
 
@@ -90,7 +122,11 @@ describe("createAuthHook", () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
     await expect(
-      hook({ token: "tok", documentName: "random-doc-name" }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: "random-doc-name",
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/recognized project format/);
   });
 
@@ -98,7 +134,11 @@ describe("createAuthHook", () => {
     redisGet.mockResolvedValue("user-1");
     const hook = buildHook();
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/recognized project format/);
   });
 
@@ -107,11 +147,19 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/canvas` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/recognized project format/);
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/node/abc` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/node/abc`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/recognized project format/);
   });
 
@@ -122,7 +170,11 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/not authorized/);
   });
 
@@ -135,7 +187,11 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/not authorized/);
     // Member query never ran:
     expect(sqlQueue.length).toBe(0);
@@ -152,8 +208,9 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     const ctx = await hook({
-      token: "tok",
+      token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
     });
 
     expect(ctx).toEqual({
@@ -170,8 +227,9 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     const ctx = await hook({
-      token: "tok",
+      token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
     });
 
     expect(ctx).toEqual({
@@ -191,8 +249,9 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     const ctx = await hook({
-      token: "tok",
+      token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
     });
 
     expect(ctx).toEqual({
@@ -216,7 +275,11 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/does not exist/);
   });
 
@@ -230,7 +293,11 @@ describe("createAuthHook", () => {
     const hook = buildHook();
 
     await expect(
-      hook({ token: "tok", documentName: `project-${PID}/canvas-${SID}` }),
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
     ).rejects.toThrow(/does not exist/);
   });
 
@@ -240,7 +307,34 @@ describe("createAuthHook", () => {
     sqlQueue = [[{ id: PID }], [{ role: "owner" }]];
     const hook = buildHook();
 
-    await hook({ token: "tok", documentName: `project-${PID}/meta` });
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+    });
     expect(sqlQueue.length).toBe(0);
+  });
+
+  // ── Cookie parser robustness ───────────────────────────────────
+
+  it("parses the session value when other cookies appear before it", async () => {
+    redisGet.mockResolvedValue("user-1");
+    sqlQueue = [[{ id: PID }], [{ role: "owner" }]];
+    const hook = buildHook();
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: {
+        cookie: "first=1; breatic_session=real-token; third=3",
+      },
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    // Redis was queried for the prefixed key with the *real* token,
+    // not the placeholder — pins that the cookie value (not the
+    // application-level token field) is what reaches the session
+    // store.
+    expect(redisGet).toHaveBeenCalledWith("test:session:real-token");
   });
 });

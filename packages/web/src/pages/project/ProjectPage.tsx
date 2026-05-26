@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import * as React from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import type { SpaceRpcResponse } from '@breatic/shared';
@@ -66,6 +66,7 @@ export default function ProjectPage() {
   const { projectId = 'demo' } = useParams<{
     projectId: string;
   }>();
+  const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
   const queryClient = useQueryClient();
@@ -375,9 +376,11 @@ export default function ProjectPage() {
         status={connectionStatus}
         onReload={() => window.location.reload()}
         onReLogin={() => {
-          // Real auth flow lands later; for now reload kicks the
-          // dev-user injection + token re-application path.
-          window.location.reload();
+          // Carry the current path as `?next=` so the login page can
+          // bounce back to the project after a successful re-auth.
+          navigate(
+            `/login?next=${encodeURIComponent(window.location.pathname)}`,
+          );
         }}
       />
       <div

@@ -2,7 +2,6 @@ import { RouterProvider } from 'react-router-dom';
 
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { injectDevUser } from '@/app/dev/inject-dev-user';
 import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
 import { router } from '@/app/routes';
 
@@ -12,17 +11,14 @@ import { router } from '@/app/routes';
  *     → TooltipProvider (Radix tooltip context)
  *       → RouterProvider (React Router 7 data router)
  *
- * In dev (`import.meta.env.DEV`), seed the current-user store with a
- * fixed dev identity that matches backend `LOGIN_MODE=NoAccount`.
- * Real login flow lands in a later PR.
+ * Authentication is cookie-based since 2026-05-26 — there is no
+ * dev-user injection on mount. Unauthenticated visits to a protected
+ * route bounce to `/login` via the route guard; `/auth/me` populates
+ * `useCurrentUserStore` once the session cookie is verified.
  *
  * Future providers (Theme / Yjs context / I18n) layer around the same
  * shell as needed.
  */
-if (import.meta.env.DEV) {
-  injectDevUser();
-}
-
 export default function App() {
   return (
     <QueryClientProvider>

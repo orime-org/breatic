@@ -29,10 +29,35 @@
  */
 
 import type Redis from "ioredis";
+import type { IncomingHttpHeaders } from "node:http";
 import postgres from "postgres";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
+
+/** Must match `packages/core/src/infra/cookie.ts` SESSION_COOKIE_NAME. */
+const SESSION_COOKIE_NAME = "breatic_session";
+
+/**
+ * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
+ * `Cookie:` header string; collab is intentionally core-less (see
+ * the module docstring) so we hand-roll instead of pulling a dep.
+ *
+ * Returns the value of the named cookie or null if absent.
+ */
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  // Cookie header is `name1=val1; name2=val2`. Trim each pair so
+  // leading spaces after `; ` do not break matching.
+  for (const pair of header.split(";")) {
+    const eq = pair.indexOf("=");
+    if (eq < 0) continue;
+    const k = pair.slice(0, eq).trim();
+    if (k !== name) continue;
+    return decodeURIComponent(pair.slice(eq + 1).trim());
+  }
+  return null;
+}
 
 /** Resolved user context returned to Hocuspocus. */
 export interface AuthContext {
@@ -140,14 +165,24 @@ export function createAuthHook({
   const sql = postgres(databaseUrl, { max: 5 });
 
   return async ({
-    token,
     documentName,
+    requestHeaders,
   }: {
     token: string;
     documentName: string;
+    requestHeaders: IncomingHttpHeaders;
   }): Promise<AuthContext> => {
+    // Session token now travels exclusively as the httpOnly
+    // `breatic_session` cookie sent on the WebSocket upgrade
+    // request (2026-05-26 cookie migration). Hocuspocus's own
+    // `token` field — sent by the client in the application-level
+    // auth frame — is treated as opaque and ignored; the client
+    // sends a placeholder like `"__cookie_auth__"` purely to trip
+    // Hocuspocus into invoking this hook (an empty token short-
+    // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
+    const token = readCookie(requestHeaders.cookie, SESSION_COOKIE_NAME);
     if (!token) {
-      throw new Error("No authentication token provided");
+      throw new Error("Missing session cookie");
     }
 
     const userId = await redis.get(`${envPrefix}:session:${token}`);

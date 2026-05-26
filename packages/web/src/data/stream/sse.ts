@@ -1,7 +1,5 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
-import { useCurrentUserStore } from '@/stores';
-
 interface SseOptions<TEvent> {
   /** Endpoint relative to `/api` (or absolute URL). */
   url: string;
@@ -26,6 +24,10 @@ interface SseOptions<TEvent> {
  *   - `POST /api/chat/message` — Agent chat token stream
  *   - `POST /api/mini-tools/text` — text mini-tool token stream
  *
+ * Auth: `credentials: 'include'` makes the browser attach the
+ * httpOnly `breatic_session` cookie on the request (2026-05-26
+ * cookie migration). No Bearer token is read from JS.
+ *
  * Throws an immediate error if 4xx auth fails; otherwise retries on
  * transient network errors (handled by fetch-event-source defaults).
  *
@@ -41,7 +43,6 @@ export async function sseStream<TEvent>({
   onError,
   signal,
 }: SseOptions<TEvent>): Promise<void> {
-  const token = useCurrentUserStore.getState().token;
   const fullUrl = url.startsWith('http') ? url : `/api${url}`;
 
   try {
@@ -49,8 +50,8 @@ export async function sseStream<TEvent>({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      credentials: 'include',
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
       openWhenHidden: true,

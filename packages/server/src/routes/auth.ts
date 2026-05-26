@@ -18,6 +18,11 @@ import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";
+import {
+  setSessionCookie,
+  clearSessionCookie,
+  readSessionCookie,
+} from "../middleware/session-cookie.js";
 import type { MiddlewareHandler } from "hono";
 
 /** Rate limit middleware factory. */
@@ -62,28 +67,37 @@ function getGoogleClient(): OAuth2Client {
  * (self-host default). The code is rotated on every successful
  * recovery-based reset; only the bcrypt hash is stored server-side.
  *
+ * Session is delivered as an httpOnly `breatic_session` cookie (the
+ * frontend never sees the raw token — XSS cannot exfiltrate it).
+ * Response body returns the user plus the one-time `recoveryCode`.
+ *
  * @param c - Hono context with validated `registerSchema` body
- * @returns `201` with `{ user, token, recoveryCode }` on success
+ * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
  * @throws `409` if email is already registered
  */
 auth.post("/register", rateLimit({ prefix: "register", max: 3, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
-  return c.json({ data: { user, token, recoveryCode } }, 201);
+  setSessionCookie(c, token);
+  return c.json({ data: { user, recoveryCode } }, 201);
 });
 
 /**
  * `POST /auth/login` — authenticate with email and password.
  *
+ * Session is delivered as an httpOnly cookie (see `/register` for
+ * rationale); response body returns only the user.
+ *
  * @param c - Hono context with validated `loginSchema` body
- * @returns `200` with `{ user, token }` on success
+ * @returns `200` with `{ user }` on success + Set-Cookie
  * @throws `401` if credentials are invalid
  */
 auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
-  return c.json({ data: { user, token } });
+  setSessionCookie(c, token);
+  return c.json({ data: { user } });
 });
 
 /**
@@ -167,7 +181,8 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
     payload.picture,
   );
 
-  return c.json({ data: { user, token } });
+  setSessionCookie(c, token);
+  return c.json({ data: { user } });
 });
 
 /**
@@ -182,9 +197,11 @@ auth.get("/me", requireAuth, async (c) => {
 });
 
 auth.post("/logout", requireAuth, async (c) => {
-  const authHeader = c.req.header("Authorization") ?? "";
-  const token = authHeader.slice(7);
-  await authService.logout(token);
+  const token = readSessionCookie(c);
+  if (token) {
+    await authService.logout(token);
+  }
+  clearSessionCookie(c);
   return c.json({ message: "Logged out" });
 });
 
