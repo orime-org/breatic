@@ -29,14 +29,26 @@ interface ConnectionBannerProps {
  * banner of this shape when the realtime channel fails.
  *
  * State → visual:
- *   connecting  → no banner (avoid flash on every quick reconnect)
- *   connected   → no banner
- *   authFailed  → red, "登录已失效", [重新登录] action
- *   disconnected → yellow, "连接断开", [刷新页面] action
+ *   connecting   → no banner (avoid flash on every quick reconnect)
+ *   connected    → no banner
+ *   authFailed   → deep red, "登录已失效", [重新登录] action
+ *   disconnected → deep amber, "连接断开", [刷新页面] action
  *
- * Tokens used:
- *   --color-status-error-* (red, fatal auth)
- *   --color-status-warning-* (yellow, soft disconnect)
+ * Mode-independent palette (Tailwind static `red-900` / `amber-700`):
+ *   banner is an alarm signal — its color semantics are constant
+ *   regardless of light/dark mode. Using shared `--color-status-error-*`
+ *   tokens would make light-mode banner a pale-red wash (silly for a
+ *   "session expired" alert) AND would couple banner color changes to
+ *   in-app error text in ToolCallCard / NewSpaceDialog (which DO want
+ *   to follow theme mode). See memory
+ *   `feedback_mode_independent_tokens` for the broader rule:
+ *   brand / status alarm UI elements opt out of theme switching.
+ *
+ * Button override (`bg-black/30 border-white/30 text-white`): default
+ * shadcn outline variant uses `--background` which would render a
+ * white pill on the deep-red banner in light mode — visually jarring.
+ * Translucent-black + white border + white text keeps strong contrast
+ * on both deep-red and deep-amber banners.
  */
 export function ConnectionBanner({
   status,
@@ -60,10 +72,12 @@ export function ConnectionBanner({
       data-testid='connection-banner'
       data-status={status}
       className={cn(
-        'flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-[13px]',
+        'flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-[13px]',
+        // Mode-independent — see component docstring. Tailwind static
+        // palette is intentional: banner color does NOT follow light/dark.
         isAuthFailed
-          ? 'border-status-error-border bg-status-error-bg text-status-error-foreground'
-          : 'border-status-warning-border bg-status-warning-bg text-status-warning-foreground',
+          ? 'bg-red-900 text-red-50'
+          : 'bg-amber-700 text-amber-50',
       )}
     >
       <div className='flex min-w-0 items-center gap-2'>
@@ -85,6 +99,10 @@ export function ConnectionBanner({
             variant='outline'
             onClick={onReLogin}
             data-testid='connection-banner-relogin'
+            // Override: outline default would render white pill on
+            // deep-red bg in light mode — use translucent-black + white
+            // border + white text for strong contrast on both red+amber.
+            className='border-white/30 bg-black/30 text-white hover:bg-black/50 hover:text-white'
           >
             {t('connection.banner.authFailed.action')}
           </Button>
@@ -95,7 +113,8 @@ export function ConnectionBanner({
             variant='outline'
             onClick={onReload}
             data-testid='connection-banner-reload'
-            className='gap-1.5'
+            // Same override as re-login button — see above.
+            className='gap-1.5 border-white/30 bg-black/30 text-white hover:bg-black/50 hover:text-white'
           >
             <RefreshCw className='h-3.5 w-3.5' aria-hidden />
             {t('connection.banner.reload')}
