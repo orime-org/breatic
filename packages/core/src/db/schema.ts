@@ -52,6 +52,13 @@ export const users = pgTable(
     // levels — every user has the same feature set and pays per-use by
     // deducting credits. The old `membership_type` / `membership_expires_at`
     // columns were removed in the 0010_* migration.
+    // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
+    // bcrypt-hashed single-use code shown once at registration so users
+    // can reset their password without an SMTP backend (self-host
+    // friendly). After successful consumption, used_at is set and a
+    // fresh code is generated + re-shown.
+    recoveryCodeHash: text("recovery_code_hash"),
+    recoveryCodeUsedAt: timestamp("recovery_code_used_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
