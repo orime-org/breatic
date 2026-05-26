@@ -87,12 +87,13 @@ describe("project.service.create — Q2 first-space-name invariant", () => {
     expect(args?.[1]).toContain("p-1");
   });
 
-  it("Q11 invariant: passes the user's display name as actor so the seeded space-created message is non-empty", async () => {
-    // The encoded initial meta state seeds the first projectMessages
-    // entry alongside `meta.spaces`. Without an actor, the bell would
-    // render "<空白> 创建了 Space X" — the original Q11 bug. Lock the
-    // username-or-email fallback chain so a future refactor that drops
-    // the username lookup trips this test before merge.
+  it("Q11 v2 invariant: passes the creating userId as actor (frontend lookups name via meta.users at render time)", async () => {
+    // Q11 v2 inverted the snapshot model — projectMessages now stores
+    // POINTERS (userId / spaceId) and the frontend reads
+    // meta.users[actor].name + meta.spaces[spaceId].name live, so a
+    // username rename retroactively propagates to every old message.
+    // Locking actor === userId here catches a regression that would
+    // re-introduce snapshot strings.
     vi.mocked(userRepo.getUserById).mockResolvedValueOnce({
       id: "u-1",
       username: "Alice",
@@ -102,20 +103,9 @@ describe("project.service.create — Q2 first-space-name invariant", () => {
 
     const arg = vi.mocked(encodeInitialMetaState).mock.calls[0]?.[0];
     expect(arg).toBeDefined();
-    // `actor` must reflect a human-readable name, not the raw UUID.
-    expect(arg?.actor).toBe("Alice");
-    expect(arg?.actor).not.toBe("u-1");
-  });
-
-  it("Q11 invariant: falls back to email when username is null (Google OAuth users sometimes have no username yet)", async () => {
-    vi.mocked(userRepo.getUserById).mockResolvedValueOnce({
-      id: "u-2",
-      username: null,
-      email: "bob@example.com",
-    } as never);
-    await create("u-2", "Bob's Project");
-
-    const arg = vi.mocked(encodeInitialMetaState).mock.calls[0]?.[0];
-    expect(arg?.actor).toBe("bob@example.com");
+    expect(arg?.actor).toBe("u-1");
+    // Defensive — actor must NOT be a snapshot string anymore.
+    expect(arg?.actor).not.toBe("Alice");
+    expect(arg?.actor).not.toBe("alice@example.com");
   });
 });

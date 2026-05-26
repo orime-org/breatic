@@ -16,21 +16,32 @@ beforeEach(() => {
   useUIStore.setState({ activeOverlayId: null });
 });
 
+// Q11 v2 — `actor` is a userId, name is rendered via the `usersById`
+// prop's live Yjs lookup. `spaceName` snapshot field was removed for
+// active entries; `space-deleted` keeps `spaceSnapshot.name` because
+// the spaceId leaves `meta.spaces` at delete time and there's no live
+// row left to look up against.
+const USERS_BY_ID: ReadonlyMap<string, { name: string }> = new Map([
+  ['u-yuki', { name: 'Yuki' }],
+]);
+const SPACES_BY_ID: ReadonlyMap<string, { name: string }> = new Map([
+  ['sp-2', { name: 'Reel' }],
+]);
+
 const M_DELETED: ProjectMessageEntry = {
   id: 'm-del',
   kind: 'space-deleted',
-  actor: 'Yuki',
+  actor: 'u-yuki',
   spaceId: 'sp-1',
-  spaceName: 'Main',
+  spaceSnapshot: { id: 'sp-1', name: 'Main', type: 'canvas' },
   createdAt: Date.now() - 60_000,
 };
 
 const M_CREATED: ProjectMessageEntry = {
   id: 'm-new',
   kind: 'space-created',
-  actor: 'Yuki',
+  actor: 'u-yuki',
   spaceId: 'sp-2',
-  spaceName: 'Reel',
   createdAt: Date.now() - 600_000,
 };
 
@@ -46,7 +57,7 @@ describe('ProjectMessagesButton', () => {
   it('renders trigger without any unread / dot indicator', () => {
     // Project messages channel has no read / unread state — the trigger
     // never decorates with a dot, regardless of message count.
-    render(<ProjectMessagesButton messages={[M_DELETED]} />);
+    render(<ProjectMessagesButton messages={[M_DELETED]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
     expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
     expect(screen.queryByTestId('project-messages-dot')).toBeNull();
   });
@@ -54,7 +65,7 @@ describe('ProjectMessagesButton', () => {
   it('renders one row per message after opening the popover', async () => {
     const user = userEvent.setup();
     render(
-      <ProjectMessagesButton messages={[M_DELETED, M_CREATED, M_MISSING]} />,
+      <ProjectMessagesButton messages={[M_DELETED, M_CREATED, M_MISSING]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />,
     );
     await user.click(screen.getByTestId('project-messages-trigger'));
     expect(screen.getByTestId('project-messages-entry-m-del')).toBeInTheDocument();
@@ -68,6 +79,8 @@ describe('ProjectMessagesButton', () => {
     render(
       <ProjectMessagesButton
         messages={[M_DELETED, M_CREATED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
         currentUserRole='owner'
         onRestore={onRestore}
       />,
@@ -88,6 +101,8 @@ describe('ProjectMessagesButton', () => {
     render(
       <ProjectMessagesButton
         messages={[M_DELETED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
         currentUserRole='edit'
         onRestore={vi.fn()}
       />,
@@ -104,6 +119,8 @@ describe('ProjectMessagesButton', () => {
     render(
       <ProjectMessagesButton
         messages={[M_DELETED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
         currentUserRole='owner'
         onClearAll={onClearAll}
       />,
@@ -126,6 +143,8 @@ describe('ProjectMessagesButton', () => {
     render(
       <ProjectMessagesButton
         messages={[M_DELETED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
         currentUserRole='edit'
         onClearAll={vi.fn()}
       />,
@@ -136,7 +155,7 @@ describe('ProjectMessagesButton', () => {
 
   it('renders empty-state copy when no messages', async () => {
     const user = userEvent.setup();
-    render(<ProjectMessagesButton messages={[]} />);
+    render(<ProjectMessagesButton messages={[]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
     await user.click(screen.getByTestId('project-messages-trigger'));
     expect(screen.getByText(/messages yet|no messages/i)).toBeInTheDocument();
   });
@@ -155,7 +174,7 @@ describe('ProjectMessagesButton', () => {
       spaceId: 's',
       createdAt: 2,
     };
-    render(<ProjectMessagesButton messages={[old, newer]} />);
+    render(<ProjectMessagesButton messages={[old, newer]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
     await user.click(screen.getByTestId('project-messages-trigger'));
     const list = screen.getByTestId('project-messages-list');
     const items = list.querySelectorAll('[data-testid^="project-messages-entry-"]');

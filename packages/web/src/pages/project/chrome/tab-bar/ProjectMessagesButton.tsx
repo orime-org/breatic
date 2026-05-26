@@ -39,6 +39,20 @@ import { useTranslation } from '@/i18n/use-translation';
  */
 export interface ProjectMessagesButtonProps {
   messages: ReadonlyArray<ProjectMessageEntry>;
+  /**
+   * Live user lookup from `useProjectMeta().users` — used to render
+   * `m.actor` (userId) as a display name. Q11 v2 moved away from
+   * snapshot strings on every message; a username rename now
+   * retroactively updates every historical entry by way of this map.
+   */
+  usersById: ReadonlyMap<string, { name: string }>;
+  /**
+   * Live Space lookup from `useProjectMeta().spaces` — used to render
+   * `m.spaceId` as a current name. Falls back to `spaceSnapshot.name`
+   * for `space-deleted` entries (the spaceId leaves `meta.spaces` at
+   * delete time; the snapshot is the only place left to read from).
+   */
+  spacesById: ReadonlyMap<string, { name: string }>;
   /** Caller's role on the project. Drives owner-only affordances. */
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
@@ -122,6 +136,8 @@ const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
 
 export function ProjectMessagesButton({
   messages,
+  usersById,
+  spacesById,
   currentUserRole,
   onRestore,
   onClearAll,
@@ -255,6 +271,22 @@ export function ProjectMessagesButton({
               const rel = relativeTime(m.createdAt);
               const canRestore =
                 isOwner && m.kind === 'space-deleted' && Boolean(m.spaceId);
+              // Q11 v2 lookup chain — render uses live Yjs maps so a
+              // username / Space rename retroactively propagates. For
+              // `space-deleted` entries the spaceId has already left
+              // `meta.spaces`, so we fall back to the snapshot kept on
+              // the message itself; finally an em-dash for the
+              // truly-orphaned case (deleted Space + cleared snapshot).
+              const actorName =
+                (m.actor ? usersById.get(m.actor)?.name : undefined) ?? m.actor ?? '';
+              const liveSpaceName = m.spaceId
+                ? spacesById.get(m.spaceId)?.name
+                : undefined;
+              const snapshotName =
+                typeof m.spaceSnapshot?.name === 'string'
+                  ? (m.spaceSnapshot.name as string)
+                  : undefined;
+              const spaceName = liveSpaceName ?? snapshotName ?? '—';
               return (
                 <li
                   key={m.id}
@@ -281,13 +313,13 @@ export function ProjectMessagesButton({
                       {m.message
                         ? t(m.message, m.context as Record<string, string | number> | undefined)
                         : t(KIND_LABEL_KEY[m.kind], {
-                            spaceName: m.spaceName ?? '',
-                            actor: m.actor ?? '',
+                            spaceName,
+                            actor: actorName,
                           })}
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
-                      {m.spaceName ? ` · ${m.spaceName}` : ''}
+                      {liveSpaceName ? ` · ${liveSpaceName}` : ''}
                     </p>
                   </div>
                   {canRestore ? (

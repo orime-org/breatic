@@ -51,13 +51,6 @@ export interface SpaceRpcContext {
 export interface SpaceRpcCaller {
   userId: string;
   role: ProjectRole;
-  /**
-   * Human-readable caller name (`users.username ?? users.email`),
-   * resolved by the auth hook from the session cookie. Stored as the
-   * `actor` on every projectMessages entry so the [项目消息] bell
-   * surfaces "Alice 创建了 Space X" instead of the raw UUID.
-   */
-  userName: string;
 }
 
 const SYSTEM_USER_ID = "system";
@@ -98,28 +91,46 @@ function requireAtLeast(role: ProjectRole, min: ProjectRole): boolean {
  * be reverse-engineered into a restore later without keeping the
  * deleted entry in `meta.spaces`.
  */
+/**
+ * Q11 v2 — projectMessages stores pointers, not snapshot strings.
+ *
+ * `actor` is the caller's userId (UUID); the frontend looks up
+ * `meta.users[actor].name` at render time so a username rename
+ * propagates retroactively. Likewise `spaceId` is enough on its own
+ * — `meta.spaces[spaceId].name` gives the live name, so a Space
+ * rename is reflected in every historical message that references
+ * it. `spaceSnapshot` is preserved for `space-deleted` because the
+ * id leaves `meta.spaces` at delete time and Restore needs the
+ * original name + type to re-create the entry.
+ *
+ * The `id` field is the full Yjs entry identifier (`pm-${ts}-${full
+ * uuid}`); no slice truncation per the design discussion ("以后所有
+ * ID 不 slice"). `Math.random()` was avoided because it would break
+ * `encodeInitialMetaState`'s determinism contract — and consistency
+ * across collab + bootstrap paths is easier when both use the same
+ * id-generation shape.
+ */
 function pushProjectMessage(
   doc: Y.Doc,
   args: {
     kind: ProjectMessageKind;
-    actor?: string;
-    spaceId?: string;
-    spaceName?: string;
-    spaceSnapshot?: Record<string, unknown>;
-    message?: string;
+    actor: string; // userId (UUID) — render-time lookup via meta.users
+    spaceId?: string; // render-time lookup via meta.spaces
+    spaceSnapshot?: Record<string, unknown>; // only for `space-deleted` (id leaves meta.spaces)
+    message?: string; // i18n key for kinds that need extra context (e.g. `missing-node`)
   },
 ): void {
   const entry = new Y.Map<unknown>();
-  entry.set("id", `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const ts = Date.now();
+  entry.set("id", args.spaceId ? `pm-${ts}-${args.spaceId}` : `pm-${ts}`);
   entry.set("kind", args.kind);
-  if (args.actor !== undefined) entry.set("actor", args.actor);
+  entry.set("actor", args.actor);
   if (args.spaceId !== undefined) entry.set("spaceId", args.spaceId);
-  if (args.spaceName !== undefined) entry.set("spaceName", args.spaceName);
   if (args.spaceSnapshot !== undefined) {
     entry.set("spaceSnapshot", args.spaceSnapshot);
   }
   if (args.message !== undefined) entry.set("message", args.message);
-  entry.set("createdAt", Date.now());
+  entry.set("createdAt", ts);
   doc.getArray("projectMessages").push([entry]);
 }
 
@@ -196,9 +207,8 @@ async function handleCreate(
       spaces.set(spaceId, entry);
       pushProjectMessage(doc, {
         kind: "space-created",
-        actor: caller.userName,
+        actor: caller.userId,
         spaceId,
-        spaceName: name,
       });
     });
     if (conflict) {
@@ -225,7 +235,6 @@ async function handleDelete(
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
   let snapshot: Record<string, unknown> | null = null;
-  let spaceName: string | undefined;
   try {
     let notFound = false;
     await conn.transact((doc: Y.Doc) => {
@@ -236,13 +245,11 @@ async function handleDelete(
         return;
       }
       snapshot = snapshotMap(entry);
-      spaceName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
       pushProjectMessage(doc, {
         kind: "space-deleted",
-        actor: caller.userName,
+        actor: caller.userId,
         spaceId,
-        spaceName,
         spaceSnapshot: snapshot ?? undefined,
       });
     });
@@ -286,9 +293,8 @@ async function handleLock(
       entry.set("locked", locked);
       pushProjectMessage(doc, {
         kind: locked ? "space-locked" : "space-unlocked",
-        actor: caller.userName,
+        actor: caller.userId,
         spaceId,
-        spaceName: entry.get("name") as string | undefined,
       });
     });
     if (notFound) {
@@ -407,9 +413,8 @@ async function handleRestore(
       spaces.set(spaceId, entry);
       pushProjectMessage(doc, {
         kind: "space-restored",
-        actor: caller.userName,
+        actor: caller.userId,
         spaceId,
-        spaceName: snapshot.name as string | undefined,
       });
     });
     if (!snapshot) {

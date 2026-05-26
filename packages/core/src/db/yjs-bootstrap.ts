@@ -39,13 +39,12 @@ export interface EncodeInitialMetaStateArgs {
   name: string;
   createdBy: string;
   /**
-   * Human-readable display name of the creating user (`users.username
-   * ?? users.email`). Stored as the `actor` of the seeded
-   * `space-created` projectMessages entry so the [项目消息] bell
-   * surfaces "Alice 创建了 Space X" alongside subsequent space
-   * lifecycle events. Caller resolves this from `userRepo.getUserById`
-   * — required, not nullable, so a regression that drops the lookup
-   * trips the TypeScript build.
+   * Q11 v2 — the creating user's userId (UUID). Stored as the
+   * `actor` field of the seeded `space-created` projectMessages
+   * entry; the frontend looks up `meta.users[actor].name` at render
+   * time so a username rename retroactively propagates. Required
+   * (not nullable) so a regression that drops the lookup trips the
+   * TypeScript build.
    */
   actor: string;
   /** Milliseconds since epoch. Caller passes `Date.now()` in production. */
@@ -92,24 +91,20 @@ export function encodeInitialMetaState(
   entry.set("createdBy", createdBy);
   spaces.set(spaceId, entry);
 
-  // Q11 — the bootstrap path also seeds the first `projectMessages`
-  // entry so the [项目消息] bell shows "{actor} 创建了 Space {name}"
-  // for the auto-seeded canvas Space, matching the message that
-  // collab/space-rpc.handleCreate emits for every subsequent Space.
-  // Without this, the bell would silently start from the user's
-  // SECOND creation onwards.
-  // Use a deterministic id derived from ts + spaceId rather than
-  // Math.random() so the encoded update stays byte-identical across
-  // calls with the same args (`produces deterministic update` test
-  // depends on this; the migration replay + UPSERT semantics in
-  // `insertInitialState` would otherwise see false-positive diffs).
+  // Q11 v2 — bootstrap path seeds the first `projectMessages` entry
+  // consistent with `collab/space-rpc.handleCreate`. Stores POINTERS
+  // only (`actor=userId`, `spaceId`) — the frontend looks up live
+  // display name from `meta.users[actor].name` + `meta.spaces[
+  // spaceId].name` at render time so any rename propagates
+  // retroactively. The `id` field is the full `pm-${ts}-${spaceId}`
+  // with no slice truncation (design: "以后所有 ID 不 slice");
+  // determinism is preserved because every input is deterministic.
   const projectMessages = doc.getArray("projectMessages");
   const msg = new Y.Map<unknown>();
-  msg.set("id", `pm-${ts}-${spaceId.slice(0, 8)}`);
+  msg.set("id", `pm-${ts}-${spaceId}`);
   msg.set("kind", "space-created");
   msg.set("actor", actor);
   msg.set("spaceId", spaceId);
-  msg.set("spaceName", name);
   msg.set("createdAt", ts);
   projectMessages.push([msg]);
 

@@ -207,9 +207,22 @@ export type ProjectMessageKind = z.infer<typeof ProjectMessageKindSchema>;
 export const ProjectMessageEntrySchema = z.object({
   id: z.string(),
   kind: ProjectMessageKindSchema,
+  /**
+   * Q11 v2 — userId (UUID) of the user who triggered this event.
+   * Optional because system-emitted entries (e.g. `missing-node`) have
+   * no human actor. Frontend renders the display name via
+   * `meta.users[actor].name` so a later rename retroactively reflects.
+   */
   actor: z.string().optional(),
+  /**
+   * Q11 v2 — pointer into `meta.spaces`. Frontend renders the
+   * Space's current name via `meta.spaces[spaceId].name` so a
+   * rename retroactively reflects. For `space-deleted` entries the
+   * id has left `meta.spaces` — the snapshot below carries the
+   * original name + type so Restore can re-hydrate the entry.
+   */
   spaceId: z.string().optional(),
-  spaceName: z.string().optional(),
+  spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number().int(),

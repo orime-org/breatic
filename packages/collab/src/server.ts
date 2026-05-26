@@ -23,7 +23,7 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook } from "./auth.js";
+import { createAuthHook, ensureUserInMetaDoc } from "./auth.js";
 import { checkWriteAuthz, WriteAuthzError } from "./before-handle-message.js";
 import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
@@ -123,6 +123,42 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
     },
 
+    // Q11 v2 — ensure `meta.users[userId]` reflects the latest
+    // username + avatar so ProjectMessagesButton and friends can
+    // render display names via a live Yjs lookup. Idempotent;
+    // updates on every doc load so a PG-side rename propagates the
+    // next time the user opens any doc. Runs in `afterLoadDocument`
+    // (NOT `onConnect`) because the Hocuspocus hook order is
+    // `onConnect → connected → onAuthenticate → onLoadDocument →
+    // afterLoadDocument`. context.user is populated by onAuthenticate,
+    // so any pre-auth hook (onConnect) sees `context.user = undefined`
+    // and the ensure call silently no-ops. Failure is non-fatal —
+    // logged + the doc load continues (frontend reads a missing
+    // entry as an em-dash for one tick until the next connect).
+    afterLoadDocument: async ({ documentName, context }) => {
+      const ctx = context as {
+        user?: {
+          id?: string;
+          name?: string;
+          avatarUrl?: string | null;
+        };
+      };
+      const parsed = parseDocName(documentName);
+      if (!parsed || !ctx.user?.id || !ctx.user.name) return;
+      try {
+        await ensureUserInMetaDoc(wsServer.hocuspocus, parsed.projectId, {
+          id: ctx.user.id,
+          name: ctx.user.name,
+          avatarUrl: ctx.user.avatarUrl ?? null,
+        });
+      } catch (err) {
+        logger.error(
+          { err, documentName, userId: ctx.user.id },
+          "ensure_user_in_meta_doc_failed",
+        );
+      }
+    },
+
     onDisconnect: async ({ documentName, context }) => {
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
@@ -189,8 +225,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       };
       const callerId = ctx.user?.id;
       const callerRole = ctx.user?.role;
-      const callerName = ctx.user?.name;
-      if (!callerId || !callerRole || !callerName) {
+      if (!callerId || !callerRole) {
         document.broadcastStateless(
           JSON.stringify({
             id: req.id,
@@ -204,7 +239,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       const response = await handleSpaceRpc(
         { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
         parsed.projectId,
-        { userId: callerId, role: callerRole, userName: callerName },
+        { userId: callerId, role: callerRole },
         req,
       );
       document.broadcastStateless(JSON.stringify(response));

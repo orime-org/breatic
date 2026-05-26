@@ -60,7 +60,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view", userName: "Viewer Vera" },
+      { userId: "u", role: "view" },
       {
         id: "r1",
         type: "space:create",
@@ -75,7 +75,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view", userName: "Viewer Vera" },
+      { userId: "u", role: "view" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -85,7 +85,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "view", userName: "Viewer Vera" },
+      { userId: "u", role: "view" },
       {
         id: "r1",
         type: "space:lock",
@@ -99,7 +99,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "edit", userName: "Editor Eli" },
+      { userId: "u", role: "edit" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -110,7 +110,7 @@ describe("handleSpaceRpc — role validation", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u", role: "edit", userName: "Editor Eli" },
+      { userId: "u", role: "edit" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
     );
     expect(res.ok).toBe(false);
@@ -122,7 +122,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit", userName: "Alice" },
+      { userId: "u-1", role: "edit" },
       {
         id: "r1",
         type: "space:create",
@@ -137,11 +137,15 @@ describe("handleSpaceRpc — happy paths", () => {
     const m = messages.get(0) as Y.Map<unknown>;
     expect(m.get("kind")).toBe("space-created");
     expect(m.get("spaceId")).toBe(SID);
-    // Q7 invariant: actor is the human-readable userName, not the
-    // opaque UUID — ProjectMessagesButton renders this string verbatim
-    // into "{actor} 创建了 Space {spaceName}".
-    expect(m.get("actor")).toBe("Alice");
-    expect(m.get("actor")).not.toBe("u-1");
+    // Q11 v2 invariant: actor is the caller's userId (UUID); the
+    // frontend looks up `meta.users[actor].name` at render time so
+    // username rename propagates retroactively. No more snapshot
+    // strings on every message.
+    expect(m.get("actor")).toBe("u-1");
+    // The legacy `spaceName` snapshot was removed in Q11 v2 — the
+    // frontend reads `meta.spaces[spaceId].name` instead so a Space
+    // rename reflects in every historical message immediately.
+    expect(m.get("spaceName")).toBeUndefined();
   });
 
   it("space:create returns CONFLICT when spaceId already exists", async () => {
@@ -152,7 +156,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit", userName: "Alice" },
+      { userId: "u-1", role: "edit" },
       {
         id: "r1",
         type: "space:create",
@@ -176,14 +180,19 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql },
       PID,
-      { userId: "u-1", role: "edit", userName: "Alice" },
+      { userId: "u-1", role: "edit" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
     const m = fakeMetaDoc.doc.getArray("projectMessages").get(0) as Y.Map<unknown>;
     expect(m.get("kind")).toBe("space-deleted");
-    expect(m.get("spaceName")).toBe("Main");
+    // `spaceName` snapshot field removed in Q11 v2;
+    // `spaceSnapshot` is kept because the spaceId leaves meta.spaces
+    // at delete time and Restore re-hydrates the entry from this
+    // snapshot. The frontend reads spaceSnapshot.name for deleted
+    // entries (falls back gracefully when meta.spaces lookup misses).
+    expect(m.get("spaceName")).toBeUndefined();
     expect(m.get("spaceSnapshot")).toMatchObject({
       id: SID,
       type: "canvas",
@@ -196,7 +205,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit", userName: "Alice" },
+      { userId: "u-1", role: "edit" },
       { id: "r1", type: "space:delete", payload: { spaceId: "missing" } },
     );
     expect(res.ok).toBe(false);
@@ -213,7 +222,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "u-1", role: "edit", userName: "Alice" },
+      { userId: "u-1", role: "edit" },
       {
         id: "r1",
         type: "space:lock",
@@ -248,7 +257,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql },
       PID,
-      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
+      { userId: "owner-1", role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
@@ -263,7 +272,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
+      { userId: "owner-1", role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
@@ -280,7 +289,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus(), sql: makeSql() },
       PID,
-      { userId: "owner-1", role: "owner", userName: "Owner Olivia" },
+      { userId: "owner-1", role: "owner" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
     );
     expect(res.ok).toBe(true);

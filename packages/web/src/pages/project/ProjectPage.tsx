@@ -116,6 +116,7 @@ export default function ProjectPage() {
     spaces,
     openTabIds,
     activeSpaceId,
+    users: projectUsers,
     provider,
     status: connectionStatus,
   } = useProjectMeta(projectId, userId);
@@ -439,6 +440,7 @@ export default function ProjectPage() {
               onSetSpaceLocked={onSetSpaceLocked}
               onRenameSpace={onRenameSpace}
               projectMessages={projectMessages}
+              usersById={projectUsers}
               currentUserRole={role}
               onRestoreSpace={onRestoreSpace}
               onClearMessages={onClearMessages}

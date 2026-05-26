@@ -71,6 +71,13 @@ export interface AuthContext {
      * re-query Postgres on every Space lifecycle event.
      */
     name: string;
+    /**
+     * Optional avatar URL — flows into `meta.users[userId].avatarUrl`
+     * so the bell + members popover can show profile pictures without
+     * a separate REST round-trip. Null when the user has not uploaded
+     * an avatar yet (Google OAuth users get one auto-set).
+     */
+    avatarUrl: string | null;
   };
   connection: {
     readOnly: boolean;
@@ -142,7 +149,11 @@ async function loadProjectRole(
   sql: ReturnType<typeof postgres>,
   userId: string,
   projectId: string,
-): Promise<{ role: ProjectRole; userName: string } | null> {
+): Promise<{
+  role: ProjectRole;
+  userName: string;
+  avatarUrl: string | null;
+} | null> {
   const projectRows = await sql<{ id: string }[]>`
     SELECT id
     FROM projects
@@ -152,8 +163,13 @@ async function loadProjectRole(
   `;
   if (projectRows.length === 0) return null;
 
-  const memberRows = await sql<{ role: string; username: string | null; email: string }[]>`
-    SELECT pm.role, u.username, u.email
+  const memberRows = await sql<{
+    role: string;
+    username: string | null;
+    email: string;
+    avatar_url: string | null;
+  }[]>`
+    SELECT pm.role, u.username, u.email, u.avatar_url
     FROM project_members pm
     JOIN users u ON u.id = pm.user_id
     WHERE pm.project_id = ${projectId}
@@ -167,6 +183,7 @@ async function loadProjectRole(
   return {
     role: row.role as ProjectRole,
     userName: row.username ?? row.email,
+    avatarUrl: row.avatar_url,
   };
 }
 
@@ -224,7 +241,7 @@ export function createAuthHook({
         `User ${userId} is not authorized to access project ${parsed.projectId}`,
       );
     }
-    const { role, userName } = member;
+    const { role, userName, avatarUrl } = member;
 
     // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
     // refuse the connection if the spaceId is no longer in `meta.spaces`.
@@ -241,10 +258,65 @@ export function createAuthHook({
     }
 
     return {
-      user: { id: userId, role, name: userName },
+      user: { id: userId, role, name: userName, avatarUrl },
       connection: {
         readOnly: role === "view",
       },
     };
   };
+}
+
+/**
+ * Idempotently write `meta.users[userId] = { name, avatarUrl }` so
+ * downstream consumers (ProjectMessagesButton, MembersStack, future
+ * presence overlays) can render display names by looking up the live
+ * Yjs map instead of carrying snapshot strings on every message.
+ *
+ * Called from `onConnect` once per WebSocket handshake. Updates the
+ * record on every connect — that way a username / avatar change in
+ * PG propagates to all viewers the next time the user opens any
+ * doc, without needing a separate "user-changed" pubsub channel
+ * (see Q11 v2 design 2A: "every connect ensure self record").
+ *
+ * Writes are funnelled through the privileged `system` user so the
+ * `beforeHandleMessage` write-authz gate (ADR
+ * 2026-05-23-yjs-collab-only-write-authz) lets them through.
+ */
+export async function ensureUserInMetaDoc(
+  hocuspocus: import("@hocuspocus/server").Hocuspocus,
+  projectId: string,
+  user: { id: string; name: string; avatarUrl: string | null },
+): Promise<void> {
+  const docName = projectMetaDocName(projectId);
+  const conn = await hocuspocus.openDirectConnection(docName, {
+    context: { user: { id: "system" }, source: "auth-ensure-user" },
+  });
+  try {
+    await conn.transact((doc) => {
+      const users = doc.getMap("users");
+      const existing = users.get(user.id) as Y.Map<unknown> | undefined;
+      // Only write when value would actually change — saves a no-op
+      // Yjs update broadcast on every reconnect of an idle user.
+      if (
+        existing instanceof Y.Map &&
+        existing.get("name") === user.name &&
+        existing.get("avatarUrl") === (user.avatarUrl ?? null)
+      ) {
+        return;
+      }
+      const entry = existing instanceof Y.Map
+        ? existing
+        : (() => {
+          const m = new Y.Map<unknown>();
+          users.set(user.id, m);
+          return m;
+        })();
+      entry.set("id", user.id);
+      entry.set("name", user.name);
+      entry.set("avatarUrl", user.avatarUrl ?? null);
+      entry.set("updatedAt", Date.now());
+    });
+  } finally {
+    await conn.disconnect();
+  }
 }
