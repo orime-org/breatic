@@ -4,7 +4,7 @@
   viewBox -37 -37 74 74:几何外接 73×70 单位 + 1 unit safe buffer(给 stroke linecap rounded 外突)
   → 横向 1.4% margin / 纵向 2.7% margin,接近 GitHub / Twitter favicon 满版视觉
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-37 -37 74 74">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-38 -38.5 75 75">
   <g transform="scale(1, -1)">
     <circle cx="25.98" cy="-15" r="10" fill="#BC4B36"/>
     <path d="M 25.98 -15 A 30 30 0 0 0 -25.98 -15" fill="none" stroke="#BC4B36" stroke-width="8" stroke-linecap="round"/>
