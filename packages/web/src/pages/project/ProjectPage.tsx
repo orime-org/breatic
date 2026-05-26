@@ -23,6 +23,7 @@ import type { SpaceType } from '@/spaces';
 import { ChatPanel } from '@/pages/project/chat/ChatPanel';
 import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
 import { LoadingOverlay } from '@/pages/project/chrome/LoadingOverlay';
+import { ConnectionBanner } from '@/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
 } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
@@ -102,10 +103,13 @@ export default function ProjectPage() {
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
-  const { spaces, openTabIds, activeSpaceId, provider } = useProjectMeta(
-    projectId,
-    userId,
-  );
+  const {
+    spaces,
+    openTabIds,
+    activeSpaceId,
+    provider,
+    status: connectionStatus,
+  } = useProjectMeta(projectId, userId);
   const { messages: projectMessages } = useProjectMessages(projectId);
 
   // Tabs shown in the tab bar = each open tab id resolved against the
@@ -209,7 +213,14 @@ export default function ProjectPage() {
       errorToastKey: string,
     ): Promise<SpaceRpcResponse> => {
       if (!provider) {
-        throw new Error(t('project.space.error.notSynced'));
+        // Surface a toast on the "no provider yet" path too — without this
+        // the catch block in callers received a silent `Error('notSynced')`
+        // and (because `err.message.length > 0`) the fallback toast was
+        // skipped, leaving the user staring at a dismissed dialog and no
+        // explanation (2026-05-25 P0 silent-fail).
+        const msg = t('project.space.error.notSynced');
+        toast.error(t(errorToastKey), { description: msg });
+        throw new Error(msg);
       }
       const res = await sendSpaceRpc(provider, req);
       if (!res.ok) {
@@ -331,6 +342,15 @@ export default function ProjectPage() {
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
+      <ConnectionBanner
+        status={connectionStatus}
+        onReload={() => window.location.reload()}
+        onReLogin={() => {
+          // Real auth flow lands later; for now reload kicks the
+          // dev-user injection + token re-application path.
+          window.location.reload();
+        }}
+      />
       <TopBar
         projectId={projectId}
         projectName={projectName}

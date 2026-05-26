@@ -1153,5 +1153,17 @@
       "audio": "Wants to join for voice-over and BGM",
       "project": "Wants to reference your prompt style for their project"
     }
+  },
+  "connection": {
+    "banner": {
+      "authFailed": {
+        "text": "Your session is invalid — content cannot load. Please sign in again.",
+        "action": "Sign in again"
+      },
+      "disconnected": {
+        "text": "Connection to the server was lost — content may be out of date."
+      },
+      "reload": "Reload"
+    }
   }
 }
