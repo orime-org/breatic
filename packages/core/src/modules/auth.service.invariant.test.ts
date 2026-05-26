@@ -3,7 +3,7 @@
  *
  * These tests assert behavior that already exists today (per `grep`-based
  * spec amend 2026-05-26). They should pass on current `main` as-is and
- * stay green after PR-a NoAccount removal + recovery code addition.
+ * stay green after PR-a dev-bypass auth deletion + recovery code addition.
  *
  * Locked invariants:
  *
