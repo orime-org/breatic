@@ -10,6 +10,10 @@ import bcrypt from "bcryptjs";
 
 import * as userRepo from "./user.repo.js";
 import * as studioService from "./studio.service.js";
+import {
+  generateRecoveryCode,
+  hashRecoveryCode,
+} from "./recovery-code.service.js";
 import { getRedis } from "../infra/redis.js";
 import { sendMail } from "../infra/mailer.js";
 import { env } from "../config/env.js";
@@ -32,15 +36,22 @@ const BCRYPT_ROUNDS = 12;
 /**
  * Register a new user with email and password.
  *
+ * Generates a one-time recovery code (GitHub backup-codes pattern) so
+ * the user can reset their password without an SMTP backend
+ * (self-host friendly). The plaintext code is returned exactly once
+ * — callers MUST display it to the user with a "save this now" UX;
+ * only the bcrypt hash is persisted server-side.
+ *
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
- * @returns The newly created user entity
+ * @returns `{ user, recoveryCode }` — recoveryCode is plaintext
+ *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
  */
 export async function register(
   email: string,
   password: string,
-): Promise<UserEntity> {
+): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
     throw new ConflictError(t("server.auth.email_taken"));
@@ -49,12 +60,22 @@ export async function register(
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const username = email.split("@")[0];
   const user = await userRepo.createUser({ email, hashedPassword, username });
+
+  // Generate + store recovery code. Done after createUser so we have
+  // a user.id to attach to. Failures here bubble up before studio
+  // setup — the user row will still exist (no transaction wrap) but
+  // recovery_code_hash will be NULL; the user can request a fresh
+  // code via reset-with-recovery-code → resend flow.
+  const recoveryCode = generateRecoveryCode();
+  const recoveryCodeHash = await hashRecoveryCode(recoveryCode);
+  await userRepo.setRecoveryCode(user.id, recoveryCodeHash);
+
   // Personal studio is the FK target for the user's projects (v10
   // §6). Idempotent — also called from project.service.create as
   // belt-and-suspenders if the register hook ever races.
   await studioService.ensurePersonalStudio(user.id, user.username);
   logger.info({ userId: user.id, email }, "user_registered");
-  return user;
+  return { user, recoveryCode };
 }
 
 /**

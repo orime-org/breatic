@@ -54,6 +54,7 @@ vi.mock("../infra/mailer.js", () => ({
 const mockGetUserByEmail = vi.fn();
 const mockCreateUser = vi.fn();
 const mockUpdatePassword = vi.fn();
+const mockSetRecoveryCode = vi.fn().mockResolvedValue(undefined);
 vi.mock("./user.repo.js", () => ({
   getUserByEmail: mockGetUserByEmail,
   getUserById: vi.fn(),
@@ -62,6 +63,9 @@ vi.mock("./user.repo.js", () => ({
   updateUser: vi.fn(),
   getHashedPassword: vi.fn(),
   updatePassword: mockUpdatePassword,
+  setRecoveryCode: mockSetRecoveryCode,
+  getRecoveryCode: vi.fn(),
+  markRecoveryCodeUsed: vi.fn(),
 }));
 
 vi.mock("./studio.service.js", () => ({
@@ -98,6 +102,31 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
 
     expect(capturedHash).toBeDefined();
     expect(capturedHash).toMatch(/^\$2[abxy]\$12\$/);
+  });
+
+  it("register() returns recoveryCode (XXXX-XXXX-XXXX-XXXX) + setRecoveryCode stores cost-12 bcrypt hash", async () => {
+    mockGetUserByEmail.mockResolvedValue(null);
+    mockCreateUser.mockResolvedValue({
+      id: "u-new",
+      email: "new@example.com",
+      username: "new",
+      avatarUrl: null,
+      credits: 0,
+    });
+
+    const { register } = await import("./auth.service.js");
+    const result = await register("new@example.com", "validPassword123");
+
+    // Returned recovery code is plaintext, base32 XXXX-XXXX-XXXX-XXXX
+    expect(result.user.id).toBe("u-new");
+    expect(result.recoveryCode).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+
+    // setRecoveryCode called once, with bcrypt-cost-12 hash (never the plaintext)
+    expect(mockSetRecoveryCode).toHaveBeenCalledOnce();
+    const [userId, storedHash] = mockSetRecoveryCode.mock.calls[0] as [string, string];
+    expect(userId).toBe("u-new");
+    expect(storedHash).toMatch(/^\$2[abxy]\$12\$/);
+    expect(storedHash).not.toBe(result.recoveryCode);
   });
 
   it("resetPassword() also hashes with cost 12", async () => {

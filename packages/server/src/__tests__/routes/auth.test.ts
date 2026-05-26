@@ -25,8 +25,12 @@ describe("Auth routes", () => {
   });
 
   describe("POST /auth/register", () => {
-    it("registers and returns 201", async () => {
-      mocks.authService.register.mockResolvedValue({ id: "user-new", email: "new@test.com" });
+    it("registers and returns 201 with user + token + recoveryCode", async () => {
+      // PR-a task 6: register signature now returns { user, recoveryCode }
+      mocks.authService.register.mockResolvedValue({
+        user: { id: "user-new", email: "new@test.com" },
+        recoveryCode: "ABCD-EFGH-JKLM-NPQR",
+      });
       mocks.authService.loginEmail.mockResolvedValue({
         user: { id: "user-new", email: "new@test.com" },
         token: "new-token",
@@ -40,8 +44,9 @@ describe("Auth routes", () => {
       });
 
       expect(res.status).toBe(201);
-      const body = await res.json() as { data: { token: string } };
+      const body = await res.json() as { data: { token: string; recoveryCode: string } };
       expect(body.data.token).toBe("new-token");
+      expect(body.data.recoveryCode).toBe("ABCD-EFGH-JKLM-NPQR");
     });
 
     it("rejects invalid email with 400", async () => {

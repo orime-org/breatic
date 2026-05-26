@@ -56,15 +56,21 @@ function getGoogleClient(): OAuth2Client {
 /**
  * `POST /auth/register` — create a new user account.
  *
+ * Returns a one-time `recoveryCode` (XXXX-XXXX-XXXX-XXXX format) the
+ * frontend MUST display to the user with a "save this now" modal —
+ * it's the only way to reset password when EMAIL_BACKEND=disabled
+ * (self-host default). The code is rotated on every successful
+ * recovery-based reset; only the bcrypt hash is stored server-side.
+ *
  * @param c - Hono context with validated `registerSchema` body
- * @returns `201` with `{ user, token }` on success
+ * @returns `201` with `{ user, token, recoveryCode }` on success
  * @throws `409` if email is already registered
  */
 auth.post("/register", rateLimit({ prefix: "register", max: 3, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
-  const user = await authService.register(email, password);
+  const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
-  return c.json({ data: { user, token } }, 201);
+  return c.json({ data: { user, token, recoveryCode } }, 201);
 });
 
 /**
