@@ -79,28 +79,37 @@ describe("RecoveryCodeService — hash + verify (bcrypt cost 12)", () => {
 });
 
 describe("RecoveryCodeService — property-based round-trip", () => {
-  it("[property] any generated code passes hash + verify round-trip", async () => {
-    // 30 runs (bcrypt is slow; 100 default would take ~10s)
-    await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 0, max: 1000 }), async () => {
-        const code = generateRecoveryCode();
-        const hash = await hashRecoveryCode(code);
-        const ok = await verifyRecoveryCode(code, hash);
-        return ok === true;
-      }),
-      { numRuns: 30 },
-    );
-  });
+  it(
+    "[property] any generated code passes hash + verify round-trip",
+    async () => {
+      // Bcrypt cost 12 takes ~200ms per op (hash + verify ≈ 400ms);
+      // 20 runs × 2 ops ≈ 8s on dev box.
+      await fc.assert(
+        fc.asyncProperty(fc.integer({ min: 0, max: 1000 }), async () => {
+          const code = generateRecoveryCode();
+          const hash = await hashRecoveryCode(code);
+          const ok = await verifyRecoveryCode(code, hash);
+          return ok === true;
+        }),
+        { numRuns: 20 },
+      );
+    },
+    30_000,
+  );
 
-  it("[property] hash output differs for the same code across calls (bcrypt salt)", async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 0, max: 1000 }), async () => {
-        const code = generateRecoveryCode();
-        const h1 = await hashRecoveryCode(code);
-        const h2 = await hashRecoveryCode(code);
-        return h1 !== h2;
-      }),
-      { numRuns: 10 },
-    );
-  });
+  it(
+    "[property] hash output differs for the same code across calls (bcrypt salt)",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.integer({ min: 0, max: 1000 }), async () => {
+          const code = generateRecoveryCode();
+          const h1 = await hashRecoveryCode(code);
+          const h2 = await hashRecoveryCode(code);
+          return h1 !== h2;
+        }),
+        { numRuns: 10 },
+      );
+    },
+    30_000,
+  );
 });
