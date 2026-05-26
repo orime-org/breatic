@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
+import ProtectedRoute from '@/app/ProtectedRoute';
 import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
 import LoginPage from '@/pages/auth/LoginPage';
@@ -12,6 +13,7 @@ import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
 import { Navigate } from 'react-router-dom';
+import { useCurrentUserStore } from '@/stores';
 
 function makeRouter(initialPath: string) {
   // Re-declare the same route table the production app uses but on a
@@ -19,9 +21,30 @@ function makeRouter(initialPath: string) {
   return createMemoryRouter(
     [
       { path: '/', element: <Navigate to='/studio' replace /> },
-      { path: '/studio', element: <StudioPage /> },
-      { path: '/project/:projectId', element: <ProjectPage /> },
-      { path: '/project/:projectId/space/:spaceId', element: <ProjectPage /> },
+      {
+        path: '/studio',
+        element: (
+          <ProtectedRoute>
+            <StudioPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/project/:projectId',
+        element: (
+          <ProtectedRoute>
+            <ProjectPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/project/:projectId/space/:spaceId',
+        element: (
+          <ProtectedRoute>
+            <ProjectPage />
+          </ProtectedRoute>
+        ),
+      },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
@@ -39,6 +62,19 @@ describe('routes', () => {
   // The redirects themselves are one-liner `<Navigate replace />` elements;
   // exercising them via smoke / build is enough. Here we just assert that the
   // concrete page routes resolve to the correct components.
+
+  beforeEach(() => {
+    // Protected routes (Studio + Project) gate on
+    // `useCurrentUserStore.user`. The production AuthBootstrap fires
+    // `/auth/me` once on mount; here we short-circuit by seeding the
+    // store directly so the route renders past the loading shell.
+    useCurrentUserStore.setState({
+      user: { id: 'test-user', name: 'Tester', email: 't@t.com' },
+      role: null,
+      loading: false,
+      bootstrapped: true,
+    });
+  });
 
   it('/studio renders StudioPage', async () => {
     render(
