@@ -123,31 +123,30 @@ export function ConnectionBanner({
   // `connecting` is intentionally silent — a half-second blip during
   // normal navigation shouldn't surface as an alarm. Visible status
   // set is therefore just authFailed + disconnected.
-  const visible = status === 'authFailed' || status === 'disconnected';
+  if (status !== 'authFailed' && status !== 'disconnected') {
+    return null;
+  }
   const isAuthFailed = status === 'authFailed';
 
-  // Wrapper stays in the DOM at all times so that the transition from
-  // hidden → visible (and back) animates smoothly via max-height. If
-  // we early-returned null the banner would *insert* into layout on
-  // first ws fail, pushing the entire workspace down in a single
-  // frame — visually feels like "TopBar suddenly gets shoved down by
-  // banner" (2026-05-26 user smoke report). Always-mounted wrapper +
-  // max-height transition gives a smooth slide-in instead.
+  // `fixed top-0 left-0 right-0 z-50` — banner sits OUTSIDE the
+  // document flow, overlaying the very top of the viewport. TopBar
+  // therefore always hugs viewport top (per 2026-05-26 user spec);
+  // when banner is visible it overlays the topmost ~40px of TopBar
+  // rather than pushing TopBar down (no layout shift at all).
+  //
+  // No enter/exit transition: paired with the workspace overlay
+  // (ProjectPage.tsx) which also mounts instantly — both must appear
+  // / disappear on the same frame, otherwise the staggered timing
+  // reads as visual jitter (per 2026-05-26 user spec).
   return (
-    <div
-      className={cn(
-        'overflow-hidden transition-[max-height] duration-200 ease-out',
-        visible ? 'max-h-[60px]' : 'max-h-0',
-      )}
-      aria-hidden={!visible || undefined}
-    >
     <div
       role='status'
       aria-live='polite'
       data-testid='connection-banner'
       data-status={status}
       className={cn(
-        'flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-[13px]',
+        'fixed top-0 right-0 left-0 z-50',
+        'flex items-center justify-between gap-3 px-4 py-2 text-[13px]',
         // Mode-independent — see component docstring. Tailwind static
         // palette is intentional: banner color does NOT follow light/dark.
         isAuthFailed
@@ -186,7 +185,6 @@ export function ConnectionBanner({
           </BannerButton>
         ) : null}
       </div>
-    </div>
     </div>
   );
 }

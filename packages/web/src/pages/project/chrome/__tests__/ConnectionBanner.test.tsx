@@ -5,28 +5,22 @@ import userEvent from '@testing-library/user-event';
 import { ConnectionBanner } from '@/pages/project/chrome/ConnectionBanner';
 
 describe('ConnectionBanner', () => {
-  // Wrapper is always mounted (avoids the "TopBar suddenly shoved down
-  // by banner" layout shift when status flips to authFailed mid-session
-  // — 2026-05-26 user smoke report). visually-hidden states collapse
-  // the wrapper via max-height: 0 + aria-hidden: true, but the banner
-  // content DOM stays so the show / hide transition animates smoothly.
+  // Banner is conditional-render (early return null) when status is
+  // connected / connecting — no max-height transition. Layout-shift
+  // concern that motivated always-mounted wrapper is gone now that
+  // the banner is `fixed top-0 z-50` (outside document flow), so
+  // mount/unmount no longer pushes TopBar. Per 2026-05-26 user spec,
+  // banner + workspace-overlay must appear/disappear on the same frame
+  // — both are now plain conditional renders, no entry animation.
 
-  it('keeps wrapper mounted but collapsed (max-h-0 + aria-hidden) when status is connected', () => {
+  it('renders nothing when status is connected', () => {
     const { container } = render(<ConnectionBanner status='connected' />);
-    const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper).not.toBeNull();
-    expect(wrapper).toHaveAttribute('aria-hidden', 'true');
-    expect(wrapper.className).toMatch(/max-h-0/);
-    // Banner content DOM is still present (mounted for smooth transition);
-    // it just isn't visible because the wrapper clips it.
-    expect(screen.getByTestId('connection-banner')).toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
   });
 
-  it('keeps wrapper collapsed when status is connecting (avoid flash on brief reconnects)', () => {
+  it('renders nothing when status is connecting (avoid flash on brief reconnects)', () => {
     const { container } = render(<ConnectionBanner status='connecting' />);
-    const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper).toHaveAttribute('aria-hidden', 'true');
-    expect(wrapper.className).toMatch(/max-h-0/);
+    expect(container.firstChild).toBeNull();
   });
 
   it('renders the authFailed banner with re-login action', async () => {
