@@ -23,6 +23,7 @@ import type { SpaceType } from '@/spaces';
 import { ChatPanel } from '@/pages/project/chat/ChatPanel';
 import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
 import { LoadingOverlay } from '@/pages/project/chrome/LoadingOverlay';
+import { LoadingScreen } from '@/pages/project/chrome/LoadingScreen';
 import { ConnectionBanner } from '@/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
@@ -339,6 +340,18 @@ export default function ProjectPage() {
     if (!readOnlyViewSpaceId) return null;
     return spaces.find((s) => s.id === readOnlyViewSpaceId) ?? null;
   }, [readOnlyViewSpaceId, spaces]);
+
+  // Defer project page mount until the websocket has reached a final
+  // state (connected / authFailed / disconnected). Without this gate,
+  // `connecting` (the initial state from useSocket) makes the banner +
+  // overlay return null on first paint — the user sees a clean project
+  // page for a few hundred ms, then banner + overlay pop in on the next
+  // frame when auth fails (visible "page → flash banner+overlay"
+  // jitter, 2026-05-26 user spec). Showing LoadingScreen during
+  // `connecting` lets the final-state DOM mount atomically.
+  if (connectionStatus === 'connecting') {
+    return <LoadingScreen />;
+  }
 
   // When the WS auth has failed, the workspace below the banner is
   // unusable — any mutation (create space, send chat, edit node) will

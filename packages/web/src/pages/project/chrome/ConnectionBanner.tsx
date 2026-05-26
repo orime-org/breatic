@@ -50,12 +50,24 @@ function BannerButton({
         'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
         'border border-white/30 bg-black/30 px-3',
         'text-[13px] font-medium text-white',
-        // Brightness filter for hover feedback — opacity-90 was visually
-        // imperceptible (only 10% change on already-dark button on dark
-        // bg). brightness-125 lifts the whole button noticeably without
-        // tripping the lint:hover ADR ban on `hover:bg-X/N` patterns.
-        // active:brightness-95 gives a press-down feedback.
-        'transition hover:brightness-125 active:brightness-95',
+        // Hover feedback: solid color swap (bg + border). Aligns with the
+        // rest of the project's hover-only convention — project-wide
+        // rule is "hover state, no active state" per user 2026-05-26
+        // (chrome-ghost was the lone exception with active:bg-secondary
+        // and has been removed in the same commit). Uses Tailwind static
+        // `zinc-800` solid color — does NOT trip the lint:hover ADR
+        // ban (which only forbids `hover:bg-X/N` alpha-modifier patterns
+        // for Tailwind v4 silent-fail prevention; solid colors are fine).
+        //
+        // Prior attempts (chrome MCP-verified 2026-05-26):
+        //   - `hover:opacity-90` — 10% change on dark button: invisible
+        //   - `hover:brightness-125` — no-op on pure-black/white palette
+        //     (RGB 0×N=0; 255 clamps)
+        //   - `hover:scale-105` — physical feedback but introduced a
+        //     third hover-feedback standard inconsistent with the rest
+        //     of the project; user rejected as cross-standard.
+        'transition-colors duration-150',
+        'hover:border-white/70 hover:bg-zinc-800',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
         className,
       )}
@@ -111,31 +123,30 @@ export function ConnectionBanner({
   // `connecting` is intentionally silent — a half-second blip during
   // normal navigation shouldn't surface as an alarm. Visible status
   // set is therefore just authFailed + disconnected.
-  const visible = status === 'authFailed' || status === 'disconnected';
+  if (status !== 'authFailed' && status !== 'disconnected') {
+    return null;
+  }
   const isAuthFailed = status === 'authFailed';
 
-  // Wrapper stays in the DOM at all times so that the transition from
-  // hidden → visible (and back) animates smoothly via max-height. If
-  // we early-returned null the banner would *insert* into layout on
-  // first ws fail, pushing the entire workspace down in a single
-  // frame — visually feels like "TopBar suddenly gets shoved down by
-  // banner" (2026-05-26 user smoke report). Always-mounted wrapper +
-  // max-height transition gives a smooth slide-in instead.
+  // `fixed top-0 left-0 right-0 z-50` — banner sits OUTSIDE the
+  // document flow, overlaying the very top of the viewport. TopBar
+  // therefore always hugs viewport top (per 2026-05-26 user spec);
+  // when banner is visible it overlays the topmost ~40px of TopBar
+  // rather than pushing TopBar down (no layout shift at all).
+  //
+  // No enter/exit transition: paired with the workspace overlay
+  // (ProjectPage.tsx) which also mounts instantly — both must appear
+  // / disappear on the same frame, otherwise the staggered timing
+  // reads as visual jitter (per 2026-05-26 user spec).
   return (
-    <div
-      className={cn(
-        'overflow-hidden transition-[max-height] duration-200 ease-out',
-        visible ? 'max-h-[60px]' : 'max-h-0',
-      )}
-      aria-hidden={!visible || undefined}
-    >
     <div
       role='status'
       aria-live='polite'
       data-testid='connection-banner'
       data-status={status}
       className={cn(
-        'flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-[13px]',
+        'fixed top-0 right-0 left-0 z-50',
+        'flex items-center justify-between gap-3 px-4 py-2 text-[13px]',
         // Mode-independent — see component docstring. Tailwind static
         // palette is intentional: banner color does NOT follow light/dark.
         isAuthFailed
@@ -174,7 +185,6 @@ export function ConnectionBanner({
           </BannerButton>
         ) : null}
       </div>
-    </div>
     </div>
   );
 }

@@ -38,8 +38,10 @@ const buttonVariants = cva(
         // Chrome variant — TopBar/TabBar 32px buttons default to muted
         // foreground (mock §TopBar v4.0); hover lifts to foreground +
         // accent bg (matches `finalized.html .tb-btn:hover` rule).
+        // Project-wide rule: hover state only, no active state
+        // (per user 2026-05-26 — removed prior `active:bg-secondary`).
         'chrome-ghost':
-          'text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary',
+          'text-muted-foreground hover:bg-accent hover:text-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
