@@ -13,6 +13,7 @@ import * as studioService from "./studio.service.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
+  verifyRecoveryCode,
 } from "./recovery-code.service.js";
 import { getRedis } from "../infra/redis.js";
 import { sendMail } from "../infra/mailer.js";
@@ -251,4 +252,67 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await deleteAllSessions(redis, userId);
 
   logger.info({ userId }, "Password reset completed");
+}
+
+/**
+ * Reset password using the one-time recovery code shown at
+ * registration. No email backend required — designed for self-host
+ * installs where `EMAIL_BACKEND=disabled`.
+ *
+ * Flow:
+ *   1. Find user by email; reject generically if not found
+ *      (avoids leaking account existence vs. wrong-code)
+ *   2. Load stored recovery_code_hash + used_at;
+ *      reject if no code stored or already used
+ *   3. bcrypt.compare(code, hash); reject on mismatch
+ *   4. Update password (bcrypt cost 12, same as `resetPassword`)
+ *   5. markRecoveryCodeUsed (used_at = now)
+ *   6. Generate + store a fresh recovery code (rotate-on-use —
+ *      old one cannot reset again, new one shown to user)
+ *   7. deleteAllSessions (force re-login on all devices)
+ *   8. Return the new plaintext code (shown once — frontend MUST
+ *      re-prompt user to save it)
+ *
+ * @returns `{ newRecoveryCode }` — fresh plaintext code to display
+ * @throws {UnauthorizedError} on any failure (uniform error to
+ *   prevent oracle attacks on email vs. code)
+ */
+export async function resetPasswordWithRecoveryCode(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<{ newRecoveryCode: string }> {
+  const user = await userRepo.getUserByEmail(email);
+  if (!user) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  const stored = await userRepo.getRecoveryCode(user.id);
+  if (!stored || stored.usedAt !== null) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  const valid = await verifyRecoveryCode(code, stored.hash);
+  if (!valid) {
+    throw new UnauthorizedError("Invalid email or recovery code");
+  }
+
+  // 1. Update password (bcrypt cost 12).
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await userRepo.updatePassword(user.id, hashedPassword);
+
+  // 2. Mark current code consumed.
+  await userRepo.markRecoveryCodeUsed(user.id);
+
+  // 3. Rotate to fresh code (return plaintext to caller).
+  const newRecoveryCode = generateRecoveryCode();
+  const newHash = await hashRecoveryCode(newRecoveryCode);
+  await userRepo.setRecoveryCode(user.id, newHash);
+
+  // 4. Force re-login (security: all existing tokens revoked).
+  const redis = getRedis();
+  await deleteAllSessions(redis, user.id);
+
+  logger.info({ userId: user.id }, "password_reset_via_recovery_code");
+  return { newRecoveryCode };
 }

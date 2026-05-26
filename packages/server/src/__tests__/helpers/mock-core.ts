@@ -61,6 +61,9 @@ export const mocks = {
     }),
     getUserByToken: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
     logout: vi.fn(),
+    forgotPassword: vi.fn().mockResolvedValue(undefined),
+    resetPassword: vi.fn().mockResolvedValue(undefined),
+    resetPasswordWithRecoveryCode: vi.fn(),
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),

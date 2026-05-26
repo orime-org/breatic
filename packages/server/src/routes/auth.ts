@@ -227,4 +227,45 @@ auth.post(
   },
 );
 
+// ── Recovery code reset (self-host, no SMTP needed) ──────────────
+
+const resetWithRecoveryCodeSchema = z.object({
+  email: z.string().email(),
+  recoveryCode: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+/**
+ * `POST /auth/reset-password-with-recovery-code` — reset password
+ * using the one-time recovery code from registration.
+ *
+ * Returns a fresh recovery code on success — frontend (PR-b) MUST
+ * re-display it with the same "save this now" modal as registration.
+ * Rate limited 5/hour per IP to slow online code-guessing attacks
+ * (80 bits of entropy makes offline infeasible already, but rate
+ * limit hardens the online surface).
+ *
+ * @returns `200` with `{ data: { newRecoveryCode } }`
+ * @throws `401` on any failure (uniform: email-not-found / code-used /
+ *   code-mismatch all surface as "Invalid email or recovery code"
+ *   to avoid leaking which condition matched)
+ */
+auth.post(
+  "/reset-password-with-recovery-code",
+  rateLimit({ prefix: "reset-recovery", max: 5, windowSeconds: 3600 }),
+  zValidator("json", resetWithRecoveryCodeSchema),
+  async (c) => {
+    const { email, recoveryCode, newPassword } = c.req.valid("json");
+    const { newRecoveryCode } = await authService.resetPasswordWithRecoveryCode(
+      email,
+      recoveryCode,
+      newPassword,
+    );
+    return c.json({
+      data: { newRecoveryCode },
+      message: "Password reset successful. Save your new recovery code.",
+    });
+  },
+);
+
 export { auth as authRoute };
