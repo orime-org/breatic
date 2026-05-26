@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 
 import type { SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@/data/api';
-import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
 import { useTranslation } from '@/i18n/use-translation';
@@ -344,11 +343,17 @@ export default function ProjectPage() {
   // When the WS auth has failed, the workspace below the banner is
   // unusable — any mutation (create space, send chat, edit node) will
   // silently fail because the same expired token is sent to the API +
-  // collab. Visually wash it out and intercept pointer events so users
-  // can't trigger half-broken flows like "正在创建 Space..." that
-  // never resolves (2026-05-26 user smoke report). The banner itself
-  // sits OUTSIDE this wrapper, so its "重新登录" / "刷新" actions stay
-  // clickable.
+  // collab. Cover it with a full-area `bg-black/80` overlay that
+  // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
+  //     elsewhere in the app (single visual vocabulary for "blocked"),
+  // (b) intercepts clicks via `onClick` + `preventDefault` so users
+  //     can't trigger half-broken flows like "正在创建 Space..." that
+  //     never resolves (2026-05-26 user smoke report),
+  // (c) surfaces the OS-level "not-allowed" cursor on hover so users
+  //     get an instant, language-agnostic affordance that this region
+  //     is intentionally inert.
+  // Banner itself sits OUTSIDE the wrapper so its "重新登录" / "刷新"
+  // actions stay clickable.
   const workspaceDisabled = connectionStatus === 'authFailed';
 
   return (
@@ -363,10 +368,7 @@ export default function ProjectPage() {
         }}
       />
       <div
-        className={cn(
-          'flex min-h-0 flex-1 flex-col',
-          workspaceDisabled && 'pointer-events-none opacity-50',
-        )}
+        className='relative flex min-h-0 flex-1 flex-col'
         aria-hidden={workspaceDisabled || undefined}
         data-workspace-disabled={workspaceDisabled || undefined}
       >
@@ -465,6 +467,15 @@ export default function ProjectPage() {
             </div>
           </section>
         </div>
+        {workspaceDisabled ? (
+          <div
+            className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+            onClick={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            aria-hidden
+            data-testid='workspace-disabled-overlay'
+          />
+        ) : null}
       </div>
       <SpaceReadOnlySheet
         open={roSheetOpen}

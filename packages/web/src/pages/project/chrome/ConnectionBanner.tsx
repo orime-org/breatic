@@ -2,7 +2,6 @@ import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
 import type { ConnectionStatus } from '@/data/yjs/use-socket';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/use-translation';
 
@@ -12,6 +11,53 @@ interface ConnectionBannerProps {
   onReload?: () => void;
   /** Optional re-login CTA — shown only when status==='authFailed'. */
   onReLogin?: () => void;
+}
+
+/**
+ * Banner-internal button. Raw `<button>` instead of the shadcn
+ * `<Button variant='outline'>` because the outline variant's
+ * defaults — `hover:bg-accent` + `hover:text-accent-foreground` —
+ * are mode-aware tokens that win the cascade over a base
+ * `bg-black/30 text-white` override on hover. That made the banner
+ * button visibly different in light vs. dark mode on hover (light
+ * mode flashed a near-white button on the red banner, 2026-05-26
+ * user smoke). A fully self-styled `<button>` opts out of the
+ * variant cascade entirely → both modes render identically and the
+ * hover effect (`hover:opacity-90`) is the only thing that changes.
+ *
+ * Mode-independent palette here matches the banner itself — see the
+ * component-level docstring for rationale + memory reference.
+ */
+interface BannerButtonProps {
+  onClick?: () => void;
+  className?: string;
+  testId?: string;
+  children: React.ReactNode;
+}
+
+function BannerButton({
+  onClick,
+  className,
+  testId,
+  children,
+}: BannerButtonProps) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      data-testid={testId}
+      className={cn(
+        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
+        'border border-white/30 bg-black/30 px-3',
+        'text-[13px] font-medium text-white',
+        'transition-opacity hover:opacity-90',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 /**
@@ -94,31 +140,21 @@ export function ConnectionBanner({
       </div>
       <div className='flex shrink-0 items-center gap-2'>
         {isAuthFailed && onReLogin ? (
-          <Button
-            size='sm'
-            variant='outline'
+          <BannerButton
             onClick={onReLogin}
-            data-testid='connection-banner-relogin'
-            // Override: outline default would render white pill on
-            // deep-red bg in light mode — use translucent-black + white
-            // border + white text for strong contrast on both red+amber.
-            className='border-white/30 bg-black/30 text-white hover:opacity-90'
+            testId='connection-banner-relogin'
           >
             {t('connection.banner.authFailed.action')}
-          </Button>
+          </BannerButton>
         ) : null}
         {onReload ? (
-          <Button
-            size='sm'
-            variant='outline'
+          <BannerButton
             onClick={onReload}
-            data-testid='connection-banner-reload'
-            // Same override as re-login button — see above.
-            className='gap-1.5 border-white/30 bg-black/30 text-white hover:opacity-90'
+            testId='connection-banner-reload'
           >
             <RefreshCw className='h-3.5 w-3.5' aria-hidden />
             {t('connection.banner.reload')}
-          </Button>
+          </BannerButton>
         ) : null}
       </div>
     </div>
