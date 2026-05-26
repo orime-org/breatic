@@ -3,7 +3,10 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
 import LoginPage from '@/pages/auth/LoginPage';
+import RegisterPage from '@/pages/auth/RegisterPage';
+import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
+import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
 import PrimitivesGallery from '@/pages/_dev/PrimitivesGallery';
 
 /**
@@ -32,7 +35,10 @@ const baseRoutes: RouteObject[] = [
   { path: '/studio', element: <StudioPage /> },
   { path: '/project/:projectId', element: <ProjectPage /> },
   { path: '/login', element: <LoginPage /> },
+  { path: '/register', element: <RegisterPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/verify-email', element: <VerifyEmailPage /> },
 ];
 
 const devRoutes: RouteObject[] = import.meta.env.DEV
