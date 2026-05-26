@@ -94,7 +94,7 @@ export function RecoveryCodeDialog({
         </DialogHeader>
 
         <DialogBody>
-          <div className='rounded-md border bg-muted p-4 text-center font-mono text-lg tracking-wider select-all'>
+          <div className='rounded-md border border-border bg-muted p-4 text-center font-mono text-lg tracking-wider select-all'>
             {code}
           </div>
 
