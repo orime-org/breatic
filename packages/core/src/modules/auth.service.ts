@@ -52,6 +52,7 @@ const BCRYPT_ROUNDS = 12;
 export async function register(
   email: string,
   password: string,
+  name?: string,
 ): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
@@ -59,7 +60,11 @@ export async function register(
   }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const username = email.split("@")[0];
+  // Prefer the user-provided display name; fall back to the email
+  // local-part for back-compat with old clients that POST without a
+  // `name` field. RegisterPage validates `auth.nameRequired` so new
+  // sign-ups always take the first branch.
+  const username = name?.trim() || (email.split("@")[0] as string);
   const user = await userRepo.createUser({ email, hashedPassword, username });
 
   // Generate + store recovery code. Done after createUser so we have

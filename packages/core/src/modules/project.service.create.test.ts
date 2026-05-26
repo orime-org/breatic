@@ -86,4 +86,36 @@ describe("project.service.create — Q2 first-space-name invariant", () => {
     const args = vi.mocked(yjsDocRepo.insertInitialState).mock.calls[0];
     expect(args?.[1]).toContain("p-1");
   });
+
+  it("Q11 invariant: passes the user's display name as actor so the seeded space-created message is non-empty", async () => {
+    // The encoded initial meta state seeds the first projectMessages
+    // entry alongside `meta.spaces`. Without an actor, the bell would
+    // render "<空白> 创建了 Space X" — the original Q11 bug. Lock the
+    // username-or-email fallback chain so a future refactor that drops
+    // the username lookup trips this test before merge.
+    vi.mocked(userRepo.getUserById).mockResolvedValueOnce({
+      id: "u-1",
+      username: "Alice",
+      email: "alice@example.com",
+    } as never);
+    await create("u-1", "My Project");
+
+    const arg = vi.mocked(encodeInitialMetaState).mock.calls[0]?.[0];
+    expect(arg).toBeDefined();
+    // `actor` must reflect a human-readable name, not the raw UUID.
+    expect(arg?.actor).toBe("Alice");
+    expect(arg?.actor).not.toBe("u-1");
+  });
+
+  it("Q11 invariant: falls back to email when username is null (Google OAuth users sometimes have no username yet)", async () => {
+    vi.mocked(userRepo.getUserById).mockResolvedValueOnce({
+      id: "u-2",
+      username: null,
+      email: "bob@example.com",
+    } as never);
+    await create("u-2", "Bob's Project");
+
+    const arg = vi.mocked(encodeInitialMetaState).mock.calls[0]?.[0];
+    expect(arg?.actor).toBe("bob@example.com");
+  });
 });

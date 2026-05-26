@@ -107,11 +107,20 @@ export async function create(
     // expect the seeded canvas tab to read what they just typed —
     // not a placeholder. Tab-level rename ships via the inline
     // dblclick edit (`SpaceTab.tsx`) once they're inside.
+    //
+    // `actor` mirrors the human-readable name used by
+    // collab/space-rpc when subsequent Spaces are created, so the
+    // [项目消息] bell stays consistent: every entry, including the
+    // very first auto-seeded one, reads "{username} 创建了 Space X".
+    // Fallback to email when username is null (Google OAuth users
+    // who have not set a display name yet).
+    const actor = user?.username ?? user?.email ?? "";
     const initialState = encodeInitialMetaState({
       spaceId,
       kind: "canvas",
       name: project.name,
       createdBy: userId,
+      actor,
       ts: Date.now(),
     });
 

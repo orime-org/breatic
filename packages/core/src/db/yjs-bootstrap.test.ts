@@ -25,6 +25,7 @@ describe("encodeInitialMetaState", () => {
       kind: "canvas",
       name: "Untitled",
       createdBy: userId,
+      actor: "test-actor",
       ts,
     });
 
@@ -54,6 +55,7 @@ describe("encodeInitialMetaState", () => {
       kind: "canvas" as const,
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
+      actor: "test-actor",
       ts: 1_700_000_000_000,
     };
     const a = encodeInitialMetaState(args);
@@ -67,6 +69,7 @@ describe("encodeInitialMetaState", () => {
       spaceId: "11111111-1111-1111-1111-111111111111",
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
+      actor: "test-actor",
       ts: 1_700_000_000_000,
     };
     for (const kind of ["document", "timeline"] as const) {

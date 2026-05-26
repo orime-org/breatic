@@ -77,8 +77,8 @@ function getGoogleClient(): OAuth2Client {
  * @throws `409` if email is already registered
  */
 auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
-  const { user, recoveryCode } = await authService.register(email, password);
+  const { email, password, name } = c.req.valid("json");
+  const { user, recoveryCode } = await authService.register(email, password, name);
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
   return c.json({ data: { user, recoveryCode } }, 201);

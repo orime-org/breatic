@@ -15,6 +15,11 @@ import { z } from "zod";
 export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  // Display name collected by RegisterPage as a required field. The
+  // server stores it on `users.username`; absence falls back to the
+  // email local-part (`email.split("@")[0]`) for back-compat with
+  // older clients that still POST a 2-field body.
+  name: z.string().trim().min(1).max(100).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
