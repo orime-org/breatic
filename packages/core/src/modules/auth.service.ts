@@ -316,3 +316,76 @@ export async function resetPasswordWithRecoveryCode(
   logger.info({ userId: user.id }, "password_reset_via_recovery_code");
   return { newRecoveryCode };
 }
+
+// ── Email verification ───────────────────────────────────────────
+
+const EMAIL_VERIFY_TTL = 24 * 3600; // 24 hours
+
+/**
+ * Generate a one-time email-verification token (PR-a task 9).
+ *
+ * Stored in Redis (`${env.ENV}:email-verify:{token}` → userId) with
+ * 24h TTL. Caller is responsible for sending the user a link that
+ * embeds the returned token. Auto-removed on consume or expiry.
+ *
+ * @returns The 64-char hex token to embed in the verify URL.
+ */
+export async function generateVerifyEmailToken(userId: string): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  const redis = getRedis();
+  const key = `${env.ENV}:email-verify:${token}`;
+  await redis.set(key, userId, "EX", EMAIL_VERIFY_TTL);
+  return token;
+}
+
+/**
+ * Consume an email-verification token (PR-a task 9).
+ *
+ * Looks up the token in Redis, flips `users.email_verified = true`
+ * for the resolved user, deletes the token (single-use), and logs.
+ *
+ * @throws {UnauthorizedError} if the token is missing / expired / used.
+ */
+export async function verifyEmail(token: string): Promise<void> {
+  const redis = getRedis();
+  const key = `${env.ENV}:email-verify:${token}`;
+  const userId = await redis.get(key);
+  if (!userId) {
+    throw new UnauthorizedError("Invalid or expired verification token");
+  }
+  await userRepo.updateUser(userId, { emailVerified: true });
+  await redis.del(key);
+  logger.info({ userId }, "email_verified");
+}
+
+/**
+ * Resend the verification email for a given user (PR-a task 9).
+ *
+ * Generates a fresh token (invalidating any previous tokens once the
+ * key collides — extremely unlikely, but functionally a no-op since
+ * each token is fresh-random and TTL'd) and dispatches via the
+ * configured mailer backend. Caller decides whether the user is
+ * already verified (skip in that case).
+ *
+ * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` — caller
+ * should gate accordingly; this function will still run (Redis token
+ * stored) but `sendMail` will no-op + return false in disabled mode.
+ */
+export async function resendVerificationEmail(
+  userId: string,
+  email: string,
+  verifyBaseUrl: string,
+): Promise<void> {
+  const token = await generateVerifyEmailToken(userId);
+  const verifyUrl = `${verifyBaseUrl}?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: "Breatic — Verify your email",
+    html: `
+      <p>Welcome to Breatic. Click below to verify your email address:</p>
+      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+      <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
+    `,
+  });
+  logger.info({ userId }, "verification_email_sent");
+}
