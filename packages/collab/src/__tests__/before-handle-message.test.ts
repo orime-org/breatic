@@ -147,6 +147,52 @@ describe("checkWriteAuthz — meta.projectMessages", () => {
   });
 });
 
+describe("checkWriteAuthz — meta.users", () => {
+  it("rejects a client adding an entry to meta.users", () => {
+    const current = makeSeededMetaDoc((doc) => {
+      doc.getMap("users");
+    });
+    const update = encodeMutation(current, (doc) => {
+      const entry = new Y.Map();
+      entry.set("id", "user-2");
+      entry.set("name", "Spoofed");
+      doc.getMap("users").set("user-2", entry);
+    });
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).toThrow(/meta\.users/);
+  });
+
+  it("rejects a client mutating their own entry directly (must go via RPC)", () => {
+    // Even self-writes are refused — the only legitimate writer is
+    // the users:upsert-self RPC handler running under the 'system'
+    // privileged context.
+    const current = makeSeededMetaDoc((doc) => {
+      const entry = new Y.Map();
+      entry.set("id", "user-1");
+      entry.set("name", "Original");
+      doc.getMap("users").set("user-1", entry);
+    });
+    const update = encodeMutation(current, (doc) => {
+      const entry = doc.getMap("users").get("user-1") as Y.Map<unknown>;
+      entry.set("name", "TamperedSelf");
+    });
+    expect(() =>
+      checkWriteAuthz({
+        documentName: META,
+        document: current,
+        update,
+        context: { user: { id: "user-1" } },
+      }),
+    ).toThrow(/meta\.users/);
+  });
+});
+
 describe("checkWriteAuthz — meta.perUser", () => {
   it("allows the connected user to add their own entry", () => {
     const current = makeSeededMetaDoc((doc) => {
