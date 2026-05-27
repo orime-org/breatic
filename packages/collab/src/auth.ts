@@ -35,6 +35,20 @@ import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
+import { createLogger } from "./logger.js";
+
+/**
+ * Auth hook logger — every onAuthenticate decision (success or
+ * failure) lands here with structured context. Per the
+ * CLAUDE.md "服务器端工业级标准" mandate: every server-side error
+ * path must leave a server-side log trail so a 3am oncall can
+ * trace from "user sees banner stuck" back to the root cause
+ * (e.g. stale Redis client, dropped Postgres connection,
+ * `loadProjectRole` row mismatch) without resorting to client-side
+ * inference.
+ */
+const logger = createLogger("auth");
+
 /** Must match `packages/core/src/infra/cookie.ts` SESSION_COOKIE_NAME. */
 const SESSION_COOKIE_NAME = "breatic_session";
 
@@ -210,59 +224,130 @@ export function createAuthHook({
     documentName: string;
     requestHeaders: IncomingHttpHeaders;
   }): Promise<AuthContext> => {
-    // Session token now travels exclusively as the httpOnly
-    // `breatic_session` cookie sent on the WebSocket upgrade
-    // request (2026-05-26 cookie migration). Hocuspocus's own
-    // `token` field — sent by the client in the application-level
-    // auth frame — is treated as opaque and ignored; the client
-    // sends a placeholder like `"__cookie_auth__"` purely to trip
-    // Hocuspocus into invoking this hook (an empty token short-
-    // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
-    const token = readCookie(requestHeaders.cookie, SESSION_COOKIE_NAME);
-    if (!token) {
-      throw new Error("Missing session cookie");
-    }
+    // Every decision below — accept or reject — logs structured
+    // context (no PII beyond userId + documentName). The previous
+    // bare-throw style let onAuthenticate fail silently from the
+    // server's perspective: the client got "Unauthorized" and
+    // surfaced the banner, but `oncall` had no server-side trail
+    // to confirm whether the rejection came from a missing cookie,
+    // expired Redis session, dropped Postgres connection, or
+    // membership lookup miss. Per the CLAUDE.md "服务器端工业级
+    // 标准" mandate and memory `feedback_dev_collab_long_running_drift`,
+    // every rejection logs first then throws, and the outer
+    // try/catch surfaces unexpected infrastructure errors
+    // (Redis/Postgres connection-level failures) with the same
+    // `auth_unexpected_error` tag so a single grep finds them.
+    try {
+      // Session token now travels exclusively as the httpOnly
+      // `breatic_session` cookie sent on the WebSocket upgrade
+      // request (2026-05-26 cookie migration). Hocuspocus's own
+      // `token` field — sent by the client in the application-level
+      // auth frame — is treated as opaque and ignored; the client
+      // sends a placeholder like `"__cookie_auth__"` purely to trip
+      // Hocuspocus into invoking this hook (an empty token short-
+      // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
+      const token = readCookie(requestHeaders.cookie, SESSION_COOKIE_NAME);
+      if (!token) {
+        logger.warn(
+          { documentName, reason: "missing_cookie" },
+          "auth_rejected",
+        );
+        throw new Error("Missing session cookie");
+      }
 
-    const userId = await redis.get(`${envPrefix}:session:${token}`);
-    if (!userId) {
-      throw new Error("Invalid or expired session token");
-    }
+      const userId = await redis.get(`${envPrefix}:session:${token}`);
+      if (!userId) {
+        logger.warn(
+          { documentName, reason: "session_not_found" },
+          "auth_rejected",
+        );
+        throw new Error("Invalid or expired session token");
+      }
 
-    const parsed = parseDocName(documentName);
-    if (!parsed) {
-      throw new Error(
-        `Document '${documentName}' is not in a recognized project format`,
-      );
-    }
-
-    const member = await loadProjectRole(sql, userId, parsed.projectId);
-    if (!member) {
-      throw new Error(
-        `User ${userId} is not authorized to access project ${parsed.projectId}`,
-      );
-    }
-    const { role, userName, avatarUrl } = member;
-
-    // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
-    // refuse the connection if the spaceId is no longer in `meta.spaces`.
-    // This is the runtime half of "delete a Space = remove its id from
-    // meta.spaces; PG row stays for recovery but new connections cannot
-    // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
-    if (parsed.kind !== "meta") {
-      const ids = await loadProjectSpaceIds(sql, parsed.projectId);
-      if (!ids.has(parsed.spaceId)) {
+      const parsed = parseDocName(documentName);
+      if (!parsed) {
+        logger.warn(
+          { userId, documentName, reason: "doc_name_invalid" },
+          "auth_rejected",
+        );
         throw new Error(
-          `Space ${parsed.spaceId} does not exist (or has been deleted) in project ${parsed.projectId}`,
+          `Document '${documentName}' is not in a recognized project format`,
         );
       }
-    }
 
-    return {
-      user: { id: userId, role, name: userName, avatarUrl },
-      connection: {
-        readOnly: role === "view",
-      },
-    };
+      const member = await loadProjectRole(sql, userId, parsed.projectId);
+      if (!member) {
+        logger.warn(
+          {
+            userId,
+            documentName,
+            projectId: parsed.projectId,
+            reason: "not_member",
+          },
+          "auth_rejected",
+        );
+        throw new Error(
+          `User ${userId} is not authorized to access project ${parsed.projectId}`,
+        );
+      }
+      const { role, userName, avatarUrl } = member;
+
+      // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
+      // refuse the connection if the spaceId is no longer in `meta.spaces`.
+      // This is the runtime half of "delete a Space = remove its id from
+      // meta.spaces; PG row stays for recovery but new connections cannot
+      // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
+      if (parsed.kind !== "meta") {
+        const ids = await loadProjectSpaceIds(sql, parsed.projectId);
+        if (!ids.has(parsed.spaceId)) {
+          logger.warn(
+            {
+              userId,
+              documentName,
+              projectId: parsed.projectId,
+              spaceId: parsed.spaceId,
+              reason: "space_deleted",
+            },
+            "auth_rejected",
+          );
+          throw new Error(
+            `Space ${parsed.spaceId} does not exist (or has been deleted) in project ${parsed.projectId}`,
+          );
+        }
+      }
+
+      return {
+        user: { id: userId, role, name: userName, avatarUrl },
+        connection: {
+          readOnly: role === "view",
+        },
+      };
+    } catch (err) {
+      // The walks above log + throw on auth-policy rejections
+      // (reason in {missing_cookie, session_not_found,
+      // doc_name_invalid, not_member, space_deleted}). Anything
+      // landing here without one of those tags is an unexpected
+      // infrastructure failure — Redis ping fail, postgres-js
+      // connection drop, Yjs lib error. We log with `unexpected`
+      // tag so dashboards can split "policy reject" vs "infra
+      // fail" trends and re-throw so Hocuspocus still closes the
+      // socket with 4401 (the client sees the same banner state
+      // either way; only the server-side trail differs).
+      const e = err as Error;
+      const isKnownReject =
+        e.message === "Missing session cookie" ||
+        e.message === "Invalid or expired session token" ||
+        e.message.startsWith("Document '") ||
+        e.message.startsWith("User ") ||
+        e.message.startsWith("Space ");
+      if (!isKnownReject) {
+        logger.error(
+          { err: e, documentName },
+          "auth_unexpected_error",
+        );
+      }
+      throw err;
+    }
   };
 }
 

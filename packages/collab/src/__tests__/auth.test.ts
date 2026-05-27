@@ -28,6 +28,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
 import * as Y from "yjs";
+
+// Mock the collab logger BEFORE importing auth so the auth module's
+// `createLogger('auth')` returns this stub. The mandate is that
+// every onAuthenticate decision (accept or reject) leaves a
+// structured server-side log line — tests below assert the warn /
+// error calls land with the expected `reason` tag, otherwise the
+// 3am-oncall trail we just added to auth.ts would silently rot
+// the next time someone refactors.
+//
+// `vi.hoisted` is required here because `vi.mock` factories run
+// before any top-level `const` declarations (vitest hoists them to
+// the top of the file). Without `vi.hoisted` the closure-captured
+// `loggerWarn` would be in the TDZ when the mock factory fires.
+const { loggerWarn, loggerError } = vi.hoisted(() => ({
+  loggerWarn: vi.fn(),
+  loggerError: vi.fn(),
+}));
+vi.mock("../logger.js", () => ({
+  createLogger: () => ({
+    warn: loggerWarn,
+    error: loggerError,
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
 import { createAuthHook } from "../auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
@@ -75,6 +101,8 @@ describe("createAuthHook", () => {
   beforeEach(() => {
     redisGet.mockReset();
     sqlQueue = [];
+    loggerWarn.mockReset();
+    loggerError.mockReset();
   });
 
   const buildHook = () =>
@@ -336,5 +364,93 @@ describe("createAuthHook", () => {
     // application-level token field) is what reaches the session
     // store.
     expect(redisGet).toHaveBeenCalledWith("test:session:real-token");
+  });
+
+  // ── Server-side log trail (CLAUDE.md 服务器端工业级标准 mandate) ──
+  //
+  // Every onAuthenticate rejection must leave a structured warn line
+  // tagged `auth_rejected` with a machine-grep-able `reason`, so a
+  // 3am oncall can split "policy reject" trends without re-parsing
+  // free-text. Infrastructure failures (Redis ping fail / pg
+  // connection drop) bypass the known-reason walk and land in the
+  // outer catch as `auth_unexpected_error` so dashboards can tell
+  // them apart.
+
+  it("logs `auth_rejected` warn with reason=missing_cookie when cookie is absent", async () => {
+    const hook = buildHook();
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: {},
+      }),
+    ).rejects.toThrow(/cookie/i);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "missing_cookie" }),
+      "auth_rejected",
+    );
+  });
+
+  it("logs `auth_rejected` warn with reason=session_not_found for expired tokens", async () => {
+    redisGet.mockResolvedValue(null);
+    const hook = buildHook();
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: withCookie("bad-token"),
+      }),
+    ).rejects.toThrow(/session/i);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "session_not_found" }),
+      "auth_rejected",
+    );
+  });
+
+  it("logs `auth_rejected` warn with reason=not_member for a stranger", async () => {
+    redisGet.mockResolvedValue("attacker");
+    sqlQueue = [[{ id: PID }], []];
+    const hook = buildHook();
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/not authorized/);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "attacker",
+        projectId: PID,
+        reason: "not_member",
+      }),
+      "auth_rejected",
+    );
+  });
+
+  it("logs `auth_unexpected_error` error when Redis throws (infrastructure failure path)", async () => {
+    // Simulate the ioredis long-running drift mode that motivated
+    // this whole branch — redis.get throws something that ISN'T a
+    // known auth-policy reject. The catch should classify it as
+    // `auth_unexpected_error` with the `err` object attached so
+    // oncall sees the underlying Redis error, not just "Unauthorized".
+    redisGet.mockRejectedValue(
+      new Error("Connection is closed."),
+    );
+    const hook = buildHook();
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/meta`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/Connection is closed/);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({ message: "Connection is closed." }),
+        documentName: `project-${PID}/meta`,
+      }),
+      "auth_unexpected_error",
+    );
   });
 });
