@@ -11,10 +11,13 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis, rawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
+import { startHealthServer } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/shared/i18n-node";
+
+const HEALTH_PORT = Number(process.env["SERVER_HEALTH_PORT"] ?? "3001");
 
 // Fail-fast: verify PG + Redis are reachable before starting the
 // server. `checkInfraReady` throws InfraNotReadyError per the
@@ -62,10 +65,57 @@ const server = serve(
   },
 );
 
+// Health probe — separate port so probe traffic stays off the main
+// hono port and per-port failure semantics in the LB stay clean.
+// docker / k8s / LB healthcheck kills the instance on N consecutive
+// 503s so an api whose Redis or Postgres pool has drifted gets a
+// fresh process automatically. Per CLAUDE.md "服务器端工业级标准"
+// mandate; mirrors worker (port 9101) + collab (port 1235) shape so
+// all three services expose `GET /healthz` on a `主+1` style port.
+const health = startHealthServer({
+  port: HEALTH_PORT,
+  serviceName: "server",
+  onEvent: (event) => {
+    if (event.type === "listening") {
+      logger.info(
+        { service: event.serviceName, port: event.port },
+        "healthz_listening",
+      );
+    } else if (event.type === "check_fail") {
+      logger.warn(
+        { service: event.serviceName, checks: event.checks },
+        "healthz_fail",
+      );
+    } else if (event.type === "handler_unexpected_error") {
+      logger.error(
+        { service: event.serviceName, err: event.err },
+        "healthz_handler_unexpected_error",
+      );
+    }
+  },
+  checks: [
+    {
+      name: "postgres",
+      check: async () => {
+        const rows = await rawPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
+        return rows[0]?.ok === 1;
+      },
+    },
+    {
+      name: "redis_general",
+      check: async () => (await getRedis().ping()) === "PONG",
+    },
+  ],
+});
+
 /** Graceful shutdown handler. */
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down...`);
 
+  // Stop health probe first so the LB stops sending traffic to this
+  // instance while it drains in-flight HTTP requests; failing health
+  // early is the explicit signal to the LB "rotate me out".
+  await health.stop();
   server.close();
   await Promise.allSettled([closeDb(), closeRedis(), closeQueues()]);
 
