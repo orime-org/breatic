@@ -55,7 +55,11 @@ if (existsSync(envPath)) {
 
 async function main(): Promise<void> {
   const { runMigrations } = await import("../packages/core/dist/index.js");
-  await runMigrations();
+  // eslint-disable-next-line no-console
+  console.log("Running database migrations...");
+  const { migrationsFolder } = await runMigrations();
+  // eslint-disable-next-line no-console
+  console.log(`✓ Migrations completed (folder: ${migrationsFolder})`);
 }
 
 main().catch((err: unknown) => {

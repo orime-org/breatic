@@ -11,7 +11,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "./env.js";
-import { logger } from "../logger.js";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
@@ -175,12 +174,13 @@ export function getModelCatalog(): ModelCatalog {
     }
 
     for (const file of files) {
-      try {
-        const models = loadModelsFromFile(resolve(dir, file), modality, keyMap);
-        catalog[modality].push(...models);
-      } catch (err) {
-        logger.warn({ file, modality, err }, "Failed to parse model YAML");
-      }
+      // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, parse
+      // errors throw so the application boot path catches + logs
+      // with the right context (catalog load is at server startup —
+      // a malformed YAML should fail-fast, not silently drop the
+      // affected modality).
+      const models = loadModelsFromFile(resolve(dir, file), modality, keyMap);
+      catalog[modality].push(...models);
     }
   }
 
@@ -200,20 +200,6 @@ export function getModelCatalog(): ModelCatalog {
   }
 
   const total = MODALITIES.reduce((sum, m) => sum + catalog[m].length, 0);
-
-  logger.info(
-    {
-      image: catalog.image.length,
-      video: catalog.video.length,
-      audio: catalog.audio.length,
-      tts: catalog.tts.length,
-      three_d: catalog.three_d.length,
-      understand: catalog.understand.length,
-      total,
-      filtered: anyKeyConfigured,
-    },
-    "Model catalog loaded",
-  );
 
   _cache = { ...catalog, total };
   return _cache;

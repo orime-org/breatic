@@ -15,8 +15,6 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import { createRedisClient, createPgClient } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
-import IoRedis from "ioredis";
-import postgres from "postgres";
 import * as Y from "yjs";
 import {
   parseDocName,

@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  ioredis: 5.10.1
+
 importers:
 
   .:
@@ -63,8 +66,8 @@ importers:
         specifier: ^16.4.0
         version: 16.4.0
       ioredis:
-        specifier: ^5.4.0
-        version: 5.4.0
+        specifier: 5.10.1
+        version: 5.10.1
       lib0:
         specifier: ^0.2.117
         version: 0.2.117
@@ -154,7 +157,7 @@ importers:
         specifier: ^10.6.2
         version: 10.6.2
       ioredis:
-        specifier: ^5.4.0
+        specifier: 5.10.1
         version: 5.10.1
       ipaddr.js:
         specifier: ^2.3.0
@@ -3564,7 +3567,7 @@ packages:
     resolution: {integrity: sha512-2z589R+yxKLN4CgKxP1oN4dsg6Y548SE4bVYam/R0kHk7Q9VrQ9l66q+k1ehhSLLY4or9hcchuF9/MhuuZdjJg==}
     engines: {node: '>=16'}
     peerDependencies:
-      ioredis: '>=5'
+      ioredis: 5.10.1
 
   '@shikijs/engine-oniguruma@3.23.0':
     resolution: {integrity: sha512-1nWINwKXxKKLqPibT5f4pAFLej9oZzQTsby8942OTlsJzOBZ0MWKiwzMsd+jhzu8YPCHAswGnnN1YtQfirL35g==}
@@ -6831,10 +6834,6 @@ packages:
 
   ioredis@5.10.1:
     resolution: {integrity: sha512-HuEDBTI70aYdx1v6U97SbNx9F1+svQKBDo30o0b9fw055LMepzpOOd0Ccg9Q6tbqmBSJaMuY0fB7yw9/vjBYCA==}
-    engines: {node: '>=12.22.0'}
-
-  ioredis@5.4.0:
-    resolution: {integrity: sha512-lGiiZyWFOskPu3pH4P8+uicHOZHpzYpgfKZFre68wLK6059zBo+KDTQpwxAVibBajKqpcrRJ5k+jl/uNHcCo3A==}
     engines: {node: '>=12.22.0'}
 
   ipaddr.js@2.3.0:
@@ -16456,20 +16455,6 @@ snapshots:
       '@formatjs/icu-messageformat-parser': 3.5.10
 
   ioredis@5.10.1:
-    dependencies:
-      '@ioredis/commands': 1.5.1
-      cluster-key-slot: 1.1.2
-      debug: 4.4.3
-      denque: 2.1.0
-      lodash.defaults: 4.2.0
-      lodash.isarguments: 3.1.0
-      redis-errors: 1.2.0
-      redis-parser: 3.0.0
-      standard-as-callback: 2.1.0
-    transitivePeerDependencies:
-      - supports-color
-
-  ioredis@5.4.0:
     dependencies:
       '@ioredis/commands': 1.5.1
       cluster-key-slot: 1.1.2

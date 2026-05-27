@@ -18,7 +18,6 @@ import { getSkillRegistry } from "../skills-loader.js";
 import { tryGetContext } from "../../infra/request-context.js";
 import { env } from "../../config/env.js";
 import * as creditService from "../../modules/credit.service.js";
-import { logger } from "../../logger.js";
 
 const agentList = listAgents();
 const agentNames = agentList.map((a) => a.name).join(", ");
@@ -89,9 +88,10 @@ export const spawnTool = tool({
       if (skill) {
         const content = registry.loadSkillContent(skillName);
         system += `\n\n## Skill: ${skillName}\n${content}`;
-      } else {
-        logger.warn({ agentName, skillName }, "Spawn: skill not found");
       }
+      // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, missing
+      // skill is silent — the application caller's MainAgent path
+      // can audit via the SubAgent result text if needed.
     }
 
     // Build tools: agent's declared tools + skill's declared tools (union), minus spawn
@@ -131,15 +131,6 @@ export const spawnTool = tool({
     // The actual task
     messages.push({ role: "user", content: task });
 
-    logger.info({
-      task: task.slice(0, 100),
-      agent: agentName,
-      skills: skillNames,
-      model: agentDef.model,
-      toolCount: Object.keys(tools).length,
-      hasContext: !!reqCtx,
-    }, "SubAgent spawned");
-
     const result = await generateText({
       model: getModel(agentDef.model),
       system,
@@ -160,38 +151,31 @@ export const spawnTool = tool({
     // `billing` is set by MainAgent at turn start. If missing, we're in a
     // code path that bypassed MainAgent (a test harness, or a future entry
     // point that hasn't wired billing); skip the charge rather than crash.
+    // Deduct credits idempotently. `deductOnce` uses a refKey scoped
+    // to (conversation, turn, spawn index). Per CLAUDE.md "core 和
+    // shared 不写任何日志" mandate, missing billing context throws —
+    // the MainAgent caller catches and decides whether to abort the
+    // SubAgent turn or proceed without billing. Credit deduction
+    // errors propagate (rather than warn-and-continue) so the
+    // application layer can observe + audit billing failures
+    // consistently with the rest of the credit code path.
     if (reqCtx && totalTokens > 0) {
-      try {
-        const credits = Math.ceil((totalTokens / 1000) * env.CREDIT_MULTIPLIER);
-        const billing = reqCtx.billing;
-        if (!billing) {
-          logger.warn(
-            { agent: agentName },
-            "Spawn: billing context missing, skipping deduction",
-          );
-        } else {
-          const spawnIdx = billing.spawnCount.value++;
-          await creditService.deductOnce(
-            reqCtx.userId,
-            `spawn:${reqCtx.conversationId}:${billing.turnIndex}:${spawnIdx}`,
-            credits,
-            `SubAgent:${agentName}`,
-            { tokensUsed: totalTokens, model: agentDef.model, provider: resolveProvider(agentDef.model) },
-          );
-          logger.info(
-            { agent: agentName, tokens: totalTokens, credits, spawnIdx },
-            "SubAgent credits deducted",
-          );
-        }
-      } catch (err) {
-        logger.warn({ err, agent: agentName }, "SubAgent credit deduction failed");
+      const credits = Math.ceil((totalTokens / 1000) * env.CREDIT_MULTIPLIER);
+      const billing = reqCtx.billing;
+      if (!billing) {
+        throw new Error(
+          `SubAgent '${agentName}': billing context missing — cannot deduct credits`,
+        );
       }
+      const spawnIdx = billing.spawnCount.value++;
+      await creditService.deductOnce(
+        reqCtx.userId,
+        `spawn:${reqCtx.conversationId}:${billing.turnIndex}:${spawnIdx}`,
+        credits,
+        `SubAgent:${agentName}`,
+        { tokensUsed: totalTokens, model: agentDef.model, provider: resolveProvider(agentDef.model) },
+      );
     }
-
-    logger.info(
-      { agent: agentName, steps: result.steps?.length ?? 0, tokens: totalTokens, model: agentDef.model },
-      "SubAgent completed",
-    );
 
     return result.text || "Sub-agent completed with no text output.";
   },

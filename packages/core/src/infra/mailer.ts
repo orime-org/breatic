@@ -18,7 +18,6 @@
 
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
-import { logger } from "../logger.js";
 
 let transporter: nodemailer.Transporter | null = null;
 
@@ -26,7 +25,6 @@ function getTransporter(): nodemailer.Transporter | null {
   if (transporter) return transporter;
 
   if (!env.SMTP_HOST || !env.SMTP_USER) {
-    logger.warn("SMTP not configured — emails will not be sent");
     return null;
   }
 
@@ -50,30 +48,50 @@ export interface SendMailOptions {
 }
 
 /**
+ * Discriminated result of {@link sendMail}. Per CLAUDE.md
+ * "core 和 shared 不写任何日志" mandate, the library returns
+ * status instead of logging — the application caller (server
+ * route handler) decides what to log (e.g. info on `sent`,
+ * warn on `smtp_not_configured`, dev-only console dump on
+ * `backend_console`).
+ */
+export type SendMailResult =
+  | { status: "sent" }
+  | { status: "backend_console"; to: string; subject: string; html: string }
+  | { status: "skipped"; reason: "backend_disabled" }
+  | { status: "skipped"; reason: "smtp_not_configured"; to: string; subject: string };
+
+/**
  * Send an email per `env.EMAIL_BACKEND` dispatch.
  *
- * @returns `true` if email was dispatched (smtp success) or logged
- *   (console), `false` if disabled or SMTP fallback to silent-skip
- *   (smtp mode but unconfigured).
+ * @returns A {@link SendMailResult} describing what happened
+ *   (sent / console-only / skipped). The application caller is
+ *   responsible for logging audit / warning lines based on the
+ *   status — see CLAUDE.md "core 和 shared 不写任何日志".
  */
-export async function sendMail(options: SendMailOptions): Promise<boolean> {
+export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
   if (env.EMAIL_BACKEND === "disabled") {
-    return false;
+    return { status: "skipped", reason: "backend_disabled" };
   }
 
   if (env.EMAIL_BACKEND === "console") {
-    logger.info(
-      { to: options.to, subject: options.subject, html: options.html },
-      "[console] email",
-    );
-    return true;
+    return {
+      status: "backend_console",
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+    };
   }
 
   // smtp path
   const t = getTransporter();
   if (!t) {
-    logger.warn({ to: options.to, subject: options.subject }, "Email not sent — SMTP not configured");
-    return false;
+    return {
+      status: "skipped",
+      reason: "smtp_not_configured",
+      to: options.to,
+      subject: options.subject,
+    };
   }
 
   await t.sendMail({
@@ -83,6 +101,5 @@ export async function sendMail(options: SendMailOptions): Promise<boolean> {
     html: options.html,
   });
 
-  logger.info({ to: options.to, subject: options.subject }, "Email sent");
-  return true;
+  return { status: "sent" };
 }

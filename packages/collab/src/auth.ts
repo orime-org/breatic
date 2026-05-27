@@ -137,7 +137,7 @@ export interface CreateAuthHookOptions {
  * expected state).
  */
 async function loadProjectSpaceIds(
-  sql: ReturnType<typeof postgres>,
+  sql: ReturnType<typeof createPgClient>,
   projectId: string,
 ): Promise<Set<string>> {
   const docName = projectMetaDocName(projectId);
@@ -169,7 +169,7 @@ async function loadProjectSpaceIds(
  * `holdingByName` for consistency.
  */
 async function loadProjectRole(
-  sql: ReturnType<typeof postgres>,
+  sql: ReturnType<typeof createPgClient>,
   userId: string,
   projectId: string,
 ): Promise<{

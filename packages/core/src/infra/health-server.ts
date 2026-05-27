@@ -27,7 +27,6 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { logger } from "../logger.js";
 
 /** Per-check timeout — long enough to differentiate "slow but
  * recovering" from "stuck", short enough that a misbehaving probe
@@ -49,18 +48,46 @@ export interface HealthServerOptions {
   /** Port to listen on. Must NOT collide with the service's main
    * port (e.g. 1234 for collab WS). */
   port: number;
-  /** Service name tag for log lines (`collab` / `worker`). */
+  /** Service name tag forwarded to {@link HealthServerOptions.onEvent}
+   * (`collab` / `worker`). */
   serviceName: string;
   /** Dependencies to probe. Order does not matter; they're awaited
    * in parallel. */
   checks: HealthCheck[];
+  /**
+   * Optional observer for lifecycle events (listening, check
+   * failures, unexpected handler errors).
+   *
+   * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this
+   * library does NOT log directly — the application entry that
+   * starts the server is responsible for routing observed events
+   * to its own logger. If omitted, events are dropped silently
+   * (acceptable for tests; production callers should always
+   * provide this hook).
+   */
+  onEvent?: (event: HealthServerEvent) => void;
 }
 
-interface CheckResult {
+/** Result of a single dependency probe. */
+export interface CheckResult {
   ok: boolean;
   ms: number;
   error?: string;
 }
+
+/** Lifecycle event surfaced via {@link HealthServerOptions.onEvent}. */
+export type HealthServerEvent =
+  | { type: "listening"; port: number; serviceName: string }
+  | {
+      type: "check_fail";
+      serviceName: string;
+      checks: Record<string, CheckResult>;
+    }
+  | {
+      type: "handler_unexpected_error";
+      serviceName: string;
+      err: unknown;
+    };
 
 async function runCheck(
   check: HealthCheck,
@@ -96,7 +123,7 @@ export function startHealthServer(opts: HealthServerOptions): {
   server: Server;
   stop: () => Promise<void>;
 } {
-  const { port, serviceName, checks } = opts;
+  const { port, serviceName, checks, onEvent } = opts;
 
   const server = createServer((req, res) => {
     if (req.url !== "/healthz") {
@@ -122,28 +149,23 @@ export function startHealthServer(opts: HealthServerOptions): {
           }),
         );
         if (!allOk) {
-          logger.warn(
-            { service: serviceName, checks: checksMap },
-            "healthz_fail",
-          );
+          onEvent?.({ type: "check_fail", serviceName, checks: checksMap });
         }
       })
       .catch((err) => {
         // Should be unreachable — runCheck swallows per-check
-        // failures into the CheckResult shape. Log + 500 as a
-        // safety net so we never silently leave the LB without
-        // a response.
-        logger.error(
-          { err, service: serviceName },
-          "healthz_handler_unexpected_error",
-        );
+        // failures into the CheckResult shape. 500 as a safety
+        // net so we never silently leave the LB without a
+        // response; the application caller routes the event to
+        // its logger if observed.
+        onEvent?.({ type: "handler_unexpected_error", serviceName, err });
         res.statusCode = 500;
         res.end();
       });
   });
 
   server.listen(port, () => {
-    logger.info({ service: serviceName, port }, "healthz_listening");
+    onEvent?.({ type: "listening", port, serviceName });
   });
 
   return {

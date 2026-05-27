@@ -12,19 +12,23 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
 import { db } from "./client.js";
-import { logger } from "../logger.js";
 import { MONOREPO_ROOT } from "../config/env.js";
 
 /**
  * Run all pending database migrations.
  *
+ * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this library
+ * function does NOT log progress/completion. The application
+ * caller (`scripts/db-migrate.ts` CLI) wraps the call and emits
+ * its own console output around it.
+ *
+ * @returns The resolved migrations folder path, so the CLI caller
+ *   can include it in human-readable output without re-deriving
+ *   the same `resolve(MONOREPO_ROOT, ...)` expression.
  * @throws Error if any migration fails (prevents service from starting)
  */
-export async function runMigrations(): Promise<void> {
+export async function runMigrations(): Promise<{ migrationsFolder: string }> {
   const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
-  logger.info({ migrationsFolder }, "Running database migrations...");
-
   await migrate(db, { migrationsFolder });
-
-  logger.info("Database migrations completed");
+  return { migrationsFolder };
 }

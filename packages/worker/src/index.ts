@@ -57,6 +57,27 @@ export function startWorker(): void {
   const health = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "worker",
+    // Forward health-server lifecycle events to our logger. Per
+    // CLAUDE.md "core 和 shared 不写任何日志" mandate, the library
+    // emits events; the application entry routes them.
+    onEvent: (event) => {
+      if (event.type === "listening") {
+        logger.info(
+          { service: event.serviceName, port: event.port },
+          "healthz_listening",
+        );
+      } else if (event.type === "check_fail") {
+        logger.warn(
+          { service: event.serviceName, checks: event.checks },
+          "healthz_fail",
+        );
+      } else if (event.type === "handler_unexpected_error") {
+        logger.error(
+          { service: event.serviceName, err: event.err },
+          "healthz_handler_unexpected_error",
+        );
+      }
+    },
     checks: [
       {
         name: "redis_general",

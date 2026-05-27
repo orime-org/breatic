@@ -106,6 +106,27 @@ async function main(): Promise<void> {
   const healthServer = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "collab",
+    // Forward health-server lifecycle events to our logger. Per
+    // CLAUDE.md "core 和 shared 不写任何日志" mandate, the library
+    // emits events; the application entry routes them.
+    onEvent: (event) => {
+      if (event.type === "listening") {
+        logger.info(
+          { service: event.serviceName, port: event.port },
+          "healthz_listening",
+        );
+      } else if (event.type === "check_fail") {
+        logger.warn(
+          { service: event.serviceName, checks: event.checks },
+          "healthz_fail",
+        );
+      } else if (event.type === "handler_unexpected_error") {
+        logger.error(
+          { service: event.serviceName, err: event.err },
+          "healthz_handler_unexpected_error",
+        );
+      }
+    },
     checks: [
       {
         name: "redis_stream",
@@ -117,8 +138,12 @@ async function main(): Promise<void> {
         // instance — `.listening` flips false the instant the
         // listen socket closes (graceful shutdown or crash). A
         // dead hocuspocus with live healthz would be the worst
-        // possible state for the LB.
-        check: async () => hocuspocus.server?.listening === true,
+        // possible state for the LB. The Hocuspocus `server` field
+        // is typed as `Server` (a non-http base type) so we cast
+        // to access the runtime `listening` boolean that the
+        // node:http instance always carries.
+        check: async () =>
+          (hocuspocus.server as { listening?: boolean } | undefined)?.listening === true,
       },
     ],
   });
