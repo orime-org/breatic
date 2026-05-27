@@ -24,6 +24,7 @@ import {
   type SpaceRpcResponse,
 } from "@breatic/shared";
 import { createAuthHook } from "./auth.js";
+import { projectAwarenessIntoMetaUsers } from "./awareness-meta-users.js";
 import { checkWriteAuthz, WriteAuthzError } from "./before-handle-message.js";
 import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
@@ -123,15 +124,47 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
     },
 
-    // `meta.users[userId]` population was moved off this hook
-    // (2026-05-27) to a client-driven `users:upsert-self` stateless
-    // RPC dispatched from the front-end's `onSynced` callback. The
-    // old `afterLoadDocument` + `ensureUserInMetaDoc` path had to be
-    // fire-and-forget to avoid deadlocking on `openDirectConnection`
-    // against the same meta doc (Hocuspocus serializes per-doc
-    // work). The client-driven RPC handler writes synchronously
-    // through the loaded Y.Doc reference inside `onStateless`, so
-    // there is no race window and no risk of hook reentrancy.
+    // `meta.users[userId]` population (2026-05-27 awareness rewrite):
+    // the front-end writes `user` into awareness via
+    // `provider.awareness.setLocalStateField('user', { id, name, avatarUrl })`
+    // and we project it into `meta.users[userId]` here. Awareness is
+    // declarative — `setLocalStateField` re-fires for any
+    // `currentUser` deps change in `useProjectMeta`, so a user
+    // renaming themselves in settings flows through automatically
+    // (the prior `users:upsert-self` stateless RPC path missed this
+    // because its `sentForProviderRef` guard skipped re-sends).
+    //
+    // Anti-spoof: only awareness state whose `user.id` matches the
+    // connection-context user is honored. Multi-collab-instance dedup
+    // falls out of the same check — remote-synced updates land here
+    // with a non-matching (or empty) context.user.id and are
+    // rejected without writing.
+    //
+    // Debounce: cursor / selection awareness updates would fire this
+    // hook at sub-second rates. The helper diffs the user fields and
+    // throttles the `lastSeenAt` refresh to one transact per user
+    // per 30s — see `awareness-meta-users.ts`.
+    onAwarenessUpdate: async ({
+      documentName,
+      document,
+      awareness,
+      added,
+      updated,
+      context,
+    }) => {
+      const parsed = parseDocName(documentName);
+      if (!parsed || parsed.kind !== "meta") return;
+      const ctx = context as { user?: { id?: string } };
+      projectAwarenessIntoMetaUsers({
+        documentName,
+        document,
+        awareness,
+        added,
+        updated,
+        contextUserId: ctx.user?.id,
+        now: Date.now(),
+      });
+    },
 
     onDisconnect: async ({ documentName, context }) => {
       const ctx = context as { user?: { id: string } };
