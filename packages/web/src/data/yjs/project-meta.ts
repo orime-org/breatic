@@ -9,6 +9,7 @@ import {
 import type { SpaceType } from '@/spaces';
 import { docName, getDoc } from '@/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@/data/yjs/use-socket';
+import { useCurrentUserStore } from '@/stores/current-user';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
@@ -158,6 +159,37 @@ export function useProjectMeta(
       users.unobserveDeep(update);
     };
   }, [doc, userId]);
+
+  // 2026-05-27 — client-driven meta.users sync. Fire one
+  // `users:upsert-self` stateless RPC per provider connection (gated
+  // by the per-provider `sentForProviderRef` so a re-sync after
+  // disconnect → reconnect resends, but a sibling re-render does
+  // not). Replaces the prior server-side `afterLoadDocument` +
+  // `ensureUserInMetaDoc` path that had to be fire-and-forget to
+  // avoid deadlocking on `openDirectConnection` against the same
+  // meta doc.
+  const currentUser = useCurrentUserStore((s) => s.user);
+  const sentForProviderRef = React.useRef<unknown>(null);
+  React.useEffect(() => {
+    if (!synced || !provider || !currentUser) return;
+    if (sentForProviderRef.current === provider) return;
+    sentForProviderRef.current = provider;
+    const req = {
+      id: `users-upsert-${Date.now()}`,
+      type: "users:upsert-self" as const,
+      payload: {
+        name: currentUser.name,
+        avatarUrl: currentUser.avatarUrl ?? null,
+      },
+    };
+    try {
+      provider.sendStateless(JSON.stringify(req));
+    } catch {
+      // The provider can race the React re-render — a stale ref
+      // closure can outlive `destroy()`. Swallow: next sync will
+      // resend through a fresh provider reference.
+    }
+  }, [synced, provider, currentUser]);
 
   return { ...state, synced, provider, status, authFailedReason };
 }

@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 import IORedis from "ioredis";
 import { createLogger } from "./logger.js";
-import { createCollabServer } from "./server.js";
+import { createCollabServer } from "./hocuspocus.js";
 import { startTaskListener } from "./task-listener.js";
 import { startMembersSync } from "./members-sync.js";
 import { getCollabConfig } from "./config.js";

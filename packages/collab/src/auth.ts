@@ -28,7 +28,6 @@
  * `projectAuthService.loadProjectRole` from core.
  */
 
-import type { Hocuspocus } from "@hocuspocus/server";
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
 import postgres from "postgres";
@@ -267,57 +266,19 @@ export function createAuthHook({
   };
 }
 
-/**
- * Idempotently write `meta.users[userId] = { name, avatarUrl }` so
- * downstream consumers (ProjectMessagesButton, MembersStack, future
- * presence overlays) can render display names by looking up the live
- * Yjs map instead of carrying snapshot strings on every message.
- *
- * Called from `onConnect` once per WebSocket handshake. Updates the
- * record on every connect — that way a username / avatar change in
- * PG propagates to all viewers the next time the user opens any
- * doc, without needing a separate "user-changed" pubsub channel
- * (see Q11 v2 design 2A: "every connect ensure self record").
- *
- * Writes are funnelled through the privileged `system` user so the
- * `beforeHandleMessage` write-authz gate (ADR
- * 2026-05-23-yjs-collab-only-write-authz) lets them through.
- */
-export async function ensureUserInMetaDoc(
-  hocuspocus: Hocuspocus,
-  projectId: string,
-  user: { id: string; name: string; avatarUrl: string | null },
-): Promise<void> {
-  const docName = projectMetaDocName(projectId);
-  const conn = await hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: "system" }, source: "auth-ensure-user" },
-  });
-  try {
-    await conn.transact((doc) => {
-      const users = doc.getMap("users");
-      const existing = users.get(user.id) as Y.Map<unknown> | undefined;
-      // Only write when value would actually change — saves a no-op
-      // Yjs update broadcast on every reconnect of an idle user.
-      if (
-        existing instanceof Y.Map &&
-        existing.get("name") === user.name &&
-        existing.get("avatarUrl") === (user.avatarUrl ?? null)
-      ) {
-        return;
-      }
-      const entry = existing instanceof Y.Map
-        ? existing
-        : (() => {
-          const m = new Y.Map<unknown>();
-          users.set(user.id, m);
-          return m;
-        })();
-      entry.set("id", user.id);
-      entry.set("name", user.name);
-      entry.set("avatarUrl", user.avatarUrl ?? null);
-      entry.set("updatedAt", Date.now());
-    });
-  } finally {
-    await conn.disconnect();
-  }
-}
+// `ensureUserInMetaDoc` removed 2026-05-27.
+//
+// The Q11 v2 server-side path (write `meta.users[userId]` from a
+// Hocuspocus lifecycle hook via `openDirectConnection`) deadlocked
+// when held inside `afterLoadDocument`, because Hocuspocus
+// serializes per-doc work and the inner direct connection to the
+// same meta doc could not resolve while the outer hook was still
+// awaiting. The fire-and-forget mitigation papered over that race
+// but left the deadlock source in the code.
+//
+// Replacement: a client-driven `users:upsert-self` stateless RPC
+// dispatched from the front-end's `onSynced` callback. The handler
+// (in `space-rpc.ts::handleUsersUpsertSelf`) writes synchronously
+// through the meta doc Y.Doc reference the `onStateless` callback
+// already holds — no second connection, no per-doc serialization
+// round-trip, no hook reentrancy.
