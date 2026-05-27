@@ -134,16 +134,27 @@ async function main(): Promise<void> {
       },
       {
         name: "hocuspocus_listening",
-        // hocuspocus.server is the underlying HTTP/WS Server
-        // instance — `.listening` flips false the instant the
-        // listen socket closes (graceful shutdown or crash). A
-        // dead hocuspocus with live healthz would be the worst
-        // possible state for the LB. The Hocuspocus `server` field
-        // is typed as `Server` (a non-http base type) so we cast
-        // to access the runtime `listening` boolean that the
-        // node:http instance always carries.
-        check: async () =>
-          (hocuspocus.server as { listening?: boolean } | undefined)?.listening === true,
+        // server.httpServer is the underlying node:http.Server
+        // instance (see @hocuspocus/server `Server` class line 29
+        // `httpServer: HTTPServer`). `.listening` flips false
+        // the instant the listen socket closes (graceful shutdown
+        // or crash). A dead hocuspocus with live healthz would be
+        // the worst possible state for the LB.
+        //
+        // Bug history: PR #155 / #156 incorrectly read
+        // `hocuspocus.server?.listening`. Two errors stacked:
+        // (1) wrong variable — `createCollabServer` returns
+        // `{ server: Server, hocuspocus: Hocuspocus }`, and the
+        // http server lives on `Server`, not on `Hocuspocus`;
+        // (2) wrong field — even on `Server` the public field
+        // is `httpServer`, not `server`. The check was therefore
+        // reading `undefined?.listening === true` → always false
+        // → /healthz always 503. Combined with the docker
+        // `healthcheck:` wired in #156, production collab
+        // containers would have been marked `unhealthy` and
+        // infinitely restarted by docker. Caught locally before
+        // any deploy by `curl :1235/healthz` smoke.
+        check: async () => server.httpServer.listening,
       },
     ],
   });
