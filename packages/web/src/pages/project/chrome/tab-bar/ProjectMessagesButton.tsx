@@ -280,8 +280,34 @@ export function ProjectMessagesButton({
           ) : (
             visible.map((m) => {
               const rel = relativeTime(m.createdAt);
+              // A `space-deleted` entry is "already restored" iff
+              // a later `space-restored` projectMessages entry for
+              // the same spaceId exists. Bell rendering uses this
+              // to disable the restore button after a successful
+              // restore — without this guard, clicking the button
+              // a second time would round-trip to the server and
+              // fail with "No deletion record found" (the canvas
+              // row was un-soft-deleted on the first click). The
+              // check walks `messages` (capped at 100 by the
+              // `visible` slice above), so O(N) per render in the
+              // worst case — fine for a sheet that only opens on
+              // user click.
+              const alreadyRestored =
+                m.kind === 'space-deleted' &&
+                Boolean(m.spaceId) &&
+                messages.some(
+                  (other) =>
+                    other.kind === 'space-restored' &&
+                    other.spaceId === m.spaceId &&
+                    other.createdAt > m.createdAt,
+                );
               const canRestore =
-                isOwner && m.kind === 'space-deleted' && Boolean(m.spaceId);
+                isOwner &&
+                m.kind === 'space-deleted' &&
+                Boolean(m.spaceId) &&
+                !alreadyRestored;
+              const showRestoredBadge =
+                isOwner && m.kind === 'space-deleted' && alreadyRestored;
               // Q11 v2.1 lookup chain:
               //   - actor name: live lookup `meta.users[actor]` so a
               //     username rename retroactively propagates (user
@@ -334,7 +360,6 @@ export function ProjectMessagesButton({
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
-                      {m.spaceName ? ` · ${m.spaceName}` : ''}
                     </p>
                   </div>
                   {canRestore ? (
@@ -347,6 +372,17 @@ export function ProjectMessagesButton({
                     >
                       <RotateCcw className='h-3 w-3' aria-hidden />
                       {t('spaces.history.action.restore')}
+                    </button>
+                  ) : showRestoredBadge ? (
+                    <button
+                      type='button'
+                      disabled
+                      aria-disabled
+                      data-testid={`project-messages-restored-badge-${m.id}`}
+                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground opacity-60 cursor-not-allowed'
+                    >
+                      <RotateCcw className='h-3 w-3' aria-hidden />
+                      {t('spaces.history.action.restored')}
                     </button>
                   ) : null}
                 </li>

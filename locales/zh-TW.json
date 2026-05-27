@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "還原",
+        "restored": "已還原",
         "clearAll": "清空",
         "clearAllConfirmTitle": "確認清空所有訊息？",
         "clearAllConfirmDescription": "此操作無法復原。專案訊息頻道中的所有項目都將被永久刪除。"

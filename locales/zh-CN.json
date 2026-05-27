@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "恢复",
+        "restored": "已恢复",
         "clearAll": "清空",
         "clearAllConfirmTitle": "确认清空所有消息？",
         "clearAllConfirmDescription": "此操作无法撤销。项目消息频道中的所有条目都将被永久删除。"

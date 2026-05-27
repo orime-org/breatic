@@ -106,6 +106,41 @@ describe('ProjectMessagesButton', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-1');
   });
 
+  it('replaces Restore button with a disabled "已恢复" badge when a later space-restored entry exists for the same spaceId', async () => {
+    // Owner just clicked Restore once — collab pushed a
+    // `space-restored` entry. The bell sheet must now disable the
+    // button so a second click can't round-trip to the server and
+    // fail with "No deletion record found" (the canvas row was
+    // already un-soft-deleted).
+    const user = userEvent.setup();
+    const M_RESTORED: ProjectMessageEntry = {
+      id: 'm-restored',
+      kind: 'space-restored',
+      actor: 'u-yuki',
+      spaceId: 'sp-1',
+      spaceName: 'Main',
+      createdAt: M_DELETED.createdAt + 1_000,
+    };
+    const onRestore = vi.fn();
+    render(
+      <ProjectMessagesButton
+        messages={[M_DELETED, M_RESTORED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
+        currentUserRole='owner'
+        onRestore={onRestore}
+      />,
+    );
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    // Restore button gone, restored badge in its place.
+    expect(
+      screen.queryByTestId('project-messages-restore-m-del'),
+    ).toBeNull();
+    const badge = screen.getByTestId('project-messages-restored-badge-m-del');
+    expect(badge).toBeDisabled();
+    expect(badge.textContent).toMatch(/已恢复|Restored|復元済み|已還原/);
+  });
+
   it('hides Restore button for non-owner viewers', async () => {
     const user = userEvent.setup();
     render(

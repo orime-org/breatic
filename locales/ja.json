@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "復元",
+        "restored": "復元済み",
         "clearAll": "すべて削除",
         "clearAllConfirmTitle": "すべてのメッセージを削除しますか？",
         "clearAllConfirmDescription": "この操作は取り消せません。プロジェクトメッセージチャンネル内のすべての項目が完全に削除されます。"
