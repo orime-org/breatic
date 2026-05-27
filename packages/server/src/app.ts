@@ -14,7 +14,6 @@ import { corsMiddleware } from "./middleware/cors.js";
 import { localeMiddleware } from "./middleware/i18n.js";
 import { loggerMiddleware } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
-import { healthRoute } from "./routes/health.js";
 import { authRoute } from "./routes/auth.js";
 import { chatRoute } from "./routes/chat.js";
 import { canvasRoute } from "./routes/canvas.js";
@@ -48,7 +47,10 @@ export function createApp(): Hono {
   app.onError(errorHandler);
 
   // ── Routes ────────────────────────────────────
-  app.route("/api/health", healthRoute);
+  // Health is exposed on a separate http server (port 3001 /healthz)
+  // started in `index.ts`, not on the hono main port, so probe
+  // traffic stays isolated and LB per-port failure semantics stay
+  // clean. See `packages/server/src/index.ts` `startHealthServer`.
   app.route("/api/v1/auth", authRoute);
   app.route("/api/v1/chat", chatRoute);
   app.route("/api/v1/canvas", canvasRoute);

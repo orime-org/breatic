@@ -152,9 +152,12 @@ cp /path/to/your-cert.key docker/certs/cert.key
 docker compose pull
 docker compose up -d
 
-# 5. Verify
-curl http://localhost/api/health
-# → { "status": "ok", "services": { "db": "ok", "redis": "ok" } }
+# 5. Verify each service is reporting healthy
+docker compose ps
+# → STATUS column should show "Up (healthy)" for api / collab / worker
+#   once start_period elapses (~30s after first start)
+docker exec breatic-api-1 wget -q -O - http://localhost:3001/healthz
+# → { "status": "ok", "service": "server", "checks": { "postgres": { "ok": true, ... }, "redis_general": { "ok": true, ... } } }
 ```
 
 You don't need Node, pnpm, or to build anything locally — `docker compose` pulls images from GHCR (`ghcr.io/orime-org/breatic` + `ghcr.io/orime-org/breatic-web`) that CI built and published.
@@ -468,8 +471,29 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to main:
   - `logs/collab/` — Hocuspocus (standalone logger)
   - `logs/nginx/` — Nginx access + error (logrotate, 30-day retention)
 - **Docker logs**: `docker compose logs -f <service>`
-- **Health check**: `GET /api/health` — returns DB + Redis connectivity status
+- **Health check**: Each application service exposes `GET /healthz` on a dedicated port. See the [Health check design](#health-check-design) section below for the full contract + docker healthcheck wiring.
 - **Error tracking**: Sentry (set `VITE_SENTRY_DSN` in `.env`)
+
+### Health check design
+
+Per CLAUDE.md "服务器端工业级标准" mandate, each long-lived application service exposes a dedicated `GET /healthz` endpoint on a `主+1` style port. Docker compose declares `healthcheck:` for each container that probes its own `/healthz` and marks the container `unhealthy` on N consecutive failures; combined with `restart: unless-stopped` this closes the self-heal loop (a drifted container is killed and respawned automatically).
+
+| service | main port | health port | check returns |
+|---|---|---|---|
+| api(server) | 3000 | 3001 | `postgres` SELECT 1 + `redis_general` PING |
+| collab | 1234 | 1235 | `redis_stream` PING + `hocuspocus_listening` Server.listening |
+| worker | n/a(BullMQ subscriber, no main port) | 9101 | `redis_general` PING + `postgres` SELECT 1 |
+
+Health endpoints are **container-internal only** — they are not routed through nginx and not exposed to the public internet. Probing happens via `docker exec <container> wget -q -O - http://localhost:<port>/healthz` or docker's built-in `healthcheck:` directive. The 200 / 503 contract is enforced inside the http server (`packages/core/src/infra/health-server.ts`) with a 2s per-check timeout so a slow-but-recovering dependency is distinguishable from a stuck one.
+
+Why a dedicated port instead of reusing the main service port:
+
+- per-port LB failure semantics stay clean (a health drift can be diagnosed independently from main traffic 5xx)
+- main process freeze ≠ health endpoint stays alive (the independent `http.Server` instance fails its own port)
+- naming consistent across all three services (`主+1` convention)
+- aligns with how docker / k8s liveness probes are conventionally wired (separate port → separate readiness signal)
+
+Observability beyond binary health checks (Prometheus `/metrics` scrape + Grafana dashboards) is tracked in `docs/ROADMAP.md` and deferred to the backend monitoring sprint.
 
 ---
 
@@ -501,7 +525,7 @@ Most AIGC features require external API keys. Check that the relevant `*_API_KEY
 The frontend uses relative paths (`/api/*`, `/ws`) — the browser resolves them against `window.location`. If requests fail:
 
 1. **Check the URL the browser is actually on** (`location.origin` in DevTools console). All API calls go to that same origin.
-2. **Check nginx is reverse-proxying correctly** — `curl -sI https://www.your-domain.com/api/health` should return 200 from the API container via nginx.
+2. **Check nginx is reverse-proxying correctly** — pick any application endpoint that you know works (e.g. `curl -sI https://www.your-domain.com/api/v1/auth/me`) and confirm the response comes from the API container. `/healthz` is NOT public — it lives on each container's dedicated health port (3001 / 1235 / 9101) for docker healthcheck probes only.
 3. **Docker compose changes** — if you edited `docker-compose.yml` or `Dockerfile.web`, rebuild: `docker compose build web && docker compose up -d web`. You no longer need to rebuild when the domain changes, because the domain isn't baked in.
 
 ### CORS errors in browser
