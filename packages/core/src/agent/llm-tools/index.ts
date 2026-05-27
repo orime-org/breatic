@@ -61,7 +61,7 @@ export const DEFAULT_TOOLS: ReadonlySet<string> = new Set([
  *
  * @example
  * ```ts
- * import { buildToolSet, DEFAULT_TOOLS } from "./tools/index.js";
+ * import { buildToolSet, DEFAULT_TOOLS } from "./llm-tools/index.js";
  * const tools = buildToolSet([...DEFAULT_TOOLS, "ask_user_question"]);
  * ```
  */
