@@ -7,7 +7,6 @@ import type {
 } from '@/spaces/canvas/types/node';
 import { docName, getDoc } from '@/data/yjs/manager';
 import { useSocket } from '@/data/yjs/use-socket';
-import { useCurrentUserStore } from '@/stores';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas
@@ -50,12 +49,7 @@ export function useCanvasSpace(
 ): CanvasSpaceState {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  // Same boot-ping race gate as `useProjectMeta` — wait for the
-  // `breatic_session` cookie to be in place before opening the WS
-  // so collab can't 4401 on a tokenless first attempt and latch the
-  // banner permanently. See use-socket.ts `enabled` docstring.
-  const userId = useCurrentUserStore((s) => s.user?.id);
-  const { synced } = useSocket({ name, doc, enabled: !!userId });
+  const { synced } = useSocket({ name, doc });
   const [nodes, setNodes] = React.useState<ReadonlyArray<CanvasNode>>(() =>
     readNodes(doc),
   );

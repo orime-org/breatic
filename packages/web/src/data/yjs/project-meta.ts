@@ -144,17 +144,9 @@ export function useProjectMeta(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
-  // Gate the WS provider on the boot ping completing — without this
-  // the first connect attempt races AuthBootstrap and Safari /
-  // chrome MCP profiles that don't already cache the cookie lose
-  // the race, latch `authFailed`, and never retry. Passing
-  // `enabled: !!userId` parks `useSocket` at `connecting` until
-  // currentUser is populated, then flips and creates the provider
-  // with the cookie reliably in place.
   const { synced, provider, status, authFailedReason } = useSocket({
     name: docName.projectMeta(projectId),
     doc,
-    enabled: !!userId,
   });
 
   const [state, setState] = React.useState<{
@@ -265,14 +257,9 @@ export function useProjectMessages(projectId: string): {
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
-  // Same race gate as the sibling `useProjectMeta` hook above —
-  // wait for the boot ping to populate `currentUser` so the cookie
-  // is in place before the WS upgrade. See use-socket.ts `enabled`.
-  const userId = useCurrentUserStore((s) => s.user?.id);
   const { synced } = useSocket({
     name: docName.projectMeta(projectId),
     doc,
-    enabled: !!userId,
   });
 
   const [messages, setMessages] = React.useState<
