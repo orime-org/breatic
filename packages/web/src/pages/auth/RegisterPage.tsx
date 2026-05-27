@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authApi } from '@/data/api/auth';
+import { authApi, deriveDisplayName } from '@/data/api/auth';
 import { ApiException } from '@/data/api/types';
 import { useCurrentUserStore } from '@/stores';
 import { Button } from '@/components/ui/button';
@@ -69,7 +69,7 @@ export default function RegisterPage() {
       setUser({
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: deriveDisplayName(user),
       });
       setRecoveryCode(code);
     } catch (err) {

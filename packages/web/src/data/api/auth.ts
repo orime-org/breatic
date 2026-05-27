@@ -1,10 +1,38 @@
 import { apiGet, apiPost } from '@/data/api/request';
 
+/**
+ * Server `/auth/*` response user shape — mirrors shared
+ * `UserEntity` (packages/shared/src/types/entities.ts). The display
+ * name lives on `username` (nullable in PG), NOT `name`. Earlier
+ * versions of this type declared `name: string` which silently
+ * mis-mapped the server payload, making `currentUser.name` undefined
+ * everywhere and breaking awareness → `meta.users` → bell sheet
+ * actor rendering (rows fell back to raw UUID). Always go through
+ * `deriveDisplayName` below when projecting into UI state so a null
+ * username gets a graceful email-local-part fallback.
+ */
 export interface AuthUser {
   id: string;
   email: string;
-  name: string;
+  username: string | null;
   credits: number;
+}
+
+/**
+ * Resolve a non-empty display name for an `AuthUser`. Prefers the
+ * stored `username`, otherwise falls back to the local-part of the
+ * email (`'justin@example.com'` → `'justin'`). Used by
+ * AuthBootstrap / LoginPage / RegisterPage when populating
+ * `useCurrentUserStore.user.name` — single source of truth so the
+ * three callsites can't drift.
+ */
+export function deriveDisplayName(u: {
+  username: string | null;
+  email: string;
+}): string {
+  if (u.username && u.username.trim().length > 0) return u.username;
+  const localPart = u.email.split('@')[0];
+  return localPart && localPart.length > 0 ? localPart : u.email;
 }
 
 /**
