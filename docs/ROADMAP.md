@@ -129,3 +129,27 @@
 - 上游参考：[Hocuspocus #716](https://github.com/ueberdosis/hocuspocus/issues/716) Firefox/Safari 30s "Unauthorized" close、[#566](https://github.com/ueberdosis/hocuspocus/issues/566) v2 重连不重发 auth token
 
 **Why 不挤进当前 PR**：postgres-js 配置 + healthz endpoint + error logging 三处改动都是治根但**没有真的 23 小时复现验证就 ship 等于猜根因**。memory `feedback_existing_infra_verify_before_dd` 强 mandate：关键路径（鉴权 + Yjs 协作）fix 必须真复现 + 验证，不能配置猜。独立 PR 单独走 DD + 复现 + 验证。
+
+**状态更新（2026-05-27 PR #155 + 2026-05-28 PR）**：上面五个治根 bullet 已全部 ship：
+
+- ✅ collab `onAuthenticate` try/catch + 5 reason logger.warn（PR #155 commit `4a79f6f`）
+- ✅ `createPgClient` factory `idle_timeout: 30` + `max_lifetime: 1800`（PR #155 commit `f078289`，collab 所有 raw `postgres()` 调用走 factory）
+- ✅ `createRedisClient` factory `keepAlive: 30000` + `commandTimeout: 5000` + `connectTimeout: 10000` + `reconnectOnError` READONLY（PR #155 commit `7916358`，collab 所有 raw `new IoRedis()` 走 factory）
+- ✅ `/healthz` 三 service 都 expose（PR #155 commit `2b4fb95` worker + collab；2026-05-28 PR server 也加了，全 `主+1` port）
+- ✅ docker-compose `healthcheck:` 接线（2026-05-28 PR）— 自愈链路闭环
+
+### Observability —— Prometheus `/metrics` + Grafana dashboard 待办
+
+**Why 现在不做**：CLAUDE.md "服务器端工业级标准" 7 件套中的「安全监控（生产 metrics 看 trend 提前预警）」当前只落地了结构化 log，没有 metrics 时序数值。endpoint 在 (`/healthz` 200/503 + `lint:no-library-logger` clean) 后已经是工业级最小集，但 metrics 上报 + dashboard 需要 backend monitoring sprint 单独规划（Prometheus 自托管 vs Grafana Cloud / managed Mimir 选型 + docker-compose 加 prometheus + grafana service + 各 service 加 `prom-client` 暴露 `/metrics`）。
+
+**真治根工作（独立 PR / sprint）**：
+
+- `packages/server/src/index.ts` + worker + collab —— 加 `prom-client` 暴露 `GET /metrics`（建议放在 health server 同一 port，例如 api 3001/metrics）
+- `packages/core/src/infra/` 加 metric 工具（counter / histogram / gauge wrapper），让 service 调用方一行声明指标
+- `packages/server/src/middleware/` 加 HTTP request count / latency / 5xx rate metric collector
+- `packages/worker/src/` 加 BullMQ queue depth / job latency / failure rate metric collector
+- `packages/collab/src/` 加 active connections / messages per second / awareness peers metric collector
+- `docker-compose.yml` 加 `prometheus` + `grafana` service + volume + 基础 dashboard JSON
+- `docs/DEPLOY.md` 加 metrics 维度说明
+
+**Why 不挤进当前 PR**：metrics 工程量大（每个 service 接 prom-client + 选 metric 维度 + Prometheus / Grafana 部署 + dashboard 设计），跟 healthz binary check 是正交主题；先把 healthz 自愈链路彻底闭环再走 metrics 上报，避免一锅塞两个独立工程主题让 reviewer 难审。等 backend monitoring sprint 启动时单独 PR。
