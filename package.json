@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "turbo run dev",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "dev:collab": "tsx packages/collab/src/index.ts",
-    "dev:worker": "tsx packages/worker/src/index.ts",
+    "dev:collab": "tsx watch packages/collab/src/index.ts",
+    "dev:worker": "tsx watch packages/worker/src/index.ts",
     "start": "node packages/server/dist/index.js",
     "start:collab": "node packages/collab/dist/index.js",
     "start:worker": "node packages/worker/dist/index.js",
