@@ -9,6 +9,7 @@ import {
   initLogger,
   createWorker,
   checkInfraReady,
+  InfraNotReadyError,
   logger,
   getRedis,
   rawPg,
@@ -89,5 +90,19 @@ export function startWorker(): void {
 }
 
 // Fail-fast: verify PG + Redis are reachable before consuming jobs.
-await checkInfraReady();
+// `checkInfraReady` throws InfraNotReadyError per the "进程生命周期
+// (library 层禁)" mandate — application entry catches, logs, exits.
+try {
+  await checkInfraReady();
+} catch (err) {
+  if (err instanceof InfraNotReadyError) {
+    logger.error(
+      { component: err.component, hint: err.hint, err: err.cause },
+      "infra_not_ready",
+    );
+  } else {
+    logger.error({ err }, "infra_check_unexpected_error");
+  }
+  process.exit(1);
+}
 startWorker();

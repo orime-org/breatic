@@ -9,16 +9,11 @@
  * connections.
  */
 
-import { createPgClient, createRedisClient } from "@breatic/core";
-
-function fatal(label: string, err: unknown, hint: string): never {
-  const message = err instanceof Error ? err.message : String(err);
-  // eslint-disable-next-line no-console
-  console.error(`\n❌ ${label} not reachable: ${message}`);
-  // eslint-disable-next-line no-console
-  console.error(`   → ${hint}\n`);
-  process.exit(1);
-}
+import {
+  createPgClient,
+  createRedisClient,
+  InfraNotReadyError,
+} from "@breatic/core";
 
 /**
  * Verify that PostgreSQL and Redis are reachable.
@@ -47,10 +42,10 @@ export async function checkCollabInfraReady(
     await sql.end();
   } catch (err) {
     await sql.end().catch(() => {});
-    fatal(
+    throw new InfraNotReadyError(
       "PostgreSQL",
-      err,
       `Check DATABASE_URL=${databaseUrl} or run: docker compose up -d postgres`,
+      err,
     );
   }
 
@@ -72,10 +67,10 @@ export async function checkCollabInfraReady(
     await redis.quit();
   } catch (err) {
     redis.disconnect();
-    fatal(
+    throw new InfraNotReadyError(
       "Redis",
-      err,
       `Check REDIS_URL=${redisUrl} or run: docker compose up -d redis`,
+      err,
     );
   }
 
@@ -93,10 +88,10 @@ export async function checkCollabInfraReady(
       await streamRedis.quit();
     } catch (err) {
       streamRedis.disconnect();
-      fatal(
+      throw new InfraNotReadyError(
         "Redis (stream DB)",
-        err,
         `Check REDIS_STREAM_URL=${streamRedisUrl} or run: docker compose up -d redis`,
+        err,
       );
     }
   }

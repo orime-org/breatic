@@ -14,7 +14,11 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-import { createRedisClient, startHealthServer } from "@breatic/core";
+import {
+  createRedisClient,
+  startHealthServer,
+  InfraNotReadyError,
+} from "@breatic/core";
 import { createLogger } from "./logger.js";
 import { createCollabServer } from "./hocuspocus.js";
 import { startTaskListener } from "./task-listener.js";
@@ -31,8 +35,23 @@ const ENV_PREFIX = process.env["ENV"] ?? "dev";
 const HEALTH_PORT = Number(process.env["COLLAB_HEALTH_PORT"] ?? "1235");
 
 async function main(): Promise<void> {
-  // Fail-fast: verify PG + Redis are reachable before starting the server.
-  await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
+  // Fail-fast: verify PG + Redis are reachable before starting the
+  // server. `checkCollabInfraReady` throws InfraNotReadyError per
+  // the "进程生命周期(library 层禁)" mandate — application entry
+  // catches, logs with full application context, and exits with code 1.
+  try {
+    await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
+  } catch (err) {
+    if (err instanceof InfraNotReadyError) {
+      logger.error(
+        { component: err.component, hint: err.hint, err: err.cause },
+        "infra_not_ready",
+      );
+    } else {
+      logger.error({ err }, "infra_check_unexpected_error");
+    }
+    process.exit(1);
+  }
 
   const cfg = getCollabConfig();
 

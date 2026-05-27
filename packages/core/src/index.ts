@@ -42,6 +42,7 @@ export {
   type HealthServerOptions,
 } from "./infra/health-server.js";
 export { checkInfraReady } from "./infra/connectivity-check.js";
+export { InfraNotReadyError } from "./infra/errors.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";
