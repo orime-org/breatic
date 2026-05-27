@@ -21,11 +21,20 @@
  * same generic error, regardless of whether the project actually
  * exists.
  *
- * Collab is a separate process from the API server and does NOT
- * depend on @breatic/core (see connectivity-check.ts). The role
- * lookup is therefore a raw SQL call against a postgres-js pool
- * owned by this module — not a re-import of
- * `projectAuthService.loadProjectRole` from core.
+ * Collab is a separate process from the API server. It depends on
+ * `@breatic/core` only for shared *infrastructure* — connection
+ * factories, configuration, logging — so production-safety knobs
+ * (keepAlive / commandTimeout / READONLY reconnect / error
+ * logging tags) stay defined in exactly one place across server
+ * / collab / worker. The previous "does NOT depend on
+ * @breatic/core" convention was revised on 2026-05-27 (PR
+ * feat/2026-05-27-collab-infra-resilience) after the long-running
+ * dev:collab drift exposed how raw `new IoRedis(url)` / raw
+ * `postgres(url, {max:5})` in collab silently drifted from the
+ * core defaults. Business logic (`projectAuthService`,
+ * `paymentService`, etc.) is still NOT imported from core — the
+ * role lookup below remains a raw SQL call so collab can be
+ * deployed independently of any API service evolution.
  */
 
 import type Redis from "ioredis";

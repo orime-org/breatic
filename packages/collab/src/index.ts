@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-import IORedis from "ioredis";
+import { createRedisClient } from "@breatic/core";
 import { createLogger } from "./logger.js";
 import { createCollabServer } from "./hocuspocus.js";
 import { startTaskListener } from "./task-listener.js";
@@ -54,7 +54,15 @@ async function main(): Promise<void> {
   // meta-doc Space CRUD apply). Same Redis instance as the task
   // stream (DB2); members-sync .duplicate()s the connection for its
   // dedicated subscriber.
-  const controlRedis = new IORedis(REDIS_STREAM_URL, { lazyConnect: false });
+  // Members-sync subscriber client. Uses the core factory so it
+  // inherits the production-safety knobs (keepAlive,
+  // commandTimeout: undefined for the subscribe path's blocking
+  // semantics, READONLY-aware reconnect, error log tagging).
+  const controlRedis = createRedisClient(REDIS_STREAM_URL, {
+    name: "collab-members-sync-control",
+    lazyConnect: false,
+    commandTimeout: undefined,
+  });
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
 
   // Graceful shutdown
