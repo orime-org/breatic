@@ -8,6 +8,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n/use-translation';
 
 interface BellMenuProps {
@@ -59,20 +64,27 @@ export function BellMenu({ unreadCount }: BellMenuProps) {
   const count = unreadCount ?? requests.length;
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant='chrome-ghost'
-          size='chrome'
-          aria-label='Notifications'
-          className='relative'
-          data-testid='bell-trigger'
-        >
-          <Bell className='h-[18px] w-[18px]' />
-          {count > 0 ? (
-            <span className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive' />
-          ) : null}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label='Notifications'
+              className='relative'
+              data-testid='bell-trigger'
+            >
+              <Bell className='h-[18px] w-[18px]' />
+              {count > 0 ? (
+                <span className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive' />
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.notifications')}
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent
         align='end'
         className='w-80 p-1'

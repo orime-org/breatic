@@ -299,7 +299,7 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
   });
 
-  it("space:restore rebuilds entry from latest space-deleted snapshot (owner)", async () => {
+  it("space:restore rebuilds entry from latest space-deleted snapshot (owner) + marks original deleted entry restored=true", async () => {
     // Seed: pretend a delete already happened — projectMessages has a
     // space-deleted entry with a full snapshot, meta.spaces is empty.
     const deletedMsg = new Y.Map();
@@ -330,6 +330,57 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(sql).toHaveBeenCalled(); // un-soft-delete canvas row
     // and a space-restored projectMessage was pushed
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(2);
+    // 2026-05-27 — original deleted entry is now marked restored=true
+    // so the bell sheet can render a disabled "已恢复" badge without
+    // a second round-trip. Same transact as the rebuild above —
+    // peers receive the atomic 3-tuple (spaces.set + new restored
+    // entry + restored flag) in one update.
+    expect(deletedMsg.get("restored")).toBe(true);
+  });
+
+  it("space:restore is idempotent against already-restored entries (skips them when finding latest deletion)", async () => {
+    // Seed: a delete-restore cycle has already happened. The first
+    // deleted entry is marked restored=true. A SECOND delete then
+    // landed a fresh deleted entry. Restore should target the
+    // second (unrestored) entry, leave the first one's
+    // restored=true flag alone.
+    const firstDeleted = new Y.Map();
+    firstDeleted.set("id", "pm-1");
+    firstDeleted.set("kind", "space-deleted");
+    firstDeleted.set("spaceId", SID);
+    firstDeleted.set("spaceSnapshot", {
+      id: SID,
+      type: "canvas",
+      name: "First Cycle",
+    });
+    firstDeleted.set("createdAt", 1000);
+    firstDeleted.set("restored", true);
+    fakeMetaDoc.doc.getArray("projectMessages").push([firstDeleted]);
+
+    const secondDeleted = new Y.Map();
+    secondDeleted.set("id", "pm-2");
+    secondDeleted.set("kind", "space-deleted");
+    secondDeleted.set("spaceId", SID);
+    secondDeleted.set("spaceSnapshot", {
+      id: SID,
+      type: "canvas",
+      name: "Second Cycle",
+    });
+    secondDeleted.set("createdAt", 3000);
+    fakeMetaDoc.doc.getArray("projectMessages").push([secondDeleted]);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(secondDeleted.get("restored")).toBe(true);
+    expect(firstDeleted.get("restored")).toBe(true); // unchanged
+    // Restored snapshot is from the SECOND cycle (the latest unrestored one).
+    const restored = fakeMetaDoc.doc.getMap("spaces").get(SID) as Y.Map<unknown>;
+    expect(restored.get("name")).toBe("Second Cycle");
   });
 
   it("space:restore returns NOT_FOUND when no delete record exists", async () => {
@@ -358,129 +409,5 @@ describe("handleSpaceRpc — happy paths", () => {
     );
     expect(res.ok).toBe(true);
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
-  });
-});
-
-describe("handleSpaceRpc — users:upsert-self", () => {
-  it("writes meta.users[caller.userId] with name + avatarUrl + updatedAt", async () => {
-    const res = await handleSpaceRpc(
-      {
-        hocuspocus: makeHocuspocus(),
-        sql: makeSql(),
-        metaDoc: fakeMetaDoc.doc,
-      },
-      PID,
-      { userId: "u-yuki", role: "edit", name: "Yuki" },
-      {
-        id: "r1",
-        type: "users:upsert-self",
-        payload: {
-          // Client-supplied name is INTENTIONALLY different from
-          // caller.name — handler must ignore the payload's name and
-          // use caller.name (the authoritative value from PG).
-          name: "Spoofed",
-          avatarUrl: "https://cdn.example.com/yuki.png",
-        },
-      },
-    );
-    expect(res.ok).toBe(true);
-    const entry = fakeMetaDoc.doc.getMap("users").get("u-yuki") as Y.Map<unknown>;
-    expect(entry).toBeInstanceOf(Y.Map);
-    expect(entry.get("name")).toBe("Yuki"); // authoritative, NOT "Spoofed"
-    expect(entry.get("avatarUrl")).toBe("https://cdn.example.com/yuki.png");
-    expect(typeof entry.get("updatedAt")).toBe("number");
-  });
-
-  it("is idempotent — no transact when name + avatarUrl unchanged", async () => {
-    // Seed an existing entry that already matches.
-    const seeded = new Y.Map<unknown>();
-    seeded.set("id", "u-yuki");
-    seeded.set("name", "Yuki");
-    seeded.set("avatarUrl", null);
-    seeded.set("updatedAt", 1000);
-    fakeMetaDoc.doc.getMap("users").set("u-yuki", seeded);
-
-    const res = await handleSpaceRpc(
-      {
-        hocuspocus: makeHocuspocus(),
-        sql: makeSql(),
-        metaDoc: fakeMetaDoc.doc,
-      },
-      PID,
-      { userId: "u-yuki", role: "edit", name: "Yuki" },
-      {
-        id: "r2",
-        type: "users:upsert-self",
-        payload: { name: "Yuki", avatarUrl: null },
-      },
-    );
-    expect(res.ok).toBe(true);
-    const entry = fakeMetaDoc.doc.getMap("users").get("u-yuki") as Y.Map<unknown>;
-    expect(entry.get("updatedAt")).toBe(1000); // unchanged — skipped
-  });
-
-  it("updates existing entry in place when name changes", async () => {
-    const seeded = new Y.Map<unknown>();
-    seeded.set("id", "u-yuki");
-    seeded.set("name", "Yuki Old");
-    seeded.set("avatarUrl", null);
-    seeded.set("updatedAt", 1000);
-    fakeMetaDoc.doc.getMap("users").set("u-yuki", seeded);
-
-    const res = await handleSpaceRpc(
-      {
-        hocuspocus: makeHocuspocus(),
-        sql: makeSql(),
-        metaDoc: fakeMetaDoc.doc,
-      },
-      PID,
-      { userId: "u-yuki", role: "edit", name: "Yuki New" },
-      {
-        id: "r3",
-        type: "users:upsert-self",
-        payload: { name: "Yuki New", avatarUrl: null },
-      },
-    );
-    expect(res.ok).toBe(true);
-    // Same Y.Map reference — Yjs CRDT prefers in-place mutation over replace.
-    const entry = fakeMetaDoc.doc.getMap("users").get("u-yuki") as Y.Map<unknown>;
-    expect(entry).toBe(seeded);
-    expect(entry.get("name")).toBe("Yuki New");
-    expect((entry.get("updatedAt") as number) > 1000).toBe(true);
-  });
-
-  it("returns INTERNAL when caller.name is missing (auth hook drift)", async () => {
-    const res = await handleSpaceRpc(
-      {
-        hocuspocus: makeHocuspocus(),
-        sql: makeSql(),
-        metaDoc: fakeMetaDoc.doc,
-      },
-      PID,
-      { userId: "u-1", role: "edit" }, // no name
-      {
-        id: "r4",
-        type: "users:upsert-self",
-        payload: { name: "Whatever", avatarUrl: null },
-      },
-    );
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("INTERNAL");
-    expect(fakeMetaDoc.doc.getMap("users").size).toBe(0);
-  });
-
-  it("returns INTERNAL when metaDoc is missing from context (dispatcher drift)", async () => {
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() }, // no metaDoc
-      PID,
-      { userId: "u-1", role: "edit", name: "Yuki" },
-      {
-        id: "r5",
-        type: "users:upsert-self",
-        payload: { name: "Yuki", avatarUrl: null },
-      },
-    );
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("INTERNAL");
   });
 });

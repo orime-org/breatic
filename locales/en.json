@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "Restore",
+        "restored": "Restored",
         "clearAll": "Clear all",
         "clearAllConfirmTitle": "Clear all messages?",
         "clearAllConfirmDescription": "This action cannot be undone. All entries in the project message channel will be permanently removed."
@@ -1254,6 +1255,20 @@
   "studio": {
     "createProject": {
       "failed": "Failed to create project: {reason}"
+    }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "Export",
+      "share": "Share",
+      "notifications": "Notifications",
+      "newSpace": "New space",
+      "allSpaces": "All spaces",
+      "projectMessages": "Project messages",
+      "agentHide": "Hide agent panel",
+      "agentShow": "Show agent panel",
+      "openHistory": "Conversation history",
+      "newConversation": "New conversation"
     }
   }
 }

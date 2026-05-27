@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "還原",
+        "restored": "已還原",
         "clearAll": "清空",
         "clearAllConfirmTitle": "確認清空所有訊息？",
         "clearAllConfirmDescription": "此操作無法復原。專案訊息頻道中的所有項目都將被永久刪除。"
@@ -1254,6 +1255,20 @@
   "studio": {
     "createProject": {
       "failed": "建立專案失敗:{reason}"
+    }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "匯出",
+      "share": "分享",
+      "notifications": "通知",
+      "newSpace": "新增工作面",
+      "allSpaces": "所有工作面",
+      "projectMessages": "專案訊息",
+      "agentHide": "收合 Agent 面板",
+      "agentShow": "展開 Agent 面板",
+      "openHistory": "對話歷史",
+      "newConversation": "新增對話"
     }
   }
 }

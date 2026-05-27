@@ -108,3 +108,24 @@
 - [ ] CD Pipeline：GitHub Actions → Docker build → 自动部署
 - [ ] 监控：Sentry 错误追踪 + 基础性能指标
 - [ ] CONTRIBUTING.md：贡献指南、Code of Conduct、PR 模板
+
+---
+
+## 待跟进（已识别但不在当前 PR scope）
+
+这里记单 commit 不修但已经定位/部分定位的 dev 体验和 runtime 韧性问题。每条都对应一个独立 PR，开启时需要完整 DD + 复现验证。
+
+### dev:collab 长跑 connection drift —— 治根 PR
+
+**触发现象**：dev:collab 单进程跑 ≥ 几小时后，`onAuthenticate` 在 postgres-js 连接池里拿到 stale connection（Postgres 默认 30 min 关 idle conn，client 不感知），所有新 WS 握手都报 `authenticationFailed`，前端 banner `登录已失效` 永远不消。重启 collab 立即恢复。`docs/DEPLOY.md` 已加 dev runbook 教 user 出现就 restart。
+
+**真治根工作（独立 PR）**：
+
+- `packages/collab/src/auth.ts` — `onAuthenticate` 包 `try { ... } catch (err) { logger.error({ err, userId, documentName }, "onAuthenticate fail"); throw err; }`，让 server-side 错误链不再静默
+- `packages/collab/src/auth.ts` — `postgres(databaseUrl, { max: 5, idle_timeout: 60, max_lifetime: 30 * 60 })`，让 client 主动 recycle 比 PG 默认 idle timeout 短的 connection
+- `packages/core/src/infra/redis.ts` + collab 各 ioredis 实例 — 评估 `keepAlive` / `connectTimeout` / `reconnectOnError` 是否需调
+- `packages/collab/src/index.ts` — 加 `GET /healthz` endpoint ping PG + Redis + Hocuspocus 就绪，LB / docker healthcheck 看 N 次 fail 后 kill instance
+- 复现验证：本地起 collab，手动 `psql` 关掉 dev:collab 持有的 connection（或等 idle_in_transaction_session_timeout 触发），观察 onAuthenticate 是否 throw、新 query 是否能自动复活
+- 上游参考：[Hocuspocus #716](https://github.com/ueberdosis/hocuspocus/issues/716) Firefox/Safari 30s "Unauthorized" close、[#566](https://github.com/ueberdosis/hocuspocus/issues/566) v2 重连不重发 auth token
+
+**Why 不挤进当前 PR**：postgres-js 配置 + healthz endpoint + error logging 三处改动都是治根但**没有真的 23 小时复现验证就 ship 等于猜根因**。memory `feedback_existing_infra_verify_before_dd` 强 mandate：关键路径（鉴权 + Yjs 协作）fix 必须真复现 + 验证，不能配置猜。独立 PR 单独走 DD + 复现 + 验证。

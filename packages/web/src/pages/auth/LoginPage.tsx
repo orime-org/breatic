@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { authApi } from '@/data/api/auth';
+import { authApi, deriveDisplayName } from '@/data/api/auth';
 import { ApiException } from '@/data/api/types';
 import { useCurrentUserStore } from '@/stores';
 import { Button } from '@/components/ui/button';
@@ -75,7 +75,7 @@ export default function LoginPage() {
       setUser({
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: deriveDisplayName(user),
       });
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {

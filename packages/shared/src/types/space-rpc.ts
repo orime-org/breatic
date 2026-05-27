@@ -126,27 +126,6 @@ export const MessagesClearPayloadSchema = z
   );
 export type MessagesClearPayload = z.infer<typeof MessagesClearPayloadSchema>;
 
-/**
- * `users:upsert-self` — caller writes their own entry into
- * `meta.users[caller.userId]`. Client-driven sync (front-end fires
- * once per WS connection's `onSynced` callback) replaces the prior
- * server-side `afterLoadDocument` hook path, which had to be
- * fire-and-forget to avoid deadlocking on `openDirectConnection`
- * against the same meta doc.
- *
- * Payload carries the display fields the actor lookup needs. The
- * server enforces `actor === caller.userId` (a user cannot upsert
- * someone else's entry) and discards `null` avatarUrl by storing
- * it verbatim (the front-end treats missing / null as "no avatar").
- */
-export const UsersUpsertSelfPayloadSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  avatarUrl: z.string().url().nullable(),
-});
-export type UsersUpsertSelfPayload = z.infer<
-  typeof UsersUpsertSelfPayloadSchema
->;
-
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -179,11 +158,6 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("messages:clear"),
     payload: MessagesClearPayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("users:upsert-self"),
-    payload: UsersUpsertSelfPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;
@@ -270,6 +244,21 @@ export const ProjectMessageEntrySchema = z.object({
    */
   oldSpaceName: z.string().optional(),
   spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * `space-deleted` only — `true` once a subsequent `space:restore`
+   * RPC has successfully un-soft-deleted the Space. The restore
+   * handler mutates this field on the original deleted entry in the
+   * same `transact` that writes the new `space-restored` entry, so
+   * any client looking at the deleted row knows it's already been
+   * brought back. Drives the bell sheet's restore button — present
+   * & true means render a disabled "已恢复" badge instead of an
+   * actionable Restore. Missing on legacy entries written before
+   * this field shipped; treat undefined as "not yet restored" (the
+   * restore RPC will refuse the second click via NOT_FOUND, which
+   * is still correct — the field just lets the UI prevent the
+   * round-trip in the first place).
+   */
+  restored: z.boolean().optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number().int(),

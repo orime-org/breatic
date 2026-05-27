@@ -9,6 +9,12 @@ import * as React from 'react';
 
 import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n/use-translation';
 import { cn } from '@/lib/utils';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
 import type { SpaceType } from '@/spaces';
@@ -96,6 +102,7 @@ export function SpaceTabBar({
   onSetSpaceLocked,
   onRenameSpace,
 }: SpaceTabBarProps) {
+  const t = useTranslation();
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
@@ -297,21 +304,30 @@ export function SpaceTabBar({
         }}
         data-testid='space-header-left'
       >
-        <Button
-          variant='chrome-ghost'
-          size='chrome'
-          aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
-          aria-pressed={agentOpen}
-          onClick={toggleAgent}
-          data-testid='agent-toggle'
-          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-        >
-          {agentOpen ? (
-            <PanelLeftClose className='h-[18px] w-[18px]' />
-          ) : (
-            <PanelLeftOpen className='h-[18px] w-[18px]' />
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
+              aria-pressed={agentOpen}
+              onClick={toggleAgent}
+              data-testid='agent-toggle'
+              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+            >
+              {agentOpen ? (
+                <PanelLeftClose className='h-[18px] w-[18px]' />
+              ) : (
+                <PanelLeftOpen className='h-[18px] w-[18px]' />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side='bottom'>
+            {agentOpen
+              ? t('chrome.tooltip.agentHide')
+              : t('chrome.tooltip.agentShow')}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <ArrowButton
@@ -368,6 +384,7 @@ export function SpaceTabBar({
       >
         <NewSpaceDialog
           onCreate={onCreate}
+          tooltip={t('chrome.tooltip.newSpace')}
           trigger={
             <Button
               variant='chrome-ghost'

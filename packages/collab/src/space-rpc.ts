@@ -46,29 +46,11 @@ const logger = createLogger("space-rpc");
 export interface SpaceRpcContext {
   hocuspocus: Hocuspocus;
   sql: ReturnType<typeof postgres>;
-  /**
-   * The meta doc Y.Doc reference Hocuspocus already loaded for the
-   * current `onStateless` callback. The `users:upsert-self` handler
-   * writes through this directly (avoiding `openDirectConnection` on
-   * the same doc) so it stays decoupled from Hocuspocus's per-doc
-   * serialization. Other handlers still rely on
-   * `hocuspocus.openDirectConnection` for legacy reasons — that
-   * cleanup is a separate follow-up.
-   */
-  metaDoc?: Y.Doc;
 }
 
 export interface SpaceRpcCaller {
   userId: string;
   role: ProjectRole;
-  /**
-   * Display name carried from `connection.context.user.name` (loaded
-   * by `auth.ts::createAuthHook` from PG). The `users:upsert-self`
-   * handler ignores the request payload's `name` and uses this
-   * authoritative source, so a client cannot upsert a fake name even
-   * if it spoofs the RPC payload.
-   */
-  name?: string;
 }
 
 const SYSTEM_USER_ID = "system";
@@ -445,25 +427,35 @@ async function handleRestore(
         // distinct error UX.
         return;
       }
-      // Find the most recent space-deleted entry for this spaceId so
-      // we can read its snapshot and rebuild the entry. We walk the
-      // array from the tail for the latest record.
+      // Find the most recent UNRESTORED `space-deleted` entry for
+      // this spaceId — we read its snapshot to rebuild the Space
+      // AND mutate `restored = true` on the same entry so the bell
+      // sheet's restore button can render a disabled "已恢复" badge
+      // without round-tripping a second time. The `restored !==
+      // true` filter is what keeps a delete → restore → delete →
+      // restore loop honest: each cycle finds its own unrestored
+      // deleted entry instead of accidentally re-marking an
+      // already-handled one. Walk from the tail for the latest
+      // matching record.
       const messages = doc.getArray("projectMessages");
+      let deletedEntry: Y.Map<unknown> | null = null;
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages.get(i);
         if (
           m instanceof Y.Map &&
           m.get("kind") === "space-deleted" &&
-          m.get("spaceId") === spaceId
+          m.get("spaceId") === spaceId &&
+          m.get("restored") !== true
         ) {
           const s = m.get("spaceSnapshot");
           if (s && typeof s === "object") {
             snapshot = s as Record<string, unknown>;
+            deletedEntry = m;
             break;
           }
         }
       }
-      if (!snapshot) {
+      if (!snapshot || !deletedEntry) {
         return;
       }
       const entry = new Y.Map<unknown>();
@@ -479,6 +471,14 @@ async function handleRestore(
           ? ((snapshot as Record<string, unknown>).name as string)
           : undefined,
       });
+      // Mark the original deleted entry as restored so any client
+      // looking at the audit log knows the row was brought back.
+      // Same transact as the spaces.set + pushProjectMessage above,
+      // so peers receive the rebuild + new audit entry + restored
+      // flag atomically (a partial state — restored entry pushed
+      // but the deleted row still flagged unrestored — never
+      // appears on the wire).
+      deletedEntry.set("restored", true);
     });
     if (!snapshot) {
       return err(
@@ -546,67 +546,6 @@ async function handleMessagesClear(
   return ok(req.id);
 }
 
-/**
- * Upsert the caller's own entry into `meta.users[caller.userId]` —
- * synchronous in-memory write through the meta doc reference the
- * `onStateless` callback already loaded. No `openDirectConnection`,
- * no Hocuspocus per-doc serialization round-trip.
- *
- * Authoritative source is `caller` (loaded from PG by `auth.ts`'s
- * `createAuthHook` and stitched into `connection.context.user`).
- * The request payload's `name` / `avatarUrl` are accepted but
- * discarded — a client cannot upsert someone else's identity or
- * forge a fake name through stateless.
- *
- * Idempotent: skip the transact when both `name` and `avatarUrl`
- * already match. This keeps idle reconnects (or duplicate `onSynced`
- * fires) from broadcasting no-op updates to every peer.
- */
-function handleUsersUpsertSelf(
-  ctx: SpaceRpcContext,
-  _projectId: string,
-  caller: SpaceRpcCaller,
-  req: Extract<SpaceRpcRequest, { type: "users:upsert-self" }>,
-): SpaceRpcResponse {
-  if (!ctx.metaDoc) {
-    return err(req.id, "INTERNAL", "metaDoc not available on context");
-  }
-  if (!caller.name) {
-    return err(req.id, "INTERNAL", "caller.name unavailable (auth hook drift)");
-  }
-  // Payload's avatarUrl is the only field the client can contribute
-  // — server has no avatar in `connection.context` today, so trust
-  // the client value but constrain via the Zod schema upstream
-  // (nullable URL). When server-side avatar arrives via auth.ts in a
-  // future PR this falls back to the authoritative value automatically.
-  const authoritativeName = caller.name;
-  const avatarUrl = req.payload.avatarUrl;
-
-  const users = ctx.metaDoc.getMap("users");
-  const existing = users.get(caller.userId) as Y.Map<unknown> | undefined;
-  if (existing instanceof Y.Map) {
-    if (
-      existing.get("name") === authoritativeName &&
-      existing.get("avatarUrl") === avatarUrl
-    ) {
-      return ok(req.id);
-    }
-  }
-
-  ctx.metaDoc.transact(() => {
-    const entry: Y.Map<unknown> =
-      existing instanceof Y.Map ? existing : new Y.Map<unknown>();
-    entry.set("id", caller.userId);
-    entry.set("name", authoritativeName);
-    entry.set("avatarUrl", avatarUrl);
-    entry.set("updatedAt", Date.now());
-    if (!(existing instanceof Y.Map)) {
-      users.set(caller.userId, entry);
-    }
-  });
-  return ok(req.id);
-}
-
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 /**
@@ -634,8 +573,6 @@ export async function handleSpaceRpc(
         return await handleRestore(ctx, projectId, caller, request);
       case "messages:clear":
         return await handleMessagesClear(ctx, projectId, caller, request);
-      case "users:upsert-self":
-        return handleUsersUpsertSelf(ctx, projectId, caller, request);
     }
   } catch (e) {
     logger.error(

@@ -1,11 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  act,
+  type RenderOptions,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as React from 'react';
 
 import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
 import type { ProjectSpace } from '@/data/yjs/project-meta';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useUIStore } from '@/stores';
 import { expectNoA11yViolations } from '@/test-utils/a11y';
+
+// Agent-toggle / NewSpace / Drawer / ProjectMessages buttons in the
+// tab bar now use shadcn `Tooltip` for hover tooltips. App.tsx
+// supplies `TooltipProvider` at runtime; tests have to add it.
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 const SPACES: ProjectSpace[] = [
   { id: 's1', name: 'Main', type: 'canvas' },

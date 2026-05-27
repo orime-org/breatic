@@ -1,13 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as React from 'react';
 
 import type { ProjectMessageEntry } from '@breatic/shared';
 import {
   ProjectMessagesButton,
   relativeTime,
 } from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useUIStore } from '@/stores/ui';
+
+// The trigger now wraps `SheetTrigger` in shadcn `Tooltip`, which
+// throws if no `TooltipProvider` is up the tree. App.tsx supplies
+// one at runtime — tests have to add it explicitly.
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 beforeEach(() => {
   // Reset the global exclusive-overlay state — `useExclusiveOverlay`
@@ -104,6 +116,39 @@ describe('ProjectMessagesButton', () => {
     ).toBeNull();
     await user.click(screen.getByTestId('project-messages-restore-m-del'));
     expect(onRestore).toHaveBeenCalledWith('sp-1');
+  });
+
+  it('replaces Restore button with a disabled "已恢复" badge when the deleted entry has restored=true', async () => {
+    // Owner just clicked Restore once — collab's space:restore RPC
+    // mutated `restored=true` on the original deleted entry inside
+    // the same transact that wrote the space-restored audit entry.
+    // The bell sheet now disables the button via that single
+    // boolean read so a second click can't round-trip to the
+    // server and fail with "No deletion record found" (the canvas
+    // row was already un-soft-deleted).
+    const user = userEvent.setup();
+    const M_DELETED_RESTORED: ProjectMessageEntry = {
+      ...M_DELETED,
+      restored: true,
+    };
+    const onRestore = vi.fn();
+    render(
+      <ProjectMessagesButton
+        messages={[M_DELETED_RESTORED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
+        currentUserRole='owner'
+        onRestore={onRestore}
+      />,
+    );
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    // Restore button gone, restored badge in its place.
+    expect(
+      screen.queryByTestId('project-messages-restore-m-del'),
+    ).toBeNull();
+    const badge = screen.getByTestId('project-messages-restored-badge-m-del');
+    expect(badge).toBeDisabled();
+    expect(badge.textContent).toMatch(/已恢复|Restored|復元済み|已還原/);
   });
 
   it('hides Restore button for non-owner viewers', async () => {

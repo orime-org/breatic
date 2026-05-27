@@ -1071,6 +1071,7 @@
       },
       "action": {
         "restore": "復元",
+        "restored": "復元済み",
         "clearAll": "すべて削除",
         "clearAllConfirmTitle": "すべてのメッセージを削除しますか？",
         "clearAllConfirmDescription": "この操作は取り消せません。プロジェクトメッセージチャンネル内のすべての項目が完全に削除されます。"
@@ -1254,6 +1255,20 @@
   "studio": {
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
+    }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "エクスポート",
+      "share": "共有",
+      "notifications": "通知",
+      "newSpace": "新規スペース",
+      "allSpaces": "全スペース",
+      "projectMessages": "プロジェクト通知",
+      "agentHide": "エージェントパネルを隠す",
+      "agentShow": "エージェントパネルを表示",
+      "openHistory": "会話履歴",
+      "newConversation": "新規会話"
     }
   }
 }

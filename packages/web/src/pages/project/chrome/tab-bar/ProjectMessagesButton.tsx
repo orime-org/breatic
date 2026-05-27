@@ -21,6 +21,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useTranslation } from '@/i18n/use-translation';
@@ -173,18 +178,24 @@ export function ProjectMessagesButton({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant='chrome-ghost'
-          size='chrome'
-          aria-label={t('spaces.history.label')}
-          title={t('spaces.history.title')}
-          data-testid='project-messages-trigger'
-          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-        >
-          <History className='h-[18px] w-[18px]' />
-        </Button>
-      </SheetTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SheetTrigger asChild>
+            <Button
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label={t('spaces.history.label')}
+              data-testid='project-messages-trigger'
+              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+            >
+              <History className='h-[18px] w-[18px]' />
+            </Button>
+          </SheetTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.projectMessages')}
+        </TooltipContent>
+      </Tooltip>
       {/*
         side='right-floating' = same variant as SpaceDrawer (sits between
         TabBar and ViewportToolbar). Width 315px = 75 % of the prior
@@ -280,8 +291,26 @@ export function ProjectMessagesButton({
           ) : (
             visible.map((m) => {
               const rel = relativeTime(m.createdAt);
+              // A `space-deleted` entry is "already restored" iff
+              // `restored === true` — collab's space:restore RPC
+              // handler mutates this flag on the original deleted
+              // entry inside the same transact that pushes the new
+              // space-restored audit entry, so we get an O(1)
+              // single-field read instead of walking projectMessages
+              // for a matching restored entry. Undefined on legacy
+              // entries written before this field shipped; treat
+              // as "not yet restored" (the restore RPC still
+              // refuses the duplicate with NOT_FOUND — the field
+              // just lets the UI prevent the round-trip).
+              const alreadyRestored =
+                m.kind === 'space-deleted' && m.restored === true;
               const canRestore =
-                isOwner && m.kind === 'space-deleted' && Boolean(m.spaceId);
+                isOwner &&
+                m.kind === 'space-deleted' &&
+                Boolean(m.spaceId) &&
+                !alreadyRestored;
+              const showRestoredBadge =
+                isOwner && m.kind === 'space-deleted' && alreadyRestored;
               // Q11 v2.1 lookup chain:
               //   - actor name: live lookup `meta.users[actor]` so a
               //     username rename retroactively propagates (user
@@ -334,7 +363,6 @@ export function ProjectMessagesButton({
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
-                      {m.spaceName ? ` · ${m.spaceName}` : ''}
                     </p>
                   </div>
                   {canRestore ? (
@@ -347,6 +375,17 @@ export function ProjectMessagesButton({
                     >
                       <RotateCcw className='h-3 w-3' aria-hidden />
                       {t('spaces.history.action.restore')}
+                    </button>
+                  ) : showRestoredBadge ? (
+                    <button
+                      type='button'
+                      disabled
+                      aria-disabled
+                      data-testid={`project-messages-restored-badge-${m.id}`}
+                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground opacity-60 cursor-not-allowed'
+                    >
+                      <RotateCcw className='h-3 w-3' aria-hidden />
+                      {t('spaces.history.action.restored')}
                     </button>
                   ) : null}
                 </li>

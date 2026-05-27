@@ -6,6 +6,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n/use-translation';
 
 const EXPORT_FORMATS = [
   { id: 'png', label: 'PNG (current view)', icon: FileImage },
@@ -23,13 +29,19 @@ export function ExportMenu({
 }: {
   onExport?: (format: string) => void;
 }) {
+  const t = useTranslation();
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button variant='chrome-ghost' size='chrome' aria-label='Export'>
-          <Download className='h-[18px] w-[18px]' />
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant='chrome-ghost' size='chrome' aria-label='Export'>
+              <Download className='h-[18px] w-[18px]' />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>{t('chrome.tooltip.export')}</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align='end'
         className='w-56 p-1'

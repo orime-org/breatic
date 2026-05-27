@@ -112,12 +112,22 @@ export async function create(
     // frontend looks up `meta.users[actor].name` at render time so
     // any later username rename propagates retroactively. Same
     // convention as collab/space-rpc.handleCreate.
+    // Creator's display name follows the same fallback chain as
+    // `collab/auth.ts::loadProjectRole` (`username ?? email`) so the
+    // seeded `meta.users[creator]` matches what the runtime
+    // awareness write would have produced — keeps share-link peers
+    // opening a fresh project from rendering the creator's UUID
+    // before the creator first connects.
+    const creatorName = user?.username ?? user?.email ?? userId;
+    const creatorAvatarUrl = user?.avatarUrl ?? null;
     const initialState = encodeInitialMetaState({
       spaceId,
       kind: "canvas",
       name: project.name,
       createdBy: userId,
       actor: userId,
+      creatorName,
+      creatorAvatarUrl,
       ts: Date.now(),
     });
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { authApi } from '@/data/api/auth';
+import { authApi, deriveDisplayName } from '@/data/api/auth';
 import { useCurrentUserStore } from '@/stores';
 
 interface AuthBootstrapProps {
@@ -37,7 +37,7 @@ export default function AuthBootstrap({
       .me()
       .then((u) => {
         if (cancelled) return;
-        setUser({ id: u.id, name: u.name, email: u.email });
+        setUser({ id: u.id, name: deriveDisplayName(u), email: u.email });
       })
       .catch(() => {
         // 401 (no/expired session cookie) or network error — leave

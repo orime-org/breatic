@@ -564,3 +564,38 @@ SMTP_PASSWORD=your-app-password
 ```
 
 The API always returns success (anti-enumeration), so check API logs for actual SMTP errors: `docker compose logs api | grep smtp`
+
+### (Dev only) "登录已失效" banner stuck on `/project/:id` after a long-running dev session
+
+Symptom: red banner `登录已失效 — 项目内容无法加载,请重新登录` shows on the
+project page and does not clear even after a hard reload or
+re-login. `GET /api/v1/auth/me` still returns `200` (cookie is
+fine), only the WebSocket connection to collab keeps getting
+`onAuthenticationFailed`.
+
+Cause: `dev:collab` runs as a single long-lived `tsx` process
+without an auto-restart loop. After several hours its postgres-js
+connection pool (`max: 5`) tends to drift — Postgres closes idle
+connections (default 30 min) but the pool keeps handing them out;
+the next `loadProjectRole` query inside `onAuthenticate` throws,
+collab reports `authenticationFailed`, and the front-end banner
+latches sticky. Restarting collab gets a fresh pool and unblocks
+everything. (Production runs collab inside Docker with a
+much shorter lifetime so this never accumulates.)
+
+Fix: restart `dev:collab`. From the repo root:
+
+```bash
+lsof -ti:1234 | xargs kill -TERM
+pnpm dev:collab
+```
+
+Reflex: any time you see this banner in dev, your **first
+diagnostic step** is `ps -p $(lsof -ti:1234) -o etime` — if
+collab has been up for more than a couple of hours, restart
+before looking at code.
+
+The proper fix (postgres-js `max_lifetime` / `idle_timeout`
+config, collab `/healthz` endpoint, onAuthenticate error
+logging) is tracked as a follow-up — see the "follow-up issues"
+section at the top of `docs/ROADMAP.md`.

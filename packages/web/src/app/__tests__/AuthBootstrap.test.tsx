@@ -5,9 +5,22 @@ import AuthBootstrap from '@/app/AuthBootstrap';
 import { authApi } from '@/data/api/auth';
 import { useCurrentUserStore } from '@/stores';
 
-vi.mock('@/data/api/auth', () => ({
-  authApi: { me: vi.fn() },
-}));
+// `vi.mock` replaces the WHOLE module — when AuthBootstrap also
+// pulls `deriveDisplayName` from the same module, omitting it from
+// the factory makes the import resolve to `undefined`, which then
+// throws inside the `.then` and silently lands in the `.catch` —
+// `setUser` never runs and tests see `user?.id === undefined`. Use
+// `importActual` to keep `deriveDisplayName` real while still
+// mocking the network-touching `authApi.me`.
+vi.mock('@/data/api/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/data/api/auth')>(
+    '@/data/api/auth',
+  );
+  return {
+    ...actual,
+    authApi: { me: vi.fn() },
+  };
+});
 
 describe('AuthBootstrap', () => {
   beforeEach(() => {
@@ -20,11 +33,18 @@ describe('AuthBootstrap', () => {
     vi.clearAllMocks();
   });
 
-  it('200 OK populates user + flips bootstrapped=true', async () => {
+  it('200 OK populates user + flips bootstrapped=true (username present)', async () => {
+    // Server `/auth/me` returns the canonical `UserEntity` shape —
+    // display name lives on `username` (nullable), NOT `name`.
+    // AuthBootstrap is expected to project it into
+    // `useCurrentUserStore.user.name` via `deriveDisplayName`, which
+    // prefers username when set. Earlier mocks used `name: 'Alice'`
+    // and the source code read `u.name`, both wrong, producing
+    // green-but-meaningless tests while runtime `name` was undefined.
     vi.mocked(authApi.me).mockResolvedValueOnce({
       id: 'u1',
       email: 'a@b.com',
-      name: 'Alice',
+      username: 'Alice',
       credits: 100,
     });
     render(
@@ -39,6 +59,28 @@ describe('AuthBootstrap', () => {
     expect(s.user?.id).toBe('u1');
     expect(s.user?.name).toBe('Alice');
     expect(s.user?.email).toBe('a@b.com');
+  });
+
+  it('200 OK with null username falls back to email local-part', async () => {
+    // Legacy accounts (Google OAuth before username collection
+    // landed, Q11 pre-fix users) can have `username = null` in PG.
+    // Without a fallback, `currentUser.name` would be empty string
+    // and the bell sheet would render the raw UUID as actor.
+    vi.mocked(authApi.me).mockResolvedValueOnce({
+      id: 'u2',
+      email: 'songxiuxing@gmail.com',
+      username: null,
+      credits: 0,
+    });
+    render(
+      <AuthBootstrap>
+        <div />
+      </AuthBootstrap>,
+    );
+    await waitFor(() =>
+      expect(useCurrentUserStore.getState().bootstrapped).toBe(true),
+    );
+    expect(useCurrentUserStore.getState().user?.name).toBe('songxiuxing');
   });
 
   it('401 keeps user=null + flips bootstrapped=true (ProtectedRoute handles bounce)', async () => {
