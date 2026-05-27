@@ -8,7 +8,6 @@
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { env, MONOREPO_ROOT } from "../../config/env.js";
-import { logger } from "../../logger.js";
 import type { StorageAdapter, ObjectHead } from "./index.js";
 
 export class LocalStorageAdapter implements StorageAdapter {
@@ -23,7 +22,6 @@ export class LocalStorageAdapter implements StorageAdapter {
     this.baseUrl = env.UPLOAD_BASE_URL || `http://localhost:${env.PORT}/uploads`;
 
     mkdirSync(this.uploadDir, { recursive: true });
-    logger.info({ uploadDir: this.uploadDir }, "Local storage initialized");
   }
 
   async upload(key: string, data: Buffer, _contentType: string): Promise<string> {
@@ -32,7 +30,6 @@ export class LocalStorageAdapter implements StorageAdapter {
     writeFileSync(filePath, data);
 
     const url = `${this.baseUrl}/${key}`;
-    logger.debug({ key, size: data.length, path: filePath }, "File saved to local storage");
     return url;
   }
 

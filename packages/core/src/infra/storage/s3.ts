@@ -8,7 +8,6 @@
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../../config/env.js";
-import { logger } from "../../logger.js";
 import type { StorageAdapter, ObjectHead } from "./index.js";
 
 export class S3StorageAdapter implements StorageAdapter {
@@ -46,7 +45,6 @@ export class S3StorageAdapter implements StorageAdapter {
     // Use CDN base URL if configured, otherwise S3 direct URL
     const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
     const url = `${baseUrl}/${key}`;
-    logger.debug({ key, size: data.length, bucket: this.bucket }, "File uploaded to S3");
     return url;
   }
 

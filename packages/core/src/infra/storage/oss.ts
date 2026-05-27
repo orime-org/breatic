@@ -6,7 +6,6 @@
 
 import OSS from "ali-oss";
 import { env } from "../../config/env.js";
-import { logger } from "../../logger.js";
 import type { StorageAdapter, ObjectHead } from "./index.js";
 
 export class AliyunOSSStorageAdapter implements StorageAdapter {
@@ -33,7 +32,6 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
     // Use CDN base URL if configured, otherwise OSS direct URL
     const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
     const url = `${baseUrl}/${key}`;
-    logger.debug({ key, size: data.length, bucket: this.bucket }, "File uploaded to Aliyun OSS");
     return url;
   }
 
