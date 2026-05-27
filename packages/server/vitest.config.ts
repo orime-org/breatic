@@ -7,7 +7,10 @@ export default defineConfig({
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/__tests__/**/*.test.ts"],
     exclude: ["src/__tests__/**/*.integration.test.ts"],
-    testTimeout: 10_000,
+    // 5s default is too tight for bcrypt-cost-12 + property-based
+    // round-trips under turbo parallelism — see
+    // packages/core/vitest.config.ts for the full rationale.
+    testTimeout: 15_000,
   },
   resolve: {
     alias: {
