@@ -58,7 +58,8 @@ pnpm test / typecheck / lint
 
 | 项 | 要求 |
 |---|---|
-| 错误日志 | 所有 `catch` 必 `logger.error({ err, ctx })` 留可追溯链;禁 silent fail / 裸 `catch (e) {}`;throw 前先 log,不让上游 error 在中间层丢失 |
+| 错误日志(application 层) | **application 层(server route / collab hook / worker job handler 顶层)**所有 `catch` 必 `logger.error({ err, ctx })` 留可追溯链 — 因为只有 application 层知道 `userId` / `requestId` / `projectId` 等上下文,知道该返回什么给 client / 是否需要 alert;禁 silent fail / 裸 `catch (e) {}` |
+| 错误日志(library 层禁) | **`@breatic/core` 和 `@breatic/shared` 不调用任何 `logger.*`(包括 `info` / `warn` / `error` / `debug`)**。两条规则:① 默认 `throw`(抛原 error 或 typed `AppError(NOT_FOUND, ...)` / `InfraNotReadyError` 等让上层 catch 时判定);② 无法继续 throw 的场景(HTTP/RPC handler 在 Node 物理 constraint 下必须 catch 否则进程崩;第三方 library 用 exception 表达业务正常态如 S3 `NotFound`),catch 后**返回给上层正确的事件类型 / sentinel**(`{ exists: false }` / `CheckResult{ok:false}` 等)让上层正确处理 — 这是业务转换不是 log。**library 函数体内出现任何 `logger.*` 调用一律违规**:audit log(`user_registered` / `payment_completed` 等)移到 application 层(server route handler 调完 service 后 log);Redis client `.on('error')` 等 EventEmitter listener 由 caller(application entry)attach 而不是 factory 内默认 attach;startup fatal 改成抛 typed error 让 application entry catch + log + exit |
 | Connection 健康 | DB(`postgres-js`)/ Redis(`ioredis`)/ 队列 client 必显式配置 `max_lifetime` / `idle_timeout` / `keepAlive` / `reconnectOnError`,**不靠 client 默认**(默认通常不 idle recycle → 长跑后 connection stale,query throw 但 pool 不知道)|
 | Health check | 长跑 service(server / collab / worker)必有 `/healthz` endpoint ping 关键依赖(PG + Redis + 队列),LB / docker `healthcheck` 看 N 次 fail kill instance 滚动恢复 |
 | 安全监控 | auth / 鉴权失败 / rate-limit 命中 / 异常 query / pool 耗尽 必有结构化日志(json + ctx);生产上报 metrics(error rate / connection pool size / acquire latency)看 trend 提前预警 |
