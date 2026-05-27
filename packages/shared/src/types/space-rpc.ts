@@ -244,6 +244,21 @@ export const ProjectMessageEntrySchema = z.object({
    */
   oldSpaceName: z.string().optional(),
   spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * `space-deleted` only — `true` once a subsequent `space:restore`
+   * RPC has successfully un-soft-deleted the Space. The restore
+   * handler mutates this field on the original deleted entry in the
+   * same `transact` that writes the new `space-restored` entry, so
+   * any client looking at the deleted row knows it's already been
+   * brought back. Drives the bell sheet's restore button — present
+   * & true means render a disabled "已恢复" badge instead of an
+   * actionable Restore. Missing on legacy entries written before
+   * this field shipped; treat undefined as "not yet restored" (the
+   * restore RPC will refuse the second click via NOT_FOUND, which
+   * is still correct — the field just lets the UI prevent the
+   * round-trip in the first place).
+   */
+  restored: z.boolean().optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number().int(),

@@ -281,26 +281,18 @@ export function ProjectMessagesButton({
             visible.map((m) => {
               const rel = relativeTime(m.createdAt);
               // A `space-deleted` entry is "already restored" iff
-              // a later `space-restored` projectMessages entry for
-              // the same spaceId exists. Bell rendering uses this
-              // to disable the restore button after a successful
-              // restore — without this guard, clicking the button
-              // a second time would round-trip to the server and
-              // fail with "No deletion record found" (the canvas
-              // row was un-soft-deleted on the first click). The
-              // check walks `messages` (capped at 100 by the
-              // `visible` slice above), so O(N) per render in the
-              // worst case — fine for a sheet that only opens on
-              // user click.
+              // `restored === true` — collab's space:restore RPC
+              // handler mutates this flag on the original deleted
+              // entry inside the same transact that pushes the new
+              // space-restored audit entry, so we get an O(1)
+              // single-field read instead of walking projectMessages
+              // for a matching restored entry. Undefined on legacy
+              // entries written before this field shipped; treat
+              // as "not yet restored" (the restore RPC still
+              // refuses the duplicate with NOT_FOUND — the field
+              // just lets the UI prevent the round-trip).
               const alreadyRestored =
-                m.kind === 'space-deleted' &&
-                Boolean(m.spaceId) &&
-                messages.some(
-                  (other) =>
-                    other.kind === 'space-restored' &&
-                    other.spaceId === m.spaceId &&
-                    other.createdAt > m.createdAt,
-                );
+                m.kind === 'space-deleted' && m.restored === true;
               const canRestore =
                 isOwner &&
                 m.kind === 'space-deleted' &&

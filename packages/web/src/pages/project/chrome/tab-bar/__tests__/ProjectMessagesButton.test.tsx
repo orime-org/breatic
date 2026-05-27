@@ -106,25 +106,23 @@ describe('ProjectMessagesButton', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-1');
   });
 
-  it('replaces Restore button with a disabled "已恢复" badge when a later space-restored entry exists for the same spaceId', async () => {
-    // Owner just clicked Restore once — collab pushed a
-    // `space-restored` entry. The bell sheet must now disable the
-    // button so a second click can't round-trip to the server and
-    // fail with "No deletion record found" (the canvas row was
-    // already un-soft-deleted).
+  it('replaces Restore button with a disabled "已恢复" badge when the deleted entry has restored=true', async () => {
+    // Owner just clicked Restore once — collab's space:restore RPC
+    // mutated `restored=true` on the original deleted entry inside
+    // the same transact that wrote the space-restored audit entry.
+    // The bell sheet now disables the button via that single
+    // boolean read so a second click can't round-trip to the
+    // server and fail with "No deletion record found" (the canvas
+    // row was already un-soft-deleted).
     const user = userEvent.setup();
-    const M_RESTORED: ProjectMessageEntry = {
-      id: 'm-restored',
-      kind: 'space-restored',
-      actor: 'u-yuki',
-      spaceId: 'sp-1',
-      spaceName: 'Main',
-      createdAt: M_DELETED.createdAt + 1_000,
+    const M_DELETED_RESTORED: ProjectMessageEntry = {
+      ...M_DELETED,
+      restored: true,
     };
     const onRestore = vi.fn();
     render(
       <ProjectMessagesButton
-        messages={[M_DELETED, M_RESTORED]}
+        messages={[M_DELETED_RESTORED]}
         usersById={USERS_BY_ID}
         spacesById={SPACES_BY_ID}
         currentUserRole='owner'

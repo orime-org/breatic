@@ -299,7 +299,7 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
   });
 
-  it("space:restore rebuilds entry from latest space-deleted snapshot (owner)", async () => {
+  it("space:restore rebuilds entry from latest space-deleted snapshot (owner) + marks original deleted entry restored=true", async () => {
     // Seed: pretend a delete already happened — projectMessages has a
     // space-deleted entry with a full snapshot, meta.spaces is empty.
     const deletedMsg = new Y.Map();
@@ -330,6 +330,57 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(sql).toHaveBeenCalled(); // un-soft-delete canvas row
     // and a space-restored projectMessage was pushed
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(2);
+    // 2026-05-27 — original deleted entry is now marked restored=true
+    // so the bell sheet can render a disabled "已恢复" badge without
+    // a second round-trip. Same transact as the rebuild above —
+    // peers receive the atomic 3-tuple (spaces.set + new restored
+    // entry + restored flag) in one update.
+    expect(deletedMsg.get("restored")).toBe(true);
+  });
+
+  it("space:restore is idempotent against already-restored entries (skips them when finding latest deletion)", async () => {
+    // Seed: a delete-restore cycle has already happened. The first
+    // deleted entry is marked restored=true. A SECOND delete then
+    // landed a fresh deleted entry. Restore should target the
+    // second (unrestored) entry, leave the first one's
+    // restored=true flag alone.
+    const firstDeleted = new Y.Map();
+    firstDeleted.set("id", "pm-1");
+    firstDeleted.set("kind", "space-deleted");
+    firstDeleted.set("spaceId", SID);
+    firstDeleted.set("spaceSnapshot", {
+      id: SID,
+      type: "canvas",
+      name: "First Cycle",
+    });
+    firstDeleted.set("createdAt", 1000);
+    firstDeleted.set("restored", true);
+    fakeMetaDoc.doc.getArray("projectMessages").push([firstDeleted]);
+
+    const secondDeleted = new Y.Map();
+    secondDeleted.set("id", "pm-2");
+    secondDeleted.set("kind", "space-deleted");
+    secondDeleted.set("spaceId", SID);
+    secondDeleted.set("spaceSnapshot", {
+      id: SID,
+      type: "canvas",
+      name: "Second Cycle",
+    });
+    secondDeleted.set("createdAt", 3000);
+    fakeMetaDoc.doc.getArray("projectMessages").push([secondDeleted]);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(secondDeleted.get("restored")).toBe(true);
+    expect(firstDeleted.get("restored")).toBe(true); // unchanged
+    // Restored snapshot is from the SECOND cycle (the latest unrestored one).
+    const restored = fakeMetaDoc.doc.getMap("spaces").get(SID) as Y.Map<unknown>;
+    expect(restored.get("name")).toBe("Second Cycle");
   });
 
   it("space:restore returns NOT_FOUND when no delete record exists", async () => {

@@ -427,25 +427,35 @@ async function handleRestore(
         // distinct error UX.
         return;
       }
-      // Find the most recent space-deleted entry for this spaceId so
-      // we can read its snapshot and rebuild the entry. We walk the
-      // array from the tail for the latest record.
+      // Find the most recent UNRESTORED `space-deleted` entry for
+      // this spaceId — we read its snapshot to rebuild the Space
+      // AND mutate `restored = true` on the same entry so the bell
+      // sheet's restore button can render a disabled "已恢复" badge
+      // without round-tripping a second time. The `restored !==
+      // true` filter is what keeps a delete → restore → delete →
+      // restore loop honest: each cycle finds its own unrestored
+      // deleted entry instead of accidentally re-marking an
+      // already-handled one. Walk from the tail for the latest
+      // matching record.
       const messages = doc.getArray("projectMessages");
+      let deletedEntry: Y.Map<unknown> | null = null;
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages.get(i);
         if (
           m instanceof Y.Map &&
           m.get("kind") === "space-deleted" &&
-          m.get("spaceId") === spaceId
+          m.get("spaceId") === spaceId &&
+          m.get("restored") !== true
         ) {
           const s = m.get("spaceSnapshot");
           if (s && typeof s === "object") {
             snapshot = s as Record<string, unknown>;
+            deletedEntry = m;
             break;
           }
         }
       }
-      if (!snapshot) {
+      if (!snapshot || !deletedEntry) {
         return;
       }
       const entry = new Y.Map<unknown>();
@@ -461,6 +471,14 @@ async function handleRestore(
           ? ((snapshot as Record<string, unknown>).name as string)
           : undefined,
       });
+      // Mark the original deleted entry as restored so any client
+      // looking at the audit log knows the row was brought back.
+      // Same transact as the spaces.set + pushProjectMessage above,
+      // so peers receive the rebuild + new audit entry + restored
+      // flag atomically (a partial state — restored entry pushed
+      // but the deleted row still flagged unrestored — never
+      // appears on the wire).
+      deletedEntry.set("restored", true);
     });
     if (!snapshot) {
       return err(
