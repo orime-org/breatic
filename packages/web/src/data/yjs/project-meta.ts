@@ -79,6 +79,14 @@ export interface ProjectUser {
   id: string;
   name: string;
   avatarUrl: string | null;
+  /**
+   * Timestamp (ms) of the most recent awareness update for this
+   * user as persisted by the collab onAwarenessUpdate hook. Used
+   * for "last active N min ago" rendering when the user is
+   * currently offline. Optional because seeded entries may predate
+   * the field; treat missing as "unknown".
+   */
+  lastSeenAt?: number;
 }
 
 export interface ProjectMetaState {
@@ -88,13 +96,23 @@ export interface ProjectMetaState {
   /** Currently active tab for the current user (null when no tab open). */
   activeSpaceId: string | null;
   /**
-   * Live map of `userId → { name, avatarUrl }` for everyone who has
-   * connected to this project's meta doc. ProjectMessagesButton looks
-   * up `users[m.actor]?.name` to render display names so rename
-   * propagates retroactively (Q11 v2). Map shape, not array, because
-   * callsites lookup by id far more often than iterate.
+   * Live map of `userId → { name, avatarUrl, lastSeenAt }` for
+   * everyone who has connected to this project's meta doc.
+   * ProjectMessagesButton looks up `users[m.actor]?.name` to render
+   * display names so rename propagates retroactively. Map shape,
+   * not array, because callsites lookup by id far more often than
+   * iterate.
    */
   users: ReadonlyMap<string, ProjectUser>;
+  /**
+   * Live set of `userId`s currently online (have an active
+   * awareness entry on the meta doc). Derived from
+   * `provider.awareness.getStates()`; updates whenever any peer
+   * connects, disconnects, or rewrites their awareness state.
+   * Empty until the first awareness change fires (or the provider
+   * is null).
+   */
+  onlineUserIds: ReadonlySet<string>;
   /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
   /**
@@ -171,7 +189,7 @@ export function useProjectMeta(
   // so a re-render with unchanged `currentUser` is free.
   const currentUser = useCurrentUserStore((s) => s.user);
   React.useEffect(() => {
-    if (!provider || !currentUser) return;
+    if (!provider || !provider.awareness || !currentUser) return;
     provider.awareness.setLocalStateField('user', {
       id: currentUser.id,
       name: currentUser.name,
@@ -179,7 +197,48 @@ export function useProjectMeta(
     });
   }, [provider, currentUser]);
 
-  return { ...state, synced, provider, status, authFailedReason };
+  // Track the live set of online users by subscribing to the
+  // awareness instance. The collab `onAwarenessUpdate` hook
+  // persists name/avatar into meta.users on every awareness change,
+  // so the persisted record stays fresh; this subscription only
+  // covers "is the user currently online" (a derived ephemeral
+  // signal not worth stuffing into Y.Doc state). Combined with
+  // `users[userId].lastSeenAt` the UI can render
+  // "online" vs "last active N min ago" without polling.
+  const [onlineUserIds, setOnlineUserIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  React.useEffect(() => {
+    const awareness = provider?.awareness;
+    if (!awareness) {
+      setOnlineUserIds(new Set());
+      return;
+    }
+    const update = () => {
+      const next = new Set<string>();
+      awareness.getStates().forEach((state) => {
+        const userField = (state as { user?: { id?: unknown } }).user;
+        if (userField && typeof userField.id === 'string') {
+          next.add(userField.id);
+        }
+      });
+      setOnlineUserIds(next);
+    };
+    awareness.on('change', update);
+    update();
+    return () => {
+      awareness.off('change', update);
+    };
+  }, [provider]);
+
+  return {
+    ...state,
+    onlineUserIds,
+    synced,
+    provider,
+    status,
+    authFailedReason,
+  };
 }
 
 /**
@@ -416,10 +475,13 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
   const out = new Map<string, ProjectUser>();
   usersMap.forEach((m, userId) => {
     if (!(m instanceof Y.Map)) return;
+    const lastSeenRaw = m.get('lastSeenAt');
     out.set(userId, {
       id: String(m.get('id') ?? userId),
       name: String(m.get('name') ?? ''),
       avatarUrl: (m.get('avatarUrl') as string | null) ?? null,
+      lastSeenAt:
+        typeof lastSeenRaw === 'number' ? lastSeenRaw : undefined,
     });
   });
   return out;
