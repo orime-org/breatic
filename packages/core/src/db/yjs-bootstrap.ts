@@ -47,6 +47,17 @@ export interface EncodeInitialMetaStateArgs {
    * TypeScript build.
    */
   actor: string;
+  /**
+   * Creator's display name (`users.username ?? users.email` from
+   * the auth flow). Seeded into `meta.users[actor]` so other
+   * members reading the project before the creator first connects
+   * — e.g. a share link opened by a peer immediately after project
+   * creation — still see the creator's name in
+   * `space-created` audit lookups instead of falling back to UUID.
+   */
+  creatorName: string;
+  /** Creator's avatar URL (nullable — Google OAuth path, null otherwise today). */
+  creatorAvatarUrl: string | null;
   /** Milliseconds since epoch. Caller passes `Date.now()` in production. */
   ts: number;
 }
@@ -71,7 +82,16 @@ export interface EncodeInitialMetaStateArgs {
 export function encodeInitialMetaState(
   args: EncodeInitialMetaStateArgs,
 ): Uint8Array {
-  const { spaceId, kind, name, createdBy, actor, ts } = args;
+  const {
+    spaceId,
+    kind,
+    name,
+    createdBy,
+    actor,
+    creatorName,
+    creatorAvatarUrl,
+    ts,
+  } = args;
 
   const doc = new Y.Doc();
   // Stable clientID makes the encoded update deterministic across
@@ -112,6 +132,38 @@ export function encodeInitialMetaState(
   msg.set("spaceName", name);
   msg.set("createdAt", ts);
   projectMessages.push([msg]);
+
+  // 2026-05-27 awareness rewrite — seed `meta.users[creator]` so
+  // ProjectMessagesButton's actor lookup hits on the
+  // `space-created` entry above even when a share-link peer opens
+  // the project before the creator first connects (their awareness
+  // hasn't fired yet, so the runtime onAwarenessUpdate path
+  // wouldn't have written this entry). `lastSeenAt = ts` treats
+  // the creation moment as the most recent activity — the runtime
+  // hook refreshes it on every subsequent awareness change.
+  const users = doc.getMap("users");
+  const creatorEntry = new Y.Map<unknown>();
+  creatorEntry.set("id", createdBy);
+  creatorEntry.set("name", creatorName);
+  creatorEntry.set("avatarUrl", creatorAvatarUrl);
+  creatorEntry.set("lastSeenAt", ts);
+  users.set(createdBy, creatorEntry);
+
+  // Seed `meta.perUser[creator]` with the first space opened +
+  // active. The frontend `readMetaState` fallback used to derive
+  // this from `spaces.map(s => s.id)` for first-time visitors,
+  // but the fallback only fires when the userMap is missing
+  // entirely — once any tab is opened the entry is created and
+  // the fallback no longer applies. Seeding makes the behavior
+  // explicit and consistent: creator joins, sees the first space
+  // already in their tab bar + active.
+  const perUser = doc.getMap("perUser");
+  const creatorPerUser = new Y.Map<unknown>();
+  const openTabIds = new Y.Array<string>();
+  openTabIds.push([spaceId]);
+  creatorPerUser.set("openTabIds", openTabIds);
+  creatorPerUser.set("activeSpaceId", spaceId);
+  perUser.set(createdBy, creatorPerUser);
 
   return Y.encodeStateAsUpdate(doc);
 }

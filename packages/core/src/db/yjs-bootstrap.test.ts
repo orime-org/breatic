@@ -26,6 +26,8 @@ describe("encodeInitialMetaState", () => {
       name: "Untitled",
       createdBy: userId,
       actor: "test-actor",
+      creatorName: "Test Creator",
+      creatorAvatarUrl: null,
       ts,
     });
 
@@ -56,6 +58,8 @@ describe("encodeInitialMetaState", () => {
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
       actor: "test-actor",
+      creatorName: "Test Creator",
+      creatorAvatarUrl: null,
       ts: 1_700_000_000_000,
     };
     const a = encodeInitialMetaState(args);
@@ -70,6 +74,8 @@ describe("encodeInitialMetaState", () => {
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
       actor: "test-actor",
+      creatorName: "Test Creator",
+      creatorAvatarUrl: null,
       ts: 1_700_000_000_000,
     };
     for (const kind of ["document", "timeline"] as const) {
