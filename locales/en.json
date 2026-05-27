@@ -10,7 +10,8 @@
       "rate_limited": "Too many requests, please try again later",
       "internal": "Internal server error",
       "stripe_not_configured": "Payment system is not configured",
-      "storage_not_configured": "Storage system is not configured"
+      "storage_not_configured": "Storage system is not configured",
+      "field_required": "At least one field must be provided"
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -18,7 +19,19 @@
       "no_password": "This account uses social login",
       "token_expired": "Session expired, please log in again",
       "register_success": "Account created successfully",
-      "logout_success": "Logged out"
+      "logout_success": "Logged out",
+      "not_authenticated": "Not authenticated",
+      "google_oauth_unconfigured": "Google sign-in is not available on this server",
+      "invalid_google_credential": "Could not verify your Google account",
+      "google_email_unverified": "Your Google account email is not verified",
+      "reset_link_sent": "If this email is registered, a reset link has been sent.",
+      "reset_success": "Password reset successful. Please sign in.",
+      "reset_recovery_success": "Password reset successful. Save your new recovery code.",
+      "email_verified": "Email verified.",
+      "verify_email_sent": "Verification email sent. Check your inbox."
+    },
+    "text_tool": {
+      "already_running": "Another text tool is already running. Please wait."
     },
     "payment": {
       "checkout_created": "Checkout session created",
@@ -265,15 +278,86 @@
     "save_percent": "Save {percent}%"
   },
   "auth": {
-    "login": "Log In",
-    "register": "Sign Up",
-    "logout": "Log Out",
     "email": "Email",
     "password": "Password",
-    "forgot_password": "Forgot Password?",
-    "or_continue_with": "Or continue with",
-    "google": "Google",
-    "tagline": "AI Creative Platform"
+    "name": "Name",
+    "or": "or",
+    "invalidEmail": "Please enter a valid email address.",
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "nameRequired": "Please enter your name.",
+    "passwordShow": "Show password",
+    "passwordHide": "Hide password",
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Welcome back.",
+      "signIn": "Sign in",
+      "signingIn": "Signing in...",
+      "signUp": "Sign up",
+      "noAccount": "Don't have an account?",
+      "forgotPassword": "Forgot password?",
+      "continueWithGoogle": "Continue with Google",
+      "googleSoon": "Google sign-in is coming soon.",
+      "failed": "Sign-in failed. Please try again."
+    },
+    "register": {
+      "title": "Create an account",
+      "subtitle": "Start creating with breatic.",
+      "create": "Create account",
+      "creating": "Creating...",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "passwordHint": "At least 8 characters.",
+      "failed": "Registration failed. Please try again."
+    },
+    "recovery": {
+      "title": "Save your recovery code",
+      "subtitle": "This is the only way to reset your password if you cannot receive email. Save it somewhere safe — we cannot show it to you again.",
+      "copy": "Copy",
+      "copied": "Recovery code copied to clipboard.",
+      "copyFailed": "Could not copy to clipboard.",
+      "download": "Download",
+      "ack": "I have saved this recovery code in a safe place.",
+      "continue": "Continue"
+    },
+    "forgot": {
+      "title": "Forgot your password?",
+      "subtitle": "We can email you a reset link, or you can use your recovery code.",
+      "sendResetLink": "Email me a reset link",
+      "sending": "Sending...",
+      "useRecoveryCode": "Use recovery code instead",
+      "sentTitle": "Check your inbox",
+      "sentSubtitle": "If an account exists for that address, a reset link is on its way.",
+      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam or use the recovery code.",
+      "backToSignIn": "Back to sign in",
+      "failed": "Could not send the reset link. Please try again."
+    },
+    "reset": {
+      "titleToken": "Set a new password",
+      "subtitleToken": "Pick a strong password — at least 8 characters.",
+      "titleRecovery": "Reset with recovery code",
+      "subtitleRecovery": "Enter the recovery code you saved at sign-up and choose a new password.",
+      "recoveryCode": "Recovery code",
+      "recoveryCodeRequired": "Please enter your recovery code.",
+      "newPassword": "New password",
+      "save": "Save password",
+      "saving": "Saving...",
+      "success": "Password updated. Please sign in.",
+      "failed": "Could not reset your password. Please try again.",
+      "backToSignIn": "Back to sign in"
+    },
+    "verify": {
+      "verifying": "Verifying your email...",
+      "pleaseWait": "One moment please.",
+      "successTitle": "Email verified",
+      "successBody": "Your email is confirmed. You can now use everything breatic has to offer.",
+      "goToStudio": "Go to studio",
+      "failedTitle": "Could not verify your email",
+      "failedBody": "The link may have expired or already been used. Sign in and request a fresh verification email from your account settings.",
+      "checkInboxTitle": "Check your inbox",
+      "checkInboxBody": "Open the verify-email link we just sent you. If it didn't arrive, you can request a new one from your account settings.",
+      "signIn": "Sign in",
+      "failed": "Email verification failed."
+    }
   },
   "breatic_slogan": "AI Makes Creativity Visible",
   "about_us": "About Us",

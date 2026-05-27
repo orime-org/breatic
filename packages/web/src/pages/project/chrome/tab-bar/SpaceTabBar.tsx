@@ -40,6 +40,13 @@ interface SpaceTabBarProps {
    * Defaults to empty when the parent hasn't wired it yet.
    */
   projectMessages?: ReadonlyArray<ProjectMessageEntry>;
+  /**
+   * Live user lookup (`useProjectMeta().users`). ProjectMessagesButton
+   * renders display names by reading `usersById[m.actor]`. Q11 v2
+   * replaced snapshot strings with pointers so username rename
+   * retroactively updates every old message.
+   */
+  usersById?: ReadonlyMap<string, { name: string }>;
   /** Caller's role on the project — drives owner-only message actions. */
   currentUserRole?: ProjectRole;
   /** Owner-only: restore a soft-deleted Space via collab `space:restore` RPC. */
@@ -68,6 +75,8 @@ interface SpaceTabBarProps {
  * Scroll arrows hide when content doesn't overflow + show disabled
  * state at boundaries (industry standard pattern per mock v4.27/v4.29).
  */
+const EMPTY_USERS_MAP: ReadonlyMap<string, { name: string }> = new Map();
+
 export function SpaceTabBar({
   spaces,
   allSpaces,
@@ -79,6 +88,7 @@ export function SpaceTabBar({
   onClose,
   onViewSpace,
   projectMessages = [],
+  usersById,
   currentUserRole,
   onRestoreSpace,
   onClearMessages,
@@ -90,6 +100,16 @@ export function SpaceTabBar({
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
+
+  // Q11 v2 — ProjectMessagesButton renders display names via O(1) Map
+  // lookup against the live `meta.spaces` Y.Map. Build the lookup
+  // here from the array `allSpaces` (already supplied for the drawer)
+  // so the bell needn't iterate the array per message at render time.
+  const spacesById = React.useMemo(() => {
+    const m = new Map<string, { name: string }>();
+    for (const s of allSpaces) m.set(s.id, { name: s.name });
+    return m;
+  }, [allSpaces]);
 
   // Track scroll overflow + boundaries to drive the smart-hide/disabled
   // states for the left / right scroll arrows (mock v4.27 / v4.29).
@@ -372,6 +392,8 @@ export function SpaceTabBar({
         />
         <ProjectMessagesButton
           messages={projectMessages}
+          usersById={usersById ?? EMPTY_USERS_MAP}
+          spacesById={spacesById}
           currentUserRole={currentUserRole}
           onRestore={onRestoreSpace}
           onClearAll={onClearMessages}

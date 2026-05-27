@@ -38,6 +38,15 @@ export interface EncodeInitialMetaStateArgs {
   kind: SpaceKind;
   name: string;
   createdBy: string;
+  /**
+   * Q11 v2 — the creating user's userId (UUID). Stored as the
+   * `actor` field of the seeded `space-created` projectMessages
+   * entry; the frontend looks up `meta.users[actor].name` at render
+   * time so a username rename retroactively propagates. Required
+   * (not nullable) so a regression that drops the lookup trips the
+   * TypeScript build.
+   */
+  actor: string;
   /** Milliseconds since epoch. Caller passes `Date.now()` in production. */
   ts: number;
 }
@@ -62,7 +71,7 @@ export interface EncodeInitialMetaStateArgs {
 export function encodeInitialMetaState(
   args: EncodeInitialMetaStateArgs,
 ): Uint8Array {
-  const { spaceId, kind, name, createdBy, ts } = args;
+  const { spaceId, kind, name, createdBy, actor, ts } = args;
 
   const doc = new Y.Doc();
   // Stable clientID makes the encoded update deterministic across
@@ -81,6 +90,28 @@ export function encodeInitialMetaState(
   entry.set("createdAt", ts);
   entry.set("createdBy", createdBy);
   spaces.set(spaceId, entry);
+
+  // Q11 v2.1 — bootstrap path seeds the first `projectMessages` entry
+  // consistent with `collab/space-rpc.handleCreate`. Field convention:
+  //   - `actor`     = userId (UUID) — frontend renders display name
+  //                   via live lookup against `meta.users[actor].name`
+  //                   so a username rename retroactively reflects.
+  //   - `spaceName` = SNAPSHOT of name at event time. Rename is a
+  //                   separate audit event (future `space-renamed`
+  //                   kind), every prior entry stays frozen as
+  //                   historical truth. Frontend renders verbatim,
+  //                   does NOT look up the live Space name.
+  //   - `id`        = full `pm-${ts}-${spaceId}` (no slice truncation)
+  //                   — deterministic because every input is too.
+  const projectMessages = doc.getArray("projectMessages");
+  const msg = new Y.Map<unknown>();
+  msg.set("id", `pm-${ts}-${spaceId}`);
+  msg.set("kind", "space-created");
+  msg.set("actor", actor);
+  msg.set("spaceId", spaceId);
+  msg.set("spaceName", name);
+  msg.set("createdAt", ts);
+  projectMessages.push([msg]);
 
   return Y.encodeStateAsUpdate(doc);
 }

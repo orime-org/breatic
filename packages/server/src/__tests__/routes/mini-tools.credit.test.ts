@@ -22,7 +22,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import { createApp } from "../../app.js";
 import { mocks, mockQueueAdd, mockCreateQueue } from "../helpers/mock-core.js";
 
-const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
+const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
 /** Valid UUIDs for the canvas-binding fields every mini-tool body
  *  carries (v10: project_id + space_id + target_node_id all required). */

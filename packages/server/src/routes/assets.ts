@@ -16,6 +16,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { t } from "@breatic/shared";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import {
@@ -55,7 +56,7 @@ const presignRateLimit: MiddlewareHandler = async (c, next) => {
   const redis = getRedis();
   const allowed = await checkRateLimit(redis, `presign:${key}`, 30, 60);
   if (!allowed) {
-    return c.json({ error: { code: 429, message: "Too many upload requests" } }, 429);
+    return c.json({ error: { code: 429, message: t("server.error.rate_limited") } }, 429);
   }
   await next();
 };

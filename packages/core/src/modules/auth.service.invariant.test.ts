@@ -104,6 +104,48 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     expect(capturedHash).toMatch(/^\$2[abxy]\$12\$/);
   });
 
+  it("Q10 invariant: register(email, password, name) writes users.username = name (not email prefix)", async () => {
+    // RegisterPage already collects a `name` field (auth.nameRequired
+    // validation, autoComplete='name'). The server previously stripped
+    // it via the registerSchema = z.object({email, password}) zod
+    // shape, falling back to `email.split("@")[0]` — so a user typing
+    // "Justin" at sign-up landed in PG as username="justin@…prefix".
+    // This invariant locks the full passthrough so any future regression
+    // (schema reset / route destructure drop / service-arg removal)
+    // trips the test before merge.
+    mockGetUserByEmail.mockResolvedValue(null);
+    let capturedUsername: string | undefined;
+    mockCreateUser.mockImplementation(async (data: { username: string; email: string; hashedPassword?: string }) => {
+      capturedUsername = data.username;
+      return { id: "u-justin", email: data.email, username: data.username, avatarUrl: null, credits: 0 };
+    });
+
+    const { register } = await import("./auth.service.js");
+    await register("justin@example.com", "validPassword123", "Justin");
+
+    expect(capturedUsername).toBe("Justin");
+    // Defensive: lock out the legacy email-prefix fallback so a revert
+    // is loud, not silent.
+    expect(capturedUsername).not.toBe("justin");
+  });
+
+  it("Q10 invariant: register(email, password) without name still falls back to email prefix (back-compat)", async () => {
+    // Old clients that have not yet redeployed continue to call
+    // register without a name. The service must keep working
+    // (back-compat) and just use the legacy fallback.
+    mockGetUserByEmail.mockResolvedValue(null);
+    let capturedUsername: string | undefined;
+    mockCreateUser.mockImplementation(async (data: { username: string; email: string }) => {
+      capturedUsername = data.username;
+      return { id: "u-old", email: data.email, username: data.username, avatarUrl: null, credits: 0 };
+    });
+
+    const { register } = await import("./auth.service.js");
+    await register("nameless@example.com", "validPassword123");
+
+    expect(capturedUsername).toBe("nameless");
+  });
+
   it("register() returns recoveryCode (XXXX-XXXX-XXXX-XXXX) + setRecoveryCode stores cost-12 bcrypt hash", async () => {
     mockGetUserByEmail.mockResolvedValue(null);
     mockCreateUser.mockResolvedValue({

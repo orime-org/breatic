@@ -10,7 +10,11 @@
       "rate_limited": "请求过于频繁，请稍后再试",
       "internal": "服务器内部错误",
       "stripe_not_configured": "支付系统未配置",
-      "storage_not_configured": "存储系统未配置"
+      "storage_not_configured": "存储系统未配置",
+      "field_required": "至少需要提供一个字段"
+    },
+    "text_tool": {
+      "already_running": "另一个文本工具正在运行,请稍候。"
     },
     "auth": {
       "invalid_credentials": "邮箱或密码错误",
@@ -18,7 +22,16 @@
       "no_password": "此账号使用社交登录",
       "token_expired": "登录已过期，请重新登录",
       "register_success": "账号创建成功",
-      "logout_success": "已退出登录"
+      "logout_success": "已退出登录",
+      "not_authenticated": "未登录",
+      "google_oauth_unconfigured": "本服务器未开启 Google 登录",
+      "invalid_google_credential": "无法验证你的 Google 账号",
+      "google_email_unverified": "你的 Google 账号邮箱未验证",
+      "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
+      "reset_success": "密码重置成功,请登录。",
+      "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
+      "email_verified": "邮箱已验证。",
+      "verify_email_sent": "验证邮件已发送,请查收。"
     },
     "payment": {
       "checkout_created": "支付会话已创建",
@@ -265,15 +278,86 @@
     "save_percent": "省 {percent}%"
   },
   "auth": {
-    "login": "登录",
-    "register": "注册",
-    "logout": "退出",
     "email": "邮箱",
     "password": "密码",
-    "forgot_password": "忘记密码？",
-    "or_continue_with": "或通过以下方式继续",
-    "google": "Google",
-    "tagline": "AI 创意平台"
+    "name": "名字",
+    "or": "或",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "passwordTooShort": "密码至少 8 个字符。",
+    "nameRequired": "请填写你的名字。",
+    "passwordShow": "显示密码",
+    "passwordHide": "隐藏密码",
+    "login": {
+      "title": "登录",
+      "subtitle": "欢迎回来。",
+      "signIn": "登录",
+      "signingIn": "登录中...",
+      "signUp": "注册",
+      "noAccount": "还没有账号?",
+      "forgotPassword": "忘记密码?",
+      "continueWithGoogle": "使用 Google 继续",
+      "googleSoon": "Google 登录即将上线。",
+      "failed": "登录失败,请重试。"
+    },
+    "register": {
+      "title": "创建账号",
+      "subtitle": "开始用 breatic 创作。",
+      "create": "创建账号",
+      "creating": "创建中...",
+      "haveAccount": "已有账号?",
+      "signIn": "登录",
+      "passwordHint": "至少 8 个字符。",
+      "failed": "注册失败,请重试。"
+    },
+    "recovery": {
+      "title": "保存你的恢复码",
+      "subtitle": "如果你收不到邮件,这是唯一能重置密码的方式。请妥善保存 — 我们不会再次显示。",
+      "copy": "复制",
+      "copied": "恢复码已复制到剪贴板。",
+      "copyFailed": "复制到剪贴板失败。",
+      "download": "下载",
+      "ack": "我已经把恢复码保存到了安全的地方。",
+      "continue": "继续"
+    },
+    "forgot": {
+      "title": "忘记密码了?",
+      "subtitle": "我们可以给你的邮箱发重置链接,或者你也可以用恢复码。",
+      "sendResetLink": "给我发重置链接",
+      "sending": "发送中...",
+      "useRecoveryCode": "改用恢复码",
+      "sentTitle": "请查收邮件",
+      "sentSubtitle": "如果该邮箱已注册账号,重置链接已在路上。",
+      "sentBody": "我们已经向 {email} 发送了重置链接。如果几分钟内没收到,请检查垃圾邮件,或者改用恢复码。",
+      "backToSignIn": "返回登录",
+      "failed": "重置链接发送失败,请重试。"
+    },
+    "reset": {
+      "titleToken": "设置新密码",
+      "subtitleToken": "请使用一个强密码 — 至少 8 个字符。",
+      "titleRecovery": "用恢复码重置",
+      "subtitleRecovery": "输入注册时保存的恢复码,然后设置新密码。",
+      "recoveryCode": "恢复码",
+      "recoveryCodeRequired": "请填写恢复码。",
+      "newPassword": "新密码",
+      "save": "保存密码",
+      "saving": "保存中...",
+      "success": "密码已更新,请登录。",
+      "failed": "密码重置失败,请重试。",
+      "backToSignIn": "返回登录"
+    },
+    "verify": {
+      "verifying": "正在验证你的邮箱...",
+      "pleaseWait": "请稍候。",
+      "successTitle": "邮箱已验证",
+      "successBody": "你的邮箱已确认,现在可以使用 breatic 的全部功能。",
+      "goToStudio": "进入 Studio",
+      "failedTitle": "邮箱验证失败",
+      "failedBody": "链接可能已过期或已使用。请登录后,在账号设置里重新发送验证邮件。",
+      "checkInboxTitle": "请查收邮件",
+      "checkInboxBody": "打开我们刚才发给你的验证链接。如果没收到,可以在账号设置里重新发送。",
+      "signIn": "登录",
+      "failed": "邮箱验证失败。"
+    }
   },
   "breatic_slogan": "AI让创意可见",
   "about_us": "关于我们",

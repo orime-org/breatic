@@ -20,7 +20,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 
-const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
+const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 describe("POST /auth/verify-email", () => {

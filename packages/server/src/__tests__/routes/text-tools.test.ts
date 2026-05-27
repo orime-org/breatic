@@ -15,7 +15,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 
-const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
+const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
 describe("Text tools routes", () => {
   it("POST /mini-tools/text requires auth", async () => {

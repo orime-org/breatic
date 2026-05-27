@@ -207,9 +207,33 @@ export type ProjectMessageKind = z.infer<typeof ProjectMessageKindSchema>;
 export const ProjectMessageEntrySchema = z.object({
   id: z.string(),
   kind: ProjectMessageKindSchema,
+  /**
+   * Q11 v2 — userId (UUID) of the user who triggered this event.
+   * Optional because system-emitted entries (e.g. `missing-node`) have
+   * no human actor. Frontend renders the display name via
+   * `meta.users[actor].name` so a later rename retroactively reflects.
+   */
   actor: z.string().optional(),
+  /**
+   * Q11 v2.1 — pointer into `meta.spaces` for ownership/lookup of
+   * non-name metadata (e.g. type for kind icons). The Space's
+   * displayed NAME, however, is captured as a snapshot below
+   * (`spaceName`) so each entry records the name at the moment the
+   * event happened — rename is its own audit event(future
+   * `space-renamed` kind), the existing entries stay frozen as
+   * historical truth. Live-lookup of name was tried in v2 but
+   * conflicts with the "events log" semantics.
+   */
   spaceId: z.string().optional(),
+  /**
+   * Snapshot of Space name at event time. For `space-deleted` the
+   * spaceId has left `meta.spaces` so this is the only place left
+   * to read from; for active kinds (`space-created` / `-locked` /
+   * `-unlocked` / `-restored` / future `-renamed`) it records the
+   * name as it was when the event fired, immune to later renames.
+   */
   spaceName: z.string().optional(),
+  spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number().int(),

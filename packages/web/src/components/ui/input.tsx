@@ -36,6 +36,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
           'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground',
           'placeholder:text-muted-foreground',
           'focus-visible:outline-none focus-visible:border-active-border',
+          'aria-invalid:border-destructive aria-invalid:focus-visible:border-destructive',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'md:text-sm',
           className,

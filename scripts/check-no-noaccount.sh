@@ -1,27 +1,26 @@
 #!/bin/sh
-# PR-a guard: ensure NoAccount mode + DEV_USER residue stays deleted.
-#
-# Scope: scan source / docs / env templates for forbidden tokens that
-# would resurrect dev-bypass auth. Excludes build artifacts (dist/),
-# vendored deps (node_modules/), generated migrations meta (which embed
-# old snapshots), and this guard script itself.
+# PR-a + PR-b guard: ensure NoAccount mode + DEV_USER residue stays
+# deleted from EVERY source path (backend + frontend + docs + env
+# templates) and stays out forever.
 #
 # Forbidden tokens (case-sensitive):
-#   - LOGIN_MODE        — env removed in PR-a (Auth section, env.ts)
-#   - NoAccount         — dev-bypass mode removed in PR-a
-#   - dev-fixed-token   — frontend bypass token (PR-b will clean
-#                         packages/web/src/app/dev/inject-dev-user.ts)
-#   - DEV_USER_ID       — shared constant removed in PR-a
+#   - LOGIN_MODE          — env removed in PR-a (Auth section, env.ts)
+#   - NoAccount           — dev-bypass mode removed in PR-a
+#   - dev-fixed-token     — frontend bypass token (PR-b)
+#   - DEV_USER_ID         — shared constant removed in PR-a
+#   - VITE_LOGIN_MODE     — frontend env mirror (PR-b)
+#   - inject-dev-user     — frontend bypass module path (PR-b)
+#   - injectDevUser       — frontend bypass symbol (PR-b)
+#
+# Excludes build artifacts (dist/), vendored deps (node_modules/),
+# generated migrations meta (which embed old snapshots), and this
+# guard script itself.
 #
 # Exit 0 on clean; exit 1 on any hit (CI fail).
 
 set -eu
 
-# PR-a scope: scan **backend** source + turbo.json only. PR-b will
-# extend this to packages/web/ + docs/ + .env.* templates once the
-# frontend bypass code (inject-dev-user.ts / App.tsx / vite-env.d.ts
-# / vite.config.mts / docs/frontend.md / .env templates) is cleaned.
-SEARCH_PATHS="packages/shared/src packages/core/src packages/collab/src packages/server/src scripts turbo.json"
+SEARCH_PATHS="packages/shared/src packages/core/src packages/collab/src packages/server/src packages/web/src packages/worker/src docs scripts turbo.json"
 
 EXISTING_PATHS=""
 for p in $SEARCH_PATHS; do
@@ -35,16 +34,16 @@ if [ -z "$EXISTING_PATHS" ]; then
   exit 0
 fi
 
-FOUND=$(grep -rnE 'LOGIN_MODE|NoAccount|dev-fixed-token|DEV_USER_ID' $EXISTING_PATHS \
-  --include='*.ts' --include='*.tsx' --include='*.js' --include='*.json' \
-  --include='*.sh' --include='*.yml' \
+FOUND=$(grep -rnE 'LOGIN_MODE|NoAccount|dev-fixed-token|DEV_USER_ID|VITE_LOGIN_MODE|inject-dev-user|injectDevUser' $EXISTING_PATHS \
+  --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mts' --include='*.json' \
+  --include='*.sh' --include='*.yml' --include='*.md' \
   2>/dev/null \
   | grep -v 'check-no-noaccount.sh' \
   | grep -v 'migrations/meta/' \
   || true)
 
 if [ -n "$FOUND" ]; then
-  echo "❌ NoAccount mode residue detected (PR-a should have removed these):"
+  echo "❌ NoAccount mode residue detected (PR-a + PR-b should have removed these):"
   echo "$FOUND" | sed 's/^/   /'
   echo ""
   echo "If you genuinely need to reference these tokens (e.g. in a"

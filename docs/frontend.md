@@ -146,7 +146,12 @@ the api / collab containers. The built bundle has no host baked in.
 
 | Variable | Purpose |
 |---|---|
-| `VITE_LOGIN_MODE` | Login mode (must match backend) |
 | `VITE_APP_VERSION` | App version string |
 | `GOOGLE_CLIENT_ID` | Google OAuth (optional; injected as `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN (optional) |
+
+Authentication is cookie-based — the backend sets an httpOnly
+`breatic_session` cookie on login / register / OAuth; the frontend
+does not read or persist any token in JS. See
+`docs/architecture.md` for `COOKIE_DOMAIN` + `EMAIL_BACKEND`
+(server-side env vars).

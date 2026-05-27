@@ -60,6 +60,14 @@ export const env = createEnv({
     // ── CORS ──────────────────────────────────────────
     ALLOWED_ORIGINS: z.string().default("http://localhost:3001"),
 
+    // ── Cookie ────────────────────────────────────────
+    // Empty string = let the browser scope to the request host
+    // (right for dev where the API and web share `localhost`). In
+    // prod set a parent domain (e.g. `.thinkai.cc`) when the API
+    // and web sit on different subdomains and must share the
+    // session cookie.
+    COOKIE_DOMAIN: z.string().default(""),
+
     // ── AI Providers (all optional) ──────────────────
     OPENROUTER_API_KEY: z.string().default(""),
     ANTHROPIC_API_KEY: z.string().default(""),

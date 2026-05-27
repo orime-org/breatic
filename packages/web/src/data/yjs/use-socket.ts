@@ -2,7 +2,17 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { useCurrentUserStore } from '@/stores';
+/**
+ * Placeholder token the Hocuspocus client must send purely to
+ * trip the server's `onAuthenticate` hook — without ANY token the
+ * client-side library short-circuits and the hook is never invoked
+ * (see ueberdosis/hocuspocus#596). The server ignores this string
+ * and reads the real session token from the httpOnly `breatic_session`
+ * cookie attached to the WebSocket upgrade request (the browser
+ * sends the cookie automatically because the WS endpoint is
+ * same-origin under `/ws`).
+ */
+const COOKIE_AUTH_PLACEHOLDER = '__cookie_auth__';
 
 interface UseSocketOptions {
   /** Document name (e.g. `project-abc/meta`). */
@@ -72,11 +82,10 @@ export function useSocket({
     string | null
   >(null);
   const providerRef = React.useRef<HocuspocusProvider | null>(null);
-  const token = useCurrentUserStore((s) => s.token);
 
   React.useEffect(() => {
-    // Reset state on (re)mount so a token rotation or doc swap starts
-    // from a clean lifecycle, not a stale `connected` / `authFailed`.
+    // Reset state on (re)mount so a doc swap starts from a clean
+    // lifecycle, not a stale `connected` / `authFailed`.
     setStatus('connecting');
     setSynced(false);
     setAuthFailedReason(null);
@@ -89,7 +98,7 @@ export function useSocket({
       url: fullUrl,
       name,
       document: doc,
-      token: token ?? undefined,
+      token: COOKIE_AUTH_PLACEHOLDER,
       onSynced: () => {
         setSynced(true);
         setStatus('connected');
@@ -119,9 +128,11 @@ export function useSocket({
       setStatus('connecting');
       setAuthFailedReason(null);
     };
-    // Token change triggers a fresh provider (re-auth). Doc / name change
-    // implies new document binding so also re-create.
-  }, [name, doc, url, token]);
+    // Doc / name change implies a new document binding so also
+    // re-create the provider. Auth lives in the cookie now and
+    // rotates server-side, so there is no `token` dependency to
+    // tear the socket down on.
+  }, [name, doc, url]);
 
   return {
     provider: providerRef.current,

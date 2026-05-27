@@ -39,6 +39,20 @@ import { useTranslation } from '@/i18n/use-translation';
  */
 export interface ProjectMessagesButtonProps {
   messages: ReadonlyArray<ProjectMessageEntry>;
+  /**
+   * Live user lookup from `useProjectMeta().users` — used to render
+   * `m.actor` (userId) as a display name. Q11 v2 moved away from
+   * snapshot strings on every message; a username rename now
+   * retroactively updates every historical entry by way of this map.
+   */
+  usersById: ReadonlyMap<string, { name: string }>;
+  /**
+   * Live Space lookup from `useProjectMeta().spaces` — used to render
+   * `m.spaceId` as a current name. Falls back to `spaceSnapshot.name`
+   * for `space-deleted` entries (the spaceId leaves `meta.spaces` at
+   * delete time; the snapshot is the only place left to read from).
+   */
+  spacesById: ReadonlyMap<string, { name: string }>;
   /** Caller's role on the project. Drives owner-only affordances. */
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
@@ -122,6 +136,8 @@ const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
 
 export function ProjectMessagesButton({
   messages,
+  usersById,
+  spacesById,
   currentUserRole,
   onRestore,
   onClearAll,
@@ -200,7 +216,16 @@ export function ProjectMessagesButton({
             <SheetDescription className='text-[12px] text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
             </SheetDescription>
-            {isOwner && messages.length > 0 ? (
+            {/*
+              Clear-all button hidden 2026-05-27 per Q11 v2.1 design
+              discussion — projectMessages is the audit / events log
+              (rename / lock / delete / restore all push entries).
+              Letting the owner wipe it loses provenance the very
+              moment we lean on it as the source of truth. Re-enable
+              once a "soft clear" / archive workflow + retention
+              policy is wired up.
+            */}
+            {false && isOwner && messages.length > 0 ? (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <button
@@ -255,6 +280,25 @@ export function ProjectMessagesButton({
               const rel = relativeTime(m.createdAt);
               const canRestore =
                 isOwner && m.kind === 'space-deleted' && Boolean(m.spaceId);
+              // Q11 v2.1 lookup chain:
+              //   - actor name: live lookup `meta.users[actor]` so a
+              //     username rename retroactively propagates (user
+              //     identity is stable, rename is rare + not an audit
+              //     event).
+              //   - space name: SNAPSHOT first — `m.spaceName` was
+              //     captured at event time and stays frozen. The Space
+              //     rename will push its own `space-renamed` audit
+              //     entry once that kind is wired up; until then the
+              //     historical name is the right thing to render.
+              //     Snapshot missing (legacy `missing-node` entry with
+              //     no spaceId) falls through to em-dash.
+              const actorName =
+                (m.actor ? usersById.get(m.actor)?.name : undefined) ?? m.actor ?? '';
+              const snapshotName =
+                typeof m.spaceSnapshot?.name === 'string'
+                  ? (m.spaceSnapshot.name as string)
+                  : undefined;
+              const spaceName = m.spaceName ?? snapshotName ?? '—';
               return (
                 <li
                   key={m.id}
@@ -281,8 +325,8 @@ export function ProjectMessagesButton({
                       {m.message
                         ? t(m.message, m.context as Record<string, string | number> | undefined)
                         : t(KIND_LABEL_KEY[m.kind], {
-                            spaceName: m.spaceName ?? '',
-                            actor: m.actor ?? '',
+                            spaceName,
+                            actor: actorName,
                           })}
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>

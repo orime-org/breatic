@@ -28,17 +28,57 @@
  * `projectAuthService.loadProjectRole` from core.
  */
 
+import type { Hocuspocus } from "@hocuspocus/server";
 import type Redis from "ioredis";
+import type { IncomingHttpHeaders } from "node:http";
 import postgres from "postgres";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
+
+/** Must match `packages/core/src/infra/cookie.ts` SESSION_COOKIE_NAME. */
+const SESSION_COOKIE_NAME = "breatic_session";
+
+/**
+ * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
+ * `Cookie:` header string; collab is intentionally core-less (see
+ * the module docstring) so we hand-roll instead of pulling a dep.
+ *
+ * Returns the value of the named cookie or null if absent.
+ */
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  // Cookie header is `name1=val1; name2=val2`. Trim each pair so
+  // leading spaces after `; ` do not break matching.
+  for (const pair of header.split(";")) {
+    const eq = pair.indexOf("=");
+    if (eq < 0) continue;
+    const k = pair.slice(0, eq).trim();
+    if (k !== name) continue;
+    return decodeURIComponent(pair.slice(eq + 1).trim());
+  }
+  return null;
+}
 
 /** Resolved user context returned to Hocuspocus. */
 export interface AuthContext {
   user: {
     id: string;
     role: ProjectRole;
+    /**
+     * Human-readable display name (`users.username ?? users.email`),
+     * resolved at handshake time so downstream consumers
+     * (`space-rpc` actor field on projectMessages) do not have to
+     * re-query Postgres on every Space lifecycle event.
+     */
+    name: string;
+    /**
+     * Optional avatar URL — flows into `meta.users[userId].avatarUrl`
+     * so the bell + members popover can show profile pictures without
+     * a separate REST round-trip. Null when the user has not uploaded
+     * an avatar yet (Google OAuth users get one auto-set).
+     */
+    avatarUrl: string | null;
   };
   connection: {
     readOnly: boolean;
@@ -94,16 +134,27 @@ async function loadProjectSpaceIds(
 }
 
 /**
- * Resolve the caller's role on a project, or `null` if the project
- * does not exist (or is soft-deleted) OR the user has no active
- * membership. Both branches return null so the caller surfaces a
- * single error and never leaks project existence.
+ * Resolve the caller's role on a project + display name, or `null` if
+ * the project does not exist (or is soft-deleted) OR the user has no
+ * active membership. Both branches return null so the caller surfaces
+ * a single error and never leaks project existence.
+ *
+ * `userName` falls back through `users.username` → `users.email` so
+ * downstream `actor` fields on projectMessages always render a
+ * human-readable string, even for accounts that signed up without a
+ * username (Google OAuth path leaves `username` null until profile
+ * edit). The fallback chain mirrors `server/src/routes/canvas.ts`
+ * `holdingByName` for consistency.
  */
 async function loadProjectRole(
   sql: ReturnType<typeof postgres>,
   userId: string,
   projectId: string,
-): Promise<ProjectRole | null> {
+): Promise<{
+  role: ProjectRole;
+  userName: string;
+  avatarUrl: string | null;
+} | null> {
   const projectRows = await sql<{ id: string }[]>`
     SELECT id
     FROM projects
@@ -113,15 +164,28 @@ async function loadProjectRole(
   `;
   if (projectRows.length === 0) return null;
 
-  const memberRows = await sql<{ role: string }[]>`
-    SELECT role
-    FROM project_members
-    WHERE project_id = ${projectId}
-      AND user_id = ${userId}
-      AND deleted_at IS NULL
+  const memberRows = await sql<{
+    role: string;
+    username: string | null;
+    email: string;
+    avatar_url: string | null;
+  }[]>`
+    SELECT pm.role, u.username, u.email, u.avatar_url
+    FROM project_members pm
+    JOIN users u ON u.id = pm.user_id
+    WHERE pm.project_id = ${projectId}
+      AND pm.user_id = ${userId}
+      AND pm.deleted_at IS NULL
+      AND u.deleted_at IS NULL
     LIMIT 1
   `;
-  return (memberRows[0]?.role as ProjectRole | undefined) ?? null;
+  const row = memberRows[0];
+  if (!row) return null;
+  return {
+    role: row.role as ProjectRole,
+    userName: row.username ?? row.email,
+    avatarUrl: row.avatar_url,
+  };
 }
 
 /**
@@ -140,14 +204,24 @@ export function createAuthHook({
   const sql = postgres(databaseUrl, { max: 5 });
 
   return async ({
-    token,
     documentName,
+    requestHeaders,
   }: {
     token: string;
     documentName: string;
+    requestHeaders: IncomingHttpHeaders;
   }): Promise<AuthContext> => {
+    // Session token now travels exclusively as the httpOnly
+    // `breatic_session` cookie sent on the WebSocket upgrade
+    // request (2026-05-26 cookie migration). Hocuspocus's own
+    // `token` field — sent by the client in the application-level
+    // auth frame — is treated as opaque and ignored; the client
+    // sends a placeholder like `"__cookie_auth__"` purely to trip
+    // Hocuspocus into invoking this hook (an empty token short-
+    // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
+    const token = readCookie(requestHeaders.cookie, SESSION_COOKIE_NAME);
     if (!token) {
-      throw new Error("No authentication token provided");
+      throw new Error("Missing session cookie");
     }
 
     const userId = await redis.get(`${envPrefix}:session:${token}`);
@@ -162,12 +236,13 @@ export function createAuthHook({
       );
     }
 
-    const role = await loadProjectRole(sql, userId, parsed.projectId);
-    if (!role) {
+    const member = await loadProjectRole(sql, userId, parsed.projectId);
+    if (!member) {
       throw new Error(
         `User ${userId} is not authorized to access project ${parsed.projectId}`,
       );
     }
+    const { role, userName, avatarUrl } = member;
 
     // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
     // refuse the connection if the spaceId is no longer in `meta.spaces`.
@@ -184,10 +259,65 @@ export function createAuthHook({
     }
 
     return {
-      user: { id: userId, role },
+      user: { id: userId, role, name: userName, avatarUrl },
       connection: {
         readOnly: role === "view",
       },
     };
   };
+}
+
+/**
+ * Idempotently write `meta.users[userId] = { name, avatarUrl }` so
+ * downstream consumers (ProjectMessagesButton, MembersStack, future
+ * presence overlays) can render display names by looking up the live
+ * Yjs map instead of carrying snapshot strings on every message.
+ *
+ * Called from `onConnect` once per WebSocket handshake. Updates the
+ * record on every connect — that way a username / avatar change in
+ * PG propagates to all viewers the next time the user opens any
+ * doc, without needing a separate "user-changed" pubsub channel
+ * (see Q11 v2 design 2A: "every connect ensure self record").
+ *
+ * Writes are funnelled through the privileged `system` user so the
+ * `beforeHandleMessage` write-authz gate (ADR
+ * 2026-05-23-yjs-collab-only-write-authz) lets them through.
+ */
+export async function ensureUserInMetaDoc(
+  hocuspocus: Hocuspocus,
+  projectId: string,
+  user: { id: string; name: string; avatarUrl: string | null },
+): Promise<void> {
+  const docName = projectMetaDocName(projectId);
+  const conn = await hocuspocus.openDirectConnection(docName, {
+    context: { user: { id: "system" }, source: "auth-ensure-user" },
+  });
+  try {
+    await conn.transact((doc) => {
+      const users = doc.getMap("users");
+      const existing = users.get(user.id) as Y.Map<unknown> | undefined;
+      // Only write when value would actually change — saves a no-op
+      // Yjs update broadcast on every reconnect of an idle user.
+      if (
+        existing instanceof Y.Map &&
+        existing.get("name") === user.name &&
+        existing.get("avatarUrl") === (user.avatarUrl ?? null)
+      ) {
+        return;
+      }
+      const entry = existing instanceof Y.Map
+        ? existing
+        : (() => {
+          const m = new Y.Map<unknown>();
+          users.set(user.id, m);
+          return m;
+        })();
+      entry.set("id", user.id);
+      entry.set("name", user.name);
+      entry.set("avatarUrl", user.avatarUrl ?? null);
+      entry.set("updatedAt", Date.now());
+    });
+  } finally {
+    await conn.disconnect();
+  }
 }

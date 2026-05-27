@@ -15,7 +15,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 
-const AUTH = { Authorization: "Bearer valid-token" };
+const AUTH = { Cookie: "breatic_session=valid-token" };
 
 describe("Skills routes", () => {
   it("GET /skills returns built-in skills", async () => {

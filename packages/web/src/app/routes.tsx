@@ -1,23 +1,36 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
+import ProtectedRoute from '@/app/ProtectedRoute';
 import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
 import LoginPage from '@/pages/auth/LoginPage';
+import RegisterPage from '@/pages/auth/RegisterPage';
+import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
+import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
 import PrimitivesGallery from '@/pages/_dev/PrimitivesGallery';
 
 /**
  * Top-level route table.
  *
  * `/`                      → redirect to /studio
- * `/studio`                → StudioPage (project list + nav)
- * `/project/:projectId`    → ProjectPage (canvas + chat)
+ * `/studio`                → StudioPage (project list + nav)            [AUTH]
+ * `/project/:projectId`    → ProjectPage (canvas + chat)                [AUTH]
+ *
+ * `[AUTH]` routes are wrapped in `<ProtectedRoute>` which gates render
+ * on `useCurrentUserStore.user` being non-null. While the boot
+ * `/auth/me` ping is in flight, a loading shell is shown; once the
+ * ping resolves with no valid session, the route bounces to `/login`.
+ * Without this gate, authenticated pages mount with `user=null` and
+ * any code branching on `userId` no-ops (the original Q3/Q4 bug —
+ * tab activation, space creation, BellMenu etc. all silently failed
+ * on cold reload because the store had not yet been hydrated).
  *
  * Space is a type / template inside a Project, NOT a route segment
  * (per `[[feedback_space_type_vs_route]]` user decision). The active
  * Space tab + open-tab list live in Yjs `meta.perUser[userId]` and
  * sync per-user across machines automatically — no URL state needed.
- * `/login` `/reset-password` → auth flows
+ * `/login` `/reset-password` → auth flows (public, no guard)
  * `/dev/*`                 → dev-only routes, only mounted when
  *                            `import.meta.env.DEV` is true. Used for token
  *                            verify + visual QA, not part of the production
@@ -29,10 +42,27 @@ import PrimitivesGallery from '@/pages/_dev/PrimitivesGallery';
  */
 const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
-  { path: '/studio', element: <StudioPage /> },
-  { path: '/project/:projectId', element: <ProjectPage /> },
+  {
+    path: '/studio',
+    element: (
+      <ProtectedRoute>
+        <StudioPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/project/:projectId',
+    element: (
+      <ProtectedRoute>
+        <ProjectPage />
+      </ProtectedRoute>
+    ),
+  },
   { path: '/login', element: <LoginPage /> },
+  { path: '/register', element: <RegisterPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/verify-email', element: <VerifyEmailPage /> },
 ];
 
 const devRoutes: RouteObject[] = import.meta.env.DEV

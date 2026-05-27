@@ -56,6 +56,15 @@ const ACTIVE_SPACE_ID_KEY = 'activeSpaceId';
  * `packages/collab/src/space-rpc.ts` — both must agree.
  */
 const PROJECT_MESSAGES_KEY = 'projectMessages';
+/**
+ * Y.Map<userId, { name, avatarUrl }> seeded by `collab/auth.ts
+ * ensureUserInMetaDoc` on every WebSocket handshake. Consumers
+ * (ProjectMessagesButton, MembersStack, future presence overlays)
+ * look up display names via this map so a username rename retroactively
+ * propagates to every old `projectMessages` entry. See Q11 v2 design
+ * (2026-05-26).
+ */
+const USERS_KEY = 'users';
 
 export interface ProjectSpace {
   id: string;
@@ -64,12 +73,27 @@ export interface ProjectSpace {
   locked?: boolean;
 }
 
+/** Live user record stored in `meta.users[userId]`. */
+export interface ProjectUser {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
   /** Spaces the current user has open in their tab bar. */
   openTabIds: ReadonlyArray<string>;
   /** Currently active tab for the current user (null when no tab open). */
   activeSpaceId: string | null;
+  /**
+   * Live map of `userId → { name, avatarUrl }` for everyone who has
+   * connected to this project's meta doc. ProjectMessagesButton looks
+   * up `users[m.actor]?.name` to render display names so rename
+   * propagates retroactively (Q11 v2). Map shape, not array, because
+   * callsites lookup by id far more often than iterate.
+   */
+  users: ReadonlyMap<string, ProjectUser>;
   /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
   /**
@@ -110,6 +134,7 @@ export function useProjectMeta(
     spaces: ReadonlyArray<ProjectSpace>;
     openTabIds: ReadonlyArray<string>;
     activeSpaceId: string | null;
+    users: ReadonlyMap<string, ProjectUser>;
   }>(() => readMetaState(doc, userId));
 
   React.useEffect(() => {
@@ -122,12 +147,15 @@ export function useProjectMeta(
     // never lands changes here — see PR-b post-merge bug.
     const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
     const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
+    const users = doc.getMap<Y.Map<unknown>>(USERS_KEY);
     spacesMap.observeDeep(update);
     perUser.observeDeep(update);
+    users.observeDeep(update);
     update();
     return () => {
       spacesMap.unobserveDeep(update);
       perUser.unobserveDeep(update);
+      users.unobserveDeep(update);
     };
   }, [doc, userId]);
 
@@ -175,6 +203,16 @@ export function useProjectMessages(projectId: string): {
  * open. Always appends at the end of `openTabIds` so the most recently
  * opened tab is rightmost — matches user expectation that "new things
  * appear on the right".
+ *
+ * Q6 first-write snapshot: when this is the very first interaction
+ * for `userId` on the project (no `openTabIds` Y.Array yet), seed the
+ * array with ALL currently-visible Space ids before appending the
+ * requested one. Without the snapshot, the user's first click /
+ * create would set `openTabIds = [thatOneId]` — and the
+ * `readMetaState` `!userMap`-fallback (`openTabIds: [spaces[0].id]`)
+ * would no longer fire, so every Space EXCEPT the one just opened
+ * would silently disappear from the tab bar (`Y.Map.forEach` order
+ * is not insertion order, so even the "first" tab is unstable).
  */
 export function openSpaceTab(
   projectId: string,
@@ -187,10 +225,21 @@ export function openSpaceTab(
     const openTabIds = userMap.get(OPEN_TAB_IDS_KEY) as
       | Y.Array<string>
       | undefined;
-    const arr = openTabIds ?? new Y.Array<string>();
-    if (!openTabIds) userMap.set(OPEN_TAB_IDS_KEY, arr);
-    const existing = arr.toArray();
-    if (!existing.includes(spaceId)) arr.push([spaceId]);
+    if (!openTabIds) {
+      // First-write snapshot — see docstring (Q6).
+      const arr = new Y.Array<string>();
+      userMap.set(OPEN_TAB_IDS_KEY, arr);
+      const allSpaceIds = Array.from(
+        doc.getMap<Y.Map<unknown>>(SPACES_KEY).keys(),
+      );
+      const initial = allSpaceIds.includes(spaceId)
+        ? allSpaceIds
+        : [...allSpaceIds, spaceId];
+      arr.push(initial);
+      return;
+    }
+    const existing = openTabIds.toArray();
+    if (!existing.includes(spaceId)) openTabIds.push([spaceId]);
   });
 }
 
@@ -287,7 +336,8 @@ export function appendProjectMessage(
     m.set('kind', entry.kind);
     if (entry.actor !== undefined) m.set('actor', entry.actor);
     if (entry.spaceId !== undefined) m.set('spaceId', entry.spaceId);
-    if (entry.spaceName !== undefined) m.set('spaceName', entry.spaceName);
+    if (entry.spaceSnapshot !== undefined)
+      m.set('spaceSnapshot', entry.spaceSnapshot);
     if (entry.message !== undefined) m.set('message', entry.message);
     if (entry.context !== undefined) m.set('context', entry.context);
     m.set('createdAt', entry.createdAt);
@@ -341,6 +391,20 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
   return out;
 }
 
+function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
+  const usersMap = doc.getMap<Y.Map<unknown>>(USERS_KEY);
+  const out = new Map<string, ProjectUser>();
+  usersMap.forEach((m, userId) => {
+    if (!(m instanceof Y.Map)) return;
+    out.set(userId, {
+      id: String(m.get('id') ?? userId),
+      name: String(m.get('name') ?? ''),
+      avatarUrl: (m.get('avatarUrl') as string | null) ?? null,
+    });
+  });
+  return out;
+}
+
 function readMetaState(
   doc: Y.Doc,
   userId: string | undefined,
@@ -348,25 +412,35 @@ function readMetaState(
   spaces: ReadonlyArray<ProjectSpace>;
   openTabIds: ReadonlyArray<string>;
   activeSpaceId: string | null;
+  users: ReadonlyMap<string, ProjectUser>;
 } {
   const spaces = readSpaces(doc);
+  const users = readUsers(doc);
   if (!userId) {
     // Pre-auth fallback: open every space, first one active.
     return {
       spaces,
       openTabIds: spaces.map((s) => s.id),
       activeSpaceId: spaces[0]?.id ?? null,
+      users,
     };
   }
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
   if (!userMap) {
-    // First time this user sees the project — default to "active space
-    // open + active" (decision G.2) so the workspace is never blank.
+    // First time this user sees the project — show ALL existing
+    // spaces in the tab bar so the workspace surfaces everything the
+    // user can act on. The previous `[spaces[0].id]` shape collapsed
+    // the bar to one tab and the chosen tab was unstable across
+    // Y.Map.forEach iteration order, so creating a new Space made
+    // the original Space silently disappear (Q6). The `openSpaceTab`
+    // snapshot persists this state to the perUser subtree the moment
+    // the user clicks anything.
     return {
       spaces,
-      openTabIds: spaces[0] ? [spaces[0].id] : [],
+      openTabIds: spaces.map((s) => s.id),
       activeSpaceId: spaces[0]?.id ?? null,
+      users,
     };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
@@ -375,5 +449,5 @@ function readMetaState(
   const openTabIds = openTabIdsArr ? openTabIdsArr.toArray() : [];
   const activeSpaceId = (userMap.get(ACTIVE_SPACE_ID_KEY) as string | null) ??
     (openTabIds[0] ?? spaces[0]?.id ?? null);
-  return { spaces, openTabIds, activeSpaceId };
+  return { spaces, openTabIds, activeSpaceId, users };
 }

@@ -22,7 +22,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 
-const AUTH = { Authorization: "Bearer valid-token", "Content-Type": "application/json" };
+const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 // Valid RFC 4122 v4 UUIDs (third group starts with `4`, fourth with `8/9/a/b`).
 // zod 4's `.uuid()` enforces the variant nibble.
 const PID = "11111111-1111-4111-8111-111111111111";

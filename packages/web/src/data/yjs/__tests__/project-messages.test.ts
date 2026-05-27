@@ -39,13 +39,18 @@ describe('projectMessages — Y.Array read / write helpers', () => {
     expect(out[0].context).toEqual({ nodeId: 'n-42' });
   });
 
-  it('appendProjectMessage round-trips a space-deleted entry with snapshot name', () => {
+  it('appendProjectMessage round-trips a space-deleted entry with spaceSnapshot for restore', () => {
+    // Q11 v2 — `space-deleted` keeps `spaceSnapshot` so Restore can
+    // re-hydrate the entry once the spaceId has left `meta.spaces`.
+    // The standalone `spaceName` snapshot string was removed; live
+    // entries look up `meta.spaces[spaceId].name`, deleted ones fall
+    // back to `spaceSnapshot.name` in the render layer.
     appendProjectMessage(PROJECT_ID, {
       id: 'm-2',
       kind: 'space-deleted',
       actor: 'user-1',
       spaceId: 'sp-1',
-      spaceName: 'Main canvas',
+      spaceSnapshot: { id: 'sp-1', name: 'Main canvas', type: 'canvas' },
       createdAt: 1700000001000,
     });
     const out = readProjectMessages(getDoc(docName.projectMeta(PROJECT_ID)));
@@ -53,8 +58,10 @@ describe('projectMessages — Y.Array read / write helpers', () => {
       kind: 'space-deleted',
       actor: 'user-1',
       spaceId: 'sp-1',
-      spaceName: 'Main canvas',
     });
+    expect(
+      (out[0].spaceSnapshot as Record<string, unknown> | undefined)?.name,
+    ).toBe('Main canvas');
   });
 
   it('readProjectMessages preserves insertion order', () => {

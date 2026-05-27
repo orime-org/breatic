@@ -91,28 +91,57 @@ function requireAtLeast(role: ProjectRole, min: ProjectRole): boolean {
  * be reverse-engineered into a restore later without keeping the
  * deleted entry in `meta.spaces`.
  */
+/**
+ * Q11 v2 — projectMessages stores pointers, not snapshot strings.
+ *
+ * `actor` is the caller's userId (UUID); the frontend looks up
+ * `meta.users[actor].name` at render time so a username rename
+ * propagates retroactively. Likewise `spaceId` is enough on its own
+ * — `meta.spaces[spaceId].name` gives the live name, so a Space
+ * rename is reflected in every historical message that references
+ * it. `spaceSnapshot` is preserved for `space-deleted` because the
+ * id leaves `meta.spaces` at delete time and Restore needs the
+ * original name + type to re-create the entry.
+ *
+ * The `id` field is the full Yjs entry identifier (`pm-${ts}-${full
+ * uuid}`); no slice truncation per the design discussion ("以后所有
+ * ID 不 slice"). `Math.random()` was avoided because it would break
+ * `encodeInitialMetaState`'s determinism contract — and consistency
+ * across collab + bootstrap paths is easier when both use the same
+ * id-generation shape.
+ */
 function pushProjectMessage(
   doc: Y.Doc,
   args: {
     kind: ProjectMessageKind;
-    actor?: string;
+    /** userId (UUID) — render-time lookup via meta.users for name. */
+    actor: string;
+    /** Pointer into `meta.spaces` for non-name metadata (e.g. type). */
     spaceId?: string;
+    /**
+     * Space name at event time. Frozen snapshot — rename will push
+     * its own `space-renamed` audit entry, leaving every prior entry
+     * carrying the historical name. The frontend renders this
+     * verbatim and does NOT look up the live name (Q11 v2.1).
+     */
     spaceName?: string;
+    /** Only for `space-deleted`: full Space entry for Restore re-hydration. */
     spaceSnapshot?: Record<string, unknown>;
-    message?: string;
+    message?: string; // i18n key for kinds that need extra context (e.g. `missing-node`)
   },
 ): void {
   const entry = new Y.Map<unknown>();
-  entry.set("id", `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const ts = Date.now();
+  entry.set("id", args.spaceId ? `pm-${ts}-${args.spaceId}` : `pm-${ts}`);
   entry.set("kind", args.kind);
-  if (args.actor !== undefined) entry.set("actor", args.actor);
+  entry.set("actor", args.actor);
   if (args.spaceId !== undefined) entry.set("spaceId", args.spaceId);
   if (args.spaceName !== undefined) entry.set("spaceName", args.spaceName);
   if (args.spaceSnapshot !== undefined) {
     entry.set("spaceSnapshot", args.spaceSnapshot);
   }
   if (args.message !== undefined) entry.set("message", args.message);
-  entry.set("createdAt", Date.now());
+  entry.set("createdAt", ts);
   doc.getArray("projectMessages").push([entry]);
 }
 
@@ -218,7 +247,6 @@ async function handleDelete(
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
   let snapshot: Record<string, unknown> | null = null;
-  let spaceName: string | undefined;
   try {
     let notFound = false;
     await conn.transact((doc: Y.Doc) => {
@@ -229,13 +257,13 @@ async function handleDelete(
         return;
       }
       snapshot = snapshotMap(entry);
-      spaceName = entry.get("name") as string | undefined;
+      const deletedName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
       pushProjectMessage(doc, {
         kind: "space-deleted",
         actor: caller.userId,
         spaceId,
-        spaceName,
+        spaceName: deletedName,
         spaceSnapshot: snapshot ?? undefined,
       });
     });
@@ -402,7 +430,9 @@ async function handleRestore(
         kind: "space-restored",
         actor: caller.userId,
         spaceId,
-        spaceName: snapshot.name as string | undefined,
+        spaceName: snapshot && typeof (snapshot as Record<string, unknown>).name === "string"
+          ? ((snapshot as Record<string, unknown>).name as string)
+          : undefined,
       });
     });
     if (!snapshot) {
