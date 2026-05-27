@@ -1,22 +1,19 @@
 /**
  * Fail-fast connectivity check for Collab's dependencies.
  *
- * Collab does not depend on @breatic/core, so it has its own check
+ * Collab depends on @breatic/core only for infrastructure
+ * factories (createRedisClient + production-safety defaults); the
+ * business-logic-laden `checkInfraReady` in core/infra exists for
+ * server/worker, but collab keeps its own focused boot-time check
  * implementation. Called at startup before the server begins accepting
  * connections.
  */
 
-import postgres from "postgres";
-import IoRedis from "ioredis";
-
-function fatal(label: string, err: unknown, hint: string): never {
-  const message = err instanceof Error ? err.message : String(err);
-  // eslint-disable-next-line no-console
-  console.error(`\n❌ ${label} not reachable: ${message}`);
-  // eslint-disable-next-line no-console
-  console.error(`   → ${hint}\n`);
-  process.exit(1);
-}
+import {
+  createPgClient,
+  createRedisClient,
+  InfraNotReadyError,
+} from "@breatic/core";
 
 /**
  * Verify that PostgreSQL and Redis are reachable.
@@ -32,21 +29,37 @@ export async function checkCollabInfraReady(
   streamRedisUrl: string,
 ): Promise<void> {
   // PostgreSQL: confirm server accepts queries
-  const sql = postgres(databaseUrl, { max: 1, connect_timeout: 5 });
+  // Connectivity check is single-query fail-fast at boot; override
+  // pool size to 1 and shorten `connect_timeout` so a down PG
+  // surfaces in 5s instead of waiting for the factory default.
+  const sql = createPgClient(databaseUrl, {
+    name: "collab-connectivity-check",
+    max: 1,
+    connect_timeout: 5,
+  });
   try {
     await sql`SELECT 1`;
     await sql.end();
   } catch (err) {
     await sql.end().catch(() => {});
-    fatal(
+    throw new InfraNotReadyError(
       "PostgreSQL",
-      err,
       `Check DATABASE_URL=${databaseUrl} or run: docker compose up -d postgres`,
+      err,
     );
   }
 
   // Redis (general): PING
-  const redis = new IoRedis(redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
+  // Connectivity check is a startup-only single PING with
+  // fail-fast semantics, so we override `maxRetriesPerRequest: 1`
+  // (the factory default of 3 would mask a genuinely down Redis
+  // for ~10 seconds during boot) while keeping the rest of the
+  // production defaults from `createRedisClient`.
+  const redis = createRedisClient(redisUrl, {
+    name: "collab-connectivity-check",
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
   try {
     await redis.connect();
     const pong = await redis.ping();
@@ -54,16 +67,20 @@ export async function checkCollabInfraReady(
     await redis.quit();
   } catch (err) {
     redis.disconnect();
-    fatal(
+    throw new InfraNotReadyError(
       "Redis",
-      err,
       `Check REDIS_URL=${redisUrl} or run: docker compose up -d redis`,
+      err,
     );
   }
 
   // Redis (stream DB): if different from REDIS_URL, verify it separately
   if (streamRedisUrl !== redisUrl) {
-    const streamRedis = new IoRedis(streamRedisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    const streamRedis = createRedisClient(streamRedisUrl, {
+      name: "collab-connectivity-check-stream",
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+    });
     try {
       await streamRedis.connect();
       const pong = await streamRedis.ping();
@@ -71,10 +88,10 @@ export async function checkCollabInfraReady(
       await streamRedis.quit();
     } catch (err) {
       streamRedis.disconnect();
-      fatal(
+      throw new InfraNotReadyError(
         "Redis (stream DB)",
-        err,
         `Check REDIS_STREAM_URL=${streamRedisUrl} or run: docker compose up -d redis`,
+        err,
       );
     }
   }

@@ -10,7 +10,6 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
-import { logger } from "../logger.js";
 import { MONOREPO_ROOT } from "../config/env.js";
 
 /** Root directory for agent definitions. */
@@ -83,33 +82,37 @@ export function loadAgents(): ReadonlyMap<string, AgentDefinition> {
   try {
     files = readdirSync(AGENTS_DIR).filter((f) => extname(f) === ".md");
   } catch {
-    logger.warn({ dir: AGENTS_DIR }, "Agents directory not found");
+    // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, missing
+    // agents/ directory yields an empty map silently. The
+    // application caller (`getAgent` returns undefined,
+    // `listAgents` returns []) is responsible for surfacing the
+    // absence — e.g. server boot can assert `listAgents().length
+    // > 0` and refuse to start.
     _cache = agents;
     return agents;
   }
 
   for (const file of files) {
-    try {
-      const content = readFileSync(resolve(AGENTS_DIR, file), "utf-8");
-      const [fm, body] = parseFrontmatter(content);
+    // Per CLAUDE.md mandate, parse errors throw so the application
+    // boot path catches + logs with the right context. A malformed
+    // agent definition is a deployment defect, not a runtime
+    // condition to silently shrug at.
+    const content = readFileSync(resolve(AGENTS_DIR, file), "utf-8");
+    const [fm, body] = parseFrontmatter(content);
 
-      const name = (fm.name as string) || file.replace(".md", "");
-      const definition: AgentDefinition = {
-        name,
-        description: (fm.description as string) || "",
-        tools: (fm.tools as string[]) || [],
-        model: (fm.model as string) || "anthropic/claude-sonnet-4-6",
-        skills: (fm.skills as string[]) || [],
-        systemPrompt: body,
-      };
+    const name = (fm.name as string) || file.replace(".md", "");
+    const definition: AgentDefinition = {
+      name,
+      description: (fm.description as string) || "",
+      tools: (fm.tools as string[]) || [],
+      model: (fm.model as string) || "anthropic/claude-sonnet-4-6",
+      skills: (fm.skills as string[]) || [],
+      systemPrompt: body,
+    };
 
-      agents.set(name, definition);
-    } catch (err) {
-      logger.warn({ file, err }, "Failed to parse agent definition");
-    }
+    agents.set(name, definition);
   }
 
-  logger.info({ count: agents.size, agents: [...agents.keys()] }, "Loaded agent definitions");
   _cache = agents;
   return agents;
 }

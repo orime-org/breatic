@@ -191,13 +191,13 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
     vi.clearAllMocks();
   });
 
-  it("when email not registered: returns silently — no throw, no sendMail, no Redis SET", async () => {
+  it("when email not registered: returns { status: 'unknown_email' } — no throw, no sendMail, no Redis SET (anti-enumeration via discriminated result, caller still echoes generic response)", async () => {
     mockGetUserByEmail.mockResolvedValue(null);
 
     const { forgotPassword } = await import("./auth.service.js");
     await expect(
       forgotPassword("unknown@nowhere.com", "https://app.example/reset"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ status: "unknown_email" });
 
     expect(mockSendMail).not.toHaveBeenCalled();
     expect(mockRedis.set).not.toHaveBeenCalled();

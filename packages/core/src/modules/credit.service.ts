@@ -13,7 +13,6 @@ import { env } from "../config/env.js";
 import { getRedis } from "../infra/redis.js";
 import { t } from "@breatic/shared";
 import { AppError, ValidationError } from "../errors.js";
-import { logger } from "../logger.js";
 
 /**
  * refKey format contract: ASCII alphanumerics plus a small punctuation
@@ -103,10 +102,8 @@ export async function deduct(
     });
   }
 
-  logger.info(
-    { userId, amount, tokens: options?.tokensUsed, model: options?.model, balance: newBalance, paymentEnabled: env.PAYMENT_ENABLED },
-    "credits_deducted",
-  );
+  // Caller logs `credits_deducted` audit line with the returned
+  // newBalance + the originating context (userId / model / tokens).
   return newBalance;
 }
 
@@ -136,10 +133,7 @@ export async function add(
     referenceId,
   });
 
-  logger.info(
-    { userId, amount, balance: newBalance },
-    "credits_added",
-  );
+  // Caller logs `credits_added` audit line.
   return newBalance;
 }
 
@@ -179,7 +173,7 @@ export async function deductOnce(
 
   const acquired = await redis.set(lockKey, "1", "EX", 86400, "NX");
   if (acquired !== "OK") {
-    logger.debug({ userId, refKey }, "deductOnce: already billed, skipping");
+    // Caller decides whether to debug-log the already-billed skip.
     return { deducted: false };
   }
 

@@ -61,12 +61,19 @@ export const mocks = {
     }),
     getUserByToken: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
     logout: vi.fn(),
-    forgotPassword: vi.fn().mockResolvedValue(undefined),
+    // Default discriminant matches the post-17B auth.service contract
+    // (anti-enumeration "unknown_email" branch returns no userId).
+    forgotPassword: vi.fn().mockResolvedValue({ status: "unknown_email" }),
     resetPassword: vi.fn().mockResolvedValue(undefined),
-    resetPasswordWithRecoveryCode: vi.fn(),
+    resetPasswordWithRecoveryCode: vi.fn().mockResolvedValue({
+      newRecoveryCode: "AAAA-BBBB-CCCC-DDDD",
+      userId: "user-1",
+    }),
     generateVerifyEmailToken: vi.fn(),
-    verifyEmail: vi.fn().mockResolvedValue(undefined),
-    resendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+    verifyEmail: vi.fn().mockResolvedValue({ userId: "user-1" }),
+    resendVerificationEmail: vi.fn().mockResolvedValue({
+      mailResult: { status: "skipped", reason: "backend_disabled" },
+    }),
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),

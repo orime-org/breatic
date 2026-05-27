@@ -12,7 +12,7 @@
  */
 
 // ── Database ─────────────────────────────────────────────────────
-export { db, rawPg, closeDb } from "./db/client.js";
+export { db, rawPg, closeDb, createPgClient } from "./db/client.js";
 export { runMigrations } from "./db/migrate.js";
 export * as schema from "./db/schema.js";
 
@@ -26,14 +26,29 @@ export { getPricingTiers, findTierByName, findTierByPriceId } from "./config/pri
 export { getModelForTool, getPromptForTool } from "./config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
-export { getRedis, closeRedis, getQueueRedis, closeQueueRedis, getStreamRedis, closeStreamRedis } from "./infra/redis.js";
+export {
+  getRedis,
+  closeRedis,
+  getQueueRedis,
+  closeQueueRedis,
+  getStreamRedis,
+  closeStreamRedis,
+  createRedisClient,
+} from "./infra/redis.js";
 export { checkRateLimit } from "./infra/rate-limiter.js";
+export {
+  startHealthServer,
+  type HealthCheck,
+  type HealthServerOptions,
+} from "./infra/health-server.js";
 export { checkInfraReady } from "./infra/connectivity-check.js";
+export { InfraNotReadyError } from "./infra/errors.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
 export { publishNodeEvent } from "./infra/event-stream.js";
 export { publishMembersChanged } from "./infra/control-events.js";
 export { sendMail } from "./infra/mailer.js";
+export type { SendMailResult, SendMailOptions } from "./infra/mailer.js";
 export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "./infra/request-context.js";
 export { getStripeClient, verifyWebhookSignature } from "./infra/stripe.js";

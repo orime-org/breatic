@@ -9,16 +9,22 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getStorageAdapter, storageKey } from "./infra/storage/index.js";
-import { logger } from "./logger.js";
 
 const execFileAsync = promisify(execFile);
 
 /**
  * Extract first frame from a video URL and upload as cover image.
  *
+ * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this
+ * function does NOT log failures. It returns `undefined` for any
+ * non-fatal failure path (ffmpeg missing, no output, exec error)
+ * and the application caller (worker job handler) is responsible
+ * for deciding whether to warn/audit on `undefined`.
+ *
  * @param videoUrl - Permanent video URL (OSS/S3/local)
  * @param opts - userId/projectId for storage key generation
- * @returns Cover image URL, or undefined if extraction fails
+ * @returns Cover image URL, or `undefined` if extraction fails
+ *   (caller logs the decision)
  */
 export async function extractVideoCover(
   videoUrl: string,
@@ -40,7 +46,6 @@ export async function extractVideoCover(
     );
 
     if (!stdout || stdout.length === 0) {
-      logger.warn({ videoUrl }, "ffmpeg produced no output for video cover");
       return undefined;
     }
 
@@ -52,13 +57,10 @@ export async function extractVideoCover(
     });
 
     const adapter = await getStorageAdapter();
-    const coverUrl = await adapter.upload(key, stdout, "image/jpeg");
-
-    logger.info({ videoUrl, coverUrl, size: stdout.length }, "video_cover_extracted");
-    return coverUrl;
-  } catch (err) {
-    // ffmpeg not installed or extraction failed — non-fatal
-    logger.warn({ videoUrl, err }, "Failed to extract video cover, skipping");
+    return adapter.upload(key, stdout, "image/jpeg");
+  } catch {
+    // ffmpeg not installed or extraction failed — non-fatal,
+    // returns undefined so worker handler can decide to log.
     return undefined;
   }
 }

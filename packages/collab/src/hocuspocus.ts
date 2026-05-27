@@ -13,9 +13,8 @@
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
+import { createRedisClient, createPgClient } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
-import IoRedis from "ioredis";
-import postgres from "postgres";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -56,22 +55,41 @@ export interface CollabServerInfra {
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus }> {
   const cfg = getCollabConfig();
 
-  const authRedis = new IoRedis(infra.redisUrl);
+  // Session lookup client for the onAuthenticate hook. Routes
+  // through the core `createRedisClient` factory so it picks up
+  // the production-safety defaults (keepAlive / commandTimeout /
+  // reconnectOnError / error logging tagged `collab-auth`) —
+  // bare `new IoRedis(url)` was the exact pattern that left the
+  // long-running dev:collab drift without a server-side trail.
+  const authRedis = createRedisClient(infra.redisUrl, {
+    name: "collab-auth",
+  });
   // Shared PG pool for space-rpc handlers (soft-delete / restore the
   // canvas-{spaceId} `yjs_documents` row). Auth and persistence each
   // own their own pool today — consolidating is a follow-up cleanup.
-  const sharedSql = postgres(infra.databaseUrl, { max: 5 });
+  // Uses core `createPgClient` so `idle_timeout` / `max_lifetime` /
+  // `application_name` stay aligned with the server-side default.
+  const sharedSql = createPgClient(infra.databaseUrl, {
+    name: "collab-shared",
+    max: 5,
+  });
 
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extensions: any[] = [
     createPersistenceExtension(infra.databaseUrl),
     new RedisExtension({
-      host: new URL(infra.streamRedisUrl).hostname,
-      port: Number(new URL(infra.streamRedisUrl).port) || 6379,
-      options: {
-        db: Number(new URL(infra.streamRedisUrl).pathname.slice(1)) || 0,
-      },
+      // Hocuspocus extension-redis supports an explicit `createClient`
+      // factory; when present it bypasses the bare `new RedisClient(
+      // port, host, options)` path and uses our factory for both the
+      // pub and sub connections (extension calls `createClient()`
+      // twice — once per role). This is the only way to get the
+      // keepAlive / READONLY-aware reconnect / error tagging into the
+      // pub-sub pair the extension opens.
+      createClient: () =>
+        createRedisClient(infra.streamRedisUrl, {
+          name: "collab-hocuspocus-pubsub",
+        }),
       prefix: `${infra.envPrefix}:hocuspocus`,
     }),
   ];

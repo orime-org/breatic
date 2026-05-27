@@ -6,7 +6,7 @@
  */
 
 import { Database } from "@hocuspocus/extension-database";
-import postgres from "postgres";
+import { createPgClient } from "@breatic/core";
 
 /**
  * Create a Database extension for Hocuspocus using PostgreSQL.
@@ -17,7 +17,10 @@ import postgres from "postgres";
  * @returns Configured Database extension
  */
 export function createPersistenceExtension(databaseUrl: string): Database {
-  const sql = postgres(databaseUrl, { max: 5 });
+  const sql = createPgClient(databaseUrl, {
+    name: "collab-persistence",
+    max: 5,
+  });
 
   return new Database({
     fetch: async ({ documentName }) => {

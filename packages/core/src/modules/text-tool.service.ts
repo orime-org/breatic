@@ -14,14 +14,13 @@ import { getModelForTool, getPromptForTool } from "../config/text-tools.js";
 import { env } from "../config/env.js";
 import * as creditService from "./credit.service.js";
 import { getRedis } from "../infra/redis.js";
-import { logger } from "../logger.js";
 
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =
   | { type: "text_delta"; text: string }
   | { type: "done"; tokens: number; creditsUsed: number }
   | { type: "aborted"; tokens: number; creditsUsed: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; err: unknown };
 
 const LOCK_TTL_SECONDS = 120;
 
@@ -119,7 +118,11 @@ export async function* executeTextTool(
   // Concurrency lock
   const locked = await acquireLock(userId);
   if (!locked) {
-    yield { type: "error", message: t("server.text_tool.already_running") };
+    yield {
+      type: "error",
+      message: t("server.text_tool.already_running"),
+      err: new Error("acquireLock returned false (already_running)"),
+    };
     return;
   }
 
@@ -159,11 +162,8 @@ export async function* executeTextTool(
     } else {
       yield { type: "done", tokens: totalTokens, creditsUsed };
     }
-
-    logger.info(
-      { userId, tool, model: modelString, tokens: totalTokens, creditsUsed, aborted: signal.aborted },
-      "Text tool completed",
-    );
+    // Caller (server SSE route) logs `text_tool_completed` audit
+    // line from the consumed `done` / `aborted` event.
   } catch (err) {
     // Deduct for consumed tokens even on error. Uses the same
     // idempotencyKey as the success path so the catch branch can't
@@ -174,8 +174,9 @@ export async function* executeTextTool(
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
     } else {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error({ err, userId, tool }, "Text tool error");
-      yield { type: "error", message };
+      // Embed the raw error on the event so the application caller
+      // (server SSE route) can log it with full request context.
+      yield { type: "error", message, err };
     }
   } finally {
     await releaseLock(userId);
@@ -214,9 +215,11 @@ async function deductForTokens(
     );
     return credits;
   } catch {
-    // Don't fail the response if credit deduction fails (e.g. insufficient credits)
-    // The text was already generated — deduct what we can
-    logger.warn({ userId, tokens, credits }, "Credit deduction failed for text tool");
+    // Don't fail the response if credit deduction fails (e.g.
+    // insufficient credits). The text was already generated.
+    // Returning 0 signals "billed nothing" to the application
+    // caller, which can decide to emit a warn audit log if the
+    // observed `creditsUsed === 0 && tokens > 0` invariant holds.
     return 0;
   }
 }

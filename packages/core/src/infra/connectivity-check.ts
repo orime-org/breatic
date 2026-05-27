@@ -2,8 +2,10 @@
  * Fail-fast connectivity check for infrastructure dependencies.
  *
  * Called at service startup (API/Worker) before any business logic.
- * If PostgreSQL or Redis is unreachable, prints a clear error message
- * and exits the process with code 1.
+ * Per CLAUDE.md "进程生命周期" mandate: library code doesn't decide
+ * when the process dies. If a dependency probe fails this throws
+ * `InfraNotReadyError` and the application entry's top-level
+ * catch logs + exits.
  *
  * This is intentionally called at startup — it cannot be bypassed
  * by running the service from a non-standard entry point (e.g. via
@@ -14,29 +16,24 @@ import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { getRedis } from "./redis.js";
 import { env } from "../config/env.js";
-
-/** Print a clear error message and exit with code 1. */
-function fatal(label: string, err: unknown, hint: string): never {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`\n❌ ${label} not reachable: ${message}`);
-  console.error(`   → ${hint}\n`);
-  process.exit(1);
-}
+import { InfraNotReadyError } from "./errors.js";
 
 /**
  * Check that PostgreSQL and Redis are reachable.
  *
- * @throws Exits process with code 1 if either check fails.
+ * @throws {InfraNotReadyError} If either check fails. The
+ *   application entry catches, logs `{ component, hint, cause }`,
+ *   and calls `process.exit(1)`.
  */
 export async function checkInfraReady(): Promise<void> {
   // PostgreSQL: run a trivial query to confirm the server accepts connections
   try {
     await db.execute(sql`SELECT 1`);
   } catch (err) {
-    fatal(
+    throw new InfraNotReadyError(
       "PostgreSQL",
-      err,
       `Check DATABASE_URL=${env.DATABASE_URL} or run: docker compose up -d postgres`,
+      err,
     );
   }
 
@@ -48,10 +45,10 @@ export async function checkInfraReady(): Promise<void> {
       throw new Error(`unexpected PING response: ${pong}`);
     }
   } catch (err) {
-    fatal(
+    throw new InfraNotReadyError(
       "Redis",
-      err,
       `Check REDIS_URL=${env.REDIS_URL} or run: docker compose up -d redis`,
+      err,
     );
   }
 }

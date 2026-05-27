@@ -33,7 +33,6 @@
  *     untouched.
  */
 
-import { logger } from "../logger.js";
 import { getStreamRedis } from "./redis.js";
 import {
   membersChangedChannel,
@@ -62,8 +61,4 @@ export async function publishMembersChanged(
   };
   const redis = getStreamRedis();
   await redis.publish(membersChangedChannel(projectId), JSON.stringify(event));
-  logger.debug(
-    { projectId, action: detail.action, affectedUserId: detail.affectedUserId },
-    "members_changed_published",
-  );
 }

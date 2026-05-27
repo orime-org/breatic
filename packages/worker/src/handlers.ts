@@ -333,14 +333,25 @@ async function runTaskBody(
     return { failed: true, reason: "persist_failed" };
   }
 
-  // Extract video cover per output (best-effort, failure is non-fatal)
+  // Extract video cover per output (best-effort, failure is non-fatal).
+  // The core library's `extractVideoCover` now returns `undefined` on
+  // ffmpeg failure (no logging in library) per CLAUDE.md "core 和
+  // shared 不写任何日志" mandate; the worker (application boundary)
+  // decides whether to warn.
   if (taskType === "video") {
     const { extractVideoCover } = await import("@breatic/core");
     for (const out of persistedOutputs) {
       if (typeof out.url === "string" && !out.cover_url) {
         try {
           const coverUrl = await extractVideoCover(out.url, { userId, projectId });
-          if (coverUrl) out.cover_url = coverUrl;
+          if (coverUrl) {
+            out.cover_url = coverUrl;
+          } else {
+            logger.warn(
+              { taskId, videoUrl: out.url },
+              "video_cover_extraction_returned_empty_non_fatal",
+            );
+          }
         } catch (err) {
           logger.warn({ taskId, err }, "video_cover_extraction_failed_non_fatal");
         }

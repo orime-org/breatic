@@ -29,6 +29,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
   it("returns 200 + newRecoveryCode on valid input", async () => {
     mocks.authService.resetPasswordWithRecoveryCode.mockResolvedValue({
       newRecoveryCode: "WXYZ-ABCD-EFGH-JKLM",
+      userId: "user-1",
     });
 
     const app = createApp();

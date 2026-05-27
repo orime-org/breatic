@@ -13,6 +13,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hocuspocus/extension-database": "^3.4.4",
     "@hocuspocus/extension-redis": "^3.4.4",

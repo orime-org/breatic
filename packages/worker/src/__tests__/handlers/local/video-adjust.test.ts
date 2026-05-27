@@ -84,6 +84,12 @@ describe("video/adjust", () => {
       expect(storage.listUploaded()).toHaveLength(1);
       writeFileSync(outPath, storage.listUploaded()[0]!.buffer);
       const dur = await probeDuration(outPath);
+      // Source clip is ~1s; tight "same-duration" tolerance now
+      // that worker package runs single-fork (see
+      // packages/worker/vitest.config.ts `poolOptions.forks.singleFork:
+      // true`) — ffmpeg invocations no longer race each other inside
+      // the package, so this asserts the actual same-duration
+      // invariant rather than just "not doubled".
       expect(dur).toBeGreaterThan(0.8);
       expect(dur).toBeLessThan(1.3);
     } finally {

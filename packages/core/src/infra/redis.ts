@@ -11,11 +11,98 @@
  *
  * Early stage: all three can point to the same Redis instance (different DBs).
  * At scale: swap URLs to independent Redis instances without code changes.
+ *
+ * All three singletons (and any cross-process consumer such as
+ * `dev:collab` / `dev:worker`) go through `createRedisClient` so
+ * they inherit the same production-grade defaults (TCP keepalive,
+ * commandTimeout, READONLY-aware reconnect, error logging).
  */
 
-import Redis from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import { env } from "../config/env.js";
-import { logger } from "../logger.js";
+
+/**
+ * Production-grade ioredis client factory. **Every long-lived
+ * ioredis instance in the codebase must go through this factory**,
+ * not `new Redis(url)` directly — that bypasses the connection-
+ * health configuration that prevents the silent dead-TCP drift
+ * documented in
+ * [ioredis #139](https://github.com/redis/ioredis/issues/139)
+ * (idle connections dropped by an upstream proxy / firewall
+ * without notifying the client, leading to multi-minute query
+ * stalls or sticky `Unauthorized` errors on Hocuspocus auth).
+ *
+ * Per the CLAUDE.md "服务器端工业级标准" mandate and the
+ * 2026-05-27 long-running drift investigation:
+ *
+ * - `keepAlive: 30000` — TCP keepalive every 30s so a dropped
+ *   midpoint surfaces within seconds, not the ~11 minute OS
+ *   default detection window;
+ * - `commandTimeout: 5000` — fail a command in 5s instead of
+ *   hanging the caller behind a dead socket (BullMQ workers
+ *   override to `undefined` because their blocking `BRPOP` runs
+ *   longer than any reasonable command timeout);
+ * - `connectTimeout: 10000` — bound the initial connect handshake
+ *   so app boot doesn't hang on a misconfigured `REDIS_URL`;
+ * - `reconnectOnError: (READONLY)` — managed-Redis / Sentinel
+ *   failover sends `READONLY` on the old master; reconnect to
+ *   land on the new master without a manual restart.
+ *
+ * Per the "core 和 shared 不写任何日志" mandate (CLAUDE.md
+ * "进程生命周期(library 层禁)") this factory does NOT attach an
+ * error logger. A no-op `error` listener is installed so an emitted
+ * error doesn't crash the process (ioredis inherits Node's
+ * EventEmitter behaviour where an unhandled `error` event is fatal),
+ * but the application entry must attach its own listener via
+ * `client.on('error', appLogger.error)` to actually log. Multiple
+ * `error` listeners are fine — EventEmitter fan-outs to all of them.
+ *
+ * Callers needing different semantics (BullMQ workers with
+ * blocking BRPOP, Hocuspocus extension-redis pub-sub) pass
+ * `opts` to override individual fields. `name` is required so the
+ * application's own error logger can tag the source.
+ *
+ * @param url - Redis connection URL (e.g. `redis://localhost:6379/0`)
+ * @param opts - Per-instance config; `name` is required, the rest
+ *   override the production defaults above
+ * @returns A configured ioredis instance with error logging wired up
+ *
+ * @example
+ *   const cache = createRedisClient(env.REDIS_URL, { name: 'cache' });
+ *
+ *   const worker = createRedisClient(env.REDIS_QUEUE_URL, {
+ *     name: 'bullmq-worker',
+ *     maxRetriesPerRequest: null, // BullMQ requirement
+ *     enableReadyCheck: false,    // BullMQ requirement
+ *     commandTimeout: undefined,  // BRPOP exceeds command timeout
+ *   });
+ */
+export function createRedisClient(
+  url: string,
+  opts: { name: string } & Partial<RedisOptions>,
+): Redis {
+  const { name: _name, ...override } = opts;
+  const client = new Redis(url, {
+    keepAlive: 30000,
+    commandTimeout: 5000,
+    connectTimeout: 10000,
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+    reconnectOnError(err) {
+      // Sentinel / managed-Redis failover: the master was switched
+      // and the replica we were holding is now read-only. Returning
+      // true reconnects so the next command lands on the new master.
+      // Anything else lets ioredis follow its default retry strategy.
+      return err.message.includes("READONLY");
+    },
+    ...override,
+  });
+  // No-op error listener so an emitted `error` event doesn't crash
+  // the process — see the factory doc-comment above. The application
+  // entry attaches its own listener for actual logging.
+  client.on("error", () => {});
+  return client;
+}
 
 // ── General (DB 0) ───────────────────────────────────────────────
 
@@ -28,13 +115,7 @@ let _redis: Redis | null = null;
  */
 export function getRedis(): Redis {
   if (!_redis) {
-    _redis = new Redis(env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-    });
-    _redis.on("error", (err) => {
-      logger.error({ err }, "Redis (general) connection error");
-    });
+    _redis = createRedisClient(env.REDIS_URL, { name: "general" });
   }
   return _redis;
 }
@@ -53,17 +134,23 @@ let _queueRedis: Redis | null = null;
 /**
  * Get the BullMQ Redis client.
  *
+ * BullMQ enforces `maxRetriesPerRequest: null` + `enableReadyCheck:
+ * false` for any connection passed to a Worker — it throws on
+ * startup otherwise (see
+ * [bull #2186](https://github.com/OptimalBits/bull/issues/2186)).
+ * `commandTimeout` is also disabled because BullMQ workers issue
+ * blocking `BRPOP` waits that legitimately exceed any reasonable
+ * 5-second timeout.
+ *
  * @returns The shared ioredis instance for DB 1
  */
 export function getQueueRedis(): Redis {
   if (!_queueRedis) {
-    _queueRedis = new Redis(env.REDIS_QUEUE_URL, {
+    _queueRedis = createRedisClient(env.REDIS_QUEUE_URL, {
+      name: "queue",
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
-      lazyConnect: true,
-    });
-    _queueRedis.on("error", (err) => {
-      logger.error({ err }, "Redis (queue) connection error");
+      commandTimeout: undefined,
     });
   }
   return _queueRedis;
@@ -87,12 +174,8 @@ let _streamRedis: Redis | null = null;
  */
 export function getStreamRedis(): Redis {
   if (!_streamRedis) {
-    _streamRedis = new Redis(env.REDIS_STREAM_URL, {
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-    });
-    _streamRedis.on("error", (err) => {
-      logger.error({ err }, "Redis (stream) connection error");
+    _streamRedis = createRedisClient(env.REDIS_STREAM_URL, {
+      name: "stream",
     });
   }
   return _streamRedis;

@@ -1,15 +1,23 @@
 /**
- * Mailer EMAIL_BACKEND 3-state contract — invariant test (PR-a task 4).
+ * Mailer EMAIL_BACKEND 3-state contract — invariant test.
  *
- * Asserts that `env.EMAIL_BACKEND` routes `sendMail` to one of three paths:
+ * Asserts that `env.EMAIL_BACKEND` routes `sendMail` to one of three paths
+ * and returns the matching {@link SendMailResult} discriminant:
  *
- *   disabled : no email sent, returns false silently
- *   console  : email content logged to logger.info, returns true
- *   smtp     : nodemailer dispatched, returns true; falls back to false +
- *              warn when SMTP_HOST/USER not configured (legacy preserved)
+ *   disabled : `{ status: 'skipped', reason: 'backend_disabled' }`
+ *              + nodemailer never invoked
+ *   console  : `{ status: 'backend_console', to, subject, html }`
+ *              + nodemailer never invoked (application caller decides to
+ *              dev-log the html dump)
+ *   smtp     : `{ status: 'sent' }` when SMTP_HOST/USER set + nodemailer
+ *              dispatched
+ *   smtp (unconfigured): `{ status: 'skipped', reason: 'smtp_not_configured' }`
+ *              + nodemailer never invoked (legacy fallback preserved as
+ *              a result discriminant rather than a logger.warn line)
  *
- * Implementation lands in PR-a task 4 (amend mailer.ts to switch on
- * env.EMAIL_BACKEND). This test is RED until that change.
+ * Per CLAUDE.md "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+ * `feat/2026-05-27-collab-infra-resilience`), the library no longer
+ * calls `logger.*` — the application caller logs based on the result.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -32,24 +40,17 @@ vi.mock("../config/env.js", () => ({
   get env() { return mockEnv; },
 }));
 
-const mockLoggerInfo = vi.fn();
-const mockLoggerWarn = vi.fn();
-vi.mock("../logger.js", () => ({
-  logger: { info: mockLoggerInfo, warn: mockLoggerWarn, error: vi.fn() },
-}));
-
 describe("mailer — EMAIL_BACKEND 3-state contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
-    // Reset env to defaults each test
     mockEnv.EMAIL_BACKEND = "disabled";
     mockEnv.SMTP_HOST = "";
     mockEnv.SMTP_USER = "";
     mockEnv.SMTP_PASSWORD = "";
   });
 
-  it("EMAIL_BACKEND=disabled — returns false, nodemailer never invoked", async () => {
+  it("EMAIL_BACKEND=disabled — returns skipped/backend_disabled, nodemailer never invoked", async () => {
     mockEnv.EMAIL_BACKEND = "disabled";
 
     const { sendMail } = await import("./mailer.js");
@@ -59,11 +60,11 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
       html: "<p>click <a href='https://x/verify?t=abc'>here</a></p>",
     });
 
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: "skipped", reason: "backend_disabled" });
     expect(mockSendMail).not.toHaveBeenCalled();
   });
 
-  it("EMAIL_BACKEND=console — content logged to logger.info, returns true, nodemailer never invoked", async () => {
+  it("EMAIL_BACKEND=console — returns backend_console with content, nodemailer never invoked", async () => {
     mockEnv.EMAIL_BACKEND = "console";
 
     const { sendMail } = await import("./mailer.js");
@@ -73,18 +74,16 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
       html: "<a href='https://x/reset?token=xyz'>reset</a>",
     });
 
-    expect(result).toBe(true);
-    expect(mockLoggerInfo).toHaveBeenCalled();
-    const logCall = mockLoggerInfo.mock.calls[0];
-    expect(logCall).toBeDefined();
-    // Logger gets ({ to, subject, html } payload, message) — payload must contain to + subject
-    const [payload] = logCall as [Record<string, unknown>, string];
-    expect(payload.to).toBe("user@example.com");
-    expect(payload.subject).toBe("Reset link");
+    expect(result).toEqual({
+      status: "backend_console",
+      to: "user@example.com",
+      subject: "Reset link",
+      html: "<a href='https://x/reset?token=xyz'>reset</a>",
+    });
     expect(mockSendMail).not.toHaveBeenCalled();
   });
 
-  it("EMAIL_BACKEND=smtp + SMTP_HOST/USER set — dispatches via nodemailer, returns true", async () => {
+  it("EMAIL_BACKEND=smtp + SMTP_HOST/USER set — returns sent, nodemailer dispatched", async () => {
     mockEnv.EMAIL_BACKEND = "smtp";
     mockEnv.SMTP_HOST = "smtp.test.com";
     mockEnv.SMTP_USER = "smtp-user";
@@ -97,14 +96,14 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
       html: "<p>v</p>",
     });
 
-    expect(result).toBe(true);
+    expect(result).toEqual({ status: "sent" });
     expect(mockSendMail).toHaveBeenCalledOnce();
     const [opts] = mockSendMail.mock.calls[0] as [{ to: string; subject: string }];
     expect(opts.to).toBe("user@example.com");
     expect(opts.subject).toBe("Verify");
   });
 
-  it("EMAIL_BACKEND=smtp but SMTP_HOST unset — warns + returns false (legacy fallback preserved)", async () => {
+  it("EMAIL_BACKEND=smtp but SMTP_HOST unset — returns skipped/smtp_not_configured (caller decides log)", async () => {
     mockEnv.EMAIL_BACKEND = "smtp";
     mockEnv.SMTP_HOST = "";
 
@@ -115,8 +114,12 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
       html: "<p>v</p>",
     });
 
-    expect(result).toBe(false);
-    expect(mockLoggerWarn).toHaveBeenCalled();
+    expect(result).toEqual({
+      status: "skipped",
+      reason: "smtp_not_configured",
+      to: "user@example.com",
+      subject: "Verify",
+    });
     expect(mockSendMail).not.toHaveBeenCalled();
   });
 });

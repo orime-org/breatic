@@ -42,7 +42,7 @@ packages/
 config/ agents/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 ```
 
-**包依赖方向:** `shared(零依赖) ← core, collab(独立进程,只依赖 shared) ← server / worker / web`。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。
+**包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共用 infra + 业务) ← server / worker / collab`;前端 `web ← shared` 不依赖 core/server。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为**只依赖 core infrastructure**(`createRedisClient` / 日志 / 配置)— 业务服务(`projectAuthService` 等)仍不引入,collab 部署独立性不变,但 production-safety 配置不再 raw 实例化漂离。
 
 **Package exports:** shared/core 导出 `./dist/index.js`(行业标准),本地和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`(向上查找 `pnpm-workspace.yaml`)。
 
@@ -141,7 +141,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 |---|---|---|
 | API | `logs/api/` | 默认 `initLogger("api")` |
 | Worker | `logs/worker/` | 入口显式 `initLogger("worker")` |
-| Collab | `logs/collab/` | 独立 logger(不依赖 core) |
+| Collab | `logs/collab/` | 独立 logger(collab 复用 core 的 Redis/PG factory + 配置,但保留自己的 pino 实例以独立 logs 目录) |
 | Nginx | `logs/nginx/` | logrotate,30 天保留 |
 
 每条日志双时间戳:`timestamp`(ISO 8601)+ `time`(epoch ms)。

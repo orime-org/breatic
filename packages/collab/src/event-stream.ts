@@ -17,7 +17,7 @@
  * Streams read loop, last-id persistence, and retry semantics.
  */
 
-import Redis from "ioredis";
+import { createRedisClient } from "@breatic/core";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("event-stream");
@@ -51,7 +51,15 @@ export function startStreamConsumer<T>(opts: {
   handle: (event: T) => Promise<void>;
 }): () => Promise<void> {
   const { redisUrl, streamKey, lastIdKey, parse, handle } = opts;
-  const redis = new Redis(redisUrl);
+  // Stream consumer holds a blocking XREAD BLOCK across the
+  // event loop, so we override `commandTimeout` to undefined per
+  // the BullMQ pattern (the 5s default would kill long polls).
+  // The remaining production-safety knobs (keepAlive / READONLY
+  // reconnect / error log tagging) flow from the core factory.
+  const redis = createRedisClient(redisUrl, {
+    name: "collab-event-stream",
+    commandTimeout: undefined,
+  });
 
   let stopped = false;
 

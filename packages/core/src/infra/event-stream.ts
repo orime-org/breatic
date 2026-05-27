@@ -23,7 +23,6 @@
 import type Redis from "ioredis";
 import type { NodeEvent } from "@breatic/shared";
 import { env } from "../config/env.js";
-import { logger } from "../logger.js";
 
 /** Stream key for task lifecycle events. */
 export function taskEventsStreamKey(): string {
@@ -63,7 +62,7 @@ export async function publishToStream(
   streamKey: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const id = await redis.xadd(
+  await redis.xadd(
     streamKey,
     "MAXLEN",
     "~",
@@ -72,7 +71,6 @@ export async function publishToStream(
     "payload",
     JSON.stringify(payload, jsonReplacerPreserveUndefined),
   );
-  logger.debug({ streamKey, id }, "stream_event_published");
 }
 
 /**

@@ -29,7 +29,7 @@ describe("POST /auth/verify-email", () => {
   });
 
   it("returns 200 on valid token", async () => {
-    mocks.authService.verifyEmail.mockResolvedValue(undefined);
+    mocks.authService.verifyEmail.mockResolvedValue({ userId: "user-1" });
 
     const app = createApp();
     const res = await app.request("/api/v1/auth/verify-email", {
@@ -87,7 +87,9 @@ describe("POST /auth/resend-verification-email", () => {
       email: "u@x.com",
       username: "u",
     });
-    mocks.authService.resendVerificationEmail.mockResolvedValue(undefined);
+    mocks.authService.resendVerificationEmail.mockResolvedValue({
+      mailResult: { status: "skipped", reason: "backend_disabled" },
+    });
 
     const app = createApp();
     const res = await app.request("/api/v1/auth/resend-verification-email", {

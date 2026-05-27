@@ -9,7 +9,6 @@
 
 import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
-import { logger } from "../../logger.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -121,7 +120,5 @@ export function storageKey(opts: {
  */
 export async function downloadAndStore(url: string, key: string): Promise<string> {
   const adapter = await getStorageAdapter();
-  const permanentUrl = await adapter.persistFromUrl(url, key);
-  logger.info({ source: url, key, permanentUrl }, "Persisted AIGC result");
-  return permanentUrl;
+  return adapter.persistFromUrl(url, key);
 }
