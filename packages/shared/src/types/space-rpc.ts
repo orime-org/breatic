@@ -215,13 +215,24 @@ export const ProjectMessageEntrySchema = z.object({
    */
   actor: z.string().optional(),
   /**
-   * Q11 v2 — pointer into `meta.spaces`. Frontend renders the
-   * Space's current name via `meta.spaces[spaceId].name` so a
-   * rename retroactively reflects. For `space-deleted` entries the
-   * id has left `meta.spaces` — the snapshot below carries the
-   * original name + type so Restore can re-hydrate the entry.
+   * Q11 v2.1 — pointer into `meta.spaces` for ownership/lookup of
+   * non-name metadata (e.g. type for kind icons). The Space's
+   * displayed NAME, however, is captured as a snapshot below
+   * (`spaceName`) so each entry records the name at the moment the
+   * event happened — rename is its own audit event(future
+   * `space-renamed` kind), the existing entries stay frozen as
+   * historical truth. Live-lookup of name was tried in v2 but
+   * conflicts with the "events log" semantics.
    */
   spaceId: z.string().optional(),
+  /**
+   * Snapshot of Space name at event time. For `space-deleted` the
+   * spaceId has left `meta.spaces` so this is the only place left
+   * to read from; for active kinds (`space-created` / `-locked` /
+   * `-unlocked` / `-restored` / future `-renamed`) it records the
+   * name as it was when the event fired, immune to later renames.
+   */
+  spaceName: z.string().optional(),
   spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),

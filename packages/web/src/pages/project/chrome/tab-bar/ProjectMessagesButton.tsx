@@ -216,7 +216,16 @@ export function ProjectMessagesButton({
             <SheetDescription className='text-[12px] text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
             </SheetDescription>
-            {isOwner && messages.length > 0 ? (
+            {/*
+              Clear-all button hidden 2026-05-27 per Q11 v2.1 design
+              discussion — projectMessages is the audit / events log
+              (rename / lock / delete / restore all push entries).
+              Letting the owner wipe it loses provenance the very
+              moment we lean on it as the source of truth. Re-enable
+              once a "soft clear" / archive workflow + retention
+              policy is wired up.
+            */}
+            {false && isOwner && messages.length > 0 ? (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <button
@@ -271,22 +280,25 @@ export function ProjectMessagesButton({
               const rel = relativeTime(m.createdAt);
               const canRestore =
                 isOwner && m.kind === 'space-deleted' && Boolean(m.spaceId);
-              // Q11 v2 lookup chain — render uses live Yjs maps so a
-              // username / Space rename retroactively propagates. For
-              // `space-deleted` entries the spaceId has already left
-              // `meta.spaces`, so we fall back to the snapshot kept on
-              // the message itself; finally an em-dash for the
-              // truly-orphaned case (deleted Space + cleared snapshot).
+              // Q11 v2.1 lookup chain:
+              //   - actor name: live lookup `meta.users[actor]` so a
+              //     username rename retroactively propagates (user
+              //     identity is stable, rename is rare + not an audit
+              //     event).
+              //   - space name: SNAPSHOT first — `m.spaceName` was
+              //     captured at event time and stays frozen. The Space
+              //     rename will push its own `space-renamed` audit
+              //     entry once that kind is wired up; until then the
+              //     historical name is the right thing to render.
+              //     Snapshot missing (legacy `missing-node` entry with
+              //     no spaceId) falls through to em-dash.
               const actorName =
                 (m.actor ? usersById.get(m.actor)?.name : undefined) ?? m.actor ?? '';
-              const liveSpaceName = m.spaceId
-                ? spacesById.get(m.spaceId)?.name
-                : undefined;
               const snapshotName =
                 typeof m.spaceSnapshot?.name === 'string'
                   ? (m.spaceSnapshot.name as string)
                   : undefined;
-              const spaceName = liveSpaceName ?? snapshotName ?? '—';
+              const spaceName = m.spaceName ?? snapshotName ?? '—';
               return (
                 <li
                   key={m.id}
@@ -319,7 +331,7 @@ export function ProjectMessagesButton({
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
-                      {liveSpaceName ? ` · ${liveSpaceName}` : ''}
+                      {m.spaceName ? ` · ${m.spaceName}` : ''}
                     </p>
                   </div>
                   {canRestore ? (

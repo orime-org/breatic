@@ -114,9 +114,19 @@ function pushProjectMessage(
   doc: Y.Doc,
   args: {
     kind: ProjectMessageKind;
-    actor: string; // userId (UUID) — render-time lookup via meta.users
-    spaceId?: string; // render-time lookup via meta.spaces
-    spaceSnapshot?: Record<string, unknown>; // only for `space-deleted` (id leaves meta.spaces)
+    /** userId (UUID) — render-time lookup via meta.users for name. */
+    actor: string;
+    /** Pointer into `meta.spaces` for non-name metadata (e.g. type). */
+    spaceId?: string;
+    /**
+     * Space name at event time. Frozen snapshot — rename will push
+     * its own `space-renamed` audit entry, leaving every prior entry
+     * carrying the historical name. The frontend renders this
+     * verbatim and does NOT look up the live name (Q11 v2.1).
+     */
+    spaceName?: string;
+    /** Only for `space-deleted`: full Space entry for Restore re-hydration. */
+    spaceSnapshot?: Record<string, unknown>;
     message?: string; // i18n key for kinds that need extra context (e.g. `missing-node`)
   },
 ): void {
@@ -126,6 +136,7 @@ function pushProjectMessage(
   entry.set("kind", args.kind);
   entry.set("actor", args.actor);
   if (args.spaceId !== undefined) entry.set("spaceId", args.spaceId);
+  if (args.spaceName !== undefined) entry.set("spaceName", args.spaceName);
   if (args.spaceSnapshot !== undefined) {
     entry.set("spaceSnapshot", args.spaceSnapshot);
   }
@@ -209,6 +220,7 @@ async function handleCreate(
         kind: "space-created",
         actor: caller.userId,
         spaceId,
+        spaceName: name,
       });
     });
     if (conflict) {
@@ -245,11 +257,13 @@ async function handleDelete(
         return;
       }
       snapshot = snapshotMap(entry);
+      const deletedName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
       pushProjectMessage(doc, {
         kind: "space-deleted",
         actor: caller.userId,
         spaceId,
+        spaceName: deletedName,
         spaceSnapshot: snapshot ?? undefined,
       });
     });
@@ -295,6 +309,7 @@ async function handleLock(
         kind: locked ? "space-locked" : "space-unlocked",
         actor: caller.userId,
         spaceId,
+        spaceName: entry.get("name") as string | undefined,
       });
     });
     if (notFound) {
@@ -415,6 +430,9 @@ async function handleRestore(
         kind: "space-restored",
         actor: caller.userId,
         spaceId,
+        spaceName: snapshot && typeof (snapshot as Record<string, unknown>).name === "string"
+          ? ((snapshot as Record<string, unknown>).name as string)
+          : undefined,
       });
     });
     if (!snapshot) {

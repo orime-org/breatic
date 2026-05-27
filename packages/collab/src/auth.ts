@@ -28,6 +28,7 @@
  * `projectAuthService.loadProjectRole` from core.
  */
 
+import type { Hocuspocus } from "@hocuspocus/server";
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
 import postgres from "postgres";
@@ -283,7 +284,7 @@ export function createAuthHook({
  * 2026-05-23-yjs-collab-only-write-authz) lets them through.
  */
 export async function ensureUserInMetaDoc(
-  hocuspocus: import("@hocuspocus/server").Hocuspocus,
+  hocuspocus: Hocuspocus,
   projectId: string,
   user: { id: string; name: string; avatarUrl: string | null },
 ): Promise<void> {

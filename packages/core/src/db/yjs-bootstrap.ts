@@ -91,20 +91,25 @@ export function encodeInitialMetaState(
   entry.set("createdBy", createdBy);
   spaces.set(spaceId, entry);
 
-  // Q11 v2 — bootstrap path seeds the first `projectMessages` entry
-  // consistent with `collab/space-rpc.handleCreate`. Stores POINTERS
-  // only (`actor=userId`, `spaceId`) — the frontend looks up live
-  // display name from `meta.users[actor].name` + `meta.spaces[
-  // spaceId].name` at render time so any rename propagates
-  // retroactively. The `id` field is the full `pm-${ts}-${spaceId}`
-  // with no slice truncation (design: "以后所有 ID 不 slice");
-  // determinism is preserved because every input is deterministic.
+  // Q11 v2.1 — bootstrap path seeds the first `projectMessages` entry
+  // consistent with `collab/space-rpc.handleCreate`. Field convention:
+  //   - `actor`     = userId (UUID) — frontend renders display name
+  //                   via live lookup against `meta.users[actor].name`
+  //                   so a username rename retroactively reflects.
+  //   - `spaceName` = SNAPSHOT of name at event time. Rename is a
+  //                   separate audit event (future `space-renamed`
+  //                   kind), every prior entry stays frozen as
+  //                   historical truth. Frontend renders verbatim,
+  //                   does NOT look up the live Space name.
+  //   - `id`        = full `pm-${ts}-${spaceId}` (no slice truncation)
+  //                   — deterministic because every input is too.
   const projectMessages = doc.getArray("projectMessages");
   const msg = new Y.Map<unknown>();
   msg.set("id", `pm-${ts}-${spaceId}`);
   msg.set("kind", "space-created");
   msg.set("actor", actor);
   msg.set("spaceId", spaceId);
+  msg.set("spaceName", name);
   msg.set("createdAt", ts);
   projectMessages.push([msg]);
 

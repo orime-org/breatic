@@ -137,15 +137,12 @@ describe("handleSpaceRpc — happy paths", () => {
     const m = messages.get(0) as Y.Map<unknown>;
     expect(m.get("kind")).toBe("space-created");
     expect(m.get("spaceId")).toBe(SID);
-    // Q11 v2 invariant: actor is the caller's userId (UUID); the
-    // frontend looks up `meta.users[actor].name` at render time so
-    // username rename propagates retroactively. No more snapshot
-    // strings on every message.
+    // Q11 v2.1: actor is the caller's userId (UUID) for live
+    // username lookup; spaceName is captured as SNAPSHOT at event
+    // time and frozen — rename will push a `space-renamed` audit
+    // entry rather than mutating history.
     expect(m.get("actor")).toBe("u-1");
-    // The legacy `spaceName` snapshot was removed in Q11 v2 — the
-    // frontend reads `meta.spaces[spaceId].name` instead so a Space
-    // rename reflects in every historical message immediately.
-    expect(m.get("spaceName")).toBeUndefined();
+    expect(m.get("spaceName")).toBe("Main");
   });
 
   it("space:create returns CONFLICT when spaceId already exists", async () => {
@@ -187,12 +184,10 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
     const m = fakeMetaDoc.doc.getArray("projectMessages").get(0) as Y.Map<unknown>;
     expect(m.get("kind")).toBe("space-deleted");
-    // `spaceName` snapshot field removed in Q11 v2;
-    // `spaceSnapshot` is kept because the spaceId leaves meta.spaces
-    // at delete time and Restore re-hydrates the entry from this
-    // snapshot. The frontend reads spaceSnapshot.name for deleted
-    // entries (falls back gracefully when meta.spaces lookup misses).
-    expect(m.get("spaceName")).toBeUndefined();
+    // Q11 v2.1: spaceName snapshot is the rendered display value
+    // (frozen at delete time); spaceSnapshot is the FULL entry kept
+    // around so a future Restore can re-hydrate the Space.
+    expect(m.get("spaceName")).toBe("Main");
     expect(m.get("spaceSnapshot")).toMatchObject({
       id: SID,
       type: "canvas",

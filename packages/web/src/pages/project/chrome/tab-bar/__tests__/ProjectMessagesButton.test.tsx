@@ -113,43 +113,24 @@ describe('ProjectMessagesButton', () => {
     ).toBeNull();
   });
 
-  it('shows Clear all only for owner with non-empty list + requires confirm dialog before firing', async () => {
+  it('hides Clear all for everyone (Q11 v2.1 design — projectMessages is the audit log)', async () => {
+    // The clear-all button was removed in Q11 v2.1: projectMessages
+    // now functions as an append-only audit log for rename / lock /
+    // delete / restore events. Letting the owner wipe it loses
+    // provenance the very moment we lean on it as the source of
+    // truth. Re-enable once a "soft clear" / archive workflow ships.
     const user = userEvent.setup();
-    const onClearAll = vi.fn();
     render(
       <ProjectMessagesButton
         messages={[M_DELETED]}
         usersById={USERS_BY_ID}
         spacesById={SPACES_BY_ID}
         currentUserRole='owner'
-        onClearAll={onClearAll}
-      />,
-    );
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    // First click opens the AlertDialog — does NOT fire the handler.
-    const clearBtn = screen.getByTestId('project-messages-clear-all');
-    await user.click(clearBtn);
-    expect(onClearAll).not.toHaveBeenCalled();
-    // Confirm button inside the dialog fires the handler.
-    const confirmBtn = screen.getByTestId(
-      'project-messages-clear-confirm-action',
-    );
-    await user.click(confirmBtn);
-    expect(onClearAll).toHaveBeenCalled();
-  });
-
-  it('hides Clear all for non-owners', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton
-        messages={[M_DELETED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-        currentUserRole='edit'
         onClearAll={vi.fn()}
       />,
     );
     await user.click(screen.getByTestId('project-messages-trigger'));
+    // Owner — still hidden.
     expect(screen.queryByTestId('project-messages-clear-all')).toBeNull();
   });
 
