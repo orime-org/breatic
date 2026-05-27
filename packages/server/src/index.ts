@@ -11,6 +11,7 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/shared/i18n-node";
@@ -31,6 +32,21 @@ try {
     logger.error({ err }, "infra_check_unexpected_error");
   }
   process.exit(1);
+}
+
+// Production error logging for shared Redis singletons. The core
+// `createRedisClient` factory installs a no-op `error` listener so
+// emitted errors don't crash the process; the application entry is
+// responsible for the real logging per the "core 和 shared 不写
+// 任何日志" mandate.
+for (const [client, instance] of [
+  ["general", getRedis()],
+  ["queue", getQueueRedis()],
+  ["stream", getStreamRedis()],
+] as const) {
+  instance.on("error", (err) => {
+    logger.error({ err, client }, "redis_error");
+  });
 }
 
 // i18n: register all locale catalogs once at boot so `t()` callers

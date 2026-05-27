@@ -23,46 +23,27 @@ import { describe, it, expect, vi } from "vitest";
 
 // `vi.hoisted` is mandatory here — `vi.mock` factories run before
 // any top-level `const`/`class` declaration, so the closure-captured
-// `MockRedis` / `loggerError` would be in the TDZ when the mocks
-// fire. Wrapping them in `vi.hoisted` runs the initializer alongside
-// the mock factories themselves.
-const { ctorCalls, onErrorListeners, MockRedis, loggerError } = vi.hoisted(
-  () => {
-    const ctorCalls: Array<{ url: string; options: Record<string, unknown> }> =
-      [];
-    const onErrorListeners: Array<(err: Error) => void> = [];
+// `MockRedis` would be in the TDZ when the mock fires. Wrapping it
+// in `vi.hoisted` runs the initializer alongside the mock factory.
+const { ctorCalls, onErrorListeners, MockRedis } = vi.hoisted(() => {
+  const ctorCalls: Array<{ url: string; options: Record<string, unknown> }> =
+    [];
+  const onErrorListeners: Array<(err: Error) => void> = [];
 
-    class MockRedis {
-      constructor(url: string, options: Record<string, unknown>) {
-        ctorCalls.push({ url, options });
-      }
-      on(event: string, listener: (err: Error) => void): this {
-        if (event === "error") onErrorListeners.push(listener);
-        return this;
-      }
+  class MockRedis {
+    constructor(url: string, options: Record<string, unknown>) {
+      ctorCalls.push({ url, options });
     }
+    on(event: string, listener: (err: Error) => void): this {
+      if (event === "error") onErrorListeners.push(listener);
+      return this;
+    }
+  }
 
-    return {
-      ctorCalls,
-      onErrorListeners,
-      MockRedis,
-      loggerError: vi.fn(),
-    };
-  },
-);
+  return { ctorCalls, onErrorListeners, MockRedis };
+});
 
 vi.mock("ioredis", () => ({ default: MockRedis }));
-
-// Mute the real pino logger so the error-tag invariant test can
-// spy on `.error` without touching disk.
-vi.mock("../../logger.js", () => ({
-  logger: {
-    error: loggerError,
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
 
 import { createRedisClient } from "../redis.js";
 
@@ -101,18 +82,25 @@ describe("createRedisClient — production-safety invariants", () => {
     expect(handler(new Error("Connection is closed."))).toBe(false);
   });
 
-  it("logs connection errors with the caller-supplied `name` tag (so multi-instance error lines are separable)", () => {
-    loggerError.mockReset();
-    createRedisClient("redis://localhost:6379/0", { name: "session-store" });
-    const lastListener = onErrorListeners[onErrorListeners.length - 1]!;
-    lastListener(new Error("boom"));
-    expect(loggerError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client: "session-store",
-        err: expect.objectContaining({ message: "boom" }),
-      }),
-      expect.any(String),
-    );
+  it("attaches a no-op `error` listener so an emitted error doesn't crash the process (library 不写日志 mandate)", () => {
+    // Per CLAUDE.md "进程生命周期(library 层禁)" mandate, the
+    // factory must NOT write logs. But ioredis inherits Node's
+    // EventEmitter behaviour where an unhandled `error` event is
+    // fatal, so the factory must still attach SOMETHING — a no-op.
+    // The application entry attaches its own listener for actual
+    // logging via `client.on('error', logger.error)`.
+    const before = onErrorListeners.length;
+    createRedisClient("redis://localhost:6379/0", { name: "x" });
+    const after = onErrorListeners.length;
+    expect(after).toBe(before + 1);
+    const installed = onErrorListeners[after - 1]!;
+    // Invoking the no-op listener must not throw — it swallows.
+    expect(() => installed(new Error("boom"))).not.toThrow();
+    // It must not call any logger either (no smoke means no fire).
+    // (We don't mock the logger anymore — the mere fact that
+    // `redis.ts` no longer imports `../../logger.js` is the
+    // structural guarantee. See the `import` audit in the factory
+    // module itself.)
   });
 
   it("lets caller override individual defaults (BullMQ worker pattern)", () => {

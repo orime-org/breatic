@@ -12,6 +12,7 @@ import {
   InfraNotReadyError,
   logger,
   getRedis,
+  getQueueRedis,
   rawPg,
   startHealthServer,
 } from "@breatic/core";
@@ -23,6 +24,20 @@ import type { TaskJobData } from "./handlers.js";
 const HEALTH_PORT = Number(process.env["WORKER_HEALTH_PORT"] ?? "9101");
 
 export function startWorker(): void {
+  // Production error logging for shared Redis singletons. The core
+  // `createRedisClient` factory installs a no-op `error` listener so
+  // emitted errors don't crash the process; the application entry is
+  // responsible for the real logging per the "core 和 shared 不写
+  // 任何日志" mandate.
+  for (const [client, instance] of [
+    ["general", getRedis()],
+    ["queue", getQueueRedis()],
+  ] as const) {
+    instance.on("error", (err) => {
+      logger.error({ err, client }, "redis_error");
+    });
+  }
+
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
   worker.on("completed", (job) => {

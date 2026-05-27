@@ -83,6 +83,16 @@ async function main(): Promise<void> {
     lazyConnect: false,
     commandTimeout: undefined,
   });
+  // Production error logging. The core factory installs a no-op
+  // `error` listener so emitted errors don't crash the process; the
+  // application entry attaches the real logger per the "core 和
+  // shared 不写任何日志" mandate.
+  controlRedis.on("error", (err) => {
+    logger.error(
+      { err, client: "collab-members-sync-control" },
+      "redis_error",
+    );
+  });
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
 
   // Health probe server — separate port so probe traffic doesn't

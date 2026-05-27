@@ -20,7 +20,6 @@
 
 import Redis, { type RedisOptions } from "ioredis";
 import { env } from "../config/env.js";
-import { logger } from "../logger.js";
 
 /**
  * Production-grade ioredis client factory. **Every long-lived
@@ -47,17 +46,21 @@ import { logger } from "../logger.js";
  *   so app boot doesn't hang on a misconfigured `REDIS_URL`;
  * - `reconnectOnError: (READONLY)` — managed-Redis / Sentinel
  *   failover sends `READONLY` on the old master; reconnect to
- *   land on the new master without a manual restart;
- * - `.on('error', logger.error)` — connection-level errors leave
- *   a server-side log trail tagged with the client `name` so
- *   `general` / `queue` / `stream` / `collab-auth` etc. are
- *   distinguishable in production logs.
+ *   land on the new master without a manual restart.
+ *
+ * Per the "core 和 shared 不写任何日志" mandate (CLAUDE.md
+ * "进程生命周期(library 层禁)") this factory does NOT attach an
+ * error logger. A no-op `error` listener is installed so an emitted
+ * error doesn't crash the process (ioredis inherits Node's
+ * EventEmitter behaviour where an unhandled `error` event is fatal),
+ * but the application entry must attach its own listener via
+ * `client.on('error', appLogger.error)` to actually log. Multiple
+ * `error` listeners are fine — EventEmitter fan-outs to all of them.
  *
  * Callers needing different semantics (BullMQ workers with
  * blocking BRPOP, Hocuspocus extension-redis pub-sub) pass
- * `opts` to override individual fields. `name` is required
- * because the logger tag is the only way to tell different
- * instances apart when an error fires.
+ * `opts` to override individual fields. `name` is required so the
+ * application's own error logger can tag the source.
  *
  * @param url - Redis connection URL (e.g. `redis://localhost:6379/0`)
  * @param opts - Per-instance config; `name` is required, the rest
@@ -78,7 +81,7 @@ export function createRedisClient(
   url: string,
   opts: { name: string } & Partial<RedisOptions>,
 ): Redis {
-  const { name, ...override } = opts;
+  const { name: _name, ...override } = opts;
   const client = new Redis(url, {
     keepAlive: 30000,
     commandTimeout: 5000,
@@ -94,9 +97,10 @@ export function createRedisClient(
     },
     ...override,
   });
-  client.on("error", (err) => {
-    logger.error({ err, client: name }, "Redis connection error");
-  });
+  // No-op error listener so an emitted `error` event doesn't crash
+  // the process — see the factory doc-comment above. The application
+  // entry attaches its own listener for actual logging.
+  client.on("error", () => {});
   return client;
 }
 
