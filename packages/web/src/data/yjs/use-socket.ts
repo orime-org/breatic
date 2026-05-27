@@ -21,6 +21,28 @@ interface UseSocketOptions {
   doc: Y.Doc;
   /** WebSocket URL to the Hocuspocus server. */
   url?: string;
+  /**
+   * Gate provider creation on an external readiness signal. Defaults
+   * to `true` (start immediately). The intended use is "wait for the
+   * `breatic_session` cookie to be in place before opening the WS so
+   * Hocuspocus doesn't see a tokenless first attempt".
+   *
+   * Concrete scenario: ProjectPage mounts the hook before
+   * `AuthBootstrap` has finished its `/auth/me` ping. Without this
+   * gate, the provider's first connect races the boot ping;
+   * Safari + chrome MCP profiles where the cookie isn't already
+   * cached lose that race, collab returns 4401, `authFailed`
+   * latches sticky, and the banner never clears even after
+   * AuthBootstrap completes and the cookie is fine — useSocket has
+   * no dependency on the user state and never retries.
+   *
+   * Pass `enabled: !!currentUser?.id` from the caller and a `false →
+   * true` flip will create the provider with the cookie already in
+   * place, dodging the race entirely. Going `true → false` cleans
+   * the provider up and parks status back at `connecting` so a
+   * subsequent re-enable starts fresh.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -75,6 +97,7 @@ export function useSocket({
   name,
   doc,
   url = '/ws',
+  enabled = true,
 }: UseSocketOptions): SocketState {
   const [synced, setSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
@@ -89,6 +112,12 @@ export function useSocket({
     setStatus('connecting');
     setSynced(false);
     setAuthFailedReason(null);
+
+    // Gate — caller is still waiting on something (cookie / boot
+    // ping). Stay parked at `connecting` and skip opening the
+    // socket. When `enabled` flips true the effect re-runs and we
+    // create the provider then.
+    if (!enabled) return;
 
     const fullUrl = url.startsWith('ws')
       ? url
@@ -131,8 +160,10 @@ export function useSocket({
     // Doc / name change implies a new document binding so also
     // re-create the provider. Auth lives in the cookie now and
     // rotates server-side, so there is no `token` dependency to
-    // tear the socket down on.
-  }, [name, doc, url]);
+    // tear the socket down on. `enabled` is here so the false →
+    // true flip (cookie became ready) re-creates the provider with
+    // the cookie in place.
+  }, [name, doc, url, enabled]);
 
   return {
     provider: providerRef.current,
