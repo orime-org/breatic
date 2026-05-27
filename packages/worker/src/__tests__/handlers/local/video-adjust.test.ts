@@ -84,14 +84,14 @@ describe("video/adjust", () => {
       expect(storage.listUploaded()).toHaveLength(1);
       writeFileSync(outPath, storage.listUploaded()[0]!.buffer);
       const dur = await probeDuration(outPath);
-      // Source clip is ~1s; "same-duration" tolerance widened
-      // from [0.8, 1.3] to [0.8, 1.5] because turbo's cross-package
-      // parallel test runs (6 ffmpeg suites concurrent) push the
-      // observed duration past 1.3 under CPU contention. The real
-      // invariant is "not doubled / not halved" — 1.5s comfortably
-      // distinguishes a same-duration encode from any speed adjust.
+      // Source clip is ~1s; tight "same-duration" tolerance now
+      // that worker package runs single-fork (see
+      // packages/worker/vitest.config.ts `poolOptions.forks.singleFork:
+      // true`) — ffmpeg invocations no longer race each other inside
+      // the package, so this asserts the actual same-duration
+      // invariant rather than just "not doubled".
       expect(dur).toBeGreaterThan(0.8);
-      expect(dur).toBeLessThan(1.5);
+      expect(dur).toBeLessThan(1.3);
     } finally {
       cleanup();
     }

@@ -16,7 +16,7 @@ import {
   verifyRecoveryCode,
 } from "./recovery-code.service.js";
 import { getRedis } from "../infra/redis.js";
-import { sendMail } from "../infra/mailer.js";
+import { sendMail, type SendMailResult } from "../infra/mailer.js";
 import { env } from "../config/env.js";
 import {
   setSession,
@@ -211,7 +211,7 @@ const RESET_TOKEN_TTL = 3600; // 1 hour
  */
 export type ForgotPasswordResult =
   | { status: "unknown_email" }
-  | { status: "reset_email_sent"; userId: string };
+  | { status: "reset_email_sent"; userId: string; mailResult: SendMailResult };
 
 /**
  * Generate a password reset token and send reset email.
@@ -236,7 +236,7 @@ export async function forgotPassword(
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
   const resetUrl = `${resetBaseUrl}?token=${token}`;
-  await sendMail({
+  const mailResult = await sendMail({
     to: email,
     subject: "Breatic — Reset your password",
     html: `
@@ -246,7 +246,7 @@ export async function forgotPassword(
     `,
   });
 
-  return { status: "reset_email_sent", userId: user.id };
+  return { status: "reset_email_sent", userId: user.id, mailResult };
 }
 
 /**
@@ -398,10 +398,10 @@ export async function resendVerificationEmail(
   userId: string,
   email: string,
   verifyBaseUrl: string,
-): Promise<void> {
+): Promise<{ mailResult: SendMailResult }> {
   const token = await generateVerifyEmailToken(userId);
   const verifyUrl = `${verifyBaseUrl}?token=${token}`;
-  await sendMail({
+  const mailResult = await sendMail({
     to: email,
     subject: "Breatic — Verify your email",
     html: `
@@ -410,5 +410,6 @@ export async function resendVerificationEmail(
       <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
     `,
   });
-  // Caller logs `verification_email_sent` audit line.
+  // Caller logs `verification_email_sent` + mail result audit line.
+  return { mailResult };
 }

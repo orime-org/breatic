@@ -17,6 +17,7 @@ import type { AuthVariables } from "../middleware/auth.js";
 import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import type { SendMailResult } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
@@ -25,6 +26,34 @@ import {
   readSessionCookie,
 } from "../middleware/session-cookie.js";
 import type { MiddlewareHandler } from "hono";
+
+/**
+ * Centralized audit-log helper for SendMailResult. Per CLAUDE.md
+ * "core 和 shared 不写任何日志" mandate, the mailer library returns
+ * a discriminated result and the application boundary (this route)
+ * decides how to log each branch. The console branch dumps the
+ * full html payload to the dev console (replaces the prior
+ * library-side `logger.info("[console] email", { html })` line);
+ * the smtp_not_configured branch warns so ops sees a missing SMTP
+ * config in production; the sent / backend_disabled branches need
+ * no log (the route-level audit line already covers them).
+ */
+function logMailResult(
+  result: SendMailResult,
+  ctx: { userId?: string; subject: string },
+): void {
+  if (result.status === "backend_console") {
+    logger.info(
+      { ...ctx, to: result.to, html: result.html },
+      "[console] email",
+    );
+  } else if (result.status === "skipped" && result.reason === "smtp_not_configured") {
+    logger.warn(
+      { ...ctx, to: result.to },
+      "email_not_sent_smtp_not_configured",
+    );
+  }
+}
 
 /** Rate limit middleware factory. */
 function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
@@ -81,6 +110,11 @@ auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3
   const { user, recoveryCode } = await authService.register(email, password, name);
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
+  // Audit log moved here from auth.service.ts per CLAUDE.md
+  // "core 和 shared 不写任何日志" mandate. The route handler is
+  // the application boundary that owns request context.
+  logger.info({ userId: user.id, email }, "user_registered");
+  logger.info({ userId: user.id, method: "email" }, "user_logged_in");
   return c.json({ data: { user, recoveryCode } }, 201);
 });
 
@@ -98,6 +132,8 @@ auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), z
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
+  // Audit log moved from auth.service.ts (17B mandate).
+  logger.info({ userId: user.id, method: "email" }, "user_logged_in");
   return c.json({ data: { user } });
 });
 
@@ -183,6 +219,8 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
   );
 
   setSessionCookie(c, token);
+  // Audit log moved from auth.service.ts (17B mandate).
+  logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   return c.json({ data: { user } });
 });
 
@@ -222,7 +260,20 @@ auth.post(
       ? `${c.req.header("Origin")}/reset-password`
       : "http://localhost:8000/reset-password";
 
-    await authService.forgotPassword(email, resetBaseUrl);
+    const result = await authService.forgotPassword(email, resetBaseUrl);
+    // Audit log moved from auth.service.ts (17B mandate). The
+    // discriminant tells us internally which branch ran without
+    // ever leaking it to the client — anti-enumeration preserved
+    // because the response body below is the same in both cases.
+    if (result.status === "unknown_email") {
+      logger.info({ email }, "password_reset_unknown_email");
+    } else {
+      logger.info(
+        { userId: result.userId, email, mailStatus: result.mailResult.status },
+        "password_reset_email_sent",
+      );
+      logMailResult(result.mailResult, { userId: result.userId, subject: "password_reset" });
+    }
 
     // Always return success (don't reveal if email exists)
     return c.json({ message: t("server.auth.reset_link_sent") });
@@ -241,6 +292,15 @@ auth.post(
   async (c) => {
     const { token, password } = c.req.valid("json");
     await authService.resetPassword(token, password);
+    // Audit log moved from auth.service.ts (17B mandate). The
+    // service deliberately does not return userId here (token is
+    // single-use + already consumed at this point), so we log
+    // the token prefix to keep correlation across logs without
+    // re-exposing the full reset token.
+    logger.info(
+      { tokenPrefix: token.slice(0, 8) },
+      "password_reset_completed",
+    );
     return c.json({ message: t("server.auth.reset_success") });
   },
 );
@@ -274,11 +334,13 @@ auth.post(
   zValidator("json", resetWithRecoveryCodeSchema),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
-    const { newRecoveryCode } = await authService.resetPasswordWithRecoveryCode(
+    const { newRecoveryCode, userId } = await authService.resetPasswordWithRecoveryCode(
       email,
       recoveryCode,
       newPassword,
     );
+    // Audit log moved from auth.service.ts (17B mandate).
+    logger.info({ userId }, "password_reset_via_recovery_code");
     return c.json({
       data: { newRecoveryCode },
       message: t("server.auth.reset_recovery_success"),
@@ -309,7 +371,9 @@ auth.post(
   zValidator("json", verifyEmailSchema),
   async (c) => {
     const { token } = c.req.valid("json");
-    await authService.verifyEmail(token);
+    const { userId } = await authService.verifyEmail(token);
+    // Audit log moved from auth.service.ts (17B mandate).
+    logger.info({ userId }, "email_verified");
     return c.json({ message: t("server.auth.email_verified") });
   },
 );
@@ -333,7 +397,17 @@ auth.post(
     const verifyBaseUrl = c.req.header("Origin")
       ? `${c.req.header("Origin")}/verify-email`
       : "http://localhost:8000/verify-email";
-    await authService.resendVerificationEmail(user.id, user.email, verifyBaseUrl);
+    const { mailResult } = await authService.resendVerificationEmail(
+      user.id,
+      user.email,
+      verifyBaseUrl,
+    );
+    // Audit log moved from auth.service.ts (17B mandate).
+    logger.info(
+      { userId: user.id, mailStatus: mailResult.status },
+      "verification_email_sent",
+    );
+    logMailResult(mailResult, { userId: user.id, subject: "email_verification" });
     return c.json({ message: t("server.auth.verify_email_sent") });
   },
 );

@@ -20,7 +20,7 @@ export type TextToolEvent =
   | { type: "text_delta"; text: string }
   | { type: "done"; tokens: number; creditsUsed: number }
   | { type: "aborted"; tokens: number; creditsUsed: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; err: unknown };
 
 const LOCK_TTL_SECONDS = 120;
 
@@ -118,7 +118,11 @@ export async function* executeTextTool(
   // Concurrency lock
   const locked = await acquireLock(userId);
   if (!locked) {
-    yield { type: "error", message: t("server.text_tool.already_running") };
+    yield {
+      type: "error",
+      message: t("server.text_tool.already_running"),
+      err: new Error("acquireLock returned false (already_running)"),
+    };
     return;
   }
 

@@ -41,6 +41,13 @@ payment.post(
       body.success_url,
       body.cancel_url,
     );
+    // Audit log moved from payment.service.ts per CLAUDE.md
+    // "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+    // `feat/2026-05-27-collab-infra-resilience`).
+    logger.info(
+      { userId: user.id, tier: body.tier, paymentId: result.paymentId },
+      "payment_checkout_session_created",
+    );
     return c.json({ data: result }, 201);
   },
 );
@@ -65,14 +72,35 @@ payment.post("/webhook", async (c) => {
   const session = event.data.object as { id: string; payment_intent?: string };
 
   switch (event.type) {
-    case "checkout.session.completed":
-      await paymentService.handleCheckoutCompleted(
+    case "checkout.session.completed": {
+      const outcome = await paymentService.handleCheckoutCompleted(
         session.id,
         typeof session.payment_intent === "string" ? session.payment_intent : undefined,
       );
+      // Audit log moved from payment.service.ts (17B mandate).
+      // The discriminated outcome distinguishes the at-most-once
+      // CAS replay path from the real credit grant.
+      if (outcome.status === "replay") {
+        logger.info(
+          { stripeSessionId: session.id },
+          "payment_webhook_replay",
+        );
+      } else {
+        logger.info(
+          {
+            userId: outcome.userId,
+            credits: outcome.creditsGranted,
+            newBalance: outcome.newBalance,
+            stripeSessionId: session.id,
+          },
+          "payment_credits_granted",
+        );
+      }
       break;
+    }
     case "checkout.session.async_payment_failed":
       await paymentService.handlePaymentFailed(session.id);
+      logger.info({ stripeSessionId: session.id }, "payment_failed");
       break;
     default:
       break;

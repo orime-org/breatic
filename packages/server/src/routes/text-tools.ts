@@ -13,7 +13,7 @@ import { zValidator } from "@hono/zod-validator";
 import { textToolSchema } from "./schemas.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AuthVariables } from "../middleware/auth.js";
-import { textToolService } from "@breatic/core";
+import { textToolService, logger } from "@breatic/core";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -72,6 +72,45 @@ textTools.post(
         } else {
           // done/aborted/error: JSON with metadata
           await s.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        }
+
+        // Audit log moved from text-tool.service.ts per CLAUDE.md
+        // "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+        // `feat/2026-05-27-collab-infra-resilience`).
+        if (event.type === "done") {
+          logger.info(
+            {
+              userId: user.id,
+              tool,
+              tokens: event.tokens,
+              creditsUsed: event.creditsUsed,
+            },
+            "text_tool_completed",
+          );
+          if (event.tokens > 0 && event.creditsUsed === 0) {
+            // creditsUsed===0 + tokens>0 = service-side deductOnce
+            // threw and swallowed (insufficient credits etc.) and
+            // returned 0 to keep the response un-blocked.
+            logger.warn(
+              { userId: user.id, tool, tokens: event.tokens },
+              "text_tool_credit_deduction_failed",
+            );
+          }
+        } else if (event.type === "aborted") {
+          logger.info(
+            {
+              userId: user.id,
+              tool,
+              tokens: event.tokens,
+              creditsUsed: event.creditsUsed,
+            },
+            "text_tool_aborted",
+          );
+        } else if (event.type === "error") {
+          logger.error(
+            { err: event.err, userId: user.id, tool },
+            "text_tool_error",
+          );
         }
       }
     });
