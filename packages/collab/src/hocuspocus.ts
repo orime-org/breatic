@@ -23,7 +23,7 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook, ensureUserInMetaDoc } from "./auth.js";
+import { createAuthHook } from "./auth.js";
 import { checkWriteAuthz, WriteAuthzError } from "./before-handle-message.js";
 import { createPersistenceExtension } from "./persistence.js";
 import { getCollabConfig } from "./config.js";
@@ -123,50 +123,15 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
     },
 
-    // Q11 v2 — ensure `meta.users[userId]` reflects the latest
-    // username + avatar so ProjectMessagesButton and friends can
-    // render display names via a live Yjs lookup. Runs in
-    // `afterLoadDocument` (NOT `onConnect`) because the Hocuspocus
-    // hook order is `onConnect → connected → onAuthenticate →
-    // onLoadDocument → afterLoadDocument`. context.user is populated
-    // by onAuthenticate, so any pre-auth hook sees `context.user =
-    // undefined` and the ensure call silently no-ops.
-    //
-    // CRITICAL — fire-and-forget. Awaiting `ensureUserInMetaDoc`
-    // here deadlocks the WebSocket: `openDirectConnection` opens a
-    // second connection to the SAME meta doc, and Hocuspocus
-    // serializes doc-level work so the inner connection can never
-    // resolve while the outer `afterLoadDocument` is still awaiting.
-    // The end-to-end symptom is "Client connected" firing on every
-    // reconnect attempt with no `onSynced` ever landing (banner
-    // stuck at 'connecting'). The fix is to dispatch the write off
-    // the hook's promise — the meta.users entry usually lands a few
-    // hundred ms after sync completes, and the frontend renders an
-    // em-dash for the brief window where the actor lookup misses.
-    afterLoadDocument: async ({ documentName, context }) => {
-      const ctx = context as {
-        user?: {
-          id?: string;
-          name?: string;
-          avatarUrl?: string | null;
-        };
-      };
-      const parsed = parseDocName(documentName);
-      if (!parsed || !ctx.user?.id || !ctx.user.name) return;
-      const userId = ctx.user.id;
-      const userName = ctx.user.name;
-      const avatarUrl = ctx.user.avatarUrl ?? null;
-      ensureUserInMetaDoc(wsServer.hocuspocus, parsed.projectId, {
-        id: userId,
-        name: userName,
-        avatarUrl,
-      }).catch((err) => {
-        logger.error(
-          { err, documentName, userId },
-          "ensure_user_in_meta_doc_failed",
-        );
-      });
-    },
+    // `meta.users[userId]` population was moved off this hook
+    // (2026-05-27) to a client-driven `users:upsert-self` stateless
+    // RPC dispatched from the front-end's `onSynced` callback. The
+    // old `afterLoadDocument` + `ensureUserInMetaDoc` path had to be
+    // fire-and-forget to avoid deadlocking on `openDirectConnection`
+    // against the same meta doc (Hocuspocus serializes per-doc
+    // work). The client-driven RPC handler writes synchronously
+    // through the loaded Y.Doc reference inside `onStateless`, so
+    // there is no race window and no risk of hook reentrancy.
 
     onDisconnect: async ({ documentName, context }) => {
       const ctx = context as { user?: { id: string } };
@@ -246,9 +211,23 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
 
       const response = await handleSpaceRpc(
-        { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
+        {
+          hocuspocus: wsServer.hocuspocus,
+          sql: sharedSql,
+          // metaDoc is the in-memory Y.Doc Hocuspocus already loaded
+          // for this stateless callback. Passing it through lets the
+          // `users:upsert-self` handler write directly via
+          // `document.transact()`, avoiding the openDirectConnection
+          // round-trip that other handlers still use for legacy
+          // reasons (cleanup planned in a follow-up PR).
+          metaDoc: document,
+        },
         parsed.projectId,
-        { userId: callerId, role: callerRole },
+        {
+          userId: callerId,
+          role: callerRole,
+          name: ctx.user?.name,
+        },
         req,
       );
       document.broadcastStateless(JSON.stringify(response));
