@@ -126,27 +126,6 @@ export const MessagesClearPayloadSchema = z
   );
 export type MessagesClearPayload = z.infer<typeof MessagesClearPayloadSchema>;
 
-/**
- * `users:upsert-self` — caller writes their own entry into
- * `meta.users[caller.userId]`. Client-driven sync (front-end fires
- * once per WS connection's `onSynced` callback) replaces the prior
- * server-side `afterLoadDocument` hook path, which had to be
- * fire-and-forget to avoid deadlocking on `openDirectConnection`
- * against the same meta doc.
- *
- * Payload carries the display fields the actor lookup needs. The
- * server enforces `actor === caller.userId` (a user cannot upsert
- * someone else's entry) and discards `null` avatarUrl by storing
- * it verbatim (the front-end treats missing / null as "no avatar").
- */
-export const UsersUpsertSelfPayloadSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  avatarUrl: z.string().url().nullable(),
-});
-export type UsersUpsertSelfPayload = z.infer<
-  typeof UsersUpsertSelfPayloadSchema
->;
-
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -179,11 +158,6 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("messages:clear"),
     payload: MessagesClearPayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("users:upsert-self"),
-    payload: UsersUpsertSelfPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;

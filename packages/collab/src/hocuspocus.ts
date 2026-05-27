@@ -244,23 +244,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
 
       const response = await handleSpaceRpc(
-        {
-          hocuspocus: wsServer.hocuspocus,
-          sql: sharedSql,
-          // metaDoc is the in-memory Y.Doc Hocuspocus already loaded
-          // for this stateless callback. Passing it through lets the
-          // `users:upsert-self` handler write directly via
-          // `document.transact()`, avoiding the openDirectConnection
-          // round-trip that other handlers still use for legacy
-          // reasons (cleanup planned in a follow-up PR).
-          metaDoc: document,
-        },
+        { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
         parsed.projectId,
-        {
-          userId: callerId,
-          role: callerRole,
-          name: ctx.user?.name,
-        },
+        { userId: callerId, role: callerRole },
         req,
       );
       document.broadcastStateless(JSON.stringify(response));

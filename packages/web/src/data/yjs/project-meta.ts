@@ -160,36 +160,24 @@ export function useProjectMeta(
     };
   }, [doc, userId]);
 
-  // 2026-05-27 — client-driven meta.users sync. Fire one
-  // `users:upsert-self` stateless RPC per provider connection (gated
-  // by the per-provider `sentForProviderRef` so a re-sync after
-  // disconnect → reconnect resends, but a sibling re-render does
-  // not). Replaces the prior server-side `afterLoadDocument` +
-  // `ensureUserInMetaDoc` path that had to be fire-and-forget to
-  // avoid deadlocking on `openDirectConnection` against the same
-  // meta doc.
+  // 2026-05-27 (awareness rewrite) — project current user identity
+  // into Yjs awareness. Backend's `onAwarenessUpdate` hook persists
+  // the snapshot into `meta.users[userId]`. Awareness is declarative
+  // — `setLocalStateField` re-fires whenever `currentUser` changes
+  // (rename / avatar update via settings → React Query invalidate →
+  // store update → this effect re-runs), so identity stays in sync
+  // without manual `sendStateless` bookkeeping. Yjs internally diffs
+  // and only broadcasts when the serialized value actually changes,
+  // so a re-render with unchanged `currentUser` is free.
   const currentUser = useCurrentUserStore((s) => s.user);
-  const sentForProviderRef = React.useRef<unknown>(null);
   React.useEffect(() => {
-    if (!synced || !provider || !currentUser) return;
-    if (sentForProviderRef.current === provider) return;
-    sentForProviderRef.current = provider;
-    const req = {
-      id: `users-upsert-${Date.now()}`,
-      type: "users:upsert-self" as const,
-      payload: {
-        name: currentUser.name,
-        avatarUrl: currentUser.avatarUrl ?? null,
-      },
-    };
-    try {
-      provider.sendStateless(JSON.stringify(req));
-    } catch {
-      // The provider can race the React re-render — a stale ref
-      // closure can outlive `destroy()`. Swallow: next sync will
-      // resend through a fresh provider reference.
-    }
-  }, [synced, provider, currentUser]);
+    if (!provider || !currentUser) return;
+    provider.awareness.setLocalStateField('user', {
+      id: currentUser.id,
+      name: currentUser.name,
+      avatarUrl: currentUser.avatarUrl ?? null,
+    });
+  }, [provider, currentUser]);
 
   return { ...state, synced, provider, status, authFailedReason };
 }
