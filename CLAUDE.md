@@ -54,6 +54,17 @@ pnpm test / typecheck / lint
 - **SSE**:仅 Agent 聊天 + Text mini-tool,`data` 含 `userId` + `projectId`
 - **存储**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,5min 过期,30/分限速)直传
 - **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。`membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码只按积分余额判断,不做 tier feature gate**
+- **服务器端工业级标准(MANDATORY)**:所有 server / collab / worker / core 逻辑按生产级标准实现,**禁止** "dev 阶段先这样后续再补"。**必须有**:
+
+| 项 | 要求 |
+|---|---|
+| 错误日志 | 所有 `catch` 必 `logger.error({ err, ctx })` 留可追溯链;禁 silent fail / 裸 `catch (e) {}`;throw 前先 log,不让上游 error 在中间层丢失 |
+| Connection 健康 | DB(`postgres-js`)/ Redis(`ioredis`)/ 队列 client 必显式配置 `max_lifetime` / `idle_timeout` / `keepAlive` / `reconnectOnError`,**不靠 client 默认**(默认通常不 idle recycle → 长跑后 connection stale,query throw 但 pool 不知道)|
+| Health check | 长跑 service(server / collab / worker)必有 `/healthz` endpoint ping 关键依赖(PG + Redis + 队列),LB / docker `healthcheck` 看 N 次 fail kill instance 滚动恢复 |
+| 安全监控 | auth / 鉴权失败 / rate-limit 命中 / 异常 query / pool 耗尽 必有结构化日志(json + ctx);生产上报 metrics(error rate / connection pool size / acquire latency)看 trend 提前预警 |
+| 守护 | critical path(支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作)必 alarm 链 + 自动重试 / 降级 fallback;process 收 SIGTERM 必 graceful shutdown(等 in-flight request 完成再退) |
+
+写一行 `try { ... } catch (e) {}` 之前先问:**生产环境 3am 出问题,oncall 能从日志倒推到根因吗?** 答不能就停手,补 log + 监控再写
 
 # 禁止清单
 
