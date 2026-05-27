@@ -1,6 +1,12 @@
 import { MessagesSquare, Plus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n/use-translation';
 
 import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
 
@@ -37,21 +43,29 @@ export function AgentColHeader({
   onNewConversation,
   onRenameConversation,
 }: AgentColHeaderProps) {
+  const t = useTranslation();
   return (
     <header
       data-testid='agent-col-header'
       className='flex shrink-0 items-center border-b border-border bg-background'
       style={{ height: 40, padding: '0 var(--space-4)', gap: 'var(--space-2)' }}
     >
-      <Button
-        variant='chrome-ghost'
-        size='chrome'
-        aria-label='Open conversation history'
-        onClick={onOpenHistory}
-        data-testid='open-conversation-history'
-      >
-        <MessagesSquare className='h-[18px] w-[18px]' />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant='chrome-ghost'
+            size='chrome'
+            aria-label='Open conversation history'
+            onClick={onOpenHistory}
+            data-testid='open-conversation-history'
+          >
+            <MessagesSquare className='h-[18px] w-[18px]' />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.openHistory')}
+        </TooltipContent>
+      </Tooltip>
       <span
         className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-[11px] font-medium tabular-nums text-muted-foreground'
         data-testid='conversation-count-chip'
@@ -66,15 +80,22 @@ export function AgentColHeader({
           maxWidth={180}
         />
       </div>
-      <Button
-        variant='chrome-ghost'
-        size='chrome'
-        aria-label='New conversation'
-        onClick={onNewConversation}
-        data-testid='new-conversation'
-      >
-        <Plus className='h-[18px] w-[18px]' />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant='chrome-ghost'
+            size='chrome'
+            aria-label='New conversation'
+            onClick={onNewConversation}
+            data-testid='new-conversation'
+          >
+            <Plus className='h-[18px] w-[18px]' />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.newConversation')}
+        </TooltipContent>
+      </Tooltip>
     </header>
   );
 }

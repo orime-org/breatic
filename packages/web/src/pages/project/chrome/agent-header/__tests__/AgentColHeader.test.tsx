@@ -1,9 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as React from 'react';
 
 import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { expectNoA11yViolations } from '@/test-utils/a11y';
+
+// Chrome buttons now use shadcn `Tooltip`, which throws without a
+// `TooltipProvider` somewhere up the tree. App.tsx supplies one at
+// runtime — tests need to add it explicitly. Alias `render` so each
+// call site auto-wraps without per-site edits.
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onOpenHistory = vi.fn();

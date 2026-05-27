@@ -15,6 +15,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { SPACE_TYPE_LIST, type SpaceType } from '@/spaces';
@@ -22,6 +27,14 @@ import { useTranslation } from '@/i18n/use-translation';
 
 interface NewSpaceDialogProps {
   trigger: React.ReactNode;
+  /**
+   * Optional tooltip shown on hover/focus of the trigger button.
+   * Wrapped *inside* `DialogTrigger` so Radix's `asChild` chain
+   * (`TooltipTrigger asChild → DialogTrigger asChild → button`)
+   * still forwards click + aria-* to the real button — the same
+   * nesting pattern viewport-toolbar's zoom popover uses.
+   */
+  tooltip?: string;
   /**
    * Returns a promise when the create call is async (the parent
    * routes through `sendSpaceRpc({ type: 'space:create' })`). The
@@ -91,7 +104,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * the runtime actually knows about (forward-compat safety against the
  * registry pruning a type the dialog still lists).
  */
-export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
+export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogProps) {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('new-space-dialog');
   const [type, setType] = React.useState<SpaceType>('canvas');
@@ -164,7 +177,16 @@ export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps) {
         setOpen(next);
       }}
     >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {tooltip ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>{trigger}</DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent side='bottom'>{tooltip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      )}
       <DialogContent data-testid='new-space-dialog'>
         <DialogHeader>
           <DialogTitle>{t('spaces.create.title')}</DialogTitle>

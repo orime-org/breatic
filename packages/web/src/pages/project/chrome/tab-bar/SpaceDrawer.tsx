@@ -117,17 +117,24 @@ export function SpaceDrawer({
   const [open, setOpen] = useExclusiveOverlay('space-drawer');
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant='chrome-ghost'
-          size='chrome'
-          aria-label={t('spaces.drawer.label')}
-          data-testid='space-drawer-trigger'
-          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-        >
-          <Menu className='h-[18px] w-[18px]' />
-        </Button>
-      </SheetTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SheetTrigger asChild>
+            <Button
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label={t('spaces.drawer.label')}
+              data-testid='space-drawer-trigger'
+              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+            >
+              <Menu className='h-[18px] w-[18px]' />
+            </Button>
+          </SheetTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.allSpaces')}
+        </TooltipContent>
+      </Tooltip>
       <SheetContent
         side='right-floating'
         // Width matches ProjectMessagesButton sheet (315px) for a

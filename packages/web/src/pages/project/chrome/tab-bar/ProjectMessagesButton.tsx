@@ -21,6 +21,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
 import { useTranslation } from '@/i18n/use-translation';
@@ -173,18 +178,24 @@ export function ProjectMessagesButton({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant='chrome-ghost'
-          size='chrome'
-          aria-label={t('spaces.history.label')}
-          title={t('spaces.history.title')}
-          data-testid='project-messages-trigger'
-          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-        >
-          <History className='h-[18px] w-[18px]' />
-        </Button>
-      </SheetTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SheetTrigger asChild>
+            <Button
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label={t('spaces.history.label')}
+              data-testid='project-messages-trigger'
+              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+            >
+              <History className='h-[18px] w-[18px]' />
+            </Button>
+          </SheetTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.projectMessages')}
+        </TooltipContent>
+      </Tooltip>
       {/*
         side='right-floating' = same variant as SpaceDrawer (sits between
         TabBar and ViewportToolbar). Width 315px = 75 % of the prior

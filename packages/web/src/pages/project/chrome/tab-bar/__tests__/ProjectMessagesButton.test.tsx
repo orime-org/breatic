@@ -1,13 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as React from 'react';
 
 import type { ProjectMessageEntry } from '@breatic/shared';
 import {
   ProjectMessagesButton,
   relativeTime,
 } from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useUIStore } from '@/stores/ui';
+
+// The trigger now wraps `SheetTrigger` in shadcn `Tooltip`, which
+// throws if no `TooltipProvider` is up the tree. App.tsx supplies
+// one at runtime — tests have to add it explicitly.
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 beforeEach(() => {
   // Reset the global exclusive-overlay state — `useExclusiveOverlay`

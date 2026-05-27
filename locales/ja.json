@@ -1256,5 +1256,19 @@
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
     }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "エクスポート",
+      "share": "共有",
+      "notifications": "通知",
+      "newSpace": "新規スペース",
+      "allSpaces": "全スペース",
+      "projectMessages": "プロジェクト通知",
+      "agentHide": "エージェントパネルを隠す",
+      "agentShow": "エージェントパネルを表示",
+      "openHistory": "会話履歴",
+      "newConversation": "新規会話"
+    }
   }
 }

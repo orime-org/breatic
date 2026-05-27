@@ -1256,5 +1256,19 @@
     "createProject": {
       "failed": "创建项目失败:{reason}"
     }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "导出",
+      "share": "分享",
+      "notifications": "通知",
+      "newSpace": "新建工作面",
+      "allSpaces": "所有工作面",
+      "projectMessages": "项目消息",
+      "agentHide": "收起 Agent 面板",
+      "agentShow": "展开 Agent 面板",
+      "openHistory": "对话历史",
+      "newConversation": "新建对话"
+    }
   }
 }

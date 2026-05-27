@@ -11,6 +11,11 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n/use-translation';
 
 interface ShareDialogProps {
@@ -49,11 +54,16 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant='chrome-ghost' size='chrome' aria-label='Share'>
-          <Share2 className='h-[18px] w-[18px]' />
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant='chrome-ghost' size='chrome' aria-label='Share'>
+              <Share2 className='h-[18px] w-[18px]' />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>{t('chrome.tooltip.share')}</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align='end'
         className='w-80 p-1'

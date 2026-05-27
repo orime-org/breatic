@@ -1256,5 +1256,19 @@
     "createProject": {
       "failed": "Failed to create project: {reason}"
     }
+  },
+  "chrome": {
+    "tooltip": {
+      "export": "Export",
+      "share": "Share",
+      "notifications": "Notifications",
+      "newSpace": "New space",
+      "allSpaces": "All spaces",
+      "projectMessages": "Project messages",
+      "agentHide": "Hide agent panel",
+      "agentShow": "Show agent panel",
+      "openHistory": "Conversation history",
+      "newConversation": "New conversation"
+    }
   }
 }

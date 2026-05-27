@@ -1,10 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import type * as React from 'react';
 
 import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { expectNoA11yViolations } from '@/test-utils/a11y';
+
+// Chrome buttons (Export / Share / Notifications) now wrap their
+// PopoverTrigger in shadcn `Tooltip`. App.tsx supplies the
+// `TooltipProvider` at runtime — tests have to add it explicitly.
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   const onRename = vi.fn();
