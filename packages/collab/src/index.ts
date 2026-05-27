@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // Load .env from monorepo root (shared by all packages)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-import { createRedisClient } from "@breatic/core";
+import { createRedisClient, startHealthServer } from "@breatic/core";
 import { createLogger } from "./logger.js";
 import { createCollabServer } from "./hocuspocus.js";
 import { startTaskListener } from "./task-listener.js";
@@ -28,6 +28,7 @@ const DATABASE_URL = process.env["DATABASE_URL"] ?? "postgres://breatic:breatic@
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379/0";
 const REDIS_STREAM_URL = process.env["REDIS_STREAM_URL"] ?? "redis://localhost:6379/2";
 const ENV_PREFIX = process.env["ENV"] ?? "dev";
+const HEALTH_PORT = Number(process.env["COLLAB_HEALTH_PORT"] ?? "1235");
 
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the server.
@@ -65,9 +66,38 @@ async function main(): Promise<void> {
   });
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
 
+  // Health probe server — separate port so probe traffic doesn't
+  // touch the WS port. Probes PG (via the controlRedis side — a
+  // PG ping would require yet another client; instead we ping the
+  // two long-lived Redis clients we already own + the WS server
+  // status). LB / docker healthcheck kills the instance on N
+  // consecutive 503s so a drifted connection pool gets a fresh
+  // process automatically — per CLAUDE.md "服务器端工业级标准"
+  // and memory `feedback_dev_collab_long_running_drift`.
+  const healthServer = startHealthServer({
+    port: HEALTH_PORT,
+    serviceName: "collab",
+    checks: [
+      {
+        name: "redis_stream",
+        check: async () => (await controlRedis.ping()) === "PONG",
+      },
+      {
+        name: "hocuspocus_listening",
+        // hocuspocus.server is the underlying HTTP/WS Server
+        // instance — `.listening` flips false the instant the
+        // listen socket closes (graceful shutdown or crash). A
+        // dead hocuspocus with live healthz would be the worst
+        // possible state for the LB.
+        check: async () => hocuspocus.server?.listening === true,
+      },
+    ],
+  });
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
+    await healthServer.stop();
     await stopMembersSync();
     await controlRedis.quit();
     await stopListener();

@@ -36,6 +36,11 @@ export {
   createRedisClient,
 } from "./infra/redis.js";
 export { checkRateLimit } from "./infra/rate-limiter.js";
+export {
+  startHealthServer,
+  type HealthCheck,
+  type HealthServerOptions,
+} from "./infra/health-server.js";
 export { checkInfraReady } from "./infra/connectivity-check.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
