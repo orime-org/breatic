@@ -45,6 +45,16 @@ const M_CREATED: ProjectMessageEntry = {
   createdAt: Date.now() - 600_000,
 };
 
+const M_RENAMED: ProjectMessageEntry = {
+  id: 'm-rename',
+  kind: 'space-renamed',
+  actor: 'u-yuki',
+  spaceId: 'sp-2',
+  spaceName: 'Reel v2',
+  oldSpaceName: 'Reel',
+  createdAt: Date.now() - 90_000,
+};
+
 const M_MISSING: ProjectMessageEntry = {
   id: 'm-miss',
   kind: 'missing-node',
@@ -132,6 +142,27 @@ describe('ProjectMessagesButton', () => {
     await user.click(screen.getByTestId('project-messages-trigger'));
     // Owner — still hidden.
     expect(screen.queryByTestId('project-messages-clear-all')).toBeNull();
+  });
+
+  it('renders space-renamed entry citing both old and new names', async () => {
+    // Q12 design: rename is its own audit event. We show
+    //   "Yuki renamed Reel → Reel v2"
+    // so the historical Reel name is preserved alongside the current
+    // one (the live space row already moved on). Both names must
+    // appear verbatim in the rendered row text.
+    const user = userEvent.setup();
+    render(
+      <ProjectMessagesButton
+        messages={[M_RENAMED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
+      />,
+    );
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    const row = screen.getByTestId('project-messages-entry-m-rename');
+    expect(row.textContent).toMatch(/Yuki/);
+    expect(row.textContent).toMatch(/Reel\b/); // old name as a whole word
+    expect(row.textContent).toMatch(/Reel v2/); // new name
   });
 
   it('renders empty-state copy when no messages', async () => {

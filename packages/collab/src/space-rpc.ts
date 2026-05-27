@@ -125,6 +125,11 @@ function pushProjectMessage(
      * verbatim and does NOT look up the live name (Q11 v2.1).
      */
     spaceName?: string;
+    /**
+     * `space-renamed` only — pre-rename name snapshot. Paired with
+     * `spaceName` (the new name) the frontend renders the transition.
+     */
+    oldSpaceName?: string;
     /** Only for `space-deleted`: full Space entry for Restore re-hydration. */
     spaceSnapshot?: Record<string, unknown>;
     message?: string; // i18n key for kinds that need extra context (e.g. `missing-node`)
@@ -137,6 +142,9 @@ function pushProjectMessage(
   entry.set("actor", args.actor);
   if (args.spaceId !== undefined) entry.set("spaceId", args.spaceId);
   if (args.spaceName !== undefined) entry.set("spaceName", args.spaceName);
+  if (args.oldSpaceName !== undefined) {
+    entry.set("oldSpaceName", args.oldSpaceName);
+  }
   if (args.spaceSnapshot !== undefined) {
     entry.set("spaceSnapshot", args.spaceSnapshot);
   }
@@ -343,6 +351,7 @@ async function handleRename(
   try {
     let notFound = false;
     let locked = false;
+    let noop = false;
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
@@ -354,7 +363,24 @@ async function handleRename(
         locked = true;
         return;
       }
+      const previousName = entry.get("name");
+      const oldSpaceName =
+        typeof previousName === "string" ? previousName : "";
+      if (oldSpaceName === name) {
+        // Idempotent no-op — skip the audit entry so a rename to the
+        // same name doesn't pollute projectMessages with a phantom
+        // "X renamed Foo to Foo".
+        noop = true;
+        return;
+      }
       entry.set("name", name);
+      pushProjectMessage(doc, {
+        kind: "space-renamed",
+        actor: caller.userId,
+        spaceId,
+        spaceName: name,
+        oldSpaceName,
+      });
     });
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
@@ -366,6 +392,7 @@ async function handleRename(
         `Space ${spaceId} is locked; unlock before renaming`,
       );
     }
+    void noop; // explicit: no-op rename still returns ok (no error to surface)
     return ok(req.id);
   } finally {
     await conn.disconnect();
