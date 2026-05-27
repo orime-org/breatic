@@ -125,16 +125,24 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
     // Q11 v2 — ensure `meta.users[userId]` reflects the latest
     // username + avatar so ProjectMessagesButton and friends can
-    // render display names via a live Yjs lookup. Idempotent;
-    // updates on every doc load so a PG-side rename propagates the
-    // next time the user opens any doc. Runs in `afterLoadDocument`
-    // (NOT `onConnect`) because the Hocuspocus hook order is
-    // `onConnect → connected → onAuthenticate → onLoadDocument →
-    // afterLoadDocument`. context.user is populated by onAuthenticate,
-    // so any pre-auth hook (onConnect) sees `context.user = undefined`
-    // and the ensure call silently no-ops. Failure is non-fatal —
-    // logged + the doc load continues (frontend reads a missing
-    // entry as an em-dash for one tick until the next connect).
+    // render display names via a live Yjs lookup. Runs in
+    // `afterLoadDocument` (NOT `onConnect`) because the Hocuspocus
+    // hook order is `onConnect → connected → onAuthenticate →
+    // onLoadDocument → afterLoadDocument`. context.user is populated
+    // by onAuthenticate, so any pre-auth hook sees `context.user =
+    // undefined` and the ensure call silently no-ops.
+    //
+    // CRITICAL — fire-and-forget. Awaiting `ensureUserInMetaDoc`
+    // here deadlocks the WebSocket: `openDirectConnection` opens a
+    // second connection to the SAME meta doc, and Hocuspocus
+    // serializes doc-level work so the inner connection can never
+    // resolve while the outer `afterLoadDocument` is still awaiting.
+    // The end-to-end symptom is "Client connected" firing on every
+    // reconnect attempt with no `onSynced` ever landing (banner
+    // stuck at 'connecting'). The fix is to dispatch the write off
+    // the hook's promise — the meta.users entry usually lands a few
+    // hundred ms after sync completes, and the frontend renders an
+    // em-dash for the brief window where the actor lookup misses.
     afterLoadDocument: async ({ documentName, context }) => {
       const ctx = context as {
         user?: {
@@ -145,18 +153,19 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       };
       const parsed = parseDocName(documentName);
       if (!parsed || !ctx.user?.id || !ctx.user.name) return;
-      try {
-        await ensureUserInMetaDoc(wsServer.hocuspocus, parsed.projectId, {
-          id: ctx.user.id,
-          name: ctx.user.name,
-          avatarUrl: ctx.user.avatarUrl ?? null,
-        });
-      } catch (err) {
+      const userId = ctx.user.id;
+      const userName = ctx.user.name;
+      const avatarUrl = ctx.user.avatarUrl ?? null;
+      ensureUserInMetaDoc(wsServer.hocuspocus, parsed.projectId, {
+        id: userId,
+        name: userName,
+        avatarUrl,
+      }).catch((err) => {
         logger.error(
-          { err, documentName, userId: ctx.user.id },
+          { err, documentName, userId },
           "ensure_user_in_meta_doc_failed",
         );
-      }
+      });
     },
 
     onDisconnect: async ({ documentName, context }) => {
