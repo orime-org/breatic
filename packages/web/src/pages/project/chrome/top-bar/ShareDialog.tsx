@@ -80,16 +80,20 @@ export function ShareDialog({ projectId }: ShareDialogProps) {
           />
         </div>
         <div className='px-2 pb-2'>
+          {/*
+           * 2026-05-28 revert of commit `a394231` (2026-05-25 outline
+           * variant change). User rolled back to the original primary
+           * solid CTA — the outline rendering blended too much with
+           * the chrome popover background and weakened the "send
+           * invite" affordance. Send icon kept on the left. The two
+           * className tokens (`justify-center gap-2 text-[13px]`) and
+           * the explanatory comment block introduced alongside the
+           * outline change are removed too so this fully matches the
+           * pre-a394231 state.
+           */}
           <Button
-            // outline variant matches the "邀请新成员" button in
-            // MembersStack popover (2026-05-25 user ask:发送邀请
-            // should share visual language with the members popover
-            // invite CTA — both are "open invite intent" buttons
-            // inside a chrome popover, neither warrants prominent
-            // primary solid bg).
-            variant='outline'
             size='sm'
-            className='w-full justify-center gap-2 text-[13px]'
+            className='w-full'
             disabled={invite.trim().length === 0}
             data-testid='share-send-invite'
           >
