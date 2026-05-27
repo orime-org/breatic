@@ -13,7 +13,7 @@
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
-import { createRedisClient } from "@breatic/core";
+import { createRedisClient, createPgClient } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import IoRedis from "ioredis";
 import postgres from "postgres";
@@ -69,7 +69,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // Shared PG pool for space-rpc handlers (soft-delete / restore the
   // canvas-{spaceId} `yjs_documents` row). Auth and persistence each
   // own their own pool today — consolidating is a follow-up cleanup.
-  const sharedSql = postgres(infra.databaseUrl, { max: 5 });
+  // Uses core `createPgClient` so `idle_timeout` / `max_lifetime` /
+  // `application_name` stay aligned with the server-side default.
+  const sharedSql = createPgClient(infra.databaseUrl, {
+    name: "collab-shared",
+    max: 5,
+  });
 
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

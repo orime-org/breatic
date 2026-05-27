@@ -12,7 +12,7 @@
  */
 
 // ── Database ─────────────────────────────────────────────────────
-export { db, rawPg, closeDb } from "./db/client.js";
+export { db, rawPg, closeDb, createPgClient } from "./db/client.js";
 export { runMigrations } from "./db/migrate.js";
 export * as schema from "./db/schema.js";
 

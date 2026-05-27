@@ -9,8 +9,7 @@
  * connections.
  */
 
-import postgres from "postgres";
-import { createRedisClient } from "@breatic/core";
+import { createPgClient, createRedisClient } from "@breatic/core";
 
 function fatal(label: string, err: unknown, hint: string): never {
   const message = err instanceof Error ? err.message : String(err);
@@ -35,7 +34,14 @@ export async function checkCollabInfraReady(
   streamRedisUrl: string,
 ): Promise<void> {
   // PostgreSQL: confirm server accepts queries
-  const sql = postgres(databaseUrl, { max: 1, connect_timeout: 5 });
+  // Connectivity check is single-query fail-fast at boot; override
+  // pool size to 1 and shorten `connect_timeout` so a down PG
+  // surfaces in 5s instead of waiting for the factory default.
+  const sql = createPgClient(databaseUrl, {
+    name: "collab-connectivity-check",
+    max: 1,
+    connect_timeout: 5,
+  });
   try {
     await sql`SELECT 1`;
     await sql.end();

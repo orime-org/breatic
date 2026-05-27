@@ -39,7 +39,7 @@
 
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
-import postgres from "postgres";
+import { createPgClient } from "@breatic/core";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -223,7 +223,10 @@ export function createAuthHook({
   envPrefix,
   databaseUrl,
 }: CreateAuthHookOptions) {
-  const sql = postgres(databaseUrl, { max: 5 });
+  const sql = createPgClient(databaseUrl, {
+    name: "collab-auth",
+    max: 5,
+  });
 
   return async ({
     documentName,

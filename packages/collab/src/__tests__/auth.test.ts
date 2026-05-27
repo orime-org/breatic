@@ -54,6 +54,19 @@ vi.mock("../logger.js", () => ({
   }),
 }));
 
+// `@breatic/core` pulls @opentelemetry transitive deps that
+// vitest's ESM resolver chokes on under hermetic-test conditions.
+// auth.ts only uses `createPgClient` from core; substitute a stub
+// that returns the same tagged-template function the `postgres`
+// mock above already returns, so the staged `sqlQueue` keeps
+// driving the in-memory query behavior.
+vi.mock("@breatic/core", () => ({
+  createPgClient: () => () => {
+    const next = sqlQueue.shift();
+    return Promise.resolve(next ?? []);
+  },
+}));
+
 import { createAuthHook } from "../auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
