@@ -68,6 +68,51 @@ describe("encodeInitialMetaState", () => {
     expect(a).toEqual(b);
   });
 
+  it("seeds meta.users[creator] with creator name + avatar + lastSeenAt", () => {
+    const userId = "22222222-2222-2222-2222-222222222222";
+    const ts = 1_700_000_000_000;
+    const update = encodeInitialMetaState({
+      spaceId: "11111111-1111-1111-1111-111111111111",
+      kind: "canvas",
+      name: "Untitled",
+      createdBy: userId,
+      actor: userId,
+      creatorName: "Yuki",
+      creatorAvatarUrl: "https://cdn/yuki.png",
+      ts,
+    });
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, update);
+    const entry = doc.getMap("users").get(userId) as Y.Map<unknown>;
+    expect(entry).toBeInstanceOf(Y.Map);
+    expect(entry.get("id")).toBe(userId);
+    expect(entry.get("name")).toBe("Yuki");
+    expect(entry.get("avatarUrl")).toBe("https://cdn/yuki.png");
+    expect(entry.get("lastSeenAt")).toBe(ts);
+  });
+
+  it("seeds meta.perUser[creator] with first space open + active", () => {
+    const spaceId = "11111111-1111-1111-1111-111111111111";
+    const userId = "22222222-2222-2222-2222-222222222222";
+    const update = encodeInitialMetaState({
+      spaceId,
+      kind: "canvas",
+      name: "Untitled",
+      createdBy: userId,
+      actor: userId,
+      creatorName: "Yuki",
+      creatorAvatarUrl: null,
+      ts: 1_700_000_000_000,
+    });
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, update);
+    const entry = doc.getMap("perUser").get(userId) as Y.Map<unknown>;
+    expect(entry).toBeInstanceOf(Y.Map);
+    expect(entry.get("activeSpaceId")).toBe(spaceId);
+    const openTabIds = entry.get("openTabIds") as Y.Array<string>;
+    expect(openTabIds.toArray()).toEqual([spaceId]);
+  });
+
   it("supports document and timeline kinds", () => {
     const base = {
       spaceId: "11111111-1111-1111-1111-111111111111",
