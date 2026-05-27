@@ -26,7 +26,7 @@ import type { AddressInfo } from "node:net";
 
 async function fetchJson(port: number, path: string) {
   const res = await fetch(`http://127.0.0.1:${port}${path}`);
-  let body: unknown = null;
+  let body: unknown;
   try {
     body = await res.json();
   } catch {
