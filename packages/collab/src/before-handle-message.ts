@@ -13,6 +13,10 @@
  *   - `meta.projectMessages` — any push / delete. Must go through
  *     `messages:*` RPC (push is collab-only side-effect of space:*
  *     handlers; clear is owner-only RPC).
+ *   - `meta.users` — any add / modify / delete. The display-name
+ *     lookup map is written exclusively by the `users:upsert-self`
+ *     stateless RPC handler (server-side `system` context). Clients
+ *     never push directly; the RPC handler enforces caller identity.
  *   - `meta.perUser[X]` where X is not the connected user's id. Each
  *     user may only write their own perUser entry (open tabs +
  *     active tab id).
@@ -151,6 +155,7 @@ export function checkWriteAuthz({
   const beforeMessages = JSON.stringify(
     clone.getArray("projectMessages").toJSON(),
   );
+  const beforeUsers = JSON.stringify(clone.getMap("users").toJSON());
   const beforePerUser = clone.getMap("perUser").toJSON() as Record<
     string,
     unknown
@@ -164,6 +169,7 @@ export function checkWriteAuthz({
   const afterMessages = JSON.stringify(
     clone.getArray("projectMessages").toJSON(),
   );
+  const afterUsers = JSON.stringify(clone.getMap("users").toJSON());
   const afterPerUser = clone.getMap("perUser").toJSON() as Record<
     string,
     unknown
@@ -179,6 +185,12 @@ export function checkWriteAuthz({
   if (beforeMessages !== afterMessages) {
     throw new WriteAuthzError(
       "Direct write to meta.projectMessages is not allowed — collab writes via space:* / messages:* RPC handlers only",
+    );
+  }
+
+  if (beforeUsers !== afterUsers) {
+    throw new WriteAuthzError(
+      "Direct write to meta.users is not allowed — use users:upsert-self stateless RPC",
     );
   }
 
