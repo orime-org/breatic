@@ -9,7 +9,6 @@
 import * as memoryRepo from "./memory.repo.js";
 import { getAgentConfig } from "../config/loader.js";
 import { ConflictError } from "../errors.js";
-import { logger } from "../logger.js";
 import type { MemoryContext } from "@breatic/shared";
 
 /** Scenarios determining which memory layers are loaded. */
@@ -109,10 +108,11 @@ export async function applyConsolidation(
       );
     } catch (error: unknown) {
       if (error instanceof ConflictError) {
-        logger.warn(
-          { projectId },
-          "project_memory_version_conflict",
-        );
+        // Concurrent project-memory upsert lost the optimistic
+        // version race. Swallowing is intentional (consolidator is
+        // background, idempotent retries are safe), but the
+        // application caller can observe the no-op via the missing
+        // `applyConsolidation` follow-up event if needed.
       } else {
         throw error;
       }
@@ -136,7 +136,8 @@ export async function applyConsolidation(
       );
     } catch (error: unknown) {
       if (error instanceof ConflictError) {
-        logger.warn({ userId }, "user_memory_version_conflict");
+        // Same as the project-memory branch — concurrent upsert
+        // lost the version race; intentionally silent.
       } else {
         throw error;
       }

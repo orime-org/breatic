@@ -28,7 +28,6 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "../errors.js";
-import { logger } from "../logger.js";
 import { t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
@@ -80,7 +79,8 @@ export async function register(
   // §6). Idempotent — also called from project.service.create as
   // belt-and-suspenders if the register hook ever races.
   await studioService.ensurePersonalStudio(user.id, user.username);
-  logger.info({ userId: user.id, email }, "user_registered");
+  // Per CLAUDE.md "core 和 shared 不写任何日志" — caller logs the
+  // `user_registered` audit line after this resolves.
   return { user, recoveryCode };
 }
 
@@ -114,7 +114,7 @@ export async function loginEmail(
   const token = crypto.randomUUID();
   const redis = getRedis();
   await setSession(redis, token, user.id);
-  logger.info({ userId: user.id, method: "email" }, "user_logged_in");
+  // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
 }
 
@@ -161,7 +161,7 @@ export async function loginOrCreateGoogle(
   const token = crypto.randomUUID();
   const redis = getRedis();
   await setSession(redis, token, user.id);
-  logger.info({ userId: user.id, method: "google" }, "user_logged_in");
+  // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token };
 }
 
@@ -203,15 +203,31 @@ export async function logoutAll(userId: string): Promise<void> {
 const RESET_TOKEN_TTL = 3600; // 1 hour
 
 /**
+ * Discriminated outcome of {@link forgotPassword}. Per CLAUDE.md
+ * "core 和 shared 不写任何日志" mandate, the service returns the
+ * branch it took (anti-enumeration: caller still responds to the
+ * client with the same generic body) and the route handler logs
+ * the appropriate audit line.
+ */
+export type ForgotPasswordResult =
+  | { status: "unknown_email" }
+  | { status: "reset_email_sent"; userId: string };
+
+/**
  * Generate a password reset token and send reset email.
  *
- * Silently succeeds even if email not found (prevents email enumeration).
+ * Silently succeeds even if email not found (prevents email
+ * enumeration). The returned discriminant lets the caller log
+ * audit context internally without ever leaking the
+ * existence/non-existence of the email back to the client.
  */
-export async function forgotPassword(email: string, resetBaseUrl: string): Promise<void> {
+export async function forgotPassword(
+  email: string,
+  resetBaseUrl: string,
+): Promise<ForgotPasswordResult> {
   const user = await userRepo.getUserByEmail(email);
   if (!user) {
-    logger.info({ email }, "Password reset requested for non-existent email");
-    return; // Don't reveal whether email exists
+    return { status: "unknown_email" };
   }
 
   const token = crypto.randomBytes(32).toString("hex");
@@ -230,7 +246,7 @@ export async function forgotPassword(email: string, resetBaseUrl: string): Promi
     `,
   });
 
-  logger.info({ userId: user.id }, "Password reset email sent");
+  return { status: "reset_email_sent", userId: user.id };
 }
 
 /**
@@ -256,7 +272,8 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // Invalidate all existing sessions (security: force re-login)
   await deleteAllSessions(redis, userId);
 
-  logger.info({ userId }, "Password reset completed");
+  // Caller logs `password_reset_completed` audit line (userId
+  // returned via the calling route's request context).
 }
 
 /**
@@ -286,7 +303,7 @@ export async function resetPasswordWithRecoveryCode(
   email: string,
   code: string,
   newPassword: string,
-): Promise<{ newRecoveryCode: string }> {
+): Promise<{ newRecoveryCode: string; userId: string }> {
   const user = await userRepo.getUserByEmail(email);
   if (!user) {
     throw new UnauthorizedError("Invalid email or recovery code");
@@ -318,8 +335,8 @@ export async function resetPasswordWithRecoveryCode(
   const redis = getRedis();
   await deleteAllSessions(redis, user.id);
 
-  logger.info({ userId: user.id }, "password_reset_via_recovery_code");
-  return { newRecoveryCode };
+  // Caller logs `password_reset_via_recovery_code` audit line.
+  return { newRecoveryCode, userId: user.id };
 }
 
 // ── Email verification ───────────────────────────────────────────
@@ -351,7 +368,7 @@ export async function generateVerifyEmailToken(userId: string): Promise<string> 
  *
  * @throws {UnauthorizedError} if the token is missing / expired / used.
  */
-export async function verifyEmail(token: string): Promise<void> {
+export async function verifyEmail(token: string): Promise<{ userId: string }> {
   const redis = getRedis();
   const key = `${env.ENV}:email-verify:${token}`;
   const userId = await redis.get(key);
@@ -360,7 +377,8 @@ export async function verifyEmail(token: string): Promise<void> {
   }
   await userRepo.updateUser(userId, { emailVerified: true });
   await redis.del(key);
-  logger.info({ userId }, "email_verified");
+  // Caller logs `email_verified` audit line with the returned userId.
+  return { userId };
 }
 
 /**
@@ -392,5 +410,5 @@ export async function resendVerificationEmail(
       <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
     `,
   });
-  logger.info({ userId }, "verification_email_sent");
+  // Caller logs `verification_email_sent` audit line.
 }

@@ -13,7 +13,6 @@ import { findTierByName, getPricingTiers } from "../config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "../errors.js";
-import { logger } from "../logger.js";
 
 /**
  * Create a Stripe Checkout session for purchasing credits.
@@ -68,11 +67,8 @@ export async function createCheckout(
     metadata: { tierName: tier.name, successUrl, cancelUrl },
   });
 
-  logger.info(
-    { userId, tier: tier.name, credits: tier.credits, sessionId: session.id },
-    "Checkout session created",
-  );
-
+  // Caller logs `payment_checkout_session_created` audit line with
+  // the returned paymentId + sessionId.
   return { paymentId: payment.id, checkoutUrl: session.url ?? "" };
 }
 
@@ -82,10 +78,19 @@ export async function createCheckout(
  * Idempotent: skips if payment is already completed.
  * Atomically grants credits and records the transaction.
  */
+export type CheckoutCompletedOutcome =
+  | { status: "replay" }
+  | {
+      status: "completed";
+      userId: string;
+      creditsGranted: number;
+      newBalance: number;
+    };
+
 export async function handleCheckoutCompleted(
   stripeSessionId: string,
   paymentIntentId?: string,
-): Promise<void> {
+): Promise<CheckoutCompletedOutcome> {
   const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
   if (!payment) {
     throw new NotFoundError(t("server.error.not_found"));
@@ -97,8 +102,8 @@ export async function handleCheckoutCompleted(
     payment.id, "pending", "completed", paymentIntentId,
   );
   if (!updated) {
-    logger.info({ stripeSessionId }, "Webhook replay — payment already completed");
-    return;
+    // Caller logs `webhook_replay` (payment already completed).
+    return { status: "replay" };
   }
 
   const newBalance = await userRepo.addCredits(payment.userId, payment.creditsGranted);
@@ -112,10 +117,14 @@ export async function handleCheckoutCompleted(
     referenceId: payment.id,
   });
 
-  logger.info(
-    { userId: payment.userId, credits: payment.creditsGranted, newBalance },
-    "Credits granted from payment",
-  );
+  // Caller logs `payment_credits_granted` audit line with the
+  // returned userId / creditsGranted / newBalance.
+  return {
+    status: "completed",
+    userId: payment.userId,
+    creditsGranted: payment.creditsGranted,
+    newBalance,
+  };
 }
 
 /** Handle Stripe payment failure. Only transitions pending → failed. */

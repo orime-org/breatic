@@ -118,6 +118,17 @@ jobs:
         # are exempted; see scripts/lint-no-cjk.sh).
         run: pnpm lint:no-cjk
 
+      - name: Lint no-library-logger (core + shared only)
+        # Enforce CLAUDE.md "服务器端工业级标准" mandate (commits
+        # adf36d1 / 026c5aa / 201a839): @breatic/core and
+        # @breatic/shared must NOT call logger.{info,warn,error,debug,
+        # fatal,trace}. Library code throws or returns a sentinel; the
+        # application layer (server route / collab hook / worker job
+        # handler) owns audit logging. Hard-fails the PR on any
+        # library logger call. See scripts/lint-no-library-logger.sh
+        # for the exclusion list and rationale.
+        run: pnpm lint:no-library-logger
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 
