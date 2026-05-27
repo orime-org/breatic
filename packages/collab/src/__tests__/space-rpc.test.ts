@@ -230,6 +230,75 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(m.get("kind")).toBe("space-locked");
   });
 
+  it("space:rename updates entry.name + pushes space-renamed with both old and new names", async () => {
+    const existing = new Y.Map();
+    existing.set("id", SID);
+    existing.set("name", "Old Name");
+    existing.set("type", "canvas");
+    existing.set("locked", false);
+    fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      PID,
+      { userId: "u-1", role: "edit" },
+      {
+        id: "r1",
+        type: "space:rename",
+        payload: { spaceId: SID, name: "New Name" },
+      },
+    );
+    expect(res.ok).toBe(true);
+    expect(existing.get("name")).toBe("New Name");
+    const m = fakeMetaDoc.doc.getArray("projectMessages").get(0) as Y.Map<unknown>;
+    expect(m.get("kind")).toBe("space-renamed");
+    expect(m.get("actor")).toBe("u-1");
+    expect(m.get("spaceId")).toBe(SID);
+    // spaceName carries the NEW name (post-rename); oldSpaceName carries
+    // the pre-rename name — the frontend renders "X renamed Foo → Bar".
+    expect(m.get("spaceName")).toBe("New Name");
+    expect(m.get("oldSpaceName")).toBe("Old Name");
+  });
+
+  it("space:rename returns NOT_FOUND for missing spaceId (no message pushed)", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      PID,
+      { userId: "u-1", role: "edit" },
+      {
+        id: "r1",
+        type: "space:rename",
+        payload: { spaceId: "missing", name: "Whatever" },
+      },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
+  });
+
+  it("space:rename refuses locked Space (no rename, no message pushed)", async () => {
+    const locked = new Y.Map();
+    locked.set("id", SID);
+    locked.set("name", "Locked");
+    locked.set("locked", true);
+    fakeMetaDoc.doc.getMap("spaces").set(SID, locked);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      PID,
+      { userId: "u-1", role: "edit" },
+      {
+        id: "r1",
+        type: "space:rename",
+        payload: { spaceId: SID, name: "Should not stick" },
+      },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("FORBIDDEN");
+    expect(locked.get("name")).toBe("Locked");
+    expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
+  });
+
   it("space:restore rebuilds entry from latest space-deleted snapshot (owner)", async () => {
     // Seed: pretend a delete already happened — projectMessages has a
     // space-deleted entry with a full snapshot, meta.spaces is empty.

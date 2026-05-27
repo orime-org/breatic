@@ -123,6 +123,7 @@ const KIND_DOT_CLASS: Record<ProjectMessageEntry['kind'], string> = {
   'space-locked': 'bg-status-info-border',
   'space-unlocked': 'bg-muted-foreground',
   'space-restored': 'bg-status-success-border',
+  'space-renamed': 'bg-status-info-border',
 };
 
 const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
@@ -132,6 +133,7 @@ const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
   'space-locked': 'spaces.history.kind.spaceLocked',
   'space-unlocked': 'spaces.history.kind.spaceUnlocked',
   'space-restored': 'spaces.history.kind.spaceRestored',
+  'space-renamed': 'spaces.history.kind.spaceRenamed',
 };
 
 export function ProjectMessagesButton({
@@ -327,6 +329,7 @@ export function ProjectMessagesButton({
                         : t(KIND_LABEL_KEY[m.kind], {
                             spaceName,
                             actor: actorName,
+                            oldSpaceName: m.oldSpaceName ?? '',
                           })}
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>

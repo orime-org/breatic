@@ -1066,7 +1066,8 @@
         "spaceDeleted": "{actor} deleted space {spaceName}",
         "spaceLocked": "{actor} locked space {spaceName}",
         "spaceUnlocked": "{actor} unlocked space {spaceName}",
-        "spaceRestored": "{actor} restored space {spaceName}"
+        "spaceRestored": "{actor} restored space {spaceName}",
+        "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
       },
       "action": {
         "restore": "Restore",

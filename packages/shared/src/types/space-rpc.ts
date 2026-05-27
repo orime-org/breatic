@@ -201,6 +201,7 @@ export const ProjectMessageKindSchema = z.enum([
   "space-locked",
   "space-unlocked",
   "space-restored",
+  "space-renamed",
 ]);
 export type ProjectMessageKind = z.infer<typeof ProjectMessageKindSchema>;
 
@@ -219,20 +220,29 @@ export const ProjectMessageEntrySchema = z.object({
    * non-name metadata (e.g. type for kind icons). The Space's
    * displayed NAME, however, is captured as a snapshot below
    * (`spaceName`) so each entry records the name at the moment the
-   * event happened — rename is its own audit event(future
-   * `space-renamed` kind), the existing entries stay frozen as
-   * historical truth. Live-lookup of name was tried in v2 but
-   * conflicts with the "events log" semantics.
+   * event happened — rename is its own audit event(`space-renamed`
+   * kind), the existing entries stay frozen as historical truth.
+   * Live-lookup of name was tried in v2 but conflicts with the
+   * "events log" semantics.
    */
   spaceId: z.string().optional(),
   /**
    * Snapshot of Space name at event time. For `space-deleted` the
    * spaceId has left `meta.spaces` so this is the only place left
    * to read from; for active kinds (`space-created` / `-locked` /
-   * `-unlocked` / `-restored` / future `-renamed`) it records the
-   * name as it was when the event fired, immune to later renames.
+   * `-unlocked` / `-restored`) it records the name as it was when
+   * the event fired, immune to later renames. For `space-renamed`
+   * this is the NEW name (post-rename); the pre-rename name lives
+   * in `oldSpaceName`.
    */
   spaceName: z.string().optional(),
+  /**
+   * `space-renamed` only — snapshot of the Space name BEFORE the
+   * rename. Paired with `spaceName` (the new name) the frontend
+   * renders "{actor} renamed {oldSpaceName} to {spaceName}".
+   * Optional because every other kind leaves it empty.
+   */
+  oldSpaceName: z.string().optional(),
   spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
   message: z.string().optional(),
   context: z.record(z.string(), z.unknown()).optional(),

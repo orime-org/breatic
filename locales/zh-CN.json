@@ -1066,7 +1066,8 @@
         "spaceDeleted": "{actor} 删除了 Space {spaceName}",
         "spaceLocked": "{actor} 锁定了 Space {spaceName}",
         "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
-        "spaceRestored": "{actor} 恢复了 Space {spaceName}"
+        "spaceRestored": "{actor} 恢复了 Space {spaceName}",
+        "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}"
       },
       "action": {
         "restore": "恢复",

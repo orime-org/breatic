@@ -1066,7 +1066,8 @@
         "spaceDeleted": "{actor} が Space {spaceName} を削除しました",
         "spaceLocked": "{actor} が Space {spaceName} をロックしました",
         "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
-        "spaceRestored": "{actor} が Space {spaceName} を復元しました"
+        "spaceRestored": "{actor} が Space {spaceName} を復元しました",
+        "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました"
       },
       "action": {
         "restore": "復元",
