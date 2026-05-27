@@ -68,6 +68,15 @@ services:
         condition: service_healthy
 
   # ── Application ────────────────────────────────
+  # Each application service exposes `GET /healthz` on a dedicated
+  # health port (`主+1` convention) — api 3001 / collab 1235 /
+  # worker 9101 — so docker's healthcheck can probe an isolated
+  # endpoint that fails its own port independent of main traffic.
+  # After `retries` consecutive failures docker marks the container
+  # `unhealthy`; combined with `restart: unless-stopped` the
+  # container is killed and respawned automatically — closing the
+  # self-heal loop the 2026-05-27 collab long-running drift exposed
+  # (see CLAUDE.md "服务器端工业级标准" mandate).
   api:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
@@ -82,6 +91,16 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      # `wget` is in the base node image; `-q -O -` keeps the
+      # output silent so docker only inspects exit code. The 200/503
+      # contract is enforced by the http server in
+      # packages/core/src/infra/health-server.ts.
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3001/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   collab:
@@ -97,6 +116,12 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:1235/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   worker:
@@ -111,6 +136,12 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:9101/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
 volumes:
