@@ -106,7 +106,7 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
     enabled: open,
     refetchOnWindowFocus: false,
   });
-  const linkCount = linksQuery.data?.data.length ?? 0;
+  const linkCount = (linksQuery.data?.data ?? []).length;
 
   const inviteUrl = generatedLink ? inviteUrlFor(generatedLink.token) : '';
 
