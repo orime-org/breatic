@@ -17,7 +17,6 @@ import type { AuthVariables } from "../middleware/auth.js";
 import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import type { SendMailResult } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
@@ -25,35 +24,8 @@ import {
   clearSessionCookie,
   readSessionCookie,
 } from "../middleware/session-cookie.js";
+import { logMailResult } from "../utils/log-mail.js";
 import type { MiddlewareHandler } from "hono";
-
-/**
- * Centralized audit-log helper for SendMailResult. Per CLAUDE.md
- * "core 和 shared 不写任何日志" mandate, the mailer library returns
- * a discriminated result and the application boundary (this route)
- * decides how to log each branch. The console branch dumps the
- * full html payload to the dev console (replaces the prior
- * library-side `logger.info("[console] email", { html })` line);
- * the smtp_not_configured branch warns so ops sees a missing SMTP
- * config in production; the sent / backend_disabled branches need
- * no log (the route-level audit line already covers them).
- */
-function logMailResult(
-  result: SendMailResult,
-  ctx: { userId?: string; subject: string },
-): void {
-  if (result.status === "backend_console") {
-    logger.info(
-      { ...ctx, to: result.to, html: result.html },
-      "[console] email",
-    );
-  } else if (result.status === "skipped" && result.reason === "smtp_not_configured") {
-    logger.warn(
-      { ...ctx, to: result.to },
-      "email_not_sent_smtp_not_configured",
-    );
-  }
-}
 
 /** Rate limit middleware factory. */
 function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
