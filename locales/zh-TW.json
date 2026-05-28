@@ -359,6 +359,20 @@
       "failed": "電子郵件驗證失敗。"
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "申請編輯者權限",
+      "title": "申請編輯者權限",
+      "description": "你目前是該專案的檢視者。給專案所有者發送訊息,申請編輯者權限。",
+      "placeholder": "給專案所有者的留言(可選)…",
+      "submit": "發送申請",
+      "sending": "發送中…",
+      "toast": {
+        "sent": "申請已發送 — 專案所有者會在通知中看到。",
+        "failed": "申請發送失敗,請重試。"
+      }
+    }
+  },
   "breatic_slogan": "AI讓創意可見",
   "about_us": "關於我們",
   "support_and_service": "支援與服務",

@@ -359,6 +359,20 @@
       "failed": "邮箱验证失败。"
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "申请编辑者权限",
+      "title": "申请编辑者权限",
+      "description": "你当前是该项目的观察者。给项目所有者发送一条消息,申请编辑者权限。",
+      "placeholder": "给项目所有者的留言(可选)…",
+      "submit": "发送申请",
+      "sending": "发送中…",
+      "toast": {
+        "sent": "申请已发送 — 项目所有者会在通知中看到。",
+        "failed": "申请发送失败,请重试。"
+      }
+    }
+  },
   "breatic_slogan": "AI让创意可见",
   "about_us": "关于我们",
   "support_and_service": "支持与服务",

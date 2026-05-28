@@ -359,6 +359,20 @@
       "failed": "Email verification failed."
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "Request editor access",
+      "title": "Request editor access",
+      "description": "You are currently a viewer on this project. Send a message to the owner asking for editor access.",
+      "placeholder": "Optional message to the owner…",
+      "submit": "Send request",
+      "sending": "Sending…",
+      "toast": {
+        "sent": "Request sent — the owner will see it in their notifications.",
+        "failed": "Could not send the request. Please try again."
+      }
+    }
+  },
   "breatic_slogan": "AI Makes Creativity Visible",
   "about_us": "About Us",
   "support_and_service": "Support and Service",
