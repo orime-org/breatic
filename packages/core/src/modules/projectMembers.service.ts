@@ -27,6 +27,19 @@ export async function list(projectId: string): Promise<ProjectMember[]> {
 }
 
 /**
+ * Get the owner's user id for a project (used by notification
+ * dispatch — e.g. access request created → mail owner).
+ *
+ * @param projectId - Project UUID
+ * @returns Owner's user UUID, or null if the project has no owner
+ *   (should not happen — every project gets an owner row in the
+ *   same tx as project creation)
+ */
+export async function getOwner(projectId: string): Promise<string | null> {
+  return projectMembersRepo.getOwner(projectId);
+}
+
+/**
  * Invite a user to a project (or revive a previously-removed member).
  *
  * Constraints:

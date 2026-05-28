@@ -154,6 +154,60 @@ export const mocks = {
     invite: vi.fn().mockResolvedValue(undefined),
     changeRole: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
+    getOwner: vi.fn().mockResolvedValue(null),
+  },
+  accessRequestService: {
+    createRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "pending",
+      reviewedByUserId: null, reviewedAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    listPendingByProject: vi.fn().mockResolvedValue([]),
+    listByRequester: vi.fn().mockResolvedValue([]),
+    approveRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "approved",
+      reviewedByUserId: "u-owner", reviewedAt: new Date(),
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    rejectRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "rejected",
+      reviewedByUserId: "u-owner", reviewedAt: new Date(),
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+  },
+  shareLinkService: {
+    generateToken: vi.fn().mockReturnValue("token-mock"),
+    createLink: vi.fn().mockResolvedValue({
+      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
+      token: "token-mock", role: "view", isPermanent: false,
+      consumedAt: null, expiresAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    listByProject: vi.fn().mockResolvedValue([]),
+    revokeLink: vi.fn().mockResolvedValue(undefined),
+    consumeLink: vi.fn().mockResolvedValue({
+      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
+      token: "token-mock", role: "view", isPermanent: false,
+      consumedAt: new Date(), expiresAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+  },
+  accessRequestMail: {
+    buildAccessRequestCreatedMail: vi.fn().mockReturnValue({
+      to: "owner@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildAccessRequestApprovedMail: vi.fn().mockReturnValue({
+      to: "req@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildAccessRequestRejectedMail: vi.fn().mockReturnValue({
+      to: "req@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildShareInviteMail: vi.fn().mockReturnValue({
+      to: "invitee@example.com", subject: "test", html: "<p>test</p>",
+    }),
   },
   studioService: {
     ensurePersonalStudio: vi.fn().mockResolvedValue({
@@ -223,6 +277,10 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     creditService: mocks.creditService,
     projectAuthService: mocks.projectAuthService,
     projectMembersService: mocks.projectMembersService,
+    accessRequestService: mocks.accessRequestService,
+    shareLinkService: mocks.shareLinkService,
+    accessRequestMail: mocks.accessRequestMail,
+    sendMail: vi.fn().mockResolvedValue({ status: "skipped", reason: "backend_disabled" }),
     studioService: mocks.studioService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     yjsDocRepo: mocks.yjsDocRepo,
