@@ -86,6 +86,12 @@ const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
 
 interface LeftFloatingMenuProps {
   onPick: (tool: LeftMenuTool) => void;
+  /**
+   * When `true`, every tool button is rendered disabled with a
+   * tooltip indicating editor permission is required. Per 2026-05-28
+   * spec § 6.2 viewers see the menu but can't fire any action.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -111,16 +117,17 @@ interface LeftFloatingMenuProps {
  * Divider:
  *   - 28px wide, 1px border-color line, 4px vertical margin
  */
-export function LeftFloatingMenu({ onPick }: LeftFloatingMenuProps) {
+export function LeftFloatingMenu({ onPick, disabled = false }: LeftFloatingMenuProps) {
   const t = useTranslation();
   return (
     <nav
       aria-label={t('menu.createAria')}
       data-testid='left-floating-menu'
+      data-disabled={disabled ? 'true' : undefined}
       className='absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm'
     >
       {UPPER_ITEMS.map((it) => (
-        <MenuButton key={it.id} item={it} onPick={onPick} />
+        <MenuButton key={it.id} item={it} onPick={onPick} disabled={disabled} />
       ))}
       <div
         aria-hidden
@@ -128,7 +135,7 @@ export function LeftFloatingMenu({ onPick }: LeftFloatingMenuProps) {
         className='my-1 h-px w-7 bg-border'
       />
       {LOWER_ITEMS.map((it) => (
-        <MenuButton key={it.id} item={it} onPick={onPick} />
+        <MenuButton key={it.id} item={it} onPick={onPick} disabled={disabled} />
       ))}
     </nav>
   );
@@ -137,13 +144,16 @@ export function LeftFloatingMenu({ onPick }: LeftFloatingMenuProps) {
 function MenuButton({
   item,
   onPick,
+  disabled,
 }: {
   item: MenuItem;
   onPick: (tool: LeftMenuTool) => void;
+  disabled: boolean;
 }) {
   const t = useTranslation();
   const Icon = item.icon;
   const label = t(item.labelKey);
+  const tooltipLabel = disabled ? t('menu.disabledTooltip') : label;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -151,9 +161,10 @@ function MenuButton({
           type='button'
           aria-label={label}
           onClick={() => onPick(item.id)}
+          disabled={disabled}
           data-testid={`tool-${item.id}`}
           className={cn(
-            'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+            'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             item.featured
               ? 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
               : item.placeholder
@@ -164,7 +175,7 @@ function MenuButton({
           <Icon className='h-5 w-5' />
         </button>
       </TooltipTrigger>
-      <TooltipContent side='right'>{label}</TooltipContent>
+      <TooltipContent side='right'>{tooltipLabel}</TooltipContent>
     </Tooltip>
   );
 }

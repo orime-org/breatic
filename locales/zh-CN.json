@@ -1190,7 +1190,8 @@
       "assetGroup": "资产组 — 跨项目共享素材(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
-    }
+    },
+    "disabledTooltip": "需要编辑者权限"
   },
   "viewportToolbar": {
     "aria": "视口工具",

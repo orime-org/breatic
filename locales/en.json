@@ -1190,7 +1190,8 @@
       "assetGroup": "Asset group — share across projects (coming soon)",
       "help": "Help (coming soon)",
       "feedback": "Feedback / Support (coming soon)"
-    }
+    },
+    "disabledTooltip": "Requires editor permission"
   },
   "viewportToolbar": {
     "aria": "Viewport tools",

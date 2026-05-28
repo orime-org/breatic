@@ -1190,7 +1190,8 @@
       "assetGroup": "アセットグループ — プロジェクト横断共有(近日対応)",
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
-    }
+    },
+    "disabledTooltip": "編集者権限が必要です"
   },
   "viewportToolbar": {
     "aria": "ビューポートツール",

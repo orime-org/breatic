@@ -1190,7 +1190,8 @@
       "assetGroup": "資產組 — 跨專案共享素材(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
-    }
+    },
+    "disabledTooltip": "需要編輯者權限"
   },
   "viewportToolbar": {
     "aria": "視口工具",
