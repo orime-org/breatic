@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fc from "fast-check";
 
 vi.mock("./accessRequest.repo.js", () => ({
   create: vi.fn(),
@@ -342,5 +343,128 @@ describe("list functions are thin pass-through", () => {
     const out = await listByRequester(UID);
     expect(out).toHaveLength(1);
     expect(accessRequestRepo.listByRequester).toHaveBeenCalledWith(UID);
+  });
+});
+
+// ── Fast-check property-based tests (PR-d TDD backfill #613) ───────
+//
+// CLAUDE.md "关键路径 + property-based" mandate: rights/auth flows
+// must hold their invariants under arbitrary input, not just
+// hand-picked examples. accessRequest is on the auth critical path
+// (it grants project_members rows on approve), so we lock the three
+// hard invariants below against any reasonable input distribution.
+
+describe("createRequest — property: only 'view'/'edit' are grantable", () => {
+  it("rejects any role string that isn't 'view' or 'edit' with ValidationError", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.string(), async (role) => {
+        if (role === "view" || role === "edit") return; // skip the valid pair
+        vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
+        await expect(
+          createRequest({
+            projectId: PID,
+            requesterUserId: UID,
+            requestedRole: role,
+            message: null,
+          }),
+        ).rejects.toBeInstanceOf(ValidationError);
+        expect(accessRequestRepo.create).not.toHaveBeenCalled();
+        vi.clearAllMocks();
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("accepts BOTH 'view' and 'edit' on valid input", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.constantFrom("view", "edit"), async (role) => {
+        vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
+        vi.mocked(accessRequestRepo.create).mockResolvedValueOnce(
+          fakeRequest({ requestedRole: role }),
+        );
+        const out = await createRequest({
+          projectId: PID,
+          requesterUserId: UID,
+          requestedRole: role,
+          message: null,
+        });
+        expect(out.requestedRole).toBe(role);
+        vi.clearAllMocks();
+      }),
+      { numRuns: 20 },
+    );
+  });
+});
+
+describe("approveRequest — property: only pending → approved/rejected; never resurrect", () => {
+  it("rejects any non-pending status with NotFound (state machine guard)", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.constantFrom("approved", "rejected"),
+        async (existingStatus) => {
+          vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+            fakeRequest({ status: existingStatus }),
+          );
+          await expect(approveRequest(RID, REVIEWER)).rejects.toBeInstanceOf(
+            NotFoundError,
+          );
+          expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+          expect(publishMembersChanged).not.toHaveBeenCalled();
+          vi.clearAllMocks();
+        },
+      ),
+      { numRuns: 20 },
+    );
+  });
+
+  it("rejects soft-deleted requests regardless of status", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.constantFrom("pending", "approved", "rejected"),
+        async (status) => {
+          vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+            fakeRequest({ status, deletedAt: new Date() }),
+          );
+          await expect(approveRequest(RID, REVIEWER)).rejects.toBeInstanceOf(
+            NotFoundError,
+          );
+          expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+          vi.clearAllMocks();
+        },
+      ),
+      { numRuns: 20 },
+    );
+  });
+});
+
+describe("approveRequest — property: granted role always equals requestedRole", () => {
+  it("upsertMember receives the EXACT requestedRole the applicant asked for", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.constantFrom("view", "edit"), async (requestedRole) => {
+        vi.mocked(accessRequestRepo.findById)
+          .mockResolvedValueOnce(fakeRequest({ requestedRole }))
+          .mockResolvedValueOnce(
+            fakeRequest({ requestedRole, status: "approved" }),
+          );
+        vi.mocked(accessRequestRepo.updateStatus).mockResolvedValueOnce(true);
+
+        await approveRequest(RID, REVIEWER);
+
+        expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(
+          PID,
+          UID,
+          requestedRole,
+          REVIEWER,
+          expect.anything(),
+        );
+        expect(publishMembersChanged).toHaveBeenCalledWith(PID, {
+          affectedUserId: UID,
+          action: "invite",
+          newRole: requestedRole,
+        });
+        vi.clearAllMocks();
+      }),
+      { numRuns: 20 },
+    );
   });
 });

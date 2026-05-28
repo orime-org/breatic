@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fc from "fast-check";
 
 vi.mock("./shareLink.repo.js", () => ({
   create: vi.fn(),
@@ -237,5 +238,74 @@ describe("listByProject", () => {
     const out = await listByProject(PID);
     expect(out).toHaveLength(1);
     expect(shareLinkRepo.listByProject).toHaveBeenCalledWith(PID);
+  });
+});
+
+// ── Fast-check property-based tests (PR-d TDD backfill #614) ───────
+//
+// shareLink sits on the auth critical path: every consume can mint
+// project_members. The 3 properties below lock the single-use vs
+// permanent invariants under arbitrary input.
+
+describe("createLink — property: only 'view'/'edit' grantable via share link", () => {
+  it("rejects any role string that isn't 'view' or 'edit' with ValidationError", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.string(), async (role) => {
+        if (role === "view" || role === "edit") return;
+        await expect(
+          createLink({
+            projectId: PID,
+            createdByUserId: OWNER,
+            role,
+            isPermanent: false,
+          }),
+        ).rejects.toBeInstanceOf(ValidationError);
+        expect(shareLinkRepo.create).not.toHaveBeenCalled();
+        vi.clearAllMocks();
+      }),
+      { numRuns: 50 },
+    );
+  });
+});
+
+describe("consumeLink — property: permanent links are idempotent + never call markConsumed", () => {
+  it("any number of consume calls on a permanent link never mutates consumed_at", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 1, max: 10 }), async (n) => {
+        vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValue(
+          fakeLink({ isPermanent: true, consumedAt: null }),
+        );
+        for (let i = 0; i < n; i++) {
+          const out = await consumeLink(TOKEN);
+          expect(out.isPermanent).toBe(true);
+        }
+        expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+        vi.clearAllMocks();
+      }),
+      { numRuns: 20 },
+    );
+  });
+});
+
+describe("consumeLink — property: expired links never reach markConsumed regardless of mode", () => {
+  it("any link expired in the past + (single-use OR permanent) is rejected before any mutation", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 1_000_000 }), // ms in the past
+        fc.boolean(),
+        async (msInPast, isPermanent) => {
+          const past = new Date(Date.now() - msInPast);
+          vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
+            fakeLink({ isPermanent, expiresAt: past }),
+          );
+          await expect(consumeLink(TOKEN)).rejects.toBeInstanceOf(
+            ForbiddenError,
+          );
+          expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+          vi.clearAllMocks();
+        },
+      ),
+      { numRuns: 30 },
+    );
   });
 });
