@@ -88,6 +88,26 @@ describe("POST /projects/:pid/access-requests", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("request creation succeeds even when sendMail throws (graceful degradation)", async () => {
+    // PR-d 07 TDD backfill: dispatchOwnerNotification is wrapped in
+    // try/catch so a mail failure doesn't fail the access request
+    // creation. The original 500-instead-of-201 bug at commit
+    // 796e2bd was discovered without this test; the reproduction
+    // is added retroactively to lock the invariant.
+    mocks.sendMail.mockRejectedValueOnce(new Error("smtp connection lost"));
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/projects/${PID}/access-requests`,
+      {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({ requested_role: "view" }),
+      },
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.accessRequestService.createRequest).toHaveBeenCalled();
+  });
 });
 
 describe("GET /projects/:pid/access-requests", () => {

@@ -53,12 +53,15 @@ describe("POST /projects/:pid/invite-links", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("creates a link when invitee_email is provided (dispatch path entered)", async () => {
-    // Mail dispatch is fire-and-forget + wrapped in try/catch (so a
-    // mail failure doesn't fail the request). Verifying createLink
-    // was called with the right args is the testable contract here;
-    // the mailer dispatch itself is covered by access-request-mail
-    // builder unit tests (XSS escape, single-use vs permanent etc.).
+  it("dispatches share invite mail when invitee_email is provided", async () => {
+    // PR-d 08 TDD backfill: this test originally simplified the
+    // assertion to mocks.shareLinkService.createLink because the
+    // dispatch helper short-circuited on `if (!inviter) return` —
+    // root cause was that mocks.sendMail wasn't exposed on `mocks`
+    // so the spy couldn't be re-armed per-test, AND userRepo.
+    // getUserById returned a non-null default so inviter was actually
+    // populated correctly. The buildShareInviteMail spy IS reached.
+    // Restored to the precise contract assertion.
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/invite-links`,
@@ -80,6 +83,38 @@ describe("POST /projects/:pid/invite-links", () => {
         isPermanent: false,
       }),
     );
+    expect(mocks.accessRequestMail.buildShareInviteMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inviteeEmail: "new@example.com",
+        // role on the builder comes from the *created link* (mock
+        // returns role='view'), not the request body. Matches
+        // production: builder reads link.role to keep mail copy in
+        // sync with what the link actually grants.
+      }),
+    );
+    expect(mocks.sendMail).toHaveBeenCalled();
+  });
+
+  it("link creation succeeds even when sendMail throws (graceful degradation)", async () => {
+    // PR-d TDD backfill: dispatchInviteeMail is wrapped in try/catch
+    // so a mail failure doesn't fail the link creation. Verify the
+    // request still 201s + the link is still in shareLinkService.
+    mocks.sendMail.mockRejectedValueOnce(new Error("smtp connection lost"));
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/projects/${PID}/invite-links`,
+      {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          role: "view",
+          is_permanent: false,
+          invitee_email: "new@example.com",
+        }),
+      },
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.shareLinkService.createLink).toHaveBeenCalled();
   });
 
   it("returns 403 when caller is not owner", async () => {

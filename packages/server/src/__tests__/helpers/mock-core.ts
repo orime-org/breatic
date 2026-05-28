@@ -77,7 +77,14 @@ export const mocks = {
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),
-    get: vi.fn(),
+    // Default to a generic project so dispatch helpers that await
+    // projectService.get(...).catch(() => null) don't blow up on
+    // `.catch` of undefined (the vi.fn() default). Tests override
+    // per-case when they need a specific project shape.
+    get: vi.fn().mockResolvedValue({
+      id: "p-1", name: "Test Project", description: null,
+      createdByUserId: "u-1", studioId: "studio-1",
+    }),
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -209,6 +216,13 @@ export const mocks = {
       to: "invitee@example.com", subject: "test", html: "<p>test</p>",
     }),
   },
+  // sendMail spy lives in `mocks` so tests can mockRejectedValueOnce
+  // to verify dispatch try/catch graceful degradation, and assert
+  // call args via expect(mocks.sendMail).toHaveBeenCalledWith(...).
+  sendMail: vi.fn().mockResolvedValue({
+    status: "skipped",
+    reason: "backend_disabled",
+  } as { status: "skipped"; reason: "backend_disabled" }),
   studioService: {
     ensurePersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
@@ -280,7 +294,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     accessRequestService: mocks.accessRequestService,
     shareLinkService: mocks.shareLinkService,
     accessRequestMail: mocks.accessRequestMail,
-    sendMail: vi.fn().mockResolvedValue({ status: "skipped", reason: "backend_disabled" }),
+    sendMail: mocks.sendMail,
     studioService: mocks.studioService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     yjsDocRepo: mocks.yjsDocRepo,
