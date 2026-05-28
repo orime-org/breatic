@@ -231,6 +231,70 @@ describe("approveRequest", () => {
     );
     expect(publishMembersChanged).not.toHaveBeenCalled();
   });
+
+  // ── Transaction rollback invariants (TDD backfill for PR-d 04
+  // placeholder-bug commit `e503e50`). These would have caught the
+  // initial accessRequest.service.ts placeholder where approveRequest
+  // had non-atomic tx wiring (status update could land without member
+  // insert). The current implementation runs both inside db.transaction,
+  // so if either throws, the other must not commit + publishMembersChanged
+  // must never fire.
+
+  it("rollback invariant: updateStatus throw → upsertMember not called + no publish", async () => {
+    vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ requestedRole: "edit" }),
+    );
+    vi.mocked(accessRequestRepo.updateStatus).mockRejectedValueOnce(
+      new Error("db connection lost"),
+    );
+    await expect(approveRequest(RID, REVIEWER)).rejects.toThrow(
+      "db connection lost",
+    );
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+    expect(publishMembersChanged).not.toHaveBeenCalled();
+  });
+
+  it("rollback invariant: upsertMember throw → no publish (tx failure propagates)", async () => {
+    vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ requestedRole: "edit" }),
+    );
+    vi.mocked(accessRequestRepo.updateStatus).mockResolvedValueOnce(true);
+    vi.mocked(projectMembersRepo.upsertMember).mockRejectedValueOnce(
+      new Error("project_members FK violation"),
+    );
+    await expect(approveRequest(RID, REVIEWER)).rejects.toThrow(
+      "project_members FK violation",
+    );
+    expect(publishMembersChanged).not.toHaveBeenCalled();
+  });
+
+  it("rollback invariant: both repo calls happen inside the SAME tx handle", async () => {
+    // Captures the tx argument both repos receive to assert they got
+    // the same (single) handle. Single-handle = single transaction.
+    const txCalls: unknown[] = [];
+    vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ requestedRole: "edit" }),
+    );
+    vi.mocked(accessRequestRepo.updateStatus).mockImplementationOnce(
+      async (_id, _status, _reviewer, tx) => {
+        txCalls.push(tx);
+        return true;
+      },
+    );
+    vi.mocked(projectMembersRepo.upsertMember).mockImplementationOnce(
+      async (_p, _u, _r, _b, tx) => {
+        txCalls.push(tx);
+      },
+    );
+    vi.mocked(accessRequestRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ requestedRole: "edit", status: "approved" }),
+    );
+
+    await approveRequest(RID, REVIEWER);
+
+    expect(txCalls).toHaveLength(2);
+    expect(txCalls[0]).toBe(txCalls[1]);
+  });
 });
 
 describe("rejectRequest", () => {
