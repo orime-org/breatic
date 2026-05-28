@@ -3,6 +3,8 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import ProtectedRoute from '@/app/ProtectedRoute';
 import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
+import AccessRequestPage from '@/pages/project/access/AccessRequestPage';
+import InviteConsumePage from '@/pages/invite/InviteConsumePage';
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
@@ -55,6 +57,28 @@ const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <ProjectPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // NOT_MEMBER access request form (PR-d). ProjectPage redirects
+    // here when the project query returns 403; share/invite links
+    // also fall back here when consume fails.
+    path: '/project/:projectId/access',
+    element: (
+      <ProtectedRoute>
+        <AccessRequestPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // Invite link consume landing (PR-d paths 2/3). Runs
+    // inviteLinksApi.consume + navigates to the project on success
+    // or to /studio fallback on failure.
+    path: '/invite/:token',
+    element: (
+      <ProtectedRoute>
+        <InviteConsumePage />
       </ProtectedRoute>
     ),
   },

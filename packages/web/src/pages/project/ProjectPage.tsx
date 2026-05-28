@@ -74,7 +74,29 @@ export default function ProjectPage() {
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
     enabled: projectId !== 'demo',
+    // 403 = caller is NOT_MEMBER of this project — bail to the
+    // access request page instead of looping a useless retry. The
+    // 404 path also short-circuits (project may have been deleted).
+    retry: (failureCount, err) => {
+      if (err instanceof Error && 'status' in err) {
+        const status = (err as { status?: number }).status;
+        if (status === 403 || status === 404) return false;
+      }
+      return failureCount < 2;
+    },
   });
+
+  // NOT_MEMBER redirect — caller bounced off a project they can't
+  // see → route them to the access request page so they can ask the
+  // owner for permission (PR-d NOT_MEMBER path 1).
+  React.useEffect(() => {
+    if (!projectQuery.error) return;
+    const err = projectQuery.error as Error & { status?: number };
+    if (err.status === 403) {
+      navigate(`/project/${projectId}/access`, { replace: true });
+    }
+  }, [projectQuery.error, projectId, navigate]);
+
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   const role = projectQuery.data?.myRole ?? 'owner';
   const credits = 0;
