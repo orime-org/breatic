@@ -79,7 +79,7 @@ export function TopBar({
         >
           <ExportMenu />
           <ShareDialog projectId={projectId} />
-          <BellMenu />
+          <BellMenu projectId={projectId} />
         </div>
       </div>
       <MembersModal />
