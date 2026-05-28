@@ -698,7 +698,13 @@ export const shareLinks = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     token: varchar("token", { length: 64 }).notNull().unique(),
     role: varchar("role", { length: 16 }).default("view").notNull(),
-    isPermanent: boolean("is_permanent").default(false).notNull(),
+    /**
+     * If set, this link is single-use bound to a specific email address.
+     * Only the user whose email matches `boundEmail` can consume it.
+     * Email-invite links: NOT NULL + `expiresAt` = now() + 7 days.
+     * Generate-link (manually copied): NULL + `expiresAt` NULL.
+     */
+    boundEmail: varchar("bound_email", { length: 255 }),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -708,3 +714,56 @@ export const shareLinks = pgTable(
     index("share_links_project_idx").on(table.projectId, table.deletedAt),
   ],
 );
+
+// ── Notifications ──────────────────────────────────────────────────
+//
+// Per-user inbox for role-upgrade requests / approvals / member-joined
+// events. PG is the source of truth; collab broadcasts a stateless
+// invalidate signal to attached clients so the React Query cache
+// refetches via REST.
+//
+// Design: see `breatic-inner/engineering/specs/2026-05-28-access-permission-design.md` § 7.
+// per-user private + cross-project + offline catchup → PG, not Yjs.
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /**
+     * Notification type. Allowed values (CHECK enforced at SQL level):
+     * - 'access.role_upgrade_request' — viewer asks owner for editor role
+     * - 'access.role_upgrade_approved' — owner approved viewer's request
+     * - 'access.role_upgrade_rejected' — owner rejected viewer's request
+     * - 'access.member_joined' — someone consumed a link and joined
+     */
+    type: varchar("type", { length: 64 }).notNull(),
+    /**
+     * Type-specific payload. Examples:
+     * - role_upgrade_request: { requesterUserId, projectName, requestedRole, message? }
+     * - role_upgrade_approved/rejected: { projectName, newRole?, reason? }
+     * - member_joined: { newMemberUserId, projectName, role }
+     */
+    payload: jsonb("payload").notNull(),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    // Hot index for BellMenu (unread list per user, newest first).
+    index("notifications_user_unread_idx").on(
+      table.userId,
+      table.createdAt,
+      table.readAt,
+      table.deletedAt,
+    ),
+  ],
+);
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;

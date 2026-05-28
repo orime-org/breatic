@@ -40,7 +40,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ role: "view", is_permanent: false }),
+        body: JSON.stringify({ role: "view" }),
       },
     );
     expect(res.status).toBe(201);
@@ -70,7 +70,6 @@ describe("POST /projects/:pid/invite-links", () => {
         headers: AUTH,
         body: JSON.stringify({
           role: "edit",
-          is_permanent: false,
           invitee_email: "new@example.com",
         }),
       },
@@ -80,7 +79,7 @@ describe("POST /projects/:pid/invite-links", () => {
       expect.objectContaining({
         projectId: PID,
         role: "edit",
-        isPermanent: false,
+        boundEmail: "new@example.com",
       }),
     );
     expect(mocks.accessRequestMail.buildShareInviteMail).toHaveBeenCalledWith(
@@ -125,7 +124,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ role: "view", is_permanent: false }),
+        body: JSON.stringify({ role: "view" }),
       },
     );
     expect(res.status).toBe(403);
@@ -172,7 +171,7 @@ describe("GET /projects/:pid/invite-links", () => {
         createdByUserId: "u-1",
         token: "abc",
         role: "view",
-        isPermanent: false,
+        boundEmail: null,
         consumedAt: null,
         expiresAt: null,
         createdAt: new Date(),
@@ -234,7 +233,10 @@ describe("POST /invite-links/:token/consume", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { id: string } };
     expect(body.data.id).toBe("sl-1");
-    expect(mocks.shareLinkService.consumeLink).toHaveBeenCalledWith("abc-token");
+    expect(mocks.shareLinkService.consumeLink).toHaveBeenCalledWith(
+      "abc-token",
+      expect.any(String),
+    );
   });
 
   it("returns 401 when no auth cookie", async () => {

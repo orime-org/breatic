@@ -101,7 +101,6 @@ describe("buildShareInviteMail", () => {
       inviterName: "Owner",
       projectName: "Q1",
       inviteLink: "https://breatic.ai/invite/abc",
-      isPermanent: false,
       role: "view",
     });
     expect(mail.to).toBe("new@example.com");
@@ -111,29 +110,16 @@ describe("buildShareInviteMail", () => {
     expect(mail.html).toContain("https://breatic.ai/invite/abc");
   });
 
-  it("uses single-use language when isPermanent=false", () => {
+  it("always uses single-use + 7-day language (email-invite is always single-use post-2026-05-28 spec)", () => {
     const mail = buildShareInviteMail({
       inviteeEmail: "n@e.com",
       inviterName: "O",
       projectName: "P",
       inviteLink: "https://breatic.ai/invite/x",
-      isPermanent: false,
       role: "edit",
     });
     expect(mail.html).toContain("single-use");
-  });
-
-  it("uses permanent-link language when isPermanent=true", () => {
-    const mail = buildShareInviteMail({
-      inviteeEmail: "n@e.com",
-      inviterName: "O",
-      projectName: "P",
-      inviteLink: "https://breatic.ai/invite/x",
-      isPermanent: true,
-      role: "edit",
-    });
-    expect(mail.html).toContain("permanent");
-    expect(mail.html).not.toContain("single-use");
+    expect(mail.html).toContain("7 days");
   });
 
   it("escapes HTML in inviter/project/role (XSS guard)", () => {
@@ -142,7 +128,6 @@ describe("buildShareInviteMail", () => {
       inviterName: "<b>boom</b>",
       projectName: "<script>",
       inviteLink: "https://breatic.ai/invite/x",
-      isPermanent: false,
       role: "view",
     });
     expect(mail.html).not.toContain("<b>boom</b>");

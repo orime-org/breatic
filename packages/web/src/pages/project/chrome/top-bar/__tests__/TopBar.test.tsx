@@ -6,17 +6,34 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { expectNoA11yViolations } from '@/test-utils/a11y';
 
-// Chrome buttons (Export / Share / Notifications) now wrap their
-// PopoverTrigger in shadcn `Tooltip`. App.tsx supplies the
-// `TooltipProvider` at runtime — tests have to add it explicitly.
+// Chrome buttons (Export / Share / Notifications) wrap their PopoverTrigger
+// in shadcn `Tooltip`, and BellMenu (PR-d follow-up `e73517c`) uses
+// `useQuery` for pending access requests. App.tsx supplies both providers
+// at runtime — tests have to add them explicitly.
+function AllProviders({ children }: { children: React.ReactNode }) {
+  // Fresh QueryClient per test so cache / mutation state stays isolated.
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  return (
+    <QueryClientProvider client={qc}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
 const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+  rtlRender(ui, { wrapper: AllProviders, ...options });
 
 function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   const onRename = vi.fn();

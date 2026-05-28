@@ -136,19 +136,21 @@ export interface ShareInviteMailInput {
   projectName: string;
   /** Full invite URL (e.g. https://breatic.ai/invite/<token>). */
   inviteLink: string;
-  /** true = link is permanent (always live); false = single-use. */
-  isPermanent: boolean;
   /** Role the invitee will be granted on accept ('edit' or 'view'). */
   role: string;
 }
 
+/**
+ * Email-invite mail. Email-invite links are always single-use + bound
+ * to this recipient's email + expire in 7 days
+ * (spec 2026-05-28 § 3). Generate links are NOT sent via email — owner
+ * copies the URL manually — so this mail builder doesn't need a
+ * variant for them.
+ */
 export function buildShareInviteMail(input: ShareInviteMailInput): SendMailOptions {
   const inviter = escapeHtml(input.inviterName);
   const project = escapeHtml(input.projectName);
   const role = escapeHtml(input.role);
-  const linkNote = input.isPermanent
-    ? "This link is permanent — anyone who has it can join until the project owner revokes it."
-    : "This link is single-use — it expires after the first person joins.";
   return {
     to: input.inviteeEmail,
     subject: `${BRAND} — ${input.inviterName} invited you to ${input.projectName}`,
@@ -156,7 +158,7 @@ export function buildShareInviteMail(input: ShareInviteMailInput): SendMailOptio
       <p><strong>${inviter}</strong> invited you to collaborate on
         <strong>${project}</strong> as <code>${role}</code>.</p>
       <p><a href="${escapeHtml(input.inviteLink)}">Accept the invite</a></p>
-      <p style="color: #666; font-size: 90%;">${linkNote}</p>
+      <p style="color: #666; font-size: 90%;">This invite is single-use and expires in 7 days.</p>
     `.trim(),
   };
 }

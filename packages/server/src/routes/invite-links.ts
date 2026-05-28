@@ -39,18 +39,16 @@ import { logMailResult } from "../utils/log-mail.js";
 
 const bodySchemaCreate = z.object({
   role: z.enum(["view", "edit"]),
-  is_permanent: z.boolean(),
   /**
-   * Optional email — when present, the server sends the invite mail
-   * directly to this address (ShareDialog "send invite" flow). When
-   * omitted, the caller just wants the URL back (copy-link flow).
+   * Optional email — when present, the link becomes an email-invite:
+   * single-use, bound to this email, 7-day TTL. The server sends the
+   * invite mail directly to this address (ShareDialog "Invite by
+   * email" flow). When omitted, the link is a Generate link: multi-use,
+   * unbound, no expiry, caller just wants the URL back (copy-link flow).
+   *
+   * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
    */
   invitee_email: z.string().email().optional(),
-  /**
-   * Optional ISO-8601 expiry (single-use links can have a clock too;
-   * permanent links typically have no expiry).
-   */
-  expires_at: z.string().datetime().optional(),
 });
 
 // ── Per-project endpoints (owner CRUD) ──────────────────────────────
@@ -80,8 +78,7 @@ projectInviteLinks.post(
       projectId,
       createdByUserId: user.id,
       role: body.role,
-      isPermanent: body.is_permanent,
-      expiresAt: body.expires_at ? new Date(body.expires_at) : null,
+      boundEmail: body.invitee_email ?? null,
     });
 
     logger.info(
@@ -89,8 +86,7 @@ projectInviteLinks.post(
         projectId,
         createdByUserId: user.id,
         linkId: link.id,
-        isPermanent: body.is_permanent,
-        invited: body.invitee_email !== undefined,
+        emailInvite: body.invitee_email !== undefined,
       },
       "invite_link_created",
     );
@@ -158,14 +154,14 @@ consumeInviteLink.use(requireAuth);
 consumeInviteLink.post("/:token/consume", async (c) => {
   const token = c.req.param("token") as string;
   const user = c.get("user");
-  const link = await shareLinkService.consumeLink(token);
+  const link = await shareLinkService.consumeLink(token, user.email);
 
   logger.info(
     {
       linkId: link.id,
       projectId: link.projectId,
       consumerUserId: user.id,
-      isPermanent: link.isPermanent,
+      emailInvite: link.boundEmail !== null,
     },
     "invite_link_consumed",
   );
@@ -187,7 +183,7 @@ async function dispatchInviteeMail(
   c: BaseCtx,
   projectId: string,
   inviterUserId: string,
-  link: { token: string; role: string; isPermanent: boolean },
+  link: { token: string; role: string; boundEmail: string | null },
   inviteeEmail: string,
 ): Promise<void> {
   const [inviter, project] = await Promise.all([
@@ -201,7 +197,6 @@ async function dispatchInviteeMail(
     inviterName: inviter.username ?? inviter.email,
     projectName: project?.name ?? "the project",
     inviteLink: `${origin}/invite/${link.token}`,
-    isPermanent: link.isPermanent,
     role: link.role,
   });
   const result: SendMailResult = await sendMail(mailOpts);

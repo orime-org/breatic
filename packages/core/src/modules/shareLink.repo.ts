@@ -1,15 +1,19 @@
 /**
  * Share link repository — `share_links` table CRUD.
  *
- * Two modes encoded by `is_permanent`:
- *   - false (single-use): first consume sets `consumed_at`;
- *     subsequent visits must be rejected by the service.
- *   - true (permanent): `consumed_at` stays NULL forever; anyone
- *     with the token can join until the owner soft-deletes.
+ * Two link variants discriminated by `boundEmail` (NULL vs not):
+ *   - Email-invite (boundEmail NOT NULL): single-use, bound to the
+ *     recipient's email, expires in 7 days. `markConsumed` flips
+ *     `consumed_at` after the bound user logs in and accepts.
+ *   - Generate (boundEmail NULL): multi-use, no expiry, lives until
+ *     the owner soft-deletes. `markConsumed` is NOT called for these
+ *     — the service layer skips it.
  *
  * Token uniqueness is enforced by the SQL UNIQUE constraint on
  * `token`; the service catches 23505 and rethrows as Conflict (the
  * caller can retry with a freshly generated token).
+ *
+ * Design: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
  */
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -23,7 +27,13 @@ export interface ShareLink {
   createdByUserId: string;
   token: string;
   role: string;
-  isPermanent: boolean;
+  /**
+   * Email address this link is bound to, if any. NULL = multi-use
+   * Generate link (anyone with the URL can join). NOT NULL =
+   * single-use email-invite (only the user whose email matches
+   * can consume).
+   */
+  boundEmail: string | null;
   consumedAt: Date | null;
   expiresAt: Date | null;
   createdAt: Date;
@@ -38,7 +48,7 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
     createdByUserId: row.createdByUserId,
     token: row.token,
     role: row.role,
-    isPermanent: row.isPermanent,
+    boundEmail: row.boundEmail,
     consumedAt: row.consumedAt,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
@@ -50,13 +60,16 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
 /**
  * Insert a new share link. Caller passes a pre-generated token
  * (32-byte base64url is the recommended format).
+ *
+ * Email-invite caller: pass `boundEmail` + `expiresAt` (now + 7d).
+ * Generate caller: pass `boundEmail = null` + `expiresAt = null`.
  */
 export async function create(input: {
   projectId: string;
   createdByUserId: string;
   token: string;
   role: string;
-  isPermanent: boolean;
+  boundEmail: string | null;
   expiresAt: Date | null;
 }): Promise<ShareLink> {
   const rows = await db
@@ -66,7 +79,7 @@ export async function create(input: {
       createdByUserId: input.createdByUserId,
       token: input.token,
       role: input.role,
-      isPermanent: input.isPermanent,
+      boundEmail: input.boundEmail,
       expiresAt: input.expiresAt,
     })
     .returning();
@@ -124,14 +137,15 @@ export async function listByProject(projectId: string): Promise<ShareLink[]> {
 }
 
 /**
- * Atomically mark a single-use link as consumed (set consumed_at).
+ * Atomically mark an email-invite link as consumed (set consumed_at).
  *
  * Returns `false` if the row was already consumed by a concurrent
  * caller — the WHERE clause filters out rows where consumed_at is
  * non-null. The service layer rejects the consume in that case.
  *
- * Caller MUST only call this for `is_permanent = false` links;
- * permanent links should not have their consumed_at touched.
+ * Caller MUST only invoke this for email-invite links (boundEmail
+ * NOT NULL). Generate links (boundEmail NULL) are multi-use and
+ * should not have their consumed_at touched.
  */
 export async function markConsumed(
   id: string,
@@ -144,7 +158,7 @@ export async function markConsumed(
     .where(
       and(
         eq(shareLinks.id, id),
-        eq(shareLinks.isPermanent, false),
+        sql`${shareLinks.boundEmail} IS NOT NULL`,
         isNull(shareLinks.consumedAt),
         isNull(shareLinks.deletedAt),
       ),
