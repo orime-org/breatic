@@ -111,6 +111,23 @@
 
 ---
 
+## Post-GA — v2 Features（产品升级，下个大版本）
+
+**目标**：在 GA 稳定基础上加入团队 / 组织 / 跨项目协作能力,把 breatic 从「个人 + 项目级协作」扩展到「团队 + 组织级协作」。
+
+### Team / Organization
+
+- [ ] **Team / Organization 概念**：引入 team / org 中间层(user 属于 team,team 拥有项目)
+  - 数据库:加 `teams` / `team_members` 表 + `projects.team_id`
+  - 角色:team admin / team member 跨项目权限继承
+  - 邀请:team 邀请代替单项目邀请;邀请到 team 自动获得 team 所有项目访问
+  - share link 扩展:「team 内任何人可凭 link 进」选项(类似 Figma 的 organization-level 链接)
+  - 计费:积分包绑 team 共享 / 转移 / 配额管理
+  - 跨项目搜索 / dashboard:team 维度看所有项目
+- [ ] **Owner 转让流程**:team 模式下 project owner 可转给 team 内其他 member(当前 owner 永久绑定创建者)
+
+---
+
 ## 待跟进（已识别但不在当前 PR scope）
 
 这里记单 commit 不修但已经定位/部分定位的 dev 体验和 runtime 韧性问题。每条都对应一个独立 PR，开启时需要完整 DD + 复现验证。
