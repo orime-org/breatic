@@ -18,7 +18,7 @@
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { projectAccessRequests } from "../db/schema.js";
+import { projectAccessRequests, users } from "../db/schema.js";
 import type { DbTx } from "./conversation.repo.js";
 
 export type AccessRequestStatus = "pending" | "approved" | "rejected";
@@ -35,6 +35,19 @@ export interface AccessRequest {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+/**
+ * Same row but with the requester's display fields joined in. Used by
+ * `listPendingByProject` so the BellMenu can render real names + emails
+ * instead of UUIDs (one query, no N+1 from the client side).
+ */
+export interface AccessRequestWithRequester extends AccessRequest {
+  requester: {
+    id: string;
+    username: string | null;
+    email: string;
+  };
 }
 
 function toEntity(
@@ -125,13 +138,29 @@ export async function findPendingByRequester(
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** List pending requests on a project (owner/admin BellMenu view). */
+/**
+ * List pending requests on a project (owner/admin BellMenu view).
+ *
+ * Joins users so the caller can render real names/emails without a
+ * second roundtrip. FK guarantees a row in users so the LEFT JOIN
+ * always matches (but we still type the requester as a regular field
+ * because the JOIN technically could return null if a soft-deleted
+ * user is involved — defensive).
+ */
 export async function listPendingByProject(
   projectId: string,
-): Promise<AccessRequest[]> {
+): Promise<AccessRequestWithRequester[]> {
   const rows = await db
-    .select()
+    .select({
+      req: projectAccessRequests,
+      user: {
+        id: users.id,
+        username: users.username,
+        email: users.email,
+      },
+    })
     .from(projectAccessRequests)
+    .leftJoin(users, eq(users.id, projectAccessRequests.requesterUserId))
     .where(
       and(
         eq(projectAccessRequests.projectId, projectId),
@@ -140,7 +169,14 @@ export async function listPendingByProject(
       ),
     )
     .orderBy(desc(projectAccessRequests.createdAt));
-  return rows.map(toEntity);
+  return rows.map((row) => ({
+    ...toEntity(row.req),
+    requester: {
+      id: row.user?.id ?? row.req.requesterUserId,
+      username: row.user?.username ?? null,
+      email: row.user?.email ?? "",
+    },
+  }));
 }
 
 /** List all requests issued by a user (their own status page). */

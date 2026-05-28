@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/tooltip';
 import {
   accessRequestsApi,
-  type AccessRequest,
+  type AccessRequestWithRequester,
 } from '@/data/api/access-requests';
 import { ApiException } from '@/data/api/types';
 import { useTranslation } from '@/i18n/use-translation';
@@ -26,12 +26,20 @@ interface BellMenuProps {
   projectId: string;
 }
 
-function initialsFromId(userId: string): string {
-  return userId.slice(0, 2).toUpperCase();
+function initialsFromName(name: string): string {
+  // Take the first 2 characters of the display name (or email
+  // local-part if no username). Uppercased for the avatar fallback.
+  return name.slice(0, 2).toUpperCase();
 }
 
-function shortIdLabel(userId: string): string {
-  return userId.slice(0, 8);
+function displayName(requester: {
+  username: string | null;
+  email: string;
+}): string {
+  // Prefer username; fall back to the local-part of the email if
+  // the user never set a username (registration allows it null).
+  if (requester.username) return requester.username;
+  return requester.email.split('@')[0] ?? requester.email;
 }
 
 function timeAgoLabel(createdAt: string): string {
@@ -168,27 +176,28 @@ export function BellMenu({ projectId }: BellMenuProps) {
 }
 
 interface RequestItemProps {
-  request: AccessRequest;
+  request: AccessRequestWithRequester;
   pending: boolean;
   onDecide: (decision: 'approved' | 'rejected') => void;
 }
 
 function RequestItem({ request, pending, onDecide }: RequestItemProps) {
   const t = useTranslation();
+  const name = displayName(request.requester);
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
           <AvatarFallback className='text-[12px] font-semibold'>
-            {initialsFromId(request.requesterUserId)}
+            {initialsFromName(name)}
           </AvatarFallback>
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
           <span className='truncate text-[13px] font-medium text-foreground'>
-            {shortIdLabel(request.requesterUserId)}
+            {name}
           </span>
           <span className='truncate text-[12px] text-muted-foreground'>
-            {request.message ?? t('notifications.request.generic')}
+            {request.message ?? request.requester.email}
           </span>
         </div>
         <span className='shrink-0 self-start rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>

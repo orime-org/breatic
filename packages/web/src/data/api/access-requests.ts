@@ -17,6 +17,19 @@ export interface AccessRequest {
   deletedAt: string | null;
 }
 
+/**
+ * `listPendingByProject` returns this richer shape — the server
+ * joins users so the BellMenu can show real display names + emails
+ * without a second N+1 lookup.
+ */
+export interface AccessRequestWithRequester extends AccessRequest {
+  requester: {
+    id: string;
+    username: string | null;
+    email: string;
+  };
+}
+
 export interface CreateAccessRequestBody {
   requested_role: RequestableRole;
   message?: string | null;
@@ -42,10 +55,11 @@ export const accessRequestsApi = {
 
   /**
    * List pending requests on a project. Owner-only (server enforces
-   * via requireRole('owner') — non-owners get 403).
+   * via requireRole('owner') — non-owners get 403). Server joins
+   * users so each row carries the requester's username + email.
    */
   listPendingByProject(projectId: string) {
-    return apiGet<{ data: AccessRequest[] }>(
+    return apiGet<{ data: AccessRequestWithRequester[] }>(
       `/projects/${projectId}/access-requests`,
     );
   },

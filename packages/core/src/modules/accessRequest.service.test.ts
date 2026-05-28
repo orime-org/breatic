@@ -329,10 +329,14 @@ describe("rejectRequest", () => {
 describe("list functions are thin pass-through", () => {
   it("listPendingByProject delegates to repo", async () => {
     vi.mocked(accessRequestRepo.listPendingByProject).mockResolvedValueOnce([
-      fakeRequest(),
+      {
+        ...fakeRequest(),
+        requester: { id: UID, username: "alice", email: "alice@example.com" },
+      },
     ]);
     const out = await listPendingByProject(PID);
     expect(out).toHaveLength(1);
+    expect(out[0]?.requester.username).toBe("alice");
     expect(accessRequestRepo.listPendingByProject).toHaveBeenCalledWith(PID);
   });
 

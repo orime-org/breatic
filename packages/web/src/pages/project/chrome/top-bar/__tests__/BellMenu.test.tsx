@@ -63,6 +63,11 @@ function fakePending(
     createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     deletedAt: null,
+    requester: {
+      id: `req-user-${id}`,
+      username: `user-${id.slice(0, 4)}`,
+      email: `${id.slice(0, 4)}@example.com`,
+    },
   };
 }
 

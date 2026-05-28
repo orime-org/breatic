@@ -125,6 +125,7 @@ describe("GET /projects/:pid/access-requests", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,
+        requester: { id: "u-1", username: "alice", email: "alice@example.com" },
       },
     ]);
     const app = createApp();
