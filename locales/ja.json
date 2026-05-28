@@ -1295,6 +1295,17 @@
     "request": {
       "audio": "ボイスオーバーと BGM 部分に参加したい",
       "project": "あなたの prompt スタイルを自分のプロジェクトで参考にしたい"
+    },
+    "loading": "読み込み中…",
+    "markRead": "既読にする",
+    "approvedToast": "アップグレードを承認しました。",
+    "rejectedToast": "リクエストを拒否しました。",
+    "decideFailed": "処理に失敗しました。再試行してください。",
+    "headline": {
+      "roleUpgradeRequest": "{project} の編集者権限のリクエストがあります",
+      "roleUpgradeApproved": "{project} の編集者権限が承認されました",
+      "roleUpgradeRejected": "{project} の編集者権限のリクエストが拒否されました",
+      "memberJoined": "{project} に新しいメンバーが参加しました"
     }
   },
   "connection": {

@@ -8,12 +8,21 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { ApiException } from '@/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
-const REQ1 = '22222222-2222-4222-8222-222222222222';
-const REQ2 = '33333333-3333-4333-8333-333333333333';
+const N1 = '22222222-2222-4222-8222-222222222222';
+const N2 = '33333333-3333-4333-8333-333333333333';
 
-vi.mock('@/data/api/access-requests', () => ({
-  accessRequestsApi: {
-    listPendingByProject: vi.fn(),
+vi.mock('@/data/api/notifications', () => ({
+  notificationsApi: {
+    list: vi.fn(),
+    count: vi.fn(),
+    markRead: vi.fn(),
+    markAllRead: vi.fn(),
+  },
+}));
+
+vi.mock('@/data/api/role-upgrade-requests', () => ({
+  roleUpgradeRequestsApi: {
+    submit: vi.fn(),
     decide: vi.fn(),
   },
 }));
@@ -25,11 +34,11 @@ vi.mock('sonner', () => ({
   }),
 }));
 
-import { accessRequestsApi } from '@/data/api/access-requests';
+import { notificationsApi } from '@/data/api/notifications';
+import { roleUpgradeRequestsApi } from '@/data/api/role-upgrade-requests';
 import { toast } from 'sonner';
 
 function setup() {
-  // Fresh QueryClient per test so cache + mutation state don't leak.
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -45,101 +54,132 @@ function setup() {
   );
 }
 
-function fakePending(
+type NotifType =
+  | 'access.role_upgrade_request'
+  | 'access.role_upgrade_approved'
+  | 'access.role_upgrade_rejected'
+  | 'access.member_joined';
+
+function fakeNotification(
   id: string,
-  role: 'view' | 'edit',
-  message: string | null = null,
-  status: 'pending' | 'approved' | 'rejected' = 'pending',
+  type: NotifType,
+  payload: Record<string, unknown> = {},
 ) {
   return {
     id,
+    userId: 'u-self',
+    type,
+    payload,
     projectId: PID,
-    requesterUserId: `req-user-${id}`,
-    requestedRole: role,
-    message,
-    status,
-    reviewedByUserId: null,
-    reviewedAt: null,
+    readAt: null,
     createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     deletedAt: null,
-    requester: {
-      id: `req-user-${id}`,
-      username: `user-${id.slice(0, 4)}`,
-      email: `${id.slice(0, 4)}@example.com`,
-    },
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(notificationsApi.list).mockResolvedValue({ data: [] });
 });
 
 describe('BellMenu — empty list', () => {
-  it('shows empty-state copy when there are no pending requests', async () => {
+  it('shows empty-state copy when there are no notifications', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [],
-    });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     expect(await screen.findByTestId('bell-popover')).toBeInTheDocument();
-    // empty state from notifications.empty locale entry
     expect(screen.getByText(/No pending notifications/i)).toBeInTheDocument();
   });
 });
 
-describe('BellMenu — pending list render', () => {
-  it('renders one row per pending request with role chip + approve/reject buttons', async () => {
+describe('BellMenu — 4 notification types render', () => {
+  it('renders one row per notification with the right headline + action affordance', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [fakePending(REQ1, 'edit'), fakePending(REQ2, 'view')],
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'access.role_upgrade_request', {
+          projectName: 'Q1 Sprint',
+          message: 'Need editor for review',
+        }),
+        fakeNotification(N2, 'access.member_joined', {
+          projectName: 'Q1 Sprint',
+          newMemberUserId: 'u-newcomer',
+          role: 'edit',
+        }),
+      ],
     });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
-    expect(await screen.findByTestId(`bell-request-${REQ1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-request-${REQ2}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-approve-${REQ1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-reject-${REQ1}`)).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(`bell-notification-${N1}`),
+    ).toBeInTheDocument();
+    // Upgrade-request rows expose approve / reject buttons.
+    expect(screen.getByTestId(`bell-approve-${N1}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-reject-${N1}`)).toBeInTheDocument();
+    // Non-decision rows expose a mark-read affordance.
+    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
+  });
+
+  it('badge dot appears when unread count > 0', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'access.role_upgrade_approved', {
+          projectName: 'Demo',
+        }),
+      ],
+    });
+    setup();
+    await waitFor(() => {
+      expect(screen.getByTestId('bell-unread-dot')).toBeInTheDocument();
+    });
   });
 });
 
-describe('BellMenu — approve / reject mutations', () => {
-  it('clicking approve calls accessRequestsApi.decide with decision=approved + success toast', async () => {
+describe('BellMenu — approve / reject mutations on upgrade-request rows', () => {
+  it('clicking approve calls roleUpgradeRequestsApi.decide(approved)', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [fakePending(REQ1, 'view')],
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'access.role_upgrade_request', {
+          projectName: 'Demo',
+        }),
+      ],
     });
-    vi.mocked(accessRequestsApi.decide).mockResolvedValueOnce({
-      data: fakePending(REQ1, 'view', null, 'approved'),
+    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({
+      data: { ok: true },
     });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${REQ1}`));
+    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
 
     await waitFor(() => {
-      expect(accessRequestsApi.decide).toHaveBeenCalledWith(PID, REQ1, {
+      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(N1, {
         decision: 'approved',
       });
     });
     expect(toast.success).toHaveBeenCalled();
   });
 
-  it('clicking reject calls decide with decision=rejected + success toast', async () => {
+  it('clicking reject calls decide(rejected) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [fakePending(REQ1, 'edit')],
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'access.role_upgrade_request', {
+          projectName: 'Demo',
+        }),
+      ],
     });
-    vi.mocked(accessRequestsApi.decide).mockResolvedValueOnce({
-      data: fakePending(REQ1, 'edit', null, 'rejected'),
+    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({
+      data: { ok: true },
     });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-reject-${REQ1}`));
+    await user.click(await screen.findByTestId(`bell-reject-${N1}`));
 
     await waitFor(() => {
-      expect(accessRequestsApi.decide).toHaveBeenCalledWith(PID, REQ1, {
+      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(N1, {
         decision: 'rejected',
       });
     });
@@ -148,10 +188,14 @@ describe('BellMenu — approve / reject mutations', () => {
 
   it('toasts error when decide rejects', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [fakePending(REQ1, 'view')],
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'access.role_upgrade_request', {
+          projectName: 'Demo',
+        }),
+      ],
     });
-    vi.mocked(accessRequestsApi.decide).mockRejectedValueOnce(
+    vi.mocked(roleUpgradeRequestsApi.decide).mockRejectedValueOnce(
       new ApiException({
         status: 409,
         code: 'CONFLICT',
@@ -160,38 +204,35 @@ describe('BellMenu — approve / reject mutations', () => {
     );
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${REQ1}`));
+    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Already reviewed');
     });
   });
+});
 
-  it('approve + reject buttons are disabled only on the row whose mutation is in-flight', async () => {
+describe('BellMenu — mark-read affordance on non-decision rows', () => {
+  it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
-    vi.mocked(accessRequestsApi.listPendingByProject).mockResolvedValueOnce({
-      data: [fakePending(REQ1, 'view'), fakePending(REQ2, 'edit')],
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N2, 'access.member_joined', {
+          projectName: 'Demo',
+          newMemberUserId: 'u-x',
+          role: 'view',
+        }),
+      ],
     });
-    // never resolves — keeps the mutation in-flight long enough to
-    // inspect the disabled state on the row we clicked.
-    let resolve!: (v: { data: ReturnType<typeof fakePending> }) => void;
-    vi.mocked(accessRequestsApi.decide).mockImplementationOnce(
-      () => new Promise((r) => { resolve = r; }),
-    );
-
+    vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({
+      data: { ok: true },
+    });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${REQ1}`));
+    await user.click(await screen.findByTestId(`bell-mark-read-${N2}`));
 
-    // mid-flight: REQ1 buttons disabled, REQ2 buttons still enabled
     await waitFor(() => {
-      expect(screen.getByTestId(`bell-approve-${REQ1}`)).toBeDisabled();
+      expect(notificationsApi.markRead).toHaveBeenCalledWith(N2);
     });
-    expect(screen.getByTestId(`bell-reject-${REQ1}`)).toBeDisabled();
-    expect(screen.getByTestId(`bell-approve-${REQ2}`)).not.toBeDisabled();
-    expect(screen.getByTestId(`bell-reject-${REQ2}`)).not.toBeDisabled();
-
-    // unblock the pending mutation so test teardown isn't noisy
-    resolve({ data: fakePending(REQ1, 'view', null, 'approved') });
   });
 });

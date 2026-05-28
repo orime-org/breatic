@@ -16,9 +16,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  accessRequestsApi,
-  type AccessRequestWithRequester,
-} from '@/data/api/access-requests';
+  notificationsApi,
+  type Notification,
+  type NotificationType,
+} from '@/data/api/notifications';
+import { roleUpgradeRequestsApi } from '@/data/api/role-upgrade-requests';
 import { ApiException } from '@/data/api/types';
 import { useTranslation } from '@/i18n/use-translation';
 
@@ -26,20 +28,8 @@ interface BellMenuProps {
   projectId: string;
 }
 
-function initialsFromName(name: string): string {
-  // Take the first 2 characters of the display name (or email
-  // local-part if no username). Uppercased for the avatar fallback.
-  return name.slice(0, 2).toUpperCase();
-}
-
-function displayName(requester: {
-  username: string | null;
-  email: string;
-}): string {
-  // Prefer username; fall back to the local-part of the email if
-  // the user never set a username (registration allows it null).
-  if (requester.username) return requester.username;
-  return requester.email.split('@')[0] ?? requester.email;
+function initialsFromString(s: string): string {
+  return s.slice(0, 2).toUpperCase();
 }
 
 function timeAgoLabel(createdAt: string): string {
@@ -53,47 +43,50 @@ function timeAgoLabel(createdAt: string): string {
 }
 
 /**
- * Notifications bell — popover lists pending access requests for the
- * current project. Owner-only data on the backend (403 for non-owners),
- * so the list will be empty for view/edit members; the bell still
- * renders but with no badge + "no notifications" copy.
+ * Bell notification menu — per-user inbox surfacing the four
+ * notification types defined by spec § 7:
+ *   - access.role_upgrade_request   → owner inbox; owner can approve / reject inline
+ *   - access.role_upgrade_approved  → viewer (now editor) inbox
+ *   - access.role_upgrade_rejected  → viewer inbox
+ *   - access.member_joined          → owner inbox
  *
- * Requester user info is shown as the first 8 chars of their UUID
- * pending a backend `list-pending-by-project` JOIN with users
- * (follow-up — see #604/#605 plan). The role chip and message field
- * are full-data today.
+ * The unread count drives the red-dot badge. Clicking a row opens the
+ * row-specific affordance: owner upgrade-request rows show inline
+ * approve / reject buttons; the rest are read-on-click and mark-read.
  *
- * Approve / reject mutates via `accessRequestsApi.decide`; React
- * Query invalidates the pending list on success so the row drops out
- * + the badge count decrements.
+ * Per spec § 7.4, the React Query refetch is triggered both on popover
+ * open and on a stateless invalidate message from collab (Phase 7
+ * backend pub/sub lands later — for now the popover reopens force a
+ * refetch + a 30s background refetch interval keeps the badge fresh).
+ *
+ * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
  */
-export function BellMenu({ projectId }: BellMenuProps) {
+export function BellMenu({ projectId: _projectId }: BellMenuProps) {
   const t = useTranslation();
   const queryClient = useQueryClient();
+  const [open, setOpen] = React.useState(false);
 
-  const pendingQuery = useQuery({
-    queryKey: ['access-requests', 'pending', projectId],
-    queryFn: () => accessRequestsApi.listPendingByProject(projectId),
-    // Non-owners get 403 from the backend — treat as empty list and
-    // don't retry. Owners get the real list.
-    retry: false,
+  const inboxQuery = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: () => notificationsApi.list(true),
+    refetchInterval: 30_000,
     refetchOnWindowFocus: false,
+    retry: false,
   });
-
-  const requests = pendingQuery.data?.data ?? [];
-  const count = requests.length;
+  const notifications = inboxQuery.data?.data ?? [];
+  const count = notifications.length;
 
   const decideMutation = useMutation({
     mutationFn: (input: {
-      requestId: string;
+      notificationId: string;
       decision: 'approved' | 'rejected';
     }) =>
-      accessRequestsApi.decide(projectId, input.requestId, {
+      roleUpgradeRequestsApi.decide(input.notificationId, {
         decision: input.decision,
       }),
     onSuccess: async (_data, vars) => {
       await queryClient.invalidateQueries({
-        queryKey: ['access-requests', 'pending', projectId],
+        queryKey: ['notifications', 'unread'],
       });
       toast.success(
         vars.decision === 'approved'
@@ -108,8 +101,17 @@ export function BellMenu({ projectId }: BellMenuProps) {
     },
   });
 
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', 'unread'],
+      });
+    },
+  });
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -122,7 +124,10 @@ export function BellMenu({ projectId }: BellMenuProps) {
             >
               <Bell className='h-[18px] w-[18px]' />
               {count > 0 ? (
-                <span className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive' />
+                <span
+                  className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive'
+                  data-testid='bell-unread-dot'
+                />
               ) : null}
             </Button>
           </PopoverTrigger>
@@ -144,7 +149,7 @@ export function BellMenu({ projectId }: BellMenuProps) {
             {count}
           </span>
         </div>
-        {pendingQuery.isLoading ? (
+        {inboxQuery.isLoading ? (
           <div className='px-3 py-2 text-[13px] text-muted-foreground'>
             {t('notifications.loading')}
           </div>
@@ -154,17 +159,27 @@ export function BellMenu({ projectId }: BellMenuProps) {
           </div>
         ) : (
           <ul className='flex flex-col gap-1'>
-            {requests.map((req) => (
-              <li key={req.id} data-testid={`bell-request-${req.id}`}>
-                <RequestItem
-                  request={req}
-                  pending={
+            {notifications.map((n) => (
+              <li key={n.id} data-testid={`bell-notification-${n.id}`}>
+                <NotificationItem
+                  notification={n}
+                  decidePending={
                     decideMutation.isPending &&
-                    decideMutation.variables?.requestId === req.id
+                    decideMutation.variables?.notificationId === n.id
                   }
-                  onDecide={(decision) =>
-                    decideMutation.mutate({ requestId: req.id, decision })
+                  onApprove={() =>
+                    decideMutation.mutate({
+                      notificationId: n.id,
+                      decision: 'approved',
+                    })
                   }
+                  onReject={() =>
+                    decideMutation.mutate({
+                      notificationId: n.id,
+                      decision: 'rejected',
+                    })
+                  }
+                  onMarkRead={() => markReadMutation.mutate(n.id)}
                 />
               </li>
             ))}
@@ -175,63 +190,139 @@ export function BellMenu({ projectId }: BellMenuProps) {
   );
 }
 
-interface RequestItemProps {
-  request: AccessRequestWithRequester;
-  pending: boolean;
-  onDecide: (decision: 'approved' | 'rejected') => void;
+interface NotificationItemProps {
+  notification: Notification;
+  decidePending: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+  onMarkRead: () => void;
 }
 
-function RequestItem({ request, pending, onDecide }: RequestItemProps) {
+function NotificationItem({
+  notification,
+  decidePending,
+  onApprove,
+  onReject,
+  onMarkRead,
+}: NotificationItemProps) {
   const t = useTranslation();
-  const name = displayName(request.requester);
+  const headline = headlineFor(notification, t);
+  const subtitle = subtitleFor(notification);
+
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
           <AvatarFallback className='text-[12px] font-semibold'>
-            {initialsFromName(name)}
+            {iconForType(notification.type)}
           </AvatarFallback>
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-          <span className='truncate text-[13px] font-medium text-foreground'>
-            {name}
+          <span
+            className='truncate text-[13px] font-medium text-foreground'
+            data-testid={`bell-notification-headline-${notification.id}`}
+          >
+            {headline}
           </span>
-          <span className='truncate text-[12px] text-muted-foreground'>
-            {request.message ?? request.requester.email}
-          </span>
+          {subtitle ? (
+            <span className='truncate text-[12px] text-muted-foreground'>
+              {subtitle}
+            </span>
+          ) : null}
         </div>
-        <span className='shrink-0 self-start rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
-          {request.requestedRole === 'edit'
-            ? t('notifications.roleHint.editor')
-            : t('notifications.roleHint.viewer')}
-        </span>
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-[11px] text-muted-foreground'>
-          {timeAgoLabel(request.createdAt)}
+          {timeAgoLabel(notification.createdAt)}
         </span>
-        <div className='flex items-center gap-2'>
+        {notification.type === 'access.role_upgrade_request' ? (
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 px-3 text-[12px]'
+              disabled={decidePending}
+              onClick={onReject}
+              data-testid={`bell-reject-${notification.id}`}
+            >
+              {t('notifications.reject')}
+            </Button>
+            <Button
+              size='sm'
+              className='h-7 px-3 text-[12px]'
+              disabled={decidePending}
+              onClick={onApprove}
+              data-testid={`bell-approve-${notification.id}`}
+            >
+              {t('notifications.approve')}
+            </Button>
+          </div>
+        ) : (
           <Button
-            variant='outline'
+            variant='ghost'
             size='sm'
-            className='h-7 px-3 text-[12px]'
-            disabled={pending}
-            onClick={() => onDecide('rejected')}
-            data-testid={`bell-reject-${request.id}`}
+            className='h-7 px-2 text-[12px]'
+            onClick={onMarkRead}
+            data-testid={`bell-mark-read-${notification.id}`}
           >
-            {t('notifications.reject')}
+            {t('notifications.markRead')}
           </Button>
-          <Button
-            size='sm'
-            className='h-7 px-3 text-[12px]'
-            disabled={pending}
-            onClick={() => onDecide('approved')}
-            data-testid={`bell-approve-${request.id}`}
-          >
-            {t('notifications.approve')}
-          </Button>
-        </div>
+        )}
       </div>
     </div>
   );
+}
+
+function iconForType(type: NotificationType): string {
+  switch (type) {
+    case 'access.role_upgrade_request':
+      return initialsFromString('UP');
+    case 'access.role_upgrade_approved':
+      return '✓';
+    case 'access.role_upgrade_rejected':
+      return '✕';
+    case 'access.member_joined':
+      return initialsFromString('NJ');
+    default:
+      return '?';
+  }
+}
+
+function headlineFor(
+  n: Notification,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  switch (n.type) {
+    case 'access.role_upgrade_request':
+      return t('notifications.headline.roleUpgradeRequest', {
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
+    case 'access.role_upgrade_approved':
+      return t('notifications.headline.roleUpgradeApproved', {
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
+    case 'access.role_upgrade_rejected':
+      return t('notifications.headline.roleUpgradeRejected', {
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
+    case 'access.member_joined':
+      return t('notifications.headline.memberJoined', {
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
+    default:
+      return n.type;
+  }
+}
+
+function subtitleFor(n: Notification): string | null {
+  const p = n.payload as Record<string, unknown>;
+  if (n.type === 'access.role_upgrade_request') {
+    const msg = typeof p.message === 'string' ? p.message : null;
+    return msg && msg.length > 0 ? msg : null;
+  }
+  if (n.type === 'access.role_upgrade_rejected') {
+    const reason = typeof p.reason === 'string' ? p.reason : null;
+    return reason && reason.length > 0 ? reason : null;
+  }
+  return null;
 }

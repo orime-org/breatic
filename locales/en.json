@@ -1295,6 +1295,17 @@
     "request": {
       "audio": "Wants to join for voice-over and BGM",
       "project": "Wants to reference your prompt style for their project"
+    },
+    "loading": "Loading…",
+    "markRead": "Mark read",
+    "approvedToast": "Upgrade approved.",
+    "rejectedToast": "Request rejected.",
+    "decideFailed": "Could not process the decision. Please try again.",
+    "headline": {
+      "roleUpgradeRequest": "Someone wants editor access on {project}",
+      "roleUpgradeApproved": "Your editor access on {project} was approved",
+      "roleUpgradeRejected": "Your editor access on {project} was rejected",
+      "memberJoined": "Someone joined {project}"
     }
   },
   "connection": {

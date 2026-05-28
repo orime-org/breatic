@@ -1295,6 +1295,17 @@
     "request": {
       "audio": "想加入做配音和 BGM 部分",
       "project": "想參考你的 prompt 風格做我自己的專案"
+    },
+    "loading": "載入中…",
+    "markRead": "標為已讀",
+    "approvedToast": "已通過升級申請。",
+    "rejectedToast": "已拒絕升級申請。",
+    "decideFailed": "處理失敗,請重試。",
+    "headline": {
+      "roleUpgradeRequest": "有人申請 {project} 的編輯者權限",
+      "roleUpgradeApproved": "你在 {project} 的編輯者權限已通過",
+      "roleUpgradeRejected": "你在 {project} 的編輯者權限申請被拒絕",
+      "memberJoined": "有人加入了 {project}"
     }
   },
   "connection": {

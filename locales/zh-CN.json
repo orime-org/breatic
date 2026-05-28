@@ -1295,6 +1295,17 @@
     "request": {
       "audio": "想加入做配音和 BGM 部分",
       "project": "想参考你的 prompt 风格做我自己的项目"
+    },
+    "loading": "加载中…",
+    "markRead": "标为已读",
+    "approvedToast": "已通过升级申请。",
+    "rejectedToast": "已拒绝升级申请。",
+    "decideFailed": "处理失败,请重试。",
+    "headline": {
+      "roleUpgradeRequest": "有人申请 {project} 的编辑者权限",
+      "roleUpgradeApproved": "你在 {project} 的编辑者权限已通过",
+      "roleUpgradeRejected": "你在 {project} 的编辑者权限申请被拒绝",
+      "memberJoined": "有人加入了 {project}"
     }
   },
   "connection": {
