@@ -1234,11 +1234,43 @@
     "viewer": "Viewer"
   },
   "share": {
-    "inviteSection": "Invite collaborators",
-    "invitePlaceholder": "Email or @username",
+    "inviteSection": "Invite by email",
+    "invitePlaceholder": "Email address",
     "inviteButton": "Send invite",
-    "linkSection": "Share link",
-    "linkAccess": "Anyone with the link can access"
+    "inviteSending": "Sending…",
+    "inviteSent": "Invite sent.",
+    "inviteFailed": "Could not send the invite. Please try again.",
+    "invalidEmail": "Please enter a valid email address.",
+    "linkSection": "Generate link",
+    "linkDefaultRole": "Default role",
+    "linkGenerate": "Generate link",
+    "linkGenerating": "Generating…",
+    "linkAccess": "Anyone with the link can access",
+    "generateFailed": "Could not create the link. Please try again.",
+    "copyFallback": "Copy isn't available in this browser — please select the URL manually.",
+    "emailDisabledHint": "Email is disabled for this server. Use Generate link instead and share the URL yourself.",
+    "viewAllLinks": "View all generated links ({count, plural, =0 {none} one {1} other {#}})",
+    "role": {
+      "view": "Viewer",
+      "edit": "Editor"
+    },
+    "linksList": {
+      "title": "Generated invite links",
+      "description": "All active invite links on this project. Revoke any link to invalidate it immediately.",
+      "empty": "You haven't generated any invite links yet.",
+      "emailBadge": "Email invite",
+      "copyAria": "Copy URL",
+      "revokeAria": "Revoke link",
+      "copied": "URL copied.",
+      "revokeSuccess": "Link revoked.",
+      "revokeFailed": "Could not revoke the link. Please try again."
+    },
+    "relativeTime": {
+      "justNow": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    }
   },
   "notifications": {
     "title": "Access requests",

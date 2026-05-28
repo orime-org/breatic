@@ -1234,11 +1234,43 @@
     "viewer": "只读"
   },
   "share": {
-    "inviteSection": "邀请协作者",
-    "invitePlaceholder": "邮箱或 @用户名",
+    "inviteSection": "通过邮箱邀请",
+    "invitePlaceholder": "邮箱地址",
     "inviteButton": "发送邀请",
-    "linkSection": "分享链接",
-    "linkAccess": "任何人凭链接可访问"
+    "inviteSending": "发送中…",
+    "inviteSent": "邀请已发送。",
+    "inviteFailed": "邀请发送失败,请重试。",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "linkSection": "生成链接",
+    "linkDefaultRole": "默认角色",
+    "linkGenerate": "生成链接",
+    "linkGenerating": "生成中…",
+    "linkAccess": "任何人凭链接可访问",
+    "generateFailed": "链接生成失败,请重试。",
+    "copyFallback": "当前浏览器无法复制,请手动选择 URL。",
+    "emailDisabledHint": "本服务器未配置邮件发送,请使用『生成链接』复制 URL 自行发送。",
+    "viewAllLinks": "查看所有已生成的链接({count, plural, =0 {无} one {1 个} other {# 个}})",
+    "role": {
+      "view": "观察者",
+      "edit": "编辑者"
+    },
+    "linksList": {
+      "title": "已生成的邀请链接",
+      "description": "本项目下所有有效的邀请链接。撤销任一链接将立即失效。",
+      "empty": "你还没有生成任何邀请链接。",
+      "emailBadge": "邮箱邀请",
+      "copyAria": "复制 URL",
+      "revokeAria": "撤销链接",
+      "copied": "URL 已复制。",
+      "revokeSuccess": "链接已撤销。",
+      "revokeFailed": "链接撤销失败,请重试。"
+    },
+    "relativeTime": {
+      "justNow": "刚刚",
+      "minutes": "{n} 分钟前",
+      "hours": "{n} 小时前",
+      "days": "{n} 天前"
+    }
   },
   "notifications": {
     "title": "访问申请",

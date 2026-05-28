@@ -1234,11 +1234,43 @@
     "viewer": "閲覧者"
   },
   "share": {
-    "inviteSection": "コラボレーターを招待",
-    "invitePlaceholder": "メールまたは @ユーザー名",
+    "inviteSection": "メールで招待",
+    "invitePlaceholder": "メールアドレス",
     "inviteButton": "招待を送信",
-    "linkSection": "共有リンク",
-    "linkAccess": "リンクを知っている全員がアクセス可"
+    "inviteSending": "送信中…",
+    "inviteSent": "招待を送信しました。",
+    "inviteFailed": "招待を送信できませんでした。再試行してください。",
+    "invalidEmail": "有効なメールアドレスを入力してください。",
+    "linkSection": "リンクを生成",
+    "linkDefaultRole": "デフォルトの権限",
+    "linkGenerate": "リンクを生成",
+    "linkGenerating": "生成中…",
+    "linkAccess": "リンクを知っている全員がアクセス可",
+    "generateFailed": "リンクを生成できませんでした。再試行してください。",
+    "copyFallback": "このブラウザではコピーできません。URL を手動で選択してください。",
+    "emailDisabledHint": "このサーバーではメールが無効です。代わりに『リンクを生成』を使って URL を自分で共有してください。",
+    "viewAllLinks": "生成したすべてのリンクを表示({count, plural, =0 {なし} one {1 件} other {# 件}})",
+    "role": {
+      "view": "閲覧者",
+      "edit": "編集者"
+    },
+    "linksList": {
+      "title": "生成済みの招待リンク",
+      "description": "このプロジェクトの有効な招待リンク一覧。任意のリンクを取り消すと即座に無効になります。",
+      "empty": "まだ招待リンクを生成していません。",
+      "emailBadge": "メール招待",
+      "copyAria": "URL をコピー",
+      "revokeAria": "リンクを取り消す",
+      "copied": "URL をコピーしました。",
+      "revokeSuccess": "リンクを取り消しました。",
+      "revokeFailed": "リンクを取り消せませんでした。再試行してください。"
+    },
+    "relativeTime": {
+      "justNow": "たった今",
+      "minutes": "{n} 分前",
+      "hours": "{n} 時間前",
+      "days": "{n} 日前"
+    }
   },
   "notifications": {
     "title": "アクセス申請",

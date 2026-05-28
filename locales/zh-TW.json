@@ -1234,11 +1234,43 @@
     "viewer": "唯讀"
   },
   "share": {
-    "inviteSection": "邀請協作者",
-    "invitePlaceholder": "電子郵件或 @使用者名",
+    "inviteSection": "透過電子郵件邀請",
+    "invitePlaceholder": "電子郵件地址",
     "inviteButton": "傳送邀請",
-    "linkSection": "分享連結",
-    "linkAccess": "任何人憑連結可存取"
+    "inviteSending": "傳送中…",
+    "inviteSent": "邀請已傳送。",
+    "inviteFailed": "邀請傳送失敗,請重試。",
+    "invalidEmail": "請輸入有效的電子郵件地址。",
+    "linkSection": "產生連結",
+    "linkDefaultRole": "預設角色",
+    "linkGenerate": "產生連結",
+    "linkGenerating": "產生中…",
+    "linkAccess": "任何人憑連結可存取",
+    "generateFailed": "連結產生失敗,請重試。",
+    "copyFallback": "目前瀏覽器無法複製,請手動選擇 URL。",
+    "emailDisabledHint": "本伺服器未設定郵件發送,請使用『產生連結』複製 URL 自行傳送。",
+    "viewAllLinks": "檢視所有已產生的連結({count, plural, =0 {無} one {1 個} other {# 個}})",
+    "role": {
+      "view": "檢視者",
+      "edit": "編輯者"
+    },
+    "linksList": {
+      "title": "已產生的邀請連結",
+      "description": "本專案下所有有效的邀請連結。撤銷任一連結將立即失效。",
+      "empty": "你尚未產生任何邀請連結。",
+      "emailBadge": "電子郵件邀請",
+      "copyAria": "複製 URL",
+      "revokeAria": "撤銷連結",
+      "copied": "URL 已複製。",
+      "revokeSuccess": "連結已撤銷。",
+      "revokeFailed": "連結撤銷失敗,請重試。"
+    },
+    "relativeTime": {
+      "justNow": "剛剛",
+      "minutes": "{n} 分鐘前",
+      "hours": "{n} 小時前",
+      "days": "{n} 天前"
+    }
   },
   "notifications": {
     "title": "存取申請",

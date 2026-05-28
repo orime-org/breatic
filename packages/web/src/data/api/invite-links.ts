@@ -8,7 +8,12 @@ export interface InviteLink {
   createdByUserId: string;
   token: string;
   role: string;
-  isPermanent: boolean;
+  /**
+   * If set, this link is bound to a specific email address and is
+   * single-use (post-2026-05-28 spec § 3). NULL = Generate link
+   * (multi-use, no expiry).
+   */
+  boundEmail: string | null;
   consumedAt: string | null;
   expiresAt: string | null;
   createdAt: string;
@@ -18,11 +23,13 @@ export interface InviteLink {
 
 export interface CreateInviteLinkBody {
   role: RequestableRole;
-  is_permanent: boolean;
-  /** When provided, the server dispatches a share invite mail. */
+  /**
+   * If present, the server creates an email-invite (single-use,
+   * bound to this email, 7-day TTL) and dispatches the mail. If
+   * omitted, the server creates a Generate link (multi-use, no
+   * expiry) and returns the URL for manual copy.
+   */
   invitee_email?: string;
-  /** Optional ISO-8601 expiry for single-use links. */
-  expires_at?: string;
 }
 
 export const inviteLinksApi = {

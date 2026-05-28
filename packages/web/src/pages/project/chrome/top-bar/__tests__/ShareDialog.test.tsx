@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as React from 'react';
 
 import { ShareDialog } from '@/pages/project/chrome/top-bar/ShareDialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -12,6 +14,8 @@ const PID = '11111111-1111-4111-8111-111111111111';
 vi.mock('@/data/api/invite-links', () => ({
   inviteLinksApi: {
     create: vi.fn(),
+    listByProject: vi.fn().mockResolvedValue({ data: [] }),
+    revoke: vi.fn(),
   },
 }));
 
@@ -25,17 +29,32 @@ vi.mock('sonner', () => ({
 import { inviteLinksApi } from '@/data/api/invite-links';
 import { toast } from 'sonner';
 
-function setup() {
+function AllProviders({ children }: { children: React.ReactNode }) {
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  return (
+    <QueryClientProvider client={qc}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+function setup(props: Partial<React.ComponentProps<typeof ShareDialog>> = {}) {
   useUIStore.setState({ shareOpen: true });
   return render(
-    <TooltipProvider>
-      <ShareDialog projectId={PID} />
-    </TooltipProvider>,
+    <AllProviders>
+      <ShareDialog projectId={PID} {...props} />
+    </AllProviders>,
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(inviteLinksApi.listByProject).mockResolvedValue({ data: [] });
 });
 
 describe('ShareDialog — invite by email flow', () => {
@@ -48,10 +67,10 @@ describe('ShareDialog — invite by email flow', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('sends a valid email + role=view + is_permanent=true to the API', async () => {
+  it('sends a valid email + role=view (default) to the API', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ isPermanent: true, role: 'view' }),
+      data: makeFakeLink({ boundEmail: 'new@example.com', role: 'view' }),
     });
     setup();
     await user.type(
@@ -64,7 +83,6 @@ describe('ShareDialog — invite by email flow', () => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
         invitee_email: 'new@example.com',
         role: 'view',
-        is_permanent: true,
       });
     });
     expect(toast.success).toHaveBeenCalled();
@@ -88,22 +106,20 @@ describe('ShareDialog — invite by email flow', () => {
 
     expect(await screen.findByText(/Already a member/)).toBeInTheDocument();
   });
+
+  it('disables the invite section when emailEnabled=false + shows hint', async () => {
+    setup({ emailEnabled: false });
+    expect(screen.getByTestId('share-email-disabled-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('share-invite-input')).toBeDisabled();
+    expect(screen.getByTestId('share-send-invite')).toBeDisabled();
+  });
 });
 
-describe('ShareDialog — sharable link flow', () => {
-  it('permanent toggle changes pressed-state when clicked', async () => {
-    const user = userEvent.setup();
-    setup();
-    const toggle = screen.getByTestId('share-permanent-toggle');
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-  });
-
-  it('Generate link button passes the toggle state as is_permanent (single-use default)', async () => {
+describe('ShareDialog — Generate link flow', () => {
+  it('Generate button calls API without invitee_email (Generate variant)', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ isPermanent: false }),
+      data: makeFakeLink({ boundEmail: null }),
     });
     setup();
     await user.click(screen.getByTestId('share-generate-link'));
@@ -111,24 +127,6 @@ describe('ShareDialog — sharable link flow', () => {
     await waitFor(() => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
         role: 'view',
-        is_permanent: false,
-      });
-    });
-  });
-
-  it('Generate link button passes is_permanent=true after toggle is on', async () => {
-    const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ isPermanent: true }),
-    });
-    setup();
-    await user.click(screen.getByTestId('share-permanent-toggle'));
-    await user.click(screen.getByTestId('share-generate-link'));
-
-    await waitFor(() => {
-      expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
-        role: 'view',
-        is_permanent: true,
       });
     });
   });
@@ -136,11 +134,11 @@ describe('ShareDialog — sharable link flow', () => {
   it('renders generated URL after link creation + copy button is enabled', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ token: 'abc-token-123', isPermanent: true }),
+      data: makeFakeLink({ token: 'abc-token-123', boundEmail: null }),
     });
     setup();
-    const copy = screen.getByTestId('share-copy-link') as HTMLButtonElement;
-    expect(copy).toBeDisabled();
+    // URL/copy not visible before generate
+    expect(screen.queryByTestId('share-invite-url')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('share-generate-link'));
 
     await waitFor(() => {
@@ -168,12 +166,30 @@ describe('ShareDialog — sharable link flow', () => {
   });
 });
 
+describe('ShareDialog — view all links entry', () => {
+  it('renders the "View all generated links" button', () => {
+    setup();
+    expect(screen.getByTestId('share-view-all-links')).toBeInTheDocument();
+  });
+
+  it('reflects the count from listByProject in the button label', async () => {
+    vi.mocked(inviteLinksApi.listByProject).mockResolvedValueOnce({
+      data: [makeFakeLink({}), makeFakeLink({ token: 'b' })],
+    });
+    setup();
+    const button = screen.getByTestId('share-view-all-links');
+    await waitFor(() => {
+      expect(button.textContent).toMatch(/2/);
+    });
+  });
+});
+
 // ── helpers ────────────────────────────────────────────────────────
 
 interface FakeLinkOverrides {
   token?: string;
   role?: string;
-  isPermanent?: boolean;
+  boundEmail?: string | null;
 }
 
 function makeFakeLink(o: FakeLinkOverrides = {}) {
@@ -183,7 +199,7 @@ function makeFakeLink(o: FakeLinkOverrides = {}) {
     createdByUserId: 'u-owner',
     token: o.token ?? 'token-mock',
     role: o.role ?? 'view',
-    isPermanent: o.isPermanent ?? false,
+    boundEmail: o.boundEmail ?? null,
     consumedAt: null,
     expiresAt: null,
     createdAt: new Date().toISOString(),
