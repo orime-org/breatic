@@ -1338,5 +1338,22 @@
       "openHistory": "会話履歴",
       "newConversation": "新規会話"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "プロジェクトに参加中…",
+      "loadingBody": "招待リンクを確認しています。少々お待ちください。",
+      "errorTitle": "招待を受諾できませんでした",
+      "errorBody": "リンクをもう一度開くか、プロジェクトオーナーに新しいリンクを依頼してください。",
+      "invalidToken": "招待リンクの形式が正しくありません。",
+      "expiredOrInvalid": "この招待リンクはもう有効ではありません。プロジェクトオーナーに新しいリンクを依頼してください。",
+      "failed": "招待の受諾でエラーが発生しました。",
+      "backToStudio": "Studio に戻る"
+    }
+  },
+  "noAccess": {
+    "title": "このプロジェクトへのアクセス権がありません",
+    "description": "プロジェクトオーナーに連絡してアクセスを依頼してください。新しい招待リンクを共有してもらえます。",
+    "backToStudio": "Studio に戻る"
   }
 }

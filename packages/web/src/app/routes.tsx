@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import ProtectedRoute from '@/app/ProtectedRoute';
 import StudioPage from '@/pages/studio/StudioPage';
 import ProjectPage from '@/pages/project/ProjectPage';
-import AccessRequestPage from '@/pages/project/access/AccessRequestPage';
+import NoAccessPage from '@/pages/project/access/NoAccessPage';
 import InviteConsumePage from '@/pages/invite/InviteConsumePage';
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
@@ -61,13 +61,14 @@ const baseRoutes: RouteObject[] = [
     ),
   },
   {
-    // NOT_MEMBER access request form (PR-d). ProjectPage redirects
-    // here when the project query returns 403; share/invite links
-    // also fall back here when consume fails.
+    // NOT_MEMBER landing — 2026-05-28 spec § 2.1: direct project URL
+    // without permission shows a "contact the owner" page. The old
+    // "request to join" flow was cut; link consume is now the only
+    // way in, and ProjectPage redirects here on 403.
     path: '/project/:projectId/access',
     element: (
       <ProtectedRoute>
-        <AccessRequestPage />
+        <NoAccessPage />
       </ProtectedRoute>
     ),
   },

@@ -18,9 +18,10 @@ import { inviteLinksApi } from '@/data/api/invite-links';
 
 /**
  * Renders the page inside a memory router pointed at /invite/:token,
- * plus stub catchers for every route the page might navigate to so
- * we can assert "did the navigate happen" by reading the rendered
- * stub.
+ * plus a project stub so we can assert "did the navigate happen" on
+ * the success path. Per 2026-05-28 spec § 2.1, expired / revoked /
+ * already-consumed links no longer bounce to /studio — they show an
+ * in-page friendly error so the user knows what to do next.
  */
 function setup() {
   return render(
@@ -40,14 +41,15 @@ beforeEach(() => {
 
 describe('InviteConsumePage', () => {
   it('shows the loading card while consume is in flight', () => {
-    // never resolves — keeps the page in the loading state
     vi.mocked(inviteLinksApi.consume).mockImplementationOnce(
       () => new Promise(() => {}),
     );
     setup();
-    // i18n key for loading title is rendered (fallback to the key
-    // string since locale entry not added yet)
-    expect(screen.getByText(/invite\.consume\.loadingTitle/)).toBeInTheDocument();
+    // Loading copy now resolves via locale file (Joining project…),
+    // not the raw key.
+    expect(
+      screen.getByText(/Joining project/i),
+    ).toBeInTheDocument();
   });
 
   it('navigates to /project/:projectId on successful consume', async () => {
@@ -59,7 +61,7 @@ describe('InviteConsumePage', () => {
     expect(inviteLinksApi.consume).toHaveBeenCalledWith(TOKEN);
   });
 
-  it('navigates to /studio when consume returns 403 (expired or already consumed)', async () => {
+  it('shows the expired/invalid card when consume returns 403', async () => {
     vi.mocked(inviteLinksApi.consume).mockRejectedValueOnce(
       new ApiException({
         status: 403,
@@ -68,10 +70,16 @@ describe('InviteConsumePage', () => {
       }),
     );
     setup();
-    expect(await screen.findByText('StudioStub')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no longer valid/i),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText('ProjectStub')).not.toBeInTheDocument();
+    expect(screen.queryByText('StudioStub')).not.toBeInTheDocument();
   });
 
-  it('navigates to /studio when consume returns 404 (revoked or unknown token)', async () => {
+  it('shows the expired/invalid card when consume returns 404', async () => {
     vi.mocked(inviteLinksApi.consume).mockRejectedValueOnce(
       new ApiException({
         status: 404,
@@ -80,10 +88,31 @@ describe('InviteConsumePage', () => {
       }),
     );
     setup();
-    expect(await screen.findByText('StudioStub')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no longer valid/i),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText('ProjectStub')).not.toBeInTheDocument();
   });
 
-  it('shows the error card (no navigate) when consume fails with non-403/404 ApiException', async () => {
+  it('shows the expired/invalid card when consume returns 410 Gone (consumed)', async () => {
+    vi.mocked(inviteLinksApi.consume).mockRejectedValueOnce(
+      new ApiException({
+        status: 410,
+        code: 'GONE',
+        message: 'Already consumed',
+      }),
+    );
+    setup();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no longer valid/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows the raw server message when consume fails with non-link-invalid ApiException', async () => {
     vi.mocked(inviteLinksApi.consume).mockRejectedValueOnce(
       new ApiException({
         status: 500,
@@ -96,20 +125,18 @@ describe('InviteConsumePage', () => {
       expect(screen.getByText(/Server exploded/)).toBeInTheDocument();
     });
     expect(screen.queryByText('ProjectStub')).not.toBeInTheDocument();
-    expect(screen.queryByText('StudioStub')).not.toBeInTheDocument();
   });
 
-  it('shows the generic-failure card when consume throws a non-ApiException error', async () => {
+  it('shows the generic-failure copy when consume throws a non-ApiException error', async () => {
     vi.mocked(inviteLinksApi.consume).mockRejectedValueOnce(
       new Error('network down'),
     );
     setup();
-    // Generic-failure i18n key fallback to the key string (real raw
-    // Error.message is intentionally NOT leaked to UI for safety —
-    // network/stack noise belongs in console only)
-    expect(
-      await screen.findByText(/invite\.consume\.failed/),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Something went wrong accepting this invite/i),
+      ).toBeInTheDocument();
+    });
   });
 });
 
@@ -127,7 +154,7 @@ function makeFakeLink(o: FakeLinkOverrides = {}) {
     createdByUserId: 'u-owner',
     token: o.token ?? TOKEN,
     role: 'view',
-    isPermanent: false,
+    boundEmail: null,
     consumedAt: new Date().toISOString(),
     expiresAt: null,
     createdAt: new Date().toISOString(),

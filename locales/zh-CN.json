@@ -1338,5 +1338,22 @@
       "openHistory": "对话历史",
       "newConversation": "新建对话"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "正在加入项目…",
+      "loadingBody": "正在验证邀请链接,请稍候。",
+      "errorTitle": "无法接受邀请",
+      "errorBody": "请重新打开链接,或向项目所有者索取新的邀请链接。",
+      "invalidToken": "邀请链接格式错误。",
+      "expiredOrInvalid": "邀请链接已失效。请联系项目所有者获取新的链接。",
+      "failed": "接受邀请时发生错误。",
+      "backToStudio": "返回 Studio"
+    }
+  },
+  "noAccess": {
+    "title": "你没有访问该项目的权限",
+    "description": "请联系项目所有者申请访问,他们可以给你一个新的邀请链接。",
+    "backToStudio": "返回 Studio"
   }
 }

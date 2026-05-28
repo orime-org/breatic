@@ -42,22 +42,18 @@ export default function InviteConsumePage() {
         const res = await inviteLinksApi.consume(token);
         navigate(`/project/${res.data.projectId}`, { replace: true });
       } catch (err) {
-        if (err instanceof ApiException) {
-          // Forbidden (expired / already-consumed single-use) or
-          // NotFound (revoked / unknown token) — both fall back to
-          // the access-request page. The caller can resubmit a
-          // request manually.
-          if (err.status === 403 || err.status === 404) {
-            // We don't know the projectId for sure when the token is
-            // unknown; the access page will surface a friendly error
-            // when the route param is missing (handled in
-            // AccessRequestPage itself).
-            navigate('/studio', { replace: true });
-            return;
-          }
-        }
-        const msg =
-          err instanceof ApiException
+        // Per 2026-05-28 spec § 2.1: expired / revoked / consumed /
+        // bound-email-mismatch all surface a friendly full-screen
+        // "this link is no longer valid, please contact the project
+        // owner" message. We don't bounce to /studio (the user
+        // wouldn't know why) and we don't reveal the owner's email
+        // (anti-spam). Other failures fall back to a generic copy.
+        const isLinkInvalid =
+          err instanceof ApiException &&
+          (err.status === 403 || err.status === 404 || err.status === 410);
+        const msg = isLinkInvalid
+          ? t('invite.consume.expiredOrInvalid')
+          : err instanceof ApiException
             ? err.message
             : t('invite.consume.failed');
         setErrorMessage(msg);

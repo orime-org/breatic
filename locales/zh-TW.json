@@ -1338,5 +1338,22 @@
       "openHistory": "對話歷史",
       "newConversation": "新增對話"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "正在加入專案…",
+      "loadingBody": "正在驗證邀請連結,請稍候。",
+      "errorTitle": "無法接受邀請",
+      "errorBody": "請重新開啟連結,或向專案所有者索取新的邀請連結。",
+      "invalidToken": "邀請連結格式錯誤。",
+      "expiredOrInvalid": "邀請連結已失效。請聯絡專案所有者取得新的連結。",
+      "failed": "接受邀請時發生錯誤。",
+      "backToStudio": "返回 Studio"
+    }
+  },
+  "noAccess": {
+    "title": "你沒有存取此專案的權限",
+    "description": "請聯絡專案所有者申請存取,他們可以給你一個新的邀請連結。",
+    "backToStudio": "返回 Studio"
   }
 }

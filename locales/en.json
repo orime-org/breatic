@@ -1338,5 +1338,22 @@
       "openHistory": "Conversation history",
       "newConversation": "New conversation"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "Joining project…",
+      "loadingBody": "We're verifying your invite link. This only takes a moment.",
+      "errorTitle": "Couldn't accept this invite",
+      "errorBody": "Try opening the link again, or ask the project owner for a fresh one.",
+      "invalidToken": "This invite link is malformed.",
+      "expiredOrInvalid": "This invite link is no longer valid. Please contact the project owner for a fresh one.",
+      "failed": "Something went wrong accepting this invite.",
+      "backToStudio": "Back to Studio"
+    }
+  },
+  "noAccess": {
+    "title": "You don't have access to this project",
+    "description": "Please contact the project owner to request access. They can share a fresh invite link with you.",
+    "backToStudio": "Back to Studio"
   }
 }
