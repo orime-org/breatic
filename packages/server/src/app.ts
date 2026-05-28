@@ -31,6 +31,10 @@ import {
   projectAccessRequestsRoute,
   myAccessRequestsRoute,
 } from "./routes/access-requests.js";
+import {
+  projectInviteLinksRoute,
+  consumeInviteLinkRoute,
+} from "./routes/invite-links.js";
 
 /**
  * Create and configure the Hono application.
@@ -64,6 +68,8 @@ export function createApp(): Hono {
   app.route("/api/v1/projects/:pid/members", membersRoute);
   app.route("/api/v1/projects/:pid/access-requests", projectAccessRequestsRoute);
   app.route("/api/v1/users/me/access-requests", myAccessRequestsRoute);
+  app.route("/api/v1/projects/:pid/invite-links", projectInviteLinksRoute);
+  app.route("/api/v1/invite-links", consumeInviteLinkRoute);
   // Spaces route removed 2026-05-23 (ADR yjs-collab-only-write-authz):
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
