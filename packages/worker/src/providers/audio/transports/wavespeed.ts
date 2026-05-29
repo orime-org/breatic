@@ -10,14 +10,14 @@
  *     GET  {base_url}/predictions/{task_id}/result  ->  poll until completed
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import {
   bearerHeaders,
   requestWithRetry,
   pollUntilDone,
   extractNested,
   queryBilling,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Extract the first output URL from a WaveSpeed API response.

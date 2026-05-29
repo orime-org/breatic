@@ -7,8 +7,8 @@
 
 import { Queue, Worker } from "bullmq";
 import type { Processor, ConnectionOptions } from "bullmq";
-import { env } from "../config/env.js";
-import { getWorkerConfig } from "../config/worker.js";
+import { env } from "@core/config/env.js";
+import { getWorkerConfig } from "@core/config/worker.js";
 
 /**
  * Parse REDIS_QUEUE_URL into BullMQ-compatible connection options.

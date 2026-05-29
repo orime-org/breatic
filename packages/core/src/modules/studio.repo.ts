@@ -7,10 +7,10 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { studios } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { studios } from "@core/db/schema.js";
 import type { Studio } from "@breatic/shared";
-import type { DbTx } from "./conversation.repo.js";
+import type { DbTx } from "@core/modules/conversation.repo.js";
 
 function toEntity(row: typeof studios.$inferSelect): Studio {
   return {

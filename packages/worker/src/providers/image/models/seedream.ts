@@ -10,7 +10,7 @@
  * - images (edit variants) -> pass-through
  */
 
-import type { ModelFamily } from "../../shared.js";
+import type { ModelFamily } from "@worker/providers/shared.js";
 
 const RESOLUTION_PX: Readonly<Record<string, number>> = {
   "0.5k": 512,

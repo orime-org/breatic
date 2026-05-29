@@ -19,12 +19,12 @@ import {
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
-import { createLogger } from "./logger.js";
-import { createCollabServer } from "./hocuspocus.js";
-import { startTaskListener } from "./task-listener.js";
-import { startMembersSync } from "./members-sync.js";
-import { getCollabConfig } from "./config.js";
-import { checkCollabInfraReady } from "./connectivity-check.js";
+import { createLogger } from "@collab/logger.js";
+import { createCollabServer } from "@collab/hocuspocus.js";
+import { startTaskListener } from "@collab/task-listener.js";
+import { startMembersSync } from "@collab/members-sync.js";
+import { getCollabConfig } from "@collab/config.js";
+import { checkCollabInfraReady } from "@collab/connectivity-check.js";
 
 const logger = createLogger("main");
 

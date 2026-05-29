@@ -18,6 +18,7 @@
     "lint:hover": "bash scripts/lint-hover-pattern.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
+    "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",

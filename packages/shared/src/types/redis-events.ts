@@ -21,7 +21,7 @@
  * auth-related DB0 (session / lock / rate-limit).
  */
 
-import type { ProjectRole } from "./role.js";
+import type { ProjectRole } from "@shared/types/role.js";
 
 // ── Members ─────────────────────────────────────────────────────────
 

@@ -5,16 +5,16 @@
  * result. Returns `{ text, cost }`.
  */
 
-import type { ResolvedModel } from "../../shared.js";
-import type { AnyUnderstandFamily } from "../models/types.js";
-import { isAsrFamily } from "../models/types.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
+import { isAsrFamily } from "@worker/providers/understand/models/types.js";
 import {
   bearerHeaders,
   requestWithRetry,
   pollUntilDone,
   extractNested,
   queryBilling,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Transcribe audio via WaveSpeed Whisper API.

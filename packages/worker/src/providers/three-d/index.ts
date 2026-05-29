@@ -17,16 +17,16 @@ import {
   validateParams,
   listAvailableModels,
   type ModelFamily,
-} from "../shared.js";
+} from "@worker/providers/shared.js";
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import meshy from "./models/meshy.js";
-import hunyuan3d from "./models/hunyuan3d.js";
+import meshy from "@worker/providers/three-d/models/meshy.js";
+import hunyuan3d from "@worker/providers/three-d/models/hunyuan3d.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as wavespeedTransport from "./transports/wavespeed.js";
+import * as wavespeedTransport from "@worker/providers/three-d/transports/wavespeed.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

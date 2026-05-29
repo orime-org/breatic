@@ -22,10 +22,10 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { requireAuth } from "../middleware/auth.js";
-import type { AuthVariables } from "../middleware/auth.js";
-import { requireRole } from "../middleware/role.js";
-import type { AuthRoleVariables } from "../middleware/role.js";
+import { requireAuth } from "@/middleware/auth.js";
+import type { AuthVariables } from "@/middleware/auth.js";
+import { requireRole } from "@/middleware/role.js";
+import type { AuthRoleVariables } from "@/middleware/role.js";
 import {
   accessRequestService,
   accessRequestMail,
@@ -36,7 +36,7 @@ import {
   logger,
 } from "@breatic/core";
 import type { SendMailResult } from "@breatic/core";
-import { logMailResult } from "../utils/log-mail.js";
+import { logMailResult } from "@/utils/log-mail.js";
 
 const bodySchemaCreate = z.object({
   requested_role: z.enum(["view", "edit"]),

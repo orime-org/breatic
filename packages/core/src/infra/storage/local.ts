@@ -7,8 +7,8 @@
 
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { env, MONOREPO_ROOT } from "../../config/env.js";
-import type { StorageAdapter, ObjectHead } from "./index.js";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
+import type { StorageAdapter, ObjectHead } from "@core/infra/storage/index.js";
 
 export class LocalStorageAdapter implements StorageAdapter {
   private readonly uploadDir: string;

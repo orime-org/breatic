@@ -8,7 +8,7 @@
  * Gemini's native format automatically.
  */
 
-import type { UnderstandModelFamily } from "./types.js";
+import type { UnderstandModelFamily } from "@worker/providers/understand/models/types.js";
 
 /** Set of model names belonging to this family. */
 export const MODELS: ReadonlySet<string> = new Set([

@@ -129,6 +129,15 @@ jobs:
         # for the exclusion list and rationale.
         run: pnpm lint:no-library-logger
 
+      - name: Lint no-relative-import (all packages)
+        # Enforce CLAUDE.md 禁止清单 (2026-05-29): non-test source must
+        # import via a path alias, never a relative './' or '../' path.
+        # Consumed packages use a globally-unique prefix (@shared / @core
+        # / @collab / @worker); server / web use @/. Hard-fails the PR on
+        # any relative import in non-test source. See
+        # scripts/lint-no-relative-import.sh for rationale + exclusions.
+        run: pnpm lint:no-relative-import
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 

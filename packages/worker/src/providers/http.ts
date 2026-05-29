@@ -5,7 +5,7 @@
  * nested JSON extraction, and WaveSpeed billing lookup.
  */
 
-import type { ResolvedModel } from "./shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
 

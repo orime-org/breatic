@@ -1,13 +1,26 @@
 /**
- * i18n tests — JSON-based translation lookup, parameter interpolation, locale switching.
+ * i18n loader tests — node-side adapter (`@breatic/core` loadLocales)
+ * integrated with the shared engine (`@breatic/shared/i18n` t()).
+ *
+ * Moved here from `@breatic/shared` (2026-05-29): the node-only loader
+ * (`node:fs` + `node:async_hooks`) relocated from `shared/i18n/load-node`
+ * into `core/i18n/locale-loader` so `@breatic/shared` stays 100%
+ * browser-safe. The engine itself still lives in shared — this test
+ * exercises both layers together (load from disk → translate).
  */
 
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { t, setLocale, getLocale, getAvailableLocales, resetLocales } from "../i18n/index.js";
-import { loadLocales } from "../i18n/load-node.js";
+import {
+  t,
+  setLocale,
+  getLocale,
+  getAvailableLocales,
+  resetLocales,
+} from "@breatic/shared/i18n";
+import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
 
-describe("i18n", () => {
+describe("i18n loader", () => {
   beforeAll(() => {
     resetLocales();
     loadLocales(resolve(import.meta.dirname, "../../../../locales"));
@@ -87,6 +100,27 @@ describe("i18n", () => {
       // After reset, t() will reload locales lazily
       loadLocales(resolve(import.meta.dirname, "../../../../locales"));
       expect(getAvailableLocales().length).toBe(4);
+    });
+  });
+
+  describe("default locales dir (no-arg)", () => {
+    // Regression: when the node i18n adapter moved shared → core
+    // (2026-05-29), the hard-coded relative default path
+    // ("../../../../locales") broke because core's bundled output
+    // sits at a different directory depth than shared's did, so
+    // `loadLocales()` with no arg loaded zero locales and t() fell
+    // back to raw keys. The default now anchors on MONOREPO_ROOT.
+    // This asserts the no-arg call (what server boot uses) works.
+    it("loadLocales() with no argument discovers all 4 locales", () => {
+      resetLocales();
+      loadLocales();
+      expect(getAvailableLocales().sort()).toEqual(
+        ["en", "ja", "zh-CN", "zh-TW"].sort(),
+      );
+      // And a real key resolves (not the raw key fallback).
+      expect(t("server.auth.invalid_credentials")).not.toBe(
+        "server.auth.invalid_credentials",
+      );
     });
   });
 });

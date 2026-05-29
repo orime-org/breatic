@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "./env.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),

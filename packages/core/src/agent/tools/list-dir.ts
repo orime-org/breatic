@@ -10,7 +10,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import { assertInSandbox, SandboxError } from "./fs-sandbox.js";
+import { assertInSandbox, SandboxError } from "@core/agent/tools/fs-sandbox.js";
 
 /**
  * List the contents of a directory with type indicators.

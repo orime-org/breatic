@@ -10,9 +10,9 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
-import { textToolSchema } from "./schemas.js";
-import { requireAuth } from "../middleware/auth.js";
-import type { AuthVariables } from "../middleware/auth.js";
+import { textToolSchema } from "@/routes/schemas.js";
+import { requireAuth } from "@/middleware/auth.js";
+import type { AuthVariables } from "@/middleware/auth.js";
 import { textToolService, logger } from "@breatic/core";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();

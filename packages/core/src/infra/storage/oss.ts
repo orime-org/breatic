@@ -5,8 +5,8 @@
  */
 
 import OSS from "ali-oss";
-import { env } from "../../config/env.js";
-import type { StorageAdapter, ObjectHead } from "./index.js";
+import { env } from "@core/config/env.js";
+import type { StorageAdapter, ObjectHead } from "@core/infra/storage/index.js";
 
 export class AliyunOSSStorageAdapter implements StorageAdapter {
   private readonly client: OSS;

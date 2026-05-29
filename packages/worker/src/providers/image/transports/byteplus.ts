@@ -15,8 +15,8 @@
  * Models served: seedream-5.0-lite
  */
 
-import type { ResolvedModel } from "../../shared.js";
-import { bearerHeaders } from "../../http.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import { bearerHeaders } from "@worker/providers/http.js";
 
 /**
  * Build BytePlus images/generations request body.

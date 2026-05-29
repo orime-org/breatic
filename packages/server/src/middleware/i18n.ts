@@ -4,7 +4,7 @@
  * Reads the browser's Accept-Language header, negotiates against the
  * locales the server actually has translations for, and pins the
  * winning locale into an AsyncLocalStorage store via
- * `@breatic/shared/i18n-node`'s `runWithLocale`. Every `t("server.…")`
+ * `@breatic/core`'s `runWithLocale`. Every `t("server.…")`
  * inside the request handler (or any service it calls) then resolves
  * messages in the caller's language. Falls back to English when no
  * supported locale appears in the header.
@@ -22,7 +22,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { runWithLocale } from "@breatic/shared/i18n-node";
+import { runWithLocale } from "@breatic/core";
 
 /** Locales for which the server has translation files in `locales/`. */
 const SUPPORTED: ReadonlyArray<string> = ["en", "zh-CN", "zh-TW", "ja"];

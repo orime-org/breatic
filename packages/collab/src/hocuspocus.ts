@@ -22,14 +22,14 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook } from "./auth.js";
-import { projectAwarenessIntoMetaUsers } from "./awareness-meta-users.js";
-import { checkWriteAuthz, WriteAuthzError } from "./before-handle-message.js";
-import { createPersistenceExtension } from "./persistence.js";
-import { getCollabConfig } from "./config.js";
-import { cleanupOnDisconnect } from "./disconnect-cleanup.js";
-import { handleSpaceRpc } from "./space-rpc.js";
-import { createLogger } from "./logger.js";
+import { createAuthHook } from "@collab/auth.js";
+import { projectAwarenessIntoMetaUsers } from "@collab/awareness-meta-users.js";
+import { checkWriteAuthz, WriteAuthzError } from "@collab/before-handle-message.js";
+import { createPersistenceExtension } from "@collab/persistence.js";
+import { getCollabConfig } from "@collab/config.js";
+import { cleanupOnDisconnect } from "@collab/disconnect-cleanup.js";
+import { handleSpaceRpc } from "@collab/space-rpc.js";
+import { createLogger } from "@collab/logger.js";
 
 const logger = createLogger("hocuspocus");
 

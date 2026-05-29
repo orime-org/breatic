@@ -6,9 +6,9 @@
  * and the dev-user bootstrap to guarantee invariant.
  */
 
-import * as studioRepo from "./studio.repo.js";
+import * as studioRepo from "@core/modules/studio.repo.js";
 import type { Studio } from "@breatic/shared";
-import type { DbTx } from "./conversation.repo.js";
+import type { DbTx } from "@core/modules/conversation.repo.js";
 
 /**
  * Default display name for a personal studio.

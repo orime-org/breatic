@@ -14,9 +14,9 @@ import {
   taskCreateSchema,
   understandSchema,
   paginationSchema,
-} from "./schemas.js";
-import { requireAuth } from "../middleware/auth.js";
-import type { AuthVariables } from "../middleware/auth.js";
+} from "@/routes/schemas.js";
+import { requireAuth } from "@/middleware/auth.js";
+import type { AuthVariables } from "@/middleware/auth.js";
 import { taskService } from "@breatic/core";
 import { userRepo } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";

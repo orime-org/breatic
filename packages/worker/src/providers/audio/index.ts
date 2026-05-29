@@ -18,20 +18,20 @@ import {
   listAvailableModels,
   type ModelFamily,
   type Transport,
-} from "../shared.js";
+} from "@worker/providers/shared.js";
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import minimax from "./models/minimax.js";
-import elevenlabs from "./models/elevenlabs.js";
-import vocalRemover from "./models/vocal-remover.js";
+import minimax from "@worker/providers/audio/models/minimax.js";
+import elevenlabs from "@worker/providers/audio/models/elevenlabs.js";
+import vocalRemover from "@worker/providers/audio/models/vocal-remover.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as wavespeedTransport from "./transports/wavespeed.js";
-import * as minimaxTransport from "./transports/minimax.js";
-import * as elevenlabsTransport from "./transports/elevenlabs.js";
-import * as falTransport from "./transports/fal.js";
+import * as wavespeedTransport from "@worker/providers/audio/transports/wavespeed.js";
+import * as minimaxTransport from "@worker/providers/audio/transports/minimax.js";
+import * as elevenlabsTransport from "@worker/providers/audio/transports/elevenlabs.js";
+import * as falTransport from "@worker/providers/audio/transports/fal.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

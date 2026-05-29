@@ -20,7 +20,7 @@
  * notification points.
  */
 
-import type { SendMailOptions } from "../infra/mailer.js";
+import type { SendMailOptions } from "@core/infra/mailer.js";
 
 const BRAND = "Breatic";
 

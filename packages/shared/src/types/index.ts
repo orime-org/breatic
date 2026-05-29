@@ -13,7 +13,7 @@ export type {
   ProjectDetail,
   MemoryContext,
   SkillMeta,
-} from "./entities.js";
+} from "@shared/types/entities.js";
 
 export type {
   NodeState,
@@ -29,15 +29,15 @@ export type {
   PromptDoc,
   NodeStateUpdateEvent,
   NodeEvent,
-} from "./canvas-node.js";
+} from "@shared/types/canvas-node.js";
 
-export { ROLE_RANK } from "./role.js";
-export type { ProjectRole, ProjectMember } from "./role.js";
+export { ROLE_RANK } from "@shared/types/role.js";
+export type { ProjectRole, ProjectMember } from "@shared/types/role.js";
 
-export type { Studio } from "./studio.js";
+export type { Studio } from "@shared/types/studio.js";
 
-export type { SpaceType, Space } from "./space.js";
-export { SpaceTypeSchema } from "./space.js";
+export type { SpaceType, Space } from "@shared/types/space.js";
+export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {
   SPACE_NAME_MAX_LEN,
@@ -52,7 +52,7 @@ export {
   MessagesClearPayloadSchema,
   ProjectMessageKindSchema,
   ProjectMessageEntrySchema,
-} from "./space-rpc.js";
+} from "@shared/types/space-rpc.js";
 export type {
   SpaceRpcRequest,
   SpaceRpcResponse,
@@ -65,10 +65,10 @@ export type {
   MessagesClearPayload,
   ProjectMessageKind,
   ProjectMessageEntry,
-} from "./space-rpc.js";
+} from "@shared/types/space-rpc.js";
 
 export {
   membersChangedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
-} from "./redis-events.js";
-export type { MembersChangedEvent } from "./redis-events.js";
+} from "@shared/types/redis-events.js";
+export type { MembersChangedEvent } from "@shared/types/redis-events.js";

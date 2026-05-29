@@ -15,8 +15,8 @@
  * Storage: DB 0 (general purpose; same as session / rate-limit).
  */
 import type Redis from "ioredis";
-import { env } from "../config/env.js";
-import { getRedis } from "./redis.js";
+import { env } from "@core/config/env.js";
+import { getRedis } from "@core/infra/redis.js";
 
 /**
  * TTL for the lock in seconds. 7200s (2h) is comfortably longer than any

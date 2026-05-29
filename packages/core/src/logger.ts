@@ -13,7 +13,7 @@
 import pino from "pino";
 import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { env, MONOREPO_ROOT } from "./config/env.js";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
 function buildLogger(serviceName: string): pino.Logger {
   const logsRoot = resolve(MONOREPO_ROOT, "logs");

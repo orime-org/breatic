@@ -7,11 +7,11 @@
  * API reference: https://fal.ai/models/fal-ai/f5-tts/api
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import {
   requestWithRetry,
   pollUntilDone,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Build fal.ai authorization headers.

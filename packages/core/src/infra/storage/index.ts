@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { env } from "../../config/env.js";
+import { env } from "@core/config/env.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -69,17 +69,17 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
 
   switch (env.STORAGE_PROVIDER) {
     case "local": {
-      const { LocalStorageAdapter } = await import("./local.js");
+      const { LocalStorageAdapter } = await import("@core/infra/storage/local.js");
       _adapter = new LocalStorageAdapter();
       break;
     }
     case "s3": {
-      const { S3StorageAdapter } = await import("./s3.js");
+      const { S3StorageAdapter } = await import("@core/infra/storage/s3.js");
       _adapter = new S3StorageAdapter();
       break;
     }
     case "aliyun_oss": {
-      const { AliyunOSSStorageAdapter } = await import("./oss.js");
+      const { AliyunOSSStorageAdapter } = await import("@core/infra/storage/oss.js");
       _adapter = new AliyunOSSStorageAdapter();
       break;
     }

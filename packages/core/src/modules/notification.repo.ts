@@ -15,10 +15,10 @@
  */
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { notifications } from "../db/schema.js";
-import type { Notification, NewNotification } from "../db/schema.js";
-import type { DbTx } from "./conversation.repo.js";
+import { db } from "@core/db/client.js";
+import { notifications } from "@core/db/schema.js";
+import type { Notification, NewNotification } from "@core/db/schema.js";
+import type { DbTx } from "@core/modules/conversation.repo.js";
 
 /**
  * Allowed notification types. Mirrors the SQL CHECK constraint on
@@ -31,7 +31,7 @@ export type NotificationType =
   | "access.member_joined";
 
 export type { Notification, NewNotification };
-export type { DbTx } from "./conversation.repo.js";
+export type { DbTx } from "@core/modules/conversation.repo.js";
 
 /**
  * Create a notification row.

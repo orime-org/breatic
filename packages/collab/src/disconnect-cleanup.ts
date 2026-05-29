@@ -30,7 +30,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { parseDocName } from "@breatic/shared";
 import type { OperationLock, HandlingActor } from "@breatic/shared";
-import { createLogger } from "./logger.js";
+import { createLogger } from "@collab/logger.js";
 
 const logger = createLogger("disconnect-cleanup");
 

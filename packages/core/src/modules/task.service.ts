@@ -5,9 +5,9 @@
  * to the task repository.
  */
 
-import * as taskRepo from "./task.repo.js";
+import * as taskRepo from "@core/modules/task.repo.js";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "../errors.js";
+import { NotFoundError, ForbiddenError } from "@core/errors.js";
 import type { TaskEntity } from "@breatic/shared";
 
 /**

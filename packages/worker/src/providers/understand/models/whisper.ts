@@ -7,7 +7,7 @@
  * - audio, language -- all pass-through
  */
 
-import type { UnderstandAsrFamily } from "./types.js";
+import type { UnderstandAsrFamily } from "@worker/providers/understand/models/types.js";
 
 /** Set of model names belonging to this family. */
 export const MODELS: ReadonlySet<string> = new Set([

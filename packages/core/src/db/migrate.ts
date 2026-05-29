@@ -11,8 +11,8 @@
 
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
-import { db } from "./client.js";
-import { MONOREPO_ROOT } from "../config/env.js";
+import { db } from "@core/db/client.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
  * Run all pending database migrations.

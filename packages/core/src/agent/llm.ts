@@ -8,7 +8,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 /** OpenRouter provider (default — routes to any model). */
 const openrouter = createOpenAI({

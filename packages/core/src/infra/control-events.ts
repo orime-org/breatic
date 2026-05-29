@@ -33,7 +33,7 @@
  *     untouched.
  */
 
-import { getStreamRedis } from "./redis.js";
+import { getStreamRedis } from "@core/infra/redis.js";
 import {
   membersChangedChannel,
   type MembersChangedEvent,

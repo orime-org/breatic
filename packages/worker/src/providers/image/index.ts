@@ -19,15 +19,15 @@ import {
   listAvailableModels,
   type ModelFamily,
   type Transport,
-} from "../shared.js";
+} from "@worker/providers/shared.js";
 
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import nanoBanana from "./models/nano-banana.js";
-import seedream from "./models/seedream.js";
-import midjourney from "./models/midjourney.js";
-import qwen from "./models/qwen.js";
+import nanoBanana from "@worker/providers/image/models/nano-banana.js";
+import seedream from "@worker/providers/image/models/seedream.js";
+import midjourney from "@worker/providers/image/models/midjourney.js";
+import qwen from "@worker/providers/image/models/qwen.js";
 // B5 (`design/project/02-mini-tool-system.md` §2.2): V1 image roster =
 // remove-bg / upscale / inpaint. The `qwen-multi-angle` + `ic-light`
 // families served `multi-angle` / `relight` which were trimmed from the
@@ -35,16 +35,16 @@ import qwen from "./models/qwen.js";
 // families (nano-banana / seedream / midjourney / qwen text-to-image)
 // stay because they're called by the generative pipeline, not the
 // mini-tool route.
-import topaz from "./models/topaz.js";
-import backgroundRemove from "./models/background-remove.js";
+import topaz from "@worker/providers/image/models/topaz.js";
+import backgroundRemove from "@worker/providers/image/models/background-remove.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as wavespeedTransport from "./transports/wavespeed.js";
-import * as googleTransport from "./transports/google.js";
-import * as byteplusTransport from "./transports/byteplus.js";
-import * as dashscopeTransport from "./transports/dashscope.js";
-import * as topazTransport from "./transports/topaz.js";
+import * as wavespeedTransport from "@worker/providers/image/transports/wavespeed.js";
+import * as googleTransport from "@worker/providers/image/transports/google.js";
+import * as byteplusTransport from "@worker/providers/image/transports/byteplus.js";
+import * as dashscopeTransport from "@worker/providers/image/transports/dashscope.js";
+import * as topazTransport from "@worker/providers/image/transports/topaz.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

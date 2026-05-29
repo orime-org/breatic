@@ -33,7 +33,7 @@ import {
   projectMetaDocName,
   type MembersChangedEvent,
 } from "@breatic/shared";
-import { createLogger } from "./logger.js";
+import { createLogger } from "@collab/logger.js";
 
 const logger = createLogger("members-sync");
 

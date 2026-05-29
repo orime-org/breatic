@@ -17,8 +17,8 @@
  */
 
 import { Hono } from "hono";
-import { requireAuth } from "../middleware/auth.js";
-import type { AuthVariables } from "../middleware/auth.js";
+import { requireAuth } from "@/middleware/auth.js";
+import type { AuthVariables } from "@/middleware/auth.js";
 import { notificationService } from "@breatic/core";
 
 const route = new Hono<{ Variables: AuthVariables }>();

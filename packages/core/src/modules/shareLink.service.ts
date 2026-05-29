@@ -30,16 +30,16 @@
  */
 
 import { randomBytes } from "node:crypto";
-import * as shareLinkRepo from "./shareLink.repo.js";
+import * as shareLinkRepo from "@core/modules/shareLink.repo.js";
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../errors.js";
+} from "@core/errors.js";
 import { t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-import type { ShareLink, ShareLinkKind } from "./shareLink.repo.js";
+import type { ShareLink, ShareLinkKind } from "@core/modules/shareLink.repo.js";
 
 export type { ShareLinkKind };
 

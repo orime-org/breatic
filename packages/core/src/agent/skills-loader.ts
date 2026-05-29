@@ -12,7 +12,7 @@ import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import type { SkillMeta } from "@breatic/shared";
-import { MONOREPO_ROOT } from "../config/env.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -569,7 +569,7 @@ function filterModelsByModes(
 
 // ── Model list access ────────────────────────────────────────────────
 
-import { listAvailableModels } from "../config/model-catalog.js";
+import { listAvailableModels } from "@core/config/model-catalog.js";
 
 function getModelsForModality(modality: string): ModelInfo[] {
   return listAvailableModels(modality) as ModelInfo[];

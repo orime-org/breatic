@@ -10,7 +10,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
-import { MONOREPO_ROOT } from "../config/env.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /** Root directory for agent definitions. */
 const AGENTS_DIR = resolve(MONOREPO_ROOT, "agents");

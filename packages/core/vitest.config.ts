@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
 
 // Per CLAUDE.md "服务器端工业级标准" the project tightens
 // vitest's default `testTimeout` from 5s to 15s. The 5s default
@@ -19,5 +20,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     testTimeout: 15_000,
+  },
+  resolve: {
+    alias: {
+      "@core": resolve(__dirname, "./src"),
+    },
   },
 });

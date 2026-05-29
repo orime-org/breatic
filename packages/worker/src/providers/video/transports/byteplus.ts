@@ -18,12 +18,12 @@
  * Models served: seedance-2.0, seedance-1.5-pro (t2v, i2v, extend)
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import {
   bearerHeaders,
   requestWithRetry,
   pollUntilDone,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Extract video URL from BytePlus API response.

@@ -7,7 +7,7 @@
  * API reference: https://docs.fish.audio/developer-guide/core-features/text-to-speech
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 
 /**

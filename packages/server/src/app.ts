@@ -10,36 +10,36 @@ import { Hono } from "hono";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { env, MONOREPO_ROOT } from "@breatic/core";
-import { corsMiddleware } from "./middleware/cors.js";
-import { localeMiddleware } from "./middleware/i18n.js";
-import { loggerMiddleware } from "./middleware/logger.js";
-import { errorHandler } from "./middleware/error-handler.js";
-import { authRoute } from "./routes/auth.js";
-import { chatRoute } from "./routes/chat.js";
-import { canvasRoute } from "./routes/canvas.js";
-import { miniToolsRoute } from "./routes/mini-tools.js";
-import { projectsRoute } from "./routes/projects.js";
-import { skillsRoute } from "./routes/skills.js";
-import { tasksRoute } from "./routes/tasks.js";
-import { paymentRoute } from "./routes/payment.js";
-import { textToolsRoute } from "./routes/text-tools.js";
-import { modelsRoute } from "./routes/models.js";
-import { assetsRoute } from "./routes/assets.js";
-import { membersRoute } from "./routes/members.js";
-import { usersRoute } from "./routes/users.js";
+import { corsMiddleware } from "@/middleware/cors.js";
+import { localeMiddleware } from "@/middleware/i18n.js";
+import { loggerMiddleware } from "@/middleware/logger.js";
+import { errorHandler } from "@/middleware/error-handler.js";
+import { authRoute } from "@/routes/auth.js";
+import { chatRoute } from "@/routes/chat.js";
+import { canvasRoute } from "@/routes/canvas.js";
+import { miniToolsRoute } from "@/routes/mini-tools.js";
+import { projectsRoute } from "@/routes/projects.js";
+import { skillsRoute } from "@/routes/skills.js";
+import { tasksRoute } from "@/routes/tasks.js";
+import { paymentRoute } from "@/routes/payment.js";
+import { textToolsRoute } from "@/routes/text-tools.js";
+import { modelsRoute } from "@/routes/models.js";
+import { assetsRoute } from "@/routes/assets.js";
+import { membersRoute } from "@/routes/members.js";
+import { usersRoute } from "@/routes/users.js";
 import {
   projectAccessRequestsRoute,
   myAccessRequestsRoute,
-} from "./routes/access-requests.js";
+} from "@/routes/access-requests.js";
 import {
   projectInviteLinksRoute,
   consumeInviteLinkRoute,
-} from "./routes/invite-links.js";
-import { notificationsRoute } from "./routes/notifications.js";
+} from "@/routes/invite-links.js";
+import { notificationsRoute } from "@/routes/notifications.js";
 import {
   projectRoleUpgradeRequestsRoute,
   roleUpgradeRequestDecisionRoute,
-} from "./routes/role-upgrade-requests.js";
+} from "@/routes/role-upgrade-requests.js";
 
 /**
  * Create and configure the Hono application.

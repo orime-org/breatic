@@ -21,9 +21,9 @@
  */
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { shareLinks } from "../db/schema.js";
-import type { DbTx } from "./conversation.repo.js";
+import { db } from "@core/db/client.js";
+import { shareLinks } from "@core/db/schema.js";
+import type { DbTx } from "@core/modules/conversation.repo.js";
 
 /** Discriminator for the two share-link modes. */
 export type ShareLinkKind = "email" | "link";

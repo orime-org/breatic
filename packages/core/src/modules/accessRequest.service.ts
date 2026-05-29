@@ -33,14 +33,14 @@
  * This service returns the structured outcome so callers can decide.
  */
 
-import { db } from "../db/client.js";
-import * as accessRequestRepo from "./accessRequest.repo.js";
-import * as projectMembersRepo from "./projectMembers.repo.js";
-import { publishMembersChanged } from "../infra/control-events.js";
-import { ConflictError, NotFoundError, ValidationError } from "../errors.js";
+import { db } from "@core/db/client.js";
+import * as accessRequestRepo from "@core/modules/accessRequest.repo.js";
+import * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+import { publishMembersChanged } from "@core/infra/control-events.js";
+import { ConflictError, NotFoundError, ValidationError } from "@core/errors.js";
 import { t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-import type { AccessRequest, AccessRequestWithRequester } from "./accessRequest.repo.js";
+import type { AccessRequest, AccessRequestWithRequester } from "@core/modules/accessRequest.repo.js";
 
 /** Roles a user is allowed to request — `owner` is never grantable. */
 export type RequestableRole = Exclude<ProjectRole, "owner">;

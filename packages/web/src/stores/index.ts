@@ -10,20 +10,20 @@
  * spaces list flow through `data/yjs/` bindings.
  */
 
-export { useUIStore } from './ui';
-export { usePreferencesStore } from './preferences';
-export type { ThemeMode } from './preferences';
-export { useCurrentUserStore } from './current-user';
-export type { CurrentUser, UserRole } from './current-user';
-export { useCanvasStore } from './canvas';
-export { useMiniToolStore } from './mini-tool';
-export type { MiniToolStatus, MiniToolSession } from './mini-tool';
-export { useInpaintStore } from './inpaint';
-export type { BrushMode } from './inpaint';
-export { useChatStore } from './chat';
-export { useStudioStore } from './studio';
-export type { ProjectSortKey, ProjectSortOrder } from './studio';
-export { useProjectStore } from './project';
-export type { ProjectRole, ActiveProjectMeta } from './project';
-export { useToastStore } from './toast';
-export type { ToastVariant, ToastEntry } from './toast';
+export { useUIStore } from '@/stores/ui';
+export { usePreferencesStore } from '@/stores/preferences';
+export type { ThemeMode } from '@/stores/preferences';
+export { useCurrentUserStore } from '@/stores/current-user';
+export type { CurrentUser, UserRole } from '@/stores/current-user';
+export { useCanvasStore } from '@/stores/canvas';
+export { useMiniToolStore } from '@/stores/mini-tool';
+export type { MiniToolStatus, MiniToolSession } from '@/stores/mini-tool';
+export { useInpaintStore } from '@/stores/inpaint';
+export type { BrushMode } from '@/stores/inpaint';
+export { useChatStore } from '@/stores/chat';
+export { useStudioStore } from '@/stores/studio';
+export type { ProjectSortKey, ProjectSortOrder } from '@/stores/studio';
+export { useProjectStore } from '@/stores/project';
+export type { ProjectRole, ActiveProjectMeta } from '@/stores/project';
+export { useToastStore } from '@/stores/toast';
+export type { ToastVariant, ToastEntry } from '@/stores/toast';

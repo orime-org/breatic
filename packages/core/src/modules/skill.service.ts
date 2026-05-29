@@ -5,8 +5,8 @@
  * publish/install workflows with atomic counters.
  */
 
-import * as skillRepo from "./skill.repo.js";
-import { NotFoundError, ForbiddenError, ConflictError } from "../errors.js";
+import * as skillRepo from "@core/modules/skill.repo.js";
+import { NotFoundError, ForbiddenError, ConflictError } from "@core/errors.js";
 import type { SkillMeta } from "@breatic/shared";
 
 /**

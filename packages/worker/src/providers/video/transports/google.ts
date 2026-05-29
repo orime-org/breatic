@@ -18,8 +18,8 @@
  * Models served: veo-3.1 (t2v, i2v, extend)
  */
 
-import type { ResolvedModel } from "../../shared.js";
-import { requestWithRetry } from "../../http.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import { requestWithRetry } from "@worker/providers/http.js";
 
 const POLL_INTERVAL = 5000; // ms
 const MAX_WAIT = 300_000; // ms (5 min)

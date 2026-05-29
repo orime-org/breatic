@@ -15,7 +15,7 @@
  * Models served: nano-banana-pro, nano-banana-2, nano-banana-pro-edit, nano-banana-2-edit
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 
 /** Part types used in the Google API request body. */
 interface FilePart {

@@ -7,7 +7,7 @@
  * API reference: https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 
 /**

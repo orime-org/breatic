@@ -4,7 +4,15 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/src/*"],
+      "@core/*": ["../core/src/*"],
+      "@collab/*": ["../collab/src/*"],
+      "@worker/*": ["../worker/src/*"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

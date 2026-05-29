@@ -17,10 +17,10 @@
  * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
  */
 
-import * as notificationRepo from "./notification.repo.js";
-import { NotFoundError } from "../errors.js";
+import * as notificationRepo from "@core/modules/notification.repo.js";
+import { NotFoundError } from "@core/errors.js";
 import { t } from "@breatic/shared";
-import type { Notification, DbTx } from "./notification.repo.js";
+import type { Notification, DbTx } from "@core/modules/notification.repo.js";
 
 export type { Notification };
 

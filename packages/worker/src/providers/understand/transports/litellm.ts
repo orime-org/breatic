@@ -7,9 +7,9 @@
 
 import { generateText, stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
-import type { ResolvedModel } from "../../shared.js";
-import type { AnyUnderstandFamily } from "../models/types.js";
-import { isLlmFamily } from "../models/types.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
+import { isLlmFamily } from "@worker/providers/understand/models/types.js";
 import { getModel } from "@breatic/core";
 
 /**

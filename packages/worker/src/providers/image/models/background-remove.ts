@@ -7,7 +7,7 @@
  * - image -> image (pass-through)
  */
 
-import type { ModelFamily } from "../../shared.js";
+import type { ModelFamily } from "@worker/providers/shared.js";
 
 /** Set of model names belonging to this family. */
 export const MODELS: ReadonlySet<string> = new Set([

@@ -30,7 +30,7 @@
  */
 import { z } from "zod";
 
-import { SpaceTypeSchema } from "./space.js";
+import { SpaceTypeSchema } from "@shared/types/space.js";
 
 // ── Common ──────────────────────────────────────────────────────────
 

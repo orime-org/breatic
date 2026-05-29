@@ -19,18 +19,18 @@ import {
   acquireSemaphore,
   validateParams,
   listAvailableModels,
-} from "../shared.js";
-import type { AnyUnderstandFamily } from "./models/types.js";
+} from "@worker/providers/shared.js";
+import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import gemini from "./models/gemini.js";
-import whisper from "./models/whisper.js";
+import gemini from "@worker/providers/understand/models/gemini.js";
+import whisper from "@worker/providers/understand/models/whisper.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as litellmTransport from "./transports/litellm.js";
-import * as wavespeedTransport from "./transports/wavespeed.js";
+import * as litellmTransport from "@worker/providers/understand/transports/litellm.js";
+import * as wavespeedTransport from "@worker/providers/understand/transports/wavespeed.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

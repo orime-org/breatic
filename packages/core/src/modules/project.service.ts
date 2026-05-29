@@ -14,15 +14,15 @@
  */
 
 import { randomUUID } from "node:crypto";
-import * as projectRepo from "./project.repo.js";
-import * as projectAuthService from "./projectAuth.service.js";
-import * as studioService from "./studio.service.js";
-import * as userRepo from "./user.repo.js";
-import * as yjsDocRepo from "./yjs-doc.repo.js";
-import { db } from "../db/client.js";
-import { encodeInitialMetaState } from "../db/yjs-bootstrap.js";
+import * as projectRepo from "@core/modules/project.repo.js";
+import * as projectAuthService from "@core/modules/projectAuth.service.js";
+import * as studioService from "@core/modules/studio.service.js";
+import * as userRepo from "@core/modules/user.repo.js";
+import * as yjsDocRepo from "@core/modules/yjs-doc.repo.js";
+import { db } from "@core/db/client.js";
+import { encodeInitialMetaState } from "@core/db/yjs-bootstrap.js";
 import { t, projectMetaDocName } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "../errors.js";
+import { NotFoundError, ForbiddenError } from "@core/errors.js";
 import { ROLE_RANK } from "@breatic/shared";
 import type { ProjectEntity, ProjectRole } from "@breatic/shared";
 

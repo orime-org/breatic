@@ -7,8 +7,8 @@
 
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { env } from "../../config/env.js";
-import type { StorageAdapter, ObjectHead } from "./index.js";
+import { env } from "@core/config/env.js";
+import type { StorageAdapter, ObjectHead } from "@core/infra/storage/index.js";
 
 export class S3StorageAdapter implements StorageAdapter {
   private readonly client: S3Client;

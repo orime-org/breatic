@@ -19,8 +19,8 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db } from "../db/client.js";
-import { yjsDocuments } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { yjsDocuments } from "@core/db/schema.js";
 
 /**
  * Drizzle transaction handle as it appears inside a `db.transaction(...)`

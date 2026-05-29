@@ -5,8 +5,8 @@
  */
 
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { users } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { users } from "@core/db/schema.js";
 import type { UserEntity } from "@breatic/shared";
 
 /** Convert a Drizzle row to a UserEntity (strips hashed_password). */

@@ -10,10 +10,11 @@
  *   - Web: `import { setLocaleMessages } from "@breatic/shared/i18n"`
  *     then call `setLocaleMessages("en", enJson)` for each bundled locale
  *     (typically via the web bootstrap entry).
- *   - Server: `import { loadLocales } from "@breatic/shared/i18n-node"`
- *     and call `loadLocales()` once at boot. The node-only loader lives
- *     on a separate subpath so this module stays free of `node:fs`
- *     imports and never drags Node builtins into the web bundle
+ *   - Node services: `import { loadLocales } from "@breatic/core"` and
+ *     call `loadLocales()` once at boot. The node-only loader lives in
+ *     `@breatic/core` (the node-side shared lib, which the web bundle
+ *     never imports) so this module stays free of `node:fs` imports
+ *     and never drags Node builtins into the web bundle
  *     (see memory `feedback_shared_barrel_browser_pull`).
  *
  * **External API stays compatible** with the previous helper:
@@ -38,7 +39,7 @@ let _currentLocale: Locale = "en";
  * `_localeResolver()` first; only falls back to the process-global
  * `_currentLocale` when the resolver returns `undefined`.
  *
- * Wired by `@breatic/shared/i18n-node` at module load time so server
+ * Wired by `@breatic/core`'s locale-loader at module load time so server
  * code paths read the per-request locale from an AsyncLocalStorage
  * store. The web bundle never installs a resolver, so `_currentLocale`
  * (driven by `setLocale()` from the locale-bootstrap) stays
