@@ -89,7 +89,7 @@ export * as attachmentService from "./modules/conversation-attachment.service.js
 
 // ── Agent ────────────────────────────────────────────────────────
 export { getModel, resolveProvider } from "./agent/llm.js";
-export { buildToolSet, DEFAULT_TOOLS } from "./agent/llm-tools/index.js";
+export { buildToolSet, DEFAULT_TOOLS } from "./agent/tools/index.js";
 export { getSkillRegistry, SkillRegistry } from "./agent/skills-loader.js";
 export { listAvailableModels } from "./config/model-catalog.js";
 export type { SkillModelInfo } from "./config/model-catalog.js";
