@@ -359,6 +359,20 @@
       "failed": "邮箱验证失败。"
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "申请编辑者权限",
+      "title": "申请编辑者权限",
+      "description": "你当前是该项目的观察者。给项目所有者发送一条消息,申请编辑者权限。",
+      "placeholder": "给项目所有者的留言(可选)…",
+      "submit": "发送申请",
+      "sending": "发送中…",
+      "toast": {
+        "sent": "申请已发送 — 项目所有者会在通知中看到。",
+        "failed": "申请发送失败,请重试。"
+      }
+    }
+  },
   "breatic_slogan": "AI让创意可见",
   "about_us": "关于我们",
   "support_and_service": "支持与服务",
@@ -938,6 +952,8 @@
       "invite": "邀请新成员",
       "manage": "管理协作者",
       "remove": "移除",
+      "removeSuccess": "已移除成员。",
+      "removeFailed": "成员移除失败,请重试。",
       "self_label": "(你)",
       "isMe": "(你)"
     },
@@ -961,11 +977,19 @@
       "title": "协作者管理",
       "description": "管理项目成员及其权限",
       "inviteSection": "邀请新协作者",
-      "invitePlaceholder": "邮箱或用户 ID",
+      "invitePlaceholder": "邮箱地址",
       "inviteButton": "邀请",
+      "inviteSending": "发送中…",
+      "inviteSent": "邀请已发送。",
+      "inviteFailed": "邀请发送失败,请重试。",
+      "invalidEmail": "请输入有效的邮箱地址。",
       "membersSection": "成员 ({count})",
       "ownerNote": "所有者永久绑定项目创建者",
       "roleSelectAria": "修改 {name} 的角色",
+      "roleChanged": "角色已更新。",
+      "roleChangeFailed": "角色更新失败,请重试。",
+      "removeSuccess": "已移除成员。",
+      "removeFailed": "成员移除失败,请重试。",
       "isMe": "(你)",
       "remove": "移除"
     }
@@ -1166,7 +1190,8 @@
       "assetGroup": "资产组 — 跨项目共享素材(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
-    }
+    },
+    "disabledTooltip": "需要编辑者权限"
   },
   "viewportToolbar": {
     "aria": "视口工具",
@@ -1220,11 +1245,43 @@
     "viewer": "只读"
   },
   "share": {
-    "inviteSection": "邀请协作者",
-    "invitePlaceholder": "邮箱或 @用户名",
+    "inviteSection": "通过邮箱邀请",
+    "invitePlaceholder": "邮箱地址",
     "inviteButton": "发送邀请",
-    "linkSection": "分享链接",
-    "linkAccess": "任何人凭链接可访问"
+    "inviteSending": "发送中…",
+    "inviteSent": "邀请已发送。",
+    "inviteFailed": "邀请发送失败,请重试。",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "linkSection": "生成链接",
+    "linkDefaultRole": "默认角色",
+    "linkGenerate": "生成链接",
+    "linkGenerating": "生成中…",
+    "linkAccess": "任何人凭链接可访问",
+    "generateFailed": "链接生成失败,请重试。",
+    "copyFallback": "当前浏览器无法复制,请手动选择 URL。",
+    "emailDisabledHint": "本服务器未配置邮件发送,请使用『生成链接』复制 URL 自行发送。",
+    "viewAllLinks": "查看所有已生成的链接({count, plural, =0 {无} one {1 个} other {# 个}})",
+    "role": {
+      "view": "观察者",
+      "edit": "编辑者"
+    },
+    "linksList": {
+      "title": "已生成的邀请链接",
+      "description": "本项目下所有有效的邀请链接。撤销任一链接将立即失效。",
+      "empty": "你还没有生成任何邀请链接。",
+      "emailBadge": "邮箱邀请",
+      "copyAria": "复制 URL",
+      "revokeAria": "撤销链接",
+      "copied": "URL 已复制。",
+      "revokeSuccess": "链接已撤销。",
+      "revokeFailed": "链接撤销失败,请重试。"
+    },
+    "relativeTime": {
+      "justNow": "刚刚",
+      "minutes": "{n} 分钟前",
+      "hours": "{n} 小时前",
+      "days": "{n} 天前"
+    }
   },
   "notifications": {
     "title": "访问申请",
@@ -1238,6 +1295,17 @@
     "request": {
       "audio": "想加入做配音和 BGM 部分",
       "project": "想参考你的 prompt 风格做我自己的项目"
+    },
+    "loading": "加载中…",
+    "markRead": "标为已读",
+    "approvedToast": "已通过升级申请。",
+    "rejectedToast": "已拒绝升级申请。",
+    "decideFailed": "处理失败,请重试。",
+    "headline": {
+      "roleUpgradeRequest": "有人申请 {project} 的编辑者权限",
+      "roleUpgradeApproved": "你在 {project} 的编辑者权限已通过",
+      "roleUpgradeRejected": "你在 {project} 的编辑者权限申请被拒绝",
+      "memberJoined": "有人加入了 {project}"
     }
   },
   "connection": {
@@ -1270,5 +1338,22 @@
       "openHistory": "对话历史",
       "newConversation": "新建对话"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "正在加入项目…",
+      "loadingBody": "正在验证邀请链接,请稍候。",
+      "errorTitle": "无法接受邀请",
+      "errorBody": "请重新打开链接,或向项目所有者索取新的邀请链接。",
+      "invalidToken": "邀请链接格式错误。",
+      "expiredOrInvalid": "邀请链接已失效。请联系项目所有者获取新的链接。",
+      "failed": "接受邀请时发生错误。",
+      "backToStudio": "返回 Studio"
+    }
+  },
+  "noAccess": {
+    "title": "你没有访问该项目的权限",
+    "description": "请联系项目所有者申请访问,他们可以给你一个新的邀请链接。",
+    "backToStudio": "返回 Studio"
   }
 }

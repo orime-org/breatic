@@ -59,6 +59,32 @@ export async function getRole(
 }
 
 /**
+ * Get the user id of the active owner of a project.
+ *
+ * Owner uniqueness is enforced by the partial unique index
+ * `project_members_one_owner_per_project`; at most one row matches.
+ *
+ * @param projectId - Project UUID
+ * @returns Owner's user UUID, or null if the project has no active
+ *   owner (should not happen — every project has an owner row in
+ *   the same tx as project creation)
+ */
+export async function getOwner(projectId: string): Promise<string | null> {
+  const rows = await db
+    .select({ userId: projectMembers.userId })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.role, "owner"),
+        isNull(projectMembers.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.userId ?? null;
+}
+
+/**
  * List active members of a project.
  *
  * Caller-side ordering: owner first, then edits, then views (the
@@ -121,14 +147,20 @@ export async function insertOwner(
  * @param userId - User UUID being invited
  * @param role - 'edit' | 'view'
  * @param addedBy - Inviter's user UUID
+ * @param tx - Optional drizzle transaction handle (caller passes when
+ *   the upsert must be atomic with other mutations, e.g.
+ *   accessRequest.approve transitions the request + inserts the
+ *   member in the same tx)
  */
 export async function upsertMember(
   projectId: string,
   userId: string,
   role: Exclude<ProjectRole, "owner">,
   addedBy: string,
+  tx?: DbTx,
 ): Promise<void> {
-  await db
+  const handle = tx ?? db;
+  await handle
     .insert(projectMembers)
     .values({
       projectId,

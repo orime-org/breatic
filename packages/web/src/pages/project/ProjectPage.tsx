@@ -74,9 +74,36 @@ export default function ProjectPage() {
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
     enabled: projectId !== 'demo',
+    // 403 = caller is NOT_MEMBER of this project — bail to the
+    // access request page instead of looping a useless retry. The
+    // 404 path also short-circuits (project may have been deleted).
+    retry: (failureCount, err) => {
+      if (err instanceof Error && 'status' in err) {
+        const status = (err as { status?: number }).status;
+        if (status === 403 || status === 404) return false;
+      }
+      return failureCount < 2;
+    },
   });
+
+  // NOT_MEMBER redirect — caller bounced off a project they can't
+  // see → route them to the access request page so they can ask the
+  // owner for permission (PR-d NOT_MEMBER path 1).
+  React.useEffect(() => {
+    if (!projectQuery.error) return;
+    const err = projectQuery.error as Error & { status?: number };
+    if (err.status === 403) {
+      navigate(`/project/${projectId}/access`, { replace: true });
+    }
+  }, [projectQuery.error, projectId, navigate]);
+
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   const role = projectQuery.data?.myRole ?? 'owner';
+  // Viewer flag drives the disabled state on the chat panel + left
+  // floating menu per 2026-05-28 spec § 6.2 (every editing affordance
+  // is rendered but disabled with a tooltip; the upgrade entry lives
+  // on the top-bar RoleTag).
+  const isViewer = role === 'view';
   const credits = 0;
 
   const renameMutation = useMutation({
@@ -422,7 +449,7 @@ export default function ProjectPage() {
                 /* wired when conversation API lands */
                 }}
               />
-              <ChatPanel projectId={projectId} />
+              <ChatPanel projectId={projectId} disabled={isViewer} />
             </aside>
           )}
           <section className='flex min-w-0 flex-1 flex-col'>
@@ -463,6 +490,7 @@ export default function ProjectPage() {
               {activeSpace?.type === 'canvas' ? (
                 <>
                   <LeftFloatingMenu
+                    disabled={isViewer}
                     onPick={(_tool) => {
                     // TODO: dispatch per-button actions
                     //   nodes        — open node-library popover

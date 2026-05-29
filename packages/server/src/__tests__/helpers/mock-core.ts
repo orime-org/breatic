@@ -77,7 +77,14 @@ export const mocks = {
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),
-    get: vi.fn(),
+    // Default to a generic project so dispatch helpers that await
+    // projectService.get(...).catch(() => null) don't blow up on
+    // `.catch` of undefined (the vi.fn() default). Tests override
+    // per-case when they need a specific project shape.
+    get: vi.fn().mockResolvedValue({
+      id: "p-1", name: "Test Project", description: null,
+      createdByUserId: "u-1", studioId: "studio-1",
+    }),
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -154,7 +161,113 @@ export const mocks = {
     invite: vi.fn().mockResolvedValue(undefined),
     changeRole: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
+    getOwner: vi.fn().mockResolvedValue(null),
   },
+  projectMembersRepo: {
+    getOwner: vi.fn().mockResolvedValue("u-owner"),
+    getRole: vi.fn().mockResolvedValue("view"),
+    listByProjectId: vi.fn().mockResolvedValue([]),
+    updateRole: vi.fn().mockResolvedValue(true),
+    upsertMember: vi.fn().mockResolvedValue(undefined),
+    softDelete: vi.fn().mockResolvedValue(true),
+  },
+  accessRequestService: {
+    createRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "pending",
+      reviewedByUserId: null, reviewedAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    listPendingByProject: vi.fn().mockResolvedValue([]),
+    listByRequester: vi.fn().mockResolvedValue([]),
+    approveRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "approved",
+      reviewedByUserId: "u-owner", reviewedAt: new Date(),
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    rejectRequest: vi.fn().mockResolvedValue({
+      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
+      requestedRole: "view", message: null, status: "rejected",
+      reviewedByUserId: "u-owner", reviewedAt: new Date(),
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+  },
+  shareLinkService: {
+    generateToken: vi.fn().mockReturnValue("token-mock"),
+    createLink: vi.fn().mockResolvedValue({
+      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
+      token: "token-mock", role: "view", kind: "link", boundEmail: null,
+      consumedAt: null, expiresAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+    listByProject: vi.fn().mockResolvedValue([]),
+    revokeLink: vi.fn().mockResolvedValue(undefined),
+    consumeLink: vi.fn().mockResolvedValue({
+      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
+      token: "token-mock", role: "view", kind: "link", boundEmail: null,
+      consumedAt: new Date(), expiresAt: null,
+      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+    }),
+  },
+  notificationService: {
+    listUnread: vi.fn().mockResolvedValue([]),
+    listAll: vi.fn().mockResolvedValue([]),
+    countUnread: vi.fn().mockResolvedValue(0),
+    markRead: vi.fn().mockResolvedValue(undefined),
+    markAllRead: vi.fn().mockResolvedValue(0),
+    createRoleUpgradeRequest: vi.fn().mockResolvedValue({
+      id: "n-1", userId: "u-owner",
+      type: "access.role_upgrade_request",
+      payload: {}, projectId: "p-1",
+      readAt: null, deletedAt: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    }),
+    createRoleUpgradeApproved: vi.fn().mockResolvedValue({}),
+    createRoleUpgradeRejected: vi.fn().mockResolvedValue({}),
+    createMemberJoined: vi.fn().mockResolvedValue({}),
+  },
+  notificationRepo: {
+    findById: vi.fn().mockResolvedValue(null),
+    create: vi.fn(),
+    listUnreadByUser: vi.fn().mockResolvedValue([]),
+    listAllByUser: vi.fn().mockResolvedValue([]),
+    countUnread: vi.fn().mockResolvedValue(0),
+    markRead: vi.fn().mockResolvedValue(false),
+    markAllRead: vi.fn().mockResolvedValue(0),
+  },
+  roleUpgradeRequestService: {
+    request: vi.fn().mockResolvedValue({
+      id: "n-1", userId: "u-owner",
+      type: "access.role_upgrade_request",
+      payload: {}, projectId: "p-1",
+      readAt: null, deletedAt: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    }),
+    approve: vi.fn().mockResolvedValue(undefined),
+    reject: vi.fn().mockResolvedValue(undefined),
+  },
+  accessRequestMail: {
+    buildAccessRequestCreatedMail: vi.fn().mockReturnValue({
+      to: "owner@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildAccessRequestApprovedMail: vi.fn().mockReturnValue({
+      to: "req@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildAccessRequestRejectedMail: vi.fn().mockReturnValue({
+      to: "req@example.com", subject: "test", html: "<p>test</p>",
+    }),
+    buildShareInviteMail: vi.fn().mockReturnValue({
+      to: "invitee@example.com", subject: "test", html: "<p>test</p>",
+    }),
+  },
+  // sendMail spy lives in `mocks` so tests can mockRejectedValueOnce
+  // to verify dispatch try/catch graceful degradation, and assert
+  // call args via expect(mocks.sendMail).toHaveBeenCalledWith(...).
+  sendMail: vi.fn().mockResolvedValue({
+    status: "skipped",
+    reason: "backend_disabled",
+  } as { status: "skipped"; reason: "backend_disabled" }),
   studioService: {
     ensurePersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
@@ -223,6 +336,14 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     creditService: mocks.creditService,
     projectAuthService: mocks.projectAuthService,
     projectMembersService: mocks.projectMembersService,
+    projectMembersRepo: mocks.projectMembersRepo,
+    accessRequestService: mocks.accessRequestService,
+    shareLinkService: mocks.shareLinkService,
+    notificationService: mocks.notificationService,
+    notificationRepo: mocks.notificationRepo,
+    roleUpgradeRequestService: mocks.roleUpgradeRequestService,
+    accessRequestMail: mocks.accessRequestMail,
+    sendMail: mocks.sendMail,
     studioService: mocks.studioService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     yjsDocRepo: mocks.yjsDocRepo,

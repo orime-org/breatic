@@ -55,7 +55,7 @@ vi.mock("ai", () => ({
     usage: Promise.resolve({ totalTokens: 0 }),
   }),
   stepCountIs: (_n: number) => () => false,
-  // tool() is used by @breatic/core/agent/llm-tools/* — return a minimal stub
+  // tool() is used by @breatic/core/agent/tools/* — return a minimal stub
   tool: (config: Record<string, unknown>) => config,
 }));
 

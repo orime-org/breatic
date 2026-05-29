@@ -170,3 +170,16 @@
 - `docs/DEPLOY.md` 加 metrics 维度说明
 
 **Why 不挤进当前 PR**：metrics 工程量大（每个 service 接 prom-client + 选 metric 维度 + Prometheus / Grafana 部署 + dashboard 设计），跟 healthz binary check 是正交主题；先把 healthz 自愈链路彻底闭环再走 metrics 上报，避免一锅塞两个独立工程主题让 reviewer 难审。等 backend monitoring sprint 启动时单独 PR。
+
+### BellMenu 在 Studio 页 —— 跨页通知统一待办
+
+**Why 现在不做**：BellMenu 通知组件（access request pending count、未读消息、系统通知等）在 Project 页右上角已经落地，但 Studio 页右上角同样应该出现（项目列表视角下，user 也需要看跨项目的待审批 / 通知）。当前 PR-d 只做 Project 页 BellMenu 接 access requests 数据，避免让一个 PR 同时碰 chrome layout 在两个页面的差异（Studio chrome 跟 Project chrome 是不同的 IA layer）。
+
+**真治根工作（独立 PR）**：
+
+- `packages/web/src/pages/studio/shell/` —— Studio chrome 加 BellMenu 渲染（复用 Project 页 `packages/web/src/pages/project/chrome/top-bar/BellMenu.tsx` 组件 或抽到 `web/src/features/notifications/`）
+- 跨页 notifications data hook：根据当前用户身份 fetch 所有 project（owner / admin role）的 pending access requests 聚合
+- Studio 页 BellMenu popover：列出按 project 分组的待审批项 + 点击跳到对应 project 的 BellMenu 流
+- 跨 chrome 共享样式 token + i18n key
+
+**Why 不挤进当前 PR**：PR-d 已经接 4 个新 backend endpoints + 2 张新表 + ShareDialog 重设计 + 3 路径申请流，再叠 Studio chrome layout 改动会让 PR 难审；Studio chrome 自身还在 v14 重启过程中（参考 memory `project_web_v14_rewrite`），改动节奏跟 Project chrome 不一致。先在 Project 页把 access request 通知链路彻底闭环，Studio 页等 Studio chrome v14 stabilize 后单独 PR。

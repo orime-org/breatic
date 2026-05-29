@@ -1,7 +1,6 @@
 import { ArrowLeft, Plus, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { cn } from '@/lib/utils';
 import { Logo28 } from '@/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@/pages/project/chrome/top-bar/MembersModal';
@@ -11,6 +10,7 @@ import { ThemeToggle } from '@/pages/project/chrome/top-bar/ThemeToggle';
 import { ExportMenu } from '@/pages/project/chrome/top-bar/ExportMenu';
 import { ShareDialog } from '@/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@/pages/project/chrome/top-bar/BellMenu';
+import { RoleTag } from '@/pages/project/chrome/top-bar/RoleTag';
 
 import type { ProjectRole } from '@/stores';
 
@@ -59,7 +59,7 @@ export function TopBar({
         <Logo28 />
         <BackLink />
         <TitleEditable value={projectName} onChange={onRename} />
-        <RoleTag role={role} />
+        <RoleTag role={role} projectId={projectId} />
       </div>
       <div className='flex items-center' style={{ gap: 'var(--space-2)' }}>
         <div
@@ -79,7 +79,7 @@ export function TopBar({
         >
           <ExportMenu />
           <ShareDialog projectId={projectId} />
-          <BellMenu />
+          <BellMenu projectId={projectId} />
         </div>
       </div>
       <MembersModal />
@@ -98,32 +98,6 @@ function BackLink() {
       <ArrowLeft className='h-3.5 w-3.5' />
       <span>Studio</span>
     </Link>
-  );
-}
-
-const ROLE_LABEL: Record<ProjectRole, string> = {
-  owner: 'OWNER',
-  edit: 'EDITOR',
-  view: 'VIEWER',
-};
-
-function RoleTag({ role }: { role: ProjectRole }) {
-  // All three roles share `.role-badge` shape — neutral pill, no brand color
-  // (ground truth `finalized.html:476` v4.2 monochrome). Owner uses a
-  // slightly darker text shade than viewer/editor to signal authority
-  // without leaning on brand orange.
-  const isOwner = role === 'owner';
-  return (
-    <span
-      data-testid='role-tag'
-      className={cn(
-        'inline-flex shrink-0 items-center rounded-chrome bg-muted text-[11px] font-medium',
-        isOwner ? 'text-foreground' : 'text-muted-foreground',
-      )}
-      style={{ padding: '2px var(--space-3)' }}
-    >
-      {ROLE_LABEL[role]}
-    </span>
   );
 }
 

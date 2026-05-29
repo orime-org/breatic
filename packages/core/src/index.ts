@@ -73,6 +73,14 @@ export * as yjsDocRepo from "./modules/yjs-doc.repo.js";
 export * as projectAuthService from "./modules/projectAuth.service.js";
 export * as projectMembersService from "./modules/projectMembers.service.js";
 export * as projectMembersRepo from "./modules/projectMembers.repo.js";
+export * as accessRequestService from "./modules/accessRequest.service.js";
+export * as accessRequestRepo from "./modules/accessRequest.repo.js";
+export * as shareLinkService from "./modules/shareLink.service.js";
+export * as shareLinkRepo from "./modules/shareLink.repo.js";
+export * as accessRequestMail from "./modules/access-request-mail.js";
+export * as notificationService from "./modules/notification.service.js";
+export * as notificationRepo from "./modules/notification.repo.js";
+export * as roleUpgradeRequestService from "./modules/roleUpgradeRequest.service.js";
 export * as studioService from "./modules/studio.service.js";
 export * as studioRepo from "./modules/studio.repo.js";
 export * as skillService from "./modules/skill.service.js";
@@ -81,7 +89,7 @@ export * as attachmentService from "./modules/conversation-attachment.service.js
 
 // ── Agent ────────────────────────────────────────────────────────
 export { getModel, resolveProvider } from "./agent/llm.js";
-export { buildToolSet, DEFAULT_TOOLS } from "./agent/llm-tools/index.js";
+export { buildToolSet, DEFAULT_TOOLS } from "./agent/tools/index.js";
 export { getSkillRegistry, SkillRegistry } from "./agent/skills-loader.js";
 export { listAvailableModels } from "./config/model-catalog.js";
 export type { SkillModelInfo } from "./config/model-catalog.js";

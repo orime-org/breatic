@@ -25,6 +25,13 @@ interface ChatPanelProps {
    * before sending; default behaviour just sets the draft.
    */
   onQuickAction?: (label: string) => void;
+  /**
+   * When `true`, the entire chat panel is rendered in a disabled state
+   * (opacity + pointer-events:none). Per 2026-05-28 spec § 6.2 + 6.3,
+   * viewers see the chat but cannot interact — the upgrade entry lives
+   * on the top-bar RoleTag so no in-panel banner is needed.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -41,6 +48,7 @@ export function ChatPanel({
   onSend,
   onAbort,
   onQuickAction,
+  disabled = false,
 }: ChatPanelProps) {
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
@@ -64,7 +72,14 @@ export function ChatPanel({
     <div
       data-testid='chat-panel'
       data-project-id={projectId}
+      data-disabled={disabled ? 'true' : undefined}
+      aria-disabled={disabled || undefined}
       className='flex h-full w-full flex-col'
+      style={
+        disabled
+          ? { opacity: 0.5, pointerEvents: 'none' }
+          : undefined
+      }
     >
       <MessageList
         messages={initialMessages}

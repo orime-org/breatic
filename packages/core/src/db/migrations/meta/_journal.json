@@ -120,6 +120,20 @@
       "when": 1779932696419,
       "tag": "0016_delete-dev-mock-user",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779936251370,
+      "tag": "0017_access-requests-and-share-links",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779936300000,
+      "tag": "0018_access-permission-revamp",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,19 @@ import { modelsRoute } from "./routes/models.js";
 import { assetsRoute } from "./routes/assets.js";
 import { membersRoute } from "./routes/members.js";
 import { usersRoute } from "./routes/users.js";
+import {
+  projectAccessRequestsRoute,
+  myAccessRequestsRoute,
+} from "./routes/access-requests.js";
+import {
+  projectInviteLinksRoute,
+  consumeInviteLinkRoute,
+} from "./routes/invite-links.js";
+import { notificationsRoute } from "./routes/notifications.js";
+import {
+  projectRoleUpgradeRequestsRoute,
+  roleUpgradeRequestDecisionRoute,
+} from "./routes/role-upgrade-requests.js";
 
 /**
  * Create and configure the Hono application.
@@ -58,6 +71,19 @@ export function createApp(): Hono {
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
+  app.route("/api/v1/projects/:pid/access-requests", projectAccessRequestsRoute);
+  app.route("/api/v1/users/me/access-requests", myAccessRequestsRoute);
+  app.route("/api/v1/projects/:pid/invite-links", projectInviteLinksRoute);
+  app.route("/api/v1/invite-links", consumeInviteLinkRoute);
+  app.route("/api/v1/users/me/notifications", notificationsRoute);
+  app.route(
+    "/api/v1/projects/:pid/role-upgrade-requests",
+    projectRoleUpgradeRequestsRoute,
+  );
+  app.route(
+    "/api/v1/role-upgrade-requests",
+    roleUpgradeRequestDecisionRoute,
+  );
   // Spaces route removed 2026-05-23 (ADR yjs-collab-only-write-authz):
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.

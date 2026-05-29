@@ -359,6 +359,20 @@
       "failed": "電子郵件驗證失敗。"
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "申請編輯者權限",
+      "title": "申請編輯者權限",
+      "description": "你目前是該專案的檢視者。給專案所有者發送訊息,申請編輯者權限。",
+      "placeholder": "給專案所有者的留言(可選)…",
+      "submit": "發送申請",
+      "sending": "發送中…",
+      "toast": {
+        "sent": "申請已發送 — 專案所有者會在通知中看到。",
+        "failed": "申請發送失敗,請重試。"
+      }
+    }
+  },
   "breatic_slogan": "AI讓創意可見",
   "about_us": "關於我們",
   "support_and_service": "支援與服務",
@@ -938,6 +952,8 @@
       "invite": "邀請新成員",
       "manage": "管理協作者",
       "remove": "移除",
+      "removeSuccess": "已移除成員。",
+      "removeFailed": "成員移除失敗,請重試。",
       "self_label": "(你)",
       "isMe": "(你)"
     },
@@ -961,11 +977,19 @@
       "title": "協作者管理",
       "description": "管理專案成員及其權限",
       "inviteSection": "邀請新協作者",
-      "invitePlaceholder": "電子郵件或使用者 ID",
+      "invitePlaceholder": "電子郵件地址",
       "inviteButton": "邀請",
+      "inviteSending": "傳送中…",
+      "inviteSent": "邀請已傳送。",
+      "inviteFailed": "邀請傳送失敗,請重試。",
+      "invalidEmail": "請輸入有效的電子郵件地址。",
       "membersSection": "成員 ({count})",
       "ownerNote": "擁有者永久綁定專案建立者",
       "roleSelectAria": "修改 {name} 的角色",
+      "roleChanged": "角色已更新。",
+      "roleChangeFailed": "角色更新失敗,請重試。",
+      "removeSuccess": "已移除成員。",
+      "removeFailed": "成員移除失敗,請重試。",
       "isMe": "(你)",
       "remove": "移除"
     }
@@ -1166,7 +1190,8 @@
       "assetGroup": "資產組 — 跨專案共享素材(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
-    }
+    },
+    "disabledTooltip": "需要編輯者權限"
   },
   "viewportToolbar": {
     "aria": "視口工具",
@@ -1220,11 +1245,43 @@
     "viewer": "唯讀"
   },
   "share": {
-    "inviteSection": "邀請協作者",
-    "invitePlaceholder": "電子郵件或 @使用者名",
+    "inviteSection": "透過電子郵件邀請",
+    "invitePlaceholder": "電子郵件地址",
     "inviteButton": "傳送邀請",
-    "linkSection": "分享連結",
-    "linkAccess": "任何人憑連結可存取"
+    "inviteSending": "傳送中…",
+    "inviteSent": "邀請已傳送。",
+    "inviteFailed": "邀請傳送失敗,請重試。",
+    "invalidEmail": "請輸入有效的電子郵件地址。",
+    "linkSection": "產生連結",
+    "linkDefaultRole": "預設角色",
+    "linkGenerate": "產生連結",
+    "linkGenerating": "產生中…",
+    "linkAccess": "任何人憑連結可存取",
+    "generateFailed": "連結產生失敗,請重試。",
+    "copyFallback": "目前瀏覽器無法複製,請手動選擇 URL。",
+    "emailDisabledHint": "本伺服器未設定郵件發送,請使用『產生連結』複製 URL 自行傳送。",
+    "viewAllLinks": "檢視所有已產生的連結({count, plural, =0 {無} one {1 個} other {# 個}})",
+    "role": {
+      "view": "檢視者",
+      "edit": "編輯者"
+    },
+    "linksList": {
+      "title": "已產生的邀請連結",
+      "description": "本專案下所有有效的邀請連結。撤銷任一連結將立即失效。",
+      "empty": "你尚未產生任何邀請連結。",
+      "emailBadge": "電子郵件邀請",
+      "copyAria": "複製 URL",
+      "revokeAria": "撤銷連結",
+      "copied": "URL 已複製。",
+      "revokeSuccess": "連結已撤銷。",
+      "revokeFailed": "連結撤銷失敗,請重試。"
+    },
+    "relativeTime": {
+      "justNow": "剛剛",
+      "minutes": "{n} 分鐘前",
+      "hours": "{n} 小時前",
+      "days": "{n} 天前"
+    }
   },
   "notifications": {
     "title": "存取申請",
@@ -1238,6 +1295,17 @@
     "request": {
       "audio": "想加入做配音和 BGM 部分",
       "project": "想參考你的 prompt 風格做我自己的專案"
+    },
+    "loading": "載入中…",
+    "markRead": "標為已讀",
+    "approvedToast": "已通過升級申請。",
+    "rejectedToast": "已拒絕升級申請。",
+    "decideFailed": "處理失敗,請重試。",
+    "headline": {
+      "roleUpgradeRequest": "有人申請 {project} 的編輯者權限",
+      "roleUpgradeApproved": "你在 {project} 的編輯者權限已通過",
+      "roleUpgradeRejected": "你在 {project} 的編輯者權限申請被拒絕",
+      "memberJoined": "有人加入了 {project}"
     }
   },
   "connection": {
@@ -1270,5 +1338,22 @@
       "openHistory": "對話歷史",
       "newConversation": "新增對話"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "正在加入專案…",
+      "loadingBody": "正在驗證邀請連結,請稍候。",
+      "errorTitle": "無法接受邀請",
+      "errorBody": "請重新開啟連結,或向專案所有者索取新的邀請連結。",
+      "invalidToken": "邀請連結格式錯誤。",
+      "expiredOrInvalid": "邀請連結已失效。請聯絡專案所有者取得新的連結。",
+      "failed": "接受邀請時發生錯誤。",
+      "backToStudio": "返回 Studio"
+    }
+  },
+  "noAccess": {
+    "title": "你沒有存取此專案的權限",
+    "description": "請聯絡專案所有者申請存取,他們可以給你一個新的邀請連結。",
+    "backToStudio": "返回 Studio"
   }
 }

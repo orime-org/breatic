@@ -359,6 +359,20 @@
       "failed": "Email verification failed."
     }
   },
+  "roleTag": {
+    "upgradeRequest": {
+      "ariaLabel": "Request editor access",
+      "title": "Request editor access",
+      "description": "You are currently a viewer on this project. Send a message to the owner asking for editor access.",
+      "placeholder": "Optional message to the owner…",
+      "submit": "Send request",
+      "sending": "Sending…",
+      "toast": {
+        "sent": "Request sent — the owner will see it in their notifications.",
+        "failed": "Could not send the request. Please try again."
+      }
+    }
+  },
   "breatic_slogan": "AI Makes Creativity Visible",
   "about_us": "About Us",
   "support_and_service": "Support and Service",
@@ -938,6 +952,8 @@
       "invite": "Invite new member",
       "manage": "Manage collaborators",
       "remove": "Remove",
+      "removeSuccess": "Member removed.",
+      "removeFailed": "Could not remove the member. Please try again.",
       "self_label": "(you)",
       "isMe": "(you)"
     },
@@ -961,11 +977,19 @@
       "title": "Collaborators",
       "description": "Manage project members and their roles",
       "inviteSection": "Invite a new collaborator",
-      "invitePlaceholder": "Email or user ID",
+      "invitePlaceholder": "Email address",
       "inviteButton": "Invite",
+      "inviteSending": "Sending…",
+      "inviteSent": "Invite sent.",
+      "inviteFailed": "Could not send the invite. Please try again.",
+      "invalidEmail": "Please enter a valid email address.",
       "membersSection": "Members ({count})",
       "ownerNote": "Owner is permanently bound to the project creator",
       "roleSelectAria": "Change role for {name}",
+      "roleChanged": "Role updated.",
+      "roleChangeFailed": "Could not update the role. Please try again.",
+      "removeSuccess": "Member removed.",
+      "removeFailed": "Could not remove the member. Please try again.",
       "isMe": "(you)",
       "remove": "Remove"
     }
@@ -1166,7 +1190,8 @@
       "assetGroup": "Asset group — share across projects (coming soon)",
       "help": "Help (coming soon)",
       "feedback": "Feedback / Support (coming soon)"
-    }
+    },
+    "disabledTooltip": "Requires editor permission"
   },
   "viewportToolbar": {
     "aria": "Viewport tools",
@@ -1220,11 +1245,43 @@
     "viewer": "Viewer"
   },
   "share": {
-    "inviteSection": "Invite collaborators",
-    "invitePlaceholder": "Email or @username",
+    "inviteSection": "Invite by email",
+    "invitePlaceholder": "Email address",
     "inviteButton": "Send invite",
-    "linkSection": "Share link",
-    "linkAccess": "Anyone with the link can access"
+    "inviteSending": "Sending…",
+    "inviteSent": "Invite sent.",
+    "inviteFailed": "Could not send the invite. Please try again.",
+    "invalidEmail": "Please enter a valid email address.",
+    "linkSection": "Generate link",
+    "linkDefaultRole": "Default role",
+    "linkGenerate": "Generate link",
+    "linkGenerating": "Generating…",
+    "linkAccess": "Anyone with the link can access",
+    "generateFailed": "Could not create the link. Please try again.",
+    "copyFallback": "Copy isn't available in this browser — please select the URL manually.",
+    "emailDisabledHint": "Email is disabled for this server. Use Generate link instead and share the URL yourself.",
+    "viewAllLinks": "View all generated links ({count, plural, =0 {none} one {1} other {#}})",
+    "role": {
+      "view": "Viewer",
+      "edit": "Editor"
+    },
+    "linksList": {
+      "title": "Generated invite links",
+      "description": "All active invite links on this project. Revoke any link to invalidate it immediately.",
+      "empty": "You haven't generated any invite links yet.",
+      "emailBadge": "Email invite",
+      "copyAria": "Copy URL",
+      "revokeAria": "Revoke link",
+      "copied": "URL copied.",
+      "revokeSuccess": "Link revoked.",
+      "revokeFailed": "Could not revoke the link. Please try again."
+    },
+    "relativeTime": {
+      "justNow": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    }
   },
   "notifications": {
     "title": "Access requests",
@@ -1238,6 +1295,17 @@
     "request": {
       "audio": "Wants to join for voice-over and BGM",
       "project": "Wants to reference your prompt style for their project"
+    },
+    "loading": "Loading…",
+    "markRead": "Mark read",
+    "approvedToast": "Upgrade approved.",
+    "rejectedToast": "Request rejected.",
+    "decideFailed": "Could not process the decision. Please try again.",
+    "headline": {
+      "roleUpgradeRequest": "Someone wants editor access on {project}",
+      "roleUpgradeApproved": "Your editor access on {project} was approved",
+      "roleUpgradeRejected": "Your editor access on {project} was rejected",
+      "memberJoined": "Someone joined {project}"
     }
   },
   "connection": {
@@ -1270,5 +1338,22 @@
       "openHistory": "Conversation history",
       "newConversation": "New conversation"
     }
+  },
+  "invite": {
+    "consume": {
+      "loadingTitle": "Joining project…",
+      "loadingBody": "We're verifying your invite link. This only takes a moment.",
+      "errorTitle": "Couldn't accept this invite",
+      "errorBody": "Try opening the link again, or ask the project owner for a fresh one.",
+      "invalidToken": "This invite link is malformed.",
+      "expiredOrInvalid": "This invite link is no longer valid. Please contact the project owner for a fresh one.",
+      "failed": "Something went wrong accepting this invite.",
+      "backToStudio": "Back to Studio"
+    }
+  },
+  "noAccess": {
+    "title": "You don't have access to this project",
+    "description": "Please contact the project owner to request access. They can share a fresh invite link with you.",
+    "backToStudio": "Back to Studio"
   }
 }

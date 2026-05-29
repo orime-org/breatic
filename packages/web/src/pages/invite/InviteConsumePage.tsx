@@ -1,0 +1,85 @@
+import * as React from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+
+import { inviteLinksApi } from '@/data/api/invite-links';
+import { ApiException } from '@/data/api/types';
+import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { useTranslation } from '@/i18n/use-translation';
+
+/**
+ * Invite link consume landing page — `/invite/:token`.
+ *
+ * Entry point for paths 2/3 of the NOT_MEMBER flow:
+ *   path 2: user clicked an email invite link
+ *   path 3: user clicked a forwarded share link
+ *
+ * The page runs `inviteLinksApi.consume(token)` on mount and routes:
+ *   - success → navigate to `/project/:projectId` (the user is now a
+ *     member; ProjectPage will load normally)
+ *   - 404 / 403 (revoked / expired / already-consumed for single-use)
+ *     → navigate to `/project/:projectId/access` so the caller can
+ *     fall back to a fresh access request
+ *
+ * While the consume is in flight an `AuthCardShell` placeholder is
+ * rendered so the user isn't staring at a blank screen.
+ */
+export default function InviteConsumePage() {
+  const t = useTranslation();
+  const navigate = useNavigate();
+  const { token } = useParams<{ token: string }>();
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const startedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    if (!token) {
+      setErrorMessage(t('invite.consume.invalidToken'));
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await inviteLinksApi.consume(token);
+        navigate(`/project/${res.data.projectId}`, { replace: true });
+      } catch (err) {
+        // Per 2026-05-28 spec § 2.1: expired / revoked / consumed /
+        // bound-email-mismatch all surface a friendly full-screen
+        // "this link is no longer valid, please contact the project
+        // owner" message. We don't bounce to /studio (the user
+        // wouldn't know why) and we don't reveal the owner's email
+        // (anti-spam). Other failures fall back to a generic copy.
+        const isLinkInvalid =
+          err instanceof ApiException &&
+          (err.status === 403 || err.status === 404 || err.status === 410);
+        const msg = isLinkInvalid
+          ? t('invite.consume.expiredOrInvalid')
+          : err instanceof ApiException
+            ? err.message
+            : t('invite.consume.failed');
+        setErrorMessage(msg);
+      }
+    })();
+  }, [token, navigate, t]);
+
+  if (errorMessage) {
+    return (
+      <AuthCardShell
+        title={t('invite.consume.errorTitle')}
+        subtitle={errorMessage}
+        footer={<AuthLink to='/studio'>{t('invite.consume.backToStudio')}</AuthLink>}
+      >
+        <p className='text-sm text-muted-foreground'>
+          {t('invite.consume.errorBody')}
+        </p>
+      </AuthCardShell>
+    );
+  }
+
+  return (
+    <AuthCardShell title={t('invite.consume.loadingTitle')}>
+      <p className='text-sm text-muted-foreground'>
+        {t('invite.consume.loadingBody')}
+      </p>
+    </AuthCardShell>
+  );
+}
