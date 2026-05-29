@@ -37,19 +37,41 @@ import {
 import type { SendMailResult } from "@breatic/core";
 import { logMailResult } from "../utils/log-mail.js";
 
-const bodySchemaCreate = z.object({
-  role: z.enum(["view", "edit"]),
-  /**
-   * Optional email — when present, the link becomes an email-invite:
-   * single-use, bound to this email, 7-day TTL. The server sends the
-   * invite mail directly to this address (ShareDialog "Invite by
-   * email" flow). When omitted, the link is a Generate link: multi-use,
-   * unbound, no expiry, caller just wants the URL back (copy-link flow).
-   *
-   * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
-   */
-  invitee_email: z.string().email().optional(),
-});
+/**
+ * Two ShareDialog flows are now discriminated by an explicit `kind`
+ * field, NOT by `invitee_email` presence — one field carrying two
+ * semantics (data + type) was the original PR-d design and got
+ * refactored. The zod discriminated union below enforces the pairing
+ * at the request boundary so the service never sees an inconsistent
+ * combination.
+ *
+ *   - kind: 'email' — invitee_email REQUIRED. Single-use, 7-day TTL.
+ *     Server dispatches a share-invite mail to that address.
+ *   - kind: 'link'  — invitee_email MUST be omitted. Multi-use, no
+ *     expiry. Server just returns the URL.
+ *
+ * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
+ */
+const bodySchemaCreate = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("email"),
+    role: z.enum(["view", "edit"]),
+    invitee_email: z.string().email(),
+  }),
+  z
+    .object({
+      kind: z.literal("link"),
+      role: z.enum(["view", "edit"]),
+      // Accept the property so we can explicitly reject it via the
+      // refine below — otherwise zod silently strips unknown keys and
+      // a kind='link' with a stray invitee_email would parse OK.
+      invitee_email: z.string().optional(),
+    })
+    .refine((d) => d.invitee_email === undefined, {
+      message: "invitee_email must be omitted when kind='link'",
+      path: ["invitee_email"],
+    }),
+]);
 
 // ── Per-project endpoints (owner CRUD) ──────────────────────────────
 
@@ -78,7 +100,8 @@ projectInviteLinks.post(
       projectId,
       createdByUserId: user.id,
       role: body.role,
-      boundEmail: body.invitee_email ?? null,
+      kind: body.kind,
+      boundEmail: body.kind === "email" ? body.invitee_email : null,
     });
 
     logger.info(
@@ -86,12 +109,12 @@ projectInviteLinks.post(
         projectId,
         createdByUserId: user.id,
         linkId: link.id,
-        emailInvite: body.invitee_email !== undefined,
+        kind: body.kind,
       },
       "invite_link_created",
     );
 
-    if (body.invitee_email) {
+    if (body.kind === "email") {
       try {
         await dispatchInviteeMail(c, projectId, user.id, link, body.invitee_email);
       } catch (err) {
@@ -161,7 +184,7 @@ consumeInviteLink.post("/:token/consume", async (c) => {
       linkId: link.id,
       projectId: link.projectId,
       consumerUserId: user.id,
-      emailInvite: link.boundEmail !== null,
+      kind: link.kind,
     },
     "invite_link_consumed",
   );
@@ -183,7 +206,7 @@ async function dispatchInviteeMail(
   c: BaseCtx,
   projectId: string,
   inviterUserId: string,
-  link: { token: string; role: string; boundEmail: string | null },
+  link: { token: string; role: string; kind: "email" | "link"; boundEmail: string | null },
   inviteeEmail: string,
 ): Promise<void> {
   const [inviter, project] = await Promise.all([

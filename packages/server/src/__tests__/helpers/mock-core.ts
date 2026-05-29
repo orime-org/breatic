@@ -197,7 +197,7 @@ export const mocks = {
     generateToken: vi.fn().mockReturnValue("token-mock"),
     createLink: vi.fn().mockResolvedValue({
       id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
-      token: "token-mock", role: "view", boundEmail: null,
+      token: "token-mock", role: "view", kind: "link", boundEmail: null,
       consumedAt: null, expiresAt: null,
       createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
     }),
@@ -205,7 +205,7 @@ export const mocks = {
     revokeLink: vi.fn().mockResolvedValue(undefined),
     consumeLink: vi.fn().mockResolvedValue({
       id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
-      token: "token-mock", role: "view", boundEmail: null,
+      token: "token-mock", role: "view", kind: "link", boundEmail: null,
       consumedAt: new Date(), expiresAt: null,
       createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
     }),

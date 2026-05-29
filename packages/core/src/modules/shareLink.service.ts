@@ -6,15 +6,19 @@
  * Authorization model (route layer enforces gates):
  *   - createLink / listByProject / revokeLink: owner gate
  *   - consumeLink: any authenticated caller (token presence = intent;
- *     boundEmail mismatch raises Forbidden)
+ *     kind='email' + boundEmail mismatch raises Forbidden)
  *
- * Two link variants discriminated by `boundEmail`:
- *   - Email-invite (boundEmail NOT NULL): single-use, bound to that
- *     specific email address, expires in 7 days. Only the user whose
- *     email matches can consume. `markConsumed` flips consumed_at.
- *   - Generate (boundEmail NULL): multi-use, no expiry, anyone with
- *     the URL can join until owner revokes. `markConsumed` is NOT
- *     called.
+ * Two link variants discriminated by an explicit `kind` column:
+ *   - kind = 'email': single-use, bound to that specific email
+ *     address, expires in 7 days. Only the user whose email matches
+ *     can consume. `markConsumed` flips consumed_at.
+ *   - kind = 'link':  multi-use, no expiry, anyone with the URL can
+ *     join until owner revokes. `markConsumed` is NOT called.
+ *
+ * The DB CHECK constraint keeps `kind` and `boundEmail` in sync
+ * (kind='email' ⇔ boundEmail IS NOT NULL); application code branches
+ * on `kind`, not on `boundEmail` nullness — one column shouldn't
+ * carry both data and type.
  *
  * Email notifications are dispatched by the route layer (mailer
  * lives in application boundary per CLAUDE.md mandate).
@@ -35,7 +39,9 @@ import {
 } from "../errors.js";
 import { t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-import type { ShareLink } from "./shareLink.repo.js";
+import type { ShareLink, ShareLinkKind } from "./shareLink.repo.js";
+
+export type { ShareLinkKind };
 
 /** Roles a share link can grant — `owner` is never grantable. */
 export type GrantableRole = Exclude<ProjectRole, "owner">;
@@ -68,10 +74,14 @@ const EMAIL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * Create a new share link. The token is generated server-side so
  * the caller never decides their own.
  *
- * Pass `boundEmail` to create an email-invite (single-use, expires
- * in 7 days). Omit it to create a Generate link (multi-use, no expiry).
+ * `kind` is the single source of truth for the mode:
+ *   - kind='email' MUST be paired with a non-empty `boundEmail`
+ *     (recipient address). The link expires in 7 days.
+ *   - kind='link' MUST be passed with no `boundEmail` (or null).
+ *     The link is multi-use with no expiry.
  *
- * @throws {@link ValidationError} if `role` is not 'edit' or 'view'
+ * @throws {@link ValidationError} if `role` is not 'edit' / 'view',
+ *   or if `kind` and `boundEmail` are mismatched
  * @throws {@link ConflictError} if the token randomly collides
  *   (astronomically rare; caller should retry once)
  */
@@ -79,14 +89,24 @@ export async function createLink(input: {
   projectId: string;
   createdByUserId: string;
   role: string;
+  kind: ShareLinkKind;
   boundEmail?: string | null;
 }): Promise<ShareLink> {
   if (!isGrantableRole(input.role)) {
     throw new ValidationError(t("server.error.validation"));
   }
+  if (input.kind !== "email" && input.kind !== "link") {
+    throw new ValidationError(t("server.error.validation"));
+  }
   const boundEmail = input.boundEmail ?? null;
+  if (input.kind === "email" && boundEmail === null) {
+    throw new ValidationError(t("server.error.validation"));
+  }
+  if (input.kind === "link" && boundEmail !== null) {
+    throw new ValidationError(t("server.error.validation"));
+  }
   const expiresAt =
-    boundEmail !== null ? new Date(Date.now() + EMAIL_INVITE_TTL_MS) : null;
+    input.kind === "email" ? new Date(Date.now() + EMAIL_INVITE_TTL_MS) : null;
   const token = generateToken();
   try {
     return await shareLinkRepo.create({
@@ -94,6 +114,7 @@ export async function createLink(input: {
       createdByUserId: input.createdByUserId,
       token,
       role: input.role,
+      kind: input.kind,
       boundEmail,
       expiresAt,
     });
@@ -132,15 +153,13 @@ export async function revokeLink(linkId: string): Promise<void> {
  *   - if caller is not a member: route enrolls them at `link.role`
  *     and (for email-invite links) the link is now spent
  *
- * Email-invite (boundEmail NOT NULL): single-use; consume sets
- * consumed_at; bound email mismatch raises Forbidden; expired raises
- * Forbidden.
- * Generate (boundEmail NULL): multi-use; consume returns the link
- * without mutation.
+ * kind='email': single-use; consume sets consumed_at; bound email
+ * mismatch raises Forbidden; expired raises Forbidden.
+ * kind='link':  multi-use; consume returns the link without mutation.
  *
  * @param token — the link token from the URL
  * @param callerEmail — the authenticated user's email; used only
- *   for boundEmail check on email-invite links
+ *   for the boundEmail check on kind='email' links
  *
  * @throws {@link NotFoundError} if the token doesn't exist or the
  *   link has been revoked
@@ -159,7 +178,7 @@ export async function consumeLink(
   if (link.expiresAt !== null && link.expiresAt.getTime() <= Date.now()) {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
-  if (link.boundEmail !== null) {
+  if (link.kind === "email") {
     // Email-invite: must match the bound recipient.
     if (link.boundEmail !== callerEmail) {
       throw new ForbiddenError(t("server.error.forbidden"));
@@ -174,6 +193,6 @@ export async function consumeLink(
     }
     return { ...link, consumedAt: new Date() };
   }
-  // Generate link — multi-use, no consumed_at mutation.
+  // kind='link' — multi-use, no consumed_at mutation.
   return link;
 }

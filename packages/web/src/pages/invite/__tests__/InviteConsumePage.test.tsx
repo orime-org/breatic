@@ -154,6 +154,7 @@ function makeFakeLink(o: FakeLinkOverrides = {}) {
     createdByUserId: 'u-owner',
     token: o.token ?? TOKEN,
     role: 'view',
+    kind: 'link',
     boundEmail: null,
     consumedAt: new Date().toISOString(),
     expiresAt: null,

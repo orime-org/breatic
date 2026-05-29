@@ -1,6 +1,13 @@
 /**
  * Share / invite link route tests — create / list / revoke / consume
  * + role gating + invitee_email dispatch path.
+ *
+ * 2026-05-29 follow-up: body schema now uses an explicit `kind`
+ * discriminator ('email' | 'link') instead of inferring from
+ * `invitee_email` presence. zod discriminatedUnion enforces the
+ * pairing — the kind='email' branch demands invitee_email; the
+ * kind='link' branch forbids it. Tests below cover both happy paths
+ * + each rejection mode.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -33,27 +40,32 @@ beforeEach(() => {
 });
 
 describe("POST /projects/:pid/invite-links", () => {
-  it("returns 201 + the link when owner creates a single-use copy link", async () => {
+  it("returns 201 + the link when owner creates a kind='link' (multi-use) link", async () => {
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/invite-links`,
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ role: "view" }),
+        body: JSON.stringify({ kind: "link", role: "view" }),
       },
     );
     expect(res.status).toBe(201);
     const body = (await res.json()) as { data: { id: string } };
     expect(body.data.id).toBe("sl-1");
-    expect(mocks.shareLinkService.createLink).toHaveBeenCalled();
+    expect(mocks.shareLinkService.createLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "link",
+        boundEmail: null,
+      }),
+    );
     // No invitee_email → no mailer dispatch
     expect(
       mocks.accessRequestMail.buildShareInviteMail,
     ).not.toHaveBeenCalled();
   });
 
-  it("dispatches share invite mail when invitee_email is provided", async () => {
+  it("dispatches share invite mail when kind='email' + invitee_email provided", async () => {
     // PR-d 08 TDD backfill: this test originally simplified the
     // assertion to mocks.shareLinkService.createLink because the
     // dispatch helper short-circuited on `if (!inviter) return` —
@@ -69,6 +81,7 @@ describe("POST /projects/:pid/invite-links", () => {
         method: "POST",
         headers: AUTH,
         body: JSON.stringify({
+          kind: "email",
           role: "edit",
           invitee_email: "new@example.com",
         }),
@@ -79,6 +92,7 @@ describe("POST /projects/:pid/invite-links", () => {
       expect.objectContaining({
         projectId: PID,
         role: "edit",
+        kind: "email",
         boundEmail: "new@example.com",
       }),
     );
@@ -106,8 +120,8 @@ describe("POST /projects/:pid/invite-links", () => {
         method: "POST",
         headers: AUTH,
         body: JSON.stringify({
+          kind: "email",
           role: "view",
-          is_permanent: false,
           invitee_email: "new@example.com",
         }),
       },
@@ -124,7 +138,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ role: "view" }),
+        body: JSON.stringify({ kind: "link", role: "view" }),
       },
     );
     expect(res.status).toBe(403);
@@ -138,7 +152,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ role: "owner", is_permanent: false }),
+        body: JSON.stringify({ kind: "link", role: "owner" }),
       },
     );
     expect(res.status).toBe(400);
@@ -152,13 +166,45 @@ describe("POST /projects/:pid/invite-links", () => {
         method: "POST",
         headers: AUTH,
         body: JSON.stringify({
+          kind: "email",
           role: "view",
-          is_permanent: false,
           invitee_email: "not-an-email",
         }),
       },
     );
     expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when kind='email' is missing invitee_email", async () => {
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/projects/${PID}/invite-links`,
+      {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({ kind: "email", role: "view" }),
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(mocks.shareLinkService.createLink).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when kind='link' includes an invitee_email", async () => {
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/projects/${PID}/invite-links`,
+      {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          kind: "link",
+          role: "view",
+          invitee_email: "stray@example.com",
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(mocks.shareLinkService.createLink).not.toHaveBeenCalled();
   });
 });
 
@@ -171,6 +217,7 @@ describe("GET /projects/:pid/invite-links", () => {
         createdByUserId: "u-1",
         token: "abc",
         role: "view",
+        kind: "link",
         boundEmail: null,
         consumedAt: null,
         expiresAt: null,

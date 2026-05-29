@@ -132,6 +132,7 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
     setInviteSubmitting(true);
     try {
       await inviteLinksApi.create(projectId, {
+        kind: 'email',
         invitee_email: trimmed,
         role: inviteRole,
       });
@@ -152,6 +153,7 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
     setGenerating(true);
     try {
       const res = await inviteLinksApi.create(projectId, {
+        kind: 'link',
         role: generateRole,
       });
       setGeneratedLink(res.data);

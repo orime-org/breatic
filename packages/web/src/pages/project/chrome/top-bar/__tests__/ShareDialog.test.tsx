@@ -70,7 +70,7 @@ describe('ShareDialog — invite by email flow', () => {
   it('sends a valid email + role=view (default) to the API', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ boundEmail: 'new@example.com', role: 'view' }),
+      data: makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'view' }),
     });
     setup();
     await user.type(
@@ -81,6 +81,7 @@ describe('ShareDialog — invite by email flow', () => {
 
     await waitFor(() => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
+        kind: 'email',
         invitee_email: 'new@example.com',
         role: 'view',
       });
@@ -116,16 +117,17 @@ describe('ShareDialog — invite by email flow', () => {
 });
 
 describe('ShareDialog — Generate link flow', () => {
-  it('Generate button calls API without invitee_email (Generate variant)', async () => {
+  it('Generate button calls API with kind=link + no invitee_email', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ boundEmail: null }),
+      data: makeFakeLink({ kind: 'link', boundEmail: null }),
     });
     setup();
     await user.click(screen.getByTestId('share-generate-link'));
 
     await waitFor(() => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
+        kind: 'link',
         role: 'view',
       });
     });
@@ -134,7 +136,7 @@ describe('ShareDialog — Generate link flow', () => {
   it('renders generated URL after link creation + copy button is enabled', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ token: 'abc-token-123', boundEmail: null }),
+      data: makeFakeLink({ kind: 'link', token: 'abc-token-123', boundEmail: null }),
     });
     setup();
     // URL/copy not visible before generate
@@ -189,17 +191,23 @@ describe('ShareDialog — view all links entry', () => {
 interface FakeLinkOverrides {
   token?: string;
   role?: string;
+  kind?: 'email' | 'link';
   boundEmail?: string | null;
 }
 
 function makeFakeLink(o: FakeLinkOverrides = {}) {
+  // Default to a kind consistent with the boundEmail override so each
+  // test doesn't have to spell out both.
+  const boundEmail = o.boundEmail ?? null;
+  const kind = o.kind ?? (boundEmail !== null ? 'email' : 'link');
   return {
     id: 'sl-1',
     projectId: PID,
     createdByUserId: 'u-owner',
     token: o.token ?? 'token-mock',
     role: o.role ?? 'view',
-    boundEmail: o.boundEmail ?? null,
+    kind,
+    boundEmail,
     consumedAt: null,
     expiresAt: null,
     createdAt: new Date().toISOString(),

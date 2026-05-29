@@ -2,6 +2,9 @@ import { apiDelete, apiGet, apiPost } from '@/data/api/request';
 
 import type { RequestableRole } from '@/data/api/access-requests';
 
+/** Discriminator for the two share-link modes — see § 3 of the spec. */
+export type InviteLinkKind = 'email' | 'link';
+
 export interface InviteLink {
   id: string;
   projectId: string;
@@ -9,9 +12,13 @@ export interface InviteLink {
   token: string;
   role: string;
   /**
-   * If set, this link is bound to a specific email address and is
-   * single-use (post-2026-05-28 spec § 3). NULL = Generate link
-   * (multi-use, no expiry).
+   * Mode discriminator. UI branches on this, NOT on `boundEmail`
+   * nullness — server DB CHECK keeps them paired, but `kind` is the
+   * single source of truth so logic stays clear.
+   */
+  kind: InviteLinkKind;
+  /**
+   * Recipient email. Non-null iff `kind === 'email'`.
    */
   boundEmail: string | null;
   consumedAt: string | null;
@@ -21,24 +28,25 @@ export interface InviteLink {
   deletedAt: string | null;
 }
 
-export interface CreateInviteLinkBody {
-  role: RequestableRole;
-  /**
-   * If present, the server creates an email-invite (single-use,
-   * bound to this email, 7-day TTL) and dispatches the mail. If
-   * omitted, the server creates a Generate link (multi-use, no
-   * expiry) and returns the URL for manual copy.
-   */
-  invitee_email?: string;
-}
+/**
+ * Create body — discriminated by `kind`:
+ *   - kind='email': must include `invitee_email`. Server sends mail
+ *     + creates a single-use, 7-day-TTL link bound to that address.
+ *   - kind='link':  no `invitee_email`. Server creates a multi-use
+ *     link with no expiry and returns the URL for manual copy/share.
+ */
+export type CreateInviteLinkBody =
+  | { kind: 'email'; role: RequestableRole; invitee_email: string }
+  | { kind: 'link'; role: RequestableRole };
 
 export const inviteLinksApi = {
   /**
    * Create a new invite link. Owner-only.
    *
-   * Two flows funnel through the same endpoint:
-   *   - email invite : include `invitee_email` → server sends mail
-   *   - copy link    : omit `invitee_email` → caller gets URL back
+   * Two flows funnel through the same endpoint, distinguished by
+   * the `kind` discriminator:
+   *   - { kind: 'email', invitee_email } → single-use, server sends mail
+   *   - { kind: 'link' }                 → multi-use, caller gets URL back
    *
    * Server generates the token (32-byte base64url) — caller never
    * decides their own.

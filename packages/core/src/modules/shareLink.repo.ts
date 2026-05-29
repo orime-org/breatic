@@ -1,13 +1,17 @@
 /**
  * Share link repository — `share_links` table CRUD.
  *
- * Two link variants discriminated by `boundEmail` (NULL vs not):
- *   - Email-invite (boundEmail NOT NULL): single-use, bound to the
- *     recipient's email, expires in 7 days. `markConsumed` flips
- *     `consumed_at` after the bound user logs in and accepts.
- *   - Generate (boundEmail NULL): multi-use, no expiry, lives until
- *     the owner soft-deletes. `markConsumed` is NOT called for these
- *     — the service layer skips it.
+ * Two link variants discriminated by an explicit `kind` column
+ * ('email' vs 'link'). The DB CHECK constraints guarantee
+ * `kind = 'email' ⇔ boundEmail IS NOT NULL`, so application code
+ * branches on `kind` alone and never on `boundEmail` nullness:
+ *
+ *   - kind = 'email': single-use, bound to the recipient's email,
+ *     expires in 7 days. `markConsumed` flips `consumed_at` after
+ *     the bound user logs in and accepts.
+ *   - kind = 'link':  multi-use, no expiry, lives until the owner
+ *     soft-deletes. `markConsumed` is NOT called for these —
+ *     the service layer skips it.
  *
  * Token uniqueness is enforced by the SQL UNIQUE constraint on
  * `token`; the service catches 23505 and rethrows as Conflict (the
@@ -21,6 +25,9 @@ import { db } from "../db/client.js";
 import { shareLinks } from "../db/schema.js";
 import type { DbTx } from "./conversation.repo.js";
 
+/** Discriminator for the two share-link modes. */
+export type ShareLinkKind = "email" | "link";
+
 export interface ShareLink {
   id: string;
   projectId: string;
@@ -28,10 +35,14 @@ export interface ShareLink {
   token: string;
   role: string;
   /**
-   * Email address this link is bound to, if any. NULL = multi-use
-   * Generate link (anyone with the URL can join). NOT NULL =
-   * single-use email-invite (only the user whose email matches
-   * can consume).
+   * Mode discriminator. Application code MUST branch on this, not on
+   * `boundEmail` nullness — the DB CHECK constraints keep the two
+   * fields in sync, but `kind` is the single source of truth.
+   */
+  kind: ShareLinkKind;
+  /**
+   * Recipient email. Non-null iff `kind === 'email'`. The DB CHECK
+   * `share_links_kind_bound_email_check` enforces this.
    */
   boundEmail: string | null;
   consumedAt: Date | null;
@@ -48,6 +59,7 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
     createdByUserId: row.createdByUserId,
     token: row.token,
     role: row.role,
+    kind: row.kind as ShareLinkKind,
     boundEmail: row.boundEmail,
     consumedAt: row.consumedAt,
     expiresAt: row.expiresAt,
@@ -59,16 +71,17 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
 
 /**
  * Insert a new share link. Caller passes a pre-generated token
- * (32-byte base64url is the recommended format).
- *
- * Email-invite caller: pass `boundEmail` + `expiresAt` (now + 7d).
- * Generate caller: pass `boundEmail = null` + `expiresAt = null`.
+ * (32-byte base64url is the recommended format) and must satisfy the
+ * `kind` / `boundEmail` pairing — kind='email' requires boundEmail
+ * non-null, kind='link' requires boundEmail null. The DB CHECK will
+ * reject mismatches, but the service layer should already enforce.
  */
 export async function create(input: {
   projectId: string;
   createdByUserId: string;
   token: string;
   role: string;
+  kind: ShareLinkKind;
   boundEmail: string | null;
   expiresAt: Date | null;
 }): Promise<ShareLink> {
@@ -79,6 +92,7 @@ export async function create(input: {
       createdByUserId: input.createdByUserId,
       token: input.token,
       role: input.role,
+      kind: input.kind,
       boundEmail: input.boundEmail,
       expiresAt: input.expiresAt,
     })
@@ -143,9 +157,10 @@ export async function listByProject(projectId: string): Promise<ShareLink[]> {
  * caller — the WHERE clause filters out rows where consumed_at is
  * non-null. The service layer rejects the consume in that case.
  *
- * Caller MUST only invoke this for email-invite links (boundEmail
- * NOT NULL). Generate links (boundEmail NULL) are multi-use and
- * should not have their consumed_at touched.
+ * Caller MUST only invoke this for email-invite links (kind='email').
+ * Multi-use 'link' rows are not single-shot and should not have
+ * their consumed_at touched. The WHERE clause includes the kind
+ * check as belt-and-suspenders.
  */
 export async function markConsumed(
   id: string,
@@ -158,7 +173,7 @@ export async function markConsumed(
     .where(
       and(
         eq(shareLinks.id, id),
-        sql`${shareLinks.boundEmail} IS NOT NULL`,
+        eq(shareLinks.kind, "email"),
         isNull(shareLinks.consumedAt),
         isNull(shareLinks.deletedAt),
       ),

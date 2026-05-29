@@ -58,7 +58,7 @@ function relativeTime(iso: string, t: ReturnType<typeof useTranslation>): string
  *   - shortened token (clickable to copy the full URL)
  *   - granted role (view / edit) badge
  *   - relative creation time
- *   - email-invite badge (when boundEmail is set)
+ *   - email-invite badge (when kind === 'email')
  *   - Copy + Revoke per-row actions
  *
  * Revoke calls `inviteLinksApi.revoke`, which soft-deletes on the
@@ -179,7 +179,7 @@ function LinkRow({ link, onRevoke, pending }: LinkRowProps) {
           <RoleBadge role={link.role} />
           <span>·</span>
           <span>{relativeTime(link.createdAt, t)}</span>
-          {link.boundEmail !== null ? (
+          {link.kind === 'email' ? (
             <>
               <span>·</span>
               <span data-testid={`share-links-list-email-${link.id}`}>
