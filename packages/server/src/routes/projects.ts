@@ -14,11 +14,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { projectCreateSchema, paginationSchema } from "@/routes/schemas.js";
-import { requireAuth } from "@/middleware/auth.js";
-import type { AuthVariables } from "@/middleware/auth.js";
-import { requireRoleOnParam } from "@/middleware/role.js";
-import type { AuthRoleVariables } from "@/middleware/role.js";
+import { projectCreateSchema, paginationSchema } from "@server/routes/schemas.js";
+import { requireAuth } from "@server/middleware/auth.js";
+import type { AuthVariables } from "@server/middleware/auth.js";
+import { requireRoleOnParam } from "@server/middleware/role.js";
+import type { AuthRoleVariables } from "@server/middleware/role.js";
 import { projectService, projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";

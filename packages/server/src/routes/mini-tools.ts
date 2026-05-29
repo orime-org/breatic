@@ -14,9 +14,9 @@ import {
   imageToolSchema,
   videoToolSchema,
   audioToolSchema,
-} from "@/routes/schemas.js";
-import { requireAuth } from "@/middleware/auth.js";
-import type { AuthVariables } from "@/middleware/auth.js";
+} from "@server/routes/schemas.js";
+import { requireAuth } from "@server/middleware/auth.js";
+import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService, creditService, env } from "@breatic/core";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 

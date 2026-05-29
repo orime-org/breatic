@@ -22,10 +22,10 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { requireAuth } from "@/middleware/auth.js";
-import type { AuthVariables } from "@/middleware/auth.js";
-import { requireRole } from "@/middleware/role.js";
-import type { AuthRoleVariables } from "@/middleware/role.js";
+import { requireAuth } from "@server/middleware/auth.js";
+import type { AuthVariables } from "@server/middleware/auth.js";
+import { requireRole } from "@server/middleware/role.js";
+import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   shareLinkService,
   accessRequestMail,
@@ -35,7 +35,7 @@ import {
   logger,
 } from "@breatic/core";
 import type { SendMailResult } from "@breatic/core";
-import { logMailResult } from "@/utils/log-mail.js";
+import { logMailResult } from "@server/utils/log-mail.js";
 
 /**
  * Two ShareDialog flows are now discriminated by an explicit `kind`

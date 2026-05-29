@@ -14,18 +14,18 @@ import {
   chatMessageSchema,
   skillCommandSchema,
   chatConversationsQuerySchema,
-} from "@/routes/schemas.js";
-import { requireAuth } from "@/middleware/auth.js";
-import type { AuthVariables } from "@/middleware/auth.js";
+} from "@server/routes/schemas.js";
+import { requireAuth } from "@server/middleware/auth.js";
+import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@breatic/core";
 import { conversationRepo } from "@breatic/core";
 import { memoryService } from "@breatic/core";
 import { attachmentService } from "@breatic/core";
 import { projectService } from "@breatic/core";
-import { MainAgent } from "@/agent/main-agent.js";
-import { serializeSSE } from "@/agent/types.js";
+import { MainAgent } from "@server/agent/main-agent.js";
+import { serializeSSE } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
-import { compressForContext } from "@/agent/message-compressor.js";
+import { compressForContext } from "@server/agent/message-compressor.js";
 import { getAgentConfig } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
 import { ForbiddenError, NotFoundError } from "@breatic/core";

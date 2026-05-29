@@ -87,7 +87,7 @@ export default defineConfig({
     // adds "module" to resolve conditions, which picks up the broken ESM build.
     conditions: ["node", "require", "default"],
     alias: {
-      "@": resolve(__dirname, "./src"),
+      "@server": resolve(__dirname, "./src"),
       // Force @opentelemetry/api to its CJS build (build/src/index.js).
       // The ESM build (build/esm/index.js) uses bare relative imports without
       // .js extensions (e.g. './baggage/utils') that Node.js native ESM rejects.

@@ -10,18 +10,18 @@ import type { ModelMessage, TextPart, ImagePart } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
-import { buildSystemPrompt } from "@/agent/context.js";
+import { buildSystemPrompt } from "@server/agent/context.js";
 import { getSkillRegistry } from "@breatic/core";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/core";
-import { SSEEventType } from "@/agent/types.js";
-import type { SSEEvent } from "@/agent/types.js";
+import { SSEEventType } from "@server/agent/types.js";
+import type { SSEEvent } from "@server/agent/types.js";
 import { conversationRepo } from "@breatic/core";
-import { consolidateIfNeeded } from "@/agent/memory-consolidator.js";
+import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { ASK_USER_SENTINEL, parseInteractionSentinel } from "@/agent/interaction-sentinel.js";
+import { ASK_USER_SENTINEL, parseInteractionSentinel } from "@server/agent/interaction-sentinel.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 

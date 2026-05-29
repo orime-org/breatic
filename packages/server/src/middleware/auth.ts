@@ -13,7 +13,7 @@
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { readSessionCookie } from "@/middleware/session-cookie.js";
+import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
