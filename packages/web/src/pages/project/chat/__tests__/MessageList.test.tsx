@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { MessageList } from '@/pages/project/chat/MessageList';
-import type { ChatMessage } from '@/pages/project/chat/types';
+import { MessageList } from '@web/pages/project/chat/MessageList';
+import type { ChatMessage } from '@web/pages/project/chat/types';
 
 describe('MessageList', () => {
   it('renders the empty state when there are no messages', () => {

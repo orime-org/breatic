@@ -1,5 +1,5 @@
-import type { CanvasNode, Modality } from '@/spaces/canvas/types/node';
-import { getMiniTool } from '@/pages/project/mini-tool-system/catalog';
+import type { CanvasNode, Modality } from '@web/spaces/canvas/types/node';
+import { getMiniTool } from '@web/pages/project/mini-tool-system/catalog';
 
 export interface ApplyMiniToolInput {
   sourceNode: Pick<CanvasNode, 'id' | 'position'>;

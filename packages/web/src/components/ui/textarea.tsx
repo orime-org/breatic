@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 /**
  * shadcn/ui Textarea — multi-line text input styled with project tokens.

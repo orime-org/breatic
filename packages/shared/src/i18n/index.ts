@@ -7,7 +7,7 @@
  * `2026-05-22-breatic-i18n-migration-rev-3-no-phasing.md`).
  *
  * **Loading messages**:
- *   - Web: `import { setLocaleMessages } from "@breatic/shared/i18n"`
+ *   - Web: `import { setLocaleMessages } from "@breatic/shared"`
  *     then call `setLocaleMessages("en", enJson)` for each bundled locale
  *     (typically via the web bootstrap entry).
  *   - Node services: `import { loadLocales } from "@breatic/core"` and

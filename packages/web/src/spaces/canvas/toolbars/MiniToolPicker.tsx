@@ -1,14 +1,14 @@
 import { Wand2 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { miniToolsForModality } from '@/pages/project/mini-tool-system/catalog';
-import type { Modality } from '@/spaces/canvas/types/node';
+} from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { miniToolsForModality } from '@web/pages/project/mini-tool-system/catalog';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 interface MiniToolPickerProps {
   modality: Modality;

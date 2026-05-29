@@ -1,14 +1,14 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authApi } from '@/data/api/auth';
-import { ApiException } from '@/data/api/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useTranslation } from '@/i18n/use-translation';
-import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@/pages/auth/_shared/FieldError';
+import { authApi } from '@web/data/api/auth';
+import { ApiException } from '@web/data/api/types';
+import { Button } from '@web/components/ui/button';
+import { Input } from '@web/components/ui/input';
+import { Label } from '@web/components/ui/label';
+import { useTranslation } from '@web/i18n/use-translation';
+import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
 /**
  * Forgot-password entry — dual-path UX:

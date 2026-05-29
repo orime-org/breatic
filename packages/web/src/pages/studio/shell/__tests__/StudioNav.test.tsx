@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { StudioNav } from '@/pages/studio/shell/StudioNav';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { StudioNav } from '@web/pages/studio/shell/StudioNav';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 describe('StudioNav', () => {
   it('renders 4 items: Projects / Assets / Team / Settings', () => {

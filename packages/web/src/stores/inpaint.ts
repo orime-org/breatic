@@ -5,7 +5,7 @@ import { temporal } from 'zundo';
 import type {
   InpaintPoint,
   InpaintStroke,
-} from '@/spaces/canvas/inpaint/types';
+} from '@web/spaces/canvas/inpaint/types';
 
 /**
  * Inpaint editor store — brush settings + stroke history + exported

@@ -1,8 +1,8 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
-import { ThinkingFold } from '@/pages/project/chat/ThinkingFold';
-import { ToolCallCard } from '@/pages/project/chat/ToolCallCard';
-import type { ChatMessage } from '@/pages/project/chat/types';
+import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
+import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
   message: ChatMessage;

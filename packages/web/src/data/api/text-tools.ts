@@ -1,4 +1,4 @@
-import { sseStream } from '@/data/stream/sse';
+import { sseStream } from '@web/data/stream/sse';
 
 export interface TextStreamEvent {
   type: 'token' | 'done' | 'error';

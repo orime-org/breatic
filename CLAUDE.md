@@ -43,6 +43,7 @@ pnpm test / typecheck / lint
 
 # 关键规范
 
+- **`@shared` vs `@core` 内容归属(MANDATORY)**:`@breatic/shared` = **web + 后端共用**的东西,**必须浏览器安全**(零 `node:*` / `fs` / `async_hooks` 等依赖,`sideEffects: false`);`@breatic/core` = **仅后端共用**(可用 node API)。判定题:**web 用得到吗?用得到 → `shared`;用不到 → `core`**。后端专用的东西(doc-name 构造、node i18n 适配器等)放 `core`,不许塞进 `shared`。`shared` 单入口(`tsup src/index.ts` 全 bundle),不开多 subpath 入口——多入口会把内部别名 `@shared/*` 泄漏进 dist 解析不了(2026-05-29 教训)
 - **软删除(MANDATORY)**:所有表用 `deleted_at` 标记,FK `restrict`,list 默认过滤 `deleted_at IS NULL`。**禁止硬删除**(GDPR 删号走单独流程)
 - **`created_at`(MANDATORY)**:所有 PG 表必须有 `created_at timestamp with time zone DEFAULT now() NOT NULL`。业务实体表用 `timestamps` helper(`created_at` + `updated_at` 一对);append-only 历史 / 事件表只用 `created_at`。Drizzle schema 审查时强制
 - **禁止 AI 作者署名(MANDATORY)**:commit 署名禁 AI 工具名,`.husky/commit-msg` + PR CI 强制
@@ -86,7 +87,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:`@shared` / `@core` / `@collab` / `@worker`(被依赖包用全局唯一前缀)/ `@/`(server / web)。测试代码豁免。CI `lint:no-relative-import` 强制 |
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(2026-05-29 起 server/web 从 `@/` 统一为 `@server` / `@web`,规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `lint:no-relative-import` 强制 |
 
 # 编码行为准则
 

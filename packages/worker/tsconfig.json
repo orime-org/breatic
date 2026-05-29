@@ -7,7 +7,6 @@
     "noUnusedParameters": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
       "@collab/*": ["../collab/src/*"],

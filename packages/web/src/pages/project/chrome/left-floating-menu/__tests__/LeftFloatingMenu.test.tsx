@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { LeftFloatingMenu } from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { LeftFloatingMenu } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup() {
   const onPick = vi.fn();

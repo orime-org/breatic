@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from '@web/components/ui/alert-dialog';
 
 function setup(open: boolean) {
   return render(

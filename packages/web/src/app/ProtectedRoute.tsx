@@ -1,8 +1,8 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { LoadingScreen } from '@/pages/project/chrome/LoadingScreen';
-import { useCurrentUserStore } from '@/stores';
+import { LoadingScreen } from '@web/pages/project/chrome/LoadingScreen';
+import { useCurrentUserStore } from '@web/stores';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
+} from '@web/components/ui/tooltip';
 
 function setup(open = true) {
   return render(

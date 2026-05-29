@@ -1,7 +1,7 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 /**
  * shadcn/ui Tooltip — accessible hover/focus tooltip backed by

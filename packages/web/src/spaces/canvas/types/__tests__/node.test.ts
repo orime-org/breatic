@@ -4,7 +4,7 @@ import {
   isContentNode,
   type AnnotationNodeData,
   type ImageNodeData,
-} from '@/spaces/canvas/types/node';
+} from '@web/spaces/canvas/types/node';
 
 describe('canvas node types', () => {
   it('isContentNode is true for the 4 modality nodes', () => {

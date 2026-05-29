@@ -1,7 +1,7 @@
 import { Eraser, Paintbrush, Undo2 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Button } from '@web/components/ui/button';
+import { Label } from '@web/components/ui/label';
 
 export type InpaintTool = 'brush' | 'erase';
 

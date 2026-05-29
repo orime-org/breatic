@@ -3,34 +3,34 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@web/components/ui/button';
+import { Input } from '@web/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
+} from '@web/components/ui/popover';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+} from '@web/components/ui/select';
+import { Separator } from '@web/components/ui/separator';
 import {
   inviteLinksApi,
   type InviteLink,
-} from '@/data/api/invite-links';
-import { ApiException } from '@/data/api/types';
-import { useUIStore } from '@/stores';
+} from '@web/data/api/invite-links';
+import { ApiException } from '@web/data/api/types';
+import { useUIStore } from '@web/stores';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useTranslation } from '@/i18n/use-translation';
-import { ShareLinksListDialog } from '@/pages/project/chrome/top-bar/ShareLinksListDialog';
+} from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
+import { ShareLinksListDialog } from '@web/pages/project/chrome/top-bar/ShareLinksListDialog';
 
 interface ShareDialogProps {
   projectId: string;

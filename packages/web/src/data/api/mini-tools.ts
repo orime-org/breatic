@@ -1,5 +1,5 @@
-import { apiPost } from '@/data/api/request';
-import type { CanvasTask } from '@/data/api/canvas';
+import { apiPost } from '@web/data/api/request';
+import type { CanvasTask } from '@web/data/api/canvas';
 
 interface BaseToolRequest {
   projectId: string;

@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { authApi, deriveDisplayName } from '@/data/api/auth';
-import { useCurrentUserStore } from '@/stores';
+import { authApi, deriveDisplayName } from '@web/data/api/auth';
+import { useCurrentUserStore } from '@web/stores';
 
 interface AuthBootstrapProps {
   children: React.ReactNode;

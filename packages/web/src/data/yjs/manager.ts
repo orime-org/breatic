@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { projectMetaDocName, canvasSpaceDocName } from '@breatic/shared';
 
 /**
  * Process-wide cache of Y.Doc instances keyed by document name.
@@ -40,13 +41,15 @@ export function destroyDoc(name: string): void {
 }
 
 /**
- * Doc name helpers — keep the naming convention in one place so any
- * rename only touches this file.
+ * Doc name helpers — delegate to the single source of truth in
+ * `@breatic/shared` (the Yjs doc-name format is a frontend↔backend
+ * protocol; the backend routes docs by the same builders). Kept as a
+ * thin `docName.*` facade so existing web call sites don't change.
+ * 2026-05-29: de-duplicated the previously hardcoded local copies.
  */
 export const docName = {
-  projectMeta: (projectId: string) => `project-${projectId}/meta`,
-  canvasSpace: (projectId: string, spaceId: string) =>
-    `project-${projectId}/canvas-${spaceId}`,
+  projectMeta: projectMetaDocName,
+  canvasSpace: canvasSpaceDocName,
 };
 
 /** Reset the entire cache (test helper — not for production use). */

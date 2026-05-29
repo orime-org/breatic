@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider as RqProvider } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { ApiException } from '@/data/api/types';
+import { ApiException } from '@web/data/api/types';
 
 /**
  * Global TanStack Query client.

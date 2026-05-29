@@ -1,15 +1,15 @@
 import * as React from 'react';
 
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { useChatStore } from '@/stores';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useChatStore } from '@web/stores';
 
-import { ChatComposer } from '@/pages/project/chat/ChatComposer';
+import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import {
   ConversationHistorySheet,
   type ConversationSummary,
-} from '@/pages/project/chat/ConversationHistorySheet';
-import { MessageList } from '@/pages/project/chat/MessageList';
-import type { ChatMessage } from '@/pages/project/chat/types';
+} from '@web/pages/project/chat/ConversationHistorySheet';
+import { MessageList } from '@web/pages/project/chat/MessageList';
+import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface ChatPanelProps {
   /** Project this chat belongs to — for the title bar / API scoping. */

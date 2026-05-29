@@ -10,13 +10,18 @@
 #   - @breatic/core internal   → @core/*
 #   - @breatic/collab internal → @collab/*
 #   - @breatic/worker internal → @worker/*
-#   - server / web internal    → @/*
+#   - @breatic/server internal → @server/*
+#   - @breatic/web internal    → @web/*
 #
-# Consumed packages (shared/core/collab/worker) use a GLOBALLY-UNIQUE
-# prefix because their exports.types point to src — a consumer
-# type-checking their source must resolve the alias against the
-# dependency's directory, which a per-package '@/' cannot do. See the
-# commit that introduced this rule for the full reasoning.
+# EVERY package uses a GLOBALLY-UNIQUE prefix (no package uses a bare
+# '@/'). Rationale: a package's source may be imported into another
+# package's resolution context (e.g. the server integration test imports
+# worker + collab source). A per-package '@/' would collide — the
+# importer's '@/' and the dependency's '@/' point at different src dirs,
+# and a single alias cannot resolve both. Unique prefixes make every
+# intra-package import resolve unambiguously regardless of who imports
+# the source. (2026-05-29: unified server/web from '@/' to @server/@web
+# so the rule has zero exceptions.)
 #
 # This check runs in CI (see `.github/workflows/ci.yml`) and as
 # `pnpm lint:no-relative-import` locally. A non-zero exit blocks merge.
@@ -109,7 +114,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "Per CLAUDE.md 禁止清单, non-test source must import via a path" >&2
   echo "alias, never a relative './' or '../' path. Use the package's" >&2
   echo "alias: @shared/* (shared), @core/* (core), @collab/* (collab)," >&2
-  echo "@worker/* (worker), @/* (server / web)." >&2
+  echo "@worker/* (worker), @server/* (server), @web/* (web)." >&2
   exit 1
 fi
 

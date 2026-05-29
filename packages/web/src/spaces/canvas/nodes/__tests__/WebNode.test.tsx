@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { WebNode } from '@/spaces/canvas/nodes/WebNode';
+import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
 
 describe('WebNode', () => {
   it('renders placeholder when no url', () => {

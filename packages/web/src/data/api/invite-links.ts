@@ -1,6 +1,6 @@
-import { apiDelete, apiGet, apiPost } from '@/data/api/request';
+import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
-import type { RequestableRole } from '@/data/api/access-requests';
+import type { RequestableRole } from '@web/data/api/access-requests';
 
 /** Discriminator for the two share-link modes — see § 3 of the spec. */
 export type InviteLinkKind = 'email' | 'link';

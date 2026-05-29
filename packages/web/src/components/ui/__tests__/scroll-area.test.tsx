@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 
 describe('ScrollArea', () => {
   it('renders root container with overflow-hidden + relative', () => {

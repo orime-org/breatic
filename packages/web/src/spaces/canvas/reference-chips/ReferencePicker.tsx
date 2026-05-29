@@ -7,13 +7,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from '@/components/ui/command';
+} from '@web/components/ui/command';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import type { Modality } from '@/spaces/canvas/types/node';
+} from '@web/components/ui/popover';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 export interface ReferenceCandidate {
   id: string;

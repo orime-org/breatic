@@ -10,10 +10,10 @@ import { zValidator } from "@hono/zod-validator";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, loginSchema } from "@/routes/schemas.js";
+import { registerSchema, loginSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
-import { requireAuth } from "@/middleware/auth.js";
-import type { AuthVariables } from "@/middleware/auth.js";
+import { requireAuth } from "@server/middleware/auth.js";
+import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService } from "@breatic/core";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -23,8 +23,8 @@ import {
   setSessionCookie,
   clearSessionCookie,
   readSessionCookie,
-} from "@/middleware/session-cookie.js";
-import { logMailResult } from "@/utils/log-mail.js";
+} from "@server/middleware/session-cookie.js";
+import { logMailResult } from "@server/utils/log-mail.js";
 import type { MiddlewareHandler } from "hono";
 
 /** Rate limit middleware factory. */

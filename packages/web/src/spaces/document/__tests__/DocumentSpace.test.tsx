@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { DocumentSpace } from '@/spaces/document/DocumentSpace';
+import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 
 describe('DocumentSpace', () => {
   it('renders the editor mount and the toolbar', async () => {

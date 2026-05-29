@@ -1,5 +1,5 @@
-import { apiPatch, apiPost } from '@/data/api/request';
-import type { Notification } from '@/data/api/notifications';
+import { apiPatch, apiPost } from '@web/data/api/request';
+import type { Notification } from '@web/data/api/notifications';
 
 export interface SubmitRoleUpgradeBody {
   message?: string;

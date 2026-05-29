@@ -1,4 +1,4 @@
-import type { Modality } from '@/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 /**
  * Mini-tool catalog — the 47 tools that show up in the canvas node

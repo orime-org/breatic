@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { useUIStore } from '@/stores';
+import { useUIStore } from '@web/stores';
 
 /**
  * Hook that gives a Sheet / Dialog component an open-state tied to

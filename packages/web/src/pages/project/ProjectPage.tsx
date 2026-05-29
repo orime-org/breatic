@@ -5,10 +5,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import type { SpaceRpcResponse } from '@breatic/shared';
-import { projectsApi } from '@/data/api';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
-import { useTranslation } from '@/i18n/use-translation';
+import { projectsApi } from '@web/data/api';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { useTranslation } from '@web/i18n/use-translation';
 import {
   closeSpaceTab,
   openSpaceTab,
@@ -16,23 +16,23 @@ import {
   useProjectMeta,
   useProjectMessages,
   type ProjectSpace,
-} from '@/data/yjs/project-meta';
-import { useCurrentUserStore, useUIStore } from '@/stores';
-import type { SpaceType } from '@/spaces';
+} from '@web/data/yjs/project-meta';
+import { useCurrentUserStore, useUIStore } from '@web/stores';
+import type { SpaceType } from '@web/spaces';
 
-import { ChatPanel } from '@/pages/project/chat/ChatPanel';
-import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
-import { LoadingOverlay } from '@/pages/project/chrome/LoadingOverlay';
-import { LoadingScreen } from '@/pages/project/chrome/LoadingScreen';
-import { ConnectionBanner } from '@/pages/project/chrome/ConnectionBanner';
+import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
+import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
+import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
+import { LoadingScreen } from '@web/pages/project/chrome/LoadingScreen';
+import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
-} from '@/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
-import { SpaceReadOnlySheet } from '@/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
-import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
-import { SpaceTabBar } from '@/pages/project/chrome/tab-bar/SpaceTabBar';
-import { ViewportToolbar } from '@/pages/project/chrome/viewport-toolbar/ViewportToolbar';
-import { SpaceOutlet } from '@/pages/project/SpaceOutlet';
+} from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
+import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
+import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
+import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
+import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 
 /**
  * Project page shell — TopBar above two columns:

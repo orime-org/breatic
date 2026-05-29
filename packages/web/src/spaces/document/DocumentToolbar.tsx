@@ -8,9 +8,9 @@ import {
   Strikethrough,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
+import { Button } from '@web/components/ui/button';
+import { Separator } from '@web/components/ui/separator';
+import { cn } from '@web/lib/utils';
 
 interface DocumentToolbarProps {
   editor: Editor;

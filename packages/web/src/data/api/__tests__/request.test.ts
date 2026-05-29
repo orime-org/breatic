@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { request, apiGet, apiPost, apiPatch, apiDelete } from '@/data/api/request';
-import { ApiException, type ApiError } from '@/data/api/types';
+import { request, apiGet, apiPost, apiPatch, apiDelete } from '@web/data/api/request';
+import { ApiException, type ApiError } from '@web/data/api/types';
 
 describe('ApiException', () => {
   it('exposes status / message / code from the wrapped ApiError', () => {

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ChatPanel } from '@/pages/project/chat/ChatPanel';
-import { useChatStore } from '@/stores';
-import type { ChatMessage } from '@/pages/project/chat/types';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
+import { useChatStore } from '@web/stores';
+import type { ChatMessage } from '@web/pages/project/chat/types';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 const MESSAGES: ChatMessage[] = [
   { id: 'm1', role: 'user', content: 'Plan a launch' },

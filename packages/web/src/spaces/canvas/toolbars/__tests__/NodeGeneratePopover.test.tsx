@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { NodeGeneratePopover } from '@/spaces/canvas/toolbars/NodeGeneratePopover';
+import { NodeGeneratePopover } from '@web/spaces/canvas/toolbars/NodeGeneratePopover';
 
 describe('NodeGeneratePopover', () => {
   it('renders the Generate trigger', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCanvasStore } from '@/stores/canvas';
+import { useCanvasStore } from '@web/stores/canvas';
 
 describe('useCanvasStore', () => {
   beforeEach(() => {

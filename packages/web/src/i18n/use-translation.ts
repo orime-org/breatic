@@ -4,7 +4,7 @@ import {
   onLocaleChange,
   t as sharedT,
   type Locale,
-} from '@breatic/shared/i18n';
+} from '@breatic/shared';
 
 /**
  * React hook over the shared `t()` engine. Returns the `t` function

@@ -8,19 +8,11 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./src/index.ts"
-    },
-    "./yjs-doc-names": {
-      "import": "./dist/yjs-doc-names.js",
-      "types": "./src/yjs-doc-names.ts"
-    },
-    "./i18n": {
-      "import": "./dist/i18n/index.js",
-      "types": "./src/i18n/index.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/yjs-doc-names.ts src/i18n/index.ts --format esm --clean",
-    "dev": "tsup src/index.ts src/yjs-doc-names.ts src/i18n/index.ts --format esm --watch",
+    "build": "tsup src/index.ts --format esm --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

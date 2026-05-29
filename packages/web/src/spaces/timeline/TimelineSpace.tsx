@@ -1,7 +1,7 @@
 import { Film } from 'lucide-react';
 
-import type { SpaceBodyProps } from '@/spaces';
-import type { TimelineTrack } from '@/spaces/timeline/types';
+import type { SpaceBodyProps } from '@web/spaces';
+import type { TimelineTrack } from '@web/spaces/timeline/types';
 
 interface TimelineSpaceProps extends SpaceBodyProps {
   tracks?: ReadonlyArray<TimelineTrack>;

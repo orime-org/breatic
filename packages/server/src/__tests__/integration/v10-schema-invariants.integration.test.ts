@@ -190,8 +190,8 @@ describe("tasks.space_id NOT NULL — v10 multi-doc routing", () => {
     // that should never exist by design.
     await expect(
       sql`
-        INSERT INTO tasks (user_id, project_id, task_type, params, source)
-        VALUES (${userId}, ${projectId}, 'image', '{}'::jsonb, 'mini_tool')
+        INSERT INTO tasks (user_id, project_id, task_type, mode, params, source)
+        VALUES (${userId}, ${projectId}, 'image', 'append', '{}'::jsonb, 'mini_tool')
       `,
     ).rejects.toThrow(/null value in column "space_id"/);
   });
@@ -204,8 +204,8 @@ describe("tasks.space_id NOT NULL — v10 multi-doc routing", () => {
 
     await expect(
       sql`
-        INSERT INTO tasks (user_id, project_id, space_id, task_type, params, source)
-        VALUES (${userId}, ${projectId}, ${spaceId}, 'image', '{}'::jsonb, 'mini_tool')
+        INSERT INTO tasks (user_id, project_id, space_id, task_type, mode, params, source)
+        VALUES (${userId}, ${projectId}, ${spaceId}, 'image', 'append', '{}'::jsonb, 'mini_tool')
       `,
     ).resolves.toBeDefined();
   });

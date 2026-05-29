@@ -21,8 +21,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+} from '@web/components/ui/alert-dialog';
+import { Button } from '@web/components/ui/button';
 import {
   Sheet,
   SheetContent,
@@ -30,17 +30,17 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet';
+} from '@web/components/ui/sheet';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import type { ProjectSpace } from '@/data/yjs/project-meta';
-import type { SpaceType } from '@/spaces';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/tooltip';
+import { cn } from '@web/lib/utils';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import type { SpaceType } from '@web/spaces';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceDrawerProps {
   spaces: ReadonlyArray<ProjectSpace>;

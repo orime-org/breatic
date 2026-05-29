@@ -2,8 +2,8 @@ import { Send } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
+import { Button } from '@web/components/ui/button';
 import {
   Dialog,
   DialogBody,
@@ -11,20 +11,20 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+} from '@web/components/ui/dialog';
+import { Input } from '@web/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { useTranslation } from '@/i18n/use-translation';
-import { membersApi } from '@/data/api/members';
-import type { Member, MemberRole } from '@/data/api/members';
+} from '@web/components/ui/select';
+import { Separator } from '@web/components/ui/separator';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useTranslation } from '@web/i18n/use-translation';
+import { membersApi } from '@web/data/api/members';
+import type { Member, MemberRole } from '@web/data/api/members';
 
 interface MembersModalProps {
   projectId?: string;

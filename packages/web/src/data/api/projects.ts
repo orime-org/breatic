@@ -1,6 +1,6 @@
-import type { ProjectRole } from '@/stores';
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/data/api/request';
-import type { Pagination } from '@/data/api/types';
+import type { ProjectRole } from '@web/stores';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import type { Pagination } from '@web/data/api/types';
 
 /**
  * Project list row — mirrors backend `ProjectEntity` returned by

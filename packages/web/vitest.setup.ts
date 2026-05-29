@@ -30,7 +30,7 @@ declare module 'vitest' {
   }
 }
 import { cleanup } from '@testing-library/react';
-import { setLocale, setLocaleMessages } from '@breatic/shared/i18n';
+import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import en from '../../locales/en.json';
 import zhCN from '../../locales/zh-CN.json';

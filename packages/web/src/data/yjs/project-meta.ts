@@ -6,10 +6,10 @@ import {
   type ProjectMessageEntry,
   ProjectMessageEntrySchema,
 } from '@breatic/shared';
-import type { SpaceType } from '@/spaces';
-import { docName, getDoc } from '@/data/yjs/manager';
-import { useSocket, type ConnectionStatus } from '@/data/yjs/use-socket';
-import { useCurrentUserStore } from '@/stores/current-user';
+import type { SpaceType } from '@web/spaces';
+import { docName, getDoc } from '@web/data/yjs/manager';
+import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Project meta Yjs document — single source of truth for the project's

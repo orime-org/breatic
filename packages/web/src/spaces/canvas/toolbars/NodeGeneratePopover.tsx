@@ -1,22 +1,22 @@
 import { Sparkles } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Button } from '@web/components/ui/button';
+import { Label } from '@web/components/ui/label';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
+} from '@web/components/ui/popover';
+import { Textarea } from '@web/components/ui/textarea';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import type { Modality } from '@/spaces/canvas/types/node';
+} from '@web/components/ui/select';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 interface NodeGeneratePopoverProps {
   modality: Modality;

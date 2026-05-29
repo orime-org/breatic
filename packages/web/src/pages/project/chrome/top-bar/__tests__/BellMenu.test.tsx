@@ -3,15 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { BellMenu } from '@/pages/project/chrome/top-bar/BellMenu';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { ApiException } from '@/data/api/types';
+import { BellMenu } from '@web/pages/project/chrome/top-bar/BellMenu';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { ApiException } from '@web/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const N1 = '22222222-2222-4222-8222-222222222222';
 const N2 = '33333333-3333-4333-8333-333333333333';
 
-vi.mock('@/data/api/notifications', () => ({
+vi.mock('@web/data/api/notifications', () => ({
   notificationsApi: {
     list: vi.fn(),
     count: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('@/data/api/notifications', () => ({
   },
 }));
 
-vi.mock('@/data/api/role-upgrade-requests', () => ({
+vi.mock('@web/data/api/role-upgrade-requests', () => ({
   roleUpgradeRequestsApi: {
     submit: vi.fn(),
     decide: vi.fn(),
@@ -34,8 +34,8 @@ vi.mock('sonner', () => ({
   }),
 }));
 
-import { notificationsApi } from '@/data/api/notifications';
-import { roleUpgradeRequestsApi } from '@/data/api/role-upgrade-requests';
+import { notificationsApi } from '@web/data/api/notifications';
+import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { toast } from 'sonner';
 
 function setup() {

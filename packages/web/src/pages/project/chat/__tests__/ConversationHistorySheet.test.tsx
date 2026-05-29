@@ -6,8 +6,8 @@ import {
   ConversationHistorySheet,
   relativeTime,
   type ConversationSummary,
-} from '@/pages/project/chat/ConversationHistorySheet';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+} from '@web/pages/project/chat/ConversationHistorySheet';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 const CONVS: ConversationSummary[] = [
   {

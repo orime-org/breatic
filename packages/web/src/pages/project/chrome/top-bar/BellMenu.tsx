@@ -3,26 +3,26 @@ import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
+} from '@web/components/ui/popover';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
+} from '@web/components/ui/tooltip';
 import {
   notificationsApi,
   type Notification,
   type NotificationType,
-} from '@/data/api/notifications';
-import { roleUpgradeRequestsApi } from '@/data/api/role-upgrade-requests';
-import { ApiException } from '@/data/api/types';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/data/api/notifications';
+import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
+import { ApiException } from '@web/data/api/types';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface BellMenuProps {
   projectId: string;

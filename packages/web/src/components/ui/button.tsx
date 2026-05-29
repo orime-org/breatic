@@ -2,7 +2,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 // Disabled state (2026-05-25, PR #137):
 //   - `disabled:cursor-not-allowed` — universal stop-sign cursor.

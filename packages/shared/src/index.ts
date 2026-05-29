@@ -120,6 +120,7 @@ export {
   getLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setLocaleResolver,
   onLocaleChange,
   resetLocales,
 } from "@shared/i18n/index.js";

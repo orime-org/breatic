@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Copy, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Dialog,
   DialogBody,
@@ -11,9 +11,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/dialog';
+import { Label } from '@web/components/ui/label';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * One-time recovery-code reveal modal — shown after registration AND

@@ -8,7 +8,7 @@ import {
   SheetDescription,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet';
+} from '@web/components/ui/sheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,16 +19,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+} from '@web/components/ui/alert-dialog';
+import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/tooltip';
+import { cn } from '@web/lib/utils';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Project-wide message channel surfaced by the History clock icon on

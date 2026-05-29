@@ -1,4 +1,4 @@
-import type { Modality } from '@/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 /**
  * Timeline data primitives — placeholders for the M3+ rebuild. The full

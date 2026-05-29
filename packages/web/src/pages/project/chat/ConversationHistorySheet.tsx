@@ -4,8 +4,8 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/sheet';
+import { useTranslation } from '@web/i18n/use-translation';
 
 export interface ConversationSummary {
   id: string;

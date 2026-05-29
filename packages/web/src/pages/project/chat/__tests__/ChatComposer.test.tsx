@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ChatComposer } from '@/pages/project/chat/ChatComposer';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}) {
   const onChange = vi.fn();

@@ -6,7 +6,7 @@
  */
 
 import { serve } from "@hono/node-server";
-import { createApp } from "@/app.js";
+import { createApp } from "@server/app.js";
 import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";

@@ -1,7 +1,7 @@
 import { Image, Music, PenTool } from 'lucide-react';
 
-import { useCurrentUserStore } from '@/stores';
-import { useTranslation } from '@/i18n/use-translation';
+import { useCurrentUserStore } from '@web/stores';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface QuickAction {
   id: string;

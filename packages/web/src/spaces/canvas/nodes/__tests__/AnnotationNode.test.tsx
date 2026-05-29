@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { AnnotationNode } from '@/spaces/canvas/nodes/AnnotationNode';
+import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 
 describe('AnnotationNode', () => {
   it('renders the message text', () => {

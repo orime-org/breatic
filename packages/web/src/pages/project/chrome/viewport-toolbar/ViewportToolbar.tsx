@@ -9,14 +9,14 @@ import {
   Undo2,
 } from 'lucide-react';
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /** Hard limits on canvas zoom (matches ReactFlow defaults: 0.1 – 4). */
 const ZOOM_MIN = 0.1;

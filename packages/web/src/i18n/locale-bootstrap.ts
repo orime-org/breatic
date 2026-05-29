@@ -24,7 +24,7 @@ import {
   setLocale,
   setLocaleMessages,
   type Locale,
-} from '@breatic/shared/i18n';
+} from '@breatic/shared';
 
 // Vite resolves these via the `@locales` alias to repo-root locales/*.json.
 // All four locales bundle into the initial JS chunk (~few KB each).

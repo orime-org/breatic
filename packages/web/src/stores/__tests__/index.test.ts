@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as stores from '@/stores/index';
+import * as stores from '@web/stores/index';
 
 describe('stores barrel', () => {
   it('re-exports all 10 store hooks', () => {

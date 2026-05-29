@@ -8,7 +8,7 @@ import {
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu';
+} from '@web/components/ui/context-menu';
 
 describe('ContextMenu', () => {
   it('renders trigger children when not opened', () => {

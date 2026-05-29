@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { act } from 'react';
 
-import { MembersModal } from '@/pages/project/chrome/top-bar/MembersModal';
-import { useUIStore } from '@/stores/ui';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
+import { useUIStore } from '@web/stores/ui';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 describe('MembersModal', () => {
   beforeEach(() => {

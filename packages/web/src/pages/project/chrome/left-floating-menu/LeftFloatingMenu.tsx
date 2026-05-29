@@ -8,9 +8,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n/use-translation';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 export type LeftMenuTool =
   | 'nodes'

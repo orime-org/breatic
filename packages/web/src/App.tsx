@@ -1,10 +1,10 @@
 import { RouterProvider } from 'react-router-dom';
 
-import AuthBootstrap from '@/app/AuthBootstrap';
-import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
-import { router } from '@/app/routes';
+import AuthBootstrap from '@web/app/AuthBootstrap';
+import { Toaster } from '@web/components/ui/sonner';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
+import { router } from '@web/app/routes';
 
 /**
  * App root — providers stack (outer to inner):

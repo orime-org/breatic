@@ -1,7 +1,7 @@
 import { ArrowUp, Square, SquareMousePointer, Wand2 } from 'lucide-react';
 import * as React from 'react';
 
-import { useTranslation } from '@/i18n/use-translation';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface ReferenceChip {
   id: string;

@@ -2,19 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-import InviteConsumePage from '@/pages/invite/InviteConsumePage';
-import { ApiException } from '@/data/api/types';
+import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
+import { ApiException } from '@web/data/api/types';
 
 const TOKEN = 'abc-token-xyz';
 const PID = '11111111-1111-4111-8111-111111111111';
 
-vi.mock('@/data/api/invite-links', () => ({
+vi.mock('@web/data/api/invite-links', () => ({
   inviteLinksApi: {
     consume: vi.fn(),
   },
 }));
 
-import { inviteLinksApi } from '@/data/api/invite-links';
+import { inviteLinksApi } from '@web/data/api/invite-links';
 
 /**
  * Renders the page inside a memory router pointed at /invite/:token,

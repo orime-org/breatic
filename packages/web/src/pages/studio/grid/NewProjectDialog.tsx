@@ -8,16 +8,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+} from '@web/components/ui/dialog';
+import { Label } from '@web/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@web/components/ui/select';
+import { cn } from '@web/lib/utils';
 
 export type SpaceTemplate = 'canvas' | 'document' | 'timeline';
 

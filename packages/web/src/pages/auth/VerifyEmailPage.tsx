@@ -2,11 +2,11 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
-import { authApi } from '@/data/api/auth';
-import { ApiException } from '@/data/api/types';
-import { Button } from '@/components/ui/button';
-import { useTranslation } from '@/i18n/use-translation';
-import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
+import { authApi } from '@web/data/api/auth';
+import { ApiException } from '@web/data/api/types';
+import { Button } from '@web/components/ui/button';
+import { useTranslation } from '@web/i18n/use-translation';
+import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 
 /**
  * Email verification landing — user lands here from the verify-email

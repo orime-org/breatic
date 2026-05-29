@@ -1,6 +1,6 @@
 /**
  * i18n loader tests — node-side adapter (`@breatic/core` loadLocales)
- * integrated with the shared engine (`@breatic/shared/i18n` t()).
+ * integrated with the shared engine (`@breatic/shared` t()).
  *
  * Moved here from `@breatic/shared` (2026-05-29): the node-only loader
  * (`node:fs` + `node:async_hooks`) relocated from `shared/i18n/load-node`
@@ -16,7 +16,7 @@ import {
   getLocale,
   getAvailableLocales,
   resetLocales,
-} from "@breatic/shared/i18n";
+} from "@breatic/shared";
 import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
 

@@ -4,7 +4,7 @@ import axios, {
   AxiosError,
 } from 'axios';
 
-import { ApiException, type ApiEnvelope, type ApiError } from '@/data/api/types';
+import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
 
 /**
  * Singleton axios instance configured for the breatic API.

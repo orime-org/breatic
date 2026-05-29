@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { inviteLinksApi } from '@/data/api/invite-links';
-import { ApiException } from '@/data/api/types';
-import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
-import { useTranslation } from '@/i18n/use-translation';
+import { inviteLinksApi } from '@web/data/api/invite-links';
+import { ApiException } from '@web/data/api/types';
+import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Invite link consume landing page — `/invite/:token`.

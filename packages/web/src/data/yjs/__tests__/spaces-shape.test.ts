@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { docName, getDoc, _resetForTests } from '@/data/yjs/manager';
-import { appendSpace, removeSpace } from '@/data/yjs/project-meta';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { appendSpace, removeSpace } from '@web/data/yjs/project-meta';
 
 /**
  * Regression pins for the P0 cross-side Yjs root-type mismatch that
