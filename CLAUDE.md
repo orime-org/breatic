@@ -87,7 +87,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:`@shared` / `@core` / `@collab` / `@worker`(被依赖包用全局唯一前缀)/ `@/`(server / web)。测试代码豁免。CI `lint:no-relative-import` 强制 |
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(2026-05-29 起 server/web 从 `@/` 统一为 `@server` / `@web`,规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `lint:no-relative-import` 强制 |
 
 # 编码行为准则
 
