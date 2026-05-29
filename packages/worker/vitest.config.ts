@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
 
 // `testTimeout: 15_000` — see packages/core/vitest.config.ts for the
 // 5s → 15s rationale (bcrypt cost-12 + property-based round-trips).
@@ -33,6 +34,11 @@ export default defineConfig({
       forks: {
         singleFork: true,
       },
+    },
+  },
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "./src"),
     },
   },
 });
