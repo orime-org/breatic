@@ -81,11 +81,20 @@ export async function makeTestMp4(outPath: string, opts: TestMp4Options = {}): P
     args.push(
       "-f", "lavfi",
       "-i", `anullsrc=channel_layout=stereo:sample_rate=44100`,
-      "-shortest",
     );
   }
   args.push("-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p");
   if (withAudio) args.push("-c:a", "aac", "-b:a", "48k");
+  // Hard-cap the output to exactly `duration` seconds via the `-t` OUTPUT
+  // option, instead of relying on `-shortest` to cut at the (finite) video
+  // stream's EOF. With an infinite `anullsrc` audio input, `-shortest` is
+  // NON-deterministic under CPU load: the AAC encoder flushes a variable
+  // number of buffered trailing frames at video EOF, so the muxed duration
+  // drifts above `duration` (observed 1.09s and 1.32s for a 1.0s clip under
+  // a saturated CPU). Handlers that `-c:a copy` then faithfully preserve the
+  // inflated duration, breaking tight same-duration invariants. `-t` makes
+  // the fixture deterministic regardless of scheduling.
+  args.push("-t", String(duration));
   args.push(outPath);
 
   await new Promise<void>((resolve, reject) => {
