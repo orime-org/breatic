@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { docName, getDoc, _resetForTests } from '@/data/yjs/manager';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   appendProjectMessage,
   readProjectMessages,
-} from '@/data/yjs/project-meta';
+} from '@web/data/yjs/project-meta';
 
 const PROJECT_ID = 'p-messages';
 

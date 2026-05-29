@@ -7,9 +7,9 @@ import {
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
-import { AgentColHeader } from '@/pages/project/chrome/agent-header/AgentColHeader';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 // Chrome buttons now use shadcn `Tooltip`, which throws without a
 // `TooltipProvider` somewhere up the tree. App.tsx supplies one at

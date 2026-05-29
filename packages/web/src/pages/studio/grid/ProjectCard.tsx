@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 
-import { Badge } from '@/components/ui/badge';
-import type { ProjectSummary } from '@/data/api/projects';
-import type { ProjectRole } from '@/stores';
+import { Badge } from '@web/components/ui/badge';
+import type { ProjectSummary } from '@web/data/api/projects';
+import type { ProjectRole } from '@web/stores';
 
 interface ProjectCardProps {
   project: ProjectSummary;

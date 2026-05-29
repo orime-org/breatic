@@ -6,10 +6,10 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
-import type { ProjectSpace } from '@/data/yjs/project-meta';
-import type { SpaceType } from '@/spaces';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/sheet';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import type { SpaceType } from '@web/spaces';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceReadOnlySheetProps {
   /** Whether the sheet is open. Controlled by the parent (typically via

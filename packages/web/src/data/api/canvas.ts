@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '@/data/api/request';
+import { apiGet, apiPost } from '@web/data/api/request';
 
 export interface CanvasTask {
   id: string;

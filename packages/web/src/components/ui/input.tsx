@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 /**
  * shadcn/ui Input — standard `<input>` styled with project tokens.

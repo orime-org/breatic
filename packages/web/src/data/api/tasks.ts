@@ -1,5 +1,5 @@
-import { apiGet } from '@/data/api/request';
-import type { CanvasTask } from '@/data/api/canvas';
+import { apiGet } from '@web/data/api/request';
+import type { CanvasTask } from '@web/data/api/canvas';
 
 export const tasksApi = {
   list(params: { page?: number; limit?: number } = {}) {

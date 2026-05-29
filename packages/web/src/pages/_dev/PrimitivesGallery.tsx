@@ -21,10 +21,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from '@web/components/ui/alert-dialog';
+import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
+import { Badge } from '@web/components/ui/badge';
+import { Button } from '@web/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -32,23 +32,23 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from '@web/components/ui/dialog';
+import { Input } from '@web/components/ui/input';
+import { Label } from '@web/components/ui/label';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
+} from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+} from '@web/components/ui/select';
+import { Separator } from '@web/components/ui/separator';
 import {
   Sheet,
   SheetContent,
@@ -56,22 +56,22 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
+} from '@web/components/ui/sheet';
+import { Skeleton } from '@web/components/ui/skeleton';
+import { Textarea } from '@web/components/ui/textarea';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
+} from '@web/components/ui/tooltip';
 
-import { NodeShell } from '@/spaces/canvas/nodes/_shared/NodeShell';
-import { NodeContent } from '@/spaces/canvas/nodes/_shared/NodeContent';
-import { NodePlaceholder } from '@/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { ReferenceChip } from '@/spaces/canvas/reference-chips/ReferenceChip';
+import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
+import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
+import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip';
 
-import { usePreferencesStore } from '@/stores';
+import { usePreferencesStore } from '@web/stores';
 
 export default function PrimitivesGallery() {
   const theme = usePreferencesStore((s) => s.theme);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { usePreferencesStore } from '@/stores/preferences';
+import { usePreferencesStore } from '@web/stores/preferences';
 
 describe('usePreferencesStore', () => {
   beforeEach(() => {

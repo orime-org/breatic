@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { BrushControls } from '@/spaces/canvas/inpaint/BrushControls';
+import { BrushControls } from '@web/spaces/canvas/inpaint/BrushControls';
 
 function setup(overrides: Partial<Parameters<typeof BrushControls>[0]> = {}) {
   const handlers = {

@@ -4,9 +4,9 @@ import * as Y from 'yjs';
 import type {
   CanvasNode,
   NodeData,
-} from '@/spaces/canvas/types/node';
-import { docName, getDoc } from '@/data/yjs/manager';
-import { useSocket } from '@/data/yjs/use-socket';
+} from '@web/spaces/canvas/types/node';
+import { docName, getDoc } from '@web/data/yjs/manager';
+import { useSocket } from '@web/data/yjs/use-socket';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas

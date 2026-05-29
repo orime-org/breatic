@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-import ProtectedRoute from '@/app/ProtectedRoute';
-import { useCurrentUserStore } from '@/stores';
+import ProtectedRoute from '@web/app/ProtectedRoute';
+import { useCurrentUserStore } from '@web/stores';
 
 // Use the declarative `<MemoryRouter>` + `<Routes>` form rather than
 // `createMemoryRouter` — the data router triggers an internal fetcher

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { TimelineSpace } from '@/spaces/timeline/TimelineSpace';
-import type { TimelineTrack } from '@/spaces/timeline/types';
+import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
+import type { TimelineTrack } from '@web/spaces/timeline/types';
 
 describe('TimelineSpace', () => {
   it('renders the empty state when there are no tracks', () => {

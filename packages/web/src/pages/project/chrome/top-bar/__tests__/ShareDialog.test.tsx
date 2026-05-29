@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import { ShareDialog } from '@/pages/project/chrome/top-bar/ShareDialog';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { useUIStore } from '@/stores';
-import { ApiException } from '@/data/api/types';
+import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useUIStore } from '@web/stores';
+import { ApiException } from '@web/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 
-vi.mock('@/data/api/invite-links', () => ({
+vi.mock('@web/data/api/invite-links', () => ({
   inviteLinksApi: {
     create: vi.fn(),
     listByProject: vi.fn().mockResolvedValue({ data: [] }),
@@ -26,7 +26,7 @@ vi.mock('sonner', () => ({
   }),
 }));
 
-import { inviteLinksApi } from '@/data/api/invite-links';
+import { inviteLinksApi } from '@web/data/api/invite-links';
 import { toast } from 'sonner';
 
 function AllProviders({ children }: { children: React.ReactNode }) {

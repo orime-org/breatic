@@ -1,16 +1,16 @@
 import { Globe } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
+} from '@web/components/ui/popover';
 import { getLocale, type Locale } from '@breatic/shared';
-import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
-import { changeLocale } from '@/i18n/locale-bootstrap';
-import { useTranslation } from '@/i18n/use-translation';
+import { TopBarTextIconButton } from '@web/pages/project/chrome/top-bar/TopBarTextIconButton';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).

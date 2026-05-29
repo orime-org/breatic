@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SPACE_TYPES, SPACE_TYPE_LIST, type SpaceType } from '@/spaces';
+import { SPACE_TYPES, SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
 
 describe('SPACE_TYPES registry', () => {
   it('exposes all 3 V1 space types (canvas / document / timeline)', () => {

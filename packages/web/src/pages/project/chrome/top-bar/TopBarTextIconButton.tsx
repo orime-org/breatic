@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 interface TopBarTextIconButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {

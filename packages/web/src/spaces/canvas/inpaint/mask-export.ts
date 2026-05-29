@@ -1,4 +1,4 @@
-import type { InpaintStroke } from '@/spaces/canvas/inpaint/types';
+import type { InpaintStroke } from '@web/spaces/canvas/inpaint/types';
 
 interface ExportMaskInput {
   width: number;

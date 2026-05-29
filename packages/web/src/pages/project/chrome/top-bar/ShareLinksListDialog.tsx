@@ -9,14 +9,14 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from '@web/components/ui/dialog';
+import { Button } from '@web/components/ui/button';
 import {
   inviteLinksApi,
   type InviteLink,
-} from '@/data/api/invite-links';
-import { ApiException } from '@/data/api/types';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/data/api/invite-links';
+import { ApiException } from '@web/data/api/types';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface ShareLinksListDialogProps {
   projectId: string;

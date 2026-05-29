@@ -1,14 +1,14 @@
 import { MessagesSquare, Plus } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
 
-import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
+import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;

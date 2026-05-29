@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ViewportToolbar } from '@/pages/project/chrome/viewport-toolbar/ViewportToolbar';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup(
   zoom = 1,

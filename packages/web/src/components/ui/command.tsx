@@ -3,7 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 /**
  * shadcn/ui Command — fast keyboard-driven palette backed by cmdk.

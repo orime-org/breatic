@@ -7,7 +7,7 @@ import {
   Video,
 } from 'lucide-react';
 
-import type { Modality } from '@/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 interface NodePlaceholderProps {
   modality: Modality;

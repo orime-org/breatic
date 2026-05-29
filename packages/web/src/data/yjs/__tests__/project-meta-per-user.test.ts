@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { destroyDoc, docName, getDoc, _resetForTests } from '@/data/yjs/manager';
+import { destroyDoc, docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   closeSpaceTab,
   openSpaceTab,
   setActiveSpace,
   appendSpace,
-} from '@/data/yjs/project-meta';
+} from '@web/data/yjs/project-meta';
 
 /**
  * Critical-path invariants for the per-user Y.Doc subtree

@@ -1,7 +1,7 @@
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
-import type { NodeStatus } from '@/spaces/canvas/types/node';
+import { cn } from '@web/lib/utils';
+import type { NodeStatus } from '@web/spaces/canvas/types/node';
 
 interface NodeShellProps {
   status?: NodeStatus;

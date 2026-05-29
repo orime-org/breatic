@@ -1,9 +1,9 @@
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
-import type { ConnectionStatus } from '@/data/yjs/use-socket';
-import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n/use-translation';
+import type { ConnectionStatus } from '@web/data/yjs/use-socket';
+import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface ConnectionBannerProps {
   status: ConnectionStatus;

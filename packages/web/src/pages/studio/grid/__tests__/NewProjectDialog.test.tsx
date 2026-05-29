@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { NewProjectDialog } from '@/pages/studio/grid/NewProjectDialog';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { NewProjectDialog } from '@web/pages/studio/grid/NewProjectDialog';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 describe('NewProjectDialog', () => {
   it('does NOT render content when closed', () => {

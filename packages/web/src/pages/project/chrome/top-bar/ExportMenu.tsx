@@ -1,17 +1,17 @@
 import { Download, FileImage, FileJson, FileText } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
+} from '@web/components/ui/popover';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
 
 const EXPORT_FORMATS = [
   { id: 'png', label: 'PNG (current view)', icon: FileImage },

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { MiniToolPicker } from '@/spaces/canvas/toolbars/MiniToolPicker';
+import { MiniToolPicker } from '@web/spaces/canvas/toolbars/MiniToolPicker';
 
 describe('MiniToolPicker', () => {
   it('renders the Mini-tool trigger', () => {

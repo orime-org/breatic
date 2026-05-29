@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import type { ProjectSummary } from '@/data/api/projects';
-import { ProjectCard } from '@/pages/studio/grid/ProjectCard';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import type { ProjectSummary } from '@web/data/api/projects';
+import { ProjectCard } from '@web/pages/studio/grid/ProjectCard';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 const project: ProjectSummary = {
   id: 'p1',

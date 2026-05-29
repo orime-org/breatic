@@ -13,8 +13,8 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+} from '@web/components/ui/form';
+import { Input } from '@web/components/ui/input';
 
 const schema = z.object({
   email: z.string().email('Invalid email'),

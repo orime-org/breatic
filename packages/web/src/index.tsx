@@ -1,9 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
-import App from '@/App';
-import '@/index.css';
-import { bootstrapLocale } from '@/i18n/locale-bootstrap';
+import App from '@web/App';
+import '@web/index.css';
+import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 
 // i18n must initialize before any component renders useTranslation().
 bootstrapLocale();

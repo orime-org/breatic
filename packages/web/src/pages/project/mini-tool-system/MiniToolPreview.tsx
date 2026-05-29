@@ -1,5 +1,5 @@
-import { Skeleton } from '@/components/ui/skeleton';
-import type { Modality } from '@/spaces/canvas/types/node';
+import { Skeleton } from '@web/components/ui/skeleton';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 interface MiniToolPreviewProps {
   /** What the produced node will be. */

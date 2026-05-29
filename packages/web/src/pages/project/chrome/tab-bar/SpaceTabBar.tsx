@@ -8,21 +8,21 @@ import {
 import * as React from 'react';
 
 import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useTranslation } from '@/i18n/use-translation';
-import { cn } from '@/lib/utils';
-import type { ProjectSpace } from '@/data/yjs/project-meta';
-import type { SpaceType } from '@/spaces';
-import { useUIStore } from '@/stores';
-import { NewSpaceDialog } from '@/pages/project/chrome/tab-bar/NewSpaceDialog';
-import { SpaceDrawer } from '@/pages/project/chrome/tab-bar/SpaceDrawer';
-import { ProjectMessagesButton } from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
-import { SpaceTab } from '@/pages/project/chrome/tab-bar/SpaceTab';
+} from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import type { SpaceType } from '@web/spaces';
+import { useUIStore } from '@web/stores';
+import { NewSpaceDialog } from '@web/pages/project/chrome/tab-bar/NewSpaceDialog';
+import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
+import { ProjectMessagesButton } from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 
 interface SpaceTabBarProps {
   /** Tabs currently open in the bar (resolved from per-user openTabIds). */

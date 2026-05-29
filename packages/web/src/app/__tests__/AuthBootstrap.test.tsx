@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 
-import AuthBootstrap from '@/app/AuthBootstrap';
-import { authApi } from '@/data/api/auth';
-import { useCurrentUserStore } from '@/stores';
+import AuthBootstrap from '@web/app/AuthBootstrap';
+import { authApi } from '@web/data/api/auth';
+import { useCurrentUserStore } from '@web/stores';
 
 // `vi.mock` replaces the WHOLE module — when AuthBootstrap also
 // pulls `deriveDisplayName` from the same module, omitting it from
@@ -12,9 +12,9 @@ import { useCurrentUserStore } from '@/stores';
 // `setUser` never runs and tests see `user?.id === undefined`. Use
 // `importActual` to keep `deriveDisplayName` real while still
 // mocking the network-touching `authApi.me`.
-vi.mock('@/data/api/auth', async () => {
-  const actual = await vi.importActual<typeof import('@/data/api/auth')>(
-    '@/data/api/auth',
+vi.mock('@web/data/api/auth', async () => {
+  const actual = await vi.importActual<typeof import('@web/data/api/auth')>(
+    '@web/data/api/auth',
   );
   return {
     ...actual,

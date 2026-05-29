@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 
 describe('Button', () => {
   it('renders a <button> with text content', () => {

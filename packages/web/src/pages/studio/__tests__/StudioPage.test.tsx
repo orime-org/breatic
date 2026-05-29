@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import StudioPage from '@/pages/studio/StudioPage';
-import { useStudioStore } from '@/stores';
-import type { ProjectSummary } from '@/data/api/projects';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import StudioPage from '@web/pages/studio/StudioPage';
+import { useStudioStore } from '@web/stores';
+import type { ProjectSummary } from '@web/data/api/projects';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 const DEMO_PROJECTS: ProjectSummary[] = [
   {
@@ -36,7 +36,7 @@ const DEMO_PROJECTS: ProjectSummary[] = [
   },
 ];
 
-vi.mock('@/data/api', () => ({
+vi.mock('@web/data/api', () => ({
   projectsApi: {
     list: vi.fn(async () => DEMO_PROJECTS),
     create: vi.fn(),

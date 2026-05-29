@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 export type MemberRole = 'owner' | 'edit' | 'view';
 

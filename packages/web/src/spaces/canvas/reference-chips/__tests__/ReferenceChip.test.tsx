@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ReferenceChip } from '@/spaces/canvas/reference-chips/ReferenceChip';
+import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip';
 
 describe('ReferenceChip', () => {
   it('renders the label and the modality attribute', () => {

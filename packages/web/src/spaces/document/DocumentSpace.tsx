@@ -2,8 +2,8 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import * as React from 'react';
 
-import type { SpaceBodyProps } from '@/spaces';
-import { DocumentToolbar } from '@/spaces/document/DocumentToolbar';
+import type { SpaceBodyProps } from '@web/spaces';
+import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
 
 /**
  * Document space body — minimal TipTap editor (StarterKit) wired to a

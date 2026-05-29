@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@web/components/ui/skeleton';
 
 describe('Skeleton', () => {
   it('renders a <div>', () => {

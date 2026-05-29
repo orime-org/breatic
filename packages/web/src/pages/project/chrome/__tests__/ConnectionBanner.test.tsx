@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ConnectionBanner } from '@/pages/project/chrome/ConnectionBanner';
+import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 
 describe('ConnectionBanner', () => {
   // Banner is conditional-render (early return null) when status is

@@ -9,7 +9,7 @@ import {
   t,
   type Locale,
 } from '@breatic/shared';
-import { useTranslation } from '@/i18n/use-translation';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import en from '../../../../../locales/en.json';
 import zhCN from '../../../../../locales/zh-CN.json';

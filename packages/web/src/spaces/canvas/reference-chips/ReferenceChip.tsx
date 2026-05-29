@@ -8,9 +8,9 @@ import {
   X,
 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import type { Modality } from '@/spaces/canvas/types/node';
+import { Badge } from '@web/components/ui/badge';
+import { Button } from '@web/components/ui/button';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 export interface ReferenceChipProps {
   modality: Modality;

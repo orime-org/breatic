@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { exportMask } from '@/spaces/canvas/inpaint/mask-export';
-import type { InpaintStroke } from '@/spaces/canvas/inpaint/types';
+import { exportMask } from '@web/spaces/canvas/inpaint/mask-export';
+import type { InpaintStroke } from '@web/spaces/canvas/inpaint/types';
 
 describe('exportMask', () => {
   const stroke: InpaintStroke = {

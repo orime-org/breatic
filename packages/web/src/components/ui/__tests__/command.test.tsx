@@ -9,7 +9,7 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
-} from '@/components/ui/command';
+} from '@web/components/ui/command';
 
 describe('Command', () => {
   it('renders root with bg-popover + text-popover-foreground tokens', () => {

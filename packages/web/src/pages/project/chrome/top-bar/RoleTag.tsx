@@ -3,18 +3,18 @@ import { useMutation } from '@tanstack/react-query';
 import { ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { roleUpgradeRequestsApi } from '@/data/api/role-upgrade-requests';
-import { ApiException } from '@/data/api/types';
-import { useTranslation } from '@/i18n/use-translation';
-import type { ProjectRole } from '@/stores';
+} from '@web/components/ui/popover';
+import { Button } from '@web/components/ui/button';
+import { Textarea } from '@web/components/ui/textarea';
+import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
+import { ApiException } from '@web/data/api/types';
+import { useTranslation } from '@web/i18n/use-translation';
+import type { ProjectRole } from '@web/stores';
 
 const ROLE_LABEL: Record<ProjectRole, string> = {
   owner: 'OWNER',

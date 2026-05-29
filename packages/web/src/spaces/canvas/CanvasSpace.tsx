@@ -1,5 +1,5 @@
-import type { SpaceBodyProps } from '@/spaces';
-import { useTranslation } from '@/i18n/use-translation';
+import type { SpaceBodyProps } from '@web/spaces';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Canvas space body — chrome-baseline mock `.canvas-area` (finalized.html

@@ -1,6 +1,6 @@
 import { Home, FolderOpen, Users, Settings as SettingsIcon } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 export type StudioSection = 'home' | 'assets' | 'team' | 'settings';
 

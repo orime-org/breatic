@@ -2,18 +2,18 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
-import ProtectedRoute from '@/app/ProtectedRoute';
-import StudioPage from '@/pages/studio/StudioPage';
-import ProjectPage from '@/pages/project/ProjectPage';
-import LoginPage from '@/pages/auth/LoginPage';
-import RegisterPage from '@/pages/auth/RegisterPage';
-import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
-import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { QueryClientProvider } from '@/app/providers/QueryClientProvider';
+import ProtectedRoute from '@web/app/ProtectedRoute';
+import StudioPage from '@web/pages/studio/StudioPage';
+import ProjectPage from '@web/pages/project/ProjectPage';
+import LoginPage from '@web/pages/auth/LoginPage';
+import RegisterPage from '@web/pages/auth/RegisterPage';
+import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
+import VerifyEmailPage from '@web/pages/auth/VerifyEmailPage';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
 import { Navigate } from 'react-router-dom';
-import { useCurrentUserStore } from '@/stores';
+import { useCurrentUserStore } from '@web/stores';
 
 function makeRouter(initialPath: string) {
   // Re-declare the same route table the production app uses but on a

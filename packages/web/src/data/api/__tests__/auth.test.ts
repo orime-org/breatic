@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { deriveDisplayName } from '@/data/api/auth';
+import { deriveDisplayName } from '@web/data/api/auth';
 
 describe('deriveDisplayName', () => {
   // Canonical happy path — user has set a display name on their

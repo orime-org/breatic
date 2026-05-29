@@ -1,8 +1,8 @@
 import { Upload } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
-import type { Modality } from '@/spaces/canvas/types/node';
+import { Button } from '@web/components/ui/button';
+import type { Modality } from '@web/spaces/canvas/types/node';
 
 interface NodeLoadButtonProps {
   modality: Modality;

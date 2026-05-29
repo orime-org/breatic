@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { NodeToolbar } from '@/spaces/canvas/toolbars/NodeToolbar';
+import { NodeToolbar } from '@web/spaces/canvas/toolbars/NodeToolbar';
 
 describe('NodeToolbar', () => {
   it('renders both zones', () => {

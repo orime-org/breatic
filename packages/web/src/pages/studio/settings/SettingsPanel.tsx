@@ -1,4 +1,4 @@
-import { useCurrentUserStore } from '@/stores';
+import { useCurrentUserStore } from '@web/stores';
 
 /**
  * Settings panel placeholder — V1 surfaces only the viewer's identity. Tabs

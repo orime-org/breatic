@@ -17,9 +17,9 @@ import * as React from 'react';
 import { toast } from 'sonner';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
-import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n/use-translation';
-import type { SpaceType } from '@/spaces';
+import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
+import type { SpaceType } from '@web/spaces';
 
 interface SpaceTabProps {
   id: string;

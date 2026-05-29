@@ -1,16 +1,16 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
-import ProtectedRoute from '@/app/ProtectedRoute';
-import StudioPage from '@/pages/studio/StudioPage';
-import ProjectPage from '@/pages/project/ProjectPage';
-import NoAccessPage from '@/pages/project/access/NoAccessPage';
-import InviteConsumePage from '@/pages/invite/InviteConsumePage';
-import LoginPage from '@/pages/auth/LoginPage';
-import RegisterPage from '@/pages/auth/RegisterPage';
-import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
-import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
-import PrimitivesGallery from '@/pages/_dev/PrimitivesGallery';
+import ProtectedRoute from '@web/app/ProtectedRoute';
+import StudioPage from '@web/pages/studio/StudioPage';
+import ProjectPage from '@web/pages/project/ProjectPage';
+import NoAccessPage from '@web/pages/project/access/NoAccessPage';
+import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
+import LoginPage from '@web/pages/auth/LoginPage';
+import RegisterPage from '@web/pages/auth/RegisterPage';
+import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
+import VerifyEmailPage from '@web/pages/auth/VerifyEmailPage';
+import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
 
 /**
  * Top-level route table.

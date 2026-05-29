@@ -9,9 +9,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import { TopBar } from '@/pages/project/chrome/top-bar/TopBar';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { expectNoA11yViolations } from '@/test-utils/a11y';
+import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 // Chrome buttons (Export / Share / Notifications) wrap their PopoverTrigger
 // in shadcn `Tooltip`, and BellMenu (PR-d follow-up `e73517c`) uses

@@ -1,14 +1,14 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { usePreferencesStore, type ThemeMode } from '@/stores';
-import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
+} from '@web/components/ui/popover';
+import { usePreferencesStore, type ThemeMode } from '@web/stores';
+import { TopBarTextIconButton } from '@web/pages/project/chrome/top-bar/TopBarTextIconButton';
 
 /**
  * Theme switcher · TopBar group A (mock § TopBar v4.0).

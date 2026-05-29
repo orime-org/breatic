@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { StudioNav, type StudioSection } from '@/pages/studio/shell/StudioNav';
+import { StudioNav, type StudioSection } from '@web/pages/studio/shell/StudioNav';
 
 interface StudioShellProps {
   active: StudioSection;

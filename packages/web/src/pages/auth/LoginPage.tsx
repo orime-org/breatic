@@ -2,16 +2,16 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { authApi, deriveDisplayName } from '@/data/api/auth';
-import { ApiException } from '@/data/api/types';
-import { useCurrentUserStore } from '@/stores';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
-import { Label } from '@/components/ui/label';
-import { useTranslation } from '@/i18n/use-translation';
-import { AuthCardShell, AuthLink } from '@/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@/pages/auth/_shared/FieldError';
+import { authApi, deriveDisplayName } from '@web/data/api/auth';
+import { ApiException } from '@web/data/api/types';
+import { useCurrentUserStore } from '@web/stores';
+import { Button } from '@web/components/ui/button';
+import { Input } from '@web/components/ui/input';
+import { PasswordInput } from '@web/components/ui/password-input';
+import { Label } from '@web/components/ui/label';
+import { useTranslation } from '@web/i18n/use-translation';
+import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
 /**
  * Email + password login.

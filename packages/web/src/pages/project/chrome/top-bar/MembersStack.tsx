@@ -2,19 +2,19 @@ import { Plus, Users } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
-import { useUIStore } from '@/stores';
-import { useTranslation } from '@/i18n/use-translation';
-import { membersApi } from '@/data/api/members';
-import type { Member, MemberRole } from '@/data/api/members';
+} from '@web/components/ui/popover';
+import { Separator } from '@web/components/ui/separator';
+import { cn } from '@web/lib/utils';
+import { useUIStore } from '@web/stores';
+import { useTranslation } from '@web/i18n/use-translation';
+import { membersApi } from '@web/data/api/members';
+import type { Member, MemberRole } from '@web/data/api/members';
 
 export type { Member, MemberRole };
 

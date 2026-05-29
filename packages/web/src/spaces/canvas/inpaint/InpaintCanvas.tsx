@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { useInpaintStore } from '@/stores';
+import { useInpaintStore } from '@web/stores';
 
 interface InpaintCanvasProps {
   /** Background image URL — drawn beneath the mask preview. */

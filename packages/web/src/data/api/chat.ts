@@ -1,6 +1,6 @@
-import { sseStream } from '@/data/stream/sse';
-import type { ChatMessage } from '@/pages/project/chat/types';
-import { apiGet } from '@/data/api/request';
+import { sseStream } from '@web/data/stream/sse';
+import type { ChatMessage } from '@web/pages/project/chat/types';
+import { apiGet } from '@web/data/api/request';
 
 export interface ConversationSummary {
   id: string;

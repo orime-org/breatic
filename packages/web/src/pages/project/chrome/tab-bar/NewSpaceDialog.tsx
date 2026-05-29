@@ -2,7 +2,7 @@ import { Clock, FileText, Palette } from 'lucide-react';
 import * as React from 'react';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
-import { Button } from '@/components/ui/button';
+import { Button } from '@web/components/ui/button';
 import {
   Dialog,
   DialogBody,
@@ -12,18 +12,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from '@web/components/ui/dialog';
+import { Input } from '@web/components/ui/input';
+import { Label } from '@web/components/ui/label';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { SPACE_TYPE_LIST, type SpaceType } from '@/spaces';
-import { useTranslation } from '@/i18n/use-translation';
+} from '@web/components/ui/tooltip';
+import { cn } from '@web/lib/utils';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
+import { useTranslation } from '@web/i18n/use-translation';
 
 interface NewSpaceDialogProps {
   trigger: React.ReactNode;

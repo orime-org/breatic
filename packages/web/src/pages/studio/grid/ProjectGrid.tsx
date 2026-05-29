@@ -3,15 +3,15 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { projectsApi } from '@/data/api';
-import type { ProjectSummary } from '@/data/api/projects';
-import { useTranslation } from '@/i18n/use-translation';
-import { useExclusiveOverlay } from '@/lib/use-exclusive-overlay';
-import { useStudioStore } from '@/stores';
+import { projectsApi } from '@web/data/api';
+import type { ProjectSummary } from '@web/data/api/projects';
+import { useTranslation } from '@web/i18n/use-translation';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useStudioStore } from '@web/stores';
 
-import { NewProjectCard } from '@/pages/studio/grid/NewProjectCard';
-import { NewProjectDialog, type SpaceTemplate } from '@/pages/studio/grid/NewProjectDialog';
-import { ProjectCard } from '@/pages/studio/grid/ProjectCard';
+import { NewProjectCard } from '@web/pages/studio/grid/NewProjectCard';
+import { NewProjectDialog, type SpaceTemplate } from '@web/pages/studio/grid/NewProjectDialog';
+import { ProjectCard } from '@web/pages/studio/grid/ProjectCard';
 
 /**
  * Studio project grid — list of project cards + create entry tile.

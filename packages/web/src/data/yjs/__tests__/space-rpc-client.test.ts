@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { sendSpaceRpc } from '@/data/yjs/space-rpc-client';
+import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 
 /**
  * Minimal stub of the slice of HocuspocusProvider that

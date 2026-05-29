@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as api from '@/data/api/index';
+import * as api from '@web/data/api/index';
 
 describe('data/api barrel', () => {
   it('exposes the remaining 13 REST API clients + request helpers (spaces moved to collab RPC 2026-05-23)', () => {

@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react';
 
-import { useTranslation } from '@/i18n/use-translation';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Full-viewport loading screen used while async backend state

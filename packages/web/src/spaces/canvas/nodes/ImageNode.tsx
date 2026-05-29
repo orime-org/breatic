@@ -1,7 +1,7 @@
-import type { ImageNodeData } from '@/spaces/canvas/types/node';
-import { NodeShell } from '@/spaces/canvas/nodes/_shared/NodeShell';
-import { NodeContent } from '@/spaces/canvas/nodes/_shared/NodeContent';
-import { NodePlaceholder } from '@/spaces/canvas/nodes/_shared/NodePlaceholder';
+import type { ImageNodeData } from '@web/spaces/canvas/types/node';
+import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
+import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface ImageNodeProps {
   data: ImageNodeData;

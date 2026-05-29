@@ -11,9 +11,9 @@ import type { ProjectMessageEntry } from '@breatic/shared';
 import {
   ProjectMessagesButton,
   relativeTime,
-} from '@/pages/project/chrome/tab-bar/ProjectMessagesButton';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { useUIStore } from '@/stores/ui';
+} from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useUIStore } from '@web/stores/ui';
 
 // The trigger now wraps `SheetTrigger` in shadcn `Tooltip`, which
 // throws if no `TooltipProvider` is up the tree. App.tsx supplies

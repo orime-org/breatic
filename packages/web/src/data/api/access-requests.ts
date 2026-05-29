@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '@/data/api/request';
+import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 export type AccessRequestStatus = 'pending' | 'approved' | 'rejected';
 export type RequestableRole = 'view' | 'edit';

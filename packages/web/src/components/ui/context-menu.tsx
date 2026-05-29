@@ -2,7 +2,7 @@ import * as React from 'react';
 import * as ContextMenuPrimitive from '@radix-ui/react-context-menu';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@web/lib/utils';
 
 /**
  * shadcn/ui ContextMenu — right-click menu backed by

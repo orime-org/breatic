@@ -1,18 +1,18 @@
 import { ArrowLeft, Plus, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { Logo28 } from '@/pages/project/chrome/top-bar/Logo28';
-import { TitleEditable } from '@/pages/project/chrome/top-bar/TitleEditable';
-import { MembersModal } from '@/pages/project/chrome/top-bar/MembersModal';
-import { MembersStack } from '@/pages/project/chrome/top-bar/MembersStack';
-import { LangSwitcher } from '@/pages/project/chrome/top-bar/LangSwitcher';
-import { ThemeToggle } from '@/pages/project/chrome/top-bar/ThemeToggle';
-import { ExportMenu } from '@/pages/project/chrome/top-bar/ExportMenu';
-import { ShareDialog } from '@/pages/project/chrome/top-bar/ShareDialog';
-import { BellMenu } from '@/pages/project/chrome/top-bar/BellMenu';
-import { RoleTag } from '@/pages/project/chrome/top-bar/RoleTag';
+import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
+import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
+import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
+import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
+import { LangSwitcher } from '@web/pages/project/chrome/top-bar/LangSwitcher';
+import { ThemeToggle } from '@web/pages/project/chrome/top-bar/ThemeToggle';
+import { ExportMenu } from '@web/pages/project/chrome/top-bar/ExportMenu';
+import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
+import { BellMenu } from '@web/pages/project/chrome/top-bar/BellMenu';
+import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 
-import type { ProjectRole } from '@/stores';
+import type { ProjectRole } from '@web/stores';
 
 interface TopBarProps {
   projectId: string;

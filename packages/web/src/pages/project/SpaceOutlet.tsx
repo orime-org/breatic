@@ -1,4 +1,4 @@
-import { SPACE_TYPES, type SpaceType } from '@/spaces';
+import { SPACE_TYPES, type SpaceType } from '@web/spaces';
 
 interface SpaceOutletProps {
   projectId: string;

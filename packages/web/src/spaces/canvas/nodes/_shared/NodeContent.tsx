@@ -1,7 +1,7 @@
 import * as React from 'react';
 
-import { Skeleton } from '@/components/ui/skeleton';
-import type { NodeStatus } from '@/spaces/canvas/types/node';
+import { Skeleton } from '@web/components/ui/skeleton';
+import type { NodeStatus } from '@web/spaces/canvas/types/node';
 
 interface NodeContentProps {
   status: NodeStatus;
