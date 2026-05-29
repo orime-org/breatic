@@ -19,6 +19,7 @@
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
+    "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",

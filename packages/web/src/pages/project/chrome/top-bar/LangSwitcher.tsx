@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { getLocale, type Locale } from '@breatic/shared/i18n';
+import { getLocale, type Locale } from '@breatic/shared';
 import { TopBarTextIconButton } from '@/pages/project/chrome/top-bar/TopBarTextIconButton';
 import { changeLocale } from '@/i18n/locale-bootstrap';
 import { useTranslation } from '@/i18n/use-translation';

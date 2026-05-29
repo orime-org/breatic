@@ -5,7 +5,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 /**
  * User preferences store — theme only, persisted to localStorage.
  *
- * `language` lived here briefly but moved to `@breatic/shared/i18n` as
+ * `language` lived here briefly but moved to `@breatic/shared` as
  * the single source of truth (2026-05-22, PR follow-up to #117). The
  * LangSwitcher now calls `changeLocale()` from `@/i18n/locale-bootstrap`
  * directly, which persists to `localStorage["breatic.locale"]` and

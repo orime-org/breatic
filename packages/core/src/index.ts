@@ -97,7 +97,7 @@ export { loadAgents, getAgent, listAgents } from "@core/agent/agent-loader.js";
 export type { AgentDefinition } from "@core/agent/agent-loader.js";
 export { extractPromptText } from "@core/agent/extract-prompt.js";
 
-// ── i18n (node-side adapter; engine lives in @breatic/shared/i18n) ──
+// ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 
 // ── Utilities ────────────────────────────────────────────────────

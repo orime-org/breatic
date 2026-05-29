@@ -11,7 +11,7 @@
  * tsc-only build).
  *
  * The i18n ENGINE itself (`t()`, message catalog, ICU formatting, the
- * `setLocale*` hooks) stays in `@breatic/shared/i18n` and is shared by
+ * `setLocale*` hooks) stays in `@breatic/shared` and is shared by
  * both web and node — this module is only the node-side *adapter*
  * (how locales get loaded from disk + how the active locale is
  * resolved per request). One engine, two platform adapters.
@@ -24,7 +24,7 @@ import {
   setLocaleMessages,
   setLocaleResolver,
   type Locale,
-} from "@breatic/shared/i18n";
+} from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const _als = new AsyncLocalStorage<Locale>();

@@ -8,7 +8,7 @@ import {
   setLocaleMessages,
   t,
   type Locale,
-} from '@breatic/shared/i18n';
+} from '@breatic/shared';
 import { useTranslation } from '@/i18n/use-translation';
 
 import en from '../../../../../locales/en.json';
