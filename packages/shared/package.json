@@ -19,8 +19,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch --preserveWatchOutput",
+    "build": "tsup src/index.ts src/yjs-doc-names.ts src/i18n/index.ts --format esm --clean",
+    "dev": "tsup src/index.ts src/yjs-doc-names.ts src/i18n/index.ts --format esm --watch",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
     "vitest": "^3.0.0"
   }
 }
