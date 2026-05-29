@@ -22,7 +22,7 @@
 
 import type Redis from "ioredis";
 import type { NodeEvent } from "@breatic/shared";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 /** Stream key for task lifecycle events. */
 export function taskEventsStreamKey(): string {

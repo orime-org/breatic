@@ -12,7 +12,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
-} from "./api.js";
+} from "@shared/schemas/api.js";
 
 export type {
   RegisterInput,
@@ -26,4 +26,4 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
-} from "./api.js";
+} from "@shared/schemas/api.js";

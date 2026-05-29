@@ -20,15 +20,15 @@
  *      `MINI_TOOL_REGISTRY`.
  */
 
-import { createJobTempDir, cleanupJobTempDir } from "./runtime/tempdir.js";
-import videoCrop from "./video/crop.js";
-import videoSpeed from "./video/speed.js";
-import videoCut from "./video/cut.js";
-import videoAdjust from "./video/adjust.js";
-import videoAudioDenoise from "./video/audioDenoise.js";
-import videoStabilization from "./video/stabilization.js";
-import videoSceneExtension from "./video/sceneExtension.js";
-import videoHdrConversion from "./video/hdrConversion.js";
+import { createJobTempDir, cleanupJobTempDir } from "@worker/handlers/local/runtime/tempdir.js";
+import videoCrop from "@worker/handlers/local/video/crop.js";
+import videoSpeed from "@worker/handlers/local/video/speed.js";
+import videoCut from "@worker/handlers/local/video/cut.js";
+import videoAdjust from "@worker/handlers/local/video/adjust.js";
+import videoAudioDenoise from "@worker/handlers/local/video/audioDenoise.js";
+import videoStabilization from "@worker/handlers/local/video/stabilization.js";
+import videoSceneExtension from "@worker/handlers/local/video/sceneExtension.js";
+import videoHdrConversion from "@worker/handlers/local/video/hdrConversion.js";
 
 /**
  * Per-output payload. One entry per resulting node.

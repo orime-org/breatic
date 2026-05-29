@@ -7,8 +7,8 @@
  * API reference: https://platform.minimax.io/docs/api-reference/music-generation
  */
 
-import type { ResolvedModel } from "../../shared.js";
-import { bearerHeaders } from "../../http.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import { bearerHeaders } from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
 
 /**

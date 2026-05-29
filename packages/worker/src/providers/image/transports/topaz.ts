@@ -10,8 +10,8 @@
  * API docs: https://developer.topazlabs.com/image-api/
  */
 
-import type { ResolvedModel } from "../../shared.js";
-import { requestWithRetry, pollUntilDone, extractNested } from "../../http.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
+import { requestWithRetry, pollUntilDone, extractNested } from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
 
 /**

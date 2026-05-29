@@ -12,12 +12,12 @@
 
 import { tool, generateText, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel, resolveProvider } from "../llm.js";
-import { getAgent, listAgents } from "../agent-loader.js";
-import { getSkillRegistry } from "../skills-loader.js";
-import { tryGetContext } from "../../infra/request-context.js";
-import { env } from "../../config/env.js";
-import * as creditService from "../../modules/credit.service.js";
+import { getModel, resolveProvider } from "@core/agent/llm.js";
+import { getAgent, listAgents } from "@core/agent/agent-loader.js";
+import { getSkillRegistry } from "@core/agent/skills-loader.js";
+import { tryGetContext } from "@core/infra/request-context.js";
+import { env } from "@core/config/env.js";
+import * as creditService from "@core/modules/credit.service.js";
 
 const agentList = listAgents();
 const agentNames = agentList.map((a) => a.name).join(", ");
@@ -65,7 +65,7 @@ export const spawnTool = tool({
     }
 
     // Lazy import to avoid circular dependency (spawn → index → spawn)
-    const { buildToolSet } = await import("./index.js");
+    const { buildToolSet } = await import("@core/agent/tools/index.js");
 
     // Build system prompt from agent definition
     let system = agentDef.systemPrompt;

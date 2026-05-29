@@ -17,9 +17,9 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { projects } from "../db/schema.js";
-import * as projectMembersRepo from "./projectMembers.repo.js";
+import { db } from "@core/db/client.js";
+import { projects } from "@core/db/schema.js";
+import * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
 import type { ProjectRole } from "@breatic/shared";
 
 /**

@@ -17,12 +17,12 @@
  * Models served: (none currently — retained for provider infrastructure)
  */
 
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import {
   bearerHeaders,
   pollUntilDone,
   extractNested,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Build DashScope image generation request body.

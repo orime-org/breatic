@@ -7,8 +7,8 @@
  */
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { nodeHistory } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { nodeHistory } from "@core/db/schema.js";
 import type { NodeHistoryEntity } from "@breatic/shared";
 
 /** Convert a Drizzle row to a NodeHistoryEntity. */

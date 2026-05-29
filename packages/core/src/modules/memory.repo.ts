@@ -8,7 +8,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
+import { db } from "@core/db/client.js";
 import {
   conversationMemories,
   memoryHistoryEntries,
@@ -16,8 +16,8 @@ import {
   userMemoryEntries,
   projectMemories,
   projectMemoryEntries,
-} from "../db/schema.js";
-import { ConflictError } from "../errors.js";
+} from "@core/db/schema.js";
+import { ConflictError } from "@core/errors.js";
 
 // ── Conversation Memory ──────────────────────────────────────────────
 

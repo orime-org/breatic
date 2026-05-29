@@ -12,7 +12,7 @@
  * Keeping sentinel decode out of `main-agent.ts` lets us unit-test the
  * parse logic in isolation without mocking the AI SDK stream.
  */
-import { SSEEventType } from "./types.js";
+import { SSEEventType } from "@/agent/types.js";
 
 export const ASK_USER_SENTINEL = "__ASK_USER__";
 export const ASK_USER_CHOICE_SENTINEL = "__ASK_USER_CHOICE__";

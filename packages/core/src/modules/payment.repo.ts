@@ -3,8 +3,8 @@
  */
 
 import { eq, and, desc } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { payments } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { payments } from "@core/db/schema.js";
 import type { PaymentEntity } from "@breatic/shared";
 
 function toEntity(row: typeof payments.$inferSelect): PaymentEntity {

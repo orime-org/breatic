@@ -5,8 +5,8 @@
  */
 
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { customSkills, skillInstalls } from "../db/schema.js";
+import { db } from "@core/db/client.js";
+import { customSkills, skillInstalls } from "@core/db/schema.js";
 
 type SkillRow = typeof customSkills.$inferSelect;
 type InstallRow = typeof skillInstalls.$inferSelect;

@@ -5,7 +5,11 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/src/*"],
+      "@core/*": ["../core/src/*"],
+      "@collab/*": ["../collab/src/*"],
+      "@worker/*": ["../worker/src/*"]
     }
   },
   "include": ["src/**/*.ts"]

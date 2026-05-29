@@ -18,8 +18,8 @@ import {
 } from "@breatic/core";
 
 initLogger("worker");
-import { runTask } from "./handlers.js";
-import type { TaskJobData } from "./handlers.js";
+import { runTask } from "@worker/handlers.js";
+import type { TaskJobData } from "@worker/handlers.js";
 
 const HEALTH_PORT = Number(process.env["WORKER_HEALTH_PORT"] ?? "9101");
 

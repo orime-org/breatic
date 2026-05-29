@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "./env.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const workerConfigSchema = z.object({
   concurrency: z.number().int().positive().default(5),

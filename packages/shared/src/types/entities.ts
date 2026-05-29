@@ -6,7 +6,7 @@
  * inside the server package.
  */
 
-import type { ProjectRole } from "./role.js";
+import type { ProjectRole } from "@shared/types/role.js";
 
 /** User entity (excludes hashed_password for safety). */
 export interface UserEntity {

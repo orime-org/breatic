@@ -9,11 +9,11 @@
 
 import { streamText, stepCountIs } from "ai";
 import { t } from "@breatic/shared";
-import { getModel } from "../agent/llm.js";
-import { getModelForTool, getPromptForTool } from "../config/text-tools.js";
-import { env } from "../config/env.js";
-import * as creditService from "./credit.service.js";
-import { getRedis } from "../infra/redis.js";
+import { getModel } from "@core/agent/llm.js";
+import { getModelForTool, getPromptForTool } from "@core/config/text-tools.js";
+import { env } from "@core/config/env.js";
+import * as creditService from "@core/modules/credit.service.js";
+import { getRedis } from "@core/infra/redis.js";
 
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =

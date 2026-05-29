@@ -9,7 +9,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { tool } from "ai";
 import { z } from "zod";
-import { assertInSandbox, SandboxError } from "./fs-sandbox.js";
+import { assertInSandbox, SandboxError } from "@core/agent/tools/fs-sandbox.js";
 
 /**
  * Edit a file by replacing `old_text` with `new_text`.

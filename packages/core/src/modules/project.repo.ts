@@ -15,7 +15,7 @@
 
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db } from "../db/client.js";
+import { db } from "@core/db/client.js";
 import {
   projects,
   studios,
@@ -26,8 +26,8 @@ import {
   projectMemoryEntries,
   tasks,
   yjsDocuments,
-} from "../db/schema.js";
-import { cascadeDeleteConversations } from "./conversation.repo.js";
+} from "@core/db/schema.js";
+import { cascadeDeleteConversations } from "@core/modules/conversation.repo.js";
 import type { ProjectEntity } from "@breatic/shared";
 
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {

@@ -10,10 +10,10 @@
  */
 
 import { join } from "node:path";
-import type { LocalHandlerFn, LocalHandlerResult } from "../index.js";
-import { downloadToTempDir } from "../runtime/download.js";
-import { uploadTempFileToStorage } from "../runtime/upload.js";
-import { spawnCollected } from "../runtime/spawn.js";
+import type { LocalHandlerFn, LocalHandlerResult } from "@worker/handlers/local/index.js";
+import { downloadToTempDir } from "@worker/handlers/local/runtime/download.js";
+import { uploadTempFileToStorage } from "@worker/handlers/local/runtime/upload.js";
+import { spawnCollected } from "@worker/handlers/local/runtime/spawn.js";
 
 interface DenoiseParams {
   video: string;

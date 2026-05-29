@@ -12,7 +12,7 @@
  * is remove-bg / upscale / inpaint per `02-mini-tool-system.md` §2.2)
  */
 
-import type { ModelFamily } from "../../shared.js";
+import type { ModelFamily } from "@worker/providers/shared.js";
 
 const RESOLUTION_PX: Readonly<Record<string, number>> = {
   "0.5k": 512,

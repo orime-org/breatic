@@ -23,13 +23,13 @@
  * decision is rolled back.
  */
 
-import { db } from "../db/client.js";
-import * as notificationRepo from "./notification.repo.js";
-import * as notificationService from "./notification.service.js";
-import * as projectMembersRepo from "./projectMembers.repo.js";
-import { NotFoundError, ForbiddenError, ValidationError } from "../errors.js";
+import { db } from "@core/db/client.js";
+import * as notificationRepo from "@core/modules/notification.repo.js";
+import * as notificationService from "@core/modules/notification.service.js";
+import * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+import { NotFoundError, ForbiddenError, ValidationError } from "@core/errors.js";
 import { t } from "@breatic/shared";
-import type { Notification } from "./notification.repo.js";
+import type { Notification } from "@core/modules/notification.repo.js";
 
 interface RoleUpgradeRequestInput {
   ownerUserId: string;

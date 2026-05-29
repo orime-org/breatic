@@ -8,7 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getStorageAdapter, storageKey } from "./infra/storage/index.js";
+import { getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
 
 const execFileAsync = promisify(execFile);
 

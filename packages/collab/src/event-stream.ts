@@ -18,7 +18,7 @@
  */
 
 import { createRedisClient } from "@breatic/core";
-import { createLogger } from "./logger.js";
+import { createLogger } from "@collab/logger.js";
 
 const logger = createLogger("event-stream");
 

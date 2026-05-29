@@ -19,23 +19,23 @@ import {
   listAvailableModels,
   type ModelFamily,
   type Transport,
-} from "../shared.js";
+} from "@worker/providers/shared.js";
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import kling from "./models/kling.js";
-import wan from "./models/wan.js";
-import seedance from "./models/seedance.js";
-import veo from "./models/veo.js";
-import omnihuman from "./models/omnihuman.js";
-import post from "./models/post.js";
+import kling from "@worker/providers/video/models/kling.js";
+import wan from "@worker/providers/video/models/wan.js";
+import seedance from "@worker/providers/video/models/seedance.js";
+import veo from "@worker/providers/video/models/veo.js";
+import omnihuman from "@worker/providers/video/models/omnihuman.js";
+import post from "@worker/providers/video/models/post.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as wavespeedTransport from "./transports/wavespeed.js";
-import * as klingaiTransport from "./transports/klingai.js";
-import * as byteplusTransport from "./transports/byteplus.js";
-import * as googleTransport from "./transports/google.js";
+import * as wavespeedTransport from "@worker/providers/video/transports/wavespeed.js";
+import * as klingaiTransport from "@worker/providers/video/transports/klingai.js";
+import * as byteplusTransport from "@worker/providers/video/transports/byteplus.js";
+import * as googleTransport from "@worker/providers/video/transports/google.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

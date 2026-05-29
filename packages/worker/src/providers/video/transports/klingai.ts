@@ -20,12 +20,12 @@
  */
 
 import { createHmac } from "node:crypto";
-import type { ResolvedModel } from "../../shared.js";
+import type { ResolvedModel } from "@worker/providers/shared.js";
 import {
   requestWithRetry,
   pollUntilDone,
   extractNested,
-} from "../../http.js";
+} from "@worker/providers/http.js";
 
 /**
  * Generate a JWT token from an `access_key:secret_key` string.

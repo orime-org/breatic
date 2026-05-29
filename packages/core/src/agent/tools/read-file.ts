@@ -9,7 +9,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { tool } from "ai";
 import { z } from "zod";
-import { assertInSandbox, SandboxError } from "./fs-sandbox.js";
+import { assertInSandbox, SandboxError } from "@core/agent/tools/fs-sandbox.js";
 
 /** Maximum file size in bytes (~128 KB). */
 const MAX_SIZE = 128 * 1024;

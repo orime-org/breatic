@@ -24,8 +24,8 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
-import { startStreamConsumer } from "./event-stream.js";
-import { createLogger } from "./logger.js";
+import { startStreamConsumer } from "@collab/event-stream.js";
+import { createLogger } from "@collab/logger.js";
 
 const logger = createLogger("task-listener");
 

@@ -19,7 +19,7 @@
  */
 
 import Redis, { type RedisOptions } from "ioredis";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 /**
  * Production-grade ioredis client factory. **Every long-lived

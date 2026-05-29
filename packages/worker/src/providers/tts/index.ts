@@ -18,20 +18,20 @@ import {
   listAvailableModels,
   type ModelFamily,
   type Transport,
-} from "../shared.js";
+} from "@worker/providers/shared.js";
 
 // ── Model Families ──────────────────────────────────────────────────
 
-import elevenlabs from "./models/elevenlabs.js";
-import fish from "./models/fish.js";
-import f5 from "./models/f5.js";
+import elevenlabs from "@worker/providers/tts/models/elevenlabs.js";
+import fish from "@worker/providers/tts/models/fish.js";
+import f5 from "@worker/providers/tts/models/f5.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
-import * as elevenlabsTransport from "./transports/elevenlabs.js";
-import * as fishTransport from "./transports/fish.js";
-import * as wavespeedTransport from "./transports/wavespeed.js";
-import * as falTransport from "./transports/fal.js";
+import * as elevenlabsTransport from "@worker/providers/tts/transports/elevenlabs.js";
+import * as fishTransport from "@worker/providers/tts/transports/fish.js";
+import * as wavespeedTransport from "@worker/providers/tts/transports/wavespeed.js";
+import * as falTransport from "@worker/providers/tts/transports/fal.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 

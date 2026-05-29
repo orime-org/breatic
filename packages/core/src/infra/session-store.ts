@@ -6,7 +6,7 @@
  */
 
 import type Redis from "ioredis";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 

@@ -15,7 +15,7 @@
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Options, type Sql } from "postgres";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 /**
  * Production-grade postgres.js client factory. **Every long-lived

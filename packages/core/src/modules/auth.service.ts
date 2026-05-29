@@ -8,26 +8,26 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
-import * as userRepo from "./user.repo.js";
-import * as studioService from "./studio.service.js";
+import * as userRepo from "@core/modules/user.repo.js";
+import * as studioService from "@core/modules/studio.service.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
   verifyRecoveryCode,
-} from "./recovery-code.service.js";
-import { getRedis } from "../infra/redis.js";
-import { sendMail, type SendMailResult } from "../infra/mailer.js";
-import { env } from "../config/env.js";
+} from "@core/modules/recovery-code.service.js";
+import { getRedis } from "@core/infra/redis.js";
+import { sendMail, type SendMailResult } from "@core/infra/mailer.js";
+import { env } from "@core/config/env.js";
 import {
   setSession,
   getSession,
   deleteSession,
   deleteAllSessions,
-} from "../infra/session-store.js";
+} from "@core/infra/session-store.js";
 import {
   ConflictError,
   UnauthorizedError,
-} from "../errors.js";
+} from "@core/errors.js";
 import { t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 

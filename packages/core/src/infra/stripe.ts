@@ -6,7 +6,7 @@
  */
 
 import Stripe from "stripe";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 let _client: Stripe | null = null;
 

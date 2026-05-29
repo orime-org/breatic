@@ -5,14 +5,14 @@
  * Webhook handler is idempotent (safe to replay).
  */
 
-import * as paymentRepo from "./payment.repo.js";
-import * as userRepo from "./user.repo.js";
-import * as creditRepo from "./credit.repo.js";
-import { getStripeClient } from "../infra/stripe.js";
-import { findTierByName, getPricingTiers } from "../config/pricing.js";
+import * as paymentRepo from "@core/modules/payment.repo.js";
+import * as userRepo from "@core/modules/user.repo.js";
+import * as creditRepo from "@core/modules/credit.repo.js";
+import { getStripeClient } from "@core/infra/stripe.js";
+import { findTierByName, getPricingTiers } from "@core/config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
 import { t } from "@breatic/shared";
-import { AppError, NotFoundError, ForbiddenError } from "../errors.js";
+import { AppError, NotFoundError, ForbiddenError } from "@core/errors.js";
 
 /**
  * Create a Stripe Checkout session for purchasing credits.

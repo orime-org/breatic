@@ -12,18 +12,18 @@
  */
 
 // ── Database ─────────────────────────────────────────────────────
-export { db, rawPg, closeDb, createPgClient } from "./db/client.js";
-export { runMigrations } from "./db/migrate.js";
-export * as schema from "./db/schema.js";
+export { db, rawPg, closeDb, createPgClient } from "@core/db/client.js";
+export { runMigrations } from "@core/db/migrate.js";
+export * as schema from "@core/db/schema.js";
 
 // ── Config ───────────────────────────────────────────────────────
-export { env, MONOREPO_ROOT } from "./config/env.js";
-export { getWorkerConfig } from "./config/worker.js";
-export type { WorkerConfig } from "./config/worker.js";
-export { getAgentConfig } from "./config/loader.js";
-export * as modelCatalog from "./config/model-catalog.js";
-export { getPricingTiers, findTierByName, findTierByPriceId } from "./config/pricing.js";
-export { getModelForTool, getPromptForTool } from "./config/text-tools.js";
+export { env, MONOREPO_ROOT } from "@core/config/env.js";
+export { getWorkerConfig } from "@core/config/worker.js";
+export type { WorkerConfig } from "@core/config/worker.js";
+export { getAgentConfig } from "@core/config/loader.js";
+export * as modelCatalog from "@core/config/model-catalog.js";
+export { getPricingTiers, findTierByName, findTierByPriceId } from "@core/config/pricing.js";
+export { getModelForTool, getPromptForTool } from "@core/config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -34,75 +34,75 @@ export {
   getStreamRedis,
   closeStreamRedis,
   createRedisClient,
-} from "./infra/redis.js";
-export { checkRateLimit } from "./infra/rate-limiter.js";
+} from "@core/infra/redis.js";
+export { checkRateLimit } from "@core/infra/rate-limiter.js";
 export {
   startHealthServer,
   type HealthCheck,
   type HealthServerOptions,
-} from "./infra/health-server.js";
-export { checkInfraReady } from "./infra/connectivity-check.js";
-export { InfraNotReadyError } from "./infra/errors.js";
-export { createQueue, createWorker, defaultJobOpts, closeQueues } from "./infra/queue.js";
-export { downloadAndStore, getStorageAdapter, storageKey } from "./infra/storage/index.js";
-export { publishNodeEvent } from "./infra/event-stream.js";
-export { publishMembersChanged } from "./infra/control-events.js";
-export { sendMail } from "./infra/mailer.js";
-export type { SendMailResult, SendMailOptions } from "./infra/mailer.js";
-export { setSession, getSession, deleteSession, deleteAllSessions } from "./infra/session-store.js";
-export { runWithContext, tryGetContext, getContext } from "./infra/request-context.js";
-export { getStripeClient, verifyWebhookSignature } from "./infra/stripe.js";
+} from "@core/infra/health-server.js";
+export { checkInfraReady } from "@core/infra/connectivity-check.js";
+export { InfraNotReadyError } from "@core/infra/errors.js";
+export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
+export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
+export { publishNodeEvent } from "@core/infra/event-stream.js";
+export { publishMembersChanged } from "@core/infra/control-events.js";
+export { sendMail } from "@core/infra/mailer.js";
+export type { SendMailResult, SendMailOptions } from "@core/infra/mailer.js";
+export { setSession, getSession, deleteSession, deleteAllSessions } from "@core/infra/session-store.js";
+export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
+export { getStripeClient, verifyWebhookSignature } from "@core/infra/stripe.js";
 
 // ── Services (all business logic) ────────────────────────────────
-export * as taskService from "./modules/task.service.js";
-export * as taskRepo from "./modules/task.repo.js";
-export * as creditService from "./modules/credit.service.js";
-export * as creditRepo from "./modules/credit.repo.js";
-export * as nodeHistoryService from "./modules/node-history.service.js";
-export * as nodeHistoryRepo from "./modules/node-history.repo.js";
-export * as userRepo from "./modules/user.repo.js";
-export * as authService from "./modules/auth.service.js";
-export * as conversationService from "./modules/conversation.service.js";
-export * as conversationRepo from "./modules/conversation.repo.js";
-export * as memoryService from "./modules/memory.service.js";
-export * as memoryRepo from "./modules/memory.repo.js";
-export * as paymentService from "./modules/payment.service.js";
-export * as projectService from "./modules/project.service.js";
-export * as projectRepo from "./modules/project.repo.js";
-export * as yjsDocRepo from "./modules/yjs-doc.repo.js";
-export * as projectAuthService from "./modules/projectAuth.service.js";
-export * as projectMembersService from "./modules/projectMembers.service.js";
-export * as projectMembersRepo from "./modules/projectMembers.repo.js";
-export * as accessRequestService from "./modules/accessRequest.service.js";
-export * as accessRequestRepo from "./modules/accessRequest.repo.js";
-export * as shareLinkService from "./modules/shareLink.service.js";
-export * as shareLinkRepo from "./modules/shareLink.repo.js";
-export * as accessRequestMail from "./modules/access-request-mail.js";
-export * as notificationService from "./modules/notification.service.js";
-export * as notificationRepo from "./modules/notification.repo.js";
-export * as roleUpgradeRequestService from "./modules/roleUpgradeRequest.service.js";
-export * as studioService from "./modules/studio.service.js";
-export * as studioRepo from "./modules/studio.repo.js";
-export * as skillService from "./modules/skill.service.js";
-export * as textToolService from "./modules/text-tool.service.js";
-export * as attachmentService from "./modules/conversation-attachment.service.js";
+export * as taskService from "@core/modules/task.service.js";
+export * as taskRepo from "@core/modules/task.repo.js";
+export * as creditService from "@core/modules/credit.service.js";
+export * as creditRepo from "@core/modules/credit.repo.js";
+export * as nodeHistoryService from "@core/modules/node-history.service.js";
+export * as nodeHistoryRepo from "@core/modules/node-history.repo.js";
+export * as userRepo from "@core/modules/user.repo.js";
+export * as authService from "@core/modules/auth.service.js";
+export * as conversationService from "@core/modules/conversation.service.js";
+export * as conversationRepo from "@core/modules/conversation.repo.js";
+export * as memoryService from "@core/modules/memory.service.js";
+export * as memoryRepo from "@core/modules/memory.repo.js";
+export * as paymentService from "@core/modules/payment.service.js";
+export * as projectService from "@core/modules/project.service.js";
+export * as projectRepo from "@core/modules/project.repo.js";
+export * as yjsDocRepo from "@core/modules/yjs-doc.repo.js";
+export * as projectAuthService from "@core/modules/projectAuth.service.js";
+export * as projectMembersService from "@core/modules/projectMembers.service.js";
+export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+export * as accessRequestService from "@core/modules/accessRequest.service.js";
+export * as accessRequestRepo from "@core/modules/accessRequest.repo.js";
+export * as shareLinkService from "@core/modules/shareLink.service.js";
+export * as shareLinkRepo from "@core/modules/shareLink.repo.js";
+export * as accessRequestMail from "@core/modules/access-request-mail.js";
+export * as notificationService from "@core/modules/notification.service.js";
+export * as notificationRepo from "@core/modules/notification.repo.js";
+export * as roleUpgradeRequestService from "@core/modules/roleUpgradeRequest.service.js";
+export * as studioService from "@core/modules/studio.service.js";
+export * as studioRepo from "@core/modules/studio.repo.js";
+export * as skillService from "@core/modules/skill.service.js";
+export * as textToolService from "@core/modules/text-tool.service.js";
+export * as attachmentService from "@core/modules/conversation-attachment.service.js";
 
 // ── Agent ────────────────────────────────────────────────────────
-export { getModel, resolveProvider } from "./agent/llm.js";
-export { buildToolSet, DEFAULT_TOOLS } from "./agent/tools/index.js";
-export { getSkillRegistry, SkillRegistry } from "./agent/skills-loader.js";
-export { listAvailableModels } from "./config/model-catalog.js";
-export type { SkillModelInfo } from "./config/model-catalog.js";
-export { loadAgents, getAgent, listAgents } from "./agent/agent-loader.js";
-export type { AgentDefinition } from "./agent/agent-loader.js";
-export { extractPromptText } from "./agent/extract-prompt.js";
+export { getModel, resolveProvider } from "@core/agent/llm.js";
+export { buildToolSet, DEFAULT_TOOLS } from "@core/agent/tools/index.js";
+export { getSkillRegistry, SkillRegistry } from "@core/agent/skills-loader.js";
+export { listAvailableModels } from "@core/config/model-catalog.js";
+export type { SkillModelInfo } from "@core/config/model-catalog.js";
+export { loadAgents, getAgent, listAgents } from "@core/agent/agent-loader.js";
+export type { AgentDefinition } from "@core/agent/agent-loader.js";
+export { extractPromptText } from "@core/agent/extract-prompt.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared/i18n) ──
-export { loadLocales, runWithLocale } from "./i18n/locale-loader.js";
+export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 
 // ── Utilities ────────────────────────────────────────────────────
-export { extractVideoCover } from "./video-cover.js";
-export { logger, initLogger } from "./logger.js";
+export { extractVideoCover } from "@core/video-cover.js";
+export { logger, initLogger } from "@core/logger.js";
 export {
   AppError,
   NotFoundError,
@@ -111,8 +111,8 @@ export {
   ConflictLockedError,
   ValidationError,
   UnauthorizedError,
-} from "./errors.js";
-export type { ConflictLockedDetail } from "./errors.js";
+} from "@core/errors.js";
+export type { ConflictLockedDetail } from "@core/errors.js";
 
 // Canvas node Redis lock (spec §10.15.2)
 export {
@@ -122,4 +122,4 @@ export {
   readCanvasNodeLockHolder,
   verifyCanvasNodeLock,
   releaseCanvasNodeLock,
-} from "./infra/canvas-lock.js";
+} from "@core/infra/canvas-lock.js";

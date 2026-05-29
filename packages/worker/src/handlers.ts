@@ -11,8 +11,8 @@
 
 import type { Job } from "bullmq";
 import { generateText, stepCountIs } from "ai";
-import { resolveMiniToolEntry } from "./mini-tool-registry.js";
-import { runLocalHandler } from "./handlers/local/index.js";
+import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
+import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/core";
 import { buildToolSet } from "@breatic/core";
 import { getSkillRegistry } from "@breatic/core";
@@ -778,7 +778,7 @@ async function runUnderstand(
     cleanParams.audio = sourceUrl;
   }
 
-  const { generateAsync } = await import("./providers/understand/index.js");
+  const { generateAsync } = await import("@worker/providers/understand/index.js");
   const result = await generateAsync(prompt, modelName, cleanParams);
   const cost = (result.cost as number) ?? 0;
   const credits = cost * 100 * env.CREDIT_MULTIPLIER;
@@ -875,11 +875,11 @@ async function importProvider(taskType: string): Promise<{
     generateAsync: generate,
   });
   switch (modality) {
-    case "image": { const m = await import("./providers/image/index.js"); return wrap(m.validateImageParams, m.generateAsync); }
-    case "video": { const m = await import("./providers/video/index.js"); return wrap(m.validateVideoParams, m.generateAsync); }
-    case "audio": { const m = await import("./providers/audio/index.js"); return wrap(m.validateAudioParams, m.generateAsync); }
-    case "tts": { const m = await import("./providers/tts/index.js"); return wrap(m.validateTtsParams, m.generateAsync); }
-    case "three-d": { const m = await import("./providers/three-d/index.js"); return wrap(m.validateThreeDParams, m.generateAsync); }
+    case "image": { const m = await import("@worker/providers/image/index.js"); return wrap(m.validateImageParams, m.generateAsync); }
+    case "video": { const m = await import("@worker/providers/video/index.js"); return wrap(m.validateVideoParams, m.generateAsync); }
+    case "audio": { const m = await import("@worker/providers/audio/index.js"); return wrap(m.validateAudioParams, m.generateAsync); }
+    case "tts": { const m = await import("@worker/providers/tts/index.js"); return wrap(m.validateTtsParams, m.generateAsync); }
+    case "three-d": { const m = await import("@worker/providers/three-d/index.js"); return wrap(m.validateThreeDParams, m.generateAsync); }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);
   }
 }

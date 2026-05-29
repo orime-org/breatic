@@ -2,13 +2,13 @@ export {
   Environment,
   TaskStatus,
   StorageProvider,
-} from "./constants/index.js";
+} from "@shared/constants/index.js";
 
 export type {
   Environment as EnvironmentType,
   TaskStatus as TaskStatusType,
   StorageProvider as StorageProviderType,
-} from "./constants/index.js";
+} from "@shared/constants/index.js";
 
 export type {
   UserEntity,
@@ -44,7 +44,7 @@ export type {
   SpaceType,
   Space,
   MembersChangedEvent,
-} from "./types/index.js";
+} from "@shared/types/index.js";
 
 export {
   ROLE_RANK,
@@ -63,7 +63,7 @@ export {
   MessagesClearPayloadSchema,
   ProjectMessageKindSchema,
   ProjectMessageEntrySchema,
-} from "./types/index.js";
+} from "@shared/types/index.js";
 
 export type {
   SpaceRpcRequest,
@@ -77,13 +77,13 @@ export type {
   MessagesClearPayload,
   ProjectMessageKind,
   ProjectMessageEntry,
-} from "./types/index.js";
+} from "@shared/types/index.js";
 
 export type {
   ApiResponse,
   PaginatedResponse,
   ApiError,
-} from "./types/api.js";
+} from "@shared/types/api.js";
 
 // ── API Schemas ─────────────────────────────────────────────────────
 export {
@@ -98,7 +98,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
-} from "./schemas/index.js";
+} from "@shared/schemas/index.js";
 
 export type {
   RegisterInput,
@@ -112,7 +112,7 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
-} from "./schemas/index.js";
+} from "@shared/schemas/index.js";
 
 export {
   t,
@@ -122,8 +122,8 @@ export {
   setLocaleMessages,
   onLocaleChange,
   resetLocales,
-} from "./i18n/index.js";
-export type { Locale } from "./i18n/index.js";
+} from "@shared/i18n/index.js";
+export type { Locale } from "@shared/i18n/index.js";
 
 export {
   projectMetaDocName,
@@ -132,13 +132,13 @@ export {
   timelineSpaceDocName,
   parseDocName,
   isProjectScopedDocName,
-} from "./yjs-doc-names.js";
-export type { DocKind, ParsedDocName } from "./yjs-doc-names.js";
+} from "@shared/yjs-doc-names.js";
+export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
   defaultAdjustValue,
   isAdjustValueNeutral,
   parseAdjustValue,
   buildAdjustVideoFilter,
-} from "./adjust-value.js";
-export type { AdjustValue } from "./adjust-value.js";
+} from "@shared/adjust-value.js";
+export type { AdjustValue } from "@shared/adjust-value.js";

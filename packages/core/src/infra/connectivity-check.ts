@@ -13,10 +13,10 @@
  */
 
 import { sql } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { getRedis } from "./redis.js";
-import { env } from "../config/env.js";
-import { InfraNotReadyError } from "./errors.js";
+import { db } from "@core/db/client.js";
+import { getRedis } from "@core/infra/redis.js";
+import { env } from "@core/config/env.js";
+import { InfraNotReadyError } from "@core/infra/errors.js";
 
 /**
  * Check that PostgreSQL and Redis are reachable.

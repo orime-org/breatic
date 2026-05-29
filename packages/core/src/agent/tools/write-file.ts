@@ -10,7 +10,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import { assertInSandbox, SandboxError } from "./fs-sandbox.js";
+import { assertInSandbox, SandboxError } from "@core/agent/tools/fs-sandbox.js";
 
 /**
  * Write content to a file at the given path.

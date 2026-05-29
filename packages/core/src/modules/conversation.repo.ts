@@ -10,14 +10,14 @@
  */
 
 import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
-import { db } from "../db/client.js";
+import { db } from "@core/db/client.js";
 import {
   conversations,
   conversationAttachments,
   conversationMemories,
   memoryHistoryEntries,
-} from "../db/schema.js";
-import { NotFoundError } from "../errors.js";
+} from "@core/db/schema.js";
+import { NotFoundError } from "@core/errors.js";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**

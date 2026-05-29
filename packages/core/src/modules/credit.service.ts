@@ -6,13 +6,13 @@
  * - Deduction: Only when PAYMENT_ENABLED=true
  */
 
-import * as userRepo from "./user.repo.js";
-import * as creditRepo from "./credit.repo.js";
-import { db } from "../db/client.js";
-import { env } from "../config/env.js";
-import { getRedis } from "../infra/redis.js";
+import * as userRepo from "@core/modules/user.repo.js";
+import * as creditRepo from "@core/modules/credit.repo.js";
+import { db } from "@core/db/client.js";
+import { env } from "@core/config/env.js";
+import { getRedis } from "@core/infra/redis.js";
 import { t } from "@breatic/shared";
-import { AppError, ValidationError } from "../errors.js";
+import { AppError, ValidationError } from "@core/errors.js";
 
 /**
  * refKey format contract: ASCII alphanumerics plus a small punctuation

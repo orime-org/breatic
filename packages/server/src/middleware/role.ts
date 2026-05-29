@@ -21,7 +21,7 @@ import { projectAuthService } from "@breatic/core";
 import { ForbiddenError } from "@breatic/core";
 import { ROLE_RANK, t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-import type { AuthVariables } from "./auth.js";
+import type { AuthVariables } from "@/middleware/auth.js";
 
 /** Variables stamped on `c` by `requireRole`. */
 export interface RoleVariables {

@@ -10,7 +10,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
-import { env, MONOREPO_ROOT } from "./env.js";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");

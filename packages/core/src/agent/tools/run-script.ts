@@ -12,7 +12,7 @@ import { resolve, extname } from "node:path";
 import { existsSync } from "node:fs";
 import { tool } from "ai";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "../../config/env.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const MAX_OUTPUT = 10_000;
 const TIMEOUT_MS = 60_000;

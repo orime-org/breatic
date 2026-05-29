@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { env, MONOREPO_ROOT } from "./env.js";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
 const tierSchema = z.object({
   name: z.string(),

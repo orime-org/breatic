@@ -5,10 +5,10 @@
  * to the conversation repository.
  */
 
-import * as conversationRepo from "./conversation.repo.js";
-import * as projectService from "./project.service.js";
+import * as conversationRepo from "@core/modules/conversation.repo.js";
+import * as projectService from "@core/modules/project.service.js";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "../errors.js";
+import { NotFoundError, ForbiddenError } from "@core/errors.js";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**

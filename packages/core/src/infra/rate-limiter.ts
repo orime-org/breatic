@@ -5,7 +5,7 @@
  */
 
 import type Redis from "ioredis";
-import { env } from "../config/env.js";
+import { env } from "@core/config/env.js";
 
 /**
  * Check if a request is allowed under the rate limit.
