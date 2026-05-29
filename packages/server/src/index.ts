@@ -15,7 +15,7 @@ import { getRedis, getQueueRedis, getStreamRedis, rawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { loadLocales } from "@breatic/shared/i18n-node";
+import { loadLocales } from "@breatic/core";
 
 const HEALTH_PORT = Number(process.env["SERVER_HEALTH_PORT"] ?? "3001");
 

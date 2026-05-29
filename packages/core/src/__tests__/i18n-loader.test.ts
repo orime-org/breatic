@@ -1,13 +1,26 @@
 /**
- * i18n tests — JSON-based translation lookup, parameter interpolation, locale switching.
+ * i18n loader tests — node-side adapter (`@breatic/core` loadLocales)
+ * integrated with the shared engine (`@breatic/shared/i18n` t()).
+ *
+ * Moved here from `@breatic/shared` (2026-05-29): the node-only loader
+ * (`node:fs` + `node:async_hooks`) relocated from `shared/i18n/load-node`
+ * into `core/i18n/locale-loader` so `@breatic/shared` stays 100%
+ * browser-safe. The engine itself still lives in shared — this test
+ * exercises both layers together (load from disk → translate).
  */
 
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { t, setLocale, getLocale, getAvailableLocales, resetLocales } from "../i18n/index.js";
-import { loadLocales } from "../i18n/load-node.js";
+import {
+  t,
+  setLocale,
+  getLocale,
+  getAvailableLocales,
+  resetLocales,
+} from "@breatic/shared/i18n";
+import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
 
-describe("i18n", () => {
+describe("i18n loader", () => {
   beforeAll(() => {
     resetLocales();
     loadLocales(resolve(import.meta.dirname, "../../../../locales"));

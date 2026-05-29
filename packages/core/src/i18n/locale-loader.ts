@@ -1,22 +1,30 @@
 /**
- * Node-only loader for locale JSON files. Kept on its own subpath
- * (`@breatic/shared/i18n-node`) so the web bundle never has to follow
- * `node:fs` / `node:path` imports — see `feedback_shared_barrel_browser_pull`.
+ * Node-only i18n adapter for the back-end services (server / worker /
+ * collab). Lives in `@breatic/core` — the node-side shared library all
+ * three node services depend on — so any of them can load locales and
+ * scope a per-request locale without re-implementing it. Crucially,
+ * the web bundle never imports `@breatic/core`, so these `node:fs` /
+ * `node:async_hooks` imports can never leak into the browser bundle
+ * (the reason this used to live on a `@breatic/shared/i18n-node`
+ * subpath — see memory `feedback_shared_barrel_browser_pull`; moving it
+ * into core lets `@breatic/shared` stay 100% browser-safe and drop its
+ * tsc-only build).
  *
- * Also installs the AsyncLocalStorage-backed locale resolver so
- * server request handlers can scope `t()` to a per-request locale via
- * `runWithLocale()`. Importing this module from a server entry point
- * is the install signal — `_localeResolver` becomes non-null and
- * future `t()` calls prefer the ALS store over the process-global
- * `_currentLocale` (which on the server stays `"en"` and acts as the
- * fallback when no request context is on the stack — log lines /
- * boot-time messages).
+ * The i18n ENGINE itself (`t()`, message catalog, ICU formatting, the
+ * `setLocale*` hooks) stays in `@breatic/shared/i18n` and is shared by
+ * both web and node — this module is only the node-side *adapter*
+ * (how locales get loaded from disk + how the active locale is
+ * resolved per request). One engine, two platform adapters.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
-import { setLocaleMessages, setLocaleResolver, type Locale } from "./index.js";
+import {
+  setLocaleMessages,
+  setLocaleResolver,
+  type Locale,
+} from "@breatic/shared/i18n";
 
 const _als = new AsyncLocalStorage<Locale>();
 
@@ -41,10 +49,10 @@ export function runWithLocale<T>(locale: Locale, fn: () => T): T {
 /**
  * Load all locale JSON files from `localesDir` and register them with
  * the shared i18n engine. Defaults to the repo-root `locales/` directory
- * resolved relative to this file's location in `node_modules`.
+ * resolved relative to this file's location.
  *
- * Server entry points should call this once at boot, before any `t()`
- * call runs.
+ * Node service entry points should call this once at boot, before any
+ * `t()` call runs.
  */
 export function loadLocales(localesDir?: string): void {
   const dir = localesDir ?? resolve(import.meta.dirname, "../../../../locales");

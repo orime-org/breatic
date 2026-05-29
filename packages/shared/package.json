@@ -16,10 +16,6 @@
     "./i18n": {
       "import": "./dist/i18n/index.js",
       "types": "./src/i18n/index.ts"
-    },
-    "./i18n-node": {
-      "import": "./dist/i18n/load-node.js",
-      "types": "./src/i18n/load-node.ts"
     }
   },
   "scripts": {
