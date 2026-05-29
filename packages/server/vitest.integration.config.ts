@@ -95,6 +95,14 @@ export default defineConfig({
       // Allow integration tests to import from worker and collab source directly.
       "@breatic/worker/src": resolve(__dirname, "../worker/src"),
       "@breatic/collab/src": resolve(__dirname, "../collab/src"),
+      // Worker and collab source modules reference their OWN code through the
+      // package-local `@worker/*` and `@collab/*` path aliases (CLAUDE.md
+      // rule #15: depended-on packages use a globally-unique prefix). When an
+      // integration test imports that source (via the `@breatic/{worker,collab}/src`
+      // aliases above), Vite must also resolve those self-aliases — otherwise
+      // e.g. `@worker/mini-tool-registry.js` fails with "Does the file exist?".
+      "@worker": resolve(__dirname, "../worker/src"),
+      "@collab": resolve(__dirname, "../collab/src"),
     },
   },
   ssr: {
