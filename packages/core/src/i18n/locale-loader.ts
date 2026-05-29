@@ -25,6 +25,7 @@ import {
   setLocaleResolver,
   type Locale,
 } from "@breatic/shared/i18n";
+import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const _als = new AsyncLocalStorage<Locale>();
 
@@ -48,14 +49,17 @@ export function runWithLocale<T>(locale: Locale, fn: () => T): T {
 
 /**
  * Load all locale JSON files from `localesDir` and register them with
- * the shared i18n engine. Defaults to the repo-root `locales/` directory
- * resolved relative to this file's location.
+ * the shared i18n engine. Defaults to the repo-root `locales/` directory,
+ * anchored on `MONOREPO_ROOT` (which walks up to the pnpm-workspace.yaml,
+ * with a Docker cwd fallback) rather than a relative `../../` hop —
+ * the bundled output's directory depth differs between packages and
+ * dev-vs-Docker, so a hard-coded relative path is fragile.
  *
  * Node service entry points should call this once at boot, before any
  * `t()` call runs.
  */
 export function loadLocales(localesDir?: string): void {
-  const dir = localesDir ?? resolve(import.meta.dirname, "../../../../locales");
+  const dir = localesDir ?? resolve(MONOREPO_ROOT, "locales");
   try {
     for (const file of readdirSync(dir)) {
       if (!file.endsWith(".json")) continue;

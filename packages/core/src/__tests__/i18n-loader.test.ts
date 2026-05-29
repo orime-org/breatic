@@ -102,4 +102,25 @@ describe("i18n loader", () => {
       expect(getAvailableLocales().length).toBe(4);
     });
   });
+
+  describe("default locales dir (no-arg)", () => {
+    // Regression: when the node i18n adapter moved shared → core
+    // (2026-05-29), the hard-coded relative default path
+    // ("../../../../locales") broke because core's bundled output
+    // sits at a different directory depth than shared's did, so
+    // `loadLocales()` with no arg loaded zero locales and t() fell
+    // back to raw keys. The default now anchors on MONOREPO_ROOT.
+    // This asserts the no-arg call (what server boot uses) works.
+    it("loadLocales() with no argument discovers all 4 locales", () => {
+      resetLocales();
+      loadLocales();
+      expect(getAvailableLocales().sort()).toEqual(
+        ["en", "ja", "zh-CN", "zh-TW"].sort(),
+      );
+      // And a real key resolves (not the raw key fallback).
+      expect(t("server.auth.invalid_credentials")).not.toBe(
+        "server.auth.invalid_credentials",
+      );
+    });
+  });
 });
