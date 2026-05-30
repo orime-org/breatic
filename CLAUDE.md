@@ -10,7 +10,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 测试 | typecheck + 单测 + smoke / e2e / 浏览器交互。做不了要 explicit 说明,不许跳过 |
+| 测试 | typecheck + 单测 + smoke / e2e / 浏览器交互。做不了要 explicit 说明,不许跳过。**smoke / e2e 操作规范见 [docs/TEST-MANDATE.md](./docs/TEST-MANDATE.md)**(测试五层 / smoke 定义 / 关键路径 E2E / 边界)|
 | 文档 | ROADMAP / spec / `docs/*` 等所有受影响项。**落后文档比没文档更糟** |
 
 **所有任务必须先列 todo 计划,按计划执行,完成后对照复核**。不分 research / 执行 / 测试 / 文档,**也不分大小** — 哪怕一两步也写。**取消"小任务豁免"**:小任务也写、也复核。
@@ -43,8 +43,8 @@ pnpm test / typecheck / lint
 
 # 关键规范
 
-- **`@shared` vs `@core` 内容归属(MANDATORY)**:`@breatic/shared` = **web + 后端共用**的东西,**必须浏览器安全**(零 `node:*` / `fs` / `async_hooks` 等依赖,`sideEffects: false`);`@breatic/core` = **仅后端共用**(可用 node API)。判定题:**web 用得到吗?用得到 → `shared`;用不到 → `core`**。后端专用的东西(doc-name 构造、node i18n 适配器等)放 `core`,不许塞进 `shared`。`shared` 单入口(`tsup src/index.ts` 全 bundle),不开多 subpath 入口——多入口会把内部别名 `@shared/*` 泄漏进 dist 解析不了(2026-05-29 教训)
-- **环境变量注入(MANDATORY)**:`@breatic/core` / `@breatic/shared` **不读 `process.env`、不 load `.env`**(配置 ACQUISITION 是 application 决策,同 logger / `process.exit()` 的 library 边界原则,2026-05-30)。**application entry(server / worker / collab = composition root)**启动时第一件事 `dotenv` + `initCore(process.env)` 一次,core 的 **zod schema** 校验后存住;library 经 **`env` Proxy / `getConfig()` / `getRawEnvVar()`** 读注入的配置,源码零 `process.env`。**db / Redis / LLM provider / logger 全延迟单例**(模块 import 时不读 env,首次用时才建,确保 `@breatic/core` barrel 在 `initCore` 前可安全 import)。3 个 healthz 端口(`SERVER_HEALTH_PORT` 3001 / `WORKER_HEALTH_PORT` 9101 / `COLLAB_HEALTH_PORT` 1235)统一进 core schema,从 `env.*` 读;`PATH` / `HOME` **不入 schema**(自动继承宿主,agent 脚本沙箱经 `getRawEnvVar` 取)。`lint:no-core-process-env` CI 强制(`src/` 出现任何 `process.env` 即 fail;`process.cwd()` 不算)。entry 读 env 是 composition root 的本职,不算违规
+- **`@shared` vs `@core` 内容归属(MANDATORY)**:`@breatic/shared` = **web + 后端共用**的东西,**必须浏览器安全**(零 `node:*` / `fs` / `async_hooks` 等依赖,`sideEffects: false`);`@breatic/core` = **仅后端共用**(可用 node API)。判定题:**web 用得到吗?用得到 → `shared`;用不到 → `core`**。后端专用的东西(doc-name 构造、node i18n 适配器等)放 `core`,不许塞进 `shared`。`shared` 单入口(`tsup src/index.ts` 全 bundle),不开多 subpath 入口——多入口会把内部别名 `@shared/*` 泄漏进 dist 解析不了
+- **环境变量注入(MANDATORY)**:`@breatic/core` / `@breatic/shared` **不读 `process.env`、不 load `.env`**(配置 ACQUISITION 是 application 决策,同 logger / `process.exit()` 的 library 边界原则)。**application entry(server / worker / collab = composition root)**启动时第一件事 `dotenv` + `initCore(process.env)` 一次,core 的 **zod schema** 校验后存住;library 经 **`env` Proxy / `getConfig()` / `getRawEnvVar()`** 读注入的配置,源码零 `process.env`。**db / Redis / LLM provider / logger 全延迟单例**(模块 import 时不读 env,首次用时才建,确保 `@breatic/core` barrel 在 `initCore` 前可安全 import)。3 个 healthz 端口(`SERVER_HEALTH_PORT` 3001 / `WORKER_HEALTH_PORT` 9101 / `COLLAB_HEALTH_PORT` 1235)统一进 core schema,从 `env.*` 读;`PATH` / `HOME` **不入 schema**(自动继承宿主,agent 脚本沙箱经 `getRawEnvVar` 取)。`lint:no-core-process-env` CI 强制(`src/` 出现任何 `process.env` 即 fail;`process.cwd()` 不算)。entry 读 env 是 composition root 的本职,不算违规
 - **软删除(MANDATORY)**:所有表用 `deleted_at` 标记,FK `restrict`,list 默认过滤 `deleted_at IS NULL`。**禁止硬删除**(GDPR 删号走单独流程)
 - **`created_at`(MANDATORY)**:所有 PG 表必须有 `created_at timestamp with time zone DEFAULT now() NOT NULL`。业务实体表用 `timestamps` helper(`created_at` + `updated_at` 一对);append-only 历史 / 事件表只用 `created_at`。Drizzle schema 审查时强制
 - **禁止 AI 作者署名(MANDATORY)**:commit 署名禁 AI 工具名,`.husky/commit-msg` + PR CI 强制
@@ -55,7 +55,7 @@ pnpm test / typecheck / lint
 - **异常**:`AppError(status, msg)` 在 Service 层抛,路由层 handler 处理(NotFound / Conflict / Validation / Forbidden / Unauthorized)
 - **SSE**:仅 Agent 聊天 + Text mini-tool,`data` 含 `userId` + `projectId`
 - **存储**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,5min 过期,30/分限速)直传
-- **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。`membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码只按积分余额判断,不做 tier feature gate**
+- **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。**只按积分余额判断,不做 tier feature gate**
 - **服务器端工业级标准(MANDATORY)**:所有 server / collab / worker / core 逻辑按生产级标准实现,**禁止** "dev 阶段先这样后续再补"。**必须有**:
 
 | 项 | 要求 |
@@ -93,7 +93,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(2026-05-29 起 server/web 从 `@/` 统一为 `@server` / `@web`,规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `lint:no-relative-import` 强制 |
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `lint:no-relative-import` 强制 |
 
 # 编码行为准则
 
