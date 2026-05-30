@@ -14,17 +14,6 @@
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// Resolve monorepo root from this file's location.
-// This file lives at: packages/server/src/__tests__/integration/global-setup.ts
-// 5 levels up → packages/server/src/__tests__/integration → __tests__ → src → server → packages → breatic (root)
-const __dir = fileURLToPath(new URL(".", import.meta.url));
-const MONOREPO_ROOT = resolve(__dir, "../../../../../");
 
 /** Shared state across setup / teardown. */
 let pgContainer: StartedPostgreSqlContainer;
@@ -73,13 +62,15 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.STORAGE_PROVIDER = "local";
   process.env.ALLOWED_ORIGINS = "http://localhost:3001";
 
-  // Run migrations against the fresh PG container before any test runs
+  // Run migrations against the fresh PG container before any test runs.
+  // Imported dynamically AFTER the env vars above are set: @breatic/core's
+  // env.ts validates process.env at module-load, so core must not be imported
+  // until DATABASE_URL etc. point at the freshly-started container. Routing
+  // migration through core keeps drizzle-orm a core-only dependency
+  // (CLAUDE.md "@core 内容归属").
   console.log("[integration] Running migrations...");
-  const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
-  const pgClient = postgres(pgUrl, { max: 1 });
-  const db = drizzle(pgClient);
-  await migrate(db, { migrationsFolder });
-  await pgClient.end();
+  const { migrateDatabase } = await import("@breatic/core");
+  await migrateDatabase(pgUrl);
 
   console.log("[integration] Containers ready, migrations applied.");
   console.log(`[integration] PG: ${pgUrl}`);
@@ -94,6 +85,10 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
 
 export async function teardown(): Promise<void> {
   console.log("[integration] Stopping containers...");
+  // Importing @breatic/core in setup() created the env-bound singleton pool
+  // as a module side effect; close it before tearing down the container.
+  const { closeDb } = await import("@breatic/core");
+  await closeDb();
   await Promise.allSettled([
     pgContainer?.stop(),
     redisContainer?.stop(),

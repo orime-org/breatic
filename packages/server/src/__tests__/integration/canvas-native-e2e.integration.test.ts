@@ -33,8 +33,6 @@ import * as Y from "yjs";
 import { Worker, Queue } from "bullmq";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
@@ -118,7 +116,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { runTask } from "@breatic/worker/src/handlers.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers.js";
-import { taskService, schema } from "@breatic/core";
+import { taskService, schema, createTestDb } from "@breatic/core";
 import { startTaskListener } from "@breatic/collab/src/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -148,11 +146,11 @@ let anchorConn: Awaited<ReturnType<Hocuspocus["openDirectConnection"]>> | null =
 let stopTaskListener: () => Promise<void>;
 let bullWorker: Worker<TaskJobData>;
 let tasksQueue: Queue<TaskJobData>;
-let pgClient: ReturnType<typeof postgres>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let db: any; // typed as any to sidestep drizzle-orm version mismatch between
-             // @breatic/core (drizzle-orm@0.38.x, typed schema) and
-             // the server devDependency (drizzle-orm@0.43.x, typed drizzle())
+// Schema-bound Drizzle client built via @breatic/core's createTestDb — core
+// is the single home of drizzle-orm, so `db` is fully typed against `schema`
+// (no cross-package version-mismatch `any` cast needed).
+let pgClient: ReturnType<typeof createTestDb>["client"];
+let db: ReturnType<typeof createTestDb>["db"];
 
 // Fixture IDs — inserted once, reused across all tests
 const FIXTURE_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -284,8 +282,7 @@ beforeAll(async () => {
   const REDIS_STREAM_URL = inject("REDIS_STREAM_URL") as string;
 
   // 1. DB connection for fixture insertion (separate pool from @breatic/core singleton)
-  pgClient = postgres(DATABASE_URL, { max: 3 });
-  db = drizzle(pgClient);
+  ({ db, client: pgClient } = createTestDb(DATABASE_URL));
 
   // 2. Insert FK fixture rows: user → studio → project + owner membership
   //    (v10: projects.studio_id NOT NULL + project_members owner row required
