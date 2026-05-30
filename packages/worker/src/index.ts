@@ -5,7 +5,10 @@
  * All shared modules (db, redis, services) come from @breatic/core.
  */
 
+// MUST be first: reads process.env + initCore before any env.* read.
+import "@worker/bootstrap-config.js";
 import {
+  env,
   initLogger,
   createWorker,
   checkInfraReady,
@@ -21,7 +24,8 @@ initLogger("worker");
 import { runTask } from "@worker/handlers.js";
 import type { TaskJobData } from "@worker/handlers.js";
 
-const HEALTH_PORT = Number(process.env["WORKER_HEALTH_PORT"] ?? "9101");
+// Health probe port from the validated config (default 9101).
+const HEALTH_PORT = env.WORKER_HEALTH_PORT;
 
 export function startWorker(): void {
   // Production error logging for shared Redis singletons. The core

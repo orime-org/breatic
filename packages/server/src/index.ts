@@ -5,6 +5,8 @@
  * to close database, Redis, and queue connections.
  */
 
+// MUST be first: reads process.env + initCore before any env.* read.
+import "@server/bootstrap-config.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { env } from "@breatic/core";
@@ -17,7 +19,8 @@ import { startHealthServer } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 
-const HEALTH_PORT = Number(process.env["SERVER_HEALTH_PORT"] ?? "3001");
+// Health probe port from the validated config (default 3001).
+const HEALTH_PORT = env.SERVER_HEALTH_PORT;
 
 // Fail-fast: verify PG + Redis are reachable before starting the
 // server. `checkInfraReady` throws InfraNotReadyError per the

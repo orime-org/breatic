@@ -67,6 +67,38 @@ export function initLogger(serviceName: string): void {
   logger = buildLogger(serviceName);
 }
 
-/** Logger instance — defaults to "api", call initLogger() to override. */
+/**
+ * Lazily-built default "api" logger, returned by the {@link logger}
+ * Proxy until {@link initLogger} replaces it. Building it reads
+ * `env.ENV` / `env.DEBUG`, so it must be deferred past `initCore` —
+ * the same reason db / Redis / LLM providers are lazy.
+ */
+let _defaultLogger: pino.Logger | null = null;
+
+function getDefaultLogger(): pino.Logger {
+  if (_defaultLogger === null) {
+    _defaultLogger = buildLogger("api");
+  }
+  return _defaultLogger;
+}
+
+/**
+ * Logger instance — defaults to "api", call initLogger() to override.
+ *
+ * The initial value is a Proxy over the lazily-built default logger
+ * so that importing this module (and therefore the `@breatic/core`
+ * barrel) reads no env at eval time — config is injected via
+ * `initCore` at startup, before the app entry calls `initLogger` or
+ * logs anything. Once `initLogger` runs, this binding is reassigned
+ * to a concrete pino logger.
+ */
 // eslint-disable-next-line import/no-mutable-exports
-export let logger: pino.Logger = buildLogger("api");
+export let logger: pino.Logger = new Proxy({} as pino.Logger, {
+  get(_target, prop) {
+    const real = getDefaultLogger() as unknown as Record<string | symbol, unknown>;
+    const value = real[prop];
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(real)
+      : value;
+  },
+});

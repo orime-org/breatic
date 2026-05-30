@@ -6,9 +6,16 @@
  * where it's safe to do so — Vitest's setupFiles run before test file
  * modules are evaluated.
  *
- * @breatic/core reads process.env at import time via createEnv(), so the
- * env vars must be present here. inject() retrieves the values forwarded
- * by globalSetup.setup()'s return value.
+ * @breatic/core no longer reads process.env itself; the application
+ * entry injects validated config via initCore(process.env). This setup
+ * file only *applies* the env vars (container URLs from inject() + the
+ * required fixed vars) — it deliberately does NOT import @breatic/core
+ * to call initCore here, because the core barrel pulls the `ai` SDK
+ * (→ @opentelemetry/api, whose broken ESM build crashes the vitest
+ * loader). Each test that exercises real core mocks `ai` first, then
+ * calls initCore(process.env) itself (see canvas-native-e2e). Tests
+ * that never touch the env Proxy (e.g. v10-schema-invariants, which
+ * only uses createTestDb with an explicit URL) need neither.
  */
 
 import { inject } from "vitest";

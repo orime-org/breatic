@@ -199,7 +199,7 @@ All endpoints are under `/api/v1`:
 | `/tasks` | Task status and history |
 | `/skills` | Built-in + marketplace skills |
 | `/payment` | Stripe checkout and webhooks |
-| `/health` | Health check |
+| `/healthz` | Liveness probe — on a **dedicated port** (API `:3001`), not the main API port; see [docs/DEPLOY.md](./docs/DEPLOY.md#health-check-design) |
 
 ## Testing
 

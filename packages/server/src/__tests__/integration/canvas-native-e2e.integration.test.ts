@@ -112,13 +112,21 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 // ── Import real modules AFTER mocks are registered ──────────────────────────
 // NOTE: process.env is already set by integration-setup.ts (setupFiles runs
-// before test file evaluation), so @breatic/core env.ts sees the correct URLs.
+// before test file evaluation). @breatic/core no longer reads process.env
+// itself — it reads injected config via the env Proxy after initCore runs —
+// so we call initCore(process.env) below before any real-core access (e.g.
+// the `db` Proxy in waitForCondition). `ai` is mocked above, so importing
+// the real core barrel here does NOT pull @opentelemetry/api (whose broken
+// ESM build crashes the vitest loader); that is why initCore lives here and
+// not in the shared setupFile.
 
 import { runTask } from "@breatic/worker/src/handlers.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers.js";
-import { taskService, schema, createTestDb } from "@breatic/core";
+import { initCore, taskService, schema, createTestDb } from "@breatic/core";
 import { startTaskListener } from "@breatic/collab/src/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
+
+initCore(process.env);
 
 // Declare the shape of values provided by globalSetup.setup() via provide().
 // Vitest uses declaration merging on this interface to type inject() calls.

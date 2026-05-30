@@ -7,14 +7,10 @@
  * Run with: `pnpm dev:collab` or `tsx src/index.ts`
  */
 
-import dotenv from "dotenv";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-// Load .env from monorepo root (shared by all packages)
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+// MUST be first: reads process.env + initCore before any env.* read.
+import "@collab/bootstrap-config.js";
 import {
+  env,
   createRedisClient,
   createPgClient,
   startHealthServer,
@@ -30,11 +26,16 @@ import { checkCollabInfraReady } from "@collab/connectivity-check.js";
 
 const logger = createLogger("main");
 
-const DATABASE_URL = process.env["DATABASE_URL"] ?? "postgres://breatic:breatic@localhost:5432/breatic";
-const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379/0";
-const REDIS_STREAM_URL = process.env["REDIS_STREAM_URL"] ?? "redis://localhost:6379/2";
-const ENV_PREFIX = process.env["ENV"] ?? "dev";
-const HEALTH_PORT = Number(process.env["COLLAB_HEALTH_PORT"] ?? "1235");
+// All from the validated config (injected by bootstrap-config's
+// initCore). DATABASE_URL is required; REDIS_* / ENV / health port
+// carry schema defaults. The connectivity check + core factories
+// still take these as explicit args — collab just sources them from
+// the one validated config instead of re-reading raw process.env.
+const DATABASE_URL = env.DATABASE_URL;
+const REDIS_URL = env.REDIS_URL;
+const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
+const ENV_PREFIX = env.ENV;
+const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the

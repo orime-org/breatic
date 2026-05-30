@@ -13,6 +13,7 @@ import { existsSync } from "node:fs";
 import { tool } from "ai";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
+import { getRawEnvVar } from "@core/config/runtime.js";
 
 const MAX_OUTPUT = 10_000;
 const TIMEOUT_MS = 60_000;
@@ -71,10 +72,15 @@ export const runScript = tool({
       return `Error: Unsupported script type '${ext}'. Supported: ${Object.keys(INTERPRETERS).join(", ")}`;
     }
 
-    // Build environment: inherit minimal env + script args
+    // Build environment: inherit the host's PATH / HOME (so the
+    // interpreter and its toolchain resolve) plus the script args.
+    // PATH / HOME are read via getRawEnvVar — the application entry
+    // forwards the host's values into the injected raw env at
+    // startup; core never reads process.env directly. No secrets are
+    // forwarded: the subprocess sees only PATH / HOME / explicit args.
     const scriptEnv: Record<string, string> = {
-      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-      HOME: process.env.HOME ?? "/tmp",
+      PATH: getRawEnvVar("PATH") ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: getRawEnvVar("HOME") ?? "/tmp",
       ...(args ?? {}),
     };
 
