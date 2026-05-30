@@ -141,10 +141,19 @@ const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
   'space-renamed': 'spaces.history.kind.spaceRenamed',
 };
 
+/**
+ * Feature flag — the clear-all button stays hidden since 2026-05-27 (Q11
+ * v2.1): projectMessages is the audit / events log (rename / lock / delete
+ * / restore push entries); letting the owner wipe it loses provenance the
+ * moment we lean on it as the source of truth. Re-enable once a soft-clear
+ * / archive workflow + retention policy exist. Typed `boolean` (not the
+ * `false` literal) so the JSX guard below is not a constant expression.
+ */
+const CLEAR_ALL_ENABLED: boolean = false;
+
 export function ProjectMessagesButton({
   messages,
   usersById,
-  spacesById,
   currentUserRole,
   onRestore,
   onClearAll,
@@ -229,16 +238,8 @@ export function ProjectMessagesButton({
             <SheetDescription className='text-[12px] text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
             </SheetDescription>
-            {/*
-              Clear-all button hidden 2026-05-27 per Q11 v2.1 design
-              discussion — projectMessages is the audit / events log
-              (rename / lock / delete / restore all push entries).
-              Letting the owner wipe it loses provenance the very
-              moment we lean on it as the source of truth. Re-enable
-              once a "soft clear" / archive workflow + retention
-              policy is wired up.
-            */}
-            {false && isOwner && messages.length > 0 ? (
+            {/* Clear-all stays hidden — see CLEAR_ALL_ENABLED above. */}
+            {CLEAR_ALL_ENABLED && isOwner && messages.length > 0 ? (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <button
@@ -356,10 +357,10 @@ export function ProjectMessagesButton({
                       {m.message
                         ? t(m.message, m.context as Record<string, string | number> | undefined)
                         : t(KIND_LABEL_KEY[m.kind], {
-                            spaceName,
-                            actor: actorName,
-                            oldSpaceName: m.oldSpaceName ?? '',
-                          })}
+                          spaceName,
+                          actor: actorName,
+                          oldSpaceName: m.oldSpaceName ?? '',
+                        })}
                     </p>
                     <p className='text-[11px] tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}

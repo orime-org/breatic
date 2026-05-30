@@ -14,7 +14,7 @@ vi.mock('@web/data/api/invite-links', () => ({
   },
 }));
 
-import { inviteLinksApi } from '@web/data/api/invite-links';
+import { inviteLinksApi, type InviteLink } from '@web/data/api/invite-links';
 
 /**
  * Renders the page inside a memory router pointed at /invite/:token,
@@ -147,7 +147,7 @@ interface FakeLinkOverrides {
   token?: string;
 }
 
-function makeFakeLink(o: FakeLinkOverrides = {}) {
+function makeFakeLink(o: FakeLinkOverrides = {}): InviteLink {
   return {
     id: 'sl-1',
     projectId: o.projectId ?? PID,

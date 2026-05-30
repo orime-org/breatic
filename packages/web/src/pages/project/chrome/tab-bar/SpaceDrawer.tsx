@@ -107,7 +107,6 @@ export function SpaceDrawer({
   spaces,
   openTabIds,
   activeSpaceId,
-  projectId,
   onActivate,
   onView,
   onDeleteSpace,

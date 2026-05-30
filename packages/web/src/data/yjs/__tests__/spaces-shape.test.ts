@@ -56,7 +56,7 @@ describe('meta.spaces — Y.Map root type (P0 regression pin)', () => {
     expect(spacesMap.has('sp-2')).toBe(true);
   });
 
-  it("Yjs refuses cross-type access on the same root key (proves the bug shape)", () => {
+  it('Yjs refuses cross-type access on the same root key (proves the bug shape)', () => {
     // After Map writes touch "spaces", a follow-up `getArray("spaces")`
     // throws. That's exactly why the PR-b bug presented as silence on
     // the client: the previous client code called getArray FIRST, so
@@ -67,7 +67,7 @@ describe('meta.spaces — Y.Map root type (P0 regression pin)', () => {
     expect(() => doc.getArray<Y.Map<unknown>>('spaces' as never)).toThrow();
   });
 
-  it("ingests a Map-shaped update from a peer (mirrors collab space-rpc handleCreate)", () => {
+  it('ingests a Map-shaped update from a peer (mirrors collab space-rpc handleCreate)', () => {
     // Build a "remote" doc the way the collab process does, then
     // ship its update through Yjs sync and verify the client reads
     // it back via the Map API.

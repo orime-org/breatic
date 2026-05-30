@@ -81,6 +81,6 @@ export const accessRequestsApi = {
    * (their personal status page). Self-scoped — no role gate.
    */
   listMine() {
-    return apiGet<{ data: AccessRequest[] }>(`/users/me/access-requests`);
+    return apiGet<{ data: AccessRequest[] }>('/users/me/access-requests');
   },
 };

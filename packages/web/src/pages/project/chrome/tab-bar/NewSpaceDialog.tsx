@@ -164,7 +164,7 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
     };
     // `reset` is stable-by-convention (only flips local setters); not
     // listing it avoids re-arming the timer on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open]);
 
   return (
