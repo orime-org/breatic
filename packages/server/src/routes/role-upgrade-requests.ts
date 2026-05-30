@@ -25,7 +25,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { requireRole } from "@server/middleware/role.js";
+import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   roleUpgradeRequestService,
@@ -65,7 +65,7 @@ projectRoleUpgradeRequests.post(
     if (role !== "view") {
       throw new ForbiddenError("only viewers can request a role upgrade");
     }
-    const projectId = c.req.param("pid") as string;
+    const projectId = getProjectId(c);
     const body = c.req.valid("json");
 
     const [project, ownerUserId] = await Promise.all([

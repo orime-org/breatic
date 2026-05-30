@@ -24,7 +24,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { requireRole } from "@server/middleware/role.js";
+import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   shareLinkService,
@@ -93,7 +93,7 @@ projectInviteLinks.post(
   zValidator("json", bodySchemaCreate),
   async (c) => {
     const user = c.get("user");
-    const projectId = c.req.param("pid") as string;
+    const projectId = getProjectId(c);
     const body = c.req.valid("json");
 
     const link = await shareLinkService.createLink({
@@ -134,7 +134,7 @@ projectInviteLinks.post(
  * project. Owner only.
  */
 projectInviteLinks.get("/", requireRole("owner"), async (c) => {
-  const projectId = c.req.param("pid") as string;
+  const projectId = getProjectId(c);
   const list = await shareLinkService.listByProject(projectId);
   return c.json({ data: list });
 });
