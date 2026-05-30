@@ -34,8 +34,8 @@ packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
 ├── core/     # 业务逻辑 barrel (@breatic/core)
 │              modules/(*.repo.ts + *.service.ts) · agent/(MainAgent + skills-loader) ·
-│              db/(schema.ts 22 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/stripe) · config/
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/access-requests/invite-links/notifications/skills/tasks/payment) + middleware/ (healthz 走独立 :3001 进程,见 DEPLOY.md)
+│              db/(schema.ts 21 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/stripe) · config/
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/ (healthz 走独立 :3001 进程,见 DEPLOY.md)
 ├── worker/   # BullMQ 壳: handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
 ├── collab/   # Hocuspocus 独立进程: server/auth/persistence/event-stream/task-listener
 └── web/      # React app — see frontend.md
