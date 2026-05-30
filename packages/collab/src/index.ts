@@ -16,9 +16,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 import {
   createRedisClient,
+  createPgClient,
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
+import { buildCollabHealthChecks } from "@collab/health-checks.js";
 import { createLogger } from "@collab/logger.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/task-listener.js";
@@ -95,14 +97,25 @@ async function main(): Promise<void> {
   });
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
 
+  // Dedicated single-connection Postgres client for health probes.
+  // collab persists every Yjs document to PG (persistence.ts) and
+  // authenticates against it (auth.ts), so PG is a critical
+  // dependency the probe MUST cover. A dedicated `max: 1` client
+  // (named for pg_stat_activity visibility) keeps probe traffic off
+  // the persistence pool; postgres.js connects lazily, so this costs
+  // nothing until the first probe.
+  const healthPg = createPgClient(DATABASE_URL, {
+    name: "collab-healthz",
+    max: 1,
+  });
+
   // Health probe server — separate port so probe traffic doesn't
-  // touch the WS port. Probes PG (via the controlRedis side — a
-  // PG ping would require yet another client; instead we ping the
-  // two long-lived Redis clients we already own + the WS server
-  // status). LB / docker healthcheck kills the instance on N
-  // consecutive 503s so a drifted connection pool gets a fresh
-  // process automatically — per CLAUDE.md "服务器端工业级标准"
-  // and memory `feedback_dev_collab_long_running_drift`.
+  // touch the WS port. Probes all three critical dependencies: the
+  // members-sync control Redis, Postgres (Yjs doc store + auth), and
+  // the Hocuspocus WS listen socket. LB / docker healthcheck kills
+  // the instance on N consecutive 503s so a drifted connection pool
+  // gets a fresh process automatically — per CLAUDE.md "服务器端工业级
+  // 标准" and memory `feedback_dev_collab_long_running_drift`.
   const healthServer = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "collab",
@@ -127,36 +140,25 @@ async function main(): Promise<void> {
         );
       }
     },
-    checks: [
-      {
-        name: "redis_stream",
-        check: async () => (await controlRedis.ping()) === "PONG",
+    // Wiring lives in `health-checks.ts` (`buildCollabHealthChecks`)
+    // so the probe set is unit-tested — both that PG is covered and
+    // that `hocuspocus_listening` reads the right field. Bug history:
+    // PR #155/#156 read `hocuspocus.server?.listening` (wrong variable
+    // AND wrong field — the http server is `server.httpServer`, not on
+    // the Hocuspocus instance), so the check was `undefined?.listening`
+    // → always false → /healthz always 503; with the docker
+    // `healthcheck:` that would have looped-restarted prod collab.
+    checks: buildCollabHealthChecks({
+      pingRedisStream: async () => (await controlRedis.ping()) === "PONG",
+      pingPostgres: async () => {
+        const rows = await healthPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
+        return rows[0]?.ok === 1;
       },
-      {
-        name: "hocuspocus_listening",
-        // server.httpServer is the underlying node:http.Server
-        // instance (see @hocuspocus/server `Server` class line 29
-        // `httpServer: HTTPServer`). `.listening` flips false
-        // the instant the listen socket closes (graceful shutdown
-        // or crash). A dead hocuspocus with live healthz would be
-        // the worst possible state for the LB.
-        //
-        // Bug history: PR #155 / #156 incorrectly read
-        // `hocuspocus.server?.listening`. Two errors stacked:
-        // (1) wrong variable — `createCollabServer` returns
-        // `{ server: Server, hocuspocus: Hocuspocus }`, and the
-        // http server lives on `Server`, not on `Hocuspocus`;
-        // (2) wrong field — even on `Server` the public field
-        // is `httpServer`, not `server`. The check was therefore
-        // reading `undefined?.listening === true` → always false
-        // → /healthz always 503. Combined with the docker
-        // `healthcheck:` wired in #156, production collab
-        // containers would have been marked `unhealthy` and
-        // infinitely restarted by docker. Caught locally before
-        // any deploy by `curl :1235/healthz` smoke.
-        check: async () => server.httpServer.listening,
-      },
-    ],
+      // `.listening` flips false the instant the listen socket closes
+      // (graceful shutdown or crash) — a dead hocuspocus with a live
+      // healthz is the worst possible state for the LB.
+      isHocuspocusListening: () => server.httpServer.listening,
+    }),
   });
 
   // Graceful shutdown
@@ -165,6 +167,7 @@ async function main(): Promise<void> {
     await healthServer.stop();
     await stopMembersSync();
     await controlRedis.quit();
+    await healthPg.end();
     await stopListener();
     await server.destroy();
     logger.info("Shutdown complete");
