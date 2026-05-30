@@ -59,7 +59,7 @@ function timeAgoLabel(createdAt: string): string {
  * backend pub/sub lands later — for now the popover reopens force a
  * refetch + a 30s background refetch interval keeps the badge fresh).
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * Spec: access-permission design (2026-05-28) § 7.
  */
 export function BellMenu({ projectId: _projectId }: BellMenuProps) {
   const t = useTranslation();

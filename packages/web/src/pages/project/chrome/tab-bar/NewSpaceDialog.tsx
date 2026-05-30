@@ -95,8 +95,8 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * with "not available" until those Space types ship. Only canvas is
  * selectable.
  *
- * Mock alignment: mirrors `.type-segmented` (finalized.html lines
- * 1428-1432) — flex row of 3 cards, active card uses brand border on
+ * Mock alignment: mirrors the chrome-baseline mock `.type-segmented`
+ * — flex row of 3 cards, active card uses brand border on
  * the mock but per ADR 14 brand-guard we use `border-foreground +
  * bg-accent` instead (neutral CTA).
  *

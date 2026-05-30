@@ -64,7 +64,7 @@ function relativeTime(iso: string, t: ReturnType<typeof useTranslation>): string
  * Revoke calls `inviteLinksApi.revoke`, which soft-deletes on the
  * server; the React Query cache is invalidated so the row disappears.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 4.3.
+ * Spec: access-permission design (2026-05-28) § 4.3.
  */
 export function ShareLinksListDialog({
   projectId,

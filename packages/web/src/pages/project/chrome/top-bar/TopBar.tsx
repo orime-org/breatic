@@ -24,8 +24,8 @@ interface TopBarProps {
 }
 
 /**
- * Project top bar — 11 elements per `chrome-baseline-20260516`
- * finalized.html ground truth.
+ * Project top bar — 11 elements per the chrome-baseline mock
+ * ground truth.
  *
  * Layout (mock § TopBar v4.0):
  *   - height 40px (aligned with TabBar 40px below)

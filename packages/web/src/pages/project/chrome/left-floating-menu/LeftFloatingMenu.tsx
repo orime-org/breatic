@@ -44,8 +44,8 @@ interface MenuItem {
 }
 
 /**
- * Two-zone menu, mirrors mock `nav.left-menu > .item / .divider` layout
- * (finalized.html lines 1248-1258):
+ * Two-zone menu, mirrors the chrome-baseline mock
+ * `nav.left-menu > .item / .divider` layout:
  *
  *   Upper zone — core 3 (M0' functional placeholder):
  *     - nodes (node library, sparkles) — FEATURED, always highlighted
@@ -95,8 +95,7 @@ interface LeftFloatingMenuProps {
 }
 
 /**
- * Floating left menu over the canvas — mock `.left-menu`
- * (finalized.html CSS 933-981 + HTML 1248-1258).
+ * Floating left menu over the canvas — chrome-baseline mock `.left-menu`.
  *
  * Container:
  *   - absolute, vertically centered, 12px left offset

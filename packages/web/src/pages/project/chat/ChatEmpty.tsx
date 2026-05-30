@@ -21,8 +21,7 @@ interface ChatEmptyProps {
 
 /**
  * New conversation empty state — shown when the active conversation has
- * zero messages. Mirrors mock `chat-empty` (finalized.html lines 599-626
- * + 1152-1160):
+ * zero messages. Mirrors the chrome-baseline mock `chat-empty`:
  *
  *   Hi, <name>!                              ← bold foreground greeting
  *   Try asking @ a node                      ← muted instruction

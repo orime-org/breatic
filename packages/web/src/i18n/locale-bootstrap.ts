@@ -1,8 +1,7 @@
 /**
  * Web i18n bootstrap — runs once at app startup, before React renders.
  *
- * Resolution chain (per inner DD rev 3
- * `2026-05-22-breatic-i18n-migration-rev-3-no-phasing.md`):
+ * Resolution chain (per the i18n-migration DD, rev 3):
  *
  *   1. `localStorage["breatic.locale"]` — explicit user choice persists
  *      across machines + reloads
