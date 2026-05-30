@@ -35,8 +35,7 @@
  *
  * Provenance:
  *   - shadcn alias values: ADR 14 (canvas-neutral-first-status-colors)
- *   - UI scale (avatar/btn/icon/space/radius split): chrome-baseline mock
- *     `gstack/chrome-baseline-20260516/finalized.html` v4.x
+ *   - UI scale (avatar/btn/icon/space/radius split): chrome-baseline mock v4.x
  *   - status palette + dark variants: the design-system tokens.css full file
  *   - Tailwind 4 `@theme {}` migration
  */
@@ -254,7 +253,7 @@ html[data-theme='light'] {
 html[data-theme='dark'] {
   /* Neutral inversion (stone-warm dark) — full reverse of stone scale
      so --neutral-0 (canvas background) is the deepest stone-950, matching
-     chrome-baseline mock `finalized.html` ground truth. The design-system tokens.css
+     chrome-baseline mock ground truth. The design-system tokens.css
      v3 used #1C1917 (stone-900) here which diverged from the mock; this
      full-reverse aligns chrome surfaces (TopBar / TabBar / Agent col)
      to the mock's deeper bg. */

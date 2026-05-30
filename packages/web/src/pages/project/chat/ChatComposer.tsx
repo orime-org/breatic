@@ -26,8 +26,8 @@ interface ChatComposerProps {
 /**
  * Bottom-of-panel chat composer — single outer container, 3 stacked
  * sections sharing one border + focus-within. Sizing + colour match
- * chrome-baseline mock `.composer` (finalized.html lines 627-758) so
- * the elevated card visually sits on top of the panel surface.
+ * chrome-baseline mock `.composer` so the elevated card visually sits
+ * on top of the panel surface.
  *
  *   ┌───────────────────────────────────┐  bg = --neutral-50 (elevated)
  *   │ [📐 select mode] [chip] [chip]…   │  composer-top   p 8/16, min-h 32

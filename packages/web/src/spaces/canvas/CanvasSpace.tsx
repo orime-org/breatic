@@ -2,8 +2,7 @@ import type { SpaceBodyProps } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * Canvas space body — chrome-baseline mock `.canvas-area` (finalized.html
- * CSS 904-929 + HTML 1239-1245).
+ * Canvas space body — chrome-baseline mock `.canvas-area`.
  *
  * Background:
  *   - 24px dot grid (radial-gradient circle 1px on neutral-200) over a
