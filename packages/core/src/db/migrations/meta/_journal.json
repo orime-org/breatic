@@ -134,6 +134,13 @@
       "when": 1779936300000,
       "tag": "0018_access-permission-revamp",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779936400000,
+      "tag": "0019_drop-project-access-requests",
+      "breakpoints": true
     }
   ]
 }

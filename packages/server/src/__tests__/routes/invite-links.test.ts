@@ -61,7 +61,7 @@ describe("POST /projects/:pid/invite-links", () => {
     );
     // No invitee_email → no mailer dispatch
     expect(
-      mocks.accessRequestMail.buildShareInviteMail,
+      mocks.shareInviteMail.buildShareInviteMail,
     ).not.toHaveBeenCalled();
   });
 
@@ -96,7 +96,7 @@ describe("POST /projects/:pid/invite-links", () => {
         boundEmail: "new@example.com",
       }),
     );
-    expect(mocks.accessRequestMail.buildShareInviteMail).toHaveBeenCalledWith(
+    expect(mocks.shareInviteMail.buildShareInviteMail).toHaveBeenCalledWith(
       expect.objectContaining({
         inviteeEmail: "new@example.com",
         // role on the builder comes from the *created link* (mock

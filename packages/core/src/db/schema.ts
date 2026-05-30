@@ -422,7 +422,7 @@ export const creditTransactions = pgTable(
   (table) => [index("credit_tx_user_id_idx").on(table.userId)],
 );
 
-// ── 7. Conversation Memories ─────────────────────────────────────────
+// ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
   "conversation_memories",
@@ -440,7 +440,7 @@ export const conversationMemories = pgTable(
   ],
 );
 
-// ── 8. Memory History Entries ────────────────────────────────────────
+// ── 10. Memory History Entries ───────────────────────────────────────
 
 export const memoryHistoryEntries = pgTable(
   "memory_history_entries",
@@ -460,7 +460,7 @@ export const memoryHistoryEntries = pgTable(
   ],
 );
 
-// ── 9. User Memories ─────────────────────────────────────────────────
+// ── 11. User Memories ────────────────────────────────────────────────
 
 export const userMemories = pgTable(
   "user_memories",
@@ -477,7 +477,7 @@ export const userMemories = pgTable(
   (table) => [uniqueIndex("user_memories_user_id_idx").on(table.userId)],
 );
 
-// ── 10. User Memory Entries ──────────────────────────────────────────
+// ── 12. User Memory Entries ──────────────────────────────────────────
 
 export const userMemoryEntries = pgTable(
   "user_memory_entries",
@@ -499,7 +499,7 @@ export const userMemoryEntries = pgTable(
   (table) => [index("user_mem_entries_user_id_idx").on(table.userId)],
 );
 
-// ── 11. Project Memories ─────────────────────────────────────────────
+// ── 13. Project Memories ─────────────────────────────────────────────
 
 export const projectMemories = pgTable(
   "project_memories",
@@ -518,7 +518,7 @@ export const projectMemories = pgTable(
   ],
 );
 
-// ── 12. Project Memory Entries ───────────────────────────────────────
+// ── 14. Project Memory Entries ───────────────────────────────────────
 
 export const projectMemoryEntries = pgTable(
   "project_memory_entries",
@@ -545,7 +545,7 @@ export const projectMemoryEntries = pgTable(
   ],
 );
 
-// ── 13. Custom Skills ────────────────────────────────────────────────
+// ── 15. Custom Skills ────────────────────────────────────────────────
 
 export const customSkills = pgTable(
   "custom_skills",
@@ -573,7 +573,7 @@ export const customSkills = pgTable(
   ],
 );
 
-// ── 14. Skill Installs ───────────────────────────────────────────────
+// ── 16. Skill Installs ───────────────────────────────────────────────
 
 export const skillInstalls = pgTable(
   "skill_installs",
@@ -606,7 +606,7 @@ const bytea = customType<{ data: Buffer }>({
   },
 });
 
-// ── 15. Yjs Documents ────────────────────────────────────────────────
+// ── 17. Yjs Documents ────────────────────────────────────────────────
 
 export const yjsDocuments = pgTable("yjs_documents", {
   name: text("name").primaryKey(),
@@ -626,53 +626,7 @@ export const yjsDocuments = pgTable("yjs_documents", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
-// ── 16. Project Access Requests ──────────────────────────────────────
-//
-// NOT_MEMBER users requesting access to a project they can't see. PR-d
-// of the deprecate-noaccount-email-auth series. Three entry paths feed
-// this table (see share_links table comment).
-//
-// `requested_role` is what the applicant asks for (must be one of the
-// project_members.role values minus `owner` — `owner` rows can only be
-// minted by the project creation flow, not by access request).
-//
-// A user can only have one pending request per project at a time:
-// partial UNIQUE (project_id, requester_user_id) WHERE deleted_at IS
-// NULL AND status = 'pending' — drizzle's table builder doesn't emit
-// partial unique indexes (as of 0.30), so the constraint is appended to
-// the generated migration SQL manually.
-
-export const projectAccessRequests = pgTable(
-  "project_access_requests",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "restrict" }),
-    requesterUserId: uuid("requester_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    requestedRole: varchar("requested_role", { length: 16 }).notNull(),
-    message: text("message"),
-    status: varchar("status", { length: 16 }).default("pending").notNull(),
-    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    ...timestamps,
-  },
-  (table) => [
-    index("par_project_status_idx").on(
-      table.projectId,
-      table.status,
-      table.deletedAt,
-    ),
-    index("par_requester_idx").on(table.requesterUserId, table.deletedAt),
-  ],
-);
-
-// ── 17. Share Links ──────────────────────────────────────────────────
+// ── 18. Share Links ──────────────────────────────────────────────────
 //
 // Project invite/share links generated by owner/admin from ShareDialog.
 // Two modes discriminated by an explicit `kind` column (NOT by the

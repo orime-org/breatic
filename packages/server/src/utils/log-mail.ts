@@ -4,8 +4,7 @@
  * Application boundary owns logger (per CLAUDE.md "library 层不写
  * 日志" — `core/infra/mailer.ts` returns SendMailResult instead of
  * logging). This helper centralizes the routing rules across the
- * auth, access-requests, and invite-link routes so the policy is
- * defined once:
+ * auth and invite-link routes so the policy is defined once:
  *
  *   - backend_console        : info — dump full html to dev server log
  *   - skipped + smtp_not_configured : warn — ops sees the misconfig

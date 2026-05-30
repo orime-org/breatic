@@ -148,9 +148,7 @@ export async function insertOwner(
  * @param role - 'edit' | 'view'
  * @param addedBy - Inviter's user UUID
  * @param tx - Optional drizzle transaction handle (caller passes when
- *   the upsert must be atomic with other mutations, e.g.
- *   accessRequest.approve transitions the request + inserts the
- *   member in the same tx)
+ *   the upsert must be atomic with other mutations in the same tx)
  */
 export async function upsertMember(
   projectId: string,

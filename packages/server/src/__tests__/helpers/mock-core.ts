@@ -171,28 +171,6 @@ export const mocks = {
     upsertMember: vi.fn().mockResolvedValue(undefined),
     softDelete: vi.fn().mockResolvedValue(true),
   },
-  accessRequestService: {
-    createRequest: vi.fn().mockResolvedValue({
-      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
-      requestedRole: "view", message: null, status: "pending",
-      reviewedByUserId: null, reviewedAt: null,
-      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
-    }),
-    listPendingByProject: vi.fn().mockResolvedValue([]),
-    listByRequester: vi.fn().mockResolvedValue([]),
-    approveRequest: vi.fn().mockResolvedValue({
-      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
-      requestedRole: "view", message: null, status: "approved",
-      reviewedByUserId: "u-owner", reviewedAt: new Date(),
-      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
-    }),
-    rejectRequest: vi.fn().mockResolvedValue({
-      id: "ar-1", projectId: "p-1", requesterUserId: "u-1",
-      requestedRole: "view", message: null, status: "rejected",
-      reviewedByUserId: "u-owner", reviewedAt: new Date(),
-      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
-    }),
-  },
   shareLinkService: {
     generateToken: vi.fn().mockReturnValue("token-mock"),
     createLink: vi.fn().mockResolvedValue({
@@ -247,16 +225,7 @@ export const mocks = {
     approve: vi.fn().mockResolvedValue(undefined),
     reject: vi.fn().mockResolvedValue(undefined),
   },
-  accessRequestMail: {
-    buildAccessRequestCreatedMail: vi.fn().mockReturnValue({
-      to: "owner@example.com", subject: "test", html: "<p>test</p>",
-    }),
-    buildAccessRequestApprovedMail: vi.fn().mockReturnValue({
-      to: "req@example.com", subject: "test", html: "<p>test</p>",
-    }),
-    buildAccessRequestRejectedMail: vi.fn().mockReturnValue({
-      to: "req@example.com", subject: "test", html: "<p>test</p>",
-    }),
+  shareInviteMail: {
     buildShareInviteMail: vi.fn().mockReturnValue({
       to: "invitee@example.com", subject: "test", html: "<p>test</p>",
     }),
@@ -337,12 +306,11 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     projectAuthService: mocks.projectAuthService,
     projectMembersService: mocks.projectMembersService,
     projectMembersRepo: mocks.projectMembersRepo,
-    accessRequestService: mocks.accessRequestService,
     shareLinkService: mocks.shareLinkService,
     notificationService: mocks.notificationService,
     notificationRepo: mocks.notificationRepo,
     roleUpgradeRequestService: mocks.roleUpgradeRequestService,
-    accessRequestMail: mocks.accessRequestMail,
+    shareInviteMail: mocks.shareInviteMail,
     sendMail: mocks.sendMail,
     studioService: mocks.studioService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),

@@ -28,7 +28,7 @@ import { requireRole } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   shareLinkService,
-  accessRequestMail,
+  shareInviteMail,
   projectService,
   userRepo,
   sendMail,
@@ -215,7 +215,7 @@ async function dispatchInviteeMail(
   ]);
   if (!inviter) return;
   const origin = originFrom(c, "http://localhost:8000");
-  const mailOpts = accessRequestMail.buildShareInviteMail({
+  const mailOpts = shareInviteMail.buildShareInviteMail({
     inviteeEmail,
     inviterName: inviter.username ?? inviter.email,
     projectName: project?.name ?? "the project",
