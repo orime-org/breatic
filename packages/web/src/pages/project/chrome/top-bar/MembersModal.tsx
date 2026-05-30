@@ -70,7 +70,7 @@ function initialsOf(name: string): string {
  *     showed lowercased initials, which user 2026-05-28 explicitly
  *     called out as wrong).
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 5.
+ * Spec: access-permission design (2026-05-28) § 5.
  */
 export function MembersModal({
   projectId,

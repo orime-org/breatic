@@ -3,8 +3,8 @@
  *
  * Step 2 of visual alignment: render every shadcn primitive + canvas
  * node states using the consolidated tokens.css, so the user can compare
- * against the inner-design `shadcn-primitives-20260518/finalized.html`
- * mock side-by-side.
+ * against the design-system shadcn-primitives reference mock
+ * side-by-side.
  *
  * Route: `/dev/primitives` (guarded by `import.meta.env.DEV` in routes.tsx).
  * Not part of the production user surface — included for visual QA only.
@@ -91,8 +91,8 @@ export default function PrimitivesGallery() {
               Primitives gallery — token verify
             </h1>
             <p className='text-sm text-muted-foreground'>
-              Compare against inner `chrome-baseline-20260518` /
-              `shadcn-primitives-20260518` mock.
+              Compare against the chrome-baseline / shadcn-primitives
+              reference mocks.
             </p>
           </div>
           <Button

@@ -39,7 +39,7 @@ interface RoleTagProps {
  * separate button) because viewers see "VIEWER" and intuitively know
  * to click it.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 6.3.
+ * Spec: access-permission design (2026-05-28) § 6.3.
  */
 export function RoleTag({ role, projectId }: RoleTagProps) {
   if (role !== 'view') {

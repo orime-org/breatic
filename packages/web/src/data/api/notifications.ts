@@ -2,8 +2,8 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**
  * Notification types — must match the SQL CHECK constraint on
- * `notifications.type`. See
- * breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * `notifications.type`. See the access-permission design spec
+ * (2026-05-28) § 7.
  */
 export type NotificationType =
   | 'access.role_upgrade_request'

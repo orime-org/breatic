@@ -58,7 +58,7 @@ function initialsOf(name: string): string {
  * Tests use the STUB_MEMBERS fallback by omitting the `members` prop;
  * production callers should pass real data fetched via React Query.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 5.
+ * Spec: access-permission design (2026-05-28) § 5.
  */
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
