@@ -243,11 +243,13 @@ DD 锁定方案后,实施时走 TDD 节奏(详见 [CLAUDE.md "Test-Driven Develo
 ### 衔接图
 
 ```
-DD 锁定方案 → TDD 写代码(红 → 绿 → 蓝)→ 关键路径 100% + invariant 覆盖 → CI 强制 → commit
-   ↑                                                              ↓
-   └─── 实施中发现 DD 假设错 → 停下重做 DD ─────────────────────────┘
+DD 锁定方案 → TDD 写代码(红 → 绿 → 蓝)→ 关键路径 100% + invariant 覆盖 → smoke / E2E ship 验证 → CI 强制 → commit
+   ↑                                                                                    ↓
+   └─── 实施中发现 DD 假设错 → 停下重做 DD ───────────────────────────────────────────────┘
         (不在错假设上打补丁,违反 #5)
 ```
+
+> smoke / E2E ship 验证这一步(起真实 runtime 端到端跑)的操作规范见 [docs/TEST-MANDATE.md](./TEST-MANDATE.md)。
 
 ### DD vs TDD 边界
 
