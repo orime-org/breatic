@@ -163,16 +163,17 @@ consumeInviteLink.use(requireAuth);
  * `POST /api/v1/invite-links/:token/consume` — consume a token.
  *
  * Returns the resolved link so the caller's client knows the project
- * + role + whether the link is now spent. The caller is expected to
- * navigate to the project URL and either:
- *   - become a member at `link.role` (if not already), or
- *   - fall back to access request flow if the route can't auto-add
- *     them (e.g. project has a member cap or owner gate).
+ * + role to navigate to (the consumer becomes a member at `link.role`).
+ * On an invalid / expired / spent / bound-email-mismatch token the
+ * service throws → the caller surfaces a "link no longer valid,
+ * contact the project owner" screen (2026-05-28 spec § 2.1). There is
+ * no self-service access-request fallback (owner-invite-only model).
  *
- * Single-use vs permanent semantics live in the service:
- *   - single-use first consume: `consumed_at` set atomically, link
- *     becomes 410 Gone on next visit
- *   - permanent: idempotent; consume returns the link, no mutation
+ * `kind='email'` vs `kind='link'` semantics live in the service:
+ *   - `kind='email'` (single-use): first consume sets `consumed_at`
+ *     atomically; the link becomes 410 Gone on next visit
+ *   - `kind='link'` (multi-use): idempotent; consume returns the link,
+ *     no mutation
  */
 consumeInviteLink.post("/:token/consume", async (c) => {
   const token = c.req.param("token") as string;
