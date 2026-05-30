@@ -55,7 +55,7 @@ pnpm test / typecheck / lint
 - **异常**:`AppError(status, msg)` 在 Service 层抛,路由层 handler 处理(NotFound / Conflict / Validation / Forbidden / Unauthorized)
 - **SSE**:仅 Agent 聊天 + Text mini-tool,`data` 含 `userId` + `projectId`
 - **存储**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,5min 过期,30/分限速)直传
-- **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。`membershipType` / `membershipExpiresAt` 字段是历史遗留,**新代码只按积分余额判断,不做 tier feature gate**
+- **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。**只按积分余额判断,不做 tier feature gate**
 - **服务器端工业级标准(MANDATORY)**:所有 server / collab / worker / core 逻辑按生产级标准实现,**禁止** "dev 阶段先这样后续再补"。**必须有**:
 
 | 项 | 要求 |
