@@ -132,9 +132,6 @@ importers:
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
-      '@t3-oss/env-core':
-        specifier: ^0.11.0
-        version: 0.11.0(typescript@5.8.2)(zod@4.3.6)
       ai:
         specifier: ^6.0.141
         version: 6.0.141(zod@4.3.6)
@@ -147,9 +144,6 @@ importers:
       bullmq:
         specifier: ^5.30.0
         version: 5.30.0
-      dotenv:
-        specifier: ^16.4.0
-        version: 16.4.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.0)(postgres@3.4.0)
@@ -202,6 +196,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
+      dotenv:
+        specifier: ^16.4.0
+        version: 16.4.0
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -235,6 +232,9 @@ importers:
       ai:
         specifier: ^6.0.141
         version: 6.0.141(zod@4.3.6)
+      dotenv:
+        specifier: ^16.4.0
+        version: 16.4.0
       google-auth-library:
         specifier: ^10.6.2
         version: 10.6.2
@@ -772,6 +772,9 @@ importers:
       bullmq:
         specifier: ^5.30.0
         version: 5.30.0
+      dotenv:
+        specifier: ^16.4.0
+        version: 16.4.0
       pino:
         specifier: ^9.6.0
         version: 9.6.0
@@ -3830,15 +3833,6 @@ packages:
 
   '@swc/helpers@0.5.21':
     resolution: {integrity: sha512-jI/VAmtdjB/RnI8GTnokyX7Ug8c+g+ffD6QRLa6XQewtnGyukKkKSk3wLTM3b5cjt1jNh9x0jfVlagdN2gDKQg==}
-
-  '@t3-oss/env-core@0.11.0':
-    resolution: {integrity: sha512-PSalC5bG0a7XbyoLydiQdAnx3gICX6IQNctvh+TyLrdFxsxgocdj9Ui7sd061UlBzi+z4aIGjnem1kZx9QtUgQ==}
-    peerDependencies:
-      typescript: '>=5.0.0'
-      zod: ^3.0.0
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   '@tailwindcss/node@4.2.2':
     resolution: {integrity: sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==}
@@ -13018,12 +13012,6 @@ snapshots:
   '@swc/helpers@0.5.21':
     dependencies:
       tslib: 2.8.1
-
-  '@t3-oss/env-core@0.11.0(typescript@5.8.2)(zod@4.3.6)':
-    dependencies:
-      zod: 4.3.6
-    optionalDependencies:
-      typescript: 5.8.2
 
   '@tailwindcss/node@4.2.2':
     dependencies:

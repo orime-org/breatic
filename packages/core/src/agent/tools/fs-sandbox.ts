@@ -5,7 +5,7 @@
  * used to accept any absolute path, letting an agent-driven request
  * read `/app/.env`, overwrite skill scripts, or escape via symlink.
  * This module constrains every file operation to a single sandbox
- * root (default `uploads/workspace/` under the monorepo root).
+ * root (default `sandbox/` under the monorepo root).
  *
  * The check follows the "realpath and prefix" pattern:
  *
@@ -47,15 +47,15 @@ let _sandboxRoot: string | null = null;
  * Return the sandbox root, initializing it on first call.
  *
  * Reads `FILE_TOOL_SANDBOX_DIR` if set, otherwise defaults to
- * `<monorepo root>/uploads/workspace`. The directory is created on
- * first call so subsequent `realpath` lookups succeed.
+ * `<monorepo root>/sandbox`. The directory is created on first call
+ * so subsequent `realpath` lookups succeed.
  */
 function getSandboxRootLazy(): string {
   if (_sandboxRoot !== null) return _sandboxRoot;
   const configured = env.FILE_TOOL_SANDBOX_DIR?.trim();
   const dir = configured && configured.length > 0
     ? resolve(configured)
-    : resolve(MONOREPO_ROOT, "uploads", "workspace");
+    : resolve(MONOREPO_ROOT, "sandbox");
   mkdirSync(dir, { recursive: true });
   _sandboxRoot = realpathSync(dir);
   return _sandboxRoot;

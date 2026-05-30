@@ -20,6 +20,11 @@ export * as schema from "@core/db/schema.js";
 
 // ── Config ───────────────────────────────────────────────────────
 export { env, MONOREPO_ROOT } from "@core/config/env.js";
+// Injection boundary: application entries (server / worker / collab)
+// read process.env once at startup and call initCore to inject the
+// validated config. Library code reads it via the `env` Proxy above.
+export { initCore, getConfig, getRawEnvVar } from "@core/config/runtime.js";
+export type { CoreConfig } from "@core/config/schema.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getAgentConfig } from "@core/config/loader.js";

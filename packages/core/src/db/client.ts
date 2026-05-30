@@ -1,19 +1,28 @@
 /**
  * PostgreSQL database client using postgres.js + Drizzle ORM.
  *
- * Creates a singleton connection pool for the server / worker
- * process via `db` / `rawPg`. Cross-process consumers (collab is
- * a separate Node process and can't share this singleton instance)
- * call {@link createPgClient} to get a configured postgres.js
- * client that inherits the same production-safety defaults
- * (idle_timeout / max_lifetime / max pool size) so connection
- * lifecycle behaves the same way across all server-side
- * processes.
+ * Exposes a **lazy** singleton connection pool for the server /
+ * worker process via `db` / `rawPg`. "Lazy" because the pool is
+ * built on first access, not at module import: `@breatic/core` no
+ * longer reads `process.env` at import time, so the connection URL
+ * (`env.DATABASE_URL`) is only available after the application
+ * entry has run `initCore(process.env)`. `db` / `rawPg` are Proxies
+ * that resolve against the lazily-built pool at access time, so the
+ * ~25 `db.select()` / `rawPg` call sites stay unchanged while the
+ * pool construction is deferred past `initCore` — the same lazy
+ * pattern `getRedis()` already uses for the Redis clients.
+ *
+ * Cross-process consumers (collab is a separate Node process and
+ * can't share this singleton instance) call {@link createPgClient}
+ * to get a configured postgres.js client that inherits the same
+ * production-safety defaults (idle_timeout / max_lifetime / max
+ * pool size) so connection lifecycle behaves the same way across
+ * all server-side processes.
  *
  * Use {@link closeDb} for graceful shutdown.
  */
 
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Options, type Sql } from "postgres";
 import { env } from "@core/config/env.js";
 
@@ -74,29 +83,97 @@ export function createPgClient(
   });
 }
 
-const pgClient = createPgClient(env.DATABASE_URL, {
-  name: "core-db",
-  max: env.DB_POOL_SIZE,
-});
+/**
+ * Lazily-built postgres.js pool for this process. Null until first
+ * access of `db` / `rawPg` — by then `initCore` has run and
+ * `env.DATABASE_URL` resolves. Mirrors `getRedis()`'s lazy pattern.
+ */
+let _pgClient: Sql | null = null;
 
-/** Drizzle ORM instance connected to PostgreSQL. */
-export const db = drizzle(pgClient);
+/** Build (once) and return the process-wide postgres.js pool. */
+function getPgClient(): Sql {
+  if (_pgClient === null) {
+    _pgClient = createPgClient(env.DATABASE_URL, {
+      name: "core-db",
+      max: env.DB_POOL_SIZE,
+    });
+  }
+  return _pgClient;
+}
+
+/** Lazily-built Drizzle instance over {@link getPgClient}. */
+let _db: PostgresJsDatabase<Record<string, never>> | null = null;
+
+/** Build (once) and return the Drizzle ORM instance. */
+function getDb(): PostgresJsDatabase<Record<string, never>> {
+  if (_db === null) {
+    _db = drizzle(getPgClient());
+  }
+  return _db;
+}
+
+/**
+ * Drizzle ORM instance connected to PostgreSQL.
+ *
+ * A Proxy over the lazily-built {@link getDb} instance: property
+ * access resolves against the real Drizzle object at call time
+ * (built on first use, after `initCore`). Methods are bound to the
+ * real instance so Drizzle's internal `this` is preserved.
+ */
+export const db: PostgresJsDatabase<Record<string, never>> = new Proxy(
+  {} as PostgresJsDatabase<Record<string, never>>,
+  {
+    get(_target, prop) {
+      const real = getDb() as unknown as Record<string | symbol, unknown>;
+      const value = real[prop];
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(real)
+        : value;
+    },
+  },
+);
 
 /**
  * Close the database connection pool.
  *
- * Call during graceful shutdown to drain pending queries.
+ * Call during graceful shutdown to drain pending queries. No-op if
+ * the pool was never built (nothing was ever queried).
  */
 export async function closeDb(): Promise<void> {
-  await pgClient.end();
+  if (_pgClient !== null) {
+    await _pgClient.end();
+  }
 }
 
 /**
  * Raw postgres.js client for direct queries (e.g. health checks).
+ *
+ * A Proxy over the lazily-built {@link getPgClient} pool. postgres.js
+ * clients are callable (tagged-template) AND have methods, so the
+ * Proxy forwards both `apply` (the tagged-template call) and `get`
+ * (`.end()`, etc.) to the real pool.
  *
  * @example
  * ```typescript
  * const result = await rawPg`SELECT 1 AS ok`;
  * ```
  */
-export const rawPg = pgClient;
+export const rawPg: Sql = new Proxy(
+  // The Proxy target must be callable to support the `apply` trap
+  // (tagged-template usage); the real pool is resolved lazily inside.
+  function rawPgTarget() {
+    /* never invoked — apply trap forwards to the real pool */
+  } as unknown as Sql,
+  {
+    apply(_target, _thisArg, args) {
+      return (getPgClient() as unknown as (...a: unknown[]) => unknown)(...args);
+    },
+    get(_target, prop) {
+      const real = getPgClient() as unknown as Record<string | symbol, unknown>;
+      const value = real[prop];
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(real)
+        : value;
+    },
+  },
+);

@@ -26,14 +26,19 @@ import { getRedis } from "@core/infra/redis.js";
 export const CANVAS_LOCK_TTL_SECONDS = 7200;
 
 /**
- * Build the Redis key for a canvas-node lock. Scoped by `env.NODE_ENV` so
- * dev / staging / prod don't collide on the same Redis instance.
+ * Build the Redis key for a canvas-node lock. Scoped by `env.ENV` so
+ * dev / staging / prod don't collide on the same Redis instance —
+ * matching every other namespaced Redis key (session / ratelimit /
+ * stream / bill). Previously read the non-existent `env.NODE_ENV`,
+ * which t3-env stripped to `undefined` at runtime, emitting
+ * `undefined:canvas:lock:…` keys; the env-injection refactor's
+ * stricter typing surfaced and fixed that (2026-05-30).
  *
  * @param projectId - UUID of the project owning the node
  * @param nodeId - UUID of the canvas node being locked
  */
 export function canvasNodeLockKey(projectId: string, nodeId: string): string {
-  return `${env.NODE_ENV}:canvas:lock:${projectId}:${nodeId}`;
+  return `${env.ENV}:canvas:lock:${projectId}:${nodeId}`;
 }
 
 /**

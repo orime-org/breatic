@@ -484,6 +484,8 @@ Per CLAUDE.md "服务器端工业级标准" mandate, each long-lived application
 | collab | 1234 | 1235 | `redis_stream` PING + `hocuspocus_listening` Server.listening |
 | worker | n/a(BullMQ subscriber, no main port) | 9101 | `redis_general` PING + `postgres` SELECT 1 |
 
+The three health ports are part of the validated core config — `SERVER_HEALTH_PORT` / `COLLAB_HEALTH_PORT` / `WORKER_HEALTH_PORT` (defaults `3001` / `1235` / `9101`), declared in `packages/core/src/config/schema.ts` and read by each entry from the injected `env.*`. Override them in `.env` (see `.env.dev` / `.env.docker`) when a port collides; keep the docker `healthcheck:` probe target in sync.
+
 Health endpoints are **container-internal only** — they are not routed through nginx and not exposed to the public internet. Probing happens via `docker exec <container> wget -q -O - http://localhost:<port>/healthz` or docker's built-in `healthcheck:` directive. The 200 / 503 contract is enforced inside the http server (`packages/core/src/infra/health-server.ts`) with a 2s per-check timeout so a slow-but-recovering dependency is distinguishable from a stuck one.
 
 Why a dedicated port instead of reusing the main service port:

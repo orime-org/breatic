@@ -20,6 +20,11 @@ import { resolve } from "node:path";
 export default defineConfig({
   test: {
     testTimeout: 15_000,
+    // core no longer reads process.env itself; this setup file
+    // stands in for the application entry, loading .env (best-effort)
+    // and running initCore(process.env) before any test imports
+    // library code that reads env.* through the runtime Proxy.
+    setupFiles: ["./vitest.setup.ts"],
   },
   resolve: {
     alias: {

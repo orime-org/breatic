@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
+import { getRawEnvVar } from "@core/config/runtime.js";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -393,7 +394,10 @@ function checkAvailability(skill: InternalSkillMeta): boolean {
     }
   }
   for (const envVar of skill.requiresEnv) {
-    if (!process.env[envVar]) return false;
+    // Skill-declared required env vars are dynamic (not part of the
+    // typed config schema), so read them from the injected raw env
+    // via getRawEnvVar rather than process.env directly.
+    if (!getRawEnvVar(envVar)) return false;
   }
   return true;
 }

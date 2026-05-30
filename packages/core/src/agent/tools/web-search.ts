@@ -7,6 +7,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import { env } from "@core/config/env.js";
 
 /**
  * Search the web using the Brave Search API.
@@ -27,7 +28,9 @@ export const webSearch = tool({
       .describe("Number of results (1-10)"),
   }),
   execute: async ({ query, count }): Promise<string> => {
-    const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+    // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
+    // read via the injected config Proxy, not process.env directly.
+    const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
       return "Error: Brave Search API key not configured. Set BRAVE_SEARCH_API_KEY in your .env file.";
     }

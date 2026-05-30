@@ -1,176 +1,20 @@
 /**
- * Type-safe environment variable validation.
+ * Backward-compatible config entry point.
  *
- * Uses `@t3-oss/env-core` + Zod to validate all environment variables
- * at import time. The application crashes immediately if required
- * variables are missing or invalid.
+ * Historically this module read `process.env` + loaded `.env` at
+ * import time and validated via `@t3-oss/env-core`. That made
+ * `@breatic/core` read environment variables — a library making an
+ * application decision, violating the same principle that bans
+ * `logger.*` / `process.exit()` in library code (CLAUDE.md "core /
+ * shared 不读环境变量" mandate, 2026-05-30).
+ *
+ * The read now lives in the application layer: each service entry
+ * (server / worker / collab) reads `process.env` once at startup and
+ * injects it via `initCore(process.env)` (see `@core/config/runtime`).
+ * This module is kept as a thin re-export so the ~33 existing
+ * `import { env } from "@core/config/env.js"` call sites stay
+ * unchanged — `env` is now the runtime Proxy backed by the injected,
+ * validated config.
  */
 
-import { config } from "dotenv";
-import { resolve, dirname } from "node:path";
-import { existsSync } from "node:fs";
-
-/**
- * Find the monorepo root by walking up from the current file
- * until we find `pnpm-workspace.yaml`. Works from both source
- * (packages/core/src/config/) and compiled (packages/core/dist/).
- */
-function findMonorepoRoot(): string {
-  let dir = import.meta.dirname;
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  // Fallback: process.cwd() (works in Docker where cwd = /app)
-  return process.cwd();
-}
-
-export const MONOREPO_ROOT = findMonorepoRoot();
-
-// Load .env from monorepo root (not packages/server/)
-config({ path: resolve(MONOREPO_ROOT, ".env") });
-import { createEnv } from "@t3-oss/env-core";
-import { z } from "zod";
-
-/** Validated environment variables. */
-export const env = createEnv({
-  server: {
-    // ── App ───────────────────────────────────────────
-    ENV: z.enum(["dev", "staging", "prod"]).default("dev"),
-    DEBUG: z
-      .string()
-      .default("false")
-      .transform((v) => v === "true"),
-    PORT: z.coerce.number().int().positive().default(3000),
-
-    // ── Auth ──────────────────────────────────────────
-    SESSION_SECRET_KEY: z.string().min(1),
-
-    // ── Database ──────────────────────────────────────
-    DATABASE_URL: z.string().url(),
-    DB_POOL_SIZE: z.coerce.number().int().positive().default(10),
-
-    // ── Redis ─────────────────────────────────────────
-    REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
-    REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
-    REDIS_STREAM_URL: z.string().url().default("redis://localhost:6379/2"),
-
-    // ── CORS ──────────────────────────────────────────
-    ALLOWED_ORIGINS: z.string().default("http://localhost:3001"),
-
-    // ── Cookie ────────────────────────────────────────
-    // Empty string = let the browser scope to the request host
-    // (right for dev where the API and web share `localhost`). In
-    // prod set a parent domain (e.g. `.thinkai.cc`) when the API
-    // and web sit on different subdomains and must share the
-    // session cookie.
-    COOKIE_DOMAIN: z.string().default(""),
-
-    // ── AI Providers (all optional) ──────────────────
-    OPENROUTER_API_KEY: z.string().default(""),
-    ANTHROPIC_API_KEY: z.string().default(""),
-    OPENAI_API_KEY: z.string().default(""),
-    GOOGLE_API_KEY: z.string().default(""),
-    WAVESPEED_API_KEY: z.string().default(""),
-    DASHSCOPE_API_KEY: z.string().default(""),
-    BYTEPLUS_API_KEY: z.string().default(""),
-    KLINGAI_ACCESS_KEY: z.string().default(""),
-    KLINGAI_SECRET_KEY: z.string().default(""),
-    MINIMAX_API_KEY: z.string().default(""),
-    ELEVENLABS_API_KEY: z.string().default(""),
-    FAL_API_KEY: z.string().default(""),
-    TOPAZ_API_KEY: z.string().default(""),
-    PIXVERSE_API_KEY: z.string().default(""),
-    VIDU_API_KEY: z.string().default(""),
-    LUMA_API_KEY: z.string().default(""),
-    FISH_API_KEY: z.string().default(""),
-
-    // ── Agent Tools ───────────────────────────────────
-    BRAVE_SEARCH_API_KEY: z.string().default(""),
-
-    /**
-     * Sandbox root for the agent file tools (`read_file`, `write_file`,
-     * `edit_file`, `list_dir`). Defaults to `<monorepo>/uploads/workspace`.
-     * Every tool call is constrained to paths whose realpath is equal
-     * to or under this directory.
-     */
-    FILE_TOOL_SANDBOX_DIR: z.string().default(""),
-
-    // ── Google OAuth ────────────────────────────────
-    GOOGLE_CLIENT_ID: z.string().default(""),
-    GOOGLE_CLIENT_SECRET: z.string().default(""),
-
-    // ── Payment ──────────────────────────────────────
-    PAYMENT_ENABLED: z
-      .string()
-      .default("false")
-      .transform((v) => v === "true"),
-    STRIPE_SECRET_KEY: z.string().default(""),
-    STRIPE_WEBHOOK_SECRET: z.string().default(""),
-    CREDIT_MULTIPLIER: z.coerce.number().positive().default(1.0),
-
-    // ── Storage ──────────────────────────────────────
-    STORAGE_PROVIDER: z.enum(["local", "s3", "aliyun_oss"]).default("local"),
-    UPLOAD_BASE_URL: z.string().default(""),
-    LOCAL_UPLOAD_DIR: z.string().default(""),
-    S3_BUCKET: z.string().default(""),
-    S3_REGION: z.string().default(""),
-    S3_ACCESS_KEY: z.string().default(""),
-    S3_SECRET_KEY: z.string().default(""),
-    OSS_BUCKET: z.string().default(""),
-    OSS_ENDPOINT: z.string().default(""),
-    OSS_ACCESS_KEY: z.string().default(""),
-    OSS_SECRET_KEY: z.string().default(""),
-
-    // ── Upload Size Limits (MB, per asset kind) ─────
-    UPLOAD_MAX_IMAGE_MB: z.coerce.number().positive().default(50),
-    UPLOAD_MAX_VIDEO_MB: z.coerce.number().positive().default(1024),
-    UPLOAD_MAX_AUDIO_MB: z.coerce.number().positive().default(100),
-    UPLOAD_MAX_3D_MB: z.coerce.number().positive().default(200),
-    UPLOAD_MAX_DOCUMENT_MB: z.coerce.number().positive().default(20),
-
-    // ── Email ────────────────────────────────────────
-    // Mailer backend dispatch — self-host friendly default. See
-    // `packages/core/src/infra/mailer.ts:sendMail` for routing.
-    //   disabled : noop (no email, returns false). Pair with recovery-code
-    //              based password reset for SMTP-less self-hosts.
-    //   console  : logs subject + html to server log (dev: lift magic
-    //              link / verify token straight out of stdout).
-    //   smtp     : dispatch via nodemailer using SMTP_* below. Any SMTP
-    //              relay works (self-hosted postfix, Resend, SendGrid,
-    //              AWS SES — all expose RFC 5321 SMTP).
-    EMAIL_BACKEND: z.enum(["disabled", "console", "smtp"]).default("disabled"),
-    SMTP_HOST: z.string().default(""),
-    SMTP_PORT: z.coerce.number().default(587),
-    SMTP_USER: z.string().default(""),
-    SMTP_PASSWORD: z.string().default(""),
-  },
-
-  runtimeEnv: process.env,
-  emptyStringAsUndefined: false,
-});
-
-// ── Startup safety check ─────────────────────────────────────
-// Stripe secrets must be present (and non-whitespace) when payments are on.
-// Both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET default to "" in the
-// Zod schema so the app boots fine when PAYMENT_ENABLED=false. But if
-// payments are enabled and the secrets are empty or just spaces, webhook
-// signature verification would fail confusingly at runtime (Stripe SDK
-// would complain about an empty signing secret, not "you forgot to
-// configure it"). Fail fast at boot with a clear message instead.
-if (env.PAYMENT_ENABLED) {
-  if (!env.STRIPE_SECRET_KEY.trim()) {
-    throw new Error(
-      "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
-      "(non-empty, non-whitespace). Refusing to start.",
-    );
-  }
-  if (!env.STRIPE_WEBHOOK_SECRET.trim()) {
-    throw new Error(
-      "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
-      "(non-empty, non-whitespace). Refusing to start.",
-    );
-  }
-}
+export { env, MONOREPO_ROOT } from "@core/config/runtime.js";

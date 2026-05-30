@@ -4,6 +4,15 @@ Public overview of `packages/web/` — the breatic React app served at the
 browser. For overall architecture (6 packages + 3 services) see
 [architecture.md](./architecture.md).
 
+> **Industrial-grade mandate vs. detail.** The *constraints* `web` must
+> satisfy — TS strict / zero `any`, the `app → pages → spaces → features →
+> stores → domain → data → ui` single-direction layering, critical-path &
+> invariant tests, a11y, i18n (ICU), strict design tokens — are stated as a
+> mandate in [CLAUDE.md](../CLAUDE.md) "前端工业级标准". This document holds
+> the *implementation detail* of those constraints (naming, the node model,
+> token bridging, the shadcn vendor boundary, and the specific traps). When a
+> rule must be enforced it belongs in CLAUDE.md; how it is done belongs here.
+
 ## Status
 
 v14 greenfield rewrite landed on `main` 2026-05-19 (PR #103). Visual

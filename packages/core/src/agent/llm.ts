@@ -10,26 +10,56 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { env } from "@core/config/env.js";
 
+// Providers are built LAZILY (on first use), not at module import:
+// each reads an API key from the injected config (`env.*`), which is
+// only available after the application entry runs `initCore`. This
+// mirrors the lazy db / Redis singletons — importing this module has
+// no env dependency, so the `@breatic/core` barrel stays importable
+// before initialization.
+
+type OpenAIProvider = ReturnType<typeof createOpenAI>;
+type AnthropicProvider = ReturnType<typeof createAnthropic>;
+type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
+
+let _openrouter: OpenAIProvider | null = null;
+let _anthropic: AnthropicProvider | null = null;
+let _google: GoogleProvider | null = null;
+let _openai: OpenAIProvider | null = null;
+
 /** OpenRouter provider (default — routes to any model). */
-const openrouter = createOpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: env.OPENROUTER_API_KEY || undefined,
-});
+function getOpenrouter(): OpenAIProvider {
+  if (_openrouter === null) {
+    _openrouter = createOpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: env.OPENROUTER_API_KEY || undefined,
+    });
+  }
+  return _openrouter;
+}
 
 /** Direct Anthropic provider (for Claude models). */
-const anthropic = createAnthropic({
-  apiKey: env.ANTHROPIC_API_KEY || undefined,
-});
+function getAnthropic(): AnthropicProvider {
+  if (_anthropic === null) {
+    _anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY || undefined });
+  }
+  return _anthropic;
+}
 
 /** Direct Google provider (for Gemini models). */
-const google = createGoogleGenerativeAI({
-  apiKey: env.GOOGLE_API_KEY || undefined,
-});
+function getGoogle(): GoogleProvider {
+  if (_google === null) {
+    _google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_API_KEY || undefined });
+  }
+  return _google;
+}
 
 /** Direct OpenAI provider. */
-const openai = createOpenAI({
-  apiKey: env.OPENAI_API_KEY || undefined,
-});
+function getOpenai(): OpenAIProvider {
+  if (_openai === null) {
+    _openai = createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined });
+  }
+  return _openai;
+}
 
 /**
  * Get an AI SDK model instance by model string.
@@ -40,22 +70,22 @@ const openai = createOpenAI({
  * @param modelString - Model identifier. Defaults to OpenRouter Claude.
  * @returns AI SDK LanguageModel instance
  */
-export function getModel(modelString?: string): ReturnType<typeof openrouter> {
+export function getModel(modelString?: string): ReturnType<OpenAIProvider> {
   const model = modelString ?? "anthropic/claude-sonnet-4-6";
 
   // Route to direct provider if API key is configured, otherwise fall back to OpenRouter
   if (model.startsWith("anthropic/") && env.ANTHROPIC_API_KEY) {
-    return anthropic(model.replace("anthropic/", ""));
+    return getAnthropic()(model.replace("anthropic/", ""));
   }
   if (model.startsWith("google/") && env.GOOGLE_API_KEY) {
-    return google(model.replace("google/", ""));
+    return getGoogle()(model.replace("google/", ""));
   }
   if (model.startsWith("openai/") && env.OPENAI_API_KEY) {
-    return openai(model.replace("openai/", ""));
+    return getOpenai()(model.replace("openai/", ""));
   }
 
   // Fall back to OpenRouter (supports all models via unified API)
-  return openrouter(model);
+  return getOpenrouter()(model);
 }
 
 /**
