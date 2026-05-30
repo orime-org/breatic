@@ -227,11 +227,11 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@hono/node-server':
-        specifier: ^1.14.0
-        version: 1.14.0(hono@4.7.0)
+        specifier: ^2.0.4
+        version: 2.0.4(hono@4.12.23)
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.7.0)(zod@4.3.6)
+        version: 0.7.6(hono@4.12.23)(zod@4.3.6)
       ai:
         specifier: ^6.0.141
         version: 6.0.141(zod@4.3.6)
@@ -239,8 +239,8 @@ importers:
         specifier: ^10.6.2
         version: 10.6.2
       hono:
-        specifier: ^4.7.0
-        version: 4.7.0
+        specifier: ^4.12.23
+        version: 4.12.23
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -2225,9 +2225,9 @@ packages:
       y-protocols: ^1.0.6
       yjs: ^13.6.8
 
-  '@hono/node-server@1.14.0':
-    resolution: {integrity: sha512-YUCxJwgHRKSqjrdTk9e4VMGKN27MK5r4+MGPyZTgKH+IYbK+KtYbHeOcPGJ91KGGD6RIQiz2dAHxvjauNhOS8g==}
-    engines: {node: '>=18.14.1'}
+  '@hono/node-server@2.0.4':
+    resolution: {integrity: sha512-Ut3y0dMMPWy6bZ2kVfx25EOVbZlm15dhF4mOsezMlhpNHy+4MkU1qN9Y6lnruYi4wPmFzimGX2X7LF/FwHli4A==}
+    engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
 
@@ -6629,8 +6629,8 @@ packages:
   hls.js@1.6.15:
     resolution: {integrity: sha512-E3a5VwgXimGHwpRGV+WxRTKeSp2DW5DI5MWv34ulL3t5UNmyJWCQ1KmLEHbYzcfThfXG8amBL+fCYPneGHC4VA==}
 
-  hono@4.7.0:
-    resolution: {integrity: sha512-hV97aIR4WYbG30k234sD9B3VNr1ZWdQRmrVF76LKFlmI7O9Yo70mG9+mFwyQ6Sjrz4wH71GfnBxv6CPjcx3QNw==}
+  hono@4.12.23:
+    resolution: {integrity: sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -11374,13 +11374,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@hono/node-server@1.14.0(hono@4.7.0)':
+  '@hono/node-server@2.0.4(hono@4.12.23)':
     dependencies:
-      hono: 4.7.0
+      hono: 4.12.23
 
-  '@hono/zod-validator@0.7.6(hono@4.7.0)(zod@4.3.6)':
+  '@hono/zod-validator@0.7.6(hono@4.12.23)(zod@4.3.6)':
     dependencies:
-      hono: 4.7.0
+      hono: 4.12.23
       zod: 4.3.6
 
   '@hookform/resolvers@5.2.2(react-hook-form@7.76.0(react@19.2.4))':
@@ -16267,7 +16267,7 @@ snapshots:
 
   hls.js@1.6.15: {}
 
-  hono@4.7.0: {}
+  hono@4.12.23: {}
 
   html-encoding-sniffer@6.0.0:
     dependencies:
