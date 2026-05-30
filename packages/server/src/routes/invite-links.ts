@@ -147,7 +147,7 @@ projectInviteLinks.delete(
   "/:linkId",
   requireRole("owner"),
   async (c) => {
-    const linkId = c.req.param("linkId") as string;
+    const linkId = c.req.param("linkId");
     await shareLinkService.revokeLink(linkId);
     return c.json({ data: { ok: true } });
   },
@@ -176,7 +176,7 @@ consumeInviteLink.use(requireAuth);
  *     no mutation
  */
 consumeInviteLink.post("/:token/consume", async (c) => {
-  const token = c.req.param("token") as string;
+  const token = c.req.param("token");
   const user = c.get("user");
   const link = await shareLinkService.consumeLink(token, user.email);
 

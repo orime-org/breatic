@@ -113,7 +113,7 @@ decisionRoute.patch(
   zValidator("json", decisionBodySchema),
   async (c) => {
     const user = c.get("user");
-    const notificationId = c.req.param("notificationId") as string;
+    const notificationId = c.req.param("notificationId");
     const body = c.req.valid("json");
 
     // Look up the project name for the decision notification's
