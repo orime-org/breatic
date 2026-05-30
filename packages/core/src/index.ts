@@ -14,6 +14,8 @@
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, closeDb, createPgClient } from "@core/db/client.js";
 export { runMigrations } from "@core/db/migrate.js";
+export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
+export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
 
 // ── Config ───────────────────────────────────────────────────────
