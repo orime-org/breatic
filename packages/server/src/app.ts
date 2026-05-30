@@ -28,10 +28,6 @@ import { assetsRoute } from "@server/routes/assets.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import {
-  projectAccessRequestsRoute,
-  myAccessRequestsRoute,
-} from "@server/routes/access-requests.js";
-import {
   projectInviteLinksRoute,
   consumeInviteLinkRoute,
 } from "@server/routes/invite-links.js";
@@ -71,8 +67,6 @@ export function createApp(): Hono {
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
-  app.route("/api/v1/projects/:pid/access-requests", projectAccessRequestsRoute);
-  app.route("/api/v1/users/me/access-requests", myAccessRequestsRoute);
   app.route("/api/v1/projects/:pid/invite-links", projectInviteLinksRoute);
   app.route("/api/v1/invite-links", consumeInviteLinkRoute);
   app.route("/api/v1/users/me/notifications", notificationsRoute);
