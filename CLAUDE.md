@@ -10,7 +10,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 测试 | typecheck + 单测 + smoke / e2e / 浏览器交互。做不了要 explicit 说明,不许跳过 |
+| 测试 | typecheck + 单测 + smoke / e2e / 浏览器交互。做不了要 explicit 说明,不许跳过。**smoke / e2e 操作规范见 [docs/TEST-MANDATE.md](./docs/TEST-MANDATE.md)**(测试五层 / smoke 定义 / 关键路径 E2E / 边界)|
 | 文档 | ROADMAP / spec / `docs/*` 等所有受影响项。**落后文档比没文档更糟** |
 
 **所有任务必须先列 todo 计划,按计划执行,完成后对照复核**。不分 research / 执行 / 测试 / 文档,**也不分大小** — 哪怕一两步也写。**取消"小任务豁免"**:小任务也写、也复核。
