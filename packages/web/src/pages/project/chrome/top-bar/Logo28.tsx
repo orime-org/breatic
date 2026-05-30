@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 
 /**
- * 28×28 Logo — `inner-design/design/logo/logo-color.svg` inlined.
+ * 28×28 Logo — three-tadpole brand mark, inlined SVG.
  *
  * Three tadpoles in a clockwise loop:
  *   - main brand (rust red #BC4B36) at the bottom-right
