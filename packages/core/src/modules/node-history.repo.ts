@@ -24,7 +24,7 @@ function toEntity(row: typeof nodeHistory.$inferSelect): NodeHistoryEntity {
     thumbnailUrl: row.thumbnailUrl,
     errorMessage: row.errorMessage,
     taskId: row.taskId,
-    metadata: (row.metadata ?? {}) as Record<string, unknown>,
+    metadata: (row.metadata ?? {}),
     createdAt: row.createdAt,
   };
 }

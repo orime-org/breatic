@@ -35,7 +35,7 @@ try {
   // and fail fast — this is the application entry, where `console`
   // is permitted (it is banned only in library code). Exiting here
   // is the correct "refuse to start on bad config" behaviour.
-  // eslint-disable-next-line no-console
+   
   console.error(
     "FATAL: invalid configuration at startup —",
     err instanceof Error ? err.message : err,

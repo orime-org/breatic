@@ -53,7 +53,7 @@ export function requireRoleOnParam(
     if (role === null) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
-    if (ROLE_RANK[role as ProjectRole] < ROLE_RANK[min]) {
+    if (ROLE_RANK[role] < ROLE_RANK[min]) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
 

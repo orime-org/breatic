@@ -85,7 +85,7 @@ export class SkillRegistry {
   canUserInvoke(name: string): boolean {
     const skill = this.skills.get(name);
     if (!skill) return false;
-    return (skill as InternalSkillMeta).userInvocable;
+    return (skill).userInvocable;
   }
 
   /**
@@ -128,7 +128,7 @@ export class SkillRegistry {
   listByScope(scope: string): SkillMeta[] {
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
-      if ((s as InternalSkillMeta).scope.includes(scope)) {
+      if ((s).scope.includes(scope)) {
         result.push(s);
       }
     }
@@ -145,7 +145,7 @@ export class SkillRegistry {
   listByScopeAndCategory(scope: string, category: string): SkillMeta[] {
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
-      const internal = s as InternalSkillMeta;
+      const internal = s;
       if (internal.scope.includes(scope) && s.category === category) {
         result.push(s);
       }

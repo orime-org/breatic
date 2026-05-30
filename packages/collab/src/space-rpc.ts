@@ -467,8 +467,8 @@ async function handleRestore(
         kind: "space-restored",
         actor: caller.userId,
         spaceId,
-        spaceName: snapshot && typeof (snapshot as Record<string, unknown>).name === "string"
-          ? ((snapshot as Record<string, unknown>).name as string)
+        spaceName: snapshot && typeof (snapshot).name === "string"
+          ? ((snapshot).name)
           : undefined,
       });
       // Mark the original deleted entry as restored so any client

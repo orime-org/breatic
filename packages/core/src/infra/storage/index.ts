@@ -85,7 +85,7 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
     }
   }
 
-  return _adapter!;
+  return _adapter;
 }
 
 /**

@@ -69,7 +69,7 @@ export class S3StorageAdapter implements StorageAdapter {
       Key: key,
       ContentType: contentType,
     });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- AWS SDK v3 @smithy/types version mismatch
+     
     return getSignedUrl(this.client as never, command as never, { expiresIn: expiresSeconds });
   }
 

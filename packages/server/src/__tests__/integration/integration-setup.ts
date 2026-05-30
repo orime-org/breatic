@@ -33,10 +33,10 @@ declare module "vitest" {
 
 const urls = inject("DATABASE_URL")
   ? {
-      DATABASE_URL: inject("DATABASE_URL") as string,
-      REDIS_URL: inject("REDIS_URL") as string,
-      REDIS_QUEUE_URL: inject("REDIS_QUEUE_URL") as string,
-      REDIS_STREAM_URL: inject("REDIS_STREAM_URL") as string,
+      DATABASE_URL: inject("DATABASE_URL"),
+      REDIS_URL: inject("REDIS_URL"),
+      REDIS_QUEUE_URL: inject("REDIS_QUEUE_URL"),
+      REDIS_STREAM_URL: inject("REDIS_STREAM_URL"),
     }
   : null;
 
