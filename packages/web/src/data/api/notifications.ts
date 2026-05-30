@@ -38,7 +38,7 @@ export const notificationsApi = {
   /** Unread count — drives the red-dot badge on the bell icon. */
   count() {
     return apiGet<{ data: { count: number } }>(
-      `/users/me/notifications/count`,
+      '/users/me/notifications/count',
     );
   },
 
@@ -53,7 +53,7 @@ export const notificationsApi = {
   /** Mark every unread notification as read. */
   markAllRead() {
     return apiPost<{ data: { count: number } }, undefined>(
-      `/users/me/notifications/read-all`,
+      '/users/me/notifications/read-all',
       undefined,
     );
   },

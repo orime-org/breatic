@@ -98,7 +98,7 @@ describe('AuthBootstrap', () => {
     expect(useCurrentUserStore.getState().user).toBeNull();
   });
 
-  it("network error also flips bootstrapped=true so the app doesn't hang on the loading shell", async () => {
+  it('network error also flips bootstrapped=true so the app doesn\'t hang on the loading shell', async () => {
     vi.mocked(authApi.me).mockRejectedValueOnce(new Error('Network down'));
     render(
       <AuthBootstrap>

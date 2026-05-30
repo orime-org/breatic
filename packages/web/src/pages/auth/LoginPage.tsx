@@ -185,8 +185,6 @@ export default function LoginPage() {
  */
 function GoogleSignInButton() {
   const t = useTranslation();
-  const navigate = useNavigate();
-  const setUser = useCurrentUserStore((s) => s.setUser);
   const [busy, setBusy] = React.useState(false);
 
   async function handleClick() {

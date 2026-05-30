@@ -125,6 +125,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

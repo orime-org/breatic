@@ -225,15 +225,15 @@ export function SpaceTabBar({
     const target =
       direction === 'right'
         ? tabs.find(
-            (tab) =>
-              tab.getBoundingClientRect().right > scrollerRect.right + 1,
-          )
+          (tab) =>
+            tab.getBoundingClientRect().right > scrollerRect.right + 1,
+        )
         : [...tabs]
-            .reverse()
-            .find(
-              (tab) =>
-                tab.getBoundingClientRect().left < scrollerRect.left - 1,
-            );
+          .reverse()
+          .find(
+            (tab) =>
+              tab.getBoundingClientRect().left < scrollerRect.left - 1,
+          );
 
     target?.scrollIntoView({
       behavior: 'smooth',

@@ -141,8 +141,14 @@ jobs:
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 
-      - name: Typecheck
-        run: pnpm turbo typecheck --filter=@breatic/server --filter=@breatic/collab
+      - name: Typecheck (all packages)
+        # tsc --noEmit across every workspace package (shared / core /
+        # worker / collab / server / web). Previously filtered to just
+        # server + collab, which silently left the other four packages
+        # un-type-checked in CI (their tsup/vite builds transpile via
+        # esbuild and do NOT type-check). web gained its typecheck script
+        # in this change; backend packages already passed locally.
+        run: pnpm turbo typecheck
 
       - name: Test (all packages)
         # Runs vitest across every workspace package (shared / core /
