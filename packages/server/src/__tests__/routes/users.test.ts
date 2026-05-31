@@ -31,8 +31,8 @@ beforeEach(() => {
 describe("GET /api/v1/users", () => {
   it("returns batched display fields stripped of sensitive data", async () => {
     mocks.userRepo.getUsersByIds.mockResolvedValue([
-      { id: "u1", email: "a@x.com", username: "alice", avatarUrl: "https://cdn/a.png", credits: 999, emailVerified: true, googleId: "g-1" },
-      { id: "u2", email: "b@x.com", username: null, avatarUrl: null, credits: 0, emailVerified: false, googleId: null },
+      { id: "u1", email: "a@x.com", username: "alice", avatarUrl: "https://cdn/a.png", emailVerified: true, googleId: "g-1" },
+      { id: "u2", email: "b@x.com", username: null, avatarUrl: null, emailVerified: false, googleId: null },
     ]);
 
     const app = createApp();

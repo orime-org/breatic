@@ -150,6 +150,18 @@ export const mocks = {
     getBalance: vi.fn().mockResolvedValue(100),
     add: vi.fn().mockResolvedValue(200),
   },
+  // Balance repo (credit_balances table, PR3). The auth middleware now
+  // resolves AuthUser.credits via creditRepo.getBalance, so EVERY authed
+  // route touches this — without the mock, the real repo hits the empty
+  // mock `db` and 500s the whole route suite.
+  creditRepo: {
+    getBalance: vi.fn().mockResolvedValue(100),
+    deductBalance: vi.fn().mockResolvedValue(70),
+    addBalance: vi.fn().mockResolvedValue(200),
+    createBalanceRow: vi.fn().mockResolvedValue(undefined),
+    recordTransaction: vi.fn().mockResolvedValue({ id: "tx-1" }),
+    listTransactionsByUser: vi.fn().mockResolvedValue([]),
+  },
   // v10: project-scoped permission lookup. Default = caller is owner
   // on every project. Tests that exercise non-owner / non-member
   // paths override per-test.
@@ -294,6 +306,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     uploadService: mocks.uploadService,
     userRepo: mocks.userRepo,
     creditService: mocks.creditService,
+    creditRepo: mocks.creditRepo,
     modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     sendMail: mocks.sendMail,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
