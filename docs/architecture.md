@@ -32,18 +32,18 @@ Frontend stack: see [frontend.md](./frontend.md#tech-stack).
 ```
 packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
-├── core/     # 后端共享内核 barrel (@breatic/core)
-│              modules/(只放双服务共用业务:credit · task · node-history 的 *.repo/*.service + user.repo) · agent/(MainAgent + skills-loader) ·
-│              db/(schema.ts 21 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/stripe) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain) — 契约阶段空壳,业务后续自 core 迁入(积分花·任务·节点历史·agent·model-catalog·canvas-lock)
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域 service+repo:auth/conversation/memory/payment/project/projectAuth/projectMembers/shareLink/roleUpgradeRequest/notification/studio/skill/text-tool 等)(healthz 走独立 :3001 进程,见 DEPLOY.md)
+├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
+│              modules/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
+│              db/(schema.ts 22 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(loader/skills/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域 service+repo:auth/conversation/memory/payment/project/projectMembers〔service〕/shareLink/roleUpgradeRequest/notification/studio/skill/text-tool + user.repo) + infra/(stripe/mailer) + config/(pricing/text-tools)(healthz 走独立 :3001 进程,见 DEPLOY.md)
 ├── worker/   # BullMQ 壳: handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
 ├── collab/   # Hocuspocus 独立进程: server/auth/persistence/event-stream/task-listener
 └── web/      # React app — see frontend.md
 config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored; sandbox/ = agent file-tool sandbox root)
 ```
 
-**包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共享内核) ← {domain, collab}`;`domain(server+worker 共享 AIGC 业务) ← server / worker`;前端 `web ← shared` 不依赖 core/server。**二次调整(2026-05-31)新增 `@breatic/domain`**:server+worker 共享、collab 永不碰的 AIGC 业务(积分花 / 任务 / 节点历史 / agent / model-catalog / canvas-lock)单独成包,`lint:no-domain-import-in-collab` 守卫 collab 不 import domain(契约阶段空壳,业务后续自 core 迁入)。**严格边界**:server 不 import worker,worker 不 import server;**模块化单体(2026-05-31)**:core 只放双服务共用内核(钱/任务/节点历史 + infra + schema + 跨服务事件协议),**服务私有领域逻辑归各自服务**(server 私有业务在 `server/src/modules`,经三层边界:路由层=接线员 → 业务 service 层 → core 共享内核;`lint:no-app-import-in-core` 守卫 core/shared 不反向 import 服务包)。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为依赖 core infrastructure(`createRedisClient` / 日志 / 配置),production-safety 配置不再 raw 实例化漂离。**二次调整(2026-05-31)重定义**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 就该用 core 的统一鉴权;当前 collab 仍**手写**会话查询(裸 `redis.get(:session:)`)+ 裸 SQL 查项目角色(`loadProjectRole`)= **待消灭的鉴权漂移**(鉴权统一 PR 后改调 core 的 `session-store` + `projectMembers` repo)。旧「collab 只借 core infra、业务不引入」表述作废 —— 它把漂移当成了设计。
+**包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共享内核) ← {domain, collab}`;`domain(server+worker 共享 AIGC 业务) ← server / worker`;前端 `web ← shared` 不依赖 core/server。**二次调整(2026-05-31)新增 `@breatic/domain`**:server+worker 共享、collab 永不碰的 AIGC 业务(积分花 / 任务 / 节点历史 / agent / model-catalog / canvas-lock)单独成包,`lint:no-domain-import-in-collab` 守卫 collab 不 import domain(**PR4 已自 core 迁入业务**:credit/task/node-history/agent/model-catalog/canvas-lock + 各自 repo;同期 user.repo/stripe/mailer/pricing/text-tools 迁 server,core 回归纯地基)。**严格边界**:server 不 import worker,worker 不 import server;**模块化单体(2026-05-31)**:core 只放双服务共用内核(钱/任务/节点历史 + infra + schema + 跨服务事件协议),**服务私有领域逻辑归各自服务**(server 私有业务在 `server/src/modules`,经三层边界:路由层=接线员 → 业务 service 层 → core 共享内核;`lint:no-app-import-in-core` 守卫 core/shared 不反向 import 服务包)。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为依赖 core infrastructure(`createRedisClient` / 日志 / 配置),production-safety 配置不再 raw 实例化漂离。**二次调整(2026-05-31)重定义**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 就该用 core 的统一鉴权;当前 collab 仍**手写**会话查询(裸 `redis.get(:session:)`)+ 裸 SQL 查项目角色(`loadProjectRole`)= **待消灭的鉴权漂移**(鉴权统一 PR 后改调 core 的 `session-store` + `projectMembers` repo)。旧「collab 只借 core infra、业务不引入」表述作废 —— 它把漂移当成了设计。
 
 **Package exports:** shared/core 导出 `./dist/index.js`(行业标准),本地和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`(向上查找 `pnpm-workspace.yaml`)。
 
