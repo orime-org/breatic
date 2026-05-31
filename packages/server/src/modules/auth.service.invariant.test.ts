@@ -25,29 +25,58 @@
  *      (b) Redis key deleted (no replay), (c) deleteAllSessions called
  *      (force re-login after reset). Defends against partial cleanup
  *      regressions.
+ *
+ *   5. register seeds credit_balances — every new user gets a balance
+ *      row via creditRepo.createBalanceRow(user.id) (PR3 moved credits
+ *      out of the users table into credit_balances). Defends against a
+ *      regression that would leave new users with no balance row, which
+ *      would make the auth middleware's getBalance throw on their first
+ *      request.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Redis + session funcs + env all resolve from the @breatic/core barrel
+// now (post core-convergence): auth.service reads getRedis() / setSession
+// / deleteAllSessions / env.ENV from it. Mock the barrel — importOriginal
+// keeps the real ConflictError / UnauthorizedError classes for the throw
+// assertions.
 const mockRedis = {
   set: vi.fn().mockResolvedValue("OK"),
   get: vi.fn(),
   del: vi.fn().mockResolvedValue(1),
 };
-vi.mock("../infra/redis.js", () => ({
-  getRedis: () => mockRedis,
-}));
-
 const mockDeleteAllSessions = vi.fn();
-vi.mock("../infra/session-store.js", () => ({
-  setSession: vi.fn(),
-  getSession: vi.fn(),
-  deleteSession: vi.fn(),
-  deleteAllSessions: mockDeleteAllSessions,
+vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getRedis: () => mockRedis,
+    setSession: vi.fn(),
+    getSession: vi.fn(),
+    deleteSession: vi.fn(),
+    deleteAllSessions: mockDeleteAllSessions,
+    env: { ENV: "test" },
+  };
+});
+
+// creditRepo.createBalanceRow moved to @breatic/domain (PR4). Mock it
+// EXPLICITLY (no importOriginal) so loading it never pulls the real agent
+// llm → `ai` SDK → otel ESM chain (which crashes under vitest).
+const mockCreateBalanceRow = vi.fn().mockResolvedValue(undefined);
+vi.mock("@breatic/domain", () => ({
+  creditRepo: {
+    createBalanceRow: mockCreateBalanceRow,
+    getBalance: vi.fn(),
+    deductBalance: vi.fn(),
+    addBalance: vi.fn(),
+    recordTransaction: vi.fn(),
+    listTransactionsByUser: vi.fn(),
+  },
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);
-vi.mock("../infra/mailer.js", () => ({
+vi.mock("@server/infra/mailer.js", () => ({
   sendMail: mockSendMail,
 }));
 
@@ -55,7 +84,7 @@ const mockGetUserByEmail = vi.fn();
 const mockCreateUser = vi.fn();
 const mockUpdatePassword = vi.fn();
 const mockSetRecoveryCode = vi.fn().mockResolvedValue(undefined);
-vi.mock("./user.repo.js", () => ({
+vi.mock("@server/modules/user.repo.js", () => ({
   getUserByEmail: mockGetUserByEmail,
   getUserById: vi.fn(),
   getUserByGoogleId: vi.fn(),
@@ -68,19 +97,12 @@ vi.mock("./user.repo.js", () => ({
   markRecoveryCodeUsed: vi.fn(),
 }));
 
-vi.mock("./studio.service.js", () => ({
+vi.mock("@server/modules/studio.service.js", () => ({
   ensurePersonalStudio: vi.fn(),
 }));
 
-vi.mock("../config/env.js", () => ({
-  env: { ENV: "test" },
-}));
-
-vi.mock("../logger.js", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
+  ...(await importOriginal()),
   t: (k: string) => k,
 }));
 
@@ -94,7 +116,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     let capturedHash: string | undefined;
     mockCreateUser.mockImplementation(async (data: { hashedPassword?: string; email: string; username: string }) => {
       capturedHash = data.hashedPassword;
-      return { id: "u-new", email: data.email, username: data.username, avatarUrl: null, credits: 0 };
+      return { id: "u-new", email: data.email, username: data.username, avatarUrl: null };
     });
 
     const { register } = await import("./auth.service.js");
@@ -117,7 +139,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     let capturedUsername: string | undefined;
     mockCreateUser.mockImplementation(async (data: { username: string; email: string; hashedPassword?: string }) => {
       capturedUsername = data.username;
-      return { id: "u-justin", email: data.email, username: data.username, avatarUrl: null, credits: 0 };
+      return { id: "u-justin", email: data.email, username: data.username, avatarUrl: null };
     });
 
     const { register } = await import("./auth.service.js");
@@ -137,7 +159,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     let capturedUsername: string | undefined;
     mockCreateUser.mockImplementation(async (data: { username: string; email: string }) => {
       capturedUsername = data.username;
-      return { id: "u-old", email: data.email, username: data.username, avatarUrl: null, credits: 0 };
+      return { id: "u-old", email: data.email, username: data.username, avatarUrl: null };
     });
 
     const { register } = await import("./auth.service.js");
@@ -153,7 +175,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       email: "new@example.com",
       username: "new",
       avatarUrl: null,
-      credits: 0,
     });
 
     const { register } = await import("./auth.service.js");
@@ -169,6 +190,25 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     expect(userId).toBe("u-new");
     expect(storedHash).toMatch(/^\$2[abxy]\$12\$/);
     expect(storedHash).not.toBe(result.recoveryCode);
+  });
+
+  it("register() seeds a credit_balances row for the new user (PR3 atomic-balance invariant)", async () => {
+    mockGetUserByEmail.mockResolvedValue(null);
+    mockCreateUser.mockResolvedValue({
+      id: "u-new",
+      email: "new@example.com",
+      username: "new",
+      avatarUrl: null,
+    });
+
+    const { register } = await import("./auth.service.js");
+    await register("new@example.com", "validPassword123");
+
+    // PR3 moved credits out of the users table into credit_balances;
+    // every newly-registered user must get a balance row seeded so the
+    // auth middleware's creditRepo.getBalance resolves on first request.
+    expect(mockCreateBalanceRow).toHaveBeenCalledOnce();
+    expect(mockCreateBalanceRow).toHaveBeenCalledWith("u-new");
   });
 
   it("resetPassword() also hashes with cost 12", async () => {
@@ -209,7 +249,6 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
       email: "real@example.com",
       username: "user",
       avatarUrl: null,
-      credits: 0,
     });
 
     const { forgotPassword } = await import("./auth.service.js");
