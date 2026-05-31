@@ -44,10 +44,10 @@ branch `feat/web-visual-alignment`.
 ```bash
 # from monorepo root
 pnpm dev           # starts api / worker / collab / web (web on :8000)
-pnpm -F reagt-jike dev          # web only
-pnpm -F reagt-jike test         # vitest
-pnpm -F reagt-jike test:smoke   # Playwright e2e
-pnpm -F reagt-jike build        # vite build → dist/breatic/
+pnpm -F @breatic/web dev          # web only
+pnpm -F @breatic/web test         # vitest
+pnpm -F @breatic/web test:smoke   # Playwright e2e
+pnpm -F @breatic/web build        # vite build → dist/breatic/
 ```
 
 ## Layered architecture
