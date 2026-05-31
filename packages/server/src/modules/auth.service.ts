@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import { userRepo } from "@breatic/core";
+import { creditRepo } from "@breatic/core";
 import * as studioService from "@server/modules/studio.service.js";
 import {
   generateRecoveryCode,
@@ -65,6 +66,7 @@ export async function register(
   // sign-ups always take the first branch.
   const username = name?.trim() || (email.split("@")[0] as string);
   const user = await userRepo.createUser({ email, hashedPassword, username });
+  await creditRepo.createBalanceRow(user.id);
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up before studio
@@ -146,6 +148,7 @@ export async function loginOrCreateGoogle(
         (await userRepo.updateUser(user.id, { googleId })) ?? user;
     } else {
       user = await userRepo.createUser({ email, googleId, username: name || email.split("@")[0] });
+      await creditRepo.createBalanceRow(user.id);
     }
   }
   // Ensure personal studio exists for both newly-created and linked

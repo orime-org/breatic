@@ -6,7 +6,6 @@
  */
 
 import * as paymentRepo from "@server/modules/payment.repo.js";
-import { userRepo } from "@breatic/core";
 import { creditRepo } from "@breatic/core";
 import { getStripeClient } from "@breatic/core";
 import { findTierByName, getPricingTiers } from "@breatic/core";
@@ -106,7 +105,7 @@ export async function handleCheckoutCompleted(
     return { status: "replay" };
   }
 
-  const newBalance = await userRepo.addCredits(payment.userId, payment.creditsGranted);
+  const newBalance = await creditRepo.addBalance(payment.userId, payment.creditsGranted);
 
   await creditRepo.recordTransaction({
     userId: payment.userId,

@@ -48,7 +48,6 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    credits: doublePrecision("credits").default(0).notNull(),
     // Breatic is credits-only. No subscription tiers, no membership
     // levels — every user has the same feature set and pays per-use by
     // deducting credits. The old `membership_type` / `membership_expires_at`

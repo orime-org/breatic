@@ -129,10 +129,12 @@ export async function deductBalance(
 }
 
 /**
- * Atomically add credits to a user's active balance.
+ * Atomically add credits, creating the balance row if it doesn't exist
+ * yet (UPSERT). Guarantees a recharge / purchase always lands even if
+ * the row was never opened — money in must never silently no-op.
  *
  * @param tx - optional transaction to run inside.
- * @returns the new balance, or 0 if the user has no active balance row.
+ * @returns the new balance after the addition.
  */
 export async function addBalance(
   userId: string,
@@ -141,12 +143,10 @@ export async function addBalance(
 ): Promise<number> {
   const conn = tx ?? db;
   const result = await conn.execute(
-    sql`UPDATE credit_balances AS cb
-        SET balance = cb.balance + ${amount}, updated_at = NOW()
-        FROM users AS u
-        WHERE cb.user_id = u.id
-          AND cb.user_id = ${userId}
-          AND u.deleted_at IS NULL
+    sql`INSERT INTO credit_balances AS cb ("user_id", "balance")
+        VALUES (${userId}, ${amount})
+        ON CONFLICT ("user_id") DO UPDATE
+          SET balance = cb.balance + ${amount}, updated_at = NOW()
         RETURNING cb.balance`,
   );
   const rows = result as unknown as Array<{ balance: number }>;
