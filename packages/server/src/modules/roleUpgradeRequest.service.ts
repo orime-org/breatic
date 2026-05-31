@@ -26,7 +26,7 @@
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification.repo.js";
 import * as notificationService from "@server/modules/notification.service.js";
-import * as projectMembersRepo from "@server/modules/projectMembers.repo.js";
+import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { Notification } from "@server/modules/notification.repo.js";

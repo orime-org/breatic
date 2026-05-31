@@ -15,7 +15,7 @@
  * line-replacement, and we never silently drop a notification.
  */
 
-import * as projectMembersRepo from "@server/modules/projectMembers.repo.js";
+import { projectMembersRepo } from "@breatic/core";
 import { publishMembersChanged } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";

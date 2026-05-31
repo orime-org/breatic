@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import * as projectRepo from "@server/modules/project.repo.js";
-import * as projectAuthService from "@server/modules/projectAuth.service.js";
+import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio.service.js";
 import { userRepo } from "@breatic/core";
 import * as yjsDocRepo from "@server/modules/yjs-doc.repo.js";

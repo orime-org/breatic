@@ -117,7 +117,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // ownership. See packages/collab/src/auth.ts.
     onAuthenticate: createAuthHook({
       redis: authRedis,
-      envPrefix: infra.envPrefix,
       databaseUrl: infra.databaseUrl,
     }),
 

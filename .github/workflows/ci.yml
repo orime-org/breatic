@@ -136,6 +136,25 @@ jobs:
         # See scripts/lint-no-domain-import-in-collab.sh.
         run: pnpm lint:no-domain-import-in-collab
 
+      - name: Lint no-raw-sql-outside-repo (core + server)
+        # Enforce ADR 2026-05-31 "二次调整" 第二层 CI 守卫: a table's SQL
+        # lives in exactly one *.repo.ts home (一张表一个 repo 家). Raw
+        # sql`...` and Drizzle db.select/.insert/.update/.delete are
+        # forbidden outside *.repo.ts in core + server (db.transaction
+        # orchestration is allowed). This is what stops the auth-role
+        # query — or any query — from scattering and drifting across
+        # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
+        run: pnpm lint:no-raw-sql-outside-repo
+
+      - name: Lint no-collab-auth-table-sql (collab routes auth through core)
+        # Enforce ADR 2026-05-31 "二次调整" 鉴权统一: collab must NOT
+        # hand-roll the session / role lookups (raw project_members SQL
+        # or a raw :session: redis key). Both moved to @breatic/core
+        # (getSession + loadProjectRole) so auth is identical across
+        # services; this guard locks collab out of re-introducing the
+        # drift. See scripts/lint-no-collab-auth-table-sql.sh.
+        run: pnpm lint:no-collab-auth-table-sql
+
       - name: Lint no-library-logger (core + shared only)
         # Enforce CLAUDE.md "服务器端工业级标准" mandate (commits
         # adf36d1 / 026c5aa / 201a839): @breatic/core and

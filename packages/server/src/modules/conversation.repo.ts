@@ -18,6 +18,7 @@ import {
   memoryHistoryEntries,
 } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**
@@ -27,7 +28,9 @@ import type { ConversationEntity, MessageData } from "@breatic/shared";
  * across different transactions (single-conversation soft delete vs.
  * project-scoped cascade) without the helper owning its own transaction.
  */
-export type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+// Re-exported so the 5 server repos/services that compose a caller-
+// provided `tx` keep importing DbTx from here (it now lives in core).
+export type { DbTx };
 
 const MAX_HISTORY = 50;
 
