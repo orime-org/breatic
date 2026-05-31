@@ -25,14 +25,13 @@
 
 import type { Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
-import { env } from "@breatic/core";
+import { env, SESSION_COOKIE_NAME } from "@breatic/core";
 
-/**
- * Must stay in sync with `packages/collab/src/auth.ts`
- * `SESSION_COOKIE_NAME` (collab cannot import this file — see the
- * collab module docstring on the core-less constraint).
- */
-export const SESSION_COOKIE_NAME = "breatic_session";
+// `SESSION_COOKIE_NAME` is the single source of truth in
+// `@breatic/core` (session-store), shared with collab's onAuthenticate
+// so the cookie name can never drift between the two services. Re-export
+// it so existing `@server/middleware` importers keep their import path.
+export { SESSION_COOKIE_NAME };
 
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 

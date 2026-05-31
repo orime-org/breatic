@@ -19,13 +19,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type * as NotificationServiceModule from "./notification.service.js";
 
-vi.mock("../db/client.js", () => ({
-  db: {
-    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb({ marker: "fake-tx" }),
-    ),
-  },
-}));
+// `db` (transaction), `projectMembersRepo`, and the error classes all
+// come from `@breatic/core` (the repo + db handle live there; the repo
+// moved over in the auth-unification PR). The whole barrel is mocked —
+// not spread-from-actual — because importing real `@breatic/core` pulls
+// the `ai` SDK + opentelemetry transitive deps vitest's ESM resolver
+// chokes on. `db.transaction` runs the callback inline so the
+// approve/reject transactional paths execute without a real PG
+// connection. Error classes are defined in the factory so the service's
+// `throw` and the test's `toBeInstanceOf` share one constructor.
+vi.mock("@breatic/core", () => {
+  class NotFoundError extends Error {}
+  class ForbiddenError extends Error {}
+  class ValidationError extends Error {}
+  return {
+    db: {
+      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb({ marker: "fake-tx" }),
+      ),
+    },
+    projectMembersRepo: {
+      updateRole: vi.fn(),
+    },
+    NotFoundError,
+    ForbiddenError,
+    ValidationError,
+  };
+});
 vi.mock("./notification.repo.js", () => ({
   create: vi.fn(),
   findById: vi.fn(),
@@ -40,13 +60,10 @@ vi.mock("./notification.service.js", async (importOriginal) => {
     createRoleUpgradeRejected: vi.fn(),
   };
 });
-vi.mock("./projectMembers.repo.js", () => ({
-  updateRole: vi.fn(),
-}));
 
 import * as notificationRepo from "./notification.repo.js";
 import * as notificationService from "./notification.service.js";
-import * as projectMembersRepo from "./projectMembers.repo.js";
+import { projectMembersRepo } from "@breatic/core";
 import * as roleUpgradeRequestService from "./roleUpgradeRequest.service.js";
 import {
   NotFoundError,

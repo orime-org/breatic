@@ -297,6 +297,11 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     sendMail: mocks.sendMail,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+    // Shared authentication kernel (moved from @server/modules to
+    // @breatic/core in the auth-unification PR — collab + server share
+    // the project_members repo + loadProjectRole primitive).
+    projectMembersRepo: mocks.projectMembersRepo,
+    projectAuthService: mocks.projectAuthService,
     // Agent
     getSkillRegistry: () => ({
       get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
@@ -336,9 +341,9 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     memoryService: mocks.memoryService,
     skillService: mocks.skillService,
     textToolService: mocks.textToolService,
-    projectAuthService: mocks.projectAuthService,
+    // projectAuthService + projectMembersRepo moved to @breatic/core
+    // (auth-unification PR) — they now live in coreMock, not here.
     projectMembersService: mocks.projectMembersService,
-    projectMembersRepo: mocks.projectMembersRepo,
     shareLinkService: mocks.shareLinkService,
     notificationService: mocks.notificationService,
     notificationRepo: mocks.notificationRepo,

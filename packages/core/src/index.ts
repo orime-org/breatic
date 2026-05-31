@@ -4,15 +4,18 @@
  * All business logic, infrastructure, agent capabilities, and
  * configuration. Imported by @breatic/server and @breatic/worker.
  *
- * @breatic/collab intentionally does NOT depend on this package —
- * it's a deliberately lightweight Hocuspocus process and reaches
- * for ioredis / postgres-js directly to avoid pulling in the full
- * core dependency graph (drizzle / openrouter / etc). See
- * `packages/collab/src/auth.ts` for the rationale.
+ * @breatic/collab also depends on this package: it reaches for the
+ * shared infrastructure (connection factories / logging / config)
+ * AND the shared authentication kernel (session-store + the
+ * `projectMembers` repo + `loadProjectRole`). Auth / session / role
+ * is "must be identical across every backend service" logic, so it
+ * lives here once instead of being hand-rolled per service. collab
+ * does NOT touch @breatic/domain (server+worker-only AIGC business).
  */
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, closeDb, createPgClient } from "@core/db/client.js";
+export type { DbTx } from "@core/db/client.js";
 export { runMigrations } from "@core/db/migrate.js";
 export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
@@ -61,7 +64,7 @@ export { publishNodeEvent } from "@core/infra/event-stream.js";
 export { publishMembersChanged } from "@core/infra/control-events.js";
 export { sendMail } from "@core/infra/mailer.js";
 export type { SendMailResult, SendMailOptions } from "@core/infra/mailer.js";
-export { setSession, getSession, deleteSession, deleteAllSessions } from "@core/infra/session-store.js";
+export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 export { getStripeClient, verifyWebhookSignature } from "@core/infra/stripe.js";
 
@@ -75,6 +78,11 @@ export * as creditRepo from "@core/modules/credit.repo.js";
 export * as nodeHistoryService from "@core/modules/node-history.service.js";
 export * as nodeHistoryRepo from "@core/modules/node-history.repo.js";
 export * as userRepo from "@core/modules/user.repo.js";
+// Shared authentication kernel: project_members repo + the
+// `loadProjectRole` primitive, used by server `requireRole` middleware
+// AND collab `onAuthenticate` (auth must be identical across services).
+export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+export * as projectAuthService from "@core/modules/projectAuth.service.js";
 
 // ── Agent ────────────────────────────────────────────────────────
 export { getModel, resolveProvider } from "@core/agent/llm.js";

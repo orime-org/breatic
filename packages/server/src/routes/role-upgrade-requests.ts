@@ -30,12 +30,12 @@ import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   roleUpgradeRequestService,
   projectService,
-  projectMembersRepo,
   notificationRepo,
 } from "@server/modules";
 import {
   ForbiddenError,
   NotFoundError,
+  projectMembersRepo,
 } from "@breatic/core";
 
 // ── Per-project endpoint (viewer-only POST) ────────────────────────

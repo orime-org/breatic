@@ -4,42 +4,38 @@
  * Performs three checks before a client is allowed to open or
  * subscribe to a document:
  *
- *   1. The supplied session token resolves to a user id in Redis
- *      (`${envPrefix}:session:{token}` on DB0).
+ *   1. The supplied session cookie resolves to a user id (delegated to
+ *      core `getSession`, the same Redis-backed store the API server
+ *      writes / reads through).
  *   2. The `documentName` matches the v10 multi-doc convention —
  *      `project-{pid}/meta` or `project-{pid}/{kind}-{spaceId}` for
  *      `kind ∈ {canvas, document, timeline}`. Legacy single-doc
  *      `project-{pid}` and pre-v10 `project-{pid}/canvas` /
  *      `/node/{id}` forms are rejected outright.
- *   3. The user has an active row in `project_members` for the
- *      doc's projectId. The role is returned so Hocuspocus can
- *      apply `connection.readOnly = true` for view-only members
- *      (writes are blocked at the protocol level — no UI trust).
+ *   3. The user has an active role on the doc's project (delegated to
+ *      core `projectAuthService.loadProjectRole`). The role is returned
+ *      so Hocuspocus can apply `connection.readOnly = true` for
+ *      view-only members (writes are blocked at the protocol level —
+ *      no UI trust).
  *
  * Cross-tenant probing is impossible by design: any doc whose
  * projectId the caller is not a member of is rejected with the
  * same generic error, regardless of whether the project actually
- * exists.
+ * exists (`loadProjectRole` collapses missing-project and
+ * no-membership to the same `null`).
  *
- * Collab is a separate process from the API server. It depends on
- * `@breatic/core` only for shared *infrastructure* — connection
- * factories, configuration, logging — so production-safety knobs
- * (keepAlive / commandTimeout / READONLY reconnect / error
- * logging tags) stay defined in exactly one place across server
- * / collab / worker. The previous "does NOT depend on
- * @breatic/core" convention was revised on 2026-05-27 (PR
- * feat/2026-05-27-collab-infra-resilience) after the long-running
- * dev:collab drift exposed how raw `new IoRedis(url)` / raw
- * `postgres(url, {max:5})` in collab silently drifted from the
- * core defaults. Business logic (`projectAuthService`,
- * `paymentService`, etc.) is still NOT imported from core — the
- * role lookup below remains a raw SQL call so collab can be
- * deployed independently of any API service evolution.
+ * Session + role resolution live in `@breatic/core` because auth must
+ * be identical across every backend service. collab used to hand-roll
+ * its own copies (raw `redis.get` for the session, raw SQL for the
+ * role), which drifted from the server's path; both now call the one
+ * shared kernel. The only SQL collab still issues here is the Yjs
+ * space-existence read against its own `yjs_documents` table (a
+ * collab-private concern, not shared auth).
  */
 
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
-import { createPgClient } from "@breatic/core";
+import { createPgClient, getSession, projectAuthService, SESSION_COOKIE_NAME } from "@breatic/core";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -53,18 +49,15 @@ import { createLogger } from "@collab/logger.js";
  * path must leave a server-side log trail so a 3am oncall can
  * trace from "user sees banner stuck" back to the root cause
  * (e.g. stale Redis client, dropped Postgres connection,
- * `loadProjectRole` row mismatch) without resorting to client-side
+ * membership lookup miss) without resorting to client-side
  * inference.
  */
 const logger = createLogger("auth");
 
-/** Must match `packages/core/src/infra/cookie.ts` SESSION_COOKIE_NAME. */
-const SESSION_COOKIE_NAME = "breatic_session";
-
 /**
  * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
- * `Cookie:` header string; collab is intentionally core-less (see
- * the module docstring) so we hand-roll instead of pulling a dep.
+ * `Cookie:` header string, so we hand-roll instead of pulling a
+ * Hono-coupled cookie helper.
  *
  * Returns the value of the named cookie or null if absent.
  */
@@ -87,20 +80,6 @@ export interface AuthContext {
   user: {
     id: string;
     role: ProjectRole;
-    /**
-     * Human-readable display name (`users.username ?? users.email`),
-     * resolved at handshake time so downstream consumers
-     * (`space-rpc` actor field on projectMessages) do not have to
-     * re-query Postgres on every Space lifecycle event.
-     */
-    name: string;
-    /**
-     * Optional avatar URL — flows into `meta.users[userId].avatarUrl`
-     * so the bell + members popover can show profile pictures without
-     * a separate REST round-trip. Null when the user has not uploaded
-     * an avatar yet (Google OAuth users get one auto-set).
-     */
-    avatarUrl: string | null;
   };
   connection: {
     readOnly: boolean;
@@ -108,12 +87,15 @@ export interface AuthContext {
 }
 
 /**
- * Options required to build the auth hook. The Postgres connection
- * is used for `project_members` role lookups and is pooled (`max: 5`).
+ * Options required to build the auth hook.
+ *
+ * The Postgres connection is used ONLY for the `yjs_documents`
+ * space-existence read (`loadProjectSpaceIds`); session + role
+ * resolution route through core (`getSession` / `loadProjectRole`)
+ * and need no collab-owned pool.
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
-  envPrefix: string;
   databaseUrl: string;
 }
 
@@ -135,6 +117,10 @@ export interface CreateAuthHookOptions {
  * created project's meta doc is always seeded by `yjs-bootstrap`, so
  * the empty-set path is a defensive fallback rather than a real
  * expected state).
+ *
+ * This is collab-private `yjs_documents` access. Consolidating every
+ * collab `yjs_documents` query into one repo is the collab internal
+ * reorg (a separate PR); for now it stays here behind the auth pool.
  */
 async function loadProjectSpaceIds(
   sql: ReturnType<typeof createPgClient>,
@@ -156,61 +142,6 @@ async function loadProjectSpaceIds(
 }
 
 /**
- * Resolve the caller's role on a project + display name, or `null` if
- * the project does not exist (or is soft-deleted) OR the user has no
- * active membership. Both branches return null so the caller surfaces
- * a single error and never leaks project existence.
- *
- * `userName` falls back through `users.username` → `users.email` so
- * downstream `actor` fields on projectMessages always render a
- * human-readable string, even for accounts that signed up without a
- * username (Google OAuth path leaves `username` null until profile
- * edit). The fallback chain mirrors `server/src/routes/canvas.ts`
- * `holdingByName` for consistency.
- */
-async function loadProjectRole(
-  sql: ReturnType<typeof createPgClient>,
-  userId: string,
-  projectId: string,
-): Promise<{
-  role: ProjectRole;
-  userName: string;
-  avatarUrl: string | null;
-} | null> {
-  const projectRows = await sql<{ id: string }[]>`
-    SELECT id
-    FROM projects
-    WHERE id = ${projectId}
-      AND deleted_at IS NULL
-    LIMIT 1
-  `;
-  if (projectRows.length === 0) return null;
-
-  const memberRows = await sql<{
-    role: string;
-    username: string | null;
-    email: string;
-    avatar_url: string | null;
-  }[]>`
-    SELECT pm.role, u.username, u.email, u.avatar_url
-    FROM project_members pm
-    JOIN users u ON u.id = pm.user_id
-    WHERE pm.project_id = ${projectId}
-      AND pm.user_id = ${userId}
-      AND pm.deleted_at IS NULL
-      AND u.deleted_at IS NULL
-    LIMIT 1
-  `;
-  const row = memberRows[0];
-  if (!row) return null;
-  return {
-    role: row.role as ProjectRole,
-    userName: row.username ?? row.email,
-    avatarUrl: row.avatar_url,
-  };
-}
-
-/**
  * Create the onAuthenticate hook for Hocuspocus.
  *
  * Returns a function that Hocuspocus calls on every WS handshake.
@@ -220,7 +151,6 @@ async function loadProjectRole(
  */
 export function createAuthHook({
   redis,
-  envPrefix,
   databaseUrl,
 }: CreateAuthHookOptions) {
   const sql = createPgClient(databaseUrl, {
@@ -250,7 +180,7 @@ export function createAuthHook({
     // (Redis/Postgres connection-level failures) with the same
     // `auth_unexpected_error` tag so a single grep finds them.
     try {
-      // Session token now travels exclusively as the httpOnly
+      // Session token travels exclusively as the httpOnly
       // `breatic_session` cookie sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
       // `token` field — sent by the client in the application-level
@@ -267,7 +197,10 @@ export function createAuthHook({
         throw new Error("Missing session cookie");
       }
 
-      const userId = await redis.get(`${envPrefix}:session:${token}`);
+      // Resolve the session through core's shared session store — the
+      // same `{env}:session:{token}` key the API server writes, so the
+      // collab + server views can never drift on key prefix.
+      const userId = await getSession(redis, token);
       if (!userId) {
         logger.warn(
           { documentName, reason: "session_not_found" },
@@ -287,8 +220,15 @@ export function createAuthHook({
         );
       }
 
-      const member = await loadProjectRole(sql, userId, parsed.projectId);
-      if (!member) {
+      // Resolve the role through core's shared auth primitive — the
+      // same `loadProjectRole` the server `requireRole` middleware
+      // calls. `null` means project missing/deleted OR not a member;
+      // both collapse so we never leak project existence.
+      const role = await projectAuthService.loadProjectRole(
+        userId,
+        parsed.projectId,
+      );
+      if (!role) {
         logger.warn(
           {
             userId,
@@ -302,7 +242,6 @@ export function createAuthHook({
           `User ${userId} is not authorized to access project ${parsed.projectId}`,
         );
       }
-      const { role, userName, avatarUrl } = member;
 
       // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
       // refuse the connection if the spaceId is no longer in `meta.spaces`.
@@ -329,7 +268,7 @@ export function createAuthHook({
       }
 
       return {
-        user: { id: userId, role, name: userName, avatarUrl },
+        user: { id: userId, role },
         connection: {
           readOnly: role === "view",
         },
@@ -362,20 +301,3 @@ export function createAuthHook({
     }
   };
 }
-
-// `ensureUserInMetaDoc` removed 2026-05-27.
-//
-// The Q11 v2 server-side path (write `meta.users[userId]` from a
-// Hocuspocus lifecycle hook via `openDirectConnection`) deadlocked
-// when held inside `afterLoadDocument`, because Hocuspocus
-// serializes per-doc work and the inner direct connection to the
-// same meta doc could not resolve while the outer hook was still
-// awaiting. The fire-and-forget mitigation papered over that race
-// but left the deadlock source in the code.
-//
-// Replacement: a client-driven `users:upsert-self` stateless RPC
-// dispatched from the front-end's `onSynced` callback. The handler
-// (in `space-rpc.ts::handleUsersUpsertSelf`) writes synchronously
-// through the meta doc Y.Doc reference the `onStateless` callback
-// already holds — no second connection, no per-doc serialization
-// round-trip, no hook reentrancy.

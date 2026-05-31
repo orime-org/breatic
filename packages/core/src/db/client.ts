@@ -134,6 +134,19 @@ export const db: PostgresJsDatabase<Record<string, never>> = new Proxy(
 );
 
 /**
+ * Transaction handle type, inferred from {@link db.transaction}'s
+ * callback parameter.
+ *
+ * Lives in core (the db layer's home) so any repo — in core or in a
+ * service package — can type a caller-provided `tx` without importing
+ * a sibling repo just for the type. Repos that accept an optional
+ * `tx` use this to let the caller compose several writes across one
+ * transaction (e.g. project creation + owner-member insert) without
+ * the repo owning its own transaction.
+ */
+export type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
  * Close the database connection pool.
  *
  * Call during graceful shutdown to drain pending queries. No-op if

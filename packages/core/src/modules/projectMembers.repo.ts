@@ -12,10 +12,10 @@
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
-import { projectMembers } from "@breatic/core";
+import { db } from "@core/db/client.js";
+import type { DbTx } from "@core/db/client.js";
+import { projectMembers, projects } from "@core/db/schema.js";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation.repo.js";
 
 function toEntity(
   row: typeof projectMembers.$inferSelect,
@@ -31,14 +31,28 @@ function toEntity(
 }
 
 /**
- * Get the active role for a user on a project, or `null` if the user
- * is not a member.
+ * Get the active role for a user on an **active** project, or `null`.
  *
- * Used by `loadProjectRole` (server middleware + collab onAuth).
+ * The single source of truth for "what may this user do on this
+ * project", shared by `loadProjectRole` (server `requireRole`
+ * middleware + collab `onAuthenticate`). Both null branches —
+ * project missing/soft-deleted, and user-not-a-member — collapse to
+ * `null` so a caller surfaces one generic 403 and never leaks
+ * project existence to a non-member.
+ *
+ * The `projects` inner-join with `projects.deleted_at IS NULL` folds
+ * the project-existence guard into the same query. Project soft-delete
+ * already cascades to its `project_members` rows in one transaction
+ * (`project.repo.deleteProject`), so the member-row `deleted_at`
+ * filter alone would suffice — the project join is defence-in-depth
+ * that keeps a deleted project unreachable even if a member row ever
+ * lingered, and it lets this one query replace a separate existence
+ * SELECT (no raw `db` access outside this repo).
  *
  * @param projectId - Project UUID
  * @param userId - User UUID
- * @returns Role, or null if no active membership
+ * @returns Role, or null if the project is missing/deleted or the
+ *   user has no active membership
  */
 export async function getRole(
   projectId: string,
@@ -47,11 +61,13 @@ export async function getRole(
   const rows = await db
     .select({ role: projectMembers.role })
     .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .where(
       and(
         eq(projectMembers.projectId, projectId),
         eq(projectMembers.userId, userId),
         isNull(projectMembers.deletedAt),
+        isNull(projects.deletedAt),
       ),
     )
     .limit(1);

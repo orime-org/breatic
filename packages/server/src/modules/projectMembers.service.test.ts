@@ -6,32 +6,46 @@
  * soft-delete the owner. The partial unique index in PG is the
  * ultimate guard, but the service catches these earlier with a
  * 409 Conflict so the route layer can surface a friendly message.
+ *
+ * `projectMembersRepo`, `publishMembersChanged`, and the error
+ * classes all come from `@breatic/core` (the repo moved there in the
+ * auth-unification PR). The whole barrel is mocked rather than
+ * spread-from-actual because importing real `@breatic/core` pulls the
+ * `ai` SDK + opentelemetry transitive deps that vitest's ESM resolver
+ * chokes on — the same hermetic-test constraint as collab/auth.test.
+ * The error classes are defined inside the factory so the service's
+ * `throw new ConflictError()` and the test's `toBeInstanceOf` resolve
+ * to the same constructor.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./projectMembers.repo.js", () => ({
-  getRole: vi.fn(),
-  listByProjectId: vi.fn(),
-  upsertMember: vi.fn(),
-  updateRole: vi.fn(),
-  softDelete: vi.fn(),
-}));
+vi.mock("@breatic/core", () => {
+  class ConflictError extends Error {}
+  class NotFoundError extends Error {}
+  return {
+    projectMembersRepo: {
+      getRole: vi.fn(),
+      listByProjectId: vi.fn(),
+      upsertMember: vi.fn(),
+      updateRole: vi.fn(),
+      softDelete: vi.fn(),
+    },
+    // PR-C wired publishMembersChanged into every successful service
+    // path (after the repo mutates); stubbed so the unit test runs
+    // without an ioredis connection.
+    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
+    ConflictError,
+    NotFoundError,
+  };
+});
 
-// Stub the Redis pub/sub helper so the unit test runs without an
-// ioredis connection. PR-C wired publishMembersChanged into every
-// successful service path (after the repo mutates).
-vi.mock("../infra/control-events.js", () => ({
-  publishMembersChanged: vi.fn().mockResolvedValue(undefined),
-}));
-
-import * as repo from "./projectMembers.repo.js";
+import { projectMembersRepo, ConflictError, NotFoundError } from "@breatic/core";
 import {
   invite,
   changeRole,
   remove,
 } from "./projectMembers.service.js";
-import { ConflictError, NotFoundError } from "@breatic/core";
 
 const PID = "p1";
 
@@ -41,68 +55,68 @@ beforeEach(() => {
 
 describe("invite", () => {
   it("rejects inviting an existing owner with Conflict", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("owner");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
     await expect(invite(PID, "u-owner", "edit", "u-owner")).rejects.toBeInstanceOf(
       ConflictError,
     );
-    expect(repo.upsertMember).not.toHaveBeenCalled();
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
   });
 
   it("upserts a new member when target is not the owner", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce(null);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
     await invite(PID, "u-target", "edit", "u-inviter");
-    expect(repo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "edit", "u-inviter");
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "edit", "u-inviter");
   });
 
   it("revives a previously-removed member (repo upsert handles deletedAt clear)", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce(null); // soft-deleted = no active role
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null); // soft-deleted = no active role
     await invite(PID, "u-target", "view", "u-inviter");
-    expect(repo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "view", "u-inviter");
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "view", "u-inviter");
   });
 });
 
 describe("changeRole", () => {
   it("throws NotFound when target has no active membership", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce(null);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
     await expect(changeRole(PID, "u-target", "edit")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rejects PATCH'ing the owner's role with Conflict", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("owner");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
     await expect(changeRole(PID, "u-owner", "edit")).rejects.toBeInstanceOf(ConflictError);
-    expect(repo.updateRole).not.toHaveBeenCalled();
+    expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
   });
 
   it("updates an edit member to view", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("edit");
-    vi.mocked(repo.updateRole).mockResolvedValueOnce(true);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
     await changeRole(PID, "u-target", "view");
-    expect(repo.updateRole).toHaveBeenCalledWith(PID, "u-target", "view");
+    expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(PID, "u-target", "view");
   });
 
   it("translates a stale row (updateRole returns false) into NotFound", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("edit");
-    vi.mocked(repo.updateRole).mockResolvedValueOnce(false);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(false);
     await expect(changeRole(PID, "u-target", "view")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
 
 describe("remove", () => {
   it("throws NotFound when target has no active membership", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce(null);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
     await expect(remove(PID, "u-target")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rejects removing the owner with Conflict", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("owner");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
     await expect(remove(PID, "u-owner")).rejects.toBeInstanceOf(ConflictError);
-    expect(repo.softDelete).not.toHaveBeenCalled();
+    expect(projectMembersRepo.softDelete).not.toHaveBeenCalled();
   });
 
   it("soft-deletes a non-owner member", async () => {
-    vi.mocked(repo.getRole).mockResolvedValueOnce("edit");
-    vi.mocked(repo.softDelete).mockResolvedValueOnce(true);
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
     await remove(PID, "u-target");
-    expect(repo.softDelete).toHaveBeenCalledWith(PID, "u-target");
+    expect(projectMembersRepo.softDelete).toHaveBeenCalledWith(PID, "u-target");
   });
 });

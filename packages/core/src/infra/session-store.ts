@@ -8,6 +8,17 @@
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
 
+/**
+ * Name of the httpOnly session cookie.
+ *
+ * Single source of truth shared by every backend service: the server
+ * writes / reads / clears it through `setSessionCookie` &c., and collab
+ * parses it off the WebSocket upgrade request in `onAuthenticate`.
+ * Defined here (next to the session token store) so the two services
+ * can never drift on the cookie name.
+ */
+export const SESSION_COOKIE_NAME = "breatic_session";
+
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 function sessionKey(token: string): string {
