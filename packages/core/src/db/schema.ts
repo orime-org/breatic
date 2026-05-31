@@ -48,7 +48,6 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    credits: doublePrecision("credits").default(0).notNull(),
     // Breatic is credits-only. No subscription tiers, no membership
     // levels — every user has the same feature set and pays per-use by
     // deducting credits. The old `membership_type` / `membership_expires_at`
@@ -421,6 +420,22 @@ export const creditTransactions = pgTable(
   },
   (table) => [index("credit_tx_user_id_idx").on(table.userId)],
 );
+
+// ── 8b. Credit Balances ──────────────────────────────────────────────
+
+/**
+ * Per-user credit balance — one row per user, the single source of
+ * truth for "how many credits a user has left". Migrated out of the
+ * `users.credits` column (PR3, migration 0020) so the credit domain is
+ * self-contained and no longer coupled to the user identity table.
+ */
+export const creditBalances = pgTable("credit_balances", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "restrict" }),
+  balance: doublePrecision("balance").default(0).notNull(),
+  ...timestamps,
+});
 
 // ── 9. Conversation Memories ─────────────────────────────────────────
 

@@ -54,7 +54,11 @@ if (existsSync(envPath)) {
 // ── Run migration ───────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { runMigrations } = await import("../packages/core/dist/index.js");
+  const { initCore, runMigrations } = await import("../packages/core/dist/index.js");
+  // Core reads no env directly (PR #168 env injection) — this migration
+  // entry is a composition root, so it must inject the loaded environment
+  // via initCore() before any core config (db client) is touched.
+  initCore(process.env);
   // eslint-disable-next-line no-console
   console.log("Running database migrations...");
   const { migrationsFolder } = await runMigrations();

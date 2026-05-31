@@ -14,7 +14,6 @@ export interface UserEntity {
   email: string;
   username: string | null;
   avatarUrl: string | null;
-  credits: number;
   emailVerified: boolean;
   googleId: string | null;
   createdAt: Date;

@@ -4,7 +4,7 @@
  * Handles CRUD operations and atomic credit modifications.
  */
 
-import { eq, and, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import { users } from "@core/db/schema.js";
 import type { UserEntity } from "@breatic/shared";
@@ -16,7 +16,6 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
     email: row.email,
     username: row.username,
     avatarUrl: row.avatarUrl,
-    credits: row.credits,
     emailVerified: row.emailVerified,
     googleId: row.googleId,
     createdAt: row.createdAt,
@@ -119,9 +118,6 @@ export async function updateUser(
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/**
- * Atomically deduct credits. Fails if insufficient balance.
- *
 /** Update a user's hashed password. */
 export async function updatePassword(userId: string, hashedPassword: string): Promise<void> {
   await db
@@ -185,47 +181,4 @@ export async function markRecoveryCodeUsed(userId: string): Promise<void> {
     .update(users)
     .set({ recoveryCodeUsedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(users.id, userId), isNull(users.deletedAt)));
-}
-
-/**
- * Atomically deduct credits. Fails if insufficient balance.
- *
- * @returns `true` if deduction succeeded, `false` if insufficient credits
- */
-export async function deductCredits(userId: string, amount: number): Promise<boolean> {
-  const result = await db.execute(
-    sql`UPDATE users SET credits = credits - ${amount}, updated_at = NOW()
-        WHERE id = ${userId} AND credits >= ${amount} AND deleted_at IS NULL
-        RETURNING id`,
-  );
-  return (result as unknown[]).length > 0;
-}
-
-/**
- * Atomically add credits to a user's balance.
- *
- * @returns The new credit balance
- */
-export async function addCredits(userId: string, amount: number): Promise<number> {
-  const result = await db.execute(
-    sql`UPDATE users SET credits = credits + ${amount}, updated_at = NOW()
-        WHERE id = ${userId} AND deleted_at IS NULL
-        RETURNING credits`,
-  );
-  const rows = result as unknown as Array<{ credits: number }>;
-  return rows[0]?.credits ?? 0;
-}
-
-/**
- * Get current credit balance.
- *
- * @returns Credit balance or 0 if user not found
- */
-export async function getCredits(userId: string): Promise<number> {
-  const rows = await db
-    .select({ credits: users.credits })
-    .from(users)
-    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-    .limit(1);
-  return rows[0]?.credits ?? 0;
 }

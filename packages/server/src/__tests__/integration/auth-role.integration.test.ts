@@ -82,9 +82,11 @@ afterAll(async () => {
 });
 
 async function insertUser(email: string): Promise<string> {
+  // Balance lives in `credit_balances` since PR3 (migration 0020) — the
+  // `users.credits` column no longer exists, so the seed inserts neither.
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified, credits)
-    VALUES (${email}, true, 0)
+    INSERT INTO users (email, email_verified)
+    VALUES (${email}, true)
     RETURNING id
   `;
   return row!.id;

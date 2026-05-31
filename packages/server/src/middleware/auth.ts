@@ -12,6 +12,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@server/modules";
+import { creditRepo } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
@@ -43,12 +44,13 @@ export const requireAuth: MiddlewareHandler<{
     return c.json({ error: { code: 401, message: t("server.auth.token_expired") } }, 401);
   }
 
+  const credits = await creditRepo.getBalance(user.id);
   c.set("user", {
     id: user.id,
     email: user.email,
     username: user.username,
     avatarUrl: user.avatarUrl,
-    credits: user.credits,
+    credits,
   });
   await next();
 };
