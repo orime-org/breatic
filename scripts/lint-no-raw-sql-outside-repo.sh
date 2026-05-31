@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # lint-no-raw-sql-outside-repo — forbid raw database access outside
-# repository files in @breatic/core and @breatic/server.
+# repository files in @breatic/core, @breatic/domain and @breatic/server.
+#
+# PR4 (二次调整) note: the credit / task / node-history repos moved to
+# @breatic/domain, so domain/src is scanned too — "一张表一个 repo 家"
+# now spans all three backend packages. Combined with the package
+# boundary guards (only @breatic/domain defines the credit/task/
+# node-history repos), this is the table-ownership enforcement: those
+# tables' SQL can only live in their domain repo.
 #
 # Rationale (2026-05-31 ADR "二次调整" 第二层 CI 守卫): a table's data
 # access (its SQL) must live in exactly one repo module — "一张表一个
@@ -53,6 +60,7 @@ RAW_SQL_REGEX='(sql|rawPg)`|\bdb\.(select|insert|update|delete)\b'
 SCAN_DIRS=(
   packages/core/src
   packages/server/src
+  packages/domain/src
 )
 
 CANDIDATES=$(find "${SCAN_DIRS[@]}" \
