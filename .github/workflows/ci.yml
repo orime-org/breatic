@@ -120,13 +120,21 @@ jobs:
 
       - name: Lint no-app-import-in-core (library can't import app)
         # Enforce ADR 2026-05-31 "后端收敛为模块化单体" + root CLAUDE.md
-        # 三层边界: @breatic/core and @breatic/shared must NOT import any
-        # application package (@server / @worker / @collab / @web). The
-        # dependency direction is app → core/shared, never the reverse.
-        # Machine enforcement of the modular-monolith boundary; belt for
-        # the PR2 migration so the convergence can't rot back into a fat
-        # core. See scripts/lint-no-app-import-in-core.sh.
+        # 三层边界: @breatic/core, @breatic/shared and @breatic/domain must
+        # NOT import any application package (@server / @worker / @collab /
+        # @web). The dependency direction is app → domain → core/shared,
+        # never the reverse. Machine enforcement of the modular-monolith
+        # boundary. See scripts/lint-no-app-import-in-core.sh.
         run: pnpm lint:no-app-import-in-core
+
+      - name: Lint no-domain-import-in-collab (collab can't import domain)
+        # Enforce ADR 2026-05-31 "二次调整:抽离 @breatic/domain": collab
+        # depends on core + shared ONLY; it must NOT import @breatic/domain
+        # (the server+worker-only AIGC business — credit / task /
+        # node-history / agent / model-catalog / canvas-lock). Directional
+        # companion to no-app-import-in-core (which bans the reverse).
+        # See scripts/lint-no-domain-import-in-collab.sh.
+        run: pnpm lint:no-domain-import-in-collab
 
       - name: Lint no-library-logger (core + shared only)
         # Enforce CLAUDE.md "服务器端工业级标准" mandate (commits
