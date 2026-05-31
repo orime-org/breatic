@@ -8,18 +8,18 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
+import { getStorageAdapter, storageKey } from "@breatic/core";
 
 const execFileAsync = promisify(execFile);
 
 /**
  * Extract first frame from a video URL and upload as cover image.
  *
- * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this
- * function does NOT log failures. It returns `undefined` for any
- * non-fatal failure path (ffmpeg missing, no output, exec error)
- * and the application caller (worker job handler) is responsible
- * for deciding whether to warn/audit on `undefined`.
+ * Cover extraction is best-effort, so this returns `undefined` for
+ * any non-fatal failure path (ffmpeg missing, no output, exec error)
+ * instead of throwing or logging here — the single call site (the
+ * video job handler) owns the warn/audit decision on `undefined`,
+ * keeping the logging in one application-boundary place.
  *
  * @param videoUrl - Permanent video URL (OSS/S3/local)
  * @param opts - userId/projectId for storage key generation
