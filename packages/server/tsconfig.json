@@ -8,6 +8,7 @@
       "@server/*": ["./src/*"],
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
+      "@domain/*": ["../domain/src/*"],
       "@collab/*": ["../collab/src/*"],
       "@worker/*": ["../worker/src/*"]
     }

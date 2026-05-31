@@ -57,7 +57,8 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import fc from "fast-check";
-import { creditRepo, initCore } from "@breatic/core";
+import { initCore } from "@breatic/core";
+import { creditRepo } from "@breatic/domain";
 
 // integration-setup.ts injects the container URLs into process.env but
 // cannot call initCore itself (importing the core barrel pulls the `ai`

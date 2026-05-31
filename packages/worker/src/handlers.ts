@@ -13,23 +13,20 @@ import type { Job } from "bullmq";
 import { generateText, stepCountIs } from "ai";
 import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
-import { getModel } from "@breatic/core";
-import { buildToolSet } from "@breatic/core";
-import { getSkillRegistry } from "@breatic/core";
+import { getModel } from "@breatic/domain";
+import { buildToolSet } from "@breatic/domain";
+import { getSkillRegistry } from "@breatic/domain";
 import { getStreamRedis } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
-import { taskService } from "@breatic/core";
-import { creditService } from "@breatic/core";
-import { nodeHistoryService } from "@breatic/core";
+import { taskService } from "@breatic/domain";
+import { creditService } from "@breatic/domain";
+import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
-import {
-  verifyCanvasNodeLock,
-  releaseCanvasNodeLock,
-} from "@breatic/core";
+import { verifyCanvasNodeLock, releaseCanvasNodeLock } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { extractPromptText } from "@breatic/core";
+import { extractPromptText } from "@breatic/domain";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",

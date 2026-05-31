@@ -31,6 +31,15 @@ vi.mock("@breatic/core", () => ({
   // Other core symbols imported at the top of handlers.ts
   downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
+  storageKey: vi.fn(),
+}));
+
+// ── Mock @breatic/domain (AIGC business handlers.ts calls) ──────────
+// PR4 moved task / credit / node-history / agent / canvas-lock here.
+// Mocked so loading handlers never pulls the real domain barrel (→ agent
+// llm → `ai` SDK → otel ESM chain, plus the MONOREPO_ROOT cascade back
+// into core). Only the symbols handlers.ts imports at top level.
+vi.mock("@breatic/domain", () => ({
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
@@ -47,8 +56,9 @@ vi.mock("@breatic/core", () => ({
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
   getSkillRegistry: vi.fn(),
-  storageKey: vi.fn(),
   extractPromptText: vi.fn((x: unknown) => String(x ?? "")),
+  verifyCanvasNodeLock: vi.fn(),
+  releaseCanvasNodeLock: vi.fn(),
 }));
 
 // @breatic/shared is used for canvasSpaceDocName inside handlers.ts
@@ -69,7 +79,9 @@ vi.mock("../handlers/local/index.js", () => ({
 
 // ── ai (used in runSkillAgent path) ─────────────────────────────────
 vi.mock("ai", () => ({
+  tool: (c: Record<string, unknown>) => c,
   generateText: vi.fn(),
+  streamText: vi.fn(),
   stepCountIs: vi.fn(),
 }));
 

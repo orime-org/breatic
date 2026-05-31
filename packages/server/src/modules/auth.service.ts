@@ -8,8 +8,8 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
-import { userRepo } from "@breatic/core";
-import { creditRepo } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
+import { creditRepo } from "@breatic/domain";
 import * as studioService from "@server/modules/studio.service.js";
 import {
   generateRecoveryCode,
@@ -17,7 +17,7 @@ import {
   verifyRecoveryCode,
 } from "@server/modules/recovery-code.service.js";
 import { getRedis } from "@breatic/core";
-import { sendMail, type SendMailResult } from "@breatic/core";
+import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
 import { env } from "@breatic/core";
 import {
   setSession,

@@ -12,7 +12,7 @@
  *     already covers them)
  */
 
-import type { SendMailResult } from "@breatic/core";
+import type { SendMailResult } from "@server/infra/mailer.js";
 import { logger } from "@breatic/core";
 
 export interface LogMailCtx {

@@ -12,7 +12,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@server/modules";
-import { creditRepo } from "@breatic/core";
+import { creditRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 

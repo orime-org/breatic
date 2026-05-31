@@ -43,7 +43,8 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
 import * as projectRepo from "@server/modules/project.repo.js";
 import * as studioService from "@server/modules/studio.service.js";
 import * as yjsDocRepo from "@server/modules/yjs-doc.repo.js";
-import { userRepo, encodeInitialMetaState } from "@breatic/core";
+import { encodeInitialMetaState } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
 import { create } from "@server/modules/project.service.js";
 
 describe("project.service.create — Q2 first-space-name invariant", () => {

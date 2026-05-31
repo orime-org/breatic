@@ -18,7 +18,7 @@
  * email-invite the owner sends via ShareDialog).
  */
 
-import type { SendMailOptions } from "@breatic/core";
+import type { SendMailOptions } from "@server/infra/mailer.js";
 
 const BRAND = "Breatic";
 

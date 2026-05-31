@@ -24,12 +24,12 @@ import {
   getStorageAdapter,
   storageKey,
   env,
-  nodeHistoryService,
   logger,
   ValidationError,
   checkRateLimit,
   getRedis,
 } from "@breatic/core";
+import { nodeHistoryService } from "@breatic/domain";
 import type { MiddlewareHandler } from "hono";
 
 const assets = new Hono<{ Variables: AuthVariables }>();

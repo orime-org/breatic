@@ -10,7 +10,7 @@ import { zValidator } from "@hono/zod-validator";
 import { paginationSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService } from "@breatic/core";
+import { taskService } from "@breatic/domain";
 
 const tasks = new Hono<{ Variables: AuthVariables }>();
 

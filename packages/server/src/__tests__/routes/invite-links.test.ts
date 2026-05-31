@@ -24,9 +24,24 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return coreMock(importOriginal);
 });
 
+vi.mock("@breatic/domain", async () => {
+  const { domainMock } = await import("../helpers/mock-core.js");
+  return domainMock();
+});
+
 vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
+});
+
+vi.mock("@server/modules/user.repo.js", async () => {
+  const { userRepoMock } = await import("../helpers/mock-core.js");
+  return userRepoMock();
+});
+
+vi.mock("@server/infra/mailer.js", async () => {
+  const { mailerMock } = await import("../helpers/mock-core.js");
+  return mailerMock();
 });
 
 import { createApp } from "../../app.js";

@@ -162,6 +162,23 @@ export const mocks = {
     recordTransaction: vi.fn().mockResolvedValue({ id: "tx-1" }),
     listTransactionsByUser: vi.fn().mockResolvedValue([]),
   },
+  taskRepo: {
+    getById: vi.fn(),
+    markCompletedAndBill: vi.fn(),
+  },
+  nodeHistoryRepo: {
+    listByNode: vi.fn().mockResolvedValue([]),
+  },
+  // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
+  // acquires cleanly + no prior holder so happy-path routes succeed.
+  canvasLock: {
+    CANVAS_LOCK_TTL_SECONDS: 7200,
+    canvasNodeLockKey: vi.fn(),
+    acquireCanvasNodeLock: vi.fn().mockResolvedValue(true),
+    readCanvasNodeLockHolder: vi.fn().mockResolvedValue(null),
+    verifyCanvasNodeLock: vi.fn().mockResolvedValue(true),
+    releaseCanvasNodeLock: vi.fn().mockResolvedValue(undefined),
+  },
   // v10: project-scoped permission lookup. Default = caller is owner
   // on every project. Tests that exercise non-owner / non-member
   // paths override per-test.
@@ -300,26 +317,15 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Logger
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-    // Shared services that STAY in @breatic/core (used by 2+ services)
-    taskService: mocks.taskService,
-    nodeHistoryService: mocks.nodeHistoryService,
+    // Infra-adjacent services that STAY in @breatic/core.
     uploadService: mocks.uploadService,
-    userRepo: mocks.userRepo,
-    creditService: mocks.creditService,
-    creditRepo: mocks.creditRepo,
-    modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
-    sendMail: mocks.sendMail,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
-    // Shared authentication kernel (moved from @server/modules to
-    // @breatic/core in the auth-unification PR — collab + server share
-    // the project_members repo + loadProjectRole primitive).
+    // Shared authentication kernel (project_members repo + loadProjectRole
+    // primitive — collab + server share these). AIGC business (credit /
+    // task / node-history / agent / model-catalog / canvas-lock) moved to
+    // @breatic/domain (PR4) — see domainMock below.
     projectMembersRepo: mocks.projectMembersRepo,
     projectAuthService: mocks.projectAuthService,
-    // Agent
-    getSkillRegistry: () => ({
-      get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
-      canUserInvoke: (name: string) => name !== "skill_creator",
-    }),
     runWithContext: vi.fn((_ctx: unknown, fn: () => unknown) => fn()),
     // Errors (keep actual error classes)
     AppError: actual.AppError,
@@ -330,6 +336,60 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     UnauthorizedError: actual.UnauthorizedError,
   };
 };
+
+/**
+ * Mock for `@breatic/domain` — the AIGC business kernel (credit / task /
+ * node-history / agent / model-catalog / canvas-lock) extracted from
+ * @breatic/core in PR4. Route tests that reach these pair it with
+ * coreMock + serverModulesMock:
+ *
+ *   vi.mock("@breatic/core", coreMock);
+ *   vi.mock("@breatic/domain", domainMock);
+ *   vi.mock("@server/modules", serverModulesMock);
+ *
+ * Explicit (no importOriginal) so loading it never pulls the real agent
+ * llm → `ai` SDK → otel ESM chain. Per-test overrides go through the
+ * shared `mocks` refs (creditService / taskService / canvasLock / ...).
+ */
+export const domainMock = () => ({
+  taskService: mocks.taskService,
+  taskRepo: mocks.taskRepo,
+  creditService: mocks.creditService,
+  creditRepo: mocks.creditRepo,
+  nodeHistoryService: mocks.nodeHistoryService,
+  nodeHistoryRepo: mocks.nodeHistoryRepo,
+  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
+  listAvailableModels: vi.fn().mockReturnValue([]),
+  getModel: vi.fn(),
+  resolveProvider: vi.fn(),
+  buildToolSet: vi.fn().mockReturnValue({}),
+  DEFAULT_TOOLS: [],
+  getSkillRegistry: () => ({
+    get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
+    canUserInvoke: (name: string) => name !== "skill_creator",
+  }),
+  SkillRegistry: class {},
+  loadAgents: vi.fn(),
+  getAgent: vi.fn(),
+  listAgents: vi.fn().mockReturnValue([]),
+  extractPromptText: vi.fn((s: string) => s),
+  ...mocks.canvasLock,
+});
+
+/**
+ * Mock for `@server/modules/user.repo.js` — the identity repo moved from
+ * @breatic/core to @server in PR4. Tests that hit a route reading user
+ * rows directly (canvas lock-holder lookup, batch /users) mock this path:
+ *
+ *   vi.mock("@server/modules/user.repo.js", userRepoMock);
+ */
+export const userRepoMock = () => mocks.userRepo;
+
+/**
+ * Mock for `@server/infra/mailer.js` — the mailer moved from @breatic/core
+ * to @server in PR4. Tests that send mail mock this path.
+ */
+export const mailerMock = () => ({ sendMail: mocks.sendMail });
 
 /**
  * Mock for `@server/modules` — the server-private domain (auth /

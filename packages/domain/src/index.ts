@@ -1,17 +1,50 @@
 /**
- * `@breatic/domain` — server + worker 共享的业务内核(AIGC 业务大脑)。
+ * `@breatic/domain` — AIGC business kernel shared by server + worker.
  *
- * 装 server 和 worker 都要用、但 collab 永不触碰的共享业务:积分"花"侧
- * (credit + `markCompletedAndBill` 原子扣费)/ 任务 / 节点历史 / agent
- * (模型·工具·skill 加载)/ model-catalog / canvas-lock。
+ * Holds the business logic both server and worker need but collab never
+ * touches: the credit "spend" side (credit + `markCompletedAndBill`
+ * atomic deduction) / tasks / node history / agent (model · tools ·
+ * skill loading) / model-catalog / canvas-lock.
  *
- * 依赖方向 `shared ← core ← domain ← {server, worker}`:domain 只可 import
- * `@breatic/core` + `@breatic/shared`,绝不 import 任何应用包(`@server` /
- * `@worker` / `@collab` / `@web`);collab 也绝不依赖 domain。两条方向均由
- * CI 守卫强制。进包判定题与三层边界见根 CLAUDE.md 与 docs/architecture.md。
- *
- * @remarks
- * 契约地基阶段本 barrel 为空壳 —— 业务模块后续自 `@breatic/core` 迁入,
- * 届时此处按功能逐组 re-export。
+ * Dependency direction `shared ← core ← domain ← {server, worker}`:
+ * domain may only import `@breatic/core` + `@breatic/shared`, never any
+ * application package (`@server` / `@worker` / `@collab` / `@web`), and
+ * collab never depends on domain. Both directions are enforced by CI
+ * guards. See the root CLAUDE.md + docs/architecture.md for the
+ * package-placement decision tree and the three-layer boundary.
  */
-export {};
+
+// ── Credit (the "spend" side: deduction + balance + ledger) ──────
+export * as creditService from "@domain/credit/credit.service.js";
+export * as creditRepo from "@domain/credit/credit.repo.js";
+
+// ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
+export * as taskService from "@domain/task/task.service.js";
+export * as taskRepo from "@domain/task/task.repo.js";
+
+// ── Node history (per-node content timeline, append-only) ────────
+export * as nodeHistoryService from "@domain/node-history/node-history.service.js";
+export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
+
+// ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
+export { getModel, resolveProvider } from "@domain/agent/llm.js";
+export { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/index.js";
+export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
+export { loadAgents, getAgent, listAgents } from "@domain/agent/agent-loader.js";
+export type { AgentDefinition } from "@domain/agent/agent-loader.js";
+export { extractPromptText } from "@domain/agent/extract-prompt.js";
+
+// ── Model catalog (incl. per-call credit cost: cost_per_call) ────
+export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
+export { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
+export type { SkillModelInfo } from "@domain/model-catalog/model-catalog.js";
+
+// ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
+export {
+  CANVAS_LOCK_TTL_SECONDS,
+  canvasNodeLockKey,
+  acquireCanvasNodeLock,
+  readCanvasNodeLockHolder,
+  verifyCanvasNodeLock,
+  releaseCanvasNodeLock,
+} from "@domain/canvas-lock/canvas-lock.js";

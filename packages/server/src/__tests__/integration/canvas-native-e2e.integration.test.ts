@@ -122,7 +122,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { runTask } from "@breatic/worker/src/handlers.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers.js";
-import { initCore, taskService, schema, createTestDb } from "@breatic/core";
+import { initCore, schema, createTestDb } from "@breatic/core";
+import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@breatic/collab/src/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 

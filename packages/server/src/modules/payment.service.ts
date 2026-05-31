@@ -6,9 +6,9 @@
  */
 
 import * as paymentRepo from "@server/modules/payment.repo.js";
-import { creditRepo } from "@breatic/core";
-import { getStripeClient } from "@breatic/core";
-import { findTierByName, getPricingTiers } from "@breatic/core";
+import { creditRepo } from "@breatic/domain";
+import { getStripeClient } from "@server/infra/stripe.js";
+import { findTierByName, getPricingTiers } from "@server/config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";

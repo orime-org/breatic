@@ -36,9 +36,6 @@ export type { CoreConfig } from "@core/config/schema.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getAgentConfig } from "@core/config/loader.js";
-export * as modelCatalog from "@core/config/model-catalog.js";
-export { getPricingTiers, findTierByName, findTierByPriceId } from "@core/config/pricing.js";
-export { getModelForTool, getPromptForTool } from "@core/config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -62,37 +59,19 @@ export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/in
 export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
 export { publishNodeEvent } from "@core/infra/event-stream.js";
 export { publishMembersChanged } from "@core/infra/control-events.js";
-export { sendMail } from "@core/infra/mailer.js";
-export type { SendMailResult, SendMailOptions } from "@core/infra/mailer.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
-export { getStripeClient, verifyWebhookSignature } from "@core/infra/stripe.js";
 
-// ── Shared services (2+ services use these) ──────────────────────
-// Server-private domain (auth / project / payment / ... ~15 modules)
-// lives in @server/src/modules, NOT here — see ADR 后端收敛为模块化单体.
-export * as taskService from "@core/modules/task.service.js";
-export * as taskRepo from "@core/modules/task.repo.js";
-export * as creditService from "@core/modules/credit.service.js";
-export * as creditRepo from "@core/modules/credit.repo.js";
-export * as nodeHistoryService from "@core/modules/node-history.service.js";
-export * as nodeHistoryRepo from "@core/modules/node-history.repo.js";
-export * as userRepo from "@core/modules/user.repo.js";
-// Shared authentication kernel: project_members repo + the
-// `loadProjectRole` primitive, used by server `requireRole` middleware
-// AND collab `onAuthenticate` (auth must be identical across services).
+// ── Shared auth kernel (collab + server share these) ──────────────
+// project_members repo + the `loadProjectRole` primitive, used by
+// server `requireRole` middleware AND collab `onAuthenticate` (auth
+// must be identical across services). Server-private domain (auth /
+// project / payment / user.repo / stripe / mailer / pricing / ...)
+// lives in @server/src; AIGC business shared by server+worker (credit /
+// task / node-history / agent / model-catalog / canvas-lock) lives in
+// @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
 export * as projectAuthService from "@core/modules/projectAuth.service.js";
-
-// ── Agent ────────────────────────────────────────────────────────
-export { getModel, resolveProvider } from "@core/agent/llm.js";
-export { buildToolSet, DEFAULT_TOOLS } from "@core/agent/tools/index.js";
-export { getSkillRegistry, SkillRegistry } from "@core/agent/skills-loader.js";
-export { listAvailableModels } from "@core/config/model-catalog.js";
-export type { SkillModelInfo } from "@core/config/model-catalog.js";
-export { loadAgents, getAgent, listAgents } from "@core/agent/agent-loader.js";
-export type { AgentDefinition } from "@core/agent/agent-loader.js";
-export { extractPromptText } from "@core/agent/extract-prompt.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
@@ -109,13 +88,3 @@ export {
   UnauthorizedError,
 } from "@core/errors.js";
 export type { ConflictLockedDetail } from "@core/errors.js";
-
-// Canvas node Redis lock (spec §10.15.2)
-export {
-  CANVAS_LOCK_TTL_SECONDS,
-  canvasNodeLockKey,
-  acquireCanvasNodeLock,
-  readCanvasNodeLockHolder,
-  verifyCanvasNodeLock,
-  releaseCanvasNodeLock,
-} from "@core/infra/canvas-lock.js";

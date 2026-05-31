@@ -10,7 +10,7 @@ import type { ModelMessage } from "ai";
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
 import { isLlmFamily } from "@worker/providers/understand/models/types.js";
-import { getModel } from "@breatic/core";
+import { getModel } from "@breatic/domain";
 
 /**
  * Run multimodal analysis via LLM using AI SDK.

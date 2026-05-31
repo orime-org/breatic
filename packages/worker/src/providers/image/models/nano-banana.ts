@@ -16,7 +16,7 @@
  */
 
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "@breatic/core";
+import { getModel } from "@breatic/domain";
 import type { ModelFamily } from "@worker/providers/shared.js";
 
 /** Set of model names belonging to this family. */

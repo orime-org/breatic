@@ -31,12 +31,9 @@ import {
   shareInviteMail,
   projectService,
 } from "@server/modules";
-import {
-  userRepo,
-  sendMail,
-  logger,
-} from "@breatic/core";
-import type { SendMailResult } from "@breatic/core";
+import { logger } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
+import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
 import { logMailResult } from "@server/utils/log-mail.js";
 
 /**
