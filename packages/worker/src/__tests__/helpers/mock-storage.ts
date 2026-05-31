@@ -71,7 +71,7 @@ export function installCoreStorageMock(): StorageMockState {
   const fetchSpy: MockInstance = vi
     .spyOn(global, "fetch")
     .mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as URL | Request).toString();
+      const url = typeof input === "string" ? input : (input).toString();
       const buf = state.sources.get(url);
       if (!buf) {
         return new Response(`mock-storage: no source for ${url}`, { status: 404 });

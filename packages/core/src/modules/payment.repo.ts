@@ -17,7 +17,7 @@ function toEntity(row: typeof payments.$inferSelect): PaymentEntity {
     currency: row.currency,
     status: row.status,
     creditsGranted: row.creditsGranted,
-    metadata: (row.metadata ?? {}) as Record<string, unknown>,
+    metadata: (row.metadata ?? {}),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

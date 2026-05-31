@@ -219,7 +219,7 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
-    return (existing.result ?? { alreadyCompleted: true }) as Record<string, unknown>;
+    return (existing.result ?? { alreadyCompleted: true });
   }
   if (existing?.providerResultUrl) {
     logger.warn(
@@ -650,19 +650,19 @@ async function persistOutputs(
     // These live in extra.buffer / extra.contentType (normalized by
     // toUnifiedOutputs) rather than a top-level field.
     const extra = next.extra ?? {};
-    if (Buffer.isBuffer((extra as Record<string, unknown>).buffer)) {
+    if (Buffer.isBuffer((extra).buffer)) {
       try {
         const key = makeKey();
-        const contentType = ((extra as Record<string, unknown>).contentType as string) ?? "application/octet-stream";
+        const contentType = ((extra).contentType as string) ?? "application/octet-stream";
         const adapter = await getStorageAdapter();
-        const url = await adapter.upload(key, (extra as Record<string, unknown>).buffer as Buffer, contentType);
+        const url = await adapter.upload(key, (extra).buffer, contentType);
         next.url = url;
-        logger.info({ key, size: ((extra as Record<string, unknown>).buffer as Buffer).length }, "Persisted sync transport result");
+        logger.info({ key, size: ((extra).buffer).length }, "Persisted sync transport result");
       } catch (err) {
         logger.warn({ err }, "Failed to persist buffer result");
       }
-      delete (extra as Record<string, unknown>).buffer;
-      delete (extra as Record<string, unknown>).contentType;
+      delete (extra).buffer;
+      delete (extra).contentType;
     }
 
     // Case 2: temporary CDN URL — re-host to our storage.
@@ -671,7 +671,7 @@ async function persistOutputs(
         const key = makeKey();
         const permanentUrl = await downloadAndStore(next.url, key);
         if (!next.extra) next.extra = {};
-        (next.extra as Record<string, unknown>).url_original = next.url;
+        (next.extra).url_original = next.url;
         next.url = permanentUrl;
       } catch (err) {
         logger.warn({ url: next.url, err }, "Failed to persist result URL, keeping original");
@@ -780,7 +780,7 @@ async function runUnderstand(
 
   const { generateAsync } = await import("@worker/providers/understand/index.js");
   const result = await generateAsync(prompt, modelName, cleanParams);
-  const cost = (result.cost as number) ?? 0;
+  const cost = (result.cost) ?? 0;
   const credits = cost * 100 * env.CREDIT_MULTIPLIER;
 
   return [result, credits];

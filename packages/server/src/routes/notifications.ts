@@ -61,7 +61,7 @@ route.get("/count", async (c) => {
  */
 route.patch("/:id/read", async (c) => {
   const user = c.get("user");
-  const id = c.req.param("id") as string;
+  const id = c.req.param("id");
   await notificationService.markRead(id, user.id);
   return c.json({ data: { ok: true } });
 });

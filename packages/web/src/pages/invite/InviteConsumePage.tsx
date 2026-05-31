@@ -9,16 +9,18 @@ import { useTranslation } from '@web/i18n/use-translation';
 /**
  * Invite link consume landing page — `/invite/:token`.
  *
- * Entry point for paths 2/3 of the NOT_MEMBER flow:
- *   path 2: user clicked an email invite link
- *   path 3: user clicked a forwarded share link
+ * Entry point for a non-member who clicked an email invite or a
+ * forwarded share link (owner-invite-only model — there is no
+ * self-service "request to join" flow).
  *
  * The page runs `inviteLinksApi.consume(token)` on mount and routes:
  *   - success → navigate to `/project/:projectId` (the user is now a
  *     member; ProjectPage will load normally)
- *   - 404 / 403 (revoked / expired / already-consumed for single-use)
- *     → navigate to `/project/:projectId/access` so the caller can
- *     fall back to a fresh access request
+ *   - 403 / 404 / 410 (revoked / expired / already-consumed for
+ *     single-use / bound-email mismatch) → render an inline
+ *     "this link is no longer valid, contact the project owner"
+ *     message in place (2026-05-28 spec § 2.1). No owner email is
+ *     shown (anti-spam); there is no access-request fallback.
  *
  * While the consume is in flight an `AuthCardShell` placeholder is
  * rendered so the user isn't staring at a blank screen.

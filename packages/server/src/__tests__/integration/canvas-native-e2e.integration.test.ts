@@ -285,9 +285,9 @@ async function seedNode(
 // ── beforeAll / afterAll ─────────────────────────────────────────────────────
 
 beforeAll(async () => {
-  const DATABASE_URL = inject("DATABASE_URL") as string;
-  const REDIS_QUEUE_URL = inject("REDIS_QUEUE_URL") as string;
-  const REDIS_STREAM_URL = inject("REDIS_STREAM_URL") as string;
+  const DATABASE_URL = inject("DATABASE_URL");
+  const REDIS_QUEUE_URL = inject("REDIS_QUEUE_URL");
+  const REDIS_STREAM_URL = inject("REDIS_STREAM_URL");
 
   // 1. DB connection for fixture insertion (separate pool from @breatic/core singleton)
   ({ db, client: pgClient } = createTestDb(DATABASE_URL));
@@ -357,7 +357,7 @@ beforeAll(async () => {
     host: queueUrl.hostname,
     port: Number(queueUrl.port) || 6379,
     db: Number(queueUrl.pathname.slice(1)) || 0,
-    maxRetriesPerRequest: null as null,
+    maxRetriesPerRequest: null,
     enableReadyCheck: false,
   };
 
@@ -435,7 +435,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       source: "mini_tool",
       params: {},
     }).returning();
-    const taskId = taskRow!.id as string;
+    const taskId = taskRow!.id;
 
     // Enqueue job with full Phase 2 payload shape
     await tasksQueue.add("run-task", {
@@ -518,7 +518,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       source: "mini_tool",
       params: {},
     }).returning();
-    const taskId = taskRow!.id as string;
+    const taskId = taskRow!.id;
 
     await tasksQueue.add("run-task", {
       taskId,
@@ -604,7 +604,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       source: "mini_tool",
       params: {},
     }).returning();
-    const taskId = taskRow!.id as string;
+    const taskId = taskRow!.id;
 
     await tasksQueue.add("run-task", {
       taskId,

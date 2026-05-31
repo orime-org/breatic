@@ -8,10 +8,23 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Type-aware linting: load TS project info so type-checked rules
+    // (e.g. no-unnecessary-type-assertion) can run. `projectService`
+    // auto-discovers the nearest package tsconfig per file.
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: { tsdoc, import: importPlugin },
     rules: {
       "tsdoc/syntax": "warn",
       "@typescript-eslint/no-explicit-any": "error",
+      // Ban redundant type assertions — `x as T` where TS already knows
+      // x is T. A cast that does nothing is noise and can mask a real
+      // type problem if the underlying type later changes.
+      "@typescript-eslint/no-unnecessary-type-assertion": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

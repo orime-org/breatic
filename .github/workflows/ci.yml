@@ -138,8 +138,42 @@ jobs:
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
 
+      - name: Lint no-param-as-string (all packages)
+        # Enforce 2026-05-30 type-assertion governance: a Hono route
+        # param `c.req.param(name)` already resolves to `string`, so
+        # `... as string` is a redundant cast that lies about a possible
+        # `undefined`. Use getProjectId(c) for the :pid behind
+        # requireRole, or read the param directly. This grep gate is
+        # belt-and-suspenders alongside the type-aware
+        # no-unnecessary-type-assertion eslint rule (which also catches
+        # it). Hard-fails the PR. See scripts/lint-no-param-as-string.sh.
+        run: pnpm lint:no-param-as-string
+
+      - name: Lint no-core-process-env (core + shared only)
+        # Enforce CLAUDE.md 环境变量注入 mandate: @breatic/core and
+        # @breatic/shared must NOT read process.env / load .env — config
+        # ACQUISITION is an application decision. The composition root
+        # (server / worker / collab entry) calls initCore(process.env)
+        # once; library code reads injected config via the env Proxy /
+        # getConfig() / getRawEnvVar(). Hard-fails the PR on any
+        # process.env in library src. See
+        # scripts/lint-no-core-process-env.sh.
+        run: pnpm lint:no-core-process-env
+
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
+
+      - name: Lint no-unresolved-alias-in-dist (after build)
+        # Enforce that shipped dist/ carries no UNRESOLVED internal
+        # path-alias (@shared / @core / @collab / @worker). A multi-entry
+        # tsup build can code-split and leave cross-chunk `@shared/*`
+        # specifiers externalized in the emitted dist — `pnpm build`
+        # exits 0 even with the leak, so a green build is NOT proof the
+        # dist is loadable (the web app crashes at runtime with
+        # "Failed to resolve import"). Runs AFTER the build step above so
+        # dist/ exists. Hard-fails the PR. See
+        # scripts/lint-no-unresolved-alias-in-dist.sh.
+        run: pnpm lint:no-unresolved-alias-in-dist
 
       - name: Typecheck (all packages)
         # tsc --noEmit across every workspace package (shared / core /

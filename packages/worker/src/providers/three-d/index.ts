@@ -96,7 +96,7 @@ export async function generateAsync(
     resolved.modelName,
     params,
   );
-  (apiParams as Record<string, unknown>).prompt = formattedPrompt;
+  (apiParams).prompt = formattedPrompt;
 
   const transport = getTransport(resolved.providerName);
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);

@@ -24,7 +24,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { requireRole } from "@server/middleware/role.js";
+import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   shareLinkService,
@@ -93,7 +93,7 @@ projectInviteLinks.post(
   zValidator("json", bodySchemaCreate),
   async (c) => {
     const user = c.get("user");
-    const projectId = c.req.param("pid") as string;
+    const projectId = getProjectId(c);
     const body = c.req.valid("json");
 
     const link = await shareLinkService.createLink({
@@ -134,7 +134,7 @@ projectInviteLinks.post(
  * project. Owner only.
  */
 projectInviteLinks.get("/", requireRole("owner"), async (c) => {
-  const projectId = c.req.param("pid") as string;
+  const projectId = getProjectId(c);
   const list = await shareLinkService.listByProject(projectId);
   return c.json({ data: list });
 });
@@ -147,7 +147,7 @@ projectInviteLinks.delete(
   "/:linkId",
   requireRole("owner"),
   async (c) => {
-    const linkId = c.req.param("linkId") as string;
+    const linkId = c.req.param("linkId");
     await shareLinkService.revokeLink(linkId);
     return c.json({ data: { ok: true } });
   },
@@ -163,19 +163,20 @@ consumeInviteLink.use(requireAuth);
  * `POST /api/v1/invite-links/:token/consume` — consume a token.
  *
  * Returns the resolved link so the caller's client knows the project
- * + role + whether the link is now spent. The caller is expected to
- * navigate to the project URL and either:
- *   - become a member at `link.role` (if not already), or
- *   - fall back to access request flow if the route can't auto-add
- *     them (e.g. project has a member cap or owner gate).
+ * + role to navigate to (the consumer becomes a member at `link.role`).
+ * On an invalid / expired / spent / bound-email-mismatch token the
+ * service throws → the caller surfaces a "link no longer valid,
+ * contact the project owner" screen (2026-05-28 spec § 2.1). There is
+ * no self-service access-request fallback (owner-invite-only model).
  *
- * Single-use vs permanent semantics live in the service:
- *   - single-use first consume: `consumed_at` set atomically, link
- *     becomes 410 Gone on next visit
- *   - permanent: idempotent; consume returns the link, no mutation
+ * `kind='email'` vs `kind='link'` semantics live in the service:
+ *   - `kind='email'` (single-use): first consume sets `consumed_at`
+ *     atomically; the link becomes 410 Gone on next visit
+ *   - `kind='link'` (multi-use): idempotent; consume returns the link,
+ *     no mutation
  */
 consumeInviteLink.post("/:token/consume", async (c) => {
-  const token = c.req.param("token") as string;
+  const token = c.req.param("token");
   const user = c.get("user");
   const link = await shareLinkService.consumeLink(token, user.email);
 

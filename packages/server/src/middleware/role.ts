@@ -53,7 +53,7 @@ export function requireRoleOnParam(
     if (role === null) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
-    if (ROLE_RANK[role as ProjectRole] < ROLE_RANK[min]) {
+    if (ROLE_RANK[role] < ROLE_RANK[min]) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
 
@@ -80,4 +80,17 @@ export function requireRole(
  */
 export function getRole(c: Context<{ Variables: AuthRoleVariables }>): ProjectRole {
   return c.get("role");
+}
+
+/**
+ * Read the project UUID that {@link requireRole} validated + stamped.
+ *
+ * Routes behind `requireRole(...)` should use this instead of
+ * `c.req.param("pid") as string`: the cast is both redundant (the
+ * middleware already resolved + validated the param) and dishonest
+ * (it asserts non-undefined where the typed `c.var.projectId` proves
+ * it). Only valid downstream of `requireRole` / `requireRoleOnParam`.
+ */
+export function getProjectId(c: Context<{ Variables: AuthRoleVariables }>): string {
+  return c.get("projectId");
 }

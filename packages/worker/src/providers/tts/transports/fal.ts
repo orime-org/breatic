@@ -104,7 +104,7 @@ export async function generate(
   const audioUrl = resultData.audio_url as string | undefined;
   const audioInfo = resultData.audio as Record<string, unknown> | string | undefined;
   const url = audioUrl ??
-    (typeof audioInfo === "string" ? audioInfo : (audioInfo as Record<string, unknown> | undefined)?.url as string | undefined);
+    (typeof audioInfo === "string" ? audioInfo : (audioInfo)?.url as string | undefined);
 
   if (!url) {
     throw new Error("No audio URL in fal.ai TTS result");
