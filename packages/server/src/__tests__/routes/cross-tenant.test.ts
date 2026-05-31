@@ -17,6 +17,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return coreMock(importOriginal);
 });
 
+vi.mock("@server/modules", async (importOriginal) => {
+  const { serverModulesMock } = await import("../helpers/mock-core.js");
+  return serverModulesMock(importOriginal);
+});
+
 import { createApp } from "../../app.js";
 import { ForbiddenError } from "@breatic/core";
 import { mocks } from "../helpers/mock-core.js";

@@ -14,7 +14,7 @@ import { registerSchema, loginSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService } from "@breatic/core";
+import { authService } from "@server/modules";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";

@@ -13,7 +13,8 @@ import { zValidator } from "@hono/zod-validator";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { textToolService, logger } from "@breatic/core";
+import { textToolService } from "@server/modules";
+import { logger } from "@breatic/core";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();
 

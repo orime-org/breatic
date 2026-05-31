@@ -32,17 +32,17 @@ Frontend stack: see [frontend.md](./frontend.md#tech-stack).
 ```
 packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
-├── core/     # 业务逻辑 barrel (@breatic/core)
-│              modules/(*.repo.ts + *.service.ts) · agent/(MainAgent + skills-loader) ·
+├── core/     # 后端共享内核 barrel (@breatic/core)
+│              modules/(只放双服务共用业务:credit · task · node-history 的 *.repo/*.service + user.repo) · agent/(MainAgent + skills-loader) ·
 │              db/(schema.ts 21 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/stripe) · config/
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/ (healthz 走独立 :3001 进程,见 DEPLOY.md)
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域 service+repo:auth/conversation/memory/payment/project/projectAuth/projectMembers/shareLink/roleUpgradeRequest/notification/studio/skill/text-tool 等)(healthz 走独立 :3001 进程,见 DEPLOY.md)
 ├── worker/   # BullMQ 壳: handlers/(5 条路径) + providers/(image/video/audio/tts/three-d/understand)
 ├── collab/   # Hocuspocus 独立进程: server/auth/persistence/event-stream/task-listener
 └── web/      # React app — see frontend.md
 config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored; sandbox/ = agent file-tool sandbox root)
 ```
 
-**包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共用 infra + 业务) ← server / worker / collab`;前端 `web ← shared` 不依赖 core/server。**严格边界**:server 不 import worker,worker 不 import server,所有共享业务逻辑在 core。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为**只依赖 core infrastructure**(`createRedisClient` / 日志 / 配置)— 业务服务(`projectAuthService` 等)仍不引入,collab 部署独立性不变,但 production-safety 配置不再 raw 实例化漂离。
+**包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共享内核:infra + 双服务共用业务) ← server / worker / collab`;前端 `web ← shared` 不依赖 core/server。**严格边界**:server 不 import worker,worker 不 import server;**模块化单体(2026-05-31)**:core 只放双服务共用内核(钱/任务/节点历史 + infra + schema + 跨服务事件协议),**服务私有领域逻辑归各自服务**(server 私有业务在 `server/src/modules`,经三层边界:路由层=接线员 → 业务 service 层 → core 共享内核;`lint:no-app-import-in-core` 守卫 core/shared 不反向 import 服务包)。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为**只依赖 core infrastructure**(`createRedisClient` / 日志 / 配置)— 业务服务(`projectAuthService` 等)仍不引入,collab 部署独立性不变,但 production-safety 配置不再 raw 实例化漂离。
 
 **Package exports:** shared/core 导出 `./dist/index.js`(行业标准),本地和 Docker 统一走编译产物。路径解析通过 `MONOREPO_ROOT`(向上查找 `pnpm-workspace.yaml`)。
 

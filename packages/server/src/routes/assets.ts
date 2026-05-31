@@ -19,8 +19,8 @@ import { z } from "zod";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { projectService } from "@server/modules";
 import {
-  projectService,
   getStorageAdapter,
   storageKey,
   env,

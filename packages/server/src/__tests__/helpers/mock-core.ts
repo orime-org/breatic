@@ -288,33 +288,15 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Logger
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-    // Services (namespace re-exports)
-    authService: mocks.authService,
-    projectService: mocks.projectService,
-    conversationService: mocks.conversationService,
-    conversationRepo: mocks.conversationRepo,
+    // Shared services that STAY in @breatic/core (used by 2+ services)
     taskService: mocks.taskService,
     nodeHistoryService: mocks.nodeHistoryService,
-    attachmentService: mocks.attachmentService,
     uploadService: mocks.uploadService,
-    memoryService: mocks.memoryService,
     userRepo: mocks.userRepo,
-    skillService: mocks.skillService,
-    textToolService: mocks.textToolService,
-    modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     creditService: mocks.creditService,
-    projectAuthService: mocks.projectAuthService,
-    projectMembersService: mocks.projectMembersService,
-    projectMembersRepo: mocks.projectMembersRepo,
-    shareLinkService: mocks.shareLinkService,
-    notificationService: mocks.notificationService,
-    notificationRepo: mocks.notificationRepo,
-    roleUpgradeRequestService: mocks.roleUpgradeRequestService,
-    shareInviteMail: mocks.shareInviteMail,
+    modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
     sendMail: mocks.sendMail,
-    studioService: mocks.studioService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
-    yjsDocRepo: mocks.yjsDocRepo,
     // Agent
     getSkillRegistry: () => ({
       get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
@@ -328,5 +310,41 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     ConflictError: actual.ConflictError,
     ValidationError: actual.ValidationError,
     UnauthorizedError: actual.UnauthorizedError,
+  };
+};
+
+/**
+ * Mock for `@server/modules` — the server-private domain (auth /
+ * project / conversation / notification / share-link / ...) that moved
+ * out of @breatic/core in the modular-monolith convergence (ADR 后端收敛
+ * 为模块化单体). Route tests pair this with coreMock:
+ *
+ *   vi.mock("@breatic/core", coreMock);
+ *   vi.mock("@server/modules", serverModulesMock);
+ *
+ * Per-test overrides still go through the same shared `mocks` refs.
+ */
+export const serverModulesMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    authService: mocks.authService,
+    projectService: mocks.projectService,
+    conversationService: mocks.conversationService,
+    conversationRepo: mocks.conversationRepo,
+    attachmentService: mocks.attachmentService,
+    memoryService: mocks.memoryService,
+    skillService: mocks.skillService,
+    textToolService: mocks.textToolService,
+    projectAuthService: mocks.projectAuthService,
+    projectMembersService: mocks.projectMembersService,
+    projectMembersRepo: mocks.projectMembersRepo,
+    shareLinkService: mocks.shareLinkService,
+    notificationService: mocks.notificationService,
+    notificationRepo: mocks.notificationRepo,
+    roleUpgradeRequestService: mocks.roleUpgradeRequestService,
+    shareInviteMail: mocks.shareInviteMail,
+    studioService: mocks.studioService,
+    yjsDocRepo: mocks.yjsDocRepo,
   };
 };

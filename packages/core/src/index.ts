@@ -17,6 +17,11 @@ export { runMigrations } from "@core/db/migrate.js";
 export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
+export { encodeInitialMetaState } from "@core/db/yjs-bootstrap.js";
+// Table values + Drizzle row types, also re-exported by name so server
+// modules can `import { projects } from "@breatic/core"`. `schema` (the
+// namespace, above) stays the canonical form for bulk access.
+export * from "@core/db/schema.js";
 
 // ── Config ───────────────────────────────────────────────────────
 export { env, MONOREPO_ROOT } from "@core/config/env.js";
@@ -60,7 +65,9 @@ export { setSession, getSession, deleteSession, deleteAllSessions } from "@core/
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 export { getStripeClient, verifyWebhookSignature } from "@core/infra/stripe.js";
 
-// ── Services (all business logic) ────────────────────────────────
+// ── Shared services (2+ services use these) ──────────────────────
+// Server-private domain (auth / project / payment / ... ~15 modules)
+// lives in @server/src/modules, NOT here — see ADR 后端收敛为模块化单体.
 export * as taskService from "@core/modules/task.service.js";
 export * as taskRepo from "@core/modules/task.repo.js";
 export * as creditService from "@core/modules/credit.service.js";
@@ -68,29 +75,6 @@ export * as creditRepo from "@core/modules/credit.repo.js";
 export * as nodeHistoryService from "@core/modules/node-history.service.js";
 export * as nodeHistoryRepo from "@core/modules/node-history.repo.js";
 export * as userRepo from "@core/modules/user.repo.js";
-export * as authService from "@core/modules/auth.service.js";
-export * as conversationService from "@core/modules/conversation.service.js";
-export * as conversationRepo from "@core/modules/conversation.repo.js";
-export * as memoryService from "@core/modules/memory.service.js";
-export * as memoryRepo from "@core/modules/memory.repo.js";
-export * as paymentService from "@core/modules/payment.service.js";
-export * as projectService from "@core/modules/project.service.js";
-export * as projectRepo from "@core/modules/project.repo.js";
-export * as yjsDocRepo from "@core/modules/yjs-doc.repo.js";
-export * as projectAuthService from "@core/modules/projectAuth.service.js";
-export * as projectMembersService from "@core/modules/projectMembers.service.js";
-export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
-export * as shareLinkService from "@core/modules/shareLink.service.js";
-export * as shareLinkRepo from "@core/modules/shareLink.repo.js";
-export * as shareInviteMail from "@core/modules/share-invite-mail.js";
-export * as notificationService from "@core/modules/notification.service.js";
-export * as notificationRepo from "@core/modules/notification.repo.js";
-export * as roleUpgradeRequestService from "@core/modules/roleUpgradeRequest.service.js";
-export * as studioService from "@core/modules/studio.service.js";
-export * as studioRepo from "@core/modules/studio.repo.js";
-export * as skillService from "@core/modules/skill.service.js";
-export * as textToolService from "@core/modules/text-tool.service.js";
-export * as attachmentService from "@core/modules/conversation-attachment.service.js";
 
 // ── Agent ────────────────────────────────────────────────────────
 export { getModel, resolveProvider } from "@core/agent/llm.js";
