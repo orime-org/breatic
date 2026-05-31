@@ -6,7 +6,6 @@
  * - Deduction: Only when PAYMENT_ENABLED=true
  */
 
-import * as userRepo from "@core/modules/user.repo.js";
 import * as creditRepo from "@core/modules/credit.repo.js";
 import { db } from "@core/db/client.js";
 import { env } from "@core/config/env.js";
@@ -33,7 +32,7 @@ const UNLIMITED_BALANCE = 999_999;
 /** Get user's current credit balance. Returns unlimited when payments disabled. */
 export async function getBalance(userId: string): Promise<number> {
   if (!env.PAYMENT_ENABLED) return UNLIMITED_BALANCE;
-  return userRepo.getCredits(userId);
+  return creditRepo.getBalance(userId);
 }
 
 /**
@@ -61,28 +60,30 @@ export async function deduct(
 
   if (env.PAYMENT_ENABLED) {
     // Deduct + record in a single transaction so both succeed or both roll back.
-    newBalance = await db.transaction(async () => {
-      const success = await userRepo.deductCredits(userId, amount);
-      if (!success) {
-        const currentBalance = await userRepo.getCredits(userId);
+    newBalance = await db.transaction(async (tx) => {
+      const balance = await creditRepo.deductBalance(userId, amount, tx);
+      if (balance === null) {
+        const available = await creditRepo.getBalance(userId);
         throw new AppError(
           402,
-          t("server.error.insufficient_credits", { required: amount, available: currentBalance }),
+          t("server.error.insufficient_credits", { required: amount, available }),
         );
       }
-      const balance = await userRepo.getCredits(userId);
 
-      await creditRepo.recordTransaction({
-        userId,
-        txType: "deduct",
-        amount: -amount,
-        balanceAfter: balance,
-        tokensUsed: options?.tokensUsed,
-        model: options?.model,
-        provider: options?.provider,
-        description: description ?? "",
-        referenceId,
-      });
+      await creditRepo.recordTransaction(
+        {
+          userId,
+          txType: "deduct",
+          amount: -amount,
+          balanceAfter: balance,
+          tokensUsed: options?.tokensUsed,
+          model: options?.model,
+          provider: options?.provider,
+          description: description ?? "",
+          referenceId,
+        },
+        tx,
+      );
 
       return balance;
     });
@@ -122,15 +123,23 @@ export async function add(
   description?: string,
   referenceId?: string,
 ): Promise<number> {
-  const newBalance = await userRepo.addCredits(userId, amount);
+  // Add + record in a single transaction so both commit or both roll back.
+  const newBalance = await db.transaction(async (tx) => {
+    const balance = await creditRepo.addBalance(userId, amount, tx);
 
-  await creditRepo.recordTransaction({
-    userId,
-    txType: "recharge",
-    amount,
-    balanceAfter: newBalance,
-    description: description ?? "",
-    referenceId,
+    await creditRepo.recordTransaction(
+      {
+        userId,
+        txType: "recharge",
+        amount,
+        balanceAfter: balance,
+        description: description ?? "",
+        referenceId,
+      },
+      tx,
+    );
+
+    return balance;
   });
 
   // Caller logs `credits_added` audit line.

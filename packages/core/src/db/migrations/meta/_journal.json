@@ -141,6 +141,13 @@
       "when": 1779936400000,
       "tag": "0019_drop-project-access-requests",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780273152000,
+      "tag": "0020_credit-balances",
+      "breakpoints": true
     }
   ]
 }

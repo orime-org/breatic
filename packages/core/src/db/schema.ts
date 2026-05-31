@@ -422,6 +422,22 @@ export const creditTransactions = pgTable(
   (table) => [index("credit_tx_user_id_idx").on(table.userId)],
 );
 
+// ── 8b. Credit Balances ──────────────────────────────────────────────
+
+/**
+ * Per-user credit balance — one row per user, the single source of
+ * truth for "how many credits a user has left". Migrated out of the
+ * `users.credits` column (PR3, migration 0020) so the credit domain is
+ * self-contained and no longer coupled to the user identity table.
+ */
+export const creditBalances = pgTable("credit_balances", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "restrict" }),
+  balance: doublePrecision("balance").default(0).notNull(),
+  ...timestamps,
+});
+
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
