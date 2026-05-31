@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import { userRepo } from "@breatic/core";
-import { creditRepo } from "@breatic/core";
+import { creditRepo } from "@breatic/domain";
 import * as studioService from "@server/modules/studio.service.js";
 import {
   generateRecoveryCode,

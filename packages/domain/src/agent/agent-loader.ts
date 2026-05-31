@@ -10,7 +10,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
-import { MONOREPO_ROOT } from "@core/config/env.js";
+import { MONOREPO_ROOT } from "@breatic/core";
 
 /** Root directory for agent definitions. */
 const AGENTS_DIR = resolve(MONOREPO_ROOT, "agents");
@@ -82,7 +82,7 @@ export function loadAgents(): ReadonlyMap<string, AgentDefinition> {
   try {
     files = readdirSync(AGENTS_DIR).filter((f) => extname(f) === ".md");
   } catch {
-    // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, missing
+    // Per CLAUDE.md "core/shared/domain write no logs" mandate, missing
     // agents/ directory yields an empty map silently. The
     // application caller (`getAgent` returns undefined,
     // `listAgents` returns []) is responsible for surfacing the

@@ -15,8 +15,8 @@
  * Storage: DB 0 (general purpose; same as session / rate-limit).
  */
 import type Redis from "ioredis";
-import { env } from "@core/config/env.js";
-import { getRedis } from "@core/infra/redis.js";
+import { env } from "@breatic/core";
+import { getRedis } from "@breatic/core";
 
 /**
  * TTL for the lock in seconds. 7200s (2h) is comfortably longer than any

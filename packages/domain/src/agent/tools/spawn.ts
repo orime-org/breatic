@@ -12,12 +12,12 @@
 
 import { tool, generateText, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel, resolveProvider } from "@core/agent/llm.js";
-import { getAgent, listAgents } from "@core/agent/agent-loader.js";
-import { getSkillRegistry } from "@core/agent/skills-loader.js";
-import { tryGetContext } from "@core/infra/request-context.js";
-import { env } from "@core/config/env.js";
-import * as creditService from "@core/modules/credit.service.js";
+import { getModel, resolveProvider } from "@domain/agent/llm.js";
+import { getAgent, listAgents } from "@domain/agent/agent-loader.js";
+import { getSkillRegistry } from "@domain/agent/skills-loader.js";
+import { tryGetContext } from "@breatic/core";
+import { env } from "@breatic/core";
+import * as creditService from "@domain/credit/credit.service.js";
 
 const agentList = listAgents();
 const agentNames = agentList.map((a) => a.name).join(", ");
@@ -65,7 +65,7 @@ export const spawnTool = tool({
     }
 
     // Lazy import to avoid circular dependency (spawn → index → spawn)
-    const { buildToolSet } = await import("@core/agent/tools/index.js");
+    const { buildToolSet } = await import("@domain/agent/tools/index.js");
 
     // Build system prompt from agent definition
     let system = agentDef.systemPrompt;
@@ -89,7 +89,7 @@ export const spawnTool = tool({
         const content = registry.loadSkillContent(skillName);
         system += `\n\n## Skill: ${skillName}\n${content}`;
       }
-      // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, missing
+      // Per CLAUDE.md "core/shared/domain write no logs" mandate, missing
       // skill is silent — the application caller's MainAgent path
       // can audit via the SubAgent result text if needed.
     }
@@ -152,8 +152,9 @@ export const spawnTool = tool({
     // code path that bypassed MainAgent (a test harness, or a future entry
     // point that hasn't wired billing); skip the charge rather than crash.
     // Deduct credits idempotently. `deductOnce` uses a refKey scoped
-    // to (conversation, turn, spawn index). Per CLAUDE.md "core 和
-    // shared 不写任何日志" mandate, missing billing context throws —
+    // to (conversation, turn, spawn index). Per the CLAUDE.md
+    // "core/shared/domain write no logs" mandate, missing billing
+    // context throws —
     // the MainAgent caller catches and decides whether to abort the
     // SubAgent turn or proceed without billing. Credit deduction
     // errors propagate (rather than warn-and-continue) so the

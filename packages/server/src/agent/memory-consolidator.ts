@@ -11,7 +11,7 @@
  */
 
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "@breatic/core";
+import { getModel } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import { conversationRepo } from "@server/modules";
 import { memoryService } from "@server/modules";

@@ -8,7 +8,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { env } from "@core/config/env.js";
+import { env } from "@breatic/core";
 
 // Providers are built LAZILY (on first use), not at module import:
 // each reads an API key from the injected config (`env.*`), which is

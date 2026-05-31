@@ -26,7 +26,7 @@
 import { realpath } from "node:fs/promises";
 import { mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
-import { env, MONOREPO_ROOT } from "@core/config/env.js";
+import { env, MONOREPO_ROOT } from "@breatic/core";
 
 /** Error thrown when a path would escape the sandbox. */
 export class SandboxError extends Error {

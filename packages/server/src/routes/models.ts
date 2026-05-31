@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono";
-import { modelCatalog } from "@breatic/core";
+import { modelCatalog } from "@breatic/domain";
 
 const models = new Hono();
 

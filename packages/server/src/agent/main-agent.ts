@@ -8,13 +8,13 @@
 import { streamText, stepCountIs } from "ai";
 import type { ModelMessage, TextPart, ImagePart } from "ai";
 
-import { getModel, resolveProvider } from "@breatic/core";
-import { buildToolSet } from "@breatic/core";
+import { getModel, resolveProvider } from "@breatic/domain";
+import { buildToolSet } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { getSkillRegistry } from "@breatic/core";
+import { getSkillRegistry } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
-import { creditService } from "@breatic/core";
+import { creditService } from "@breatic/domain";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import { conversationRepo } from "@server/modules";

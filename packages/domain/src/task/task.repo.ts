@@ -5,8 +5,8 @@
  */
 
 import { and, eq, desc, isNull, sql } from "drizzle-orm";
-import { db } from "@core/db/client.js";
-import { tasks } from "@core/db/schema.js";
+import { db } from "@breatic/core";
+import { tasks } from "@breatic/core";
 import type { TaskEntity } from "@breatic/shared";
 
 /** Convert a Drizzle row to a TaskEntity. */

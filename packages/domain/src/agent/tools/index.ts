@@ -5,18 +5,18 @@
  */
 import type { Tool } from "ai";
 
-import { askUser } from "@core/agent/tools/ask-user.js";
-import { askUserChoice } from "@core/agent/tools/ask-user-choice.js";
-import { editFileTool } from "@core/agent/tools/edit-file.js";
-import { runScript } from "@core/agent/tools/run-script.js";
-import { listDirTool } from "@core/agent/tools/list-dir.js";
-import { proposeCanvasAction } from "@core/agent/tools/propose-canvas-action.js";
-import { readFileTool } from "@core/agent/tools/read-file.js";
-import { showSearchResults } from "@core/agent/tools/show-search-results.js";
-import { webFetch } from "@core/agent/tools/web-fetch.js";
-import { webSearch } from "@core/agent/tools/web-search.js";
-import { writeFileTool } from "@core/agent/tools/write-file.js";
-import { spawnTool } from "@core/agent/tools/spawn.js";
+import { askUser } from "@domain/agent/tools/ask-user.js";
+import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
+import { editFileTool } from "@domain/agent/tools/edit-file.js";
+import { runScript } from "@domain/agent/tools/run-script.js";
+import { listDirTool } from "@domain/agent/tools/list-dir.js";
+import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { readFileTool } from "@domain/agent/tools/read-file.js";
+import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
+import { webFetch } from "@domain/agent/tools/web-fetch.js";
+import { webSearch } from "@domain/agent/tools/web-search.js";
+import { writeFileTool } from "@domain/agent/tools/write-file.js";
+import { spawnTool } from "@domain/agent/tools/spawn.js";
 
 /** Complete mapping of tool name to tool instance. */
 const TOOL_MAP: Readonly<Record<string, Tool>> = {
@@ -61,7 +61,7 @@ export const DEFAULT_TOOLS: ReadonlySet<string> = new Set([
  *
  * @example
  * ```ts
- * import { buildToolSet, DEFAULT_TOOLS } from "@core/agent/tools/tools/index.js";
+ * import { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/tools/index.js";
  * const tools = buildToolSet([...DEFAULT_TOOLS, "ask_user_question"]);
  * ```
  */

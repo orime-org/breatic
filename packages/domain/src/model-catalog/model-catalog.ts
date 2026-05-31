@@ -10,7 +10,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
-import { env, MONOREPO_ROOT } from "@core/config/env.js";
+import { env, MONOREPO_ROOT } from "@breatic/core";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
@@ -174,7 +174,7 @@ export function getModelCatalog(): ModelCatalog {
     }
 
     for (const file of files) {
-      // Per CLAUDE.md "core 和 shared 不写任何日志" mandate, parse
+      // Per CLAUDE.md "core/shared/domain write no logs" mandate, parse
       // errors throw so the application boot path catches + logs
       // with the right context (catalog load is at server startup —
       // a malformed YAML should fail-fast, not silently drop the

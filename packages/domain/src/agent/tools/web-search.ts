@@ -7,7 +7,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { env } from "@core/config/env.js";
+import { env } from "@breatic/core";
 
 /**
  * Search the web using the Brave Search API.

@@ -7,8 +7,8 @@
  */
 
 import type { MemoryContext } from "@breatic/shared";
-import { getSkillRegistry } from "@breatic/core";
-import { listAgents } from "@breatic/core";
+import { getSkillRegistry } from "@breatic/domain";
+import { listAgents } from "@breatic/domain";
 
 /**
  * Static template with `{skills_summary}` and `{always_skills}` placeholders.

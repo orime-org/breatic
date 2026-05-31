@@ -9,7 +9,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { safeFetch, SsrfError } from "@core/agent/tools/safe-fetch.js";
+import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36";

@@ -3,9 +3,9 @@
  */
 
 import { eq, desc, and, isNull, sql } from "drizzle-orm";
-import { db } from "@core/db/client.js";
-import type { DbTx } from "@core/db/client.js";
-import { creditTransactions, creditBalances, users } from "@core/db/schema.js";
+import { db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import { creditTransactions, creditBalances, users } from "@breatic/core";
 import type { CreditTransactionEntity } from "@breatic/shared";
 
 function toEntity(row: typeof creditTransactions.$inferSelect): CreditTransactionEntity {

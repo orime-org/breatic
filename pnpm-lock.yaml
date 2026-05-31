@@ -217,15 +217,39 @@ importers:
 
   packages/domain:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: ^3.0.64
+        version: 3.0.64(zod@4.3.6)
+      '@ai-sdk/google':
+        specifier: ^3.0.54
+        version: 3.0.54(zod@4.3.6)
+      '@ai-sdk/openai':
+        specifier: ^3.0.49
+        version: 3.0.49(zod@4.3.6)
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
+      ai:
+        specifier: ^6.0.141
+        version: 6.0.141(zod@4.3.6)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.0)(postgres@3.4.0)
+      ioredis:
+        specifier: 5.10.1
+        version: 5.10.1
+      ipaddr.js:
+        specifier: ^2.3.0
+        version: 2.3.0
+      yaml:
+        specifier: ^2.7.0
+        version: 2.8.3
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

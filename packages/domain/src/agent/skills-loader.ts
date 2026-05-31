@@ -12,8 +12,8 @@ import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import type { SkillMeta } from "@breatic/shared";
-import { MONOREPO_ROOT } from "@core/config/env.js";
-import { getRawEnvVar } from "@core/config/runtime.js";
+import { MONOREPO_ROOT } from "@breatic/core";
+import { getRawEnvVar } from "@breatic/core";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -573,7 +573,7 @@ function filterModelsByModes(
 
 // ── Model list access ────────────────────────────────────────────────
 
-import { listAvailableModels } from "@core/config/model-catalog.js";
+import { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
 
 function getModelsForModality(modality: string): ModelInfo[] {
   return listAvailableModels(modality) as ModelInfo[];

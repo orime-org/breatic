@@ -23,12 +23,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initCore } from "@core/config/runtime.js";
+import { initCore } from "@breatic/core";
 import {
   assertInSandbox,
   getSandboxRoot,
   SandboxError,
-} from "@core/agent/tools/fs-sandbox.js";
+} from "@domain/agent/tools/fs-sandbox.js";
 
 let base: string;
 let sandboxDir: string;

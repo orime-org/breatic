@@ -12,8 +12,8 @@ import { resolve, extname } from "node:path";
 import { existsSync } from "node:fs";
 import { tool } from "ai";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "@core/config/env.js";
-import { getRawEnvVar } from "@core/config/runtime.js";
+import { MONOREPO_ROOT } from "@breatic/core";
+import { getRawEnvVar } from "@breatic/core";
 
 const MAX_OUTPUT = 10_000;
 const TIMEOUT_MS = 60_000;

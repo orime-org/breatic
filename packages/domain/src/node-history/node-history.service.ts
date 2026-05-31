@@ -5,8 +5,8 @@
  * Worker (on task completion/failure) and the upload endpoint.
  */
 
-import * as repo from "@core/modules/node-history.repo.js";
-import { NotFoundError } from "@core/errors.js";
+import * as repo from "@domain/node-history/node-history.repo.js";
+import { NotFoundError } from "@breatic/core";
 import type { NodeHistoryEntity } from "@breatic/shared";
 
 /**

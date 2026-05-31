@@ -17,7 +17,8 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService, creditService, env } from "@breatic/core";
+import { env } from "@breatic/core";
+import { taskService, creditService } from "@breatic/domain";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();

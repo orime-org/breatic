@@ -27,7 +27,7 @@ import { serializeSSE } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
 import { compressForContext } from "@server/agent/message-compressor.js";
 import { getAgentConfig } from "@breatic/core";
-import { getSkillRegistry } from "@breatic/core";
+import { getSkillRegistry } from "@breatic/domain";
 import { ForbiddenError, NotFoundError } from "@breatic/core";
 import type { ChatAttachedChip } from "@breatic/shared";
 

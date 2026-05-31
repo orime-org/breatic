@@ -9,10 +9,10 @@
 
 import { streamText, stepCountIs } from "ai";
 import { t } from "@breatic/shared";
-import { getModel } from "@breatic/core";
+import { getModel } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@breatic/core";
 import { env } from "@breatic/core";
-import { creditService } from "@breatic/core";
+import { creditService } from "@breatic/domain";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
