@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lint-no-core-process-env — forbid `process.env` access in
-# @breatic/core and @breatic/shared production source.
+# @breatic/core, @breatic/shared and @breatic/domain production source.
 #
 # Rationale (CLAUDE.md "core / shared 不读环境变量" mandate,
 # 2026-05-30): reading environment variables is configuration
@@ -42,6 +42,7 @@ ENV_REGEX='\bprocess\.env\b'
 SCAN_DIRS=(
   packages/core/src
   packages/shared/src
+  packages/domain/src
 )
 
 CANDIDATES=$(find "${SCAN_DIRS[@]}" \
@@ -101,4 +102,4 @@ if [[ -n "$MATCHES" ]]; then
   exit 1
 fi
 
-echo "lint:no-core-process-env — clean (no process.env in @breatic/core or @breatic/shared)"
+echo "lint:no-core-process-env — clean (no process.env in @breatic/core, @breatic/shared or @breatic/domain)"

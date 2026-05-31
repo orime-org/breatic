@@ -19,6 +19,7 @@
     "lint:no-app-import-in-core": "bash scripts/lint-no-app-import-in-core.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-core-process-env": "bash scripts/lint-no-core-process-env.sh",
+    "lint:no-domain-import-in-collab": "bash scripts/lint-no-domain-import-in-collab.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
     "lint:no-param-as-string": "bash scripts/lint-no-param-as-string.sh",
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",

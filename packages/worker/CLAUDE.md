@@ -11,8 +11,8 @@
 - `index.ts` = composition root,启动 `initCore(process.env)`,唯一读 env 处
 
 ## 可 import 谁
-- ✅ `@breatic/core` · `@breatic/shared` · 外部 npm
-- ❌ `@server` / `@collab` —— 服务之间互不 import
+- ✅ `@breatic/core` · `@breatic/domain` · `@breatic/shared` · 外部 npm
+- ❌ `@server` / `@collab` —— 服务之间互不 import(server+worker 共享的 AIGC 业务沉 domain)
 - 本包内部用 `@worker/*` 前缀
 
 ## 怎么拿配置

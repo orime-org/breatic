@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lint-no-library-logger — forbid `logger.*` calls in @breatic/core
-# and @breatic/shared production source.
+# lint-no-library-logger — forbid `logger.*` calls in @breatic/core,
+# @breatic/shared and @breatic/domain production source.
 #
 # Rationale (CLAUDE.md "服务器端工业级标准" mandate, 2026-05-27):
 # Library packages don't decide what to log — only the application
@@ -58,6 +58,7 @@ LOGGER_REGEX='\blogger\.(info|warn|error|debug|fatal|trace)\b'
 SCAN_DIRS=(
   packages/core/src
   packages/shared/src
+  packages/domain/src
 )
 
 # Collect candidate files via find (portable across BSD + GNU).
@@ -132,4 +133,4 @@ if [[ -n "$MATCHES" ]]; then
   exit 1
 fi
 
-echo "lint:no-library-logger — clean (no logger.* calls in @breatic/core or @breatic/shared)"
+echo "lint:no-library-logger — clean (no logger.* calls in @breatic/core, @breatic/shared or @breatic/domain)"

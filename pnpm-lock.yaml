@@ -215,11 +215,42 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.19.0)(yaml@2.8.3)
 
+  packages/domain:
+    dependencies:
+      '@breatic/core':
+        specifier: workspace:*
+        version: link:../core
+      '@breatic/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(postgres@3.4.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.0.0
+      fast-check:
+        specifier: ^4.8.0
+        version: 4.8.0
+      tsup:
+        specifier: ^8.3.0
+        version: 8.3.0(jiti@2.6.1)(postcss@8.5.8)(tsx@4.22.3)(typescript@5.8.2)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.22.3)(yaml@2.8.3)
+
   packages/server:
     dependencies:
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
+      '@breatic/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -775,6 +806,9 @@ importers:
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
+      '@breatic/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared

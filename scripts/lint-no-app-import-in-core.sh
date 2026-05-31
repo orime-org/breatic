@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-no-app-import-in-core — forbid library packages (@breatic/core,
-# @breatic/shared) from importing any application package
-# (@server / @worker / @collab / @web).
+# @breatic/shared, @breatic/domain) from importing any application
+# package (@server / @worker / @collab / @web).
 #
 # Rationale (2026-05-31 ADR "后端收敛为模块化单体"): the backend is a
 # modular monolith with a strict layer direction —
@@ -41,6 +41,7 @@ APP_IMPORT_REGEX='["'\'']@(server|worker|collab|web)/'
 SCAN_DIRS=(
   packages/core/src
   packages/shared/src
+  packages/domain/src
 )
 
 CANDIDATES=$(find "${SCAN_DIRS[@]}" \
@@ -89,8 +90,8 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "@breatic/core and @breatic/shared must NOT import @server /" >&2
-  echo "@worker / @collab / @web. The dependency direction is" >&2
+  echo "@breatic/core, @breatic/shared and @breatic/domain must NOT" >&2
+  echo "import @server / @worker / @collab / @web. The direction is" >&2
   echo "app → core/shared, never the reverse. If a service needs shared" >&2
   echo "logic, move that logic INTO core (it's then genuinely shared);" >&2
   echo "if it's service-private, it stays in the service, not pulled" >&2
@@ -98,4 +99,4 @@ if [[ -n "$MATCHES" ]]; then
   exit 1
 fi
 
-echo "lint:no-app-import-in-core — clean (no app imports in @breatic/core or @breatic/shared)"
+echo "lint:no-app-import-in-core — clean (no app imports in @breatic/core, @breatic/shared or @breatic/domain)"

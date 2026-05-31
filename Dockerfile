@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/core/package.json packages/core/
+COPY packages/domain/package.json packages/domain/
 COPY packages/server/package.json packages/server/
 COPY packages/worker/package.json packages/worker/
 COPY packages/collab/package.json packages/collab/
@@ -57,6 +58,10 @@ COPY --from=builder /app/packages/collab/package.json ./packages/collab/
 # Core: built output (consumed by server/worker/collab via node_modules)
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/core/package.json ./packages/core/
+
+# Domain: built output (server+worker shared AIGC business; consumed via node_modules)
+COPY --from=builder /app/packages/domain/dist ./packages/domain/dist
+COPY --from=builder /app/packages/domain/package.json ./packages/domain/
 
 # Shared: built output
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
