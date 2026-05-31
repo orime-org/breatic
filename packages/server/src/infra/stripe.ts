@@ -6,7 +6,7 @@
  */
 
 import Stripe from "stripe";
-import { env } from "@core/config/env.js";
+import { env } from "@breatic/core";
 
 let _client: Stripe | null = null;
 

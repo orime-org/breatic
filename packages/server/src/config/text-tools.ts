@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "@core/config/env.js";
+import { MONOREPO_ROOT } from "@breatic/core";
 
 const textToolsConfigSchema = z.object({
   model: z.string().default("google/gemini-2.5-flash"),

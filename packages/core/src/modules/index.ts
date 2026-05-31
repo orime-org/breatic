@@ -1,10 +1,14 @@
 /**
- * Module barrel export.
+ * Module barrel — shared auth kernel only.
  *
- * Server-private domain moved to @server/src/modules (modular-monolith
- * convergence ADR). AIGC business shared by server+worker (credit /
- * task / node-history) moved to @breatic/domain (domain-extraction
- * ADR). Only the shared identity repo stays here.
+ * Everything else moved out: server-private domain → @server/src/modules
+ * (modular-monolith convergence ADR); AIGC business shared by
+ * server+worker (credit / task / node-history) → @breatic/domain
+ * (domain-extraction ADR); user.repo / stripe / mailer / pricing →
+ * @server (PR4). What remains is the project_members repo + the
+ * loadProjectRole auth primitive, shared by server (requireRole) and
+ * collab (onAuthenticate).
  */
 
-export * as userRepo from "@core/modules/user.repo.js";
+export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+export * as projectAuthService from "@core/modules/projectAuth.service.js";

@@ -18,7 +18,7 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService } from "@breatic/domain";
-import { userRepo } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
 import { nodeHistoryService } from "@breatic/domain";
 import { projectService } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";

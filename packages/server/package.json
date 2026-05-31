@@ -26,6 +26,9 @@
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^10.6.2",
     "hono": "^4.12.23",
+    "nodemailer": "^8.0.5",
+    "stripe": "^21.0.1",
+    "yaml": "^2.7.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -35,6 +38,7 @@
     "@testcontainers/postgresql": "^11.14.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.0",
     "bullmq": "^5.30.0",
     "fast-check": "^4.8.0",
     "postgres": "^3.4.0",

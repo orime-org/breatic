@@ -12,7 +12,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { userRepo } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
 
 const users = new Hono<{ Variables: AuthVariables }>();
 

@@ -36,8 +36,6 @@ export type { CoreConfig } from "@core/config/schema.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getAgentConfig } from "@core/config/loader.js";
-export { getPricingTiers, findTierByName, findTierByPriceId } from "@core/config/pricing.js";
-export { getModelForTool, getPromptForTool } from "@core/config/text-tools.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -61,22 +59,17 @@ export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/in
 export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
 export { publishNodeEvent } from "@core/infra/event-stream.js";
 export { publishMembersChanged } from "@core/infra/control-events.js";
-export { sendMail } from "@core/infra/mailer.js";
-export type { SendMailResult, SendMailOptions } from "@core/infra/mailer.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
-export { getStripeClient, verifyWebhookSignature } from "@core/infra/stripe.js";
 
-// ── Shared identity + auth kernel (collab + server/worker share these) ──
-// Server-private domain (auth / project / payment / ... ~15 modules)
-// lives in @server/src/modules. AIGC business shared by server+worker
-// (credit / task / node-history / agent / model-catalog / canvas-lock)
-// lives in @breatic/domain — collab never touches it. See the
-// @breatic/domain extraction ADR.
-export * as userRepo from "@core/modules/user.repo.js";
-// Shared authentication kernel: project_members repo + the
-// `loadProjectRole` primitive, used by server `requireRole` middleware
-// AND collab `onAuthenticate` (auth must be identical across services).
+// ── Shared auth kernel (collab + server share these) ──────────────
+// project_members repo + the `loadProjectRole` primitive, used by
+// server `requireRole` middleware AND collab `onAuthenticate` (auth
+// must be identical across services). Server-private domain (auth /
+// project / payment / user.repo / stripe / mailer / pricing / ...)
+// lives in @server/src; AIGC business shared by server+worker (credit /
+// task / node-history / agent / model-catalog / canvas-lock) lives in
+// @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
 export * as projectAuthService from "@core/modules/projectAuth.service.js";
 

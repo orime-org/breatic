@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import * as projectRepo from "@server/modules/project.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio.service.js";
-import { userRepo } from "@breatic/core";
+import * as userRepo from "@server/modules/user.repo.js";
 import * as yjsDocRepo from "@server/modules/yjs-doc.repo.js";
 import { db } from "@breatic/core";
 import { encodeInitialMetaState } from "@breatic/core";

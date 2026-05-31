@@ -12,7 +12,7 @@ import { checkoutSchema, paginationSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
-import { verifyWebhookSignature } from "@breatic/core";
+import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
 
 const payment = new Hono<{ Variables: AuthVariables }>();
