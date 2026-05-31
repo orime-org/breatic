@@ -118,6 +118,16 @@ jobs:
         # are exempted; see scripts/lint-no-cjk.sh).
         run: pnpm lint:no-cjk
 
+      - name: Lint no-app-import-in-core (library can't import app)
+        # Enforce ADR 2026-05-31 "后端收敛为模块化单体" + root CLAUDE.md
+        # 三层边界: @breatic/core and @breatic/shared must NOT import any
+        # application package (@server / @worker / @collab / @web). The
+        # dependency direction is app → core/shared, never the reverse.
+        # Machine enforcement of the modular-monolith boundary; belt for
+        # the PR2 migration so the convergence can't rot back into a fat
+        # core. See scripts/lint-no-app-import-in-core.sh.
+        run: pnpm lint:no-app-import-in-core
+
       - name: Lint no-library-logger (core + shared only)
         # Enforce CLAUDE.md "服务器端工业级标准" mandate (commits
         # adf36d1 / 026c5aa / 201a839): @breatic/core and

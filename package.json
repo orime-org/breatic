@@ -16,6 +16,7 @@
     "test:integration": "turbo run test:integration",
     "lint": "turbo run lint",
     "lint:hover": "bash scripts/lint-hover-pattern.sh",
+    "lint:no-app-import-in-core": "bash scripts/lint-no-app-import-in-core.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-core-process-env": "bash scripts/lint-no-core-process-env.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
