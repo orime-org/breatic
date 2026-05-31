@@ -90,7 +90,6 @@ export { extractPromptText } from "@core/agent/extract-prompt.js";
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 
 // ── Utilities ────────────────────────────────────────────────────
-export { extractVideoCover } from "@core/video-cover.js";
 export { logger, initLogger } from "@core/logger.js";
 export {
   AppError,

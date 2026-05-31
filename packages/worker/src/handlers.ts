@@ -334,12 +334,11 @@ async function runTaskBody(
   }
 
   // Extract video cover per output (best-effort, failure is non-fatal).
-  // The core library's `extractVideoCover` now returns `undefined` on
-  // ffmpeg failure (no logging in library) per CLAUDE.md "core 和
-  // shared 不写任何日志" mandate; the worker (application boundary)
-  // decides whether to warn.
+  // `extractVideoCover` is worker-private (it shells out to ffmpeg, a
+  // worker-only concern) and returns `undefined` on failure; this
+  // handler — the single call site — decides whether to warn.
   if (taskType === "video") {
-    const { extractVideoCover } = await import("@breatic/core");
+    const { extractVideoCover } = await import("@worker/providers/video-cover.js");
     for (const out of persistedOutputs) {
       if (typeof out.url === "string" && !out.cover_url) {
         try {
