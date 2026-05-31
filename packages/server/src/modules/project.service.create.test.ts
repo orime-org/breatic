@@ -21,14 +21,18 @@ vi.mock("@server/modules/studio.service.js", () => ({
 vi.mock("@server/modules/yjs-doc.repo.js", () => ({
   insertInitialState: vi.fn(),
 }));
-// userRepo / db / encodeInitialMetaState moved to core; project.service
-// now imports them from the @breatic/core barrel, so mock them there
-// (partial — spread the real barrel, override the three).
+// userRepo moved back to @server in PR4 (domain extraction) — mock it on
+// its own server-local path, not the core barrel.
+vi.mock("@server/modules/user.repo.js", () => ({
+  getUserById: vi.fn(),
+}));
+// db + encodeInitialMetaState stay in @breatic/core; project.service
+// imports them from the barrel, so mock them there (partial — spread the
+// real barrel, override the two).
 vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {
   const actual = await importActual();
   return {
     ...actual,
-    userRepo: { getUserById: vi.fn() },
     encodeInitialMetaState: vi.fn(() => Buffer.from("stub-meta-state")),
     db: {
       // Pass-through transaction — runs the callback immediately with a
