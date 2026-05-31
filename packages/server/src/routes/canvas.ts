@@ -20,7 +20,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService } from "@breatic/core";
 import { userRepo } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/core";
-import { projectService } from "@breatic/core";
+import { projectService } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   ValidationError,

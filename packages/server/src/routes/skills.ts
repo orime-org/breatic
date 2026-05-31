@@ -11,7 +11,7 @@ import { zValidator } from "@hono/zod-validator";
 import { skillMarketQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { skillService } from "@breatic/core";
+import { skillService } from "@server/modules";
 
 const skills = new Hono<{ Variables: AuthVariables }>();
 

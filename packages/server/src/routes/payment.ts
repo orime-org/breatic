@@ -11,7 +11,7 @@ import { zValidator } from "@hono/zod-validator";
 import { checkoutSchema, paginationSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { paymentService } from "@breatic/core";
+import { paymentService } from "@server/modules";
 import { verifyWebhookSignature } from "@breatic/core";
 import { logger } from "@breatic/core";
 

@@ -16,7 +16,7 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
-import { projectMembersService } from "@breatic/core";
+import { projectMembersService } from "@server/modules";
 
 const members = new Hono<{ Variables: AuthRoleVariables }>();
 

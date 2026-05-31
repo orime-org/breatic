@@ -17,7 +17,7 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import { projectAuthService } from "@breatic/core";
+import { projectAuthService } from "@server/modules";
 import { ForbiddenError } from "@breatic/core";
 import { ROLE_RANK, t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";

@@ -11,7 +11,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { authService } from "@breatic/core";
+import { authService } from "@server/modules";
 import { t } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 

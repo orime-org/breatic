@@ -17,11 +17,11 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { conversationService } from "@breatic/core";
-import { conversationRepo } from "@breatic/core";
-import { memoryService } from "@breatic/core";
-import { attachmentService } from "@breatic/core";
-import { projectService } from "@breatic/core";
+import { conversationService } from "@server/modules";
+import { conversationRepo } from "@server/modules";
+import { memoryService } from "@server/modules";
+import { attachmentService } from "@server/modules";
+import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { serializeSSE } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";

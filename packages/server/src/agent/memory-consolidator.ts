@@ -13,9 +13,9 @@
 import { generateText, stepCountIs } from "ai";
 import { getModel } from "@breatic/core";
 import { getAgentConfig } from "@breatic/core";
-import { conversationRepo } from "@breatic/core";
-import { memoryService } from "@breatic/core";
-import { memoryRepo } from "@breatic/core";
+import { conversationRepo } from "@server/modules";
+import { memoryService } from "@server/modules";
+import { memoryRepo } from "@server/modules";
 import { logger } from "@breatic/core";
 
 // Model is configured via config/agent.yaml → consolidation_model
