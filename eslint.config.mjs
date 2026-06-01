@@ -21,6 +21,14 @@ export default tseslint.config(
     rules: {
       "tsdoc/syntax": "warn",
       "@typescript-eslint/no-explicit-any": "error",
+      // Enforce CLAUDE.md 禁止清单 #12: no `var`. Block-scoped `let` /
+      // `const` only — `var` hoists function-wide and leaks past the block
+      // it reads as scoped to, a classic source of subtle bugs. eslint:
+      // recommended does NOT enable this (it's a suggestion-category rule),
+      // so it must be opt-in here. Pairs with the existing
+      // @typescript-eslint/no-require-imports (禁#12 require) from the
+      // tseslint recommended preset.
+      "no-var": "error",
       // Ban redundant type assertions — `x as T` where TS already knows
       // x is T. A cast that does nothing is noise and can mask a real
       // type problem if the underlying type later changes.

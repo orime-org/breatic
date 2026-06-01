@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lint-no-cjk — forbid CJK (and other non-Latin) characters in production
-# source, including comments.
+# source AND YAML config, including comments.
 #
 # Rationale (i18n migration, inner DD rev 3 + 2026-06-01 reaffirm):
 # breatic is a global open-source project — contributors come from all
@@ -10,9 +10,16 @@
 # Hardcoded CJK in TS / TSX / CSS source — whether in a string literal OR
 # a comment — is a regression and this guard fails the PR on it.
 #
+# YAML config is scanned too (CLAUDE.md 禁止清单 #13 "YAML 中文"):
+# config/*.yaml, docker-compose.yml, the workspace file and the GitHub
+# workflow yaml are operational artifacts developers read and run, so
+# their comments and values must be English just like source. The
+# generated pnpm-lock.yaml is excluded (machine-authored, not edited).
+#
 # Three categories are LEGITIMATELY non-English and are exempt:
 #   1. i18n locale catalogs (`locales/*.json`) — product translations.
-#      Not scanned (this guard only looks at .ts / .tsx / .css).
+#      Not scanned (this guard only looks at .ts / .tsx / .css / .yaml /
+#      .yml).
 #   2. Test fixtures (`*.test.*`, `*.spec.*`, `__tests__/`) — Unicode /
 #      locale-switching test logic legitimately uses CJK. Excluded below.
 #   3. Deliberate product-data strings — e.g. the language switcher shows
@@ -85,8 +92,18 @@ FILES=$(find packages \
   -not -name '*.spec.tsx' \
   2>/dev/null || true)
 
+# YAML config (禁#13): runtime config (config/**), the workspace +
+# compose files, and the GitHub workflow yaml. pnpm-lock.yaml is
+# generated (machine-authored) and excluded.
+YAML_FILES=$(find config .github docker-compose.yml pnpm-workspace.yaml \
+  -type f \( -name '*.yaml' -o -name '*.yml' \) \
+  -not -path '*/node_modules/*' \
+  -not -name 'pnpm-lock.yaml' \
+  2>/dev/null || true)
+
 MATCHES=$(
-  printf '%s\n' "$FILES" \
+  printf '%s\n%s\n' "$FILES" "$YAML_FILES" \
+    | grep -vE '^$' \
     | grep -vE "$ALLOWLIST_REGEX" \
     | tr '\n' '\0' \
     | xargs -0 grep -EnH "$CJK_REGEX" 2>/dev/null \
@@ -94,16 +111,17 @@ MATCHES=$(
 )
 
 if [[ -n "$MATCHES" ]]; then
-  echo "lint:no-cjk — found non-English characters in production source:" >&2
+  echo "lint:no-cjk — found non-English characters in production source or YAML config:" >&2
   echo "" >&2
   echo "$MATCHES" >&2
   echo "" >&2
-  echo "breatic is a global open-source project: code AND comments must be" >&2
-  echo "written in English. User-facing strings must live in locales/*.json" >&2
-  echo "and route through t(). If a match is a deliberate product-data" >&2
-  echo "string (e.g. a language name shown in its native script), add the" >&2
-  echo "file to the ALLOWLIST in scripts/lint-no-cjk.sh with a justification." >&2
+  echo "breatic is a global open-source project: code, comments AND YAML" >&2
+  echo "config (禁#13) must be written in English. User-facing strings must" >&2
+  echo "live in locales/*.json and route through t(). If a match is a" >&2
+  echo "deliberate product-data string (e.g. a language name shown in its" >&2
+  echo "native script), add the file to the ALLOWLIST in" >&2
+  echo "scripts/lint-no-cjk.sh with a justification." >&2
   exit 1
 fi
 
-echo "lint:no-cjk — clean (no non-English characters in production source)"
+echo "lint:no-cjk — clean (no non-English characters in production source or YAML config)"
