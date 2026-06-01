@@ -17,7 +17,7 @@ import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
-import { conversationRepo } from "@server/modules";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";

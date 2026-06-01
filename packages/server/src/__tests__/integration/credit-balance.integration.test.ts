@@ -57,7 +57,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import fc from "fast-check";
-import { initCore } from "@breatic/core";
+import { initCore, db } from "@breatic/core";
 import { creditRepo } from "@breatic/domain";
 
 // integration-setup.ts injects the container URLs into process.env but
@@ -181,6 +181,46 @@ describe("deductBalance — conditional UPDATE that can never go negative", () =
     await softDeleteUser(userId);
     expect(await creditRepo.deductBalance(userId, 10)).toBeNull();
     expect(await rawBalance(userId)).toBe(100);
+  });
+});
+
+describe("deduct atomicity — a deduction is all-or-nothing with its transaction (prohibition #7)", () => {
+  // credit.service.deduct / deductOnce run `db.transaction(deductBalance →
+  // recordTransaction)`: the balance UPDATE and the ledger INSERT must
+  // commit together or not at all. The money-safety invariant is that a
+  // failure in the SECOND step (the ledger write) can never leave the
+  // FIRST step (the balance already debited) committed — that would charge
+  // a user with no audit row. These tests exercise that rollback against a
+  // real Postgres transaction; a mocked tx can't prove rollback semantics.
+
+  it("rolls the balance back when the enclosing transaction fails after the deduct", async () => {
+    const userId = await userWithBalance(100);
+
+    await expect(
+      db.transaction(async (tx) => {
+        const after = await creditRepo.deductBalance(userId, 30, tx);
+        // The conditional UPDATE applied INSIDE the transaction.
+        expect(after).toBe(70);
+        // Simulate the ledger write (recordTransaction) failing.
+        throw new Error("simulated ledger-write failure");
+      }),
+    ).rejects.toThrow("simulated ledger-write failure");
+
+    // The debit rolled back with the failed transaction — balance untouched.
+    expect(await rawBalance(userId)).toBe(100);
+  });
+
+  it("commits the deduction only when the whole transaction succeeds", async () => {
+    const userId = await userWithBalance(100);
+
+    await db.transaction(async (tx) => {
+      const after = await creditRepo.deductBalance(userId, 30, tx);
+      expect(after).toBe(70);
+      // A successful second step (the real path also writes the ledger row).
+    });
+
+    // Both steps committed — the debit persisted.
+    expect(await rawBalance(userId)).toBe(70);
   });
 });
 

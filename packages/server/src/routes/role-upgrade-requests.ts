@@ -30,12 +30,12 @@ import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   roleUpgradeRequestService,
   projectService,
-  notificationRepo,
+  projectMembersService,
+  notificationService,
 } from "@server/modules";
 import {
   ForbiddenError,
   NotFoundError,
-  projectMembersRepo,
 } from "@breatic/core";
 
 // ── Per-project endpoint (viewer-only POST) ────────────────────────
@@ -72,7 +72,7 @@ projectRoleUpgradeRequests.post(
 
     const [project, ownerUserId] = await Promise.all([
       projectService.get(projectId, user.id),
-      projectMembersRepo.getOwner(projectId),
+      projectMembersService.getOwner(projectId),
     ]);
     if (!ownerUserId) {
       throw new NotFoundError("project has no active owner");
@@ -155,7 +155,7 @@ async function loadProjectNameForNotification(
   notificationId: string,
   ownerUserId: string,
 ): Promise<string> {
-  const row = await notificationRepo.findById(notificationId);
+  const row = await notificationService.getById(notificationId);
   if (!row) {
     throw new NotFoundError("notification not found");
   }

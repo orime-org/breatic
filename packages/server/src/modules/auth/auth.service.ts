@@ -169,6 +169,32 @@ export async function loginOrCreateGoogle(
 }
 
 /**
+ * Look up a single user by id.
+ *
+ * Thin pass-through to the user repository so route handlers reach
+ * the data layer through the service (prohibition #1).
+ *
+ * @param userId - The user UUID to resolve
+ * @returns The matching {@link UserEntity}, or null if not found / soft-deleted
+ */
+export async function getUserById(userId: string): Promise<UserEntity | null> {
+  return userRepo.getUserById(userId);
+}
+
+/**
+ * Look up many users by id in one query.
+ *
+ * Thin pass-through to the user repository so route handlers reach
+ * the data layer through the service (prohibition #1).
+ *
+ * @param ids - User UUIDs to resolve (soft-deleted / missing ids are dropped)
+ * @returns The matching {@link UserEntity} rows in arbitrary order
+ */
+export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
+  return userRepo.getUsersByIds(ids);
+}
+
+/**
  * Resolve a session token to a user.
  *
  * @param token - The session token string
