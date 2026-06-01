@@ -156,6 +156,19 @@ jobs:
         # See scripts/lint-no-domain-import-in-collab.sh.
         run: pnpm lint:no-domain-import-in-collab
 
+      - name: Lint dependency-cruiser (route↛repo + server↛AIGC)
+        # Enforce CLAUDE.md prohibition #1 + #14 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01) via dependency-cruiser's
+        # declarative forbidden rules over packages/server/src:
+        #   - routes-no-data-layer (#1): a server route must call a
+        #     *.service, never a *.repo directly.
+        #   - server-no-sync-aigc (#14, PROXY): only the 3 allowlisted
+        #     SSE entry points (agent chat / memory consolidation / text
+        #     mini-tool) may import the AI SDK; any other server module
+        #     doing so is a new synchronous AIGC surface — move it to the
+        #     worker. See .dependency-cruiser.cjs.
+        run: pnpm lint:dependency-cruiser
+
       - name: Lint no-raw-sql-outside-repo (core + server)
         # Enforce ADR 2026-05-31 "second-pass adjustment" second-layer CI guard: a table's SQL
         # lives in exactly one *.repo.ts home (one table, one repo home). Raw

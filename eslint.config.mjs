@@ -3,6 +3,7 @@ import tseslint from "typescript-eslint";
 import tsdoc from "eslint-plugin-tsdoc";
 import importPlugin from "eslint-plugin-import";
 import noRelativeImportPaths from "eslint-plugin-no-relative-import-paths";
+import drizzle from "eslint-plugin-drizzle";
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -80,6 +81,29 @@ export default tseslint.config(
       "no-relative-import-paths/no-relative-import-paths": [
         "error",
         { allowSameFolder: false, rootDir: "packages/web/src", prefix: "@" },
+      ],
+    },
+  },
+  {
+    // Drizzle financial-safety guardrail (CI maximal-strictness guard
+    // suite, inner ADR 2026-06-01). A db.delete() / db.update() without a
+    // .where() clause wipes or mass-mutates the ENTIRE table — catastrophic
+    // for the credit / payment financial tables (a forgotten where on a
+    // credit update zeroes every user's balance). Drizzle's official plugin
+    // flags the missing-where call. drizzleObjectName lists the query-builder
+    // handles we use: the db singleton and the transaction handle tx (so
+    // tx.delete()/tx.update() inside a db.transaction are covered too).
+    // Backend packages only — web has no DB access.
+    files: ["packages/{server,core,domain,worker,collab}/src/**/*.ts"],
+    plugins: { drizzle },
+    rules: {
+      "drizzle/enforce-delete-with-where": [
+        "error",
+        { drizzleObjectName: ["db", "tx"] },
+      ],
+      "drizzle/enforce-update-with-where": [
+        "error",
+        { drizzleObjectName: ["db", "tx"] },
       ],
     },
   },
