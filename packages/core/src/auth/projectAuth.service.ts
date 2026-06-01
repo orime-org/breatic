@@ -21,7 +21,7 @@
  * inner-join, so this layer holds no raw `db` access.
  */
 
-import * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
+import * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 import type { ProjectRole } from "@breatic/shared";
 
 /**

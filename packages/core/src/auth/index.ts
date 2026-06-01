@@ -10,5 +10,5 @@
  * collab (onAuthenticate).
  */
 
-export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
-export * as projectAuthService from "@core/modules/projectAuth.service.js";
+export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+export * as projectAuthService from "@core/auth/projectAuth.service.js";
