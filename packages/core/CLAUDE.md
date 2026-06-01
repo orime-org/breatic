@@ -6,10 +6,12 @@
 **后端共享内核**(仅后端共用,可用 node API)。**不是所有业务的默认堆放处** —— 只装真·跨服务共享的东西。
 
 ## 进本包判定题
-是不是 —— ① 共享 DB schema / ② 跨服务事件协议 / ③ ≥2 个服务共用的关键业务(钱·任务)/ ④ 基础设施(连接·日志·配置)?是 → core;否 → 放用它的那个服务(`@server` 等)。
+是不是 —— ① 共享 DB schema / ② 跨服务事件协议 / ③ **collab 也要用且 ≥1 其他服务也用的跨切面**(鉴权 · 会话 · 角色 · 成员事件)/ ④ 基础设施(连接·日志·配置)?是 → core。**只 server+worker 共用的 AIGC 业务(钱 · 任务 · agent 等)→ `@breatic/domain`;只一个服务用 → 那个服务(`@server` 等)。**
 
-## 装啥(收敛后)
-共用业务(credit / task / node-history + `user.repo`)· 基础设施(redis / 队列 / 存储 / stripe / 邮件 / 会话)· db(schema / 迁移 / client)· agent(模型 / 工具 / skill 加载)· i18n · config · 异步事件契约。
+## 装啥(PR4 二次调整后)
+共享鉴权内核(`auth/`:projectMembers.repo + projectAuth.service + loadProjectRole)· 基础设施(`infra/`:redis / 队列 / 存储 / event-stream / control-events / session-store / rate-limiter / health / logger)· db(schema / 迁移 / client)· config · i18n · `app-errors`(AppError 体系)· 跨服务事件契约。
+
+**已搬走、不再在 core**:AIGC 业务(credit / task / node-history / agent / model-catalog / canvas-lock)→ `@breatic/domain`;user.repo / stripe / mailer / pricing / text-tools → `@server`。
 
 ## 可 import 谁
 - ✅ `@breatic/shared` + 外部 npm

@@ -70,14 +70,14 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // lives in @server/src; AIGC business shared by server+worker (credit /
 // task / node-history / agent / model-catalog / canvas-lock) lives in
 // @breatic/domain — collab never touches it.
-export * as projectMembersRepo from "@core/modules/projectMembers.repo.js";
-export * as projectAuthService from "@core/modules/projectAuth.service.js";
+export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+export * as projectAuthService from "@core/auth/projectAuth.service.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 
 // ── Utilities ────────────────────────────────────────────────────
-export { logger, initLogger } from "@core/logger.js";
+export { logger, initLogger } from "@core/infra/logger.js";
 export {
   AppError,
   NotFoundError,
@@ -86,5 +86,5 @@ export {
   ConflictLockedError,
   ValidationError,
   UnauthorizedError,
-} from "@core/errors.js";
-export type { ConflictLockedDetail } from "@core/errors.js";
+} from "@core/app-errors.js";
+export type { ConflictLockedDetail } from "@core/app-errors.js";
