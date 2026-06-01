@@ -80,8 +80,10 @@ jobs:
 
       - name: Install ffmpeg (worker video-handler tests)
         # Worker `src/__tests__/handlers/local/video-*.test.ts` spawn
-        # ffmpeg for fixture generation + assertion. ubuntu-latest 不
-        # 自带,显式 apt-get。30 秒安装代价换 CI 真跑视频处理 unit。
+        # ffmpeg for fixture generation + assertion. ubuntu-latest does
+        # not bundle it, so install via apt-get explicitly. The ~30s
+        # install is the cost of actually running the video-processing
+        # unit tests in CI.
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Get pnpm store directory
@@ -109,18 +111,21 @@ jobs:
         # only. Fast grep; hard-fails the PR on violation.
         run: pnpm lint:hover
 
-      - name: Lint no-CJK in production source
-        # Enforce inner DD 2026-05-22-breatic-i18n-migration-rev-3:
-        # every user-facing string must live in locales/*.json and be
-        # routed through the shared t() helper. This grep hard-fails the
-        # PR if any production .ts / .tsx / .css carries hardcoded
-        # CJK Unified Ideographs (tests + vendored shadcn primitives
-        # are exempted; see scripts/lint-no-cjk.sh).
+      - name: Lint no-CJK in production source + YAML config
+        # Enforce inner DD 2026-05-22-breatic-i18n-migration-rev-3 +
+        # CLAUDE.md prohibition list #13 "no CJK in YAML" (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): every user-facing string must
+        # live in locales/*.json and route through the shared t() helper,
+        # and code / comments / YAML config must be English. This grep
+        # hard-fails the PR if any production .ts / .tsx / .css or any
+        # config/workflow YAML (pnpm-lock excluded) carries hardcoded CJK
+        # (tests + vendored shadcn primitives are exempted; see
+        # scripts/lint-no-cjk.sh).
         run: pnpm lint:no-cjk
 
       - name: Lint no-app-import-in-core (library can't import app)
-        # Enforce ADR 2026-05-31 "后端收敛为模块化单体" + root CLAUDE.md
-        # 三层边界: @breatic/core, @breatic/shared and @breatic/domain must
+        # Enforce ADR 2026-05-31 "backend convergence to a modular monolith" + root CLAUDE.md
+        # three-layer boundary: @breatic/core, @breatic/shared and @breatic/domain must
         # NOT import any application package (@server / @worker / @collab /
         # @web). The dependency direction is app → domain → core/shared,
         # never the reverse. Machine enforcement of the modular-monolith
@@ -128,7 +133,7 @@ jobs:
         run: pnpm lint:no-app-import-in-core
 
       - name: Lint no-domain-import-in-collab (collab can't import domain)
-        # Enforce ADR 2026-05-31 "二次调整:抽离 @breatic/domain": collab
+        # Enforce ADR 2026-05-31 "second-pass adjustment: extract @breatic/domain": collab
         # depends on core + shared ONLY; it must NOT import @breatic/domain
         # (the server+worker-only AIGC business — credit / task /
         # node-history / agent / model-catalog / canvas-lock). Directional
@@ -137,8 +142,8 @@ jobs:
         run: pnpm lint:no-domain-import-in-collab
 
       - name: Lint no-raw-sql-outside-repo (core + server)
-        # Enforce ADR 2026-05-31 "二次调整" 第二层 CI 守卫: a table's SQL
-        # lives in exactly one *.repo.ts home (一张表一个 repo 家). Raw
+        # Enforce ADR 2026-05-31 "second-pass adjustment" second-layer CI guard: a table's SQL
+        # lives in exactly one *.repo.ts home (one table, one repo home). Raw
         # sql`...` and Drizzle db.select/.insert/.update/.delete are
         # forbidden outside *.repo.ts in core + server (db.transaction
         # orchestration is allowed). This is what stops the auth-role
@@ -147,7 +152,7 @@ jobs:
         run: pnpm lint:no-raw-sql-outside-repo
 
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
-        # Enforce ADR 2026-05-31 "二次调整" 鉴权统一: collab must NOT
+        # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL
         # or a raw :session: redis key). Both moved to @breatic/core
         # (getSession + loadProjectRole) so auth is identical across
@@ -156,7 +161,7 @@ jobs:
         run: pnpm lint:no-collab-auth-table-sql
 
       - name: Lint no-library-logger (core + shared only)
-        # Enforce CLAUDE.md "服务器端工业级标准" mandate (commits
+        # Enforce CLAUDE.md "server-side industrial-grade standards" mandate (commits
         # adf36d1 / 026c5aa / 201a839): @breatic/core and
         # @breatic/shared must NOT call logger.{info,warn,error,debug,
         # fatal,trace}. Library code throws or returns a sentinel; the
@@ -167,13 +172,22 @@ jobs:
         run: pnpm lint:no-library-logger
 
       - name: Lint no-relative-import (all packages)
-        # Enforce CLAUDE.md 禁止清单 (2026-05-29): non-test source must
+        # Enforce CLAUDE.md prohibition list (2026-05-29): non-test source must
         # import via a path alias, never a relative './' or '../' path.
         # Consumed packages use a globally-unique prefix (@shared / @core
         # / @collab / @worker); server / web use @/. Hard-fails the PR on
         # any relative import in non-test source. See
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
+
+      - name: Lint no-service-import-hono (service layer stays protocol-agnostic)
+        # Enforce CLAUDE.md prohibition list #2 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): a *.service.ts file must NOT
+        # import hono / @hono/*. The route layer (route / handler / hook)
+        # owns the transport; the domain service writes business logic and
+        # throws a typed AppError. Hard-fails the PR on any hono import in
+        # the service layer. See scripts/lint-no-service-import-hono.sh.
+        run: pnpm lint:no-service-import-hono
 
       - name: Lint no-param-as-string (all packages)
         # Enforce 2026-05-30 type-assertion governance: a Hono route
@@ -187,7 +201,7 @@ jobs:
         run: pnpm lint:no-param-as-string
 
       - name: Lint no-core-process-env (core + shared only)
-        # Enforce CLAUDE.md 环境变量注入 mandate: @breatic/core and
+        # Enforce CLAUDE.md env-injection mandate: @breatic/core and
         # @breatic/shared must NOT read process.env / load .env — config
         # ACQUISITION is an application decision. The composition root
         # (server / worker / collab entry) calls initCore(process.env)

@@ -69,14 +69,14 @@ services:
 
   # ── Application ────────────────────────────────
   # Each application service exposes `GET /healthz` on a dedicated
-  # health port (`主+1` convention) — api 3001 / collab 1235 /
+  # health port (`main port + 1` convention) — api 3001 / collab 1235 /
   # worker 9101 — so docker's healthcheck can probe an isolated
   # endpoint that fails its own port independent of main traffic.
   # After `retries` consecutive failures docker marks the container
   # `unhealthy`; combined with `restart: unless-stopped` the
   # container is killed and respawned automatically — closing the
   # self-heal loop the 2026-05-27 collab long-running drift exposed
-  # (see CLAUDE.md "服务器端工业级标准" mandate).
+  # (see CLAUDE.md "server-side industrial-grade standards" mandate).
   api:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
