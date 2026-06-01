@@ -33,9 +33,30 @@ export default tseslint.config(
       // x is T. A cast that does nothing is noise and can mask a real
       // type problem if the underlying type later changes.
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      // Enforce CLAUDE.md 禁止清单 #8 "裸 catch" (machine-checkable half;
+      // CI maximal-strictness guard suite, inner ADR 2026-06-01). An empty
+      // catch body silently swallows the error — at 3am the on-call cannot
+      // trace the root cause. eslint:recommended already enables no-empty,
+      // but stating it explicitly with allowEmptyCatch:false pins the
+      // intent against a future preset-default drift. The non-empty
+      // *semantic* swallow (a catch that recovers without re-throwing /
+      // returning a sentinel / logging) has no reliable text signature and
+      // stays a human-review concern — see the inner ADR.
+      "no-empty": ["error", { allowEmptyCatch: false }],
+      // argsIgnorePattern / varsIgnorePattern: `_`-prefixed = intentionally
+      // unused. caughtErrors:"all" is the other half of 禁#8: a catch that
+      // BINDS the error (`catch (err)`) but never uses it has captured the
+      // failure only to drop it — the closest machine signal for a real
+      // swallow. Prefix the binding `_` (or omit it: `catch {`) when the
+      // recovery genuinely does not need the error.
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrors: "all",
+          caughtErrorsIgnorePattern: "^_",
+        },
       ],
       "@typescript-eslint/consistent-type-imports": [
         "error",
