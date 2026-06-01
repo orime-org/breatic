@@ -45,7 +45,7 @@ const { loggerWarn, loggerError, getSessionMock, loadProjectRoleMock } =
     loadProjectRoleMock: vi.fn(),
   }));
 
-vi.mock("../logger.js", () => ({
+vi.mock("../infra/logger.js", () => ({
   createLogger: () => ({
     warn: loggerWarn,
     error: loggerError,
@@ -72,7 +72,7 @@ vi.mock("@breatic/core", () => ({
   SESSION_COOKIE_NAME: "breatic_session",
 }));
 
-import { createAuthHook } from "../auth.js";
+import { createAuthHook } from "../hooks/auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
 function withCookie(token: string): IncomingHttpHeaders {

@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { buildCollabHealthChecks, type CollabHealthProbes } from "@collab/health-checks.js";
+import { buildCollabHealthChecks, type CollabHealthProbes } from "@collab/infra/health-checks.js";
 
 function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthProbes {
   return {

@@ -17,7 +17,7 @@ const { warnSpy, infoSpy, errorSpy } = vi.hoisted(() => ({
   errorSpy: vi.fn(),
 }));
 
-vi.mock("../logger.js", () => ({
+vi.mock("../infra/logger.js", () => ({
   createLogger: () => ({
     warn: warnSpy,
     info: infoSpy,
@@ -26,7 +26,7 @@ vi.mock("../logger.js", () => ({
   }),
 }));
 
-vi.mock("../event-stream.js", () => ({
+vi.mock("../services/event-stream.js", () => ({
   startStreamConsumer: vi.fn(),
 }));
 
@@ -36,7 +36,7 @@ vi.mock("pino", () => ({
   })),
 }));
 
-import { cleanupOnDisconnect } from "../disconnect-cleanup.js";
+import { cleanupOnDisconnect } from "../hooks/disconnect-cleanup.js";
 
 /** Build a Y.Doc with one node fixture and the given data field values. */
 function buildSeededDoc(nodes: Record<string, Record<string, unknown>>): Y.Doc {

@@ -22,7 +22,7 @@ import {
   membersChangedChannel,
   type MembersChangedEvent,
 } from "@breatic/shared";
-import { startMembersSync } from "../members-sync.js";
+import { startMembersSync } from "../services/members-sync.js";
 
 type FakeRedis = EventEmitter & {
   duplicate: () => FakeRedis;

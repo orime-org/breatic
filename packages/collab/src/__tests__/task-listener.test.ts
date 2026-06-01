@@ -28,7 +28,7 @@ const { warnSpy, infoSpy, debugSpy, errorSpy } = vi.hoisted(() => ({
 // ── Mock the logger before importing the module under test ────────────────
 // `createLogger` returns a child pino logger. We replace it with a factory
 // that hands out a plain object with spy methods so we can assert on calls.
-vi.mock("../logger.js", () => ({
+vi.mock("../infra/logger.js", () => ({
   createLogger: () => ({
     warn: warnSpy,
     info: infoSpy,
@@ -38,7 +38,7 @@ vi.mock("../logger.js", () => ({
 }));
 
 // Mock event-stream so importing task-listener doesn't try to connect to Redis.
-vi.mock("../event-stream.js", () => ({
+vi.mock("../services/event-stream.js", () => ({
   startStreamConsumer: vi.fn(),
 }));
 
@@ -51,7 +51,7 @@ vi.mock("pino", () => ({
 }));
 
 // Now import the function under test (after mocks are in place).
-import { handleNodeStateUpdateEvent } from "../task-listener.js";
+import { handleNodeStateUpdateEvent } from "../services/task-listener.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 

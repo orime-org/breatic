@@ -5,15 +5,16 @@
 ## 角色
 **Hocuspocus 独立进程**:Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点。只它认识 Hocuspocus。
 
-## 分层(包内)
-- hook 层(`auth` / `before-handle-message` / `awareness-meta-users` / `disconnect-cleanup` 等)= 协作事件适配,翻译 Yjs 事件 ↔ 持久化/流
-- `persistence` / `event-stream` / `space-rpc` / `task-listener` / `members-sync` = collab **自带的协作业务**(本质是协作适配,跟 Hocuspocus 绑死,留本包)
-- `index.ts` = composition root,启动 `initCore(process.env)`,唯一读 env 处
+## 分层(包内,目录即分层)
+- `hooks/`(`auth` / `before-handle-message` / `awareness-meta-users` / `disconnect-cleanup`)= Hocuspocus 生命周期钩子,协作事件适配,翻译 Yjs 事件 ↔ 持久化/流
+- `services/`(`persistence` / `event-stream` / `space-rpc` / `task-listener` / `members-sync`)= collab **自带的协作业务**(本质是协作适配,跟 Hocuspocus 绑死,留本包)
+- `infra/`(`logger` / `health-checks` / `connectivity-check`)= 本包支撑设施(对齐 core/server 的 `infra/`)
+- 根:`index.ts` = composition root(启动 `initCore(process.env)`,唯一读 env 处)· `hocuspocus.ts` = Hocuspocus 装配(把 hooks + services 接进 Server)· `bootstrap-config.ts` / `config.ts` = 引导 + 配置
 
 ## 可 import 谁
 - ✅ `@breatic/core` 的**基础设施**(`createPgClient` / `createRedisClient` / `HealthCheck` / `initCore` / `MONOREPO_ROOT`)+ `@breatic/shared` + 外部 npm
 - ❌ `@server` / `@worker` / `@breatic/domain` —— 服务之间互不 import;**collab 绝不依赖 domain**(server+worker-only 的 AIGC 业务,`lint:no-domain-import-in-collab` 强制)
-- ⚠️ **但 collab ≠ 只用 core infra**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 就该用 core 的统一鉴权。**现状漂移(待鉴权统一 PR 消灭)**:collab 当前**自己手写** `redis.get(:session:)` 查会话 + 裸 SQL `loadProjectRole` 查角色,没走 core —— 跟 server 各写一套、易失同步;鉴权统一 PR 后改调 core 的 `session-store` + `projectMembers` repo。旧表述「collab 只借 core infra、业务不引入」**已作废**(把漂移当成了设计)
+- ⚠️ **但 collab ≠ 只用 core infra**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 用 core 的统一鉴权。**鉴权已统一(二次调整 PR2)**:`hooks/auth.ts` 调 core 的 `getSession` + `projectAuthService.loadProjectRole`,跟 server 共用同一套原语,不再手写 `redis.get(:session:)` / 裸 SQL `loadProjectRole`(collab 仅剩对自己 `yjs_documents` 表的空间存在性查询)。旧表述「collab 只借 core infra、业务不引入」**已作废**(它把鉴权漂移当成了设计)
 - 本包内部用 `@collab/*` 前缀
 
 ## 怎么拿配置

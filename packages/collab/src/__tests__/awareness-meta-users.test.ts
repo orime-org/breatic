@@ -20,7 +20,7 @@ import type { Document } from "@hocuspocus/server";
 import {
   __resetAwarenessDebounceState,
   projectAwarenessIntoMetaUsers,
-} from "../awareness-meta-users.js";
+} from "../hooks/awareness-meta-users.js";
 
 const DOC_NAME = "project-pid-1/meta";
 
