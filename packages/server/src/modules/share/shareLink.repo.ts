@@ -23,7 +23,7 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { shareLinks } from "@breatic/core";
-import type { DbTx } from "@server/modules/conversation.repo.js";
+import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /** Discriminator for the two share-link modes. */
 export type ShareLinkKind = "email" | "link";

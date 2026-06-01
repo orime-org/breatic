@@ -6,7 +6,7 @@
  * agent system to build LLM context and persist consolidation results.
  */
 
-import * as memoryRepo from "@server/modules/memory.repo.js";
+import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 import { getAgentConfig } from "@breatic/core";
 import { ConflictError } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";

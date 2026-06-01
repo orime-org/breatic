@@ -8,14 +8,14 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
-import * as userRepo from "@server/modules/user.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { creditRepo } from "@breatic/domain";
-import * as studioService from "@server/modules/studio.service.js";
+import * as studioService from "@server/modules/studio/studio.service.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
   verifyRecoveryCode,
-} from "@server/modules/recovery-code.service.js";
+} from "@server/modules/auth/recovery-code.service.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
 import { env } from "@breatic/core";

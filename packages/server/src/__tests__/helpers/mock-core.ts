@@ -377,11 +377,11 @@ export const domainMock = () => ({
 });
 
 /**
- * Mock for `@server/modules/user.repo.js` — the identity repo moved from
+ * Mock for `@server/modules/auth/user.repo.js` — the identity repo moved from
  * @breatic/core to @server in PR4. Tests that hit a route reading user
  * rows directly (canvas lock-holder lookup, batch /users) mock this path:
  *
- *   vi.mock("@server/modules/user.repo.js", userRepoMock);
+ *   vi.mock("@server/modules/auth/user.repo.js", userRepoMock);
  */
 export const userRepoMock = () => mocks.userRepo;
 

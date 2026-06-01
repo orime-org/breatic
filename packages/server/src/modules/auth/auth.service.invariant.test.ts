@@ -84,7 +84,7 @@ const mockGetUserByEmail = vi.fn();
 const mockCreateUser = vi.fn();
 const mockUpdatePassword = vi.fn();
 const mockSetRecoveryCode = vi.fn().mockResolvedValue(undefined);
-vi.mock("@server/modules/user.repo.js", () => ({
+vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserByEmail: mockGetUserByEmail,
   getUserById: vi.fn(),
   getUserByGoogleId: vi.fn(),
@@ -97,7 +97,7 @@ vi.mock("@server/modules/user.repo.js", () => ({
   markRecoveryCodeUsed: vi.fn(),
 }));
 
-vi.mock("@server/modules/studio.service.js", () => ({
+vi.mock("@server/modules/studio/studio.service.js", () => ({
   ensurePersonalStudio: vi.fn(),
 }));
 

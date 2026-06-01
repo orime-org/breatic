@@ -27,7 +27,7 @@ import {
   tasks,
   yjsDocuments,
 } from "@breatic/core";
-import { cascadeDeleteConversations } from "@server/modules/conversation.repo.js";
+import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
 import type { ProjectEntity } from "@breatic/shared";
 
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {

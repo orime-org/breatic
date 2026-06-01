@@ -7,7 +7,7 @@
 
 ## 分层(包内)
 - `routes/` + `middleware/` = 路由层,**只当接线员,不写业务**(禁止清单 #1)
-- 自己的**领域 service 层**(`src/modules/`)放 server 私有业务逻辑,**不 import Hono**(禁止清单 #2),**不塞进 core**(只 server 用的不进共享内核)
+- 自己的**领域 service 层**(`src/modules/`,**按域分功能文件夹**:`auth/`〔auth + recovery-code + user.repo〕· `conversation/` · `memory/` · `notification/` · `payment/` · `project/`〔project + projectMembers〕· `share/`〔shareLink + share-invite-mail〕· `role-upgrade-request/` · `studio/` · `skill/` · `text-tool/` · `yjs-doc/`,每域放自己的 service + repo + test,镜像 `@breatic/domain` 功能文件夹;`index.ts` barrel 统一 re-export,消费方经 `@server/modules` 整桶引)放 server 私有业务逻辑,**不 import Hono**(禁止清单 #2),**不塞进 core**(只 server 用的不进共享内核)
 - `index.ts` = composition root,启动第一件事 `dotenv` + `initCore(process.env)`,是**唯一**读 env 的地方
 
 ## 可 import 谁

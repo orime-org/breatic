@@ -12,18 +12,18 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@server/modules/project.repo.js", () => ({
+vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
 }));
-vi.mock("@server/modules/studio.service.js", () => ({
+vi.mock("@server/modules/studio/studio.service.js", () => ({
   ensurePersonalStudio: vi.fn(),
 }));
-vi.mock("@server/modules/yjs-doc.repo.js", () => ({
+vi.mock("@server/modules/yjs-doc/yjs-doc.repo.js", () => ({
   insertInitialState: vi.fn(),
 }));
 // userRepo moved back to @server in PR4 (domain extraction) — mock it on
 // its own server-local path, not the core barrel.
-vi.mock("@server/modules/user.repo.js", () => ({
+vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
 }));
 // db + encodeInitialMetaState stay in @breatic/core; project.service
@@ -44,12 +44,12 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   };
 });
 
-import * as projectRepo from "@server/modules/project.repo.js";
-import * as studioService from "@server/modules/studio.service.js";
-import * as yjsDocRepo from "@server/modules/yjs-doc.repo.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as studioService from "@server/modules/studio/studio.service.js";
+import * as yjsDocRepo from "@server/modules/yjs-doc/yjs-doc.repo.js";
 import { encodeInitialMetaState } from "@breatic/core";
-import * as userRepo from "@server/modules/user.repo.js";
-import { create } from "@server/modules/project.service.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { create } from "@server/modules/project/project.service.js";
 
 describe("project.service.create — Q2 first-space-name invariant", () => {
   beforeEach(() => {
