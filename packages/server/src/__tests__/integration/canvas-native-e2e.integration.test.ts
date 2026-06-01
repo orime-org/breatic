@@ -120,8 +120,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // ESM build crashes the vitest loader); that is why initCore lives here and
 // not in the shared setupFile.
 
-import { runTask } from "@breatic/worker/src/handlers.js";
-import type { TaskJobData } from "@breatic/worker/src/handlers.js";
+import { runTask } from "@breatic/worker/src/handlers/dispatch.js";
+import type { TaskJobData } from "@breatic/worker/src/handlers/dispatch.js";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
