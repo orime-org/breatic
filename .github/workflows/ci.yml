@@ -210,6 +210,16 @@ jobs:
         # scripts/lint-no-sync-in-request-path.sh.
         run: pnpm lint:no-sync-in-request-path
 
+      - name: Lint schema-timestamps (deleted_at + created_at)
+        # Enforce CLAUDE.md soft-delete + created_at mandates (CI maximal-
+        # strictness guard suite, inner ADR 2026-06-01): every Drizzle
+        # pgTable must carry created_at (no exemption) and deleted_at.
+        # deleted_at has a small justified allowlist (payments +
+        # credit_transactions are append-only financial ledgers;
+        # credit_balances derives its soft-delete from users.deleted_at).
+        # See scripts/lint-schema-timestamps.sh.
+        run: pnpm lint:schema-timestamps
+
       - name: Lint no-param-as-string (all packages)
         # Enforce 2026-05-30 type-assertion governance: a Hono route
         # param `c.req.param(name)` already resolves to `string`, so

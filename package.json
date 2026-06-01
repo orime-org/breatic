@@ -28,6 +28,7 @@
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "lint:no-service-import-hono": "bash scripts/lint-no-service-import-hono.sh",
     "lint:no-sync-in-request-path": "bash scripts/lint-no-sync-in-request-path.sh",
+    "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",

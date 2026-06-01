@@ -600,7 +600,7 @@ export const skillInstalls = pgTable(
     skillId: uuid("skill_id")
       .notNull()
       .references(() => customSkills.id, { onDelete: "restrict" }),
-    installedAt: timestamp("installed_at", { withTimezone: true })
+    createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
