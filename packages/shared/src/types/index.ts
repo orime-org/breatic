@@ -9,6 +9,7 @@ export type {
   AssetKind,
   PaymentEntity,
   CreditTransactionEntity,
+  NotificationEntity,
   ProjectEntity,
   ProjectDetail,
   MemoryContext,

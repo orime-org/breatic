@@ -17,7 +17,7 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
-import type { Notification, NewNotification } from "@breatic/core";
+import type { NotificationEntity } from "@breatic/shared";
 import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
@@ -30,8 +30,39 @@ export type NotificationType =
   | "access.role_upgrade_rejected"
   | "access.member_joined";
 
-export type { Notification, NewNotification };
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+
+/**
+ * Input for {@link create} — the fields a caller supplies. The repo
+ * fills in DB defaults (id / created_at / read_at / …). Hand-written so
+ * the Drizzle insert type never leaks to the service layer.
+ */
+export interface NewNotificationInput {
+  userId: string;
+  type: NotificationType;
+  payload: Record<string, unknown>;
+  projectId?: string | null;
+}
+
+/**
+ * Map a Drizzle `notifications` row to the domain {@link NotificationEntity}.
+ * Keeps the Drizzle `$inferSelect` type contained inside the repo
+ * (prohibition #3 / lint:no-drizzle-type-leak) — callers see the
+ * hand-written entity only.
+ */
+function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
+  return {
+    id: row.id,
+    userId: row.userId,
+    type: row.type,
+    payload: row.payload,
+    projectId: row.projectId,
+    readAt: row.readAt,
+    deletedAt: row.deletedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 
 /**
  * Create a notification row.
@@ -44,16 +75,24 @@ export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
  *   role bump + 2 notifications in one TX).
  */
 export async function create(
-  input: NewNotification,
+  input: NewNotificationInput,
   tx?: DbTx,
-): Promise<Notification> {
+): Promise<NotificationEntity> {
   const handle = tx ?? db;
-  const rows = await handle.insert(notifications).values(input).returning();
+  const rows = await handle
+    .insert(notifications)
+    .values({
+      userId: input.userId,
+      type: input.type,
+      payload: input.payload,
+      projectId: input.projectId,
+    })
+    .returning();
   const row = rows[0];
   if (!row) {
     throw new Error("notificationRepo.create: insert returned no row");
   }
-  return row;
+  return toEntity(row);
 }
 
 /**
@@ -65,8 +104,8 @@ export async function create(
 export async function listUnreadByUser(
   userId: string,
   limit = 50,
-): Promise<Notification[]> {
-  return db
+): Promise<NotificationEntity[]> {
+  const rows = await db
     .select()
     .from(notifications)
     .where(
@@ -78,6 +117,7 @@ export async function listUnreadByUser(
     )
     .orderBy(desc(notifications.createdAt))
     .limit(limit);
+  return rows.map(toEntity);
 }
 
 /**
@@ -87,8 +127,8 @@ export async function listUnreadByUser(
 export async function listAllByUser(
   userId: string,
   limit = 100,
-): Promise<Notification[]> {
-  return db
+): Promise<NotificationEntity[]> {
+  const rows = await db
     .select()
     .from(notifications)
     .where(
@@ -99,6 +139,7 @@ export async function listAllByUser(
     )
     .orderBy(desc(notifications.createdAt))
     .limit(limit);
+  return rows.map(toEntity);
 }
 
 /**
@@ -170,11 +211,13 @@ export async function countUnread(userId: string): Promise<number> {
  * layer which already authenticated the user). Returns null on
  * miss or soft-deleted.
  */
-export async function findById(id: string): Promise<Notification | null> {
+export async function findById(
+  id: string,
+): Promise<NotificationEntity | null> {
   const rows = await db
     .select()
     .from(notifications)
     .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))
     .limit(1);
-  return rows[0] ?? null;
+  return rows[0] ? toEntity(rows[0]) : null;
 }

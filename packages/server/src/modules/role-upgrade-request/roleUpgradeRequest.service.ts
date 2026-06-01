@@ -29,7 +29,7 @@ import * as notificationService from "@server/modules/notification/notification.
 import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { Notification } from "@server/modules/notification/notification.repo.js";
+import type { NotificationEntity } from "@breatic/shared";
 
 interface RoleUpgradeRequestInput {
   ownerUserId: string;
@@ -48,7 +48,7 @@ interface RoleUpgradeRequestInput {
  */
 export async function request(
   input: RoleUpgradeRequestInput,
-): Promise<Notification> {
+): Promise<NotificationEntity> {
   return notificationService.createRoleUpgradeRequest({
     ownerUserId: input.ownerUserId,
     projectId: input.projectId,

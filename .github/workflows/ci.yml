@@ -189,6 +189,49 @@ jobs:
         # the service layer. See scripts/lint-no-service-import-hono.sh.
         run: pnpm lint:no-service-import-hono
 
+      - name: Lint no-cors-wildcard-credentials (security)
+        # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): a CORS config must NOT pair
+        # a wildcard origin ("*" / ["*"]) with credentials: true — that
+        # would accept credentialed cross-origin requests from any origin.
+        # Origins must be a specific whitelist (env ALLOWED_ORIGINS).
+        # See scripts/lint-no-cors-wildcard-credentials.sh.
+        run: pnpm lint:no-cors-wildcard-credentials
+
+      - name: Lint no-sync-in-request-path (event loop)
+        # Enforce CLAUDE.md prohibition list #10 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): synchronous fs/child_process
+        # calls (readFileSync / execSync / …) block the event loop and are
+        # forbidden in request-handling code — use the async form. This is
+        # a path proxy: boot-time / first-use loaders (config/, infra/,
+        # *-loader.ts, model-catalog/, fs-sandbox, worker providers/shared)
+        # are allowlisted with justification in the script; prohibition
+        # #10 still needs human review for hot-path sync I/O. See
+        # scripts/lint-no-sync-in-request-path.sh.
+        run: pnpm lint:no-sync-in-request-path
+
+      - name: Lint schema-timestamps (deleted_at + created_at)
+        # Enforce CLAUDE.md soft-delete + created_at mandates (CI maximal-
+        # strictness guard suite, inner ADR 2026-06-01): every Drizzle
+        # pgTable must carry created_at (no exemption) and deleted_at.
+        # deleted_at has a small justified allowlist (payments +
+        # credit_transactions are append-only financial ledgers;
+        # credit_balances derives its soft-delete from users.deleted_at).
+        # See scripts/lint-schema-timestamps.sh.
+        run: pnpm lint:schema-timestamps
+
+      - name: Lint no-drizzle-type-leak (repo boundary)
+        # Enforce CLAUDE.md prohibition list #3 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): Drizzle's $inferSelect /
+        # $inferInsert row-type helpers are allowed ONLY inside *.repo.ts
+        # (mapped to a hand-written domain entity via toEntity). Exporting
+        # them from the schema or using them in a service signature couples
+        # business logic + the API response to the DB column layout. This
+        # is a PROXY (catches explicit $infer tokens, not implicit Drizzle
+        # types) — prohibition #3 still needs human review. See
+        # scripts/lint-no-drizzle-type-leak.sh.
+        run: pnpm lint:no-drizzle-type-leak
+
       - name: Lint no-param-as-string (all packages)
         # Enforce 2026-05-30 type-assertion governance: a Hono route
         # param `c.req.param(name)` already resolves to `string`, so
