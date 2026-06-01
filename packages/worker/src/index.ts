@@ -21,8 +21,8 @@ import {
 } from "@breatic/core";
 
 initLogger("worker");
-import { runTask } from "@worker/handlers.js";
-import type { TaskJobData } from "@worker/handlers.js";
+import { runTask } from "@worker/handlers/dispatch.js";
+import type { TaskJobData } from "@worker/handlers/dispatch.js";
 
 // Health probe port from the validated config (default 9101).
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;

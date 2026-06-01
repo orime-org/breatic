@@ -1,5 +1,5 @@
 /**
- * Unit tests for the NodeStateUpdateEvent emit helpers in handlers.ts.
+ * Unit tests for the NodeStateUpdateEvent emit helpers in handlers/dispatch.ts.
  *
  * Covers:
  *  - emitNodeStateDone: success shape (all fields), partial fields, multi-node fanout
@@ -13,7 +13,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // ── Mock @breatic/core ──────────────────────────────────────────────
 // Use a hoisted mock so the actual module (which depends on opentelemetry,
-// ioredis, etc.) is never loaded. Only the symbols that handlers.ts
+// ioredis, etc.) is never loaded. Only the symbols that handlers/dispatch.ts
 // actually needs at import time are declared here.
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 
@@ -28,17 +28,17 @@ vi.mock("@breatic/core", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
-  // Other core symbols imported at the top of handlers.ts
+  // Other core symbols imported at the top of handlers/dispatch.ts
   downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
 }));
 
-// ── Mock @breatic/domain (AIGC business handlers.ts calls) ──────────
+// ── Mock @breatic/domain (AIGC business handlers/dispatch.ts calls) ──────────
 // PR4 moved task / credit / node-history / agent / canvas-lock here.
 // Mocked so loading handlers never pulls the real domain barrel (→ agent
 // llm → `ai` SDK → otel ESM chain, plus the MONOREPO_ROOT cascade back
-// into core). Only the symbols handlers.ts imports at top level.
+// into core). Only the symbols handlers/dispatch.ts imports at top level.
 vi.mock("@breatic/domain", () => ({
   taskService: {
     getByIdInternal: vi.fn(),
@@ -61,13 +61,13 @@ vi.mock("@breatic/domain", () => ({
   releaseCanvasNodeLock: vi.fn(),
 }));
 
-// @breatic/shared is used for canvasSpaceDocName inside handlers.ts
+// @breatic/shared is used for canvasSpaceDocName inside handlers/dispatch.ts
 // (v10 multi-doc routing: worker writes to project-{pid}/canvas-{sid}).
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
 
-// ── Also mock the mini-tool-registry which handlers.ts imports ──────
+// ── Also mock the mini-tool-registry which handlers/dispatch.ts imports ──────
 vi.mock("../mini-tool-registry.js", () => ({
   resolveMiniToolEntry: vi.fn(),
 }));
@@ -86,7 +86,7 @@ vi.mock("ai", () => ({
 }));
 
 // ── Import the helpers under test AFTER mocks are wired ─────────────
-import { emitNodeStateDone, emitNodeStateFailed } from "../handlers.js";
+import { emitNodeStateDone, emitNodeStateFailed } from "../handlers/dispatch.js";
 
 // Dummy streamRedis value — handlers pass it through to publishNodeEvent
 // which is mocked, so any value works.
