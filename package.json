@@ -22,6 +22,7 @@
     "lint:no-core-process-env": "bash scripts/lint-no-core-process-env.sh",
     "lint:no-cors-wildcard-credentials": "bash scripts/lint-no-cors-wildcard-credentials.sh",
     "lint:no-domain-import-in-collab": "bash scripts/lint-no-domain-import-in-collab.sh",
+    "lint:no-drizzle-type-leak": "bash scripts/lint-no-drizzle-type-leak.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
     "lint:no-param-as-string": "bash scripts/lint-no-param-as-string.sh",

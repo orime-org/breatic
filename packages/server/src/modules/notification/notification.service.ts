@@ -20,9 +20,10 @@
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { Notification, DbTx } from "@server/modules/notification/notification.repo.js";
+import type { DbTx } from "@server/modules/notification/notification.repo.js";
+import type { NotificationEntity } from "@breatic/shared";
 
-export type { Notification };
+export type { NotificationEntity };
 
 /**
  * Role-upgrade request payload — viewer asked owner for editor role.
@@ -71,7 +72,7 @@ export async function createRoleUpgradeRequest(input: {
   projectId: string;
   payload: RoleUpgradeRequestPayload;
   tx?: DbTx;
-}): Promise<Notification> {
+}): Promise<NotificationEntity> {
   return notificationRepo.create(
     {
       userId: input.ownerUserId,
@@ -92,7 +93,7 @@ export async function createRoleUpgradeApproved(input: {
   projectId: string;
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
-}): Promise<Notification> {
+}): Promise<NotificationEntity> {
   return notificationRepo.create(
     {
       userId: input.requesterUserId,
@@ -113,7 +114,7 @@ export async function createRoleUpgradeRejected(input: {
   projectId: string;
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
-}): Promise<Notification> {
+}): Promise<NotificationEntity> {
   return notificationRepo.create(
     {
       userId: input.requesterUserId,
@@ -134,7 +135,7 @@ export async function createMemberJoined(input: {
   projectId: string;
   payload: MemberJoinedPayload;
   tx?: DbTx;
-}): Promise<Notification> {
+}): Promise<NotificationEntity> {
   return notificationRepo.create(
     {
       userId: input.ownerUserId,
@@ -152,14 +153,14 @@ export async function createMemberJoined(input: {
  * List a user's unread notifications, newest first.
  * BellMenu pulls this on open + on stateless invalidate signal.
  */
-export async function listUnread(userId: string): Promise<Notification[]> {
+export async function listUnread(userId: string): Promise<NotificationEntity[]> {
   return notificationRepo.listUnreadByUser(userId);
 }
 
 /**
  * List all of a user's notifications (read + unread) — history view.
  */
-export async function listAll(userId: string): Promise<Notification[]> {
+export async function listAll(userId: string): Promise<NotificationEntity[]> {
   return notificationRepo.listAllByUser(userId);
 }
 

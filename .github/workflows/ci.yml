@@ -220,6 +220,18 @@ jobs:
         # See scripts/lint-schema-timestamps.sh.
         run: pnpm lint:schema-timestamps
 
+      - name: Lint no-drizzle-type-leak (repo boundary)
+        # Enforce CLAUDE.md prohibition list #3 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): Drizzle's $inferSelect /
+        # $inferInsert row-type helpers are allowed ONLY inside *.repo.ts
+        # (mapped to a hand-written domain entity via toEntity). Exporting
+        # them from the schema or using them in a service signature couples
+        # business logic + the API response to the DB column layout. This
+        # is a PROXY (catches explicit $infer tokens, not implicit Drizzle
+        # types) — prohibition #3 still needs human review. See
+        # scripts/lint-no-drizzle-type-leak.sh.
+        run: pnpm lint:no-drizzle-type-leak
+
       - name: Lint no-param-as-string (all packages)
         # Enforce 2026-05-30 type-assertion governance: a Hono route
         # param `c.req.param(name)` already resolves to `string`, so

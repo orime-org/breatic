@@ -169,6 +169,25 @@ export interface CreditTransactionEntity {
   createdAt: Date;
 }
 
+/**
+ * Notification entity (per-user inbox row). Hand-written domain shape so
+ * the `notifications` Drizzle row type never leaks out of the repo layer
+ * into service / route signatures (prohibition #3 — the repo maps the
+ * Drizzle row to this via `toEntity`). `payload` is opaque jsonb;
+ * consumers narrow it by the `type` discriminator.
+ */
+export interface NotificationEntity {
+  id: string;
+  userId: string;
+  type: string;
+  payload: unknown;
+  projectId: string | null;
+  readAt: Date | null;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;
