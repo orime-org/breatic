@@ -49,7 +49,7 @@ export const users = pgTable(
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
     // Breatic is credits-only. No subscription tiers, no membership
-    // levels — every user has the same feature set and pays per-use by
+    // levels - every user has the same feature set and pays per-use by
     // deducting credits. The old `membership_type` / `membership_expires_at`
     // columns were removed in the 0010_* migration.
     // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
@@ -101,7 +101,7 @@ export const studios = pgTable(
 // v10 schema: project belongs to a studio (the studio that pays for /
 // houses it). Owner / role information lives in `project_members`,
 // not on the project row. `created_by_user_id` is an immutable audit
-// field — used for "creator" UI labels, never for permission decisions.
+// field - used for "creator" UI labels, never for permission decisions.
 //
 // `canvas_data` (legacy JSONB snapshot) was dropped: live canvas state
 // lives in Yjs documents (`project-{id}/canvas-{spaceId}`) and the
@@ -130,9 +130,9 @@ export const projects = pgTable(
 //
 // Three roles: `owner` (unique per project, partial unique index) /
 // `edit` / `view`. The owner row is written in the same transaction as
-// the project insert — `addedBy` is null for that row (creator has no
+// the project insert - `addedBy` is null for that row (creator has no
 // inviter). `transfer-owner` is intentionally not implemented in V1
-// (v10 spec §7.2.5) — the partial unique index would have to be dance-
+// (v10 spec §7.2.5) - the partial unique index would have to be dance-
 // stepped through; deferring saves complexity for the team-Studio phase.
 
 export const projectMembers = pgTable(
@@ -227,7 +227,7 @@ export const tasks = pgTable(
      * worker writes results back into `project-{projectId}/canvas-{spaceId}`,
      * so the worker MUST know which Space's doc to open.
      *
-     * No FK — Spaces live in the Yjs `meta` doc (not in PG), so there
+     * No FK - Spaces live in the Yjs `meta` doc (not in PG), so there
      * is no FK target. Stored as plain UUID for round-tripping through
      * the BullMQ payload + worker handler. v10 spec impl §1.2.1.
      */
@@ -236,12 +236,12 @@ export const tasks = pgTable(
     /**
      * Execution mode (spec §10.13 + §10.15).
      *
-     * - `append`: produces a new sibling node. No lock — the new nodeId
+     * - `append`: produces a new sibling node. No lock - the new nodeId
      *   is freshly generated, no contention possible.
      * - `overwrite`: replaces an existing node's data. Server SETNX-locks
      *   the target node; concurrent overwrites get 409 ConflictLocked.
      *
-     * Required (no default) — every task creator must declare intent
+     * Required (no default) - every task creator must declare intent
      * explicitly. Mini-tools and AIGC direct flows pass `'append'`.
      */
     mode: varchar("mode", { length: 16 }).notNull(),
@@ -260,7 +260,7 @@ export const tasks = pgTable(
     source: varchar("source", { length: 20 }).default("canvas").notNull(),
     /**
      * URL returned by the AIGC provider, before persistence to permanent
-     * storage. Set as the "point of no return" — once this column is not
+     * storage. Set as the "point of no return" - once this column is not
      * null, the Worker must NOT re-invoke the provider (business policy:
      * only one successful provider call per task).
      */
@@ -294,7 +294,7 @@ export const tasks = pgTable(
  * Records every content change on a canvas node: successful/failed
  * AIGC generations + user uploads. Queried by frontend to show
  * version history and support restore. Node soft-deletes don't
- * cascade — history is preserved until the project is deleted.
+ * cascade - history is preserved until the project is deleted.
  */
 export const nodeHistory = pgTable(
   "node_history",
@@ -341,7 +341,7 @@ export const nodeHistory = pgTable(
  *
  * Users upload files once and reference them across multiple messages
  * in the same conversation via @ syntax (resolved client-side before
- * sending). Soft-deleted via deletedAt — records stay in DB, files
+ * sending). Soft-deleted via deletedAt - records stay in DB, files
  * stay in storage.
  */
 export const conversationAttachments = pgTable(
@@ -424,7 +424,7 @@ export const creditTransactions = pgTable(
 // ── 8b. Credit Balances ──────────────────────────────────────────────
 
 /**
- * Per-user credit balance — one row per user, the single source of
+ * Per-user credit balance - one row per user, the single source of
  * truth for "how many credits a user has left". Migrated out of the
  * `users.credits` column (PR3, migration 0020) so the credit domain is
  * self-contained and no longer coupled to the user identity table.
@@ -627,14 +627,14 @@ export const yjsDocuments = pgTable("yjs_documents", {
   name: text("name").primaryKey(),
   data: bytea("data").notNull(),
   // `createdAt` aligns with the project-wide rule: every PG table has
-  // a createdAt timestamp (see CLAUDE.md "关键规范"). For existing rows
-  // backfilled from `updated_at` — the earliest update is the create
+  // a createdAt timestamp (see CLAUDE.md "key conventions"). For existing rows
+  // backfilled from `updated_at` - the earliest update is the create
   // time (Hocuspocus's persistence extension upserts on store).
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  // Soft-delete support — aligns with the project-wide "soft delete only"
+  // Soft-delete support - aligns with the project-wide "soft delete only"
   // rule (CLAUDE.md). Set by deleteProject() cascade when the owning
   // project is deleted. Collab's persistence layer filters this out on
   // fetch so deleted docs are invisible even if a stale client reconnects.
@@ -645,7 +645,7 @@ export const yjsDocuments = pgTable("yjs_documents", {
 //
 // Project invite/share links generated by owner/admin from ShareDialog.
 // Two modes discriminated by an explicit `kind` column (NOT by the
-// nullness of `boundEmail` — that was the original PR-d design and
+// nullness of `boundEmail` - that was the original PR-d design and
 // later got refactored, since one column carrying both data and type
 // is the classic "boolean as enum" smell):
 //
@@ -678,7 +678,7 @@ export const shareLinks = pgTable(
      * Link mode discriminator. 'email' = single-use bound invite,
      * 'link' = multi-use shareable URL. The DB enforces this together
      * with `boundEmail` via the `share_links_kind_bound_email_check`
-     * CHECK constraint below — kind is the single source of truth for
+     * CHECK constraint below - kind is the single source of truth for
      * application code branching.
      */
     kind: varchar("kind", { length: 16 }).notNull(),
@@ -725,10 +725,10 @@ export const notifications = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /**
      * Notification type. Allowed values (CHECK enforced at SQL level):
-     * - 'access.role_upgrade_request' — viewer asks owner for editor role
-     * - 'access.role_upgrade_approved' — owner approved viewer's request
-     * - 'access.role_upgrade_rejected' — owner rejected viewer's request
-     * - 'access.member_joined' — someone consumed a link and joined
+     * - 'access.role_upgrade_request' - viewer asks owner for editor role
+     * - 'access.role_upgrade_approved' - owner approved viewer's request
+     * - 'access.role_upgrade_rejected' - owner rejected viewer's request
+     * - 'access.member_joined' - someone consumed a link and joined
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

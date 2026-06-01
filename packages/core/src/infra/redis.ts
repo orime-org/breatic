@@ -24,7 +24,7 @@ import { env } from "@core/config/env.js";
 /**
  * Production-grade ioredis client factory. **Every long-lived
  * ioredis instance in the codebase must go through this factory**,
- * not `new Redis(url)` directly — that bypasses the connection-
+ * not `new Redis(url)` directly - that bypasses the connection-
  * health configuration that prevents the silent dead-TCP drift
  * documented in
  * [ioredis #139](https://github.com/redis/ioredis/issues/139)
@@ -32,30 +32,30 @@ import { env } from "@core/config/env.js";
  * without notifying the client, leading to multi-minute query
  * stalls or sticky `Unauthorized` errors on Hocuspocus auth).
  *
- * Per the CLAUDE.md "服务器端工业级标准" mandate and the
+ * Per the CLAUDE.md "industrial-grade server standards" mandate and the
  * 2026-05-27 long-running drift investigation:
  *
- * - `keepAlive: 30000` — TCP keepalive every 30s so a dropped
+ * - `keepAlive: 30000` - TCP keepalive every 30s so a dropped
  *   midpoint surfaces within seconds, not the ~11 minute OS
  *   default detection window;
- * - `commandTimeout: 5000` — fail a command in 5s instead of
+ * - `commandTimeout: 5000` - fail a command in 5s instead of
  *   hanging the caller behind a dead socket (BullMQ workers
  *   override to `undefined` because their blocking `BRPOP` runs
  *   longer than any reasonable command timeout);
- * - `connectTimeout: 10000` — bound the initial connect handshake
+ * - `connectTimeout: 10000` - bound the initial connect handshake
  *   so app boot doesn't hang on a misconfigured `REDIS_URL`;
- * - `reconnectOnError: (READONLY)` — managed-Redis / Sentinel
+ * - `reconnectOnError: (READONLY)` - managed-Redis / Sentinel
  *   failover sends `READONLY` on the old master; reconnect to
  *   land on the new master without a manual restart.
  *
- * Per the "core 和 shared 不写任何日志" mandate (CLAUDE.md
- * "进程生命周期(library 层禁)") this factory does NOT attach an
+ * Per the "core and shared must not log" mandate (CLAUDE.md
+ * "process lifecycle (forbidden in the library layer)") this factory does NOT attach an
  * error logger. A no-op `error` listener is installed so an emitted
  * error doesn't crash the process (ioredis inherits Node's
  * EventEmitter behaviour where an unhandled `error` event is fatal),
  * but the application entry must attach its own listener via
  * `client.on('error', appLogger.error)` to actually log. Multiple
- * `error` listeners are fine — EventEmitter fan-outs to all of them.
+ * `error` listeners are fine - EventEmitter fan-outs to all of them.
  *
  * Callers needing different semantics (BullMQ workers with
  * blocking BRPOP, Hocuspocus extension-redis pub-sub) pass
@@ -98,7 +98,7 @@ export function createRedisClient(
     ...override,
   });
   // No-op error listener so an emitted `error` event doesn't crash
-  // the process — see the factory doc-comment above. The application
+  // the process - see the factory doc-comment above. The application
   // entry attaches its own listener for actual logging.
   client.on("error", () => {});
   return client;
@@ -135,7 +135,7 @@ let _queueRedis: Redis | null = null;
  * Get the BullMQ Redis client.
  *
  * BullMQ enforces `maxRetriesPerRequest: null` + `enableReadyCheck:
- * false` for any connection passed to a Worker — it throws on
+ * false` for any connection passed to a Worker - it throws on
  * startup otherwise (see
  * [bull #2186](https://github.com/OptimalBits/bull/issues/2186)).
  * `commandTimeout` is also disabled because BullMQ workers issue

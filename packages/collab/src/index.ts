@@ -29,7 +29,7 @@ const logger = createLogger("main");
 // All from the validated config (injected by bootstrap-config's
 // initCore). DATABASE_URL is required; REDIS_* / ENV / health port
 // carry schema defaults. The connectivity check + core factories
-// still take these as explicit args — collab just sources them from
+// still take these as explicit args - collab just sources them from
 // the one validated config instead of re-reading raw process.env.
 const DATABASE_URL = env.DATABASE_URL;
 const REDIS_URL = env.REDIS_URL;
@@ -40,7 +40,7 @@ const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the
   // server. `checkCollabInfraReady` throws InfraNotReadyError per
-  // the "进程生命周期(library 层禁)" mandate — application entry
+  // the "process lifecycle (forbidden in the library layer)" mandate - application entry
   // catches, logs with full application context, and exits with code 1.
   try {
     await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
@@ -88,8 +88,7 @@ async function main(): Promise<void> {
   });
   // Production error logging. The core factory installs a no-op
   // `error` listener so emitted errors don't crash the process; the
-  // application entry attaches the real logger per the "core 和
-  // shared 不写任何日志" mandate.
+  // application entry attaches the real logger per the "core and shared must not log" mandate.
   controlRedis.on("error", (err) => {
     logger.error(
       { err, client: "collab-members-sync-control" },
@@ -110,18 +109,17 @@ async function main(): Promise<void> {
     max: 1,
   });
 
-  // Health probe server — separate port so probe traffic doesn't
+  // Health probe server - separate port so probe traffic doesn't
   // touch the WS port. Probes all three critical dependencies: the
   // members-sync control Redis, Postgres (Yjs doc store + auth), and
   // the Hocuspocus WS listen socket. LB / docker healthcheck kills
   // the instance on N consecutive 503s so a drifted connection pool
-  // gets a fresh process automatically — per CLAUDE.md "服务器端工业级
-  // 标准" and memory `feedback_dev_collab_long_running_drift`.
+  // gets a fresh process automatically - per CLAUDE.md "industrial-grade server standards" and memory `feedback_dev_collab_long_running_drift`.
   const healthServer = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "collab",
     // Forward health-server lifecycle events to our logger. Per
-    // CLAUDE.md "core 和 shared 不写任何日志" mandate, the library
+    // CLAUDE.md "core and shared must not log" mandate, the library
     // emits events; the application entry routes them.
     onEvent: (event) => {
       if (event.type === "listening") {
@@ -142,10 +140,10 @@ async function main(): Promise<void> {
       }
     },
     // Wiring lives in `health-checks.ts` (`buildCollabHealthChecks`)
-    // so the probe set is unit-tested — both that PG is covered and
+    // so the probe set is unit-tested - both that PG is covered and
     // that `hocuspocus_listening` reads the right field. Bug history:
     // PR #155/#156 read `hocuspocus.server?.listening` (wrong variable
-    // AND wrong field — the http server is `server.httpServer`, not on
+    // AND wrong field - the http server is `server.httpServer`, not on
     // the Hocuspocus instance), so the check was `undefined?.listening`
     // → always false → /healthz always 503; with the docker
     // `healthcheck:` that would have looped-restarted prod collab.
@@ -156,7 +154,7 @@ async function main(): Promise<void> {
         return rows[0]?.ok === 1;
       },
       // `.listening` flips false the instant the listen socket closes
-      // (graceful shutdown or crash) — a dead hocuspocus with a live
+      // (graceful shutdown or crash) - a dead hocuspocus with a live
       // healthz is the worst possible state for the LB.
       isHocuspocusListening: () => server.httpServer.listening,
     }),

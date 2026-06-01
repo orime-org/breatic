@@ -31,8 +31,7 @@ export function startWorker(): void {
   // Production error logging for shared Redis singletons. The core
   // `createRedisClient` factory installs a no-op `error` listener so
   // emitted errors don't crash the process; the application entry is
-  // responsible for the real logging per the "core 和 shared 不写
-  // 任何日志" mandate.
+  // responsible for the real logging per the "core and shared must not log" mandate.
   for (const [client, instance] of [
     ["general", getRedis()],
     ["queue", getQueueRedis()],
@@ -54,15 +53,15 @@ export function startWorker(): void {
 
   logger.info("BullMQ worker started, listening on 'tasks' queue");
 
-  // Health probe — docker / LB / k8s healthcheck kills the
+  // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or
   // Postgres pool has drifted is replaced automatically. Per
-  // CLAUDE.md "服务器端工业级标准" mandate.
+  // CLAUDE.md "industrial-grade server standards" mandate.
   const health = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "worker",
     // Forward health-server lifecycle events to our logger. Per
-    // CLAUDE.md "core 和 shared 不写任何日志" mandate, the library
+    // CLAUDE.md "core and shared must not log" mandate, the library
     // emits events; the application entry routes them.
     onEvent: (event) => {
       if (event.type === "listening") {
@@ -97,7 +96,7 @@ export function startWorker(): void {
     ],
   });
 
-  // Graceful shutdown — per CLAUDE.md "服务器端工业级标准"
+  // Graceful shutdown - per CLAUDE.md "industrial-grade server standards"
   // mandate any long-running process must drain in-flight work
   // before exiting on SIGTERM. BullMQ's `worker.close(force?)`
   // (force=false, the default) stops accepting new jobs and
@@ -116,7 +115,7 @@ export function startWorker(): void {
       await health.stop();
       // Then ask BullMQ to drain. `close()` resolves once the
       // current job (if any) has finished and the connection
-      // is closed — safe even if no job is running.
+      // is closed - safe even if no job is running.
       await worker.close();
       logger.info("worker_shutdown_complete");
       process.exit(0);
@@ -130,8 +129,7 @@ export function startWorker(): void {
 }
 
 // Fail-fast: verify PG + Redis are reachable before consuming jobs.
-// `checkInfraReady` throws InfraNotReadyError per the "进程生命周期
-// (library 层禁)" mandate — application entry catches, logs, exits.
+// `checkInfraReady` throws InfraNotReadyError per the "process lifecycle (forbidden in the library layer)" mandate - application entry catches, logs, exits.
 try {
   await checkInfraReady();
 } catch (err) {

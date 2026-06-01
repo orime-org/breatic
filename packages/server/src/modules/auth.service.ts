@@ -1,5 +1,5 @@
 /**
- * Authentication service — email/password and Google OAuth.
+ * Authentication service - email/password and Google OAuth.
  *
  * Manages user registration, login, session creation/resolution,
  * and logout. Sessions are stored in Redis via the session store.
@@ -40,12 +40,12 @@ const BCRYPT_ROUNDS = 12;
  * Generates a one-time recovery code (GitHub backup-codes pattern) so
  * the user can reset their password without an SMTP backend
  * (self-host friendly). The plaintext code is returned exactly once
- * — callers MUST display it to the user with a "save this now" UX;
+ * - callers MUST display it to the user with a "save this now" UX;
  * only the bcrypt hash is persisted server-side.
  *
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
- * @returns `{ user, recoveryCode }` — recoveryCode is plaintext
+ * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
  */
@@ -70,7 +70,7 @@ export async function register(
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up before studio
-  // setup — the user row will still exist (no transaction wrap) but
+  // setup - the user row will still exist (no transaction wrap) but
   // recovery_code_hash will be NULL; the user can request a fresh
   // code via reset-with-recovery-code → resend flow.
   const recoveryCode = generateRecoveryCode();
@@ -78,10 +78,10 @@ export async function register(
   await userRepo.setRecoveryCode(user.id, recoveryCodeHash);
 
   // Personal studio is the FK target for the user's projects (v10
-  // §6). Idempotent — also called from project.service.create as
+  // §6). Idempotent - also called from project.service.create as
   // belt-and-suspenders if the register hook ever races.
   await studioService.ensurePersonalStudio(user.id, user.username);
-  // Per CLAUDE.md "core 和 shared 不写任何日志" — caller logs the
+  // Per CLAUDE.md "core and shared must not log" - caller logs the
   // `user_registered` audit line after this resolves.
   return { user, recoveryCode };
 }
@@ -141,7 +141,7 @@ export async function loginOrCreateGoogle(
   let user = await userRepo.getUserByGoogleId(googleId);
 
   if (!user) {
-    // Check if email already registered — link accounts
+    // Check if email already registered - link accounts
     user = await userRepo.getUserByEmail(email);
     if (user) {
       user =
@@ -152,7 +152,7 @@ export async function loginOrCreateGoogle(
     }
   }
   // Ensure personal studio exists for both newly-created and linked
-  // accounts. Idempotent — also called from project.service.create.
+  // accounts. Idempotent - also called from project.service.create.
   await studioService.ensurePersonalStudio(user.id, user.username);
 
   // Sync the latest nickname + avatar on every Google sign-in
@@ -207,7 +207,7 @@ const RESET_TOKEN_TTL = 3600; // 1 hour
 
 /**
  * Discriminated outcome of {@link forgotPassword}. Per CLAUDE.md
- * "core 和 shared 不写任何日志" mandate, the service returns the
+ * "core and shared must not log" mandate, the service returns the
  * branch it took (anti-enumeration: caller still responds to the
  * client with the same generic body) and the route handler logs
  * the appropriate audit line.
@@ -241,7 +241,7 @@ export async function forgotPassword(
   const resetUrl = `${resetBaseUrl}?token=${token}`;
   const mailResult = await sendMail({
     to: email,
-    subject: "Breatic — Reset your password",
+    subject: "Breatic - Reset your password",
     html: `
       <p>You requested a password reset.</p>
       <p><a href="${resetUrl}">Click here to reset your password</a></p>
@@ -281,7 +281,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
 /**
  * Reset password using the one-time recovery code shown at
- * registration. No email backend required — designed for self-host
+ * registration. No email backend required - designed for self-host
  * installs where `EMAIL_BACKEND=disabled`.
  *
  * Flow:
@@ -292,13 +292,13 @@ export async function resetPassword(token: string, newPassword: string): Promise
  *   3. bcrypt.compare(code, hash); reject on mismatch
  *   4. Update password (bcrypt cost 12, same as `resetPassword`)
  *   5. markRecoveryCodeUsed (used_at = now)
- *   6. Generate + store a fresh recovery code (rotate-on-use —
+ *   6. Generate + store a fresh recovery code (rotate-on-use -
  *      old one cannot reset again, new one shown to user)
  *   7. deleteAllSessions (force re-login on all devices)
- *   8. Return the new plaintext code (shown once — frontend MUST
+ *   8. Return the new plaintext code (shown once - frontend MUST
  *      re-prompt user to save it)
  *
- * @returns `{ newRecoveryCode }` — fresh plaintext code to display
+ * @returns `{ newRecoveryCode }` - fresh plaintext code to display
  * @throws {UnauthorizedError} on any failure (uniform error to
  *   prevent oracle attacks on email vs. code)
  */
@@ -388,12 +388,12 @@ export async function verifyEmail(token: string): Promise<{ userId: string }> {
  * Resend the verification email for a given user (PR-a task 9).
  *
  * Generates a fresh token (invalidating any previous tokens once the
- * key collides — extremely unlikely, but functionally a no-op since
+ * key collides - extremely unlikely, but functionally a no-op since
  * each token is fresh-random and TTL'd) and dispatches via the
  * configured mailer backend. Caller decides whether the user is
  * already verified (skip in that case).
  *
- * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` — caller
+ * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` - caller
  * should gate accordingly; this function will still run (Redis token
  * stored) but `sendMail` will no-op + return false in disabled mode.
  */
@@ -406,7 +406,7 @@ export async function resendVerificationEmail(
   const verifyUrl = `${verifyBaseUrl}?token=${token}`;
   const mailResult = await sendMail({
     to: email,
-    subject: "Breatic — Verify your email",
+    subject: "Breatic - Verify your email",
     html: `
       <p>Welcome to Breatic. Click below to verify your email address:</p>
       <p><a href="${verifyUrl}">${verifyUrl}</a></p>

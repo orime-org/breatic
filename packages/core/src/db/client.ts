@@ -9,7 +9,7 @@
  * entry has run `initCore(process.env)`. `db` / `rawPg` are Proxies
  * that resolve against the lazily-built pool at access time, so the
  * ~25 `db.select()` / `rawPg` call sites stay unchanged while the
- * pool construction is deferred past `initCore` — the same lazy
+ * pool construction is deferred past `initCore` - the same lazy
  * pattern `getRedis()` already uses for the Redis clients.
  *
  * Cross-process consumers (collab is a separate Node process and
@@ -29,20 +29,20 @@ import { env } from "@core/config/env.js";
 /**
  * Production-grade postgres.js client factory. **Every long-lived
  * postgres.js client in the codebase must go through this
- * factory**, not `postgres(url, ...)` directly — that bypasses the
+ * factory**, not `postgres(url, ...)` directly - that bypasses the
  * connection-lifecycle configuration that keeps long-running
  * pools from accumulating connections in stale states.
  *
- * Per the CLAUDE.md "服务器端工业级标准" mandate and the
+ * Per the CLAUDE.md "industrial-grade server standards" mandate and the
  * 2026-05-27 long-running collab investigation:
  *
- * - `idle_timeout: 30` — close any idle connection after 30s so
+ * - `idle_timeout: 30` - close any idle connection after 30s so
  *   the pool can't hold onto a stale connection across long
  *   idle windows;
- * - `max_lifetime: 1800` — recycle every connection after 30 min
+ * - `max_lifetime: 1800` - recycle every connection after 30 min
  *   regardless of activity, so a slowly-leaking connection
  *   doesn't outlive its safe window;
- * - `max: <pool size>` — caller-supplied;
+ * - `max: <pool size>` - caller-supplied;
  *
  * Callers override individual fields via `opts`; the factory
  * spreads `opts` last, so `opts.idle_timeout = 0` (postgres.js
@@ -50,8 +50,8 @@ import { env } from "@core/config/env.js";
  * when a caller explicitly opts in. The default policy stays
  * conservative because the long-running drift investigation
  * showed in-flight kills were not observed with the current 30s
- * idle / 30min lifetime values — revisiting the tradeoff is
- * tracked in docs/ROADMAP.md "待跟进".
+ * idle / 30min lifetime values - revisiting the tradeoff is
+ * tracked in docs/ROADMAP.md "follow-ups".
  *
  * `name` is required and feeds the postgres.js `connection.
  * application_name` field, which lands in PG's
@@ -85,7 +85,7 @@ export function createPgClient(
 
 /**
  * Lazily-built postgres.js pool for this process. Null until first
- * access of `db` / `rawPg` — by then `initCore` has run and
+ * access of `db` / `rawPg` - by then `initCore` has run and
  * `env.DATABASE_URL` resolves. Mirrors `getRedis()`'s lazy pattern.
  */
 let _pgClient: Sql | null = null;
@@ -137,8 +137,8 @@ export const db: PostgresJsDatabase<Record<string, never>> = new Proxy(
  * Transaction handle type, inferred from {@link db.transaction}'s
  * callback parameter.
  *
- * Lives in core (the db layer's home) so any repo — in core or in a
- * service package — can type a caller-provided `tx` without importing
+ * Lives in core (the db layer's home) so any repo - in core or in a
+ * service package - can type a caller-provided `tx` without importing
  * a sibling repo just for the type. Repos that accept an optional
  * `tx` use this to let the caller compose several writes across one
  * transaction (e.g. project creation + owner-member insert) without
@@ -175,7 +175,7 @@ export const rawPg: Sql = new Proxy(
   // The Proxy target must be callable to support the `apply` trap
   // (tagged-template usage); the real pool is resolved lazily inside.
   function rawPgTarget() {
-    /* never invoked — apply trap forwards to the real pool */
+    /* never invoked - apply trap forwards to the real pool */
   } as unknown as Sql,
   {
     apply(_target, _thisArg, args) {

@@ -24,7 +24,7 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
  *
  * Failure path: server returns 401 with a generic message ("Invalid
  * email or password"). We surface that as a form-level FieldError
- * line above the submit button (role=alert) — not pinned to either
+ * line above the submit button (role=alert) - not pinned to either
  * input, so we never leak which input is wrong, and not as a toast
  * because form errors belong with the form, not the global
  * cross-page notification surface.
@@ -47,7 +47,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = React.useState(false);
   // Field-level errors (inline below each input). `formError` is the
   // single async / server failure line that sits above the submit
-  // button — kept out of toasts because form failures are tied to
+  // button - kept out of toasts because form failures are tied to
   // this form, not the global cross-page notification surface.
   const [errors, setErrors] = React.useState<{
     email?: string;
@@ -172,7 +172,7 @@ export default function LoginPage() {
 }
 
 /**
- * Google Sign-In trampoline — opens the GIS popup, exchanges the ID
+ * Google Sign-In trampoline - opens the GIS popup, exchanges the ID
  * token via `POST /auth/google`, then mirrors the user into the
  * current-user store. The Google script is loaded lazily on first
  * click to avoid the third-party request when most users come in
@@ -194,7 +194,7 @@ function GoogleSignInButton() {
       // For now, hand off to a placeholder credential. The full GIS
       // popup flow ships in a follow-up; this button is wired so the
       // surface area + i18n key exists. (PR-b scope is the cookie
-      // migration plumbing — see plan §阶段 4.) Toast `id` is shared
+      // migration plumbing - see plan §phase 4.) Toast `id` is shared
       // with the email-password feedback so repeated clicks replace
       // the prior toast instead of stacking.
       toast.info(t('auth.login.googleSoon'), { id: 'auth-feedback' });

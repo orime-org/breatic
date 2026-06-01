@@ -1,8 +1,7 @@
 /**
  * Typed errors that cross the library / application boundary.
  *
- * Per CLAUDE.md "服务器端工业级标准" mandate row "进程生命周期
- * (library 层禁)": library packages don't decide when the process
+ * Per CLAUDE.md "industrial-grade server standards" mandate row "process lifecycle (forbidden in the library layer)": library packages don't decide when the process
  * should die. When a library function needs the application to
  * abort (a failed startup connectivity check, a missing env
  * var, etc.), it throws one of the typed errors below; each
@@ -18,15 +17,15 @@
  * log `{ component, hint, cause }` with full application context
  * and then `process.exit(1)`.
  *
- * - `component` — short stable tag like `"PostgreSQL"` /
+ * - `component` - short stable tag like `"PostgreSQL"` /
  *   `"Redis"` / `"Redis (stream DB)"`. Used as the log `component`
  *   field so dashboards can split startup failures by dependency
  *   without grepping the message string.
- * - `hint` — human-readable recovery instruction, e.g.
+ * - `hint` - human-readable recovery instruction, e.g.
  *   "Check DATABASE_URL=... or run: docker compose up -d postgres".
  *   The entry should surface this in the log line so an oncall
  *   reading the journal can act without opening the source.
- * - `cause` — the original error from the failed probe (PG
+ * - `cause` - the original error from the failed probe (PG
  *   client `connection refused`, Redis `ETIMEDOUT`, etc.). Use
  *   `{ err: error.cause }` in the log to preserve the stack.
  */

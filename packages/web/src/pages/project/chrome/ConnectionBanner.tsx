@@ -9,14 +9,14 @@ interface ConnectionBannerProps {
   status: ConnectionStatus;
   /** Click handler for the reload / reconnect CTA (refresh window). */
   onReload?: () => void;
-  /** Optional re-login CTA — shown only when status==='authFailed'. */
+  /** Optional re-login CTA - shown only when status==='authFailed'. */
   onReLogin?: () => void;
 }
 
 /**
  * Banner-internal button. Raw `<button>` instead of the shadcn
  * `<Button variant='outline'>` because the outline variant's
- * defaults — `hover:bg-accent` + `hover:text-accent-foreground` —
+ * defaults - `hover:bg-accent` + `hover:text-accent-foreground` -
  * are mode-aware tokens that win the cascade over a base
  * `bg-black/30 text-white` override on hover. That made the banner
  * button visibly different in light vs. dark mode on hover (light
@@ -25,7 +25,7 @@ interface ConnectionBannerProps {
  * variant cascade entirely → both modes render identically and the
  * hover effect (`hover:opacity-90`) is the only thing that changes.
  *
- * Mode-independent palette here matches the banner itself — see the
+ * Mode-independent palette here matches the banner itself - see the
  * component-level docstring for rationale + memory reference.
  */
 interface BannerButtonProps {
@@ -51,19 +51,19 @@ function BannerButton({
         'border border-white/30 bg-black/30 px-3',
         'text-[13px] font-medium text-white',
         // Hover feedback: solid color swap (bg + border). Aligns with the
-        // rest of the project's hover-only convention — project-wide
+        // rest of the project's hover-only convention - project-wide
         // rule is "hover state, no active state" per user 2026-05-26
         // (chrome-ghost was the lone exception with active:bg-secondary
         // and has been removed in the same commit). Uses Tailwind static
-        // `zinc-800` solid color — does NOT trip the lint:hover ADR
+        // `zinc-800` solid color - does NOT trip the lint:hover ADR
         // ban (which only forbids `hover:bg-X/N` alpha-modifier patterns
         // for Tailwind v4 silent-fail prevention; solid colors are fine).
         //
         // Prior attempts (chrome MCP-verified 2026-05-26):
-        //   - `hover:opacity-90` — 10% change on dark button: invisible
-        //   - `hover:brightness-125` — no-op on pure-black/white palette
+        //   - `hover:opacity-90` - 10% change on dark button: invisible
+        //   - `hover:brightness-125` - no-op on pure-black/white palette
         //     (RGB 0×N=0; 255 clamps)
-        //   - `hover:scale-105` — physical feedback but introduced a
+        //   - `hover:scale-105` - physical feedback but introduced a
         //     third hover-feedback standard inconsistent with the rest
         //     of the project; user rejected as cross-standard.
         'transition-colors duration-150',
@@ -86,18 +86,18 @@ function BannerButton({
  * a short explanation + an action button so the user is never left in
  * the dark about why content stopped updating.
  *
- * Industry standard pattern — Figma / Notion / GitHub / VSCode all
+ * Industry standard pattern - Figma / Notion / GitHub / VSCode all
  * show a connection banner of this shape when the realtime channel
  * fails.
  *
  * State → visual:
  *   connecting   → no banner (avoid flash on every quick reconnect)
  *   connected    → no banner
- *   authFailed   → deep red, "登录已失效", [重新登录] action
- *   disconnected → deep amber, "连接断开", [刷新页面] action
+ *   authFailed   → deep red, "session expired", [re-login] action
+ *   disconnected → deep amber, "disconnected", [refresh the page] action
  *
  * Mode-independent palette (Tailwind static `red-900` / `amber-700`):
- *   banner is an alarm signal — its color semantics are constant
+ *   banner is an alarm signal - its color semantics are constant
  *   regardless of light/dark mode. Using shared `--color-status-error-*`
  *   tokens would make light-mode banner a pale-red wash (silly for a
  *   "session expired" alert) AND would couple banner color changes to
@@ -108,7 +108,7 @@ function BannerButton({
  *
  * Button override (`bg-black/30 border-white/30 text-white`): default
  * shadcn outline variant uses `--background` which would render a
- * white pill on the deep-red banner in light mode — visually jarring.
+ * white pill on the deep-red banner in light mode - visually jarring.
  * Translucent-black + white border + white text keeps strong contrast
  * on both deep-red and deep-amber banners.
  */
@@ -119,7 +119,7 @@ export function ConnectionBanner({
 }: ConnectionBannerProps) {
   const t = useTranslation();
 
-  // `connecting` is intentionally silent — a half-second blip during
+  // `connecting` is intentionally silent - a half-second blip during
   // normal navigation shouldn't surface as an alarm. Visible status
   // set is therefore just authFailed + disconnected.
   if (status !== 'authFailed' && status !== 'disconnected') {
@@ -127,14 +127,14 @@ export function ConnectionBanner({
   }
   const isAuthFailed = status === 'authFailed';
 
-  // `fixed top-0 left-0 right-0 z-50` — banner sits OUTSIDE the
+  // `fixed top-0 left-0 right-0 z-50` - banner sits OUTSIDE the
   // document flow, overlaying the very top of the viewport. TopBar
   // therefore always hugs viewport top (per 2026-05-26 user spec);
   // when banner is visible it overlays the topmost ~40px of TopBar
   // rather than pushing TopBar down (no layout shift at all).
   //
   // No enter/exit transition: paired with the workspace overlay
-  // (ProjectPage.tsx) which also mounts instantly — both must appear
+  // (ProjectPage.tsx) which also mounts instantly - both must appear
   // / disappear on the same frame, otherwise the staggered timing
   // reads as visual jitter (per 2026-05-26 user spec).
   return (
@@ -146,7 +146,7 @@ export function ConnectionBanner({
       className={cn(
         'fixed top-0 right-0 left-0 z-50',
         'flex items-center justify-between gap-3 px-4 py-2 text-[13px]',
-        // Mode-independent — see component docstring. Tailwind static
+        // Mode-independent - see component docstring. Tailwind static
         // palette is intentional: banner color does NOT follow light/dark.
         isAuthFailed
           ? 'bg-red-900 text-red-50'

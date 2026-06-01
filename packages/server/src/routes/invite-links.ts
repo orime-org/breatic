@@ -1,5 +1,5 @@
 /**
- * Share / invite link routes — create / list / revoke / consume.
+ * Share / invite link routes - create / list / revoke / consume.
  *
  * Mounted under `/api/v1/projects/:pid/invite-links` (owner CRUD) and
  * `/api/v1/invite-links` (public consume by token).
@@ -15,8 +15,8 @@
  * expiry, soft-delete) and returns the resolved link so the caller's
  * client knows where to navigate (and what role they'll get).
  *
- * Per CLAUDE.md "library 层不写日志": mail dispatch + audit log live
- * here (application boundary) — the shareLink service stays pure.
+ * Per CLAUDE.md "the library layer writes no logs": mail dispatch + audit log live
+ * here (application boundary) - the shareLink service stays pure.
  */
 
 import { Hono } from "hono";
@@ -38,15 +38,15 @@ import { logMailResult } from "@server/utils/log-mail.js";
 
 /**
  * Two ShareDialog flows are now discriminated by an explicit `kind`
- * field, NOT by `invitee_email` presence — one field carrying two
+ * field, NOT by `invitee_email` presence - one field carrying two
  * semantics (data + type) was the original PR-d design and got
  * refactored. The zod discriminated union below enforces the pairing
  * at the request boundary so the service never sees an inconsistent
  * combination.
  *
- *   - kind: 'email' — invitee_email REQUIRED. Single-use, 7-day TTL.
+ *   - kind: 'email' - invitee_email REQUIRED. Single-use, 7-day TTL.
  *     Server dispatches a share-invite mail to that address.
- *   - kind: 'link'  — invitee_email MUST be omitted. Multi-use, no
+ *   - kind: 'link'  - invitee_email MUST be omitted. Multi-use, no
  *     expiry. Server just returns the URL.
  *
  * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
@@ -62,7 +62,7 @@ const bodySchemaCreate = z.discriminatedUnion("kind", [
       kind: z.literal("link"),
       role: z.enum(["view", "edit"]),
       // Accept the property so we can explicitly reject it via the
-      // refine below — otherwise zod silently strips unknown keys and
+      // refine below - otherwise zod silently strips unknown keys and
       // a kind='link' with a stray invitee_email would parse OK.
       invitee_email: z.string().optional(),
     })
@@ -79,7 +79,7 @@ const projectInviteLinks = new Hono<{ Variables: AuthRoleVariables }>();
 projectInviteLinks.use(requireAuth);
 
 /**
- * `POST /api/v1/projects/:pid/invite-links` — create a new share link.
+ * `POST /api/v1/projects/:pid/invite-links` - create a new share link.
  *
  * Owner only. Server generates the token + 32-byte base64url. If
  * `invitee_email` is provided, dispatches `shareInvite` mail.
@@ -129,7 +129,7 @@ projectInviteLinks.post(
 );
 
 /**
- * `GET /api/v1/projects/:pid/invite-links` — list active links on a
+ * `GET /api/v1/projects/:pid/invite-links` - list active links on a
  * project. Owner only.
  */
 projectInviteLinks.get("/", requireRole("owner"), async (c) => {
@@ -139,7 +139,7 @@ projectInviteLinks.get("/", requireRole("owner"), async (c) => {
 });
 
 /**
- * `DELETE /api/v1/projects/:pid/invite-links/:linkId` — revoke a
+ * `DELETE /api/v1/projects/:pid/invite-links/:linkId` - revoke a
  * link (soft-delete). Owner only.
  */
 projectInviteLinks.delete(
@@ -159,7 +159,7 @@ const consumeInviteLink = new Hono<{ Variables: AuthVariables }>();
 consumeInviteLink.use(requireAuth);
 
 /**
- * `POST /api/v1/invite-links/:token/consume` — consume a token.
+ * `POST /api/v1/invite-links/:token/consume` - consume a token.
  *
  * Returns the resolved link so the caller's client knows the project
  * + role to navigate to (the consumer becomes a member at `link.role`).
