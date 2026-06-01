@@ -3,7 +3,6 @@
  *
  * Reads config/models/{modality}/*.yaml at startup, resolves provider availability
  * from environment variables, and serves a cached, filtered catalog for the API.
- *
  * @module
  */
 
@@ -70,6 +69,7 @@ export interface ModelCatalog {
 /**
  * Map provider name → env var name for API key lookup.
  * Built from providers.yaml in each modality directory.
+ * @returns A map from provider name to its `api_key_env` variable name.
  */
 function loadProviderKeyMap(): ReadonlyMap<string, string> {
   const keyMap = new Map<string, string>();
@@ -94,6 +94,9 @@ function loadProviderKeyMap(): ReadonlyMap<string, string> {
 
 /**
  * Check if a provider has an API key configured.
+ * @param providerName - Name of the provider to check.
+ * @param keyMap - Provider→env-var map from {@link loadProviderKeyMap}.
+ * @returns `true` if the provider's API key env var is set to a non-empty string.
  */
 function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, string>): boolean {
   const envVar = keyMap.get(providerName);
@@ -104,6 +107,10 @@ function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, s
 
 /**
  * Load all models from a single YAML file.
+ * @param filePath - Absolute path to the model YAML file.
+ * @param modality - Modality the file belongs to (stamped onto each entry).
+ * @param keyMap - Provider→env-var map used to resolve provider availability.
+ * @returns The parsed {@link ModelEntry} list, or an empty array if the file has no models.
  */
 function loadModelsFromFile(
   filePath: string,
@@ -146,7 +153,6 @@ let _cache: ModelCatalog | null = null;
  * Results are cached after first load. Models are filtered to only include
  * those with at least one available provider (has API key configured),
  * unless no keys are configured at all (returns everything for development).
- *
  * @returns Complete model catalog grouped by modality
  */
 export function getModelCatalog(): ModelCatalog {
@@ -212,7 +218,6 @@ export function getModelCatalog(): ModelCatalog {
  * Returns a lighter shape than `ModelEntry` — just the fields that
  * skill prompts need: name, mode, guide, description, params, and
  * voices (for TTS models).
- *
  * @param modality - e.g. "image", "video", "audio", "tts", "three_d", "understand"
  */
 export interface SkillModelInfo {
@@ -225,6 +230,12 @@ export interface SkillModelInfo {
   voices?: Array<{ id: string; gender?: string; description?: string }>;
 }
 
+/**
+ * List available models for one modality in the lighter
+ * {@link SkillModelInfo} shape used for skill prompt injection.
+ * @param modality - Modality name (e.g. "image", "video", "audio", "tts", "three_d", "understand"); unknown values yield an empty list.
+ * @returns The modality's models projected to the skill-prompt shape.
+ */
 export function listAvailableModels(modality: string): SkillModelInfo[] {
   const catalog = getModelCatalog();
   const entries = catalog[modality as Modality] ?? [];

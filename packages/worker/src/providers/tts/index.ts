@@ -59,10 +59,9 @@ const _TRANSPORTS = new Map<string, Transport>([
 
 /**
  * Look up the transport module for a provider.
- *
  * @param providerName - Provider key (e.g. "elevenlabs")
  * @returns The transport module
- * @throws Error if no transport is registered for the provider
+ * @throws {Error} if no transport is registered for the provider
  */
 function getTransport(providerName: string): Transport {
   const transport = _TRANSPORTS.get(providerName);
@@ -79,12 +78,11 @@ function getTransport(providerName: string): Transport {
  * Generate speech asynchronously with concurrency control.
  *
  * Uses a per-provider semaphore to limit concurrent requests.
- *
  * @param prompt - Text to convert to speech
  * @param modelName - Model name (required)
  * @param params - Additional parameters passed to the model family
  * @returns A dict with url, model, and cost
- * @throws Error if model or provider resolution fails
+ * @throws {Error} if model or provider resolution fails
  */
 export async function generateAsync(
   prompt: string,
@@ -119,7 +117,6 @@ export async function generateAsync(
 
 /**
  * Validate and fill defaults for TTS generation parameters.
- *
  * @param modelName - Model name (required)
  * @param params - User-provided parameters to validate
  * @returns Tuple of [resolvedModelName, cleanedParams]
@@ -133,9 +130,8 @@ export function validateTtsParams(
 
 /**
  * List all TTS models that have at least one provider with an active API key.
- *
  * @returns Array of model info dicts for skill injection
  */
-export function listAvailableTtsModels() {
+export function listAvailableTtsModels(): ReturnType<typeof listAvailableModels> {
   return listAvailableModels("tts");
 }

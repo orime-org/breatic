@@ -24,22 +24,14 @@ import type Redis from "ioredis";
 import type { NodeEvent } from "@breatic/shared";
 import { env } from "@core/config/env.js";
 
-/** Stream key for task lifecycle events. */
+/**
+ * Build the Redis stream key for task lifecycle events.
+ * @returns the environment-scoped `task-events` stream key
+ */
 export function taskEventsStreamKey(): string {
   return `${env.ENV}:stream:task-events`;
 }
 
-/**
- * Publish a single JSON-serializable payload to a Redis stream.
- *
- * Uses one `payload` field so future payload extensions never
- * require a stream schema migration — the consumer parses the same
- * field on its side.
- *
- * @param redis - Connected ioredis instance
- * @param streamKey - Target stream key
- * @param payload - JSON-serializable payload object
- */
 /**
  * JSON replacer that preserves `undefined` values as the sentinel string
  * `"__undefined__"`. Standard `JSON.stringify` silently drops `undefined`
@@ -49,6 +41,9 @@ export function taskEventsStreamKey(): string {
  *
  * The consumer (`task-listener.ts`) converts `"__undefined__"` back to
  * `undefined` before calling `dataMap.delete(key)`.
+ * @param _key - the property key being serialized (unused; replacer keys by value)
+ * @param value - the property value being serialized
+ * @returns the original value, or the `"__undefined__"` sentinel when the value is `undefined`
  */
 function jsonReplacerPreserveUndefined(
   _key: string,
@@ -57,6 +52,16 @@ function jsonReplacerPreserveUndefined(
   return value === undefined ? "__undefined__" : value;
 }
 
+/**
+ * Publish a single JSON-serializable payload to a Redis stream.
+ *
+ * Uses one `payload` field so future payload extensions never
+ * require a stream schema migration — the consumer parses the same
+ * field on its side.
+ * @param redis - Connected ioredis instance
+ * @param streamKey - Target stream key
+ * @param payload - JSON-serializable payload object
+ */
 export async function publishToStream(
   redis: Redis,
   streamKey: string,
@@ -78,7 +83,6 @@ export async function publishToStream(
  *
  * Enforces the `NodeEvent` union at the call site so publishers
  * cannot drift from the schema the Collab consumer expects.
- *
  * @param redis - Connected ioredis instance
  * @param event - `HistoryUpdateEvent` payload
  */

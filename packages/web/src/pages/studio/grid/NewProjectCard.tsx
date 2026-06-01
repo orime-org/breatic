@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Plus } from 'lucide-react';
 
 interface NewProjectCardProps {
@@ -7,8 +8,11 @@ interface NewProjectCardProps {
 /**
  * "Create new project" tile — dashed border, plus icon, click opens
  * `NewProjectDialog`.
+ * @param root0 - component props
+ * @param root0.onClick - called when the tile is clicked, to open the create dialog
+ * @returns a dashed-border button tile for starting a new project.
  */
-export function NewProjectCard({ onClick }: NewProjectCardProps) {
+export function NewProjectCard({ onClick }: NewProjectCardProps): React.JSX.Element {
   return (
     <button
       type='button'

@@ -12,8 +12,9 @@ import type { StudioSection } from '@web/pages/studio/shell/StudioNav';
  *
  * Section state is local to the page. Persistence (last-active section per
  * user) lands in a later PR when preferences are wired to localStorage.
+ * @returns the studio shell wrapping the active section body (projects or settings).
  */
-export default function StudioPage() {
+export default function StudioPage(): React.JSX.Element {
   const [section, setSection] = React.useState<StudioSection>('home');
   return (
     <StudioShell active={section} onChangeSection={setSection}>

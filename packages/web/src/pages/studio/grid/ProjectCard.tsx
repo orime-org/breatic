@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 import { Badge } from '@web/components/ui/badge';
@@ -25,8 +26,12 @@ const ROLE_LABEL: Record<ProjectRole, string> = {
  *
  * Links to `/project/:id`. Header strip shows thumbnail (or a tinted
  * placeholder); footer shows name + role badge + relative updated time.
+ * @param root0 - component props
+ * @param root0.project - the project summary to render in the tile
+ * @param root0.role - the caller's role on this project, shown as a badge
+ * @returns a clickable project tile linking to the project page.
  */
-export function ProjectCard({ project, role }: ProjectCardProps) {
+export function ProjectCard({ project, role }: ProjectCardProps): React.JSX.Element {
   return (
     <Link
       to={`/project/${project.id}`}
@@ -58,6 +63,12 @@ export function ProjectCard({ project, role }: ProjectCardProps) {
   );
 }
 
+/**
+ * Format an ISO timestamp as a short relative string ("5m ago", "3h ago",
+ * "2d ago"), falling back to a locale date beyond 30 days or for invalid input.
+ * @param iso - the ISO-8601 timestamp to format
+ * @returns the relative-time label, or the original string if it is not a valid date
+ */
 function formatRelative(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return iso;

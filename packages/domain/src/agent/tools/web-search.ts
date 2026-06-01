@@ -2,8 +2,6 @@
  * Web search tool — Brave Search API.
  *
  * Ported from backend/agent/tools/builtin/web.py (WebSearchTool).
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";

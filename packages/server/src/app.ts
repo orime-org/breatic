@@ -39,7 +39,6 @@ import {
 
 /**
  * Create and configure the Hono application.
- *
  * @returns Configured Hono app instance
  */
 export function createApp(): Hono {

@@ -29,6 +29,9 @@ const LOCK_TTL_SECONDS = 120;
  *
  * For operation tools: includes full document + marked selection.
  * For generation tools: includes instructions + tool-specific params.
+ * @param tool - Tool name selecting the prompt shape (e.g. "translate", "character", "script").
+ * @param params - Raw tool params such as `document`, `selection`, `instructions`, and tool-specific extras.
+ * @returns The assembled user message passed to the model.
  */
 function buildUserMessage(tool: string, params: Record<string, unknown>): string {
   const document = params.document as string | undefined;
@@ -83,7 +86,7 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
 
 /**
  * Acquire a per-user concurrency lock for text tools.
- *
+ * @param userId - Authenticated user ID the lock is scoped to.
  * @returns `true` if lock acquired, `false` if user already has an active request
  */
 async function acquireLock(userId: string): Promise<boolean> {
@@ -93,7 +96,10 @@ async function acquireLock(userId: string): Promise<boolean> {
   return result === "OK";
 }
 
-/** Release the per-user concurrency lock. */
+/**
+ * Release the per-user concurrency lock.
+ * @param userId - Authenticated user ID whose lock is released.
+ */
 async function releaseLock(userId: string): Promise<void> {
   const redis = getRedis();
   await redis.del(`${env.ENV}:text-tool-lock:${userId}`);
@@ -101,11 +107,11 @@ async function releaseLock(userId: string): Promise<void> {
 
 /**
  * Execute a text mini-tool with streaming output.
- *
  * @param userId - Authenticated user ID
  * @param tool - Tool name (e.g. "polish", "generate")
  * @param params - Tool parameters (document, selection, etc.)
  * @param signal - AbortSignal for cancellation on client disconnect
+ * @param idempotencyKey - Per-request key used to bill the run at most once across success and error paths.
  * @yields TextToolEvent stream
  */
 export async function* executeTextTool(
@@ -191,7 +197,10 @@ export async function* executeTextTool(
  * Billed through `deductOnce` with the per-request idempotency key so a
  * retry of the same HTTP request (same `Idempotency-Key` header) charges
  * at most once.
- *
+ * @param userId - Authenticated user ID to charge.
+ * @param tokens - Total tokens consumed by the run, used to compute the credit amount.
+ * @param tool - Tool name recorded in the deduction description.
+ * @param idempotencyKey - Per-request key combined into the `texttool:` deduction ref to guarantee idempotency.
  * @returns Credits actually deducted
  */
 async function deductForTokens(

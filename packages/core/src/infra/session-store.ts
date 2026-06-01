@@ -21,26 +21,49 @@ export const SESSION_COOKIE_NAME = "breatic_session";
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
+/**
+ * Build the Redis key for a session token.
+ * @param token - the opaque session token
+ * @returns the environment-scoped Redis key `{env}:session:{token}`
+ */
 function sessionKey(token: string): string {
   return `${env.ENV}:session:${token}`;
 }
 
-/** Store a session token → user_id mapping with TTL. */
+/**
+ * Store a session token → user_id mapping with TTL.
+ * @param redis - connected ioredis instance (session DB)
+ * @param token - the session token to store
+ * @param userId - the user the token authenticates
+ */
 export async function setSession(redis: Redis, token: string, userId: string): Promise<void> {
   await redis.set(sessionKey(token), userId, "EX", SESSION_TTL_SECONDS);
 }
 
-/** Resolve a session token to a user ID. Returns null if expired/invalid. */
+/**
+ * Resolve a session token to a user ID. Returns null if expired/invalid.
+ * @param redis - connected ioredis instance (session DB)
+ * @param token - the session token to resolve
+ * @returns the user ID, or `null` if the token is expired or unknown
+ */
 export async function getSession(redis: Redis, token: string): Promise<string | null> {
   return redis.get(sessionKey(token));
 }
 
-/** Delete a single session token. */
+/**
+ * Delete a single session token.
+ * @param redis - connected ioredis instance (session DB)
+ * @param token - the session token to delete
+ */
 export async function deleteSession(redis: Redis, token: string): Promise<void> {
   await redis.del(sessionKey(token));
 }
 
-/** Delete all sessions for a user (logout everywhere). */
+/**
+ * Delete all sessions for a user (logout everywhere).
+ * @param redis - connected ioredis instance (session DB)
+ * @param userId - the user whose sessions are all revoked
+ */
 export async function deleteAllSessions(redis: Redis, userId: string): Promise<void> {
   const pattern = `${env.ENV}:session:*`;
   let cursor = "0";

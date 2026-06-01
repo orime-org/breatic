@@ -16,12 +16,11 @@ import { logger } from "@breatic/core";
  * Endpoint: POST /v1/tts
  * The API is synchronous -- returns binary audio in the response.
  * Returns raw bytes — storage is handled by the Worker.
- *
  * @param _prompt - Text prompt (embedded in params as `text`)
  * @param resolved - Resolved model with provider connection details
  * @param params - Request payload (text, reference_id, speed)
  * @returns Object with `buffer`, `contentType`, `model`, and `cost`
- * @throws Error if the API returns an error or no audio data
+ * @throws {Error} if the API returns an error or no audio data
  */
 export async function generate(
   _prompt: string,

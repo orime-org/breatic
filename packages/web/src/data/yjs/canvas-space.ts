@@ -42,6 +42,9 @@ const EDGES_KEY = 'edges';
 
 /**
  * Subscribe to a canvas-space document.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space whose nodes and edges to observe.
+ * @returns The current nodes, edges, and whether the doc has synced with the server.
  */
 export function useCanvasSpace(
   projectId: string,
@@ -60,8 +63,16 @@ export function useCanvasSpace(
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-    const updateNodes = () => setNodes(readNodes(doc));
-    const updateEdges = () => setEdges(readEdges(doc));
+    /**
+     * Re-read all nodes from the doc into React state.
+     * @returns Nothing.
+     */
+    const updateNodes = (): void => setNodes(readNodes(doc));
+    /**
+     * Re-read all edges from the doc into React state.
+     * @returns Nothing.
+     */
+    const updateEdges = (): void => setEdges(readEdges(doc));
     nodesMap.observeDeep(updateNodes);
     edgesMap.observeDeep(updateEdges);
     updateNodes();
@@ -75,7 +86,12 @@ export function useCanvasSpace(
   return { nodes, edges, synced };
 }
 
-/** Add a node — frontend-owned operation. */
+/**
+ * Add a node — frontend-owned operation.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to add the node to.
+ * @param node - The node to insert (id, kind, position, data).
+ */
 export function addNode(
   projectId: string,
   spaceId: string,
@@ -93,7 +109,12 @@ export function addNode(
   });
 }
 
-/** Delete a node by id — frontend-owned operation. */
+/**
+ * Delete a node by id — frontend-owned operation.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to remove the node from.
+ * @param nodeId - Id of the node to delete.
+ */
 export function removeNode(
   projectId: string,
   spaceId: string,
@@ -106,7 +127,15 @@ export function removeNode(
   });
 }
 
-/** Update node position (drag end) — frontend-owned operation. */
+/**
+ * Update node position (drag end) — frontend-owned operation.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to reposition.
+ * @param position - The node's new canvas coordinates.
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ */
 export function setNodePosition(
   projectId: string,
   spaceId: string,
@@ -120,7 +149,12 @@ export function setNodePosition(
   node.set('position', position);
 }
 
-/** Add an edge (e.g. mini-tool primary edge). */
+/**
+ * Add an edge (e.g. mini-tool primary edge).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to add the edge to.
+ * @param edge - The edge to insert (id, source, target, kind, optional toolId).
+ */
 export function addEdge(
   projectId: string,
   spaceId: string,
@@ -139,6 +173,11 @@ export function addEdge(
   });
 }
 
+/**
+ * Read all nodes from the doc's `nodes` map into a ReactFlow-ready array.
+ * @param doc - The canvas-space Y.Doc to read from.
+ * @returns The current canvas nodes, with defaults applied for missing fields.
+ */
 function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNode> {
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const out: CanvasNode[] = [];
@@ -160,6 +199,11 @@ function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNode> {
   return out;
 }
 
+/**
+ * Read all edges from the doc's `edges` map into a ReactFlow-ready array.
+ * @param doc - The canvas-space Y.Doc to read from.
+ * @returns The current canvas edges, with defaults applied for missing fields.
+ */
 function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   const out: CanvasEdge[] = [];

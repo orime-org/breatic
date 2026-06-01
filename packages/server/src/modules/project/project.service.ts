@@ -34,14 +34,13 @@ import type { ProjectEntity, ProjectRole } from "@breatic/shared";
  * middleware do not need this redundantly, but inner services
  * (conversation.service, BullMQ task path) call it as defense in
  * depth.
- *
  * @param projectId - Project UUID from untrusted client input
  * @param userId - Authenticated user UUID
  * @param minRole - Minimum role required (defaults to `'view'`)
- * @throws {@link NotFoundError} if the project does not exist or the
+ * @throws {NotFoundError} if the project does not exist or the
  *   caller has no membership (we collapse 404 and 403-no-membership
  *   into 404 to avoid leaking project existence to outsiders)
- * @throws {@link ForbiddenError} if the caller's membership is below
+ * @throws {ForbiddenError} if the caller's membership is below
  *   `minRole`
  */
 export async function assertAccess(
@@ -76,10 +75,10 @@ export async function assertAccess(
  * timeline); only canvas is implemented end-to-end today, so the
  * default seed is hardcoded `'canvas'`. Adding a `kind` parameter
  * is additive when document/timeline come online.
- *
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param name - Project name
  * @param description - Optional description
+ * @returns The newly created project entity (seeded with one default canvas Space)
  */
 export async function create(
   userId: string,
@@ -147,8 +146,10 @@ export async function create(
  * Returns the entity unchanged. Routes that need to surface the
  * caller's role to the frontend (`ProjectDetail.myRole`) should
  * compose this with `loadProjectRole`.
- *
- * @throws {@link NotFoundError} on missing project / no membership
+ * @param projectId - Project UUID to fetch
+ * @param userId - Authenticated user UUID; must have at least `view` access
+ * @returns The project entity
+ * @throws {NotFoundError} on missing project / no membership
  */
 export async function get(projectId: string, userId: string): Promise<ProjectEntity> {
   await assertAccess(projectId, userId, "view");
@@ -164,6 +165,10 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  * "Projects shared with me but owned by others" is a Studio-phase
  * feature (see spec §16 ★ "shared-projects entry on /studio"); not exposed
  * here in V1.
+ * @param userId - Authenticated user UUID (owner of the personal studio)
+ * @param limit - Page size
+ * @param offset - Pagination offset
+ * @returns The user's project entities in their personal studio
  */
 export async function list(
   userId: string,
@@ -186,10 +191,16 @@ export async function list(
  * `requireRole('edit')` middleware on the PUT route enforces the
  * same; this service-side check is defense in depth for non-route
  * callers.
- *
- * @throws {@link NotFoundError} if the project doesn't exist or the
+ * @param projectId - Project UUID to update
+ * @param userId - Authenticated user UUID; must have at least `edit` access
+ * @param patch - Fields to update
+ * @param patch.name - New project name
+ * @param patch.description - New description; `null` clears it
+ * @param patch.thumbnailUrl - New thumbnail URL; `null` clears it
+ * @returns The updated project entity
+ * @throws {NotFoundError} if the project doesn't exist or the
  *   caller has no membership
- * @throws {@link ForbiddenError} if the caller is below `edit`
+ * @throws {ForbiddenError} if the caller is below `edit`
  */
 export async function update(
   projectId: string,
@@ -212,10 +223,10 @@ export async function update(
  * The caller becomes the owner of the new project (same studio as
  * the source). Source must be visible to the caller (any active
  * membership counts; you can fork something you can read).
- *
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
- * @throws {@link NotFoundError} if the source project does not exist
+ * @returns The newly created duplicate project entity
+ * @throws {NotFoundError} if the source project does not exist
  *   or the caller has no membership
  */
 export async function duplicate(
@@ -233,6 +244,8 @@ export async function duplicate(
  *
  * Cascades soft delete to conversations, tasks, node history, member
  * rows, project memories and yjs documents (all in one tx).
+ * @param projectId - Project UUID to delete
+ * @param userId - Authenticated user UUID; must be the project `owner`
  */
 export async function deleteProject(
   projectId: string,

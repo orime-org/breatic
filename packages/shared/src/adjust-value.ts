@@ -50,13 +50,21 @@ export const defaultAdjustValue: AdjustValue = {
   fade: 0,
 };
 
-/** True when `value` has no effect (all sliders at default). */
+/**
+ * True when `value` has no effect (all sliders at default).
+ * @param value - the adjust parameters to test
+ * @returns `true` when every field equals its `defaultAdjustValue`
+ */
 export function isAdjustValueNeutral(value: AdjustValue): boolean {
   const keys = Object.keys(defaultAdjustValue) as (keyof AdjustValue)[];
   return keys.every((k) => value[k] === defaultAdjustValue[k]);
 }
 
-/** Coerce any-value `raw` into an `AdjustValue`, filling gaps with defaults. */
+/**
+ * Coerce any-value `raw` into an `AdjustValue`, filling gaps with defaults.
+ * @param raw - untrusted input (e.g. persisted JSON) to normalise
+ * @returns a complete `AdjustValue` with missing / non-finite fields set to their defaults
+ */
 export function parseAdjustValue(raw: unknown): AdjustValue {
   const src = (raw ?? {}) as Partial<Record<keyof AdjustValue, unknown>>;
   const out: AdjustValue = { ...defaultAdjustValue };
@@ -69,7 +77,12 @@ export function parseAdjustValue(raw: unknown): AdjustValue {
   return out;
 }
 
-/** Clamp value/divisor to [-1, 1]. */
+/**
+ * Clamp value/divisor to [-1, 1].
+ * @param value - the raw slider amount
+ * @param divisor - scale factor mapping the slider range onto unit range (default 100)
+ * @returns `value / divisor` clamped to the [-1, 1] interval
+ */
 function toUnit(value: number, divisor = 100): number {
   return Math.max(-1, Math.min(1, value / divisor));
 }
@@ -86,6 +99,8 @@ function toUnit(value: number, divisor = 100): number {
  * Consumers must check {@link isAdjustValueNeutral} first and skip
  * the re-encode when true — that's a significant win on no-op
  * adjust saves.
+ * @param value - the adjust slider values to translate into a filter chain
+ * @returns the comma-joined FFmpeg `-vf` filter chain (empty string when nothing applies)
  */
 export function buildAdjustVideoFilter(value: AdjustValue): string {
   const parts: string[] = [];

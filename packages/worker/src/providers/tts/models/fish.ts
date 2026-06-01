@@ -18,7 +18,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for Fish Speech.
- *
  * @param prompt - Text to convert to speech
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

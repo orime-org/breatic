@@ -33,7 +33,6 @@ const querySchema = z.object({
  * Returned shape strips sensitive fields — only id, email, username,
  * avatar are returned. Credits / emailVerified / googleId are NOT
  * exposed via this endpoint.
- *
  * @returns `200` with
  *   `{ data: Array<{ id, email, username, avatar_url }> }`
  */

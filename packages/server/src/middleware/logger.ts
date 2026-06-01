@@ -7,7 +7,11 @@
 import type { MiddlewareHandler } from "hono";
 import { logger as log } from "@breatic/core";
 
-/** HTTP request logging middleware. */
+/**
+ * HTTP request logging middleware.
+ * @param c - The Hono request context, read for method, path, and response status.
+ * @param next - The downstream handler, awaited so the elapsed duration can be measured.
+ */
 export const loggerMiddleware: MiddlewareHandler = async (c, next) => {
   const start = Date.now();
   await next();

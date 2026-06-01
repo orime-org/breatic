@@ -98,6 +98,8 @@ export interface CanvasNode extends NodeBase {
 /**
  * True if the modality is one of the 4 type nodes that own a content
  * payload (excludes annotation which is collaboration-only).
+ * @param data - The node data to test.
+ * @returns True when the node carries a content payload (i.e. not an annotation).
  */
 export function isContentNode(
   data: NodeData,

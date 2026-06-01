@@ -12,9 +12,8 @@ let _client: Stripe | null = null;
 
 /**
  * Get the Stripe client singleton.
- *
  * @returns Configured Stripe client
- * @throws Error if STRIPE_SECRET_KEY is not set
+ * @throws {Error} if STRIPE_SECRET_KEY is not set
  */
 export function getStripeClient(): Stripe {
   if (!_client) {
@@ -30,11 +29,10 @@ export function getStripeClient(): Stripe {
 
 /**
  * Verify a Stripe webhook signature and parse the event.
- *
  * @param payload - Raw request body (Buffer or string)
  * @param signature - `stripe-signature` header value
  * @returns Parsed Stripe event
- * @throws Error if signature is invalid or webhook secret is missing
+ * @throws {Error} if signature is invalid or webhook secret is missing
  */
 export function verifyWebhookSignature(
   payload: string | Buffer,

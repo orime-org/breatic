@@ -115,9 +115,9 @@ export interface RunLocalHandlerParams {
 
 /**
  * Run a local handler by its registry `handler` path.
- *
+ * @param opts - Local-handler invocation context (handler key, params, job/user/project ids)
  * @returns Result matching `LocalHandlerResult`
- * @throws `Error` if `handler` is not registered, or if the handler
+ * @throws {Error} if `handler` is not registered, or if the handler
  *   implementation throws
  */
 export async function runLocalHandler(

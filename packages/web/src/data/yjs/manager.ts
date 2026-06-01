@@ -17,6 +17,8 @@ const docs = new Map<string, Y.Doc>();
 /**
  * Get-or-create a `Y.Doc` for the given document name. Subsequent calls
  * with the same name return the same instance.
+ * @param name - Canonical document name (e.g. `project-{id}/meta`).
+ * @returns The cached or newly created Y.Doc for that name.
  */
 export function getDoc(name: string): Y.Doc {
   let doc = docs.get(name);
@@ -32,6 +34,7 @@ export function getDoc(name: string): Y.Doc {
  * navigates away from a project / space so memory can be reclaimed.
  *
  * Safe to call with an unknown name — no-op.
+ * @param name - Canonical document name to destroy and evict from the cache.
  */
 export function destroyDoc(name: string): void {
   const doc = docs.get(name);

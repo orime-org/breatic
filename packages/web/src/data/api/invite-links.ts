@@ -51,8 +51,11 @@ export const inviteLinksApi = {
    *
    * Server generates the token (32-byte base64url) — caller never
    * decides their own.
+   * @param projectId - Project to create the invite link for.
+   * @param body - Create payload discriminated by `kind` (email or link).
+   * @returns The newly created invite link.
    */
-  create(projectId: string, body: CreateInviteLinkBody) {
+  create(projectId: string, body: CreateInviteLinkBody): Promise<{ data: InviteLink }> {
     return apiPost<{ data: InviteLink }, CreateInviteLinkBody>(
       `/projects/${projectId}/invite-links`,
       body,
@@ -62,8 +65,10 @@ export const inviteLinksApi = {
   /**
    * List active (non-revoked) invite links for a project.
    * Owner-only.
+   * @param projectId - Project whose invite links to list.
+   * @returns The project's active invite links.
    */
-  listByProject(projectId: string) {
+  listByProject(projectId: string): Promise<{ data: InviteLink[] }> {
     return apiGet<{ data: InviteLink[] }>(
       `/projects/${projectId}/invite-links`,
     );
@@ -71,8 +76,11 @@ export const inviteLinksApi = {
 
   /**
    * Revoke (soft-delete) an invite link. Owner-only.
+   * @param projectId - Project the link belongs to.
+   * @param linkId - The invite link to revoke.
+   * @returns An acknowledgement once the link is soft-deleted.
    */
-  revoke(projectId: string, linkId: string) {
+  revoke(projectId: string, linkId: string): Promise<{ data: { ok: true } }> {
     return apiDelete<{ data: { ok: true } }>(
       `/projects/${projectId}/invite-links/${linkId}`,
     );
@@ -86,8 +94,10 @@ export const inviteLinksApi = {
    *   - permanent : idempotent; multiple consumes all succeed
    * Returns the resolved link so the client knows the project +
    * role to enroll the caller at.
+   * @param token - The invite link token to consume.
+   * @returns The resolved invite link, carrying the project and granted role.
    */
-  consume(token: string) {
+  consume(token: string): Promise<{ data: InviteLink }> {
     return apiPost<{ data: InviteLink }, Record<string, never>>(
       `/invite-links/${token}/consume`,
       {},

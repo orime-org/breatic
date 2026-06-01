@@ -12,8 +12,17 @@ export const MAX_ATTACHMENTS_PER_CONVERSATION = 50;
 
 /**
  * Create a new attachment after an upload completes.
- *
- * @throws ConflictError when the conversation has reached the attachment limit
+ * @param data - Attachment fields captured from the completed upload
+ * @param data.conversationId - Conversation this attachment belongs to
+ * @param data.userId - User who uploaded the attachment
+ * @param data.url - Storage URL of the uploaded file
+ * @param data.thumbnailUrl - Optional thumbnail URL (null for non-previewable kinds)
+ * @param data.name - Original filename to display
+ * @param data.mimeType - MIME type reported at upload time
+ * @param data.size - File size in bytes
+ * @param data.kind - Asset category (image / video / audio / etc.)
+ * @returns The newly created attachment entity
+ * @throws {ConflictError} when the conversation has reached the attachment limit
  */
 export async function create(data: {
   conversationId: string;
@@ -34,7 +43,11 @@ export async function create(data: {
   return repo.create(data);
 }
 
-/** List active attachments for a conversation. */
+/**
+ * List active attachments for a conversation.
+ * @param conversationId - Conversation whose attachment pool to list
+ * @returns Active attachments in upload order (empty array when none)
+ */
 export async function listByConversation(
   conversationId: string,
 ): Promise<ConversationAttachmentEntity[]> {
@@ -43,9 +56,10 @@ export async function listByConversation(
 
 /**
  * Soft-delete an attachment.
- *
- * @throws NotFoundError when the attachment doesn't exist
- * @throws ForbiddenError when the caller doesn't own the attachment
+ * @param id - Attachment UUID to delete
+ * @param userId - Authenticated caller; must own the attachment
+ * @throws {NotFoundError} when the attachment doesn't exist
+ * @throws {ForbiddenError} when the caller doesn't own the attachment
  */
 export async function softDelete(id: string, userId: string): Promise<void> {
   const existing = await repo.getById(id);
@@ -61,7 +75,14 @@ export async function softDelete(id: string, userId: string): Promise<void> {
   await repo.softDelete(id);
 }
 
-/** Get a single attachment by ID, enforcing ownership. */
+/**
+ * Get a single attachment by ID, enforcing ownership.
+ * @param id - Attachment UUID to fetch
+ * @param userId - Authenticated caller; must own the attachment
+ * @returns The owned attachment entity
+ * @throws {NotFoundError} when the attachment doesn't exist
+ * @throws {ForbiddenError} when the caller doesn't own the attachment
+ */
 export async function getById(
   id: string,
   userId: string,

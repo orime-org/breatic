@@ -28,6 +28,10 @@ export const MODELS: ReadonlySet<string> = new Set([
  * WaveSpeed naming:
  * - `generate_audio` -> `sound`
  * - Other params pass-through
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; WaveSpeed mapping is model-agnostic)
+ * @param params - Validated params to map into WaveSpeed naming
+ * @returns Tuple of [prompt, apiParams] in WaveSpeed format
  */
 function buildWavespeed(
   prompt: string,
@@ -55,6 +59,10 @@ function buildWavespeed(
  * - `element_list` -> `elements`
  * - `video` -> `video_url`
  * - `duration` -> string ("5")
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; Kling official mapping is model-agnostic)
+ * @param params - Validated params to map into Kling official naming
+ * @returns Tuple of [prompt, apiParams] in Kling official format
  */
 function buildKlingai(
   prompt: string,
@@ -101,7 +109,6 @@ function buildKlingai(
 
 /**
  * Convert user-facing params to provider-specific API params.
- *
  * @param prompt - User's video description
  * @param modelName - Resolved model name (e.g. "kling-o3-pro")
  * @param params - Validated params from YAML defaults + user input

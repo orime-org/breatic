@@ -127,7 +127,6 @@ export interface BuildSystemPromptOptions {
 
 /**
  * Build the full system prompt with skill summaries and three-layer memory.
- *
  * @param options - Optional memory context and pre-built skill sections
  * @returns The formatted system prompt string ready to send to the LLM
  */

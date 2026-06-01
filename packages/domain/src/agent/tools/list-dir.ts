@@ -3,8 +3,6 @@
  *
  * Ported from backend/agent/tools/builtin/filesystem.py (ListDirTool).
  * Paths are confined to the file-tool sandbox (see {@link assertInSandbox}).
- *
- * @module
  */
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";

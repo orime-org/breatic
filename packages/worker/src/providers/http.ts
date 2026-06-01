@@ -9,8 +9,17 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
 
-/** Lazy-loaded config values. */
-function httpConfig() {
+/**
+ * Lazy-loaded HTTP config values, pulled from the worker config on each call.
+ * @returns The retry / poll / billing timing values used by the helpers below
+ */
+function httpConfig(): {
+  maxRetries: number;
+  retryBaseDelay: number;
+  defaultPollInterval: number;
+  defaultMaxWait: number;
+  billingTimeout: number;
+} {
   const cfg = getWorkerConfig();
   return {
     maxRetries: cfg.http_max_retries,
@@ -21,7 +30,11 @@ function httpConfig() {
   };
 }
 
-/** Standard bearer auth headers. */
+/**
+ * Standard bearer auth headers.
+ * @param apiKey - API key placed in the `Authorization: Bearer` header
+ * @returns Headers with bearer auth and a JSON content type
+ */
 export function bearerHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
@@ -31,7 +44,6 @@ export function bearerHeaders(apiKey: string): Record<string, string> {
 
 /**
  * Extract a value from a nested object using a key path.
- *
  * @param data - Source object
  * @param path - Array of keys (e.g. `["data", "status"]`)
  * @param defaultValue - Fallback if path not found
@@ -55,12 +67,11 @@ export function extractNested(
 
 /**
  * Make an HTTP request with exponential backoff retry on 429.
- *
  * @param url - Request URL
  * @param options - Fetch options (method, headers, body)
  * @param provider - Provider name for logging
  * @returns Parsed JSON response
- * @throws Error if retries exhausted
+ * @throws {Error} if retries exhausted
  */
 export async function requestWithRetry(
   url: string,
@@ -106,11 +117,10 @@ export interface PollOptions {
 
 /**
  * Poll an async task endpoint until it reaches a terminal status.
- *
  * @param url - Poll URL
  * @param options - Polling configuration
  * @returns The full JSON response on success
- * @throws Error on failure status or timeout
+ * @throws {Error} on failure status or timeout
  */
 export async function pollUntilDone(
   url: string,
@@ -153,7 +163,6 @@ export async function pollUntilDone(
 
 /**
  * Query WaveSpeed billing API for actual cost.
- *
  * @param resolved - Resolved provider endpoint
  * @param taskId - Prediction UUID
  * @returns Cost in USD, or 0 if billing query fails
@@ -176,7 +185,11 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
   }
 }
 
-/** Sleep for the given milliseconds. */
+/**
+ * Sleep for the given milliseconds.
+ * @param ms - Milliseconds to sleep
+ * @returns A promise that resolves after the delay elapses
+ */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

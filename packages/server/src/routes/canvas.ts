@@ -40,7 +40,6 @@ const tasksQueue = createQueue("tasks");
  * `POST /canvas/tasks` — create a task and enqueue it for execution.
  *
  * Creates a task record and adds a BullMQ job for processing.
- *
  * @param c - Hono context with validated `taskCreateSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
@@ -191,7 +190,6 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
  *
  * Convenience endpoint that wraps the task creation flow with
  * `task_type="understand"`.
- *
  * @param c - Hono context with validated `understandSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
@@ -242,7 +240,6 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
 
 /**
  * `GET /canvas/tasks` — list tasks for the current user.
- *
  * @param c - Hono context with optional pagination query params
  * @returns Paginated array of task entities
  */
@@ -259,7 +256,6 @@ canvas.get("/tasks", zValidator("query", paginationSchema), async (c) => {
  * Returns AIGC generation results (success + failed) and user uploads
  * for the given canvas node, ordered by most recent first. Used by the
  * frontend to show version history and support restore.
- *
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: NodeHistoryEntity[], total: number }`
  */

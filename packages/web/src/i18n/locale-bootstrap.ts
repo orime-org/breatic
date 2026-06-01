@@ -55,6 +55,7 @@ export function bootstrapLocale(): void {
 /**
  * Change the active locale + persist the choice. Exposed for the
  * `<LangSwitcher>` component.
+ * @param locale - The locale to activate; ignored if not in `SUPPORTED_LOCALES`.
  */
 export function changeLocale(locale: Locale): void {
   if (!SUPPORTED_LOCALES.includes(locale)) return;
@@ -66,11 +67,19 @@ export function changeLocale(locale: Locale): void {
   setLocale(locale);
 }
 
-/** Get the list of locales the app supports. */
+/**
+ * Get the list of locales the app supports.
+ * @returns The supported locales in priority order.
+ */
 export function getSupportedLocales(): ReadonlyArray<Locale> {
   return SUPPORTED_LOCALES;
 }
 
+/**
+ * Resolve the initial active locale from persisted choice, then browser
+ * preferences, then the hardcoded fallback.
+ * @returns The first supported locale matched by the resolution chain.
+ */
 function resolveInitialLocale(): Locale {
   // 1. Persisted choice wins.
   try {

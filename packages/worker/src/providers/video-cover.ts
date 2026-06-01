@@ -20,9 +20,10 @@ const execFileAsync = promisify(execFile);
  * instead of throwing or logging here — the single call site (the
  * video job handler) owns the warn/audit decision on `undefined`,
  * keeping the logging in one application-boundary place.
- *
  * @param videoUrl - Permanent video URL (OSS/S3/local)
  * @param opts - userId/projectId for storage key generation
+ * @param opts.userId - User the cover is stored under
+ * @param opts.projectId - Project the cover belongs to, if any
  * @returns Cover image URL, or `undefined` if extraction fails
  *   (caller logs the decision)
  */

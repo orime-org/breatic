@@ -12,7 +12,6 @@ import type { MessageData } from "@breatic/shared";
 
 /**
  * Group flat messages by turnIndex.
- *
  * @param messages - Flat array of messages (all with turnIndex set)
  * @returns Map from turnIndex to its messages in order
  */
@@ -44,7 +43,6 @@ export function groupByTurn(messages: readonly MessageData[]): Map<number, Messa
  * - All `role: "tool"` messages (tool results)
  * - Intermediate `role: "assistant"` messages with only tool_calls
  * - The `thinking` field from all kept messages
- *
  * @param turnMessages - All messages for a single turn, in order
  * @returns Compressed messages (1-2 items)
  */
@@ -73,7 +71,6 @@ export function compressTurn(turnMessages: readonly MessageData[]): MessageData[
 
 /**
  * Compress messages for LLM context, preserving full detail for recent turns.
- *
  * @param messages - All unconsolidated messages (turnIndex > lastConsolidatedTurn)
  * @param fullDetailTurns - Number of most recent turns to keep uncompressed
  * @returns Messages ready for LLM, with old turns compressed

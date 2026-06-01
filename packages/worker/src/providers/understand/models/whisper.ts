@@ -16,7 +16,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Build WaveSpeed Whisper API request params.
- *
  * @param prompt - Optional guidance prompt for Whisper formatting
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params (audio URL, language, etc.)

@@ -70,7 +70,15 @@ export interface CheckWriteAuthzInput {
   context: { user?: { id?: string } };
 }
 
+/**
+ * Error thrown by {@link checkWriteAuthz} when an incoming meta-doc
+ * update touches a forbidden path; Hocuspocus rejects the message and
+ * closes the offending connection.
+ */
 export class WriteAuthzError extends Error {
+  /**
+   * @param message - Human-readable reason naming the forbidden path that was written.
+   */
   constructor(message: string) {
     super(message);
     this.name = "WriteAuthzError";
@@ -91,6 +99,8 @@ export class WriteAuthzError extends Error {
  *   - malformed frames — let Hocuspocus's MessageReceiver handle them
  *     (it will close the connection); returning null here avoids
  *     double-throwing on the same bad bytes
+ * @param frame - Raw Hocuspocus WebSocket frame bytes (`[messageType][payload]`).
+ * @returns The bare Yjs update bytes when the frame is a sync-update, or null for any non-sync, handshake, or malformed frame.
  */
 function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
   try {
@@ -119,6 +129,12 @@ function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
  * the cost is acceptable. For canvas / document / timeline docs we
  * skip this hook entirely — those documents can be megabytes and the
  * field-level gating isn't needed there.
+ * @param root0 - The Hocuspocus `beforeHandleMessage` payload subset needed for gating.
+ * @param root0.documentName - Name of the doc being written; only `.../meta` docs are gated.
+ * @param root0.document - The current (pristine) meta Y.Doc, cloned before applying the update for diffing.
+ * @param root0.update - Raw Hocuspocus WebSocket frame carrying the client's pending change.
+ * @param root0.context - Connection context; its `user.id` identifies the writer (`system` bypasses the gate).
+ * @throws {WriteAuthzError} when the update mutates `meta.spaces`, `meta.projectMessages`, `meta.users`, or another user's `meta.perUser` entry, or when an anonymous context attempts any meta-doc write.
  */
 export function checkWriteAuthz({
   documentName,

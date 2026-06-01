@@ -26,7 +26,10 @@ let _anthropic: AnthropicProvider | null = null;
 let _google: GoogleProvider | null = null;
 let _openai: OpenAIProvider | null = null;
 
-/** OpenRouter provider (default — routes to any model). */
+/**
+ * OpenRouter provider (default — routes to any model).
+ * @returns The lazily-built, cached OpenRouter provider instance.
+ */
 function getOpenrouter(): OpenAIProvider {
   if (_openrouter === null) {
     _openrouter = createOpenAI({
@@ -37,7 +40,10 @@ function getOpenrouter(): OpenAIProvider {
   return _openrouter;
 }
 
-/** Direct Anthropic provider (for Claude models). */
+/**
+ * Direct Anthropic provider (for Claude models).
+ * @returns The lazily-built, cached Anthropic provider instance.
+ */
 function getAnthropic(): AnthropicProvider {
   if (_anthropic === null) {
     _anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY || undefined });
@@ -45,7 +51,10 @@ function getAnthropic(): AnthropicProvider {
   return _anthropic;
 }
 
-/** Direct Google provider (for Gemini models). */
+/**
+ * Direct Google provider (for Gemini models).
+ * @returns The lazily-built, cached Google provider instance.
+ */
 function getGoogle(): GoogleProvider {
   if (_google === null) {
     _google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_API_KEY || undefined });
@@ -53,7 +62,10 @@ function getGoogle(): GoogleProvider {
   return _google;
 }
 
-/** Direct OpenAI provider. */
+/**
+ * Direct OpenAI provider.
+ * @returns The lazily-built, cached OpenAI provider instance.
+ */
 function getOpenai(): OpenAIProvider {
   if (_openai === null) {
     _openai = createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined });
@@ -66,7 +78,6 @@ function getOpenai(): OpenAIProvider {
  *
  * Supports `provider/model` format (e.g. `"anthropic/claude-sonnet-4-6"`)
  * or plain model names (routed through OpenRouter by default).
- *
  * @param modelString - Model identifier. Defaults to OpenRouter Claude.
  * @returns AI SDK LanguageModel instance
  */
@@ -93,6 +104,8 @@ export function getModel(modelString?: string): ReturnType<OpenAIProvider> {
  *
  * Returns the provider that getModel() would route to.
  * Used for recording the actual provider in credit transactions.
+ * @param modelString - Model identifier (`provider/model` or plain). Defaults to OpenRouter Claude.
+ * @returns The resolved provider name: `"anthropic"`, `"google"`, `"openai"`, or `"openrouter"`.
  */
 export function resolveProvider(modelString?: string): string {
   const model = modelString ?? "anthropic/claude-sonnet-4-6";

@@ -20,7 +20,6 @@ import { bearerHeaders } from "@worker/providers/http.js";
 
 /**
  * Build BytePlus images/generations request body.
- *
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (size, images, etc.)
@@ -51,7 +50,6 @@ function buildRequestBody(
 
 /**
  * Extract image URL from BytePlus API response.
- *
  * @param data - Parsed JSON response
  * @returns Image URL string, or undefined
  */
@@ -65,7 +63,6 @@ function extractImageUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Extract cost from BytePlus API response usage field.
- *
  * @param data - Parsed JSON response
  * @returns Cost in USD, or 0 if usage data is missing
  */
@@ -80,12 +77,11 @@ function extractCost(data: Record<string, unknown>): number {
 
 /**
  * Generate an image asynchronously via BytePlus ModelArk API.
- *
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if no image is returned
+ * @throws {Error} if no image is returned
  */
 export async function generate(
   prompt: string,

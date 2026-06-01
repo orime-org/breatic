@@ -22,7 +22,6 @@ import { useUIStore } from '@web/stores';
  *
  * `id` must be unique per overlay surface across the whole app. A
  * stable string literal is fine - these are not user-facing keys.
- *
  * @param id - Stable string id for this overlay surface
  * @returns `[open, setOpen]` mimicking `React.useState<boolean>`'s API
  */

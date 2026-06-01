@@ -24,6 +24,9 @@ interface AuthBootstrapProps {
  * public routes (`/login`, `/register`, etc.) mount without waiting
  * on the ping, which would otherwise add a hundreds-of-ms flash to
  * every cold-start visit to the auth pages.
+ * @param root0 - The component props.
+ * @param root0.children - The subtree rendered unconditionally beneath the boot ping.
+ * @returns The `children` subtree, rendered while the `/auth/me` boot ping runs.
  */
 export default function AuthBootstrap({
   children,

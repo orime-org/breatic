@@ -105,7 +105,6 @@ const _configCache = new Map<string, { models: ModelConfig[]; providers: Record<
 
 /**
  * Load provider config from YAML directory.
- *
  * @param modality - Provider modality (e.g. "image", "video")
  * @returns Merged config with models and providers
  */
@@ -136,7 +135,14 @@ export function loadConfig(modality: string): { models: ModelConfig[]; providers
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────
 
-/** Find model config by name. */
+/**
+ * Find model config by name.
+ * @param config - Loaded provider config to search
+ * @param config.models - The list of model configs to match against
+ * @param modelName - Model name to look up; required
+ * @returns A `[resolvedName, modelConfig]` tuple for the matched model
+ * @throws {Error} when `modelName` is missing or no model matches
+ */
 function findModelConfig(config: { models: ModelConfig[] }, modelName: string | undefined): [string, ModelConfig] {
   if (!modelName) throw new Error("model_name is required");
   const model = config.models.find((m) => m.name === modelName);
@@ -146,7 +152,6 @@ function findModelConfig(config: { models: ModelConfig[] }, modelName: string | 
 
 /**
  * Validate params leniently — drop unknown, fallback invalid, fill defaults.
- *
  * @param modality - Provider modality
  * @param modelName - Model name
  * @param params - User-provided params
@@ -193,7 +198,11 @@ export function validateParams(
 
 // ── Model Resolution ─────────────────────────────────────────────────
 
-/** Get API key from env by env var name (e.g. "WAVESPEED_API_KEY"). */
+/**
+ * Get API key from env by env var name (e.g. "WAVESPEED_API_KEY").
+ * @param envVarName - The injected env var name to read the key from
+ * @returns The API key value, or an empty string when unset
+ */
 function getApiKey(envVarName: string): string {
   if (!envVarName) return "";
   const val = (env as Record<string, unknown>)[envVarName];
@@ -202,11 +211,10 @@ function getApiKey(envVarName: string): string {
 
 /**
  * Resolve model name to a concrete provider endpoint.
- *
  * @param modality - Provider modality
  * @param modelName - Model name
  * @returns ResolvedModel with connection details
- * @throws Error if no provider has an active API key
+ * @throws {Error} if no provider has an active API key
  */
 export function resolveModel(modality: string, modelName: string | undefined): ResolvedModel {
   const config = loadConfig(modality);
@@ -241,7 +249,6 @@ export function resolveModel(modality: string, modelName: string | undefined): R
 
 /**
  * List models that have at least one provider with an active API key.
- *
  * @param modality - Provider modality
  * @returns Model info dicts for skill injection
  */
@@ -282,7 +289,6 @@ const _semaphores = new Map<string, { count: number; queue: Array<() => void> }>
 
 /**
  * Acquire a per-provider semaphore slot.
- *
  * @param providerName - Provider key
  * @param maxConcurrency - Max concurrent requests
  * @returns A release function to call when done

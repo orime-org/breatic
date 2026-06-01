@@ -60,6 +60,9 @@ const logger = createLogger("auth");
  * Hono-coupled cookie helper.
  *
  * Returns the value of the named cookie or null if absent.
+ * @param header - Raw `Cookie:` header string from the WebSocket upgrade request, or undefined when no cookies were sent.
+ * @param name - Name of the cookie to extract.
+ * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
  */
 function readCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
@@ -121,6 +124,9 @@ export interface CreateAuthHookOptions {
  * This is collab-private `yjs_documents` access. Consolidating every
  * collab `yjs_documents` query into one repo is the collab internal
  * reorg (a separate PR); for now it stays here behind the auth pool.
+ * @param sql - Postgres client used to read the collab-private `yjs_documents` table.
+ * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
+ * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when the meta row is missing.
  */
 async function loadProjectSpaceIds(
   sql: ReturnType<typeof createPgClient>,
@@ -148,6 +154,10 @@ async function loadProjectSpaceIds(
  * Throwing rejects the connection (4401 / 4403). Returning sets
  * `c.context.user` for downstream `onChange` / `broadcastStateless`
  * consumers.
+ * @param root0 - Hook construction options.
+ * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
+ * @param root0.databaseUrl - Postgres connection string for the collab-private `yjs_documents` space-existence read.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves and returns the authenticated user + read-only flag, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,

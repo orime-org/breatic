@@ -14,7 +14,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to provider-specific API params.
- *
  * @param prompt - User's video description
  * @param _modelName - Resolved model name
  * @param params - Validated params from YAML defaults + user input

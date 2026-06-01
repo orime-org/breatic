@@ -30,6 +30,11 @@ import {
 import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
 import type { ProjectEntity } from "@breatic/shared";
 
+/**
+ * Map a raw `projects` table row to a `ProjectEntity` domain object.
+ * @param row - Raw row selected from the `projects` table
+ * @returns The mapped project entity
+ */
 function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
   return {
     id: row.id,
@@ -44,7 +49,11 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
   };
 }
 
-/** Get a project by ID (excludes soft-deleted). */
+/**
+ * Get a project by ID (excludes soft-deleted).
+ * @param id - Project UUID
+ * @returns The project entity, or null if not found or soft-deleted
+ */
 export async function getProjectById(id: string): Promise<ProjectEntity | null> {
   const rows = await db
     .select()
@@ -60,10 +69,10 @@ export async function getProjectById(id: string): Promise<ProjectEntity | null> 
  * V1 personal-Studio mode: every user has exactly one studio, so
  * "list my projects" maps to "list projects in my studio". The route
  * layer resolves the user's studio id before calling this.
- *
  * @param studioId - Studio UUID
  * @param limit - Page size (capped at 100)
  * @param offset - Pagination offset
+ * @returns The studio's project entities ordered by most recently updated
  */
 export async function listProjectsByStudio(
   studioId: string,
@@ -103,7 +112,6 @@ type Tx = PgTransaction<any, any, any>;
  * effectively orphaned (no member can read it, including its own
  * creator). The partial unique index in `project_members` enforces
  * "exactly one owner per active project".
- *
  * @param tx - Drizzle transaction handle from a surrounding
  *   `db.transaction(async tx => ...)` block in the service layer
  * @param studioId - Studio that the project belongs to
@@ -146,9 +154,11 @@ export async function createProject(
  * Only fields with a defined value are updated — `undefined` is
  * skipped so callers can PATCH a single field. `null` is a legal
  * value for `description` and `thumbnailUrl` and will clear them.
- *
  * @param id - Project UUID
  * @param patch - Fields to update
+ * @param patch.name - New project name
+ * @param patch.description - New description; `null` clears it
+ * @param patch.thumbnailUrl - New thumbnail URL; `null` clears it
  * @returns The updated project, or `null` if no row matched
  */
 export async function updateProjectMeta(
@@ -198,7 +208,6 @@ export async function updateProjectMeta(
  * Asset URLs inside the Yjs blobs continue to point at the original
  * OSS / S3 objects. Duplication is metadata-only at the storage
  * layer; OSS de-dupes by content hash anyway.
- *
  * @param creatorUserId - Owner of the new project (must match caller
  *   at the service layer — this repo function does NOT itself check
  *   ownership of the source; that happens in project.service.ts)
@@ -282,6 +291,7 @@ export async function duplicateProject(
  * partial unique index "one active owner per project" is freed up if
  * the project is ever recreated under the same id (it isn't, but the
  * invariant is principled).
+ * @param id - UUID of the project to soft-delete
  */
 export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {

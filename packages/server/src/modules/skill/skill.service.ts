@@ -13,7 +13,6 @@ import type { SkillMeta } from "@breatic/shared";
  * List all built-in skills from the SkillRegistry.
  *
  * Returns an empty array until Phase 3 when the registry is migrated.
- *
  * @returns Array of built-in skill metadata
  */
 export function listBuiltin(): SkillMeta[] {
@@ -22,7 +21,6 @@ export function listBuiltin(): SkillMeta[] {
 
 /**
  * Create a user-defined custom skill.
- *
  * @param ownerUserId - Creator user UUID
  * @param name - Unique skill name (per owner)
  * @param description - Skill description
@@ -30,7 +28,7 @@ export function listBuiltin(): SkillMeta[] {
  * @param version - Semantic version (default "1.0.0")
  * @param tags - Optional tags for marketplace filtering
  * @returns The created skill record
- * @throws ConflictError if a skill with the same name already exists for this user
+ * @throws {ConflictError} if a skill with the same name already exists for this user
  */
 export async function createUserSkill(
   ownerUserId: string,
@@ -47,15 +45,14 @@ export async function createUserSkill(
 
 /**
  * Update a user-defined skill with ownership enforcement.
- *
  * @param skillId - Skill UUID
  * @param userId - Requesting user UUID
  * @param files - Updated file contents
  * @param description - Optional updated description
  * @param version - Optional updated version
  * @returns The updated skill record
- * @throws NotFoundError if skill does not exist
- * @throws ForbiddenError if userId does not match the skill owner
+ * @throws {NotFoundError} if skill does not exist
+ * @throws {ForbiddenError} if userId does not match the skill owner
  */
 export async function updateUserSkill(
   skillId: string,
@@ -72,11 +69,10 @@ export async function updateUserSkill(
 
 /**
  * Soft-delete a user-defined skill with ownership enforcement.
- *
  * @param skillId - Skill UUID
  * @param userId - Requesting user UUID
- * @throws NotFoundError if skill does not exist
- * @throws ForbiddenError if userId does not match the skill owner
+ * @throws {NotFoundError} if skill does not exist
+ * @throws {ForbiddenError} if userId does not match the skill owner
  */
 export async function deleteUserSkill(skillId: string, userId: string): Promise<void> {
   const skill = await skillRepo.getSkillById(skillId);
@@ -87,7 +83,6 @@ export async function deleteUserSkill(skillId: string, userId: string): Promise<
 
 /**
  * List skills owned by or installed for a user.
- *
  * @param userId - User UUID
  * @returns Array of skill records
  */
@@ -97,12 +92,11 @@ export async function listUserSkills(userId: string): Promise<unknown[]> {
 
 /**
  * Publish a skill to the marketplace.
- *
  * @param skillId - Skill UUID
  * @param userId - Requesting user UUID
  * @returns The updated skill record
- * @throws NotFoundError if skill does not exist
- * @throws ForbiddenError if userId does not match the skill owner
+ * @throws {NotFoundError} if skill does not exist
+ * @throws {ForbiddenError} if userId does not match the skill owner
  */
 export async function publishSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
@@ -113,12 +107,11 @@ export async function publishSkill(skillId: string, userId: string): Promise<unk
 
 /**
  * Unpublish a skill from the marketplace.
- *
  * @param skillId - Skill UUID
  * @param userId - Requesting user UUID
  * @returns The updated skill record
- * @throws NotFoundError if skill does not exist
- * @throws ForbiddenError if userId does not match the skill owner
+ * @throws {NotFoundError} if skill does not exist
+ * @throws {ForbiddenError} if userId does not match the skill owner
  */
 export async function unpublishSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
@@ -129,7 +122,6 @@ export async function unpublishSkill(skillId: string, userId: string): Promise<u
 
 /**
  * List published marketplace skills, optionally filtered by tags.
- *
  * @param tags - Optional tag filter
  * @param offset - Pagination offset
  * @param limit - Maximum number of results
@@ -145,13 +137,12 @@ export async function listMarketSkills(
 
 /**
  * Install a published marketplace skill for a user.
- *
  * @param skillId - Skill UUID to install
  * @param userId - Installing user UUID
  * @returns The install record
- * @throws NotFoundError if skill does not exist
- * @throws ForbiddenError if skill is not published
- * @throws ConflictError if user is the owner or skill is already installed
+ * @throws {NotFoundError} if skill does not exist
+ * @throws {ForbiddenError} if skill is not published
+ * @throws {ConflictError} if user is the owner or skill is already installed
  */
 export async function installSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
@@ -172,7 +163,6 @@ export async function installSkill(skillId: string, userId: string): Promise<unk
  *
  * Marks the install record as deleted but keeps the row. Re-installing
  * the same skill will recreate the install (install_count increments).
- *
  * @param skillId - Skill UUID to uninstall
  * @param userId - User UUID
  */

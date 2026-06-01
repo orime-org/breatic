@@ -41,7 +41,6 @@ const logger = createLogger("disconnect-cleanup");
  * The handling-cleanup path writes once per affected node; running twice
  * is also safe because the second pass sees `state === 'idle'` already
  * and skips.
- *
  * @param hocuspocus - The running Hocuspocus instance.
  * @param documentName - Yjs doc the user just disconnected from.
  * @param userId - The user whose locks / handling rows to clean.

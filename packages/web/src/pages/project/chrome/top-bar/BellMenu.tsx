@@ -28,10 +28,20 @@ interface BellMenuProps {
   projectId: string;
 }
 
+/**
+ * Returns the first two characters of a string, uppercased, for an avatar glyph.
+ * @param s - Source string to abbreviate.
+ * @returns the two-character uppercase abbreviation.
+ */
 function initialsFromString(s: string): string {
   return s.slice(0, 2).toUpperCase();
 }
 
+/**
+ * Formats a creation timestamp as a coarse "Xm/Xh/Xd ago" label.
+ * @param createdAt - ISO timestamp of when the notification was created.
+ * @returns the relative-age label.
+ */
 function timeAgoLabel(createdAt: string): string {
   const diffMs = Date.now() - new Date(createdAt).getTime();
   const minutes = Math.max(1, Math.round(diffMs / 60_000));
@@ -60,8 +70,13 @@ function timeAgoLabel(createdAt: string): string {
  * refetch + a 30s background refetch interval keeps the badge fresh).
  *
  * Spec: access-permission design (2026-05-28) § 7.
+ * @param root0 - Bell menu props.
+ * @param root0.projectId - Id of the current project (reserved for the upcoming collab invalidate wiring).
+ * @returns the notifications bell trigger with its unread badge and inbox popover.
  */
-export function BellMenu({ projectId: _projectId }: BellMenuProps) {
+export function BellMenu({
+  projectId: _projectId,
+}: BellMenuProps): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
@@ -198,13 +213,24 @@ interface NotificationItemProps {
   onMarkRead: () => void;
 }
 
+/**
+ * One inbox row — avatar glyph, headline/subtitle, age, and either inline
+ * approve/reject (for upgrade requests) or a mark-read action.
+ * @param root0 - Notification item props.
+ * @param root0.notification - Notification rendered by this row.
+ * @param root0.decidePending - Whether an approve/reject decision for this row is in flight (disables buttons).
+ * @param root0.onApprove - Called when the owner approves a role-upgrade request.
+ * @param root0.onReject - Called when the owner rejects a role-upgrade request.
+ * @param root0.onMarkRead - Called when a non-request notification is marked read.
+ * @returns the notification row with its type-specific actions.
+ */
 function NotificationItem({
   notification,
   decidePending,
   onApprove,
   onReject,
   onMarkRead,
-}: NotificationItemProps) {
+}: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
   const headline = headlineFor(notification, t);
   const subtitle = subtitleFor(notification);
@@ -273,6 +299,11 @@ function NotificationItem({
   );
 }
 
+/**
+ * Maps a notification type to the short glyph shown in its avatar fallback.
+ * @param type - Notification type to represent.
+ * @returns the glyph for the type, or `?` for an unknown type.
+ */
 function iconForType(type: NotificationType): string {
   switch (type) {
     case 'access.role_upgrade_request':
@@ -288,6 +319,12 @@ function iconForType(type: NotificationType): string {
   }
 }
 
+/**
+ * Builds the localized headline for a notification from its type and payload.
+ * @param n - Notification to describe.
+ * @param t - Translation function used to render the localized headline.
+ * @returns the localized headline, or the raw type for an unknown notification.
+ */
 function headlineFor(
   n: Notification,
   t: ReturnType<typeof useTranslation>,
@@ -314,6 +351,11 @@ function headlineFor(
   }
 }
 
+/**
+ * Extracts the optional subtitle (request message or rejection reason) for a notification.
+ * @param n - Notification whose payload is inspected for subtitle text.
+ * @returns the subtitle text, or `null` when none applies.
+ */
 function subtitleFor(n: Notification): string | null {
   const p = n.payload as Record<string, unknown>;
   if (n.type === 'access.role_upgrade_request') {

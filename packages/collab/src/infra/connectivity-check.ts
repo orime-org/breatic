@@ -1,7 +1,7 @@
 /**
  * Fail-fast connectivity check for Collab's dependencies.
  *
- * Collab depends on @breatic/core only for infrastructure
+ * Collab depends on `@breatic/core` only for infrastructure
  * factories (createRedisClient + production-safety defaults); the
  * business-logic-laden `checkInfraReady` in core/infra exists for
  * server/worker, but collab keeps its own focused boot-time check
@@ -17,11 +17,10 @@ import {
 
 /**
  * Verify that PostgreSQL and Redis are reachable.
- *
  * @param databaseUrl - PostgreSQL connection string
  * @param redisUrl - Redis connection string (general-purpose DB)
  * @param streamRedisUrl - Redis connection string (stream DB)
- * @throws Exits process with code 1 if any check fails.
+ * @throws {InfraNotReadyError} when PostgreSQL or either Redis connection (general or stream DB) is unreachable; the application entry catches it and exits with code 1.
  */
 export async function checkCollabInfraReady(
   databaseUrl: string,

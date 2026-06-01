@@ -20,9 +20,9 @@ import { randomBytes } from "node:crypto";
 
 /**
  * Download a URL into a job temp dir. Returns the downloaded path.
- *
  * @param url - http(s) URL. Local paths and data URLs are not supported.
  * @param tempDir - Absolute temp dir (from `createJobTempDir`)
+ * @param options - Download options
  * @param options.suffix - File extension override (e.g. `".mp4"`).
  *   When absent, derived from the URL path; falls back to `.bin`.
  * @returns Absolute path to the downloaded file
@@ -49,6 +49,11 @@ export async function downloadToTempDir(
   return path;
 }
 
+/**
+ * Derive a file extension from a URL's pathname, falling back to `.bin`.
+ * @param url - The asset URL to inspect
+ * @returns The extension including the leading dot, or `.bin` when none can be parsed
+ */
 function deriveSuffixFromUrl(url: string): string {
   try {
     const parsed = new URL(url);

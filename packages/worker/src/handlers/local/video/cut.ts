@@ -34,6 +34,12 @@ interface CutParams {
   segments: Segment[];
 }
 
+/**
+ * Validate and normalise the raw job params into a typed cut payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, segments }` cut params with ascending, non-negative ranges
+ * @throws {Error} when `video` is not an http(s) URL or any segment is malformed
+ */
 function parseParams(raw: Record<string, unknown>): CutParams {
   const video = raw.video;
   if (typeof video !== "string" || !/^https?:\/\//i.test(video)) {
@@ -70,6 +76,9 @@ function parseParams(raw: Record<string, unknown>): CutParams {
  * Extract a single segment to `outPath`. Uses input seek (`-ss` before
  * `-i`) for efficient keyframe jump, then re-encodes to ensure the cut
  * is frame-accurate (output seek).
+ * @param inputPath - Absolute path to the downloaded source video
+ * @param outPath - Absolute path the extracted segment is written to
+ * @param seg - The `{ start, end }` time range (seconds) to extract
  */
 async function extractSegment(
   inputPath: string,
@@ -93,6 +102,13 @@ async function extractSegment(
   ]);
 }
 
+/**
+ * Extract each requested time range into its own MP4, producing one output
+ * per segment (each later bound to a distinct canvas node).
+ * @param rawParams - Raw mini-tool params carrying the video URL and segment list
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A multi-output result, one URL per cut segment, with zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, segments } = parseParams(rawParams);
 

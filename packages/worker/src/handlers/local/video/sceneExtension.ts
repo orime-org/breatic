@@ -43,6 +43,13 @@ interface SceneExtensionParams {
   container: Container;
 }
 
+/**
+ * Validate an outer-frame object into a typed `Frame`.
+ * @param raw - The candidate frame value from the job payload
+ * @param i - Label used in error messages to identify the field
+ * @returns The validated `{ w, h, ox, oy }` frame
+ * @throws {Error} when the value is not an object or any field is not a finite number
+ */
 function parseFrame(raw: unknown, i: string): Frame {
   if (typeof raw !== "object" || raw == null) {
     throw new Error(`video/scene-extension: ${i} must be an object`);
@@ -57,6 +64,12 @@ function parseFrame(raw: unknown, i: string): Frame {
   return { w: r.w as number, h: r.h as number, ox: r.ox as number, oy: r.oy as number };
 }
 
+/**
+ * Validate a container object into a typed `Container`.
+ * @param raw - The candidate container value from the job payload
+ * @returns The validated `{ width, height }` content box
+ * @throws {Error} when the value is not an object or width/height are not positive finite numbers
+ */
 function parseContainer(raw: unknown): Container {
   if (typeof raw !== "object" || raw == null) {
     throw new Error("video/scene-extension: `container` must be an object");
@@ -73,6 +86,12 @@ function parseContainer(raw: unknown): Container {
   return { width, height };
 }
 
+/**
+ * Validate and normalise the raw job params into a typed scene-extension payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, frame, container }` params
+ * @throws {Error} when `video` is not an http(s) URL or the frame/container are malformed
+ */
 function parseParams(raw: Record<string, unknown>): SceneExtensionParams {
   const video = raw.video;
   if (typeof video !== "string" || !/^https?:\/\//i.test(video)) {
@@ -87,6 +106,9 @@ function parseParams(raw: Record<string, unknown>): SceneExtensionParams {
  * Mirror of the front-end coordinate normalisation. Both code paths
  * must round and clamp identically so results are visually identical
  * after migration.
+ * @param frame - The requested outer frame
+ * @param container - The original content box
+ * @returns Rounded + clamped `{ cw, ch, fw, fh, ox, oy }` coordinates
  */
 function normalise(frame: Frame, container: Container): {
   cw: number;
@@ -111,6 +133,13 @@ function normalise(frame: Frame, container: Container): {
  * by the player lands in a frame of `fw × fh` at (-ox, -oy).
  *
  * Even-rounding (`trunc(.../2)*2`) is required for yuv420p output.
+ * @param cw - Normalised container width
+ * @param ch - Normalised container height
+ * @param fw - Normalised outer frame width
+ * @param fh - Normalised outer frame height
+ * @param ox - Normalised (non-positive) horizontal offset
+ * @param oy - Normalised (non-positive) vertical offset
+ * @returns The FFmpeg `pad=...` filter string
  */
 function buildPadFilter(
   cw: number,
@@ -131,6 +160,13 @@ function buildPadFilter(
   return `pad=${outWExpr}:${outHExpr}:${xExpr}:${yExpr}:black,setsar=1`;
 }
 
+/**
+ * Pad a video outward with black bars into the requested outer frame via FFmpeg.
+ * A frame that matches the container short-circuits and returns the source URL.
+ * @param rawParams - Raw mini-tool params carrying the video URL, frame and container
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the padded video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, frame, container } = parseParams(rawParams);
   const { cw, ch, fw, fh, ox, oy } = normalise(frame, container);

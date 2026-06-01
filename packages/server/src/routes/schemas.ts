@@ -1,5 +1,5 @@
 /**
- * API request schemas — re-exported from @breatic/shared.
+ * API request schemas — re-exported from `@breatic/shared`.
  *
  * Server-only schemas (mini-tool discriminated unions, skill market)
  * remain defined here. Shared schemas are the single source of truth.

@@ -25,7 +25,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for Hunyuan3D models.
- *
  * @param prompt - 3D object description (t23d) or empty (i23d)
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

@@ -39,7 +39,6 @@ let _cached: Readonly<CollabConfig> | null = null;
 
 /**
  * Load collab configuration from YAML.
- *
  * @returns Frozen, validated config object
  */
 export function getCollabConfig(): Readonly<CollabConfig> {

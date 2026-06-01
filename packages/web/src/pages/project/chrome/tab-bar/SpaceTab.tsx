@@ -65,6 +65,16 @@ const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
  * - muted color at rest; foreground + neutral-100 bg on hover/active
  * - close button fades in on hover; hidden when locked
+ * @param root0 - Component props.
+ * @param root0.id - Space id, used for the tab's test ids and keys.
+ * @param root0.name - Current space name shown on the tab.
+ * @param root0.type - Space type, selecting the leading type icon.
+ * @param root0.active - Whether this tab is the active one.
+ * @param root0.locked - Whether the space is locked (shows a lock icon, blocks inline rename and close).
+ * @param root0.onActivate - Activates this tab when clicked.
+ * @param root0.onClose - Closes this tab; when omitted, no close affordance is shown.
+ * @param root0.onRename - Commits a new name after inline edit; when omitted, double-click rename is disabled.
+ * @returns The single space tab button with icon, name (or inline name editor), optional lock icon, and close affordance.
  */
 export function SpaceTab({
   id,
@@ -75,7 +85,7 @@ export function SpaceTab({
   onActivate,
   onClose,
   onRename,
-}: SpaceTabProps) {
+}: SpaceTabProps): React.JSX.Element {
   const t = useTranslation();
   const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
   const [editing, setEditing] = React.useState(false);
@@ -95,11 +105,19 @@ export function SpaceTab({
     }
   }, [editing]);
 
+  /**
+   * Stops propagation and invokes `onClose` for the close affordance.
+   * @param e - The mouse event from the close span.
+   */
   const onCloseClick: React.MouseEventHandler<HTMLSpanElement> = (e) => {
     e.stopPropagation();
     onClose?.();
   };
 
+  /**
+   * Enters inline name edit on double-click, or toasts when the space is locked.
+   * @param e - The mouse event from the name span.
+   */
   const onNameDoubleClick: React.MouseEventHandler<HTMLSpanElement> = (e) => {
     if (!onRename) return;
     e.stopPropagation();
@@ -112,7 +130,11 @@ export function SpaceTab({
     setEditing(true);
   };
 
-  const commit = () => {
+  /**
+   * Leaves edit mode and commits the trimmed draft name via `onRename`
+   * unless it is empty or unchanged.
+   */
+  const commit = (): void => {
     const trimmed = draft.trim().slice(0, SPACE_NAME_MAX_LEN);
     setEditing(false);
     if (trimmed.length === 0 || trimmed === name) {
@@ -124,7 +146,10 @@ export function SpaceTab({
     });
   };
 
-  const cancel = () => {
+  /**
+   * Leaves edit mode and discards the draft, restoring the current name.
+   */
+  const cancel = (): void => {
     setEditing(false);
     setDraft(name);
   };

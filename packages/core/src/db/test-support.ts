@@ -2,7 +2,7 @@
  * Integration-test database support.
  *
  * `@breatic/core` is the single home of Drizzle ORM (CLAUDE.md
- * "@shared vs @core ownership"): no other package depends on
+ * `@shared` vs `@core` ownership): no other package depends on
  * `drizzle-orm` directly. These helpers let downstream integration
  * tests (e.g. `@breatic/server`) build a Drizzle client and run
  * migrations against an arbitrary connection URL - typically a fresh
@@ -42,11 +42,9 @@ export interface TestDb {
  * Because the returned `db` shares this package's single Drizzle
  * version, inserts against {@link schema} are fully typed in the
  * caller - no `as any` cast to bridge a cross-package version mismatch.
- *
  * @param url - Postgres connection URL (e.g. a testcontainer URI)
  * @param max - Pool size; defaults to 3 for seed-heavy integration tests
  * @returns The Drizzle instance and its underlying client
- *
  * @example
  *   const { db, client } = createTestDb(containerUrl);
  *   await db.insert(schema.users).values({ ... });
@@ -65,10 +63,9 @@ export function createTestDb(url: string, max = 3): TestDb {
  * setup to migrate a freshly-started container before any test runs.
  * Creates a throwaway single-connection client and closes it before
  * returning, so it leaves no open pool behind.
- *
  * @param url - Postgres connection URL to migrate
  * @returns The resolved migrations folder path
- * @throws Error if any migration fails
+ * @throws {Error} if any migration fails
  */
 export async function migrateDatabase(url: string): Promise<{ migrationsFolder: string }> {
   const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");

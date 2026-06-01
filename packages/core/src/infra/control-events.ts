@@ -45,7 +45,6 @@ import {
  * Caller (typically `projectMembers.service`) supplies the diff
  * (`affectedUserId`, `action`, optional `newRole` / transfer details).
  * The event timestamp is stamped here.
- *
  * @param projectId - Project UUID
  * @param detail - Per-action detail (without the auto-stamped fields)
  */

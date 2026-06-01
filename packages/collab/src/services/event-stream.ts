@@ -35,7 +35,7 @@ const COUNT = 32;
  * parsed via `parse` then passed to `handle`. On success the
  * last-id is persisted. On handler failure the event is NOT
  * acknowledged and will be retried on the next iteration.
- *
+ * @param opts - Stream-consumer configuration (connection, keys, parser, handler).
  * @param opts.redisUrl - Redis connection URL
  * @param opts.streamKey - Full stream key (e.g. `dev:stream:task-results`)
  * @param opts.lastIdKey - Full Redis key where the last-id is persisted
@@ -63,6 +63,9 @@ export function startStreamConsumer<T>(opts: {
 
   let stopped = false;
 
+  /**
+   *
+   */
   async function loop(): Promise<void> {
     let lastId = (await redis.get(lastIdKey)) ?? "0-0";
     logger.info({ streamKey, startId: lastId }, "Stream consumer started");

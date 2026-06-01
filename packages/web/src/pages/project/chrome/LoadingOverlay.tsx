@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import type * as React from 'react';
 
 interface LoadingOverlayProps {
   /** Visible message displayed under the spinner. */
@@ -30,11 +31,15 @@ interface LoadingOverlayProps {
  * at z-index 50 so it covers chrome layers. Inner card uses
  * `bg-popover` - same token as Dialog content for surface consistency.
  * (2026-05-25 user ask: bg + opacity must match Dialog. )
+ * @param root0 - Component props.
+ * @param root0.message - Visible message displayed under the spinner.
+ * @param root0.testId - Test id for the overlay's outer container, threaded by callers to assert each loading state independently.
+ * @returns The full-screen blocking scrim with a spinner and the message.
  */
 export function LoadingOverlay({
   message,
   testId = 'loading-overlay',
-}: LoadingOverlayProps) {
+}: LoadingOverlayProps): React.JSX.Element {
   return (
     <div
       data-testid={testId}

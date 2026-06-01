@@ -30,7 +30,6 @@ let _cachedConfig: Readonly<AgentConfig> | null = null;
 
 /**
  * Load and validate agent configuration from YAML.
- *
  * @param configDir - Path to the config directory (defaults to `../../config`)
  * @returns Frozen, validated agent configuration
  */

@@ -22,7 +22,6 @@ type Scenario = "agent_chat" | "canvas_node" | "edit_area";
  * - `canvas_node` / `edit_area`: user + project only (no conversation)
  *
  * Content is truncated to the max sizes defined in agent config.
- *
  * @param userId - The current user's ID
  * @param conversationId - The active conversation ID (may be undefined)
  * @param projectId - The associated project ID (may be undefined)
@@ -71,7 +70,6 @@ interface ConsolidationData {
  * Always updates conversation memory and appends a history entry.
  * Optionally updates project and user memory with optimistic locking;
  * version conflicts are logged as warnings rather than propagated.
- *
  * @param userId - The current user's ID
  * @param conversationId - The conversation being consolidated
  * @param projectId - The associated project ID (may be undefined)
@@ -145,7 +143,12 @@ export async function applyConsolidation(
   }
 }
 
-/** Truncate a string to a maximum character count. */
+/**
+ * Truncate a string to a maximum character count.
+ * @param text - Source string to truncate.
+ * @param maxLength - Maximum number of characters to keep.
+ * @returns The original string if within the limit, otherwise the first `maxLength` characters.
+ */
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength);

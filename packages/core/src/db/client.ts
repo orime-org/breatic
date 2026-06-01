@@ -57,13 +57,11 @@ import { env } from "@core/config/env.js";
  * application_name` field, which lands in PG's
  * `pg_stat_activity` so DBAs can see which process / pool a
  * connection belongs to without parsing IP / port.
- *
  * @param url - Postgres connection URL
  * @param opts - Per-instance config; `name` is required, the
  *   rest override the production defaults above
  * @returns A configured postgres.js client (`Sql`) with
  *   production-safety defaults applied
- *
  * @example
  *   const sql = createPgClient(env.DATABASE_URL, {
  *     name: 'collab-auth',
@@ -90,7 +88,10 @@ export function createPgClient(
  */
 let _pgClient: Sql | null = null;
 
-/** Build (once) and return the process-wide postgres.js pool. */
+/**
+ * Build (once) and return the process-wide postgres.js pool.
+ * @returns the lazily-initialised postgres.js connection pool
+ */
 function getPgClient(): Sql {
   if (_pgClient === null) {
     _pgClient = createPgClient(env.DATABASE_URL, {
@@ -104,7 +105,10 @@ function getPgClient(): Sql {
 /** Lazily-built Drizzle instance over {@link getPgClient}. */
 let _db: PostgresJsDatabase<Record<string, never>> | null = null;
 
-/** Build (once) and return the Drizzle ORM instance. */
+/**
+ * Build (once) and return the Drizzle ORM instance.
+ * @returns the lazily-initialised Drizzle ORM instance over the pool
+ */
 function getDb(): PostgresJsDatabase<Record<string, never>> {
   if (_db === null) {
     _db = drizzle(getPgClient());
@@ -165,7 +169,6 @@ export async function closeDb(): Promise<void> {
  * clients are callable (tagged-template) AND have methods, so the
  * Proxy forwards both `apply` (the tagged-template call) and `get`
  * (`.end()`, etc.) to the real pool.
- *
  * @example
  * ```typescript
  * const result = await rawPg`SELECT 1 AS ok`;

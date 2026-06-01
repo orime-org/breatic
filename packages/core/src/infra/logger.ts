@@ -15,6 +15,12 @@ import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
+/**
+ * Build a pino logger that writes to `logs/{serviceName}/` with daily
+ * rotation, pretty console in dev and JSON file output in production.
+ * @param serviceName - the service tag used for the log directory and file name
+ * @returns the configured pino logger
+ */
 function buildLogger(serviceName: string): pino.Logger {
   const logsRoot = resolve(MONOREPO_ROOT, "logs");
   const serviceLogsDir = resolve(logsRoot, serviceName);
@@ -62,6 +68,7 @@ function buildLogger(serviceName: string): pino.Logger {
 /**
  * Initialize the logger for a specific service.
  * Must be called before any logging occurs.
+ * @param serviceName - the service tag (e.g. `"worker"`) used for log file routing
  */
 export function initLogger(serviceName: string): void {
   logger = buildLogger(serviceName);
@@ -75,6 +82,10 @@ export function initLogger(serviceName: string): void {
  */
 let _defaultLogger: pino.Logger | null = null;
 
+/**
+ * Build (once) and return the lazily-initialised default `"api"` logger.
+ * @returns the process-wide default pino logger
+ */
 function getDefaultLogger(): pino.Logger {
   if (_defaultLogger === null) {
     _defaultLogger = buildLogger("api");

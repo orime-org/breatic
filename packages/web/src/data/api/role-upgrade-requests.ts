@@ -19,8 +19,11 @@ export const roleUpgradeRequestsApi = {
    * Returns the freshly-created notification row that landed in the
    * owner's inbox, so the client can optimistically mark the action
    * complete + show a "sent" toast.
+   * @param projectId - Project the viewer wants edit access to.
+   * @param body - Optional message included with the upgrade request.
+   * @returns The created request notification placed in the owner's inbox.
    */
-  submit(projectId: string, body: SubmitRoleUpgradeBody) {
+  submit(projectId: string, body: SubmitRoleUpgradeBody): Promise<{ data: Notification }> {
     return apiPost<{ data: Notification }, SubmitRoleUpgradeBody>(
       `/projects/${projectId}/role-upgrade-requests`,
       body,
@@ -35,8 +38,11 @@ export const roleUpgradeRequestsApi = {
    *
    * Server gates on the notification's `userId` matching the caller
    * (defense in depth — only the owner can act on their own inbox).
+   * @param notificationId - Id of the original request notification to decide on.
+   * @param body - The decision (approved / rejected) and an optional reason.
+   * @returns An acknowledgement once the decision is recorded.
    */
-  decide(notificationId: string, body: DecideRoleUpgradeBody) {
+  decide(notificationId: string, body: DecideRoleUpgradeBody): Promise<{ data: { ok: true } }> {
     return apiPatch<{ data: { ok: true } }, DecideRoleUpgradeBody>(
       `/role-upgrade-requests/${notificationId}/decision`,
       body,

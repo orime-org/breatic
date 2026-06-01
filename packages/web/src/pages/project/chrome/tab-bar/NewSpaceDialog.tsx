@@ -103,8 +103,13 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * The `SPACE_TYPE_LIST` registry is consulted to surface only types
  * the runtime actually knows about (forward-compat safety against the
  * registry pruning a type the dialog still lists).
+ * @param root0 - Component props.
+ * @param root0.trigger - Element that opens the dialog (wired through Radix `asChild`).
+ * @param root0.tooltip - Optional tooltip shown on hover/focus of the trigger button.
+ * @param root0.onCreate - Called with the chosen type and trimmed name to perform the (possibly async) create.
+ * @returns The new-space dialog with its type segmented control, name input, and create/cancel actions.
  */
-export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogProps) {
+export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('new-space-dialog');
   const [type, setType] = React.useState<SpaceType>('canvas');
@@ -121,13 +126,20 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
   );
   const cards = TYPE_CARDS.filter((c) => registry.has(c.type));
 
-  const reset = () => {
+  /**
+   * Clears the name input, resets the type to canvas, and drops any error.
+   */
+  const reset = (): void => {
     setName('');
     setType('canvas');
     setError(null);
   };
 
-  const submit = () => {
+  /**
+   * Validates the name, optimistically closes the dialog, and fires the
+   * `onCreate` call (errors surface via ProjectPage's toast).
+   */
+  const submit = (): void => {
     const trimmed = name.trim();
     if (trimmed.length === 0) return;
     // Optimistic close: dismiss the dialog immediately so the

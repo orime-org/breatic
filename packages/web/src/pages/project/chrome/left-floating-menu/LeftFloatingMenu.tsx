@@ -7,6 +7,7 @@ import {
   Upload,
   type LucideIcon,
 } from 'lucide-react';
+import type * as React from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
@@ -115,8 +116,12 @@ interface LeftFloatingMenuProps {
  *
  * Divider:
  *   - 28px wide, 1px border-color line, 4px vertical margin
+ * @param root0 - Component props.
+ * @param root0.onPick - Fired once with the picked tool id when a menu button is clicked.
+ * @param root0.disabled - When `true`, every tool button is disabled with an editor-permission-required tooltip.
+ * @returns The floating left tool menu with upper action zone, divider, and lower placeholder zone.
  */
-export function LeftFloatingMenu({ onPick, disabled = false }: LeftFloatingMenuProps) {
+export function LeftFloatingMenu({ onPick, disabled = false }: LeftFloatingMenuProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <nav
@@ -140,6 +145,15 @@ export function LeftFloatingMenu({ onPick, disabled = false }: LeftFloatingMenuP
   );
 }
 
+/**
+ * Single tooltip-wrapped tool button rendered inside the floating menu,
+ * styled by its `featured` / `placeholder` flags.
+ * @param root0 - Component props.
+ * @param root0.item - Menu item describing the button's icon, label, and visual variant.
+ * @param root0.onPick - Fired with the item's tool id when the button is clicked.
+ * @param root0.disabled - When `true`, the button is disabled and shows the permission-required tooltip.
+ * @returns The tool button with its tooltip.
+ */
 function MenuButton({
   item,
   onPick,
@@ -148,7 +162,7 @@ function MenuButton({
   item: MenuItem;
   onPick: (tool: LeftMenuTool) => void;
   disabled: boolean;
-}) {
+}): React.JSX.Element {
   const t = useTranslation();
   const Icon = item.icon;
   const label = t(item.labelKey);

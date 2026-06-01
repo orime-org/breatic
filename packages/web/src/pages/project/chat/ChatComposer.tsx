@@ -53,6 +53,19 @@ interface ChatComposerProps {
  *   - Send button has 3 visual states: disabled (empty draft),
  *     ready (foreground/background swap), streaming (destructive
  *     accent → Abort with Square icon)
+ * @param root0 - The component props.
+ * @param root0.draft - The current draft text in the input.
+ * @param root0.streaming - Whether a response is currently streaming.
+ * @param root0.chips - The reference chips attached to the next message.
+ * @param root0.activeSkillLabel - The label of the currently selected skill, if any.
+ * @param root0.selectMode - Whether canvas select mode is active.
+ * @param root0.onChange - Called with the next draft text on each edit.
+ * @param root0.onSubmit - Called to send the draft message.
+ * @param root0.onAbort - Called to abort the in-flight streaming response.
+ * @param root0.onToggleSelectMode - Called to toggle canvas select mode.
+ * @param root0.onPickSkill - Called to open the skill picker.
+ * @param root0.onRemoveChip - Called with a chip id to detach that reference.
+ * @returns The composer card with chips, textarea, and action buttons.
  */
 export function ChatComposer({
   draft,
@@ -66,11 +79,14 @@ export function ChatComposer({
   onToggleSelectMode,
   onPickSkill,
   onRemoveChip,
-}: ChatComposerProps) {
+}: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
   const ready = draft.trim().length > 0 && !streaming;
 
-  const submit = () => {
+  /**
+   * Submit the draft message when the composer is in a ready state.
+   */
+  const submit = (): void => {
     if (!ready) return;
     onSubmit();
   };

@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import type { AudioNodeData } from '@web/spaces/canvas/types/node';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -14,13 +16,19 @@ interface AudioNodeProps {
  * Audio node — wraps the native <audio> element for now. WaveSurfer
  * waveform rendering arrives in the M3+ media polish PR; the renderer
  * stays swappable behind this component boundary.
+ * @param root0 - Audio node props.
+ * @param root0.data - Audio node payload (asset URL, status, optional error message).
+ * @param root0.selected - Whether the node is selected, driving the selection ring.
+ * @param root0.locked - Whether the node is locked, showing the lock indicator.
+ * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @returns The audio node element (placeholder or native audio player).
  */
 export function AudioNode({
   data,
   selected,
   locked,
   onActivate,
-}: AudioNodeProps) {
+}: AudioNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.url);
   return (
     <NodeShell

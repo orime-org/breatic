@@ -33,7 +33,11 @@ const TTS_TOOLS = new Set(["tts", "voice-clone"]);
 /** Minimum credit cost per tool — reject if user can't afford. */
 const MIN_CREDIT_COST = 5;
 
-/** Pre-check: reject if user has insufficient credits. */
+/**
+ * Pre-check: reject if user has insufficient credits.
+ * @param userId - The authenticated user whose credit balance is checked.
+ * @returns An error message string when the balance is below {@link MIN_CREDIT_COST}, or `null` when affordable (or payments are disabled).
+ */
 async function checkCredits(userId: string): Promise<string | null> {
   if (!env.PAYMENT_ENABLED) return null;
   const balance = await creditService.getBalance(userId);
@@ -49,12 +53,12 @@ async function checkCredits(userId: string): Promise<string | null> {
  * `params.node_ids: string[]` (optional, 1..N) identifies the result
  * nodes the Worker will update when the task completes. Absent for
  * tasks that don't bind to canvas nodes (rare for mini-tools).
- *
  * @param toolName - The specific mini-tool name (e.g. "remove-bg", "upscale")
  * @param taskType - High-level task type (e.g. "image", "video", "audio", "tts")
  * @param params - Tool-specific parameters from the validated body
  * @param userId - Authenticated user ID
  * @param projectId - Optional project ID
+ * @param spaceId - The space (canvas) the task belongs to
  * @param targetNodeIds - UUIDs of the canvas nodes to update on completion
  * @returns Object with `task_id` and `status: "pending"`
  */
@@ -114,7 +118,6 @@ async function enqueueMiniTool(
  *
  * Accepts discriminated union body keyed by `tool` field (e.g.
  * "remove-bg", "upscale", "relight", "edit").
- *
  * @param c - Hono context with validated `imageToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
@@ -143,7 +146,6 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
  *
  * Accepts discriminated union body keyed by `tool` field (e.g.
  * "upscale", "interpolate", "extend", "edit").
- *
  * @param c - Hono context with validated `videoToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
@@ -173,7 +175,6 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
  * Accepts discriminated union body keyed by `tool` field (e.g.
  * "sfx", "tts", "voice-clone", "separate"). Tools "tts" and
  * "voice-clone" are mapped to `task_type="tts"`.
- *
  * @param c - Hono context with validated `audioToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */

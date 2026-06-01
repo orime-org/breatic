@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { RouterProvider } from 'react-router-dom';
 
 import AuthBootstrap from '@web/app/AuthBootstrap';
@@ -22,8 +23,9 @@ import { router } from '@web/app/routes';
  *
  * Future providers (Theme / Yjs context / I18n) layer around the same
  * shell as needed.
+ * @returns The full provider stack wrapping the data router and toast surface.
  */
-export default function App() {
+export default function App(): React.JSX.Element {
   return (
     <QueryClientProvider>
       <TooltipProvider>

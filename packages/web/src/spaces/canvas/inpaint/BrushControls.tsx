@@ -1,4 +1,5 @@
 import { Eraser, Paintbrush, Undo2 } from 'lucide-react';
+import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
@@ -22,6 +23,16 @@ interface BrushControlsProps {
  *
  * Native range inputs are used instead of shadcn Slider to keep the test
  * surface trivial and let users drag without pointer-events polyfills.
+ * @param root0 - Brush control props.
+ * @param root0.tool - Currently active paint mode (brush adds mask, erase removes it).
+ * @param root0.brushSize - Brush diameter in image pixels, bound to the size slider.
+ * @param root0.opacity - Stroke alpha in [0, 1], bound to the opacity slider.
+ * @param root0.canUndo - Whether at least one stroke exists, enabling the undo button.
+ * @param root0.onToolChange - Called when the user switches between brush and erase.
+ * @param root0.onBrushSizeChange - Called with the new brush diameter when the size slider moves.
+ * @param root0.onOpacityChange - Called with the new alpha in [0, 1] when the opacity slider moves.
+ * @param root0.onUndo - Called to remove the most recent stroke.
+ * @returns The floating brush-controls bar.
  */
 export function BrushControls({
   tool,
@@ -32,7 +43,7 @@ export function BrushControls({
   onBrushSizeChange,
   onOpacityChange,
   onUndo,
-}: BrushControlsProps) {
+}: BrushControlsProps): React.JSX.Element {
   return (
     <div
       data-testid='brush-controls'

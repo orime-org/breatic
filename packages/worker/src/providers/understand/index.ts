@@ -64,10 +64,9 @@ const _TRANSPORTS = new Map<string, UnderstandTransportFn>([
 
 /**
  * Look up the transport generate function for a provider.
- *
  * @param providerName - Provider key (e.g. "gemini", "wavespeed")
  * @returns The transport generate function
- * @throws Error if no transport is registered for the provider
+ * @throws {Error} if no transport is registered for the provider
  */
 function getTransport(providerName: string): UnderstandTransportFn {
   const transport = _TRANSPORTS.get(providerName);
@@ -85,12 +84,11 @@ function getTransport(providerName: string): UnderstandTransportFn {
  *
  * Resolves the model, builds the request via the model family, then
  * dispatches to the appropriate transport (LiteLLM or WaveSpeed).
- *
  * @param prompt - Analysis instruction or empty string for transcribe
  * @param modelName - Model name (required)
  * @param params - Additional parameters (images, video_url, audio_url, etc.)
  * @returns Object with text (result), model, and cost
- * @throws Error if model or provider resolution fails
+ * @throws {Error} if model or provider resolution fails
  */
 export async function generateAsync(
   prompt: string,
@@ -123,7 +121,6 @@ export async function generateAsync(
 
 /**
  * Validate and fill defaults for understand analysis parameters.
- *
  * @param modelName - Model name (required)
  * @param params - User-provided parameters to validate
  * @returns Tuple of [resolvedModelName, cleanedParams]
@@ -137,9 +134,8 @@ export function validateUnderstandParams(
 
 /**
  * List all understand models that have at least one provider with an active API key.
- *
  * @returns Array of model info dicts for skill injection
  */
-export function listAvailableUnderstandModels() {
+export function listAvailableUnderstandModels(): ReturnType<typeof listAvailableModels> {
   return listAvailableModels("understand");
 }

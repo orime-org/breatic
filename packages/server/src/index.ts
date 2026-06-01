@@ -110,7 +110,10 @@ const health = startHealthServer({
   ],
 });
 
-/** Graceful shutdown handler. */
+/**
+ * Graceful shutdown handler.
+ * @param signal - The OS signal name that triggered shutdown (e.g. `SIGTERM`, `SIGINT`).
+ */
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down...`);
 

@@ -23,6 +23,10 @@ export class AppError extends Error {
 
 /** Resource not found (404). */
 export class NotFoundError extends AppError {
+  /**
+   * Construct a 404 error.
+   * @param message - human-readable description of the missing resource
+   */
   constructor(message: string) {
     super(404, message);
     this.name = "NotFoundError";
@@ -31,6 +35,10 @@ export class NotFoundError extends AppError {
 
 /** Resource conflict (409). */
 export class ConflictError extends AppError {
+  /**
+   * Construct a 409 error.
+   * @param message - human-readable description of the conflicting state
+   */
   constructor(message: string) {
     super(409, message);
     this.name = "ConflictError";
@@ -39,6 +47,10 @@ export class ConflictError extends AppError {
 
 /** Validation failed (422). */
 export class ValidationError extends AppError {
+  /**
+   * Construct a 422 error.
+   * @param message - human-readable description of the validation failure
+   */
   constructor(message: string) {
     super(422, message);
     this.name = "ValidationError";
@@ -47,6 +59,10 @@ export class ValidationError extends AppError {
 
 /** Access forbidden (403). */
 export class ForbiddenError extends AppError {
+  /**
+   * Construct a 403 error.
+   * @param message - human-readable description of why access is denied
+   */
   constructor(message: string) {
     super(403, message);
     this.name = "ForbiddenError";
@@ -55,6 +71,10 @@ export class ForbiddenError extends AppError {
 
 /** Not authenticated (401). */
 export class UnauthorizedError extends AppError {
+  /**
+   * Construct a 401 error.
+   * @param message - human-readable description of the authentication failure
+   */
   constructor(message: string) {
     super(401, message);
     this.name = "UnauthorizedError";
@@ -90,6 +110,10 @@ export interface ConflictLockedDetail {
  */
 export class ConflictLockedError extends AppError {
   public readonly detail: ConflictLockedDetail;
+  /**
+   * Construct a 409 lock-conflict error carrying the lock-holder detail.
+   * @param detail - lock-holder identity and timing used to render the conflict toast
+   */
   constructor(detail: ConflictLockedDetail) {
     super(409, "Node is locked by another in-flight task");
     this.name = "ConflictLockedError";

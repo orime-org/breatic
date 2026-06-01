@@ -25,6 +25,10 @@ export interface AuthUser {
  * AuthBootstrap / LoginPage / RegisterPage when populating
  * `useCurrentUserStore.user.name` — single source of truth so the
  * three callsites can't drift.
+ * @param u - The authenticated user projection to derive a name from.
+ * @param u.username - Stored display name; may be null when never set.
+ * @param u.email - Email address, used for the local-part fallback.
+ * @returns A non-empty display name: the username, else the email local-part, else the full email.
  */
 export function deriveDisplayName(u: {
   username: string | null;

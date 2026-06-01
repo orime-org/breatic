@@ -35,12 +35,22 @@ interface BannerButtonProps {
   children: React.ReactNode;
 }
 
+/**
+ * Self-styled banner action button (see the interface docstring above for
+ * why a raw `<button>` is used instead of the shadcn outline variant).
+ * @param root0 - Component props.
+ * @param root0.onClick - Click handler for the button action.
+ * @param root0.className - Extra classes merged onto the button's base styles.
+ * @param root0.testId - Test id applied to the button for assertions.
+ * @param root0.children - Button label / icon content.
+ * @returns The mode-independent banner action button.
+ */
 function BannerButton({
   onClick,
   className,
   testId,
   children,
-}: BannerButtonProps) {
+}: BannerButtonProps): React.JSX.Element {
   return (
     <button
       type='button'
@@ -111,12 +121,17 @@ function BannerButton({
  * white pill on the deep-red banner in light mode - visually jarring.
  * Translucent-black + white border + white text keeps strong contrast
  * on both deep-red and deep-amber banners.
+ * @param root0 - Component props.
+ * @param root0.status - Current Hocuspocus connection status driving the banner's visibility and color.
+ * @param root0.onReload - Click handler for the reload / reconnect CTA (refresh window).
+ * @param root0.onReLogin - Click handler for the re-login CTA, shown only when status is `authFailed`.
+ * @returns The connection status banner, or `null` when the connection is healthy or merely connecting.
  */
 export function ConnectionBanner({
   status,
   onReload,
   onReLogin,
-}: ConnectionBannerProps) {
+}: ConnectionBannerProps): React.JSX.Element | null {
   const t = useTranslation();
 
   // `connecting` is intentionally silent - a half-second blip during

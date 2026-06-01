@@ -17,6 +17,10 @@ const textToolsConfigSchema = z.object({
 
 let _cached: z.infer<typeof textToolsConfigSchema> | null = null;
 
+/**
+ * Load and cache the text mini-tool config from `config/text-tools.yaml`.
+ * @returns The validated text-tools config (memoized after the first read).
+ */
 function loadConfig(): z.infer<typeof textToolsConfigSchema> {
   if (_cached) return _cached;
   const dir = resolve(MONOREPO_ROOT, "config");
@@ -86,7 +90,6 @@ const PROMPTS: Record<string, string> = {
 
 /**
  * Get the model string for a text tool.
- *
  * @param _toolName - Tool name (currently all tools use the same model)
  * @returns Model identifier
  */
@@ -105,7 +108,6 @@ const LANGUAGE_INSTRUCTION =
  *
  * Automatically appends a language-matching instruction so the LLM
  * responds in the same language as the user's document.
- *
  * @param toolName - Tool name (e.g. "polish", "generate")
  * @returns System prompt string with language instruction
  */

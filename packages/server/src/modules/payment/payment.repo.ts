@@ -7,6 +7,12 @@ import { db } from "@breatic/core";
 import { payments } from "@breatic/core";
 import type { PaymentEntity } from "@breatic/shared";
 
+/**
+ * Map a raw `payments` table row to a `PaymentEntity` domain object,
+ * defaulting a null `metadata` JSONB column to an empty object.
+ * @param row - Raw row selected from the `payments` table
+ * @returns The mapped payment entity
+ */
 function toEntity(row: typeof payments.$inferSelect): PaymentEntity {
   return {
     id: row.id,
@@ -23,7 +29,17 @@ function toEntity(row: typeof payments.$inferSelect): PaymentEntity {
   };
 }
 
-/** Create a new payment record. */
+/**
+ * Create a new payment record (status defaults to "pending" at the DB level).
+ * @param data - Payment fields to insert
+ * @param data.userId - User who initiated the purchase
+ * @param data.stripeSessionId - Stripe Checkout session ID for this payment
+ * @param data.amountCents - Charge amount in the smallest currency unit (cents)
+ * @param data.creditsGranted - Number of credits granted once the payment completes
+ * @param data.currency - ISO currency code (defaults to "usd")
+ * @param data.metadata - Arbitrary JSONB metadata (defaults to an empty object)
+ * @returns The inserted payment entity
+ */
 export async function createPayment(data: {
   userId: string;
   stripeSessionId: string;
@@ -46,13 +62,21 @@ export async function createPayment(data: {
   return toEntity(rows[0]!);
 }
 
-/** Get a payment by ID. */
+/**
+ * Get a payment by ID.
+ * @param id - Payment UUID
+ * @returns The payment entity, or null if not found
+ */
 export async function getPaymentById(id: string): Promise<PaymentEntity | null> {
   const rows = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** Get a payment by Stripe session ID. */
+/**
+ * Get a payment by Stripe session ID.
+ * @param sessionId - Stripe Checkout session ID
+ * @returns The payment entity, or null if no payment matches the session
+ */
 export async function getPaymentByStripeSessionId(sessionId: string): Promise<PaymentEntity | null> {
   const rows = await db
     .select()
@@ -62,7 +86,12 @@ export async function getPaymentByStripeSessionId(sessionId: string): Promise<Pa
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** Update payment status and optionally set Stripe payment intent ID. */
+/**
+ * Update payment status and optionally set Stripe payment intent ID.
+ * @param id - Payment UUID
+ * @param status - New status value to write
+ * @param stripePaymentIntentId - Stripe PaymentIntent ID to record (only set when provided)
+ */
 export async function updatePaymentStatus(
   id: string,
   status: string,
@@ -75,9 +104,13 @@ export async function updatePaymentStatus(
 
 /**
  * CAS update: transition status from `fromStatus` to `toStatus`.
- * Returns true if the row was updated (i.e., it was in `fromStatus`).
- * Returns false if another concurrent call already transitioned it.
  * This is the idempotent guard for webhook replay.
+ * @param id - Payment UUID
+ * @param fromStatus - Status the row must currently be in for the update to apply
+ * @param toStatus - Status to transition the row to
+ * @param stripePaymentIntentId - Stripe PaymentIntent ID to record (only set when provided)
+ * @returns True if this call performed the transition (row was in `fromStatus`);
+ *   false if another concurrent call already transitioned it
  */
 export async function updatePaymentStatusCAS(
   id: string,
@@ -95,7 +128,13 @@ export async function updatePaymentStatusCAS(
   return result.length > 0;
 }
 
-/** List payments for a user, ordered by most recent. */
+/**
+ * List payments for a user, ordered by most recent.
+ * @param userId - User whose payments to list
+ * @param limit - Page size (capped at 100)
+ * @param offset - Pagination offset
+ * @returns The user's payment entities, newest first
+ */
 export async function listPaymentsByUser(
   userId: string,
   limit = 20,

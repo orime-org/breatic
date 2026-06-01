@@ -36,6 +36,8 @@ const DEFAULT_LOCALE = "en";
  * Quality factors (`;q=0.8`) are dropped — the order in the header
  * already reflects priority for every browser worth supporting, and
  * a strict q-sort would add weight for negligible accuracy.
+ * @param header - The raw `Accept-Language` header value, or `undefined` when absent.
+ * @returns The best supported locale (exact then prefix match), or the default locale when none match.
  */
 function negotiateLocale(header: string | undefined): string {
   if (!header) return DEFAULT_LOCALE;
@@ -53,7 +55,12 @@ function negotiateLocale(header: string | undefined): string {
   return DEFAULT_LOCALE;
 }
 
-/** Hono middleware factory — install once per app via `app.use("*", localeMiddleware)`. */
+/**
+ * Hono middleware factory — install once per app via `app.use("*", localeMiddleware)`.
+ * @param c - The Hono request context, read for the `Accept-Language` header.
+ * @param next - The downstream handler, run inside the negotiated-locale AsyncLocalStorage store.
+ * @returns The result of running `next` within the per-request locale context.
+ */
 export const localeMiddleware: MiddlewareHandler = (c, next) => {
   const locale = negotiateLocale(c.req.header("Accept-Language"));
   return runWithLocale(locale, next);

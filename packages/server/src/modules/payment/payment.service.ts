@@ -15,7 +15,6 @@ import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
 
 /**
  * Create a Stripe Checkout session for purchasing credits.
- *
  * @param userId - Authenticated user ID
  * @param tierName - Tier name from pricing.yaml (e.g. "Pro")
  * @param successUrl - Redirect URL after successful payment
@@ -86,6 +85,19 @@ export type CheckoutCompletedOutcome =
       newBalance: number;
     };
 
+/**
+ * Process a completed Stripe Checkout session: atomically grant credits
+ * and record the purchase transaction.
+ *
+ * Idempotent via a compare-and-swap on payment status (pending → completed).
+ * If a concurrent webhook already completed the payment, the CAS fails and
+ * this returns `{ status: "replay" }` without granting credits twice.
+ * @param stripeSessionId - Stripe Checkout session ID from the webhook event
+ * @param paymentIntentId - Stripe PaymentIntent ID to record on the payment row, if present
+ * @returns `{ status: "replay" }` when the payment was already completed,
+ *   otherwise the completed outcome with userId, creditsGranted, and the new balance
+ * @throws {NotFoundError} if no payment matches the Stripe session ID
+ */
 export async function handleCheckoutCompleted(
   stripeSessionId: string,
   paymentIntentId?: string,
@@ -126,7 +138,11 @@ export async function handleCheckoutCompleted(
   };
 }
 
-/** Handle Stripe payment failure. Only transitions pending → failed. */
+/**
+ * Handle Stripe payment failure. Only transitions pending → failed.
+ * @param stripeSessionId - Stripe Checkout session ID from the webhook event
+ * @throws {NotFoundError} if no payment matches the Stripe session ID
+ */
 export async function handlePaymentFailed(stripeSessionId: string): Promise<void> {
   const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
   if (!payment) throw new NotFoundError(t("server.error.not_found"));
@@ -134,7 +150,14 @@ export async function handlePaymentFailed(stripeSessionId: string): Promise<void
   await paymentRepo.updatePaymentStatus(payment.id, "failed");
 }
 
-/** Get payment with ownership check. */
+/**
+ * Get payment with ownership check.
+ * @param paymentId - Payment UUID to fetch
+ * @param userId - Authenticated user; must own the payment
+ * @returns The payment entity owned by the caller
+ * @throws {NotFoundError} if no payment matches the ID
+ * @throws {ForbiddenError} if the payment belongs to a different user
+ */
 export async function getPayment(paymentId: string, userId: string): Promise<PaymentEntity> {
   const payment = await paymentRepo.getPaymentById(paymentId);
   if (!payment) throw new NotFoundError(t("server.error.not_found"));
@@ -142,7 +165,13 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
   return payment;
 }
 
-/** List payments for a user. */
+/**
+ * List payments for a user.
+ * @param userId - User whose payments to list
+ * @param limit - Page size (capped at 100 by the repo)
+ * @param offset - Pagination offset
+ * @returns The user's payment entities, newest first
+ */
 export async function listPayments(userId: string, limit = 20, offset = 0): Promise<PaymentEntity[]> {
   return paymentRepo.listPaymentsByUser(userId, limit, offset);
 }
@@ -151,6 +180,8 @@ export async function listPayments(userId: string, limit = 20, offset = 0): Prom
  * Get available pricing tiers for frontend display.
  *
  * Strips Stripe Price IDs — frontend doesn't need them.
+ * @returns The configured pricing tiers (name, credits, priceCents, currency, description)
+ *   with Stripe Price IDs omitted
  */
 export function listTiers(): Array<{
   name: string;

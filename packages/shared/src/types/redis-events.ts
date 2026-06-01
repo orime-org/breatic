@@ -47,7 +47,11 @@ export interface MembersChangedEvent {
 
 // ── Channel names (single source of truth) ──────────────────────────
 
-/** Channel pattern for `members:changed`. */
+/**
+ * Channel pattern for `members:changed`.
+ * @param projectId - the project whose membership-change channel is built
+ * @returns the pub/sub channel name `project:{projectId}:members:changed`
+ */
 export function membersChangedChannel(projectId: string): string {
   return `project:${projectId}:members:changed`;
 }

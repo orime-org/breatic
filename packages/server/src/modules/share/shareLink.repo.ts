@@ -52,6 +52,11 @@ export interface ShareLink {
   deletedAt: Date | null;
 }
 
+/**
+ * Map a raw `share_links` table row to a `ShareLink` domain object.
+ * @param row - Raw row selected from the `share_links` table
+ * @returns The mapped share link
+ */
 function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
   return {
     id: row.id,
@@ -75,6 +80,16 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
  * `kind` / `boundEmail` pairing — kind='email' requires boundEmail
  * non-null, kind='link' requires boundEmail null. The DB CHECK will
  * reject mismatches, but the service layer should already enforce.
+ * @param input - Share link fields to insert
+ * @param input.projectId - Project the link grants access to
+ * @param input.createdByUserId - User who created the link
+ * @param input.token - Pre-generated unique token (base64url)
+ * @param input.role - Role granted on consume ('edit' or 'view')
+ * @param input.kind - Link mode ('email' single-use, or 'link' multi-use)
+ * @param input.boundEmail - Recipient email; non-null iff `kind === 'email'`
+ * @param input.expiresAt - Expiry timestamp; null for non-expiring 'link' kind
+ * @returns The inserted share link
+ * @throws {Error} if the insert returns no row
  */
 export async function create(input: {
   projectId: string;
@@ -107,6 +122,8 @@ export async function create(input: {
 /**
  * Find a share link by id (no soft-delete filter so the service can
  * verify the row exists even if it's been revoked).
+ * @param id - Share link UUID
+ * @returns The share link (revoked or not), or null if no row matches
  */
 export async function findById(id: string): Promise<ShareLink | null> {
   const rows = await db
@@ -123,6 +140,8 @@ export async function findById(id: string): Promise<ShareLink | null> {
  * Returns null for revoked links so consume can't accidentally
  * resurrect them. Single-use vs permanent + expires_at + consumed_at
  * checks happen in the service layer.
+ * @param token - Share link token from the URL
+ * @returns The active (non-revoked) share link, or null if none matches
  */
 export async function findActiveByToken(token: string): Promise<ShareLink | null> {
   const rows = await db
@@ -135,7 +154,11 @@ export async function findActiveByToken(token: string): Promise<ShareLink | null
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** List active links for a project, newest first. */
+/**
+ * List active links for a project, newest first.
+ * @param projectId - Project UUID
+ * @returns The project's active (non-revoked) share links, newest first
+ */
 export async function listByProject(projectId: string): Promise<ShareLink[]> {
   const rows = await db
     .select()
@@ -161,6 +184,10 @@ export async function listByProject(projectId: string): Promise<ShareLink[]> {
  * Multi-use 'link' rows are not single-shot and should not have
  * their consumed_at touched. The WHERE clause includes the kind
  * check as belt-and-suspenders.
+ * @param id - Share link UUID (must be a kind='email' link)
+ * @param tx - Optional transaction handle to run the update within
+ * @returns True if this call marked the link consumed; false if it was
+ *   already consumed, revoked, or not an email-invite link
  */
 export async function markConsumed(
   id: string,
@@ -182,7 +209,11 @@ export async function markConsumed(
   return rows.length > 0;
 }
 
-/** Soft-delete a share link (owner-initiated revoke). */
+/**
+ * Soft-delete a share link (owner-initiated revoke).
+ * @param id - Share link UUID
+ * @returns True if a row was revoked; false if it was already revoked or absent
+ */
 export async function softDelete(id: string): Promise<boolean> {
   const rows = await db
     .update(shareLinks)

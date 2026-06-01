@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { cn } from '@web/lib/utils';
 import type { AnnotationNodeData } from '@web/spaces/canvas/types/node';
@@ -16,12 +18,17 @@ interface AnnotationNodeProps {
  *
  * Style stays static so reactions / threading additions remain a
  * non-breaking augmentation in a later PR.
+ * @param root0 - Annotation node props.
+ * @param root0.data - Annotation payload (message text, author ID, created timestamp).
+ * @param root0.selected - Whether the node is selected, driving the selection ring.
+ * @param root0.locked - Whether the node is locked, showing the lock indicator.
+ * @returns The collaboration sticky node element.
  */
 export function AnnotationNode({
   data,
   selected,
   locked,
-}: AnnotationNodeProps) {
+}: AnnotationNodeProps): React.JSX.Element {
   return (
     <NodeShell
       selected={selected}
@@ -51,6 +58,12 @@ export function AnnotationNode({
   );
 }
 
+/**
+ * Formats an ISO timestamp as a short relative time (e.g. "5m ago"),
+ * falling back to a localized date past 30 days or for invalid input.
+ * @param iso - The ISO-8601 timestamp string to format.
+ * @returns A compact relative-time label.
+ */
 function formatRelative(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return iso;

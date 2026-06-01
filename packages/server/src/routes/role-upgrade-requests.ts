@@ -150,6 +150,10 @@ decisionRoute.patch(
  * gate guarantees the caller owns the source notification, so this
  * helper trusts the projectId at face value (any drift surfaces as a
  * NotFound on the projectService side).
+ * @param notificationId - The source role-upgrade notification whose `projectId` is resolved.
+ * @param ownerUserId - The project owner making the decision, used to authorize the project lookup.
+ * @returns The project's display name.
+ * @throws {NotFoundError} when the notification is missing or has no associated project.
  */
 async function loadProjectNameForNotification(
   notificationId: string,

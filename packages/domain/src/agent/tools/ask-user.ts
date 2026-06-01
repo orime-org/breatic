@@ -2,8 +2,6 @@
  * Ask-user tool — pause the agent loop to request user input.
  *
  * Ported from backend/agent/tools/builtin/ask_user.py.
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";

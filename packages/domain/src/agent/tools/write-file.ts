@@ -3,8 +3,6 @@
  *
  * Ported from backend/agent/tools/builtin/filesystem.py (WriteFileTool).
  * Paths are confined to the file-tool sandbox (see {@link assertInSandbox}).
- *
- * @module
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";

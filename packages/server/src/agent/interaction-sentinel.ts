@@ -40,7 +40,7 @@ export interface ParsedInteraction {
 
 /**
  * Detect + parse an interaction-tool sentinel.
- *
+ * @param resultStr - The raw `execute()` output of a tool, potentially prefixed with one of the v13 interaction sentinels.
  * @returns The matching SSE event and parsed JSON payload when
  * `resultStr` starts with one of the three v13 interaction sentinels.
  * `null` for any non-interaction tool output (including `__ASK_USER__`

@@ -29,7 +29,11 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  */
 type Mode = 'token' | 'recovery';
 
-export default function ResetPasswordPage() {
+/**
+ * @returns the token-based reset form when `?token=` is present, otherwise
+ * the recovery-code reset form.
+ */
+export default function ResetPasswordPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
@@ -42,20 +46,32 @@ export default function ResetPasswordPage() {
   return <RecoveryResetForm />;
 }
 
+/**
+ * Email-link reset form — sets a new password using a server-issued token.
+ * @param root0 - component props
+ * @param root0.token - the password-reset token delivered in the reset email
+ * @param root0.onSuccess - called after the password is successfully reset
+ * @returns the new-password form for the token reset path.
+ */
 function TokenResetForm({
   token,
   onSuccess,
 }: {
   token: string;
   onSuccess: () => void;
-}) {
+}): React.JSX.Element {
   const t = useTranslation();
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  /**
+   * Validate the new password, submit it with the token, and invoke
+   * `onSuccess` (redirect to login) when the reset completes.
+   * @param e - the form submit event, prevented so the page does not reload
+   */
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);
@@ -118,7 +134,13 @@ function TokenResetForm({
   );
 }
 
-function RecoveryResetForm() {
+/**
+ * Recovery-code reset form — sets a new password using the email plus the
+ * one-time recovery code, then re-reveals the rotated code.
+ * @returns the recovery-code reset form, or the rotated-code reveal dialog
+ * once the reset has succeeded.
+ */
+function RecoveryResetForm(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = React.useState('');
@@ -133,7 +155,12 @@ function RecoveryResetForm() {
   }>({});
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  /**
+   * Validate the email, recovery code, and new password, submit them, and
+   * stash the rotated recovery code returned by the server to reveal.
+   * @param e - the form submit event, prevented so the page does not reload
+   */
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);
@@ -165,7 +192,11 @@ function RecoveryResetForm() {
     }
   }
 
-  function handleContinue() {
+  /**
+   * Dismiss the rotated-code dialog and navigate to login once the user has
+   * acknowledged saving their new recovery code.
+   */
+  function handleContinue(): void {
     setNewCode(null);
     navigate('/login', { replace: true });
   }

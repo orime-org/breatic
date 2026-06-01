@@ -21,6 +21,11 @@ try {
   // May fail in read-only environments — console-only logging
 }
 
+/**
+ * Build the pino multi-transport config: a console target (pretty in
+ * dev, JSON-to-stdout otherwise) plus a daily-rotated file target.
+ * @returns The pino multi-transport options consumed by the root logger.
+ */
 function buildTransport(): pino.TransportMultiOptions {
   const targets: pino.TransportTargetOptions[] = [];
 
@@ -52,7 +57,11 @@ function buildTransport(): pino.TransportMultiOptions {
   return { targets };
 }
 
-/** Create a child logger with a specific component name. */
+/**
+ * Create a child logger with a specific component name.
+ * @param name - Component name attached to every log line as the `component` field.
+ * @returns A pino child logger bound to the given component name.
+ */
 export function createLogger(name: string): pino.Logger {
   return rootLogger.child({ component: name });
 }

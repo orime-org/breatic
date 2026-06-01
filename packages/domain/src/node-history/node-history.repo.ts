@@ -11,7 +11,11 @@ import { db } from "@breatic/core";
 import { nodeHistory } from "@breatic/core";
 import type { NodeHistoryEntity } from "@breatic/shared";
 
-/** Convert a Drizzle row to a NodeHistoryEntity. */
+/**
+ * Convert a Drizzle row to a NodeHistoryEntity.
+ * @param row - The raw Drizzle row selected from the `node_history` table.
+ * @returns The mapped {@link NodeHistoryEntity}.
+ */
 function toEntity(row: typeof nodeHistory.$inferSelect): NodeHistoryEntity {
   return {
     id: row.id,
@@ -31,8 +35,17 @@ function toEntity(row: typeof nodeHistory.$inferSelect): NodeHistoryEntity {
 
 /**
  * Create a new history entry.
- *
  * @param data - Entry fields (projectId, nodeId, userId, entryType, status required)
+ * @param data.projectId - ID of the project owning the node.
+ * @param data.nodeId - ID of the canvas node this entry records a change for.
+ * @param data.userId - ID of the user who triggered the change.
+ * @param data.entryType - `"generation"` for AIGC output or `"upload"` for a manual user upload.
+ * @param data.status - `"success"` or `"failed"`.
+ * @param data.content - Resulting content reference (e.g. asset URL); null when absent.
+ * @param data.thumbnailUrl - Thumbnail URL for previews; null when absent.
+ * @param data.errorMessage - Failure reason when `status` is `"failed"`; null otherwise.
+ * @param data.taskId - ID of the task that produced this entry, when applicable.
+ * @param data.metadata - Arbitrary entry metadata (model, cost, params, etc.).
  * @returns The inserted entity
  */
 export async function create(data: {
@@ -67,10 +80,13 @@ export async function create(data: {
 
 /**
  * List history entries for a node, ordered by most recent first.
- *
  * @param projectId - Project UUID
  * @param nodeId - Node ID (string, e.g. "1002-1775309939251-LP9fU")
  * @param opts - Pagination and filter
+ * @param opts.limit - Maximum rows to return; capped at 100. Defaults to 20.
+ * @param opts.offset - Number of rows to skip for pagination. Defaults to 0.
+ * @param opts.status - Optional filter to only `"success"` or `"failed"` entries.
+ * @returns The page of entries plus the total count matching the filter.
  */
 export async function listByNode(
   projectId: string,
@@ -117,7 +133,11 @@ export async function listByNode(
   };
 }
 
-/** Get a single history entry by ID (excludes soft-deleted). */
+/**
+ * Get a single history entry by ID (excludes soft-deleted).
+ * @param id - UUID of the history entry to fetch.
+ * @returns The {@link NodeHistoryEntity}, or null if not found or soft-deleted.
+ */
 export async function getById(id: string): Promise<NodeHistoryEntity | null> {
   const rows = await db
     .select()

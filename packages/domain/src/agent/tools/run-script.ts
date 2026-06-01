@@ -3,7 +3,6 @@
  *
  * Only allows execution of scripts inside `skills/{skillName}/scripts/`.
  * Prevents path traversal and arbitrary command execution.
- *
  * @module
  */
 

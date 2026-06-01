@@ -1,4 +1,5 @@
 import { MessagesSquare, Plus } from 'lucide-react';
+import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -35,6 +36,13 @@ interface AgentColHeaderProps {
  *
  * History sheet + composer state lives in the chat store; this header
  * just wires the triggers.
+ * @param root0 - Component props.
+ * @param root0.conversationName - Current conversation name shown in the editable title.
+ * @param root0.messageCount - Number of past conversations displayed in the count chip.
+ * @param root0.onOpenHistory - Opens the conversation history sheet.
+ * @param root0.onNewConversation - Starts a new conversation.
+ * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
+ * @returns The agent column header row with history, count chip, editable title, and new-conversation actions.
  */
 export function AgentColHeader({
   conversationName,
@@ -42,7 +50,7 @@ export function AgentColHeader({
   onOpenHistory,
   onNewConversation,
   onRenameConversation,
-}: AgentColHeaderProps) {
+}: AgentColHeaderProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <header

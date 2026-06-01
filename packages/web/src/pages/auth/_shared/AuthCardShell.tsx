@@ -18,12 +18,20 @@ interface AuthCardShellProps {
   children: React.ReactNode;
 }
 
+/**
+ * @param root0 - component props
+ * @param root0.title - heading shown at the top of the card
+ * @param root0.subtitle - optional supporting line beneath the title
+ * @param root0.footer - optional footer slot for cross-page links
+ * @param root0.children - the form (or other body content) inside the card
+ * @returns a centered auth card framing the given title, body, and footer.
+ */
 export function AuthCardShell({
   title,
   subtitle,
   footer,
   children,
-}: AuthCardShellProps) {
+}: AuthCardShellProps): React.JSX.Element {
   return (
     <main className='flex min-h-screen items-center justify-center bg-background p-6'>
       <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
@@ -44,14 +52,20 @@ export function AuthCardShell({
   );
 }
 
-/** Convenience link for the auth footer ("Sign up" / "Sign in" etc.). */
+/**
+ * Convenience link for the auth footer ("Sign up" / "Sign in" etc.).
+ * @param root0 - component props
+ * @param root0.to - the route path the link navigates to
+ * @param root0.children - the visible link text
+ * @returns an underline-on-hover router link styled for the auth footer.
+ */
 export function AuthLink({
   to,
   children,
 }: {
   to: string;
   children: React.ReactNode;
-}) {
+}): React.JSX.Element {
   return (
     <Link
       to={to}

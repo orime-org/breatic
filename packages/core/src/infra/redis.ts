@@ -61,12 +61,10 @@ import { env } from "@core/config/env.js";
  * blocking BRPOP, Hocuspocus extension-redis pub-sub) pass
  * `opts` to override individual fields. `name` is required so the
  * application's own error logger can tag the source.
- *
  * @param url - Redis connection URL (e.g. `redis://localhost:6379/0`)
  * @param opts - Per-instance config; `name` is required, the rest
  *   override the production defaults above
  * @returns A configured ioredis instance with error logging wired up
- *
  * @example
  *   const cache = createRedisClient(env.REDIS_URL, { name: 'cache' });
  *
@@ -110,7 +108,6 @@ let _redis: Redis | null = null;
 
 /**
  * Get the general-purpose Redis client (session, lock, rate-limit).
- *
  * @returns The shared ioredis instance for DB 0
  */
 export function getRedis(): Redis {
@@ -120,6 +117,9 @@ export function getRedis(): Redis {
   return _redis;
 }
 
+/**
+ * Quit and release the general-purpose Redis client (call on shutdown).
+ */
 export async function closeRedis(): Promise<void> {
   if (_redis) {
     await _redis.quit();
@@ -141,7 +141,6 @@ let _queueRedis: Redis | null = null;
  * `commandTimeout` is also disabled because BullMQ workers issue
  * blocking `BRPOP` waits that legitimately exceed any reasonable
  * 5-second timeout.
- *
  * @returns The shared ioredis instance for DB 1
  */
 export function getQueueRedis(): Redis {
@@ -156,6 +155,9 @@ export function getQueueRedis(): Redis {
   return _queueRedis;
 }
 
+/**
+ * Quit and release the BullMQ (DB 1) Redis client (call on shutdown).
+ */
 export async function closeQueueRedis(): Promise<void> {
   if (_queueRedis) {
     await _queueRedis.quit();
@@ -169,7 +171,6 @@ let _streamRedis: Redis | null = null;
 
 /**
  * Get the Streams / Hocuspocus pub-sub Redis client.
- *
  * @returns The shared ioredis instance for DB 2
  */
 export function getStreamRedis(): Redis {
@@ -181,6 +182,9 @@ export function getStreamRedis(): Redis {
   return _streamRedis;
 }
 
+/**
+ * Quit and release the Streams / pub-sub (DB 2) Redis client (call on shutdown).
+ */
 export async function closeStreamRedis(): Promise<void> {
   if (_streamRedis) {
     await _streamRedis.quit();

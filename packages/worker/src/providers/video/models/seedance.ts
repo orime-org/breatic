@@ -25,6 +25,10 @@ export const MODELS: ReadonlySet<string> = new Set([
  * WaveSpeed naming:
  * - `end_image` -> `last_image`
  * - Other params pass-through
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; WaveSpeed mapping is model-agnostic)
+ * @param params - Validated params to map into WaveSpeed naming
+ * @returns Tuple of [prompt, apiParams] in WaveSpeed format
  */
 function buildWavespeed(
   prompt: string,
@@ -50,6 +54,10 @@ function buildWavespeed(
  * - `image` -> `image_url`
  * - `end_image` -> `end_image_url`
  * - `video` -> `video_url`
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; BytePlus mapping is model-agnostic)
+ * @param params - Validated params to map into BytePlus naming
+ * @returns Tuple of [prompt, apiParams] in BytePlus format
  */
 function buildByteplus(
   prompt: string,
@@ -84,7 +92,6 @@ function buildByteplus(
 
 /**
  * Convert user-facing params to provider-specific API params.
- *
  * @param prompt - User's video description
  * @param modelName - Resolved model name (e.g. "seedance-1.5-pro")
  * @param params - Validated params from YAML defaults + user input

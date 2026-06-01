@@ -24,8 +24,10 @@ import { useTranslation } from '@web/i18n/use-translation';
  *
  * While the consume is in flight an `AuthCardShell` placeholder is
  * rendered so the user isn't staring at a blank screen.
+ * @returns a loading placeholder while the invite is consumed, or an inline
+ * "link no longer valid" card on failure (success navigates away).
  */
-export default function InviteConsumePage() {
+export default function InviteConsumePage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const { token } = useParams<{ token: string }>();

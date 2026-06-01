@@ -21,6 +21,10 @@ import { env } from "@breatic/core";
 
 let transporter: nodemailer.Transporter | null = null;
 
+/**
+ * Lazily build and cache the nodemailer SMTP transporter from `SMTP_*` env.
+ * @returns The cached transporter, or `null` when `SMTP_HOST`/`SMTP_USER` are not configured.
+ */
 function getTransporter(): nodemailer.Transporter | null {
   if (transporter) return transporter;
 
@@ -63,7 +67,7 @@ export type SendMailResult =
 
 /**
  * Send an email per `env.EMAIL_BACKEND` dispatch.
- *
+ * @param options - Recipient address, subject line, and HTML body for the message.
  * @returns A {@link SendMailResult} describing what happened
  *   (sent / console-only / skipped). The application caller is
  *   responsible for logging audit / warning lines based on the

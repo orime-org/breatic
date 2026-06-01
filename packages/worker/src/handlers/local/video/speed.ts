@@ -22,6 +22,12 @@ interface SpeedParams {
   rate: number;
 }
 
+/**
+ * Validate and normalise the raw job params into a typed speed payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, rate }` speed params
+ * @throws {Error} when `video` is not an http(s) URL or `rate` is outside [0.1, 10]
+ */
 function parseParams(raw: Record<string, unknown>): SpeedParams {
   const video = raw.video;
   const rate = raw.rate;
@@ -46,6 +52,8 @@ function parseParams(raw: Record<string, unknown>): SpeedParams {
  *   rate=0.25 → "atempo=0.5,atempo=0.5"
  *   rate=4    → "atempo=2,atempo=2"
  *   rate=1.5  → "atempo=1.5"
+ * @param rate - Target playback rate multiplier
+ * @returns The comma-joined atempo filter chain, or an empty string for rate 1
  */
 function buildAtempoChain(rate: number): string {
   if (Math.abs(rate - 1) < 1e-6) return "";
@@ -63,6 +71,13 @@ function buildAtempoChain(rate: number): string {
   return chain.map((r) => `atempo=${r.toFixed(6)}`).join(",");
 }
 
+/**
+ * Change a video's playback rate via FFmpeg `setpts` (video) and a chained
+ * `atempo` filter (audio), re-encoding to H.264 + AAC.
+ * @param rawParams - Raw mini-tool params carrying the video URL and rate
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the rate-adjusted video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, rate } = parseParams(rawParams);
 

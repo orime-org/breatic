@@ -32,7 +32,11 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
  */
 type Step = 'choose' | 'email-sent';
 
-export default function ForgotPasswordPage() {
+/**
+ * @returns the forgot-password page: either the channel-choice form or the
+ * "email sent" confirmation once a reset link has been requested.
+ */
+export default function ForgotPasswordPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
 
@@ -42,7 +46,12 @@ export default function ForgotPasswordPage() {
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  async function handleEmailSubmit(e: React.FormEvent) {
+  /**
+   * Validate the email client-side, then request a reset link from the
+   * server and advance to the "email sent" confirmation step.
+   * @param e - the form submit event, prevented so the page does not reload
+   */
+  async function handleEmailSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);

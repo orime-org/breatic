@@ -20,13 +20,21 @@ interface FieldErrorProps extends React.HTMLAttributes<HTMLParagraphElement> {
   role?: 'status' | 'alert';
 }
 
+/**
+ * @param root0 - component props (plus any extra paragraph attributes)
+ * @param root0.id - optional id to mirror in the Input's `aria-describedby`
+ * @param root0.children - the error message text
+ * @param root0.className - extra classes appended to the base styling
+ * @param root0.role - live-region role; `status` (polite) by default, `alert` for form-wide errors
+ * @returns a styled error paragraph wired as an accessible live region.
+ */
 export function FieldError({
   id,
   children,
   className,
   role = 'status',
   ...rest
-}: FieldErrorProps) {
+}: FieldErrorProps): React.JSX.Element {
   return (
     <p
       id={id}

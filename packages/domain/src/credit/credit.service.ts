@@ -29,7 +29,11 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 /** Sentinel balance returned when payments are disabled. */
 const UNLIMITED_BALANCE = 999_999;
 
-/** Get user's current credit balance. Returns unlimited when payments disabled. */
+/**
+ * Get user's current credit balance. Returns unlimited when payments disabled.
+ * @param userId - ID of the user whose balance to read.
+ * @returns The current balance, or {@link UNLIMITED_BALANCE} when payments are disabled.
+ */
 export async function getBalance(userId: string): Promise<number> {
   if (!env.PAYMENT_ENABLED) return UNLIMITED_BALANCE;
   return creditRepo.getBalance(userId);
@@ -40,12 +44,14 @@ export async function getBalance(userId: string): Promise<number> {
  *
  * Always records the transaction (tokens, model, credits) for auditing.
  * Only deducts from balance when PAYMENT_ENABLED is true.
- *
  * @param userId - The user who consumed resources
  * @param amount - Number of credits to deduct (must be positive)
  * @param description - Human-readable reason (e.g. "Agent chat", "SubAgent:researcher")
  * @param referenceId - External reference (e.g. conversation ID, task ID)
  * @param options - Token count and model name for detailed tracking
+ * @param options.tokensUsed - Number of LLM/AIGC tokens consumed by this usage.
+ * @param options.model - Model identifier that consumed the credits.
+ * @param options.provider - Provider name behind the model.
  * @returns The user's balance after operation
  * @throws {AppError} If PAYMENT_ENABLED and user has insufficient credits
  */
@@ -110,7 +116,6 @@ export async function deduct(
 
 /**
  * Add credits to a user's balance.
- *
  * @param userId - The user to credit
  * @param amount - Number of credits to add (must be positive)
  * @param description - Optional human-readable reason for the addition
@@ -159,7 +164,15 @@ export async function add(
  * never interfere. This is what prevents "user B reuses user A's
  * refKey to skip their own charge": B's scoped key is independent
  * of A's, so B's SETNX succeeds and B gets billed normally.
- *
+ * @param userId - ID of the user to bill; also scopes the idempotency lock key.
+ * @param refKey - Caller-supplied idempotency key; the same key bills only once per user.
+ * @param amount - Number of credits to deduct (positive value).
+ * @param description - Human-readable reason recorded on the transaction.
+ * @param options - Token count and model metadata for detailed tracking.
+ * @param options.tokensUsed - Number of LLM/AIGC tokens consumed by this usage.
+ * @param options.model - Model identifier that consumed the credits.
+ * @param options.provider - Provider name behind the model.
+ * @returns `{ deducted: true, creditsAfter }` on first use; `{ deducted: false }` if the refKey was already billed for this user.
  * @throws {ValidationError} if refKey doesn't match REFKEY_PATTERN.
  *
  * Use for non-task-level billing: text stream, agent turn, subagent spawn.

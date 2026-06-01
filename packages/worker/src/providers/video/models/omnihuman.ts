@@ -18,7 +18,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to WaveSpeed API params.
- *
  * @param prompt - Unused for talking head (driven by audio)
  * @param _modelName - Always "omnihuman-1.5"
  * @param params - Validated params from YAML defaults + user input

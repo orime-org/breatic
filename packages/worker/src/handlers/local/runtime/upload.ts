@@ -41,6 +41,11 @@ export type UploadBufferOptions = UploadCommonOptions & {
   buffer: Buffer;
 };
 
+/**
+ * Build the storage key shared by both upload forms.
+ * @param opts - Common upload options (user / project / task type / extension)
+ * @returns A storage key scoped to the user, project and task type
+ */
 function buildKey(opts: UploadCommonOptions): string {
   return storageKey({
     userId: opts.userId,
@@ -53,8 +58,9 @@ function buildKey(opts: UploadCommonOptions): string {
 /**
  * Read a local temp file and upload it to permanent storage. Returns
  * the public URL suitable for writing to a Yjs node's `content`.
- *
- * @throws `Error` if the file cannot be read or the adapter upload fails
+ * @param opts - Temp-file upload options (local path plus common key fields)
+ * @returns The permanent public URL of the uploaded object
+ * @throws {Error} if the file cannot be read or the adapter upload fails
  */
 export async function uploadTempFileToStorage(
   opts: UploadTempFileOptions,
@@ -68,8 +74,9 @@ export async function uploadTempFileToStorage(
  * Upload an in-memory Buffer directly to permanent storage — skips the
  * tempfile roundtrip for handlers whose library (e.g. Sharp) produces
  * a Buffer natively. Returns the public URL.
- *
- * @throws `Error` if the adapter upload fails
+ * @param opts - Buffer upload options (in-memory buffer plus common key fields)
+ * @returns The permanent public URL of the uploaded object
+ * @throws {Error} if the adapter upload fails
  */
 export async function uploadBufferToStorage(
   opts: UploadBufferOptions,

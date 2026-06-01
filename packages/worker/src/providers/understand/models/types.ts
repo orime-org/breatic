@@ -29,12 +29,20 @@ export interface UnderstandAsrFamily {
 /** Union type for any understand model family. */
 export type AnyUnderstandFamily = UnderstandModelFamily | UnderstandAsrFamily;
 
-/** Type guard: checks if a family is an LLM family with `buildMessages`. */
+/**
+ * Type guard: checks if a family is an LLM family with `buildMessages`.
+ * @param family - The understand family to test
+ * @returns True when the family exposes `buildMessages` (an LLM family)
+ */
 export function isLlmFamily(family: AnyUnderstandFamily): family is UnderstandModelFamily {
   return "buildMessages" in family;
 }
 
-/** Type guard: checks if a family is an ASR family with `buildRequest`. */
+/**
+ * Type guard: checks if a family is an ASR family with `buildRequest`.
+ * @param family - The understand family to test
+ * @returns True when the family exposes `buildRequest` (an ASR family)
+ */
 export function isAsrFamily(family: AnyUnderstandFamily): family is UnderstandAsrFamily {
   return "buildRequest" in family;
 }

@@ -26,7 +26,6 @@ const MAX_WAIT = 300_000; // ms (5 min)
 
 /**
  * Build Google generateVideos request body.
- *
  * @param prompt - Video description prompt
  * @param params - API-ready parameters (camelCase, from model family)
  * @returns Request body dict
@@ -64,7 +63,6 @@ function buildRequestBody(
 
 /**
  * Extract video URL from Google operation result.
- *
  * @param data - Parsed JSON response from completed operation
  * @returns Video URL string, or undefined
  */
@@ -81,8 +79,8 @@ function extractVideoUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Sleep for the given milliseconds.
- *
  * @param ms - Milliseconds to sleep
+ * @returns A promise that resolves after the delay elapses
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,12 +91,11 @@ function sleep(ms: number): Promise<void> {
  *
  * Uses long-running operations pattern with manual polling since
  * the Google API uses a `done` boolean instead of status strings.
- *
  * @param prompt - Video description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,

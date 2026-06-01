@@ -32,13 +32,17 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bm
  * from the AsyncLocalStorage request context (set by route handler).
  */
 export class MainAgent {
-  private get ctx() {
+  /**
+   * The current request-scoped store (userId, conversationId, projectId,
+   * memoryContext, compressedHistory, billing) from AsyncLocalStorage.
+   * @returns The active request context for this agent turn.
+   */
+  private get ctx(): ReturnType<typeof getContext> {
     return getContext();
   }
 
   /**
    * Run a streaming chat turn with the user.
-   *
    * @param userMessage - The user's text message
    * @param resources - Optional attached resource URLs (images, files)
    * @yields SSE events for real-time frontend rendering
@@ -72,7 +76,6 @@ export class MainAgent {
 
   /**
    * Execute a skill command (e.g. `/skill generate_image_plan ...`).
-   *
    * @param skillName - Name of the skill to invoke
    * @param userInput - User's input text for the skill
    * @param resources - Optional attached resources
@@ -123,6 +126,10 @@ export class MainAgent {
    * Core streaming loop using AI SDK `streamText()`.
    *
    * AI SDK handles the tool-call iteration automatically via `maxSteps`.
+   * @param system - The assembled system prompt for this turn.
+   * @param messages - Conversation history plus the current user message.
+   * @param toolNames - Tool names to expose to the model; defaults to the standard tool set when omitted.
+   * @yields SSE events (chat chunks, tool hints, interaction prompts, plan, done) for real-time frontend rendering.
    */
   private async *runStream(
     system: string,
@@ -285,7 +292,12 @@ export class MainAgent {
     });
   }
 
-  /** Build an SSE event with user_id and project_id injected. */
+  /**
+   * Build an SSE event with user_id and project_id injected.
+   * @param event - The SSE event type to emit.
+   * @param data - The event payload; merged with the injected user and project ids.
+   * @returns The SSE event with `user_id` and `project_id` added to its data.
+   */
   private sse(event: SSEEventType, data: Record<string, unknown>): SSEEvent {
     const { userId, projectId } = this.ctx;
     return {
@@ -300,7 +312,6 @@ export class MainAgent {
 
   /**
    * Build multimodal user content from text + resource URLs.
-   *
    * @param text - User's text message
    * @param resources - Optional attached resource URLs
    * @returns Plain string or multimodal content array
@@ -328,6 +339,8 @@ export class MainAgent {
    * Extract a JSON task plan from LLM response text.
    *
    * Looks for ```json ... ``` blocks containing a plan object.
+   * @param text - The LLM response text to scan for a fenced JSON plan block.
+   * @returns The parsed `plan` object when the block contains `ready: true` and a `plan` field; otherwise `null`.
    */
   static extractPlan(text: string): Record<string, unknown> | null {
     const match = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);

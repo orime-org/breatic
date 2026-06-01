@@ -15,7 +15,6 @@ import {
 
 /**
  * Build fal.ai authorization headers.
- *
  * @param apiKey - fal.ai API key
  * @returns Headers dict with Key auth and JSON content type
  */
@@ -28,12 +27,11 @@ function authHeaders(apiKey: string): Record<string, string> {
 
 /**
  * Submit a TTS task to fal.ai and poll for result.
- *
  * @param _prompt - Text prompt (embedded in params)
  * @param resolved - Resolved model with provider connection details
  * @param params - Request payload (text, ref_audio_url, ref_text)
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   _prompt: string,

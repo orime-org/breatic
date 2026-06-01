@@ -48,7 +48,6 @@ export interface CollabServerInfra {
  *
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
- *
  * @param infra - Database and Redis connection details
  * @returns Configured Server + Hocuspocus instances
  */

@@ -23,9 +23,8 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Strip resolution, keep text prompt and Midjourney-specific params.
- *
  * @param prompt - User's image description
- * @param modelName - Resolved model name
+ * @param _modelName - Resolved model name (unused; request shaping is the same across Midjourney models)
  * @param params - Validated params with aspect_ratio, stylize, chaos, etc.
  * @returns Tuple of [textPrompt, apiParams]
  */

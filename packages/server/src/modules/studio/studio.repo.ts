@@ -12,6 +12,11 @@ import { studios } from "@breatic/core";
 import type { Studio } from "@breatic/shared";
 import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
+/**
+ * Map a Drizzle studio row to the shared `Studio` domain entity.
+ * @param row - Raw studio row selected from the `studios` table.
+ * @returns The mapped `Studio` domain entity.
+ */
 function toEntity(row: typeof studios.$inferSelect): Studio {
   return {
     id: row.id,
@@ -25,7 +30,6 @@ function toEntity(row: typeof studios.$inferSelect): Studio {
 
 /**
  * Look up a user's active personal studio.
- *
  * @param ownerUserId - User UUID
  * @returns The studio entity, or `null` if none exists
  */
@@ -50,7 +54,6 @@ export async function getByOwnerUserId(
  * Accepts an optional Drizzle transaction so register flows can
  * create the user + studio + (later) project_members owner row in
  * one atomic operation.
- *
  * @param ownerUserId - User UUID
  * @param name - Display name (e.g. `"{username}'s Studio"`)
  * @param tx - Optional transaction handle

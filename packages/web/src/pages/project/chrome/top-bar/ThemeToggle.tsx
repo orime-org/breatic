@@ -34,6 +34,11 @@ const THEMES: Array<{
   { code: 'system', label: 'System', icon: Monitor },
 ];
 
+/**
+ * Resolves a theme intent to the concrete light/dark value to apply.
+ * @param intent - Stored theme intent; `system` follows the OS color-scheme preference.
+ * @returns the concrete `light` or `dark` value to set on `<html data-theme>`.
+ */
 function resolveTheme(intent: ThemeMode): 'light' | 'dark' {
   if (intent !== 'system') return intent;
   if (
@@ -47,7 +52,11 @@ function resolveTheme(intent: ThemeMode): 'light' | 'dark' {
   return 'light';
 }
 
-export function ThemeToggle() {
+/**
+ * Theme switcher chrome button with a popover of light/dark/system modes.
+ * @returns the top-bar theme trigger and its mode-selection popover.
+ */
+export function ThemeToggle(): React.JSX.Element {
   const theme = usePreferencesStore((s) => s.theme);
   const setTheme = usePreferencesStore((s) => s.setTheme);
   const [open, setOpen] = React.useState(false);
@@ -64,7 +73,10 @@ export function ThemeToggle() {
       return;
     }
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => {
+    /**
+     * Re-resolves `<html data-theme>` when the OS color-scheme preference flips.
+     */
+    const onChange = (): void => {
       document.documentElement.dataset.theme = mql.matches ? 'dark' : 'light';
     };
     mql.addEventListener('change', onChange);
@@ -74,7 +86,11 @@ export function ThemeToggle() {
   const current = THEMES.find((t) => t.code === theme) ?? THEMES[0];
   const TriggerIcon = current.icon;
 
-  const pick = (code: ThemeMode) => {
+  /**
+   * Applies the chosen theme mode and closes the popover.
+   * @param code - Theme mode the user selected from the popover.
+   */
+  const pick = (code: ThemeMode): void => {
     setTheme(code);
     setOpen(false);
   };

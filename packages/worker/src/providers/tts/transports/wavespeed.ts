@@ -21,7 +21,6 @@ import {
 
 /**
  * Extract the first output URL from a WaveSpeed API response.
- *
  * @param data - Parsed JSON response
  * @returns Output URL string, or undefined
  */
@@ -38,12 +37,11 @@ function extractOutputUrl(data: Record<string, unknown>): string | undefined {
  *
  * Uses submit + poll pattern. The shared `requestWithRetry` handles
  * 429 exponential backoff.
- *
  * @param _prompt - Text prompt (embedded in params as `text`)
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by `buildRequest`)
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   _prompt: string,

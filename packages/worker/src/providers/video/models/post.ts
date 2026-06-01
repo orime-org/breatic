@@ -22,7 +22,6 @@ export const MODELS: ReadonlySet<string> = new Set([
  *
  * Post-processing models do not use a text prompt -- the prompt arg
  * is passed through but typically empty.
- *
  * @param prompt - Unused for post-processing (passed through as empty)
  * @param _modelName - Resolved model name (e.g. "video-upscale-pro")
  * @param params - Validated params from YAML defaults + user input

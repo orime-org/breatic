@@ -40,6 +40,15 @@ interface ChatPanelProps {
  *
  * PR 9 wires UI structure + composer state to `useChatStore`; the SSE
  * stream + REST history loader hooks into the same store in a later PR.
+ * @param root0 - The component props.
+ * @param root0.projectId - The project this chat belongs to (title bar / API scoping).
+ * @param root0.initialMessages - The messages to seed the list with.
+ * @param root0.conversations - The conversation summaries shown in the history sheet.
+ * @param root0.onSend - Called with the trimmed text when a message is sent.
+ * @param root0.onAbort - Called to abort the in-flight streaming response.
+ * @param root0.onQuickAction - Called with a quick-action label from the empty state.
+ * @param root0.disabled - When true, renders the panel disabled (viewers cannot interact).
+ * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
   projectId,
@@ -49,7 +58,7 @@ export function ChatPanel({
   onAbort,
   onQuickAction,
   disabled = false,
-}: ChatPanelProps) {
+}: ChatPanelProps): React.JSX.Element {
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
   const clearDraft = useChatStore((s) => s.clearComposerDraft);
@@ -61,7 +70,10 @@ export function ChatPanel({
 
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
 
-  const submit = () => {
+  /**
+   * Send the trimmed composer draft and clear the input.
+   */
+  const submit = (): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
     onSend?.(trimmed);

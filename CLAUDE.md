@@ -35,9 +35,9 @@ pnpm test / typecheck / lint
 
 # 代码风格
 
-- TSDoc(`@param`, `@returns`, `@throws`, `@example`),公共 API 必须有
+- **函数定义格式规范(MANDATORY)**:命名函数单元(函数声明 / 类方法 / 类 / 变量赋值的箭头·函数表达式)必须有 TSDoc 文档注释 + 显式返回类型 + `@throws {ErrorType}` 异常类型;类型信息归签名(显式)、注释禁写类型,唯异常类型签名表达不了归注释。**不分导出 / 私有**(规则只有 0/1);内联匿名回调 + 测试豁免。详见 [docs/coding-standards.md](./docs/coding-standards.md)
 - TypeScript strict,禁止 `any`(用 `unknown`),禁止 `var`/`require`
-- ESLint + eslint-plugin-tsdoc 强制
+- ESLint + eslint-plugin-jsdoc 强制(`recommended-typescript-error` + require-jsdoc 全量 + explicit-function-return-type)
 - 前端命名规范见 [docs/frontend.md#naming-conventions](./docs/frontend.md#naming-conventions)
 - 前端 layered 架构以 `app → pages → spaces → features → stores → domain → data → ui` 单向依赖(详见 [docs/frontend.md#layered-architecture](./docs/frontend.md#layered-architecture))
 
@@ -91,7 +91,7 @@ pnpm test / typecheck / lint
 | 8 | 裸 catch |
 | 9 | `any` 类型 |
 | 10 | 同步阻塞事件循环 |
-| 11 | 公共函数缺 TSDoc |
+| 11 | 命名函数缺 TSDoc / 显式返回类型(详见 [coding-standards.md](./docs/coding-standards.md))|
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |

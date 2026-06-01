@@ -16,12 +16,11 @@ import { logger } from "@breatic/core";
  *
  * The API is synchronous -- the response contains hex-encoded audio data.
  * We decode it and return raw bytes — storage is handled by the Worker.
- *
  * @param _prompt - Audio description prompt (embedded in params)
  * @param resolved - Resolved model with provider connection details
  * @param params - Request payload (prompt, lyrics, is_instrumental)
  * @returns Object with `buffer`, `contentType`, `model`, and `cost`
- * @throws Error if the API returns an error or no audio data
+ * @throws {Error} if the API returns an error or no audio data
  */
 export async function generate(
   _prompt: string,

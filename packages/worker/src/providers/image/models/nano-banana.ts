@@ -41,6 +41,9 @@ const STRIP_RESOLUTION: ReadonlySet<string> = new Set([
 
 /**
  * Pop non-API params and return cleaned params plus camera controls.
+ * @param modelName - Resolved model name (decides whether to strip `resolution`)
+ * @param params - Validated params that may carry camera/lens/style fields
+ * @returns The cleaned API params alongside the extracted camera controls
  */
 function prepareParams(
   modelName: string,
@@ -80,6 +83,12 @@ function prepareParams(
 
 /**
  * Build a basic JSON-structured prompt without LLM (fallback path).
+ * @param prompt - User's image description, used as the `subject`
+ * @param camera - Optional camera body to include under `technical`
+ * @param lens - Optional lens to include under `technical`
+ * @param focalLength - Optional focal length in mm to include under `technical`
+ * @param aperture - Optional aperture to include under `technical`
+ * @returns The JSON-stringified structured prompt
  */
 function buildJsonPrompt(
   prompt: string,
@@ -109,7 +118,6 @@ function buildJsonPrompt(
  * For t2i models, calls DeepSeek via OpenRouter to convert the user's
  * text prompt and camera params into a rich JSON structured prompt.
  * Falls back to basic JSON construction on LLM failure.
- *
  * @param prompt - User's image description
  * @param modelName - Resolved model name
  * @param params - Validated params (may contain camera controls)

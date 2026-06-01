@@ -32,7 +32,6 @@ let _cached: Readonly<WorkerConfig> | null = null;
 
 /**
  * Load worker configuration from YAML.
- *
  * @returns Frozen, validated config object
  */
 export function getWorkerConfig(): Readonly<WorkerConfig> {

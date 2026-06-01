@@ -1,4 +1,5 @@
 import { Wand2 } from 'lucide-react';
+import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -22,8 +23,15 @@ interface MiniToolPickerProps {
  * is never mutated.
  *
  * Tools come from the catalog in `pages/project/mini-tool-system/`.
+ * @param root0 - Mini-tool picker props.
+ * @param root0.modality - Active node's modality, used to filter the available tools.
+ * @param root0.onPick - Called with the chosen tool id; the page creates a new sibling node + edge.
+ * @returns The mini-tool trigger button and its popover.
  */
-export function MiniToolPicker({ modality, onPick }: MiniToolPickerProps) {
+export function MiniToolPicker({
+  modality,
+  onPick,
+}: MiniToolPickerProps): React.JSX.Element {
   const tools = miniToolsForModality(modality);
   return (
     <Popover>

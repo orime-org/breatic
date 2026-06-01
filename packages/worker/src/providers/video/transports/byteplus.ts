@@ -27,7 +27,6 @@ import {
 
 /**
  * Extract video URL from BytePlus API response.
- *
  * @param data - Parsed JSON response
  * @returns Video URL string, or undefined
  */
@@ -41,7 +40,6 @@ function extractVideoUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Extract cost from BytePlus API response usage field.
- *
  * @param data - Parsed JSON response
  * @returns Cost in USD, or 0 if usage data is missing
  */
@@ -53,12 +51,11 @@ function extractCost(data: Record<string, unknown>): number {
 
 /**
  * Generate a video asynchronously via BytePlus ModelArk API.
- *
  * @param prompt - Video description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,

@@ -41,12 +41,17 @@ const TEMPLATE_OPTIONS: { value: SpaceTemplate; label: string }[] = [
  * `canvas`. Validation is inline (empty name disables submit). Submit fires
  * `onCreate` and closes; the caller is responsible for navigation /
  * persistence.
+ * @param root0 - component props
+ * @param root0.open - whether the dialog is open
+ * @param root0.onOpenChange - called when the dialog requests an open/close change
+ * @param root0.onCreate - called with the entered name and chosen template on submit
+ * @returns the create-project dialog with a name field and template selector.
  */
 export function NewProjectDialog({
   open,
   onOpenChange,
   onCreate,
-}: NewProjectDialogProps) {
+}: NewProjectDialogProps): React.JSX.Element {
   const [name, setName] = React.useState('');
   const [template, setTemplate] = React.useState<SpaceTemplate>('canvas');
   const [touched, setTouched] = React.useState(false);
@@ -55,7 +60,11 @@ export function NewProjectDialog({
   const empty = trimmed.length === 0;
   const showError = touched && empty;
 
-  const submit = () => {
+  /**
+   * Mark the form touched, and if the name is non-empty fire `onCreate`,
+   * reset local fields, and close the dialog.
+   */
+  const submit = (): void => {
     setTouched(true);
     if (empty) return;
     onCreate({ name: trimmed, template });

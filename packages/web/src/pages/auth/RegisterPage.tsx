@@ -26,8 +26,10 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  * The recovery code is the ONLY recovery path on SMTP-less self-host
  * installs (`EMAIL_BACKEND=disabled`). The server only stores its
  * bcrypt hash — a missed save here is unrecoverable.
+ * @returns the registration form, or the recovery-code reveal dialog once
+ * registration has succeeded.
  */
-export default function RegisterPage() {
+export default function RegisterPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const setUser = useCurrentUserStore((s) => s.setUser);
@@ -44,7 +46,12 @@ export default function RegisterPage() {
   }>({});
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  /**
+   * Validate the fields client-side, register the account, mirror the new
+   * user into the store, and stash the returned recovery code to reveal.
+   * @param e - the form submit event, prevented so the page does not reload
+   */
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);
@@ -81,7 +88,11 @@ export default function RegisterPage() {
     }
   }
 
-  function handleContinue() {
+  /**
+   * Dismiss the recovery-code dialog and navigate to the studio after the
+   * user has acknowledged saving their code.
+   */
+  function handleContinue(): void {
     setRecoveryCode(null);
     navigate('/studio', { replace: true });
   }

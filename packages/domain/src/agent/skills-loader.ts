@@ -53,7 +53,6 @@ export class SkillRegistry {
 
   /**
    * Create a new SkillRegistry and load all built-in skills from disk.
-   *
    * @param skillsDir - Override the built-in skills directory path
    */
   constructor(private readonly skillsDir: string = BUILTIN_SKILLS_DIR) {
@@ -64,7 +63,6 @@ export class SkillRegistry {
 
   /**
    * Look up a skill by name.
-   *
    * @param name - The unique skill name
    * @returns The SkillMeta if found, or undefined
    */
@@ -78,7 +76,6 @@ export class SkillRegistry {
    * `skill_creator`, which grants file-system tools) must be blocked
    * from direct user invocation to prevent authenticated file-read /
    * file-write / RCE attacks. Returns `false` for unknown skills.
-   *
    * @param name - The unique skill name
    * @returns Whether an authenticated user may call this skill
    */
@@ -90,7 +87,6 @@ export class SkillRegistry {
 
   /**
    * Return all registered skills (user-invocable by default).
-   *
    * @returns An array of SkillMeta objects
    */
   list(): SkillMeta[] {
@@ -105,7 +101,6 @@ export class SkillRegistry {
 
   /**
    * Return all skills matching the given category.
-   *
    * @param category - The category to filter by (e.g. "image", "video")
    * @returns An array of matching SkillMeta objects
    */
@@ -121,7 +116,6 @@ export class SkillRegistry {
 
   /**
    * Return all skills matching the given scope.
-   *
    * @param scope - "agent" or "canvas"
    * @returns An array of matching SkillMeta objects
    */
@@ -137,7 +131,6 @@ export class SkillRegistry {
 
   /**
    * Return skills matching both scope and category.
-   *
    * @param scope - "agent" or "canvas"
    * @param category - Category filter (e.g. "image")
    * @returns Filtered SkillMeta array
@@ -160,7 +153,6 @@ export class SkillRegistry {
    *
    * Only includes name and description; full content is loaded on demand
    * via {@link loadSkillContent}.
-   *
    * @returns An XML string listing each skill with its availability status
    */
   buildSummaryXml(): string {
@@ -181,7 +173,6 @@ export class SkillRegistry {
 
   /**
    * Return concatenated SKILL.md bodies for all always-on skills.
-   *
    * @returns A string with all always-on skill content joined by horizontal rules
    */
   getAlwaysContent(): string {
@@ -204,10 +195,9 @@ export class SkillRegistry {
    * Strips YAML frontmatter and returns only the Markdown body.
    * For dynamic skills (e.g. `generate_image_plan`), replaces
    * `{available_models}` and `{available_modes}` with live data.
-   *
    * @param name - The unique skill name
    * @returns The Markdown body of the skill's SKILL.md
-   * @throws Error if the skill is not registered or SKILL.md is missing
+   * @throws {Error} if the skill is not registered or SKILL.md is missing
    */
   loadSkillContent(name: string): string {
     const meta = this.skills.get(name);
@@ -250,11 +240,10 @@ export class SkillRegistry {
 
   /**
    * Load a support file (references/, scripts/, assets/) for a skill.
-   *
    * @param name - The unique skill name
    * @param relativePath - Path relative to the skill root (e.g. "references/spec.md")
    * @returns The file content as a string
-   * @throws Error if the skill is not registered or the file is missing
+   * @throws {Error} if the skill is not registered or the file is missing
    */
   loadSkillFile(name: string, relativePath: string): string {
     const meta = this.skills.get(name);
@@ -322,7 +311,6 @@ export class SkillRegistry {
 
   /**
    * Read and return the Markdown body of a built-in skill's SKILL.md.
-   *
    * @param name - The built-in skill name (also its directory name)
    * @returns The Markdown body with frontmatter stripped, or null if missing
    */
@@ -337,7 +325,6 @@ export class SkillRegistry {
 
 /**
  * Load and parse metadata.json from a skill directory.
- *
  * @param skillDir - Path to the skill directory
  * @returns Parsed JSON object, or empty object if missing/invalid
  */
@@ -353,7 +340,6 @@ function loadMetadata(skillDir: string): Record<string, unknown> {
 
 /**
  * Parse YAML frontmatter from a SKILL.md file.
- *
  * @param text - Full file content potentially starting with `---` delimiters
  * @returns Parsed frontmatter fields, or empty object if none found
  */
@@ -366,7 +352,6 @@ function parseFrontmatter(text: string): Record<string, unknown> {
 
 /**
  * Remove YAML frontmatter delimited by `---` from text.
- *
  * @param text - Full file content potentially starting with frontmatter
  * @returns Text with frontmatter removed, leading newlines stripped
  */
@@ -381,7 +366,6 @@ function stripFrontmatter(text: string): string {
  * Check whether a skill's runtime dependencies are satisfied.
  *
  * Uses `which` to check for binaries on PATH (safe: no shell expansion).
- *
  * @param skill - The internal skill metadata
  * @returns True if all required binaries and env vars are present
  */
@@ -424,7 +408,6 @@ interface ParamInfo {
 
 /**
  * Format a list of model info dicts into a Markdown section with param tables.
- *
  * @param models - Model dicts from `listAvailableModels()`
  * @param modeLabels - Mapping of mode codes to display labels
  * @param emptyMsg - Fallback message when no models are available
@@ -489,7 +472,6 @@ let _modesConfigCache: Record<string, unknown> | null = null;
 
 /**
  * Load mode definitions from `config/models/modes.yaml`.
- *
  * @returns Parsed YAML keyed by modality
  */
 function loadModesConfig(): Record<string, unknown> {
@@ -504,7 +486,6 @@ function loadModesConfig(): Record<string, unknown> {
 
 /**
  * Extract mode code to display label mapping for a modality.
- *
  * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand"
  * @returns Mapping of mode codes to labels
  */
@@ -520,7 +501,6 @@ function getModeLabels(modality: string): Record<string, string> {
 
 /**
  * Build a Markdown Mode Selection section from `modes.yaml`.
- *
  * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand"
  * @param allowedModes - If provided, only include these mode codes. Null means all.
  * @returns A Markdown string with mode descriptions and selection guide
@@ -554,7 +534,6 @@ function buildModesSection(
  * Filter model list to only include models whose mode is in allowedModes.
  *
  * Handles both single-mode strings and multi-mode arrays.
- *
  * @param models - Model dicts from `listAvailableModels()`
  * @param allowedModes - Set of mode codes to keep
  * @returns Filtered list of model dicts
@@ -575,6 +554,11 @@ function filterModelsByModes(
 
 import { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
 
+/**
+ * Fetch the available models for a modality in the {@link ModelInfo} shape.
+ * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand".
+ * @returns The modality's available models.
+ */
 function getModelsForModality(modality: string): ModelInfo[] {
   return listAvailableModels(modality) as ModelInfo[];
 }
@@ -584,6 +568,11 @@ function getModelsForModality(modality: string): ModelInfo[] {
 const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(["t2i", "i2i"]);
 const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
 
+/**
+ * Build the `{available_models}` Markdown section for image plan skills,
+ * filtered to text-to-image and image-to-image modes.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildImageModelsSection(): string {
   const models = filterModelsByModes(getModelsForModality("image"), IMAGE_PLAN_MODES);
   return formatModelsSection(
@@ -593,6 +582,10 @@ function buildImageModelsSection(): string {
   );
 }
 
+/**
+ * Build the `{available_models}` Markdown section for audio plan skills.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildAudioModelsSection(): string {
   return formatModelsSection(
     getModelsForModality("audio"),
@@ -601,6 +594,11 @@ function buildAudioModelsSection(): string {
   );
 }
 
+/**
+ * Build the `{available_models}` Markdown section for video plan skills,
+ * filtered to text-to-video, image-to-video, and reference modes.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildVideoModelsSection(): string {
   const models = filterModelsByModes(getModelsForModality("video"), VIDEO_PLAN_MODES);
   return formatModelsSection(
@@ -610,6 +608,11 @@ function buildVideoModelsSection(): string {
   );
 }
 
+/**
+ * Build the `{available_models}` Markdown section for TTS plan skills,
+ * appending a per-model voices table when voices are defined.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildTtsModelsSection(): string {
   const models = getModelsForModality("tts");
   let base = formatModelsSection(
@@ -639,6 +642,10 @@ function buildTtsModelsSection(): string {
   return base;
 }
 
+/**
+ * Build the `{available_models}` Markdown section for 3D plan skills.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildThreeDModelsSection(): string {
   return formatModelsSection(
     getModelsForModality("three_d"),
@@ -647,6 +654,11 @@ function buildThreeDModelsSection(): string {
   );
 }
 
+/**
+ * Build the `{available_models}` Markdown section for the vision/understand
+ * analysis skill.
+ * @returns The Markdown models section, or a fallback message if none are available.
+ */
 function buildUnderstandModelsSection(): string {
   return formatModelsSection(
     getModelsForModality("understand"),
@@ -684,7 +696,6 @@ let _singleton: SkillRegistry | null = null;
 
 /**
  * Return the singleton SkillRegistry instance, creating it on first call.
- *
  * @returns The application-wide SkillRegistry
  */
 export function getSkillRegistry(): SkillRegistry {

@@ -9,8 +9,6 @@
  * canvas mutation locally). Backend does NOT mutate canvas — that's
  * frontend's job per spec §12.3 (user-driven control) + memory canvas
  * architecture (frontend owns node creation).
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";

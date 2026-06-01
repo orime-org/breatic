@@ -32,7 +32,6 @@ const RESOLUTION_MAP: Readonly<Record<string, number>> = {
  * the long edge to the target pixels and lets Topaz scale the short edge
  * proportionally. When source dimensions are missing, falls back to
  * setting output_width only.
- *
  * @param outputResolution - Target resolution key ("2k", "4k", "8k"), or undefined
  * @param sourceWidth - Original image width in pixels, or undefined
  * @param sourceHeight - Original image height in pixels, or undefined
@@ -61,7 +60,11 @@ function computeOutputDims(
   return { output_width: targetPx };
 }
 
-/** Build API params for topaz-upscale (Standard V2). */
+/**
+ * Build API params for topaz-upscale (Standard V2).
+ * @param params - Validated params carrying output resolution and source dimensions
+ * @returns The Standard V2 API params with computed output dimensions
+ */
 function buildUpscale(params: Record<string, unknown>): Record<string, unknown> {
   const outputResolution = params.output_resolution as string | undefined;
   const sourceWidth = params.source_width as number | undefined;
@@ -92,8 +95,7 @@ const BUILDERS: Readonly<Record<string, (params: Record<string, unknown>) => Rec
 
 /**
  * Build Topaz API request with provider-specific defaults.
- *
- * @param prompt - User's image description (used as guidance for creative model)
+ * @param _prompt - User's image description (unused — Topaz upscales an existing source image)
  * @param modelName - Resolved model name
  * @param params - Validated params from YAML
  * @returns Tuple of [prompt, apiParams]

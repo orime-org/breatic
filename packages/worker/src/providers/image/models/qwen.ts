@@ -25,7 +25,6 @@ const ALIGN = 64;
 
 /**
  * Convert aspect_ratio + resolution to pixel-format size string.
- *
  * @param aspectRatio - Ratio string like "16:9"
  * @param resolution - Resolution key like "1k"
  * @returns Size string like "1024*640"
@@ -51,9 +50,8 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert aspect_ratio + resolution to size, keep text prompt.
- *
  * @param prompt - User's image description
- * @param modelName - Resolved model name
+ * @param _modelName - Resolved model name (unused; request shaping is the same across Qwen models)
  * @param params - Validated params with aspect_ratio, resolution, image, seed
  * @returns Tuple of [textPrompt, apiParamsWithSize]
  */

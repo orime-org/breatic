@@ -18,7 +18,6 @@ import { join } from "node:path";
 
 /**
  * Create a fresh per-job temp directory.
- *
  * @param jobId - BullMQ job id (used as prefix for debuggability)
  * @returns Absolute path to the new directory
  */
@@ -32,7 +31,6 @@ export async function createJobTempDir(jobId: string): Promise<string> {
  * errors are swallowed with a best-effort log (the caller is usually
  * inside a `finally` on a hot path, and we don't want cleanup
  * failures to mask the real error).
- *
  * @param dir - Absolute directory path returned by `createJobTempDir`
  */
 export async function cleanupJobTempDir(dir: string): Promise<void> {

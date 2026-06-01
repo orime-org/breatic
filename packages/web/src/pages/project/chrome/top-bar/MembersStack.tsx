@@ -38,6 +38,11 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
   view: 'role.viewer',
 };
 
+/**
+ * Derives up-to-two uppercase initials from a member's display name.
+ * @param name - Member display name to abbreviate.
+ * @returns the initials, or `?` when the name is empty.
+ */
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -74,16 +79,26 @@ export const MembersStack = React.forwardRef<
     null,
   );
 
-  const openInvite = () => {
+  /**
+   * Closes the popover and opens the share dialog to invite collaborators.
+   */
+  const openInvite = (): void => {
     setOpen(false);
     setShareOpen(true);
   };
-  const openManage = () => {
+  /**
+   * Closes the popover and opens the members-management modal.
+   */
+  const openManage = (): void => {
     setOpen(false);
     setActiveOverlayId('members-modal');
   };
 
-  async function handleRemove(member: Member) {
+  /**
+   * Removes a member from the project, showing a success or error toast.
+   * @param member - Member to remove.
+   */
+  async function handleRemove(member: Member): Promise<void> {
     if (pendingRemoveId) return;
     setPendingRemoveId(member.id);
     try {
@@ -197,7 +212,21 @@ interface MemberRowProps {
   removePending: boolean;
 }
 
-function MemberRow({ member, isMe, onRemove, removePending }: MemberRowProps) {
+/**
+ * One member row inside the stack popover — avatar, name/email, role badge or remove button.
+ * @param root0 - Member row props.
+ * @param root0.member - Member rendered by this row.
+ * @param root0.isMe - Whether this row is the current viewer (shows a role badge instead of remove).
+ * @param root0.onRemove - Called when the viewer removes this member.
+ * @param root0.removePending - Whether the remove request for this member is in flight (disables the button).
+ * @returns the popover member row with its role badge or remove control.
+ */
+function MemberRow({
+  member,
+  isMe,
+  onRemove,
+  removePending,
+}: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
@@ -252,6 +281,14 @@ function MemberRow({ member, isMe, onRemove, removePending }: MemberRowProps) {
   );
 }
 
+/**
+ * Small overlapping avatar bubble used in the trigger's stacked member preview.
+ * @param root0 - Avatar chip props.
+ * @param root0.initials - Text to display; sliced to two uppercase characters.
+ * @param root0.muted - Whether to render the muted overflow style (e.g. the `+N` chip).
+ * @param root0.style - Inline style for stacking offset and z-index.
+ * @returns the stacked avatar bubble.
+ */
 function AvatarChip({
   initials,
   muted,
@@ -260,7 +297,7 @@ function AvatarChip({
   initials: string;
   muted?: boolean;
   style?: React.CSSProperties;
-}) {
+}): React.JSX.Element {
   return (
     <Avatar
       style={{
@@ -280,7 +317,11 @@ function AvatarChip({
   );
 }
 
-function Chevron() {
+/**
+ * Small chevron-down glyph shown after the avatar stack on the trigger.
+ * @returns the inline chevron-down SVG icon.
+ */
+function Chevron(): React.JSX.Element {
   return (
     <svg
       width='14'

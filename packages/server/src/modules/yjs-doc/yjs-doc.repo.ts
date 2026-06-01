@@ -35,7 +35,6 @@ type Tx = PgTransaction<any, any, any>;
  * Soft-delete the `yjs_documents` row that backs the named Yjs doc.
  *
  * No-op if the row is already soft-deleted or does not exist (idempotent).
- *
  * @param docName - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
  * @returns `true` if a row was newly soft-deleted, `false` otherwise
  */
@@ -69,7 +68,6 @@ export async function softDeleteByName(docName: string): Promise<boolean> {
  * creation is the only caller and `project.id` is freshly generated,
  * collisions don't happen in practice. The function does NOT swallow
  * the error — the caller's transaction must roll back.
- *
  * @param tx - Drizzle transaction handle from a surrounding
  *   `db.transaction(async tx => ...)` block
  * @param docName - Full Hocuspocus doc name (use the helpers in

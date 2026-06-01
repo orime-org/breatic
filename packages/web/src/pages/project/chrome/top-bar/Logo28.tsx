@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 /**
@@ -13,8 +14,9 @@ import { Link } from 'react-router-dom';
  *
  * Geometry: viewBox `-50 -50 100 100`, `g scale(1,-1)` y-flip. Each
  * element sets fill/stroke explicitly (raster backend compatibility).
+ * @returns the brand logo as a home link wrapping the inlined SVG mark.
  */
-export function Logo28() {
+export function Logo28(): React.JSX.Element {
   return (
     <Link to='/studio' aria-label='Home' className='inline-flex items-center'>
       <svg

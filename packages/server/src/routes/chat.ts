@@ -39,6 +39,9 @@ import type { ChatAttachedChip } from "@breatic/shared";
  * the user's plain text. The LLM receives one combined user message:
  * the context block followed by the user's raw text. When chips is
  * empty (default for non-v13 clients) this is a no-op pass-through.
+ * @param chips - The canvas chips attached to the message, each carrying a name, type, and data snapshot.
+ * @param message - The user's raw chat text.
+ * @returns The message unchanged when no chips are attached; otherwise a combined prelude block of serialized chips followed by the user message.
  */
 function formatChipsForLLM(
   chips: readonly ChatAttachedChip[],
@@ -63,7 +66,6 @@ chat.use("*", requireAuth);
  *
  * Gets or creates a conversation, instantiates the MainAgent,
  * and streams SSE events from `agent.chat()` to the client.
- *
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
@@ -126,7 +128,6 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
  *
  * Same streaming pattern as `/message`, but uses
  * `agent.handleSkillCommand()` for skill-specific execution.
- *
  * @param c - Hono context with validated `skillCommandSchema` body
  * @returns SSE text/event-stream response
  */
@@ -196,7 +197,6 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
  *
  * Optional `project_id` query scopes the result to one project so the
  * frontend doesn't have to client-side filter a paginated response.
- *
  * @param c - Hono context with pagination + optional `project_id`
  * @returns Array of conversation entities
  */
@@ -217,10 +217,9 @@ chat.get(
 
 /**
  * `GET /chat/conversations/:id` — fetch a conversation with messages.
- *
  * @param c - Hono context with conversation ID param
  * @returns Conversation entity and its message history
- * @throws `404` if not found, `403` if not the owner
+ * @throws {AppError} `404` if not found, `403` if not the owner
  */
 chat.get("/conversations/:id", async (c) => {
   const user = c.get("user");
@@ -231,10 +230,9 @@ chat.get("/conversations/:id", async (c) => {
 
 /**
  * `DELETE /chat/conversations/:id` — delete a conversation.
- *
  * @param c - Hono context with conversation ID param
  * @returns `200` with success message
- * @throws `404` if not found, `403` if not the owner
+ * @throws {AppError} `404` if not found, `403` if not the owner
  */
 chat.delete("/conversations/:id", async (c) => {
   const user = c.get("user");

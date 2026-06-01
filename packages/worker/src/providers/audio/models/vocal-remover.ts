@@ -17,7 +17,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for Vocal Remover.
- *
  * @param prompt - Unused for audio separation
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params (audio URL, mode)
