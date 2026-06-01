@@ -39,7 +39,7 @@ import {
   type ProjectMessageKind,
 } from "@breatic/shared";
 
-import { createLogger } from "@collab/logger.js";
+import { createLogger } from "@collab/infra/logger.js";
 
 const logger = createLogger("space-rpc");
 

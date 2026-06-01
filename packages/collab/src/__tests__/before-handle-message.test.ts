@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
-import { checkWriteAuthz, WriteAuthzError } from "../before-handle-message.js";
+import { checkWriteAuthz, WriteAuthzError } from "../hooks/before-handle-message.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const META = `project-${PID}/meta`;

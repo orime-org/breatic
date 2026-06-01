@@ -40,7 +40,7 @@ import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
-import { createLogger } from "@collab/logger.js";
+import { createLogger } from "@collab/infra/logger.js";
 
 /**
  * Auth hook logger - every onAuthenticate decision (success or

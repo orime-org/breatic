@@ -18,7 +18,7 @@ import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 import type postgres from "postgres";
 
-import { handleSpaceRpc } from "../space-rpc.js";
+import { handleSpaceRpc } from "../services/space-rpc.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";

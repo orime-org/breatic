@@ -124,7 +124,7 @@ import { runTask } from "@breatic/worker/src/handlers.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers.js";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { startTaskListener } from "@breatic/collab/src/task-listener.js";
+import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 initCore(process.env);

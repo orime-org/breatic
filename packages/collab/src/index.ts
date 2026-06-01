@@ -16,13 +16,13 @@ import {
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
-import { buildCollabHealthChecks } from "@collab/health-checks.js";
-import { createLogger } from "@collab/logger.js";
+import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
+import { createLogger } from "@collab/infra/logger.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
-import { startTaskListener } from "@collab/task-listener.js";
-import { startMembersSync } from "@collab/members-sync.js";
+import { startTaskListener } from "@collab/services/task-listener.js";
+import { startMembersSync } from "@collab/services/members-sync.js";
 import { getCollabConfig } from "@collab/config.js";
-import { checkCollabInfraReady } from "@collab/connectivity-check.js";
+import { checkCollabInfraReady } from "@collab/infra/connectivity-check.js";
 
 const logger = createLogger("main");
 
