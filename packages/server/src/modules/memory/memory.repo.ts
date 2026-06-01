@@ -21,7 +21,11 @@ import { ConflictError } from "@breatic/core";
 
 // ── Conversation Memory ──────────────────────────────────────────────
 
-/** Get conversation memory content. */
+/**
+ * Get conversation memory content.
+ * @param conversationId - ID of the conversation whose memory is fetched.
+ * @returns The stored memory content, or an empty string if none exists.
+ */
 export async function getConversationMemory(conversationId: string): Promise<string> {
   const rows = await db
     .select({ content: conversationMemories.content })
@@ -31,7 +35,11 @@ export async function getConversationMemory(conversationId: string): Promise<str
   return rows[0]?.content ?? "";
 }
 
-/** Upsert conversation memory (no versioning). */
+/**
+ * Upsert conversation memory (no versioning).
+ * @param conversationId - ID of the conversation to write memory for.
+ * @param content - New memory content to store, replacing any existing value.
+ */
 export async function upsertConversationMemory(
   conversationId: string,
   content: string,
@@ -45,14 +53,22 @@ export async function upsertConversationMemory(
     });
 }
 
-/** Append a consolidation history entry. */
+/**
+ * Append a consolidation history entry.
+ * @param conversationId - ID of the conversation the history entry belongs to.
+ * @param entry - Serialized history record describing a consolidation event.
+ */
 export async function appendHistory(conversationId: string, entry: string): Promise<void> {
   await db.insert(memoryHistoryEntries).values({ conversationId, entry });
 }
 
 // ── User Memory (Optimistic Locking) ─────────────────────────────────
 
-/** Get user memory content. */
+/**
+ * Get user memory content.
+ * @param userId - ID of the user whose cross-project memory is fetched.
+ * @returns The stored memory content, or an empty string if none exists.
+ */
 export async function getUserMemory(userId: string): Promise<string> {
   const rows = await db
     .select({ content: userMemories.content })
@@ -62,7 +78,11 @@ export async function getUserMemory(userId: string): Promise<string> {
   return rows[0]?.content ?? "";
 }
 
-/** Get user memory version for optimistic locking. */
+/**
+ * Get user memory version for optimistic locking.
+ * @param userId - ID of the user whose memory version is fetched.
+ * @returns The current version number, or 0 if no memory row exists yet.
+ */
 export async function getUserMemoryVersion(userId: string): Promise<number> {
   const rows = await db
     .select({ version: userMemories.version })
@@ -74,7 +94,9 @@ export async function getUserMemoryVersion(userId: string): Promise<number> {
 
 /**
  * Upsert user memory with optimistic locking.
- *
+ * @param userId - ID of the user whose memory is written.
+ * @param content - New memory content to store.
+ * @param expectedVersion - Version the caller read; 0 inserts a fresh row, otherwise the update only succeeds if it still matches.
  * @throws {ConflictError} If the version doesn't match (concurrent update)
  */
 export async function upsertUserMemory(
@@ -101,7 +123,12 @@ export async function upsertUserMemory(
   }
 }
 
-/** Append a user memory entry (audit log). */
+/**
+ * Append a user memory entry (audit log).
+ * @param userId - ID of the user the entry belongs to.
+ * @param content - Memory text captured for this entry.
+ * @param sourceConversationId - Optional ID of the conversation that produced the entry.
+ */
 export async function appendUserEntry(
   userId: string,
   content: string,
@@ -116,7 +143,11 @@ export async function appendUserEntry(
 
 // ── Project Memory (Optimistic Locking) ──────────────────────────────
 
-/** Get project memory content. */
+/**
+ * Get project memory content.
+ * @param projectId - ID of the project whose shared memory is fetched.
+ * @returns The stored memory content, or an empty string if none exists.
+ */
 export async function getProjectMemory(projectId: string): Promise<string> {
   const rows = await db
     .select({ content: projectMemories.content })
@@ -126,7 +157,11 @@ export async function getProjectMemory(projectId: string): Promise<string> {
   return rows[0]?.content ?? "";
 }
 
-/** Get project memory version for optimistic locking. */
+/**
+ * Get project memory version for optimistic locking.
+ * @param projectId - ID of the project whose memory version is fetched.
+ * @returns The current version number, or 0 if no memory row exists yet.
+ */
 export async function getProjectMemoryVersion(projectId: string): Promise<number> {
   const rows = await db
     .select({ version: projectMemories.version })
@@ -138,7 +173,9 @@ export async function getProjectMemoryVersion(projectId: string): Promise<number
 
 /**
  * Upsert project memory with optimistic locking.
- *
+ * @param projectId - ID of the project whose memory is written.
+ * @param content - New memory content to store.
+ * @param expectedVersion - Version the caller read; 0 inserts a fresh row, otherwise the update only succeeds if it still matches.
  * @throws {ConflictError} If the version doesn't match (concurrent update)
  */
 export async function upsertProjectMemory(
@@ -163,7 +200,13 @@ export async function upsertProjectMemory(
   }
 }
 
-/** Append a project memory entry (audit log). */
+/**
+ * Append a project memory entry (audit log).
+ * @param projectId - ID of the project the entry belongs to.
+ * @param authorId - ID of the collaborator who authored the entry.
+ * @param content - Memory text captured for this entry.
+ * @param sourceConversationId - Optional ID of the conversation that produced the entry.
+ */
 export async function appendProjectEntry(
   projectId: string,
   authorId: string,

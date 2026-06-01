@@ -30,6 +30,8 @@ import { parseConfig, type CoreConfig } from "@core/config/schema.js";
  * (`packages/core/src/config/`) and compiled (`packages/core/dist/`).
  * Reads the filesystem + `process.cwd()` - NOT `process.env` - so it
  * stays within the "no env reads" mandate (cwd is not configuration).
+ * @returns the absolute path to the monorepo root, falling back to
+ *   `process.cwd()` when the workspace marker is not found
  */
 function findMonorepoRoot(): string {
   let dir = import.meta.dirname;
@@ -63,7 +65,6 @@ let _rawEnv: Record<string, string | undefined> | null = null;
  * startup, before any other `@breatic/core` code runs. The raw map
  * is validated via {@link parseConfig}; on failure this throws (the
  * entry's top-level catch logs + exits).
- *
  * @param rawEnv - The application's `process.env` (the entry owns the
  *   read; core only processes the map it is handed).
  * @returns The validated config (also retrievable via {@link getConfig}).
@@ -76,8 +77,8 @@ export function initCore(rawEnv: Record<string, string | undefined>): CoreConfig
 
 /**
  * The validated core configuration.
- *
- * @throws Error if accessed before {@link initCore} has run.
+ * @returns the validated config injected by {@link initCore}
+ * @throws {Error} if accessed before {@link initCore} has run.
  */
 export function getConfig(): CoreConfig {
   if (_config === null) {
@@ -97,8 +98,8 @@ export function getConfig(): CoreConfig {
  * required env var, the host `PATH` / `HOME` forwarded to the agent
  * script sandbox). Returns `undefined` if not set or before
  * {@link initCore} runs (callers treat absence as "not configured").
- *
  * @param name - The environment variable name.
+ * @returns the raw value, or `undefined` if unset or before {@link initCore} ran
  */
 export function getRawEnvVar(name: string): string | undefined {
   return _rawEnv?.[name];

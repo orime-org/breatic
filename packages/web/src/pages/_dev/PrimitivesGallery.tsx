@@ -73,7 +73,11 @@ import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip'
 
 import { usePreferencesStore } from '@web/stores';
 
-export default function PrimitivesGallery() {
+/**
+ * @returns the dev-only primitives gallery page used to verify design tokens
+ * across light and dark themes.
+ */
+export default function PrimitivesGallery(): React.JSX.Element {
   const theme = usePreferencesStore((s) => s.theme);
   const setTheme = usePreferencesStore((s) => s.setTheme);
 
@@ -371,13 +375,20 @@ export default function PrimitivesGallery() {
   );
 }
 
+/**
+ * Titled section wrapper for grouping related primitives in the gallery.
+ * @param root0 - component props
+ * @param root0.title - the section heading
+ * @param root0.children - the primitives rendered inside the section
+ * @returns a bordered card section with an uppercase heading.
+ */
 function Section({
   title,
   children,
 }: {
   title: string;
   children: React.ReactNode;
-}) {
+}): React.JSX.Element {
   return (
     <section className='rounded-content-md border border-border bg-card p-4'>
       <h2 className='mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground'>

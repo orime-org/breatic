@@ -49,6 +49,8 @@ export interface NewNotificationInput {
  * Keeps the Drizzle `$inferSelect` type contained inside the repo
  * (prohibition #3 / lint:no-drizzle-type-leak) — callers see the
  * hand-written entity only.
+ * @param row - Raw `notifications` table row from a Drizzle select
+ * @returns The mapped domain entity (keeps `$inferSelect` out of callers)
  */
 function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
   return {
@@ -69,10 +71,11 @@ function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
  *
  * Caller is the per-type service constructor (e.g.
  * `createRoleUpgradeRequest`) — see {@link notification.service}.
- *
+ * @param input - User, type, payload, and optional project scope to insert
  * @param tx - optional drizzle transaction; threaded so caller can
  *   bundle the INSERT with related writes (e.g. project_members
  *   role bump + 2 notifications in one TX).
+ * @returns The inserted notification entity
  */
 export async function create(
   input: NewNotificationInput,
@@ -100,6 +103,9 @@ export async function create(
  *
  * Hot path for BellMenu — the `notifications_user_unread_idx` index
  * covers this WHERE clause.
+ * @param userId - Inbox owner whose unread notifications to fetch
+ * @param limit - Maximum rows to return (defaults to 50)
+ * @returns Unread notifications, newest first
  */
 export async function listUnreadByUser(
   userId: string,
@@ -123,6 +129,9 @@ export async function listUnreadByUser(
 /**
  * List all (read + unread) notifications for a user, newest first.
  * Used by the "see all" view when the user wants to scroll history.
+ * @param userId - Inbox owner whose full history to fetch
+ * @param limit - Maximum rows to return (defaults to 100)
+ * @returns Read and unread notifications, newest first
  */
 export async function listAllByUser(
   userId: string,
@@ -146,7 +155,8 @@ export async function listAllByUser(
  * Mark a single notification as read. The `userId` guard prevents
  * one user from marking another's notification (defense in depth on
  * top of the route-layer auth).
- *
+ * @param id - Notification UUID to mark read
+ * @param userId - Owner guard; only this user's row is updated
  * @returns true if a row was updated (i.e. the notification was
  *   unread and owned by `userId`); false otherwise.
  */
@@ -171,7 +181,7 @@ export async function markRead(
 
 /**
  * Mark all of a user's unread notifications as read.
- *
+ * @param userId - Inbox owner whose unread notifications to clear
  * @returns count of rows updated.
  */
 export async function markAllRead(userId: string): Promise<number> {
@@ -191,6 +201,8 @@ export async function markAllRead(userId: string): Promise<number> {
 
 /**
  * Count unread notifications for a user — drives the red-dot badge.
+ * @param userId - Inbox owner whose unread notifications to count
+ * @returns Number of unread, non-deleted notifications
  */
 export async function countUnread(userId: string): Promise<number> {
   const rows = await db
@@ -210,6 +222,8 @@ export async function countUnread(userId: string): Promise<number> {
  * Find a notification by id (no user gate — caller is the service
  * layer which already authenticated the user). Returns null on
  * miss or soft-deleted.
+ * @param id - Notification UUID to look up
+ * @returns The notification entity, or null if missing / soft-deleted
  */
 export async function findById(
   id: string,

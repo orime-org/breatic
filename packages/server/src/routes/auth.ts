@@ -27,7 +27,14 @@ import {
 import { logMailResult } from "@server/utils/log-mail.js";
 import type { MiddlewareHandler } from "hono";
 
-/** Rate limit middleware factory. */
+/**
+ * Rate limit middleware factory.
+ * @param opts - Limiter configuration.
+ * @param opts.prefix - Redis key prefix identifying the limited action (e.g. `login`, `register`).
+ * @param opts.max - Maximum allowed requests per window.
+ * @param opts.windowSeconds - Sliding window length in seconds.
+ * @returns A Hono middleware that limits per client IP and returns 429 with a `Retry-After` header when exceeded.
+ */
 function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
   return async (c, next) => {
     const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -53,6 +60,10 @@ const auth = new Hono<{ Variables: AuthVariables }>();
  * installs without Google OAuth can boot without `GOOGLE_CLIENT_ID`.
  */
 let _googleClient: OAuth2Client | null = null;
+/**
+ * Lazily build and cache the Google OAuth2 client from `GOOGLE_CLIENT_ID`.
+ * @returns The cached {@link OAuth2Client}, constructed on first use.
+ */
 function getGoogleClient(): OAuth2Client {
   if (!_googleClient) {
     _googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
@@ -72,10 +83,9 @@ function getGoogleClient(): OAuth2Client {
  * Session is delivered as an httpOnly `breatic_session` cookie (the
  * frontend never sees the raw token - XSS cannot exfiltrate it).
  * Response body returns the user plus the one-time `recoveryCode`.
- *
  * @param c - Hono context with validated `registerSchema` body
  * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
- * @throws `409` if email is already registered
+ * @throws {AppError} `409` if email is already registered
  */
 auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
   const { email, password, name } = c.req.valid("json");
@@ -95,10 +105,9 @@ auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3
  *
  * Session is delivered as an httpOnly cookie (see `/register` for
  * rationale); response body returns only the user.
- *
  * @param c - Hono context with validated `loginSchema` body
  * @returns `200` with `{ user }` on success + Set-Cookie
- * @throws `401` if credentials are invalid
+ * @throws {AppError} `401` if credentials are invalid
  */
 auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
@@ -113,7 +122,6 @@ auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), z
  * `POST /auth/logout` - invalidate the current session.
  *
  * Requires a valid Bearer token in the Authorization header.
- *
  * @param c - Hono context with authenticated user
  * @returns `200` with `{ message: "Logged out" }`
  */
@@ -137,11 +145,10 @@ const googleAuthSchema = z.object({
  * who registers `victim@gmail.com` at an identity provider that
  * federates to Google (and doesn't verify ownership) cannot claim
  * someone else's email.
- *
  * @param c - Hono context with Google credential in body
  * @returns `200` with `{ data: { user, token } }`
- * @throws `401` if the credential is invalid, expired, or unverified
- * @throws `503` if Google OAuth is not configured on this server
+ * @throws {AppError} `401` if the credential is invalid, expired, or unverified
+ * @throws {AppError} `503` if Google OAuth is not configured on this server
  */
 auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
@@ -198,7 +205,6 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
 
 /**
  * `GET /auth/me` - get the current authenticated user.
- *
  * @param c - Hono context with authenticated user
  * @returns `200` with `{ data: UserEntity }`
  */
@@ -294,9 +300,8 @@ const resetWithRecoveryCodeSchema = z.object({
  * Rate limited 5/hour per IP to slow online code-guessing attacks
  * (80 bits of entropy makes offline infeasible already, but rate
  * limit hardens the online surface).
- *
  * @returns `200` with `{ data: { newRecoveryCode } }`
- * @throws `401` on any failure (uniform: email-not-found / code-used /
+ * @throws {AppError} `401` on any failure (uniform: email-not-found / code-used /
  *   code-mismatch all surface as "Invalid email or recovery code"
  *   to avoid leaking which condition matched)
  */
@@ -333,9 +338,8 @@ const verifyEmailSchema = z.object({
  * email; user clicks the link, frontend POSTs the token here. On
  * success the user's `email_verified` flips true and the Redis key
  * is deleted (single-use).
- *
  * @returns `200` on success
- * @throws `401` if the token is invalid / expired / already consumed
+ * @throws {AppError} `401` if the token is invalid / expired / already consumed
  */
 auth.post(
   "/verify-email",
@@ -356,7 +360,6 @@ auth.post(
  *
  * Rate-limited 1/min per user (prevents flooding inboxes). No-op for
  * already-verified users - returns success without sending.
- *
  * @returns `200` on success (even if user already verified, to keep
  *   the UX simple - frontend can just say "check your inbox").
  */

@@ -24,7 +24,6 @@ export const MODELS: ReadonlySet<string> = new Set([
  * Convert user-facing params to API params for ElevenLabs audio models.
  *
  * Renames `prompt` to `text` to match ElevenLabs API naming.
- *
  * @param prompt - User's audio description
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

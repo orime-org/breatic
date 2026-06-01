@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import {
   Sheet,
   SheetContent,
@@ -47,6 +49,9 @@ export interface RelativeTime {
  * Bucket an ISO timestamp into a relative-time key + params, so callers
  * can `t(rel.key, rel.params)` to render the localized label. Falls back
  * to ISO date when the timestamp is older than a year (or unparseable).
+ * @param iso - The ISO timestamp of the latest message.
+ * @param now - The reference "now" epoch in ms (defaults to current time).
+ * @returns The relative-time key plus optional ICU plural params.
  */
 function relativeTime(iso: string, now = Date.now()): RelativeTime {
   const parsed = Date.parse(iso);
@@ -85,6 +90,13 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
  * Active state uses `bg-accent` row highlight + `bg-foreground` dot
  * (neutral, no brand) per ADR 14 brand-guard policy — Direction B
  * Tweaks ground truth: neutral-first, no brand-red accents in chrome.
+ * @param root0 - The component props.
+ * @param root0.open - Whether the history sheet is open.
+ * @param root0.onOpenChange - Called with the next open state when the sheet toggles.
+ * @param root0.conversations - The conversation summaries to list.
+ * @param root0.activeId - The id of the currently active conversation, if any.
+ * @param root0.onPick - Called with a conversation id when a row is selected.
+ * @returns The left-side sheet listing the project's previous conversations.
  */
 export function ConversationHistorySheet({
   open,
@@ -92,7 +104,7 @@ export function ConversationHistorySheet({
   conversations,
   activeId,
   onPick,
-}: ConversationHistorySheetProps) {
+}: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

@@ -2,7 +2,8 @@
 
 Overview of the breatic monorepo and its 3 runtime services. For frontend
 details see [frontend.md](./frontend.md). Behaviour mandates (DD / TDD /
-coding conventions) live in `CLAUDE.md` at the repo root.
+coding conventions) live in `CLAUDE.md` at the repo root; the
+function-definition format spec is in [coding-standards.md](./coding-standards.md).
 
 ## Product
 

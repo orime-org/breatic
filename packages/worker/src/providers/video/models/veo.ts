@@ -25,6 +25,10 @@ export const MODELS: ReadonlySet<string> = new Set([
  * Build WaveSpeed API params for VEO models.
  *
  * WaveSpeed uses snake_case names matching our YAML -- mostly pass-through.
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; WaveSpeed mapping is model-agnostic)
+ * @param params - Validated params, passed through unchanged
+ * @returns Tuple of [prompt, apiParams] in WaveSpeed format
  */
 function buildWavespeed(
   prompt: string,
@@ -42,6 +46,10 @@ function buildWavespeed(
  * - `generate_audio` -> `generateAudio`
  * - `negative_prompt` -> `negativePrompt`
  * - `aspect_ratio` -> `aspectRatio`
+ * @param prompt - User's video description, returned unchanged
+ * @param _modelName - Resolved model name (unused; Google mapping is model-agnostic)
+ * @param params - Validated params to map into Google official naming
+ * @returns Tuple of [prompt, apiParams] in Google official format
  */
 function buildGoogle(
   prompt: string,
@@ -83,7 +91,6 @@ function buildGoogle(
 
 /**
  * Convert user-facing params to provider-specific API params.
- *
  * @param prompt - User's video description
  * @param modelName - Resolved model name (e.g. "veo-3.1")
  * @param params - Validated params from YAML defaults + user input

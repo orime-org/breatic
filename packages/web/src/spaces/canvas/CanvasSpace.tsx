@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import type { SpaceBodyProps } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -20,8 +22,15 @@ import { useTranslation } from '@web/i18n/use-translation';
  * wiring lands in later PRs; this PR just gets the surface visually
  * correct so chrome layered components (LeftFloatingMenu /
  * ViewportToolbar) sit on the mock-aligned canvas.
+ * @param root0 - Space body props supplied by the project space outlet.
+ * @param root0.spaceId - ID of the canvas space, stamped on the root element for selectors.
+ * @param root0.projectId - ID of the owning project, stamped on the root element for selectors.
+ * @returns The canvas surface element (dot-grid background plus empty-state hint).
  */
-export function CanvasSpace({ spaceId, projectId }: SpaceBodyProps) {
+export function CanvasSpace({
+  spaceId,
+  projectId,
+}: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div

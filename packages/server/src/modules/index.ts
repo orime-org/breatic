@@ -1,7 +1,7 @@
 /**
- * @server module barrel - server-private domain SERVICES only.
+ * `@server` module barrel - server-private domain SERVICES only.
  *
- * These moved out of @breatic/core in the modular-monolith convergence
+ * These moved out of `@breatic/core` in the modular-monolith convergence
  * (ADR backend convergence to a modular monolith): only server uses them. core keeps the
  * SHARED services (credit / task / node-history) + infra + schema.
  *

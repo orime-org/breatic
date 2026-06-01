@@ -34,7 +34,6 @@ export interface StorageAdapter {
    * Generate a presigned PUT URL for client-side direct upload.
    *
    * Not supported by local storage — throws if called.
-   *
    * @param key - Storage key where the client will PUT the file
    * @param contentType - Expected MIME type
    * @param expiresSeconds - URL lifetime in seconds
@@ -47,7 +46,6 @@ export interface StorageAdapter {
 
   /**
    * Inspect an object by key — used to verify an upload completed.
-   *
    * @returns `{ size, contentType, exists }`. If the object does not
    *          exist, `exists` is `false` and other fields are zero/empty.
    */
@@ -63,7 +61,10 @@ export interface StorageAdapter {
 // Singleton
 let _adapter: StorageAdapter | null = null;
 
-/** Get the configured storage adapter singleton. */
+/**
+ * Get the configured storage adapter singleton.
+ * @returns the adapter selected by `STORAGE_PROVIDER` (local / s3 / aliyun_oss)
+ */
 export async function getStorageAdapter(): Promise<StorageAdapter> {
   if (_adapter) return _adapter;
 
@@ -93,11 +94,12 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
  *
  * Format (with user): {userId}/{projectId}/{taskType}/{date}/{unixtime}_{uuid}{ext}
  * Format (without user): {taskType}/{date}/{unixtime}_{uuid}{ext}
- *
+ * @param opts - the key components (user / project / task type / extension)
  * @param opts.userId - User ID (optional — omit for transport-level uploads)
  * @param opts.projectId - Project ID (defaults to "default")
  * @param opts.taskType - Task type (image, video, audio, tts, etc.)
  * @param opts.ext - File extension (e.g. ".png", ".mp4")
+ * @returns the unique storage key path for the object
  */
 export function storageKey(opts: {
   userId?: string;
@@ -117,6 +119,9 @@ export function storageKey(opts: {
 /**
  * Download from temporary URL and persist to storage.
  * Delegates to adapter's persistFromUrl().
+ * @param url - the temporary source URL to download from
+ * @param key - the storage key to persist the object under
+ * @returns the permanent public URL of the persisted object
  */
 export async function downloadAndStore(url: string, key: string): Promise<string> {
   const adapter = await getStorageAdapter();

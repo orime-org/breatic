@@ -83,7 +83,6 @@ projectInviteLinks.use(requireAuth);
  *
  * Owner only. Server generates the token + 32-byte base64url. If
  * `invitee_email` is provided, dispatches `shareInvite` mail.
- *
  * @returns `201` with `{ data: ShareLink }`
  */
 projectInviteLinks.post(
@@ -198,10 +197,28 @@ interface BaseCtx {
   req: { header(name: string): string | undefined };
 }
 
+/**
+ * Resolve the request origin used to build absolute invite URLs.
+ * @param c - The request context, read for the `Origin` header.
+ * @param fallback - The origin to use when the `Origin` header is absent.
+ * @returns The `Origin` header value, or `fallback` when it is missing.
+ */
 function originFrom(c: BaseCtx, fallback: string): string {
   return c.req.header("Origin") ?? fallback;
 }
 
+/**
+ * Build and send the share-invite email for a freshly created invite link.
+ * @param c - The request context, used to derive the origin for the invite URL.
+ * @param projectId - The project the invitee is being invited to.
+ * @param inviterUserId - The user who created the invite; resolved for the inviter's display name.
+ * @param link - The created invite link details.
+ * @param link.token - The invite token embedded in the `/invite/:token` URL.
+ * @param link.role - The project role the invitee will receive.
+ * @param link.kind - Whether the link is bound to a specific email (`email`) or open (`link`).
+ * @param link.boundEmail - The email the link is bound to, or `null` for open links.
+ * @param inviteeEmail - The recipient address for the invite email.
+ */
 async function dispatchInviteeMail(
   c: BaseCtx,
   projectId: string,

@@ -48,6 +48,11 @@ interface ShareDialogProps {
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type GrantableRole = 'view' | 'edit';
 
+/**
+ * Builds the public invite URL for a link token, preferring the current origin.
+ * @param token - Invite link token to embed in the URL path.
+ * @returns the absolute `/invite/:token` URL.
+ */
 function inviteUrlFor(token: string): string {
   if (typeof window !== 'undefined' && window.location.origin) {
     return `${window.location.origin}/invite/${token}`;
@@ -76,8 +81,15 @@ function inviteUrlFor(token: string): string {
  *
  * Invite address is email-only (per user 2026-05-28 decision):
  * usernames are mutable and can't serve as a stable invite identifier.
+ * @param root0 - Share dialog props.
+ * @param root0.projectId - Id of the project being shared; all invite/link calls target it.
+ * @param root0.emailEnabled - Whether the email-invite section is enabled; defaults to `true`.
+ * @returns the share trigger button, its popover with the invite/link flows, and the links list dialog.
  */
-export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps) {
+export function ShareDialog({
+  projectId,
+  emailEnabled = true,
+}: ShareDialogProps): React.JSX.Element {
   const t = useTranslation();
   const open = useUIStore((s) => s.shareOpen);
   const setOpen = useUIStore((s) => s.setShareOpen);
@@ -110,7 +122,10 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
 
   const inviteUrl = generatedLink ? inviteUrlFor(generatedLink.token) : '';
 
-  const copy = async () => {
+  /**
+   * Copies the generated invite URL to the clipboard, flashing a copied state.
+   */
+  const copy = async (): Promise<void> => {
     if (!inviteUrl) return;
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -121,7 +136,10 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
     }
   };
 
-  async function handleSendInvite() {
+  /**
+   * Validates the address and creates a single-use email invite, surfacing errors inline.
+   */
+  async function handleSendInvite(): Promise<void> {
     if (inviteSubmitting) return;
     const trimmed = invite.trim();
     if (!EMAIL_RX.test(trimmed)) {
@@ -148,7 +166,10 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
     }
   }
 
-  async function handleGenerateLink() {
+  /**
+   * Creates a reusable invite link with the chosen default role and shows it for copying.
+   */
+  async function handleGenerateLink(): Promise<void> {
     if (generating) return;
     setGenerating(true);
     try {
@@ -312,7 +333,17 @@ export function ShareDialog({ projectId, emailEnabled = true }: ShareDialogProps
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+/**
+ * Uppercase section heading used to separate the invite and link flows.
+ * @param root0 - Section title props.
+ * @param root0.children - Heading text to render.
+ * @returns the styled section heading.
+ */
+function SectionTitle({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div className='px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
       {children}
@@ -327,7 +358,21 @@ interface RoleSelectProps {
   testId: string;
 }
 
-function RoleSelect({ value, onChange, disabled, testId }: RoleSelectProps) {
+/**
+ * Role picker (view/edit) shared by the invite and generate-link flows.
+ * @param root0 - Role select props.
+ * @param root0.value - Currently selected grantable role.
+ * @param root0.onChange - Called with the new role when the selection changes.
+ * @param root0.disabled - Whether the select is disabled.
+ * @param root0.testId - Test id applied to the select trigger.
+ * @returns the view/edit role select control.
+ */
+function RoleSelect({
+  value,
+  onChange,
+  disabled,
+  testId,
+}: RoleSelectProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <Select

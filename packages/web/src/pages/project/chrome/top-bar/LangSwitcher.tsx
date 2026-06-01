@@ -57,17 +57,30 @@ const LANGS: Array<{
   { code: 'zh-TW', slug: 'zhTW', glyph: '繁', nativeName: '繁體中文' },
 ];
 
+/**
+ * Resolves the language descriptor for a locale, falling back to English.
+ * @param code - Active locale to look up.
+ * @returns the matching language entry, or the English entry when none matches.
+ */
 function langFor(code: Locale): (typeof LANGS)[number] {
   return LANGS.find((l) => l.code === code) ?? LANGS[1];
 }
 
-export function LangSwitcher() {
+/**
+ * Language switcher chrome button with a popover of supported locales.
+ * @returns the top-bar language trigger and its locale-selection popover.
+ */
+export function LangSwitcher(): React.JSX.Element {
   useTranslation(); // subscribe so the trigger glyph re-renders on locale change
   const language = getLocale();
   const current = langFor(language);
   const [open, setOpen] = React.useState(false);
 
-  const pick = (code: Locale) => {
+  /**
+   * Applies the chosen locale and closes the popover.
+   * @param code - Locale the user selected from the popover.
+   */
+  const pick = (code: Locale): void => {
     changeLocale(code);
     setOpen(false);
   };

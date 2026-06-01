@@ -42,7 +42,6 @@ export interface SSEEvent {
 
 /**
  * Serialize an SSE event to wire format.
- *
  * @param event - The SSE event to serialize
  * @returns Formatted SSE string: `event: ...\ndata: ...\n\n`
  */

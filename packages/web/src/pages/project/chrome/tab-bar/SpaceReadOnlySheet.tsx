@@ -1,4 +1,5 @@
 import { Clock, FileText, Palette } from 'lucide-react';
+import type * as React from 'react';
 
 import {
   Sheet,
@@ -12,14 +13,18 @@ import type { SpaceType } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceReadOnlySheetProps {
-  /** Whether the sheet is open. Controlled by the parent (typically via
+  /**
+   * Whether the sheet is open. Controlled by the parent (typically via
    * `useExclusiveOverlay('space-readonly-sheet')` in ProjectPage so it
-   * participates in the global single-overlay rule). */
+   * participates in the global single-overlay rule).
+   */
   open: boolean;
-  /** Space being previewed. May be `null` briefly while the
+  /**
+   * Space being previewed. May be `null` briefly while the
    * `readOnlyViewSpaceId` carry value clears asynchronously — the
    * sheet renders a blank shell rather than unmounting so the close
-   * animation stays smooth. */
+   * animation stays smooth.
+   */
   space: ProjectSpace | null;
   onClose: () => void;
 }
@@ -46,12 +51,17 @@ const TYPE_META: Record<
  * the actual read-only renderers (ReactFlow viewer / TipTap viewer /
  * timeline viewer) land when each space type's full implementation
  * arrives in later PRs.
+ * @param root0 - Component props.
+ * @param root0.open - Whether the sheet is open (controlled by the parent overlay manager).
+ * @param root0.space - Space being previewed, or `null` briefly while the carry value clears.
+ * @param root0.onClose - Called when the sheet requests to close.
+ * @returns The right-side read-only preview sheet for the given space.
  */
 export function SpaceReadOnlySheet({
   open,
   space,
   onClose,
-}: SpaceReadOnlySheetProps) {
+}: SpaceReadOnlySheetProps): React.JSX.Element {
   const t = useTranslation();
   const meta = space ? TYPE_META[space.type] : null;
   const Icon = meta?.icon ?? Palette;
@@ -88,7 +98,13 @@ export function SpaceReadOnlySheet({
   );
 }
 
-function ReadOnlyBody({ space }: { space: ProjectSpace }) {
+/**
+ * Renders the per-space-type placeholder body inside the read-only sheet.
+ * @param root0 - Component props.
+ * @param root0.space - Space whose type selects which placeholder body to render.
+ * @returns The placeholder body for the space type, or `null` for an unknown type.
+ */
+function ReadOnlyBody({ space }: { space: ProjectSpace }): React.JSX.Element | null {
   const t = useTranslation();
   switch (space.type) {
     case 'canvas':

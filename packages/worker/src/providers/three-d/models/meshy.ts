@@ -17,7 +17,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for Meshy 6 models.
- *
  * @param prompt - 3D object description
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

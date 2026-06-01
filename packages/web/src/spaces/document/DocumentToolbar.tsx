@@ -7,6 +7,7 @@ import {
   Quote,
   Strikethrough,
 } from 'lucide-react';
+import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
@@ -77,8 +78,13 @@ const BLOCK_TOOLS: ToolDef[] = [
  * editor's selection so the UI reflects what's at the cursor. The
  * heavier feature set (font / color / table / image / link) layers in
  * with the M2 polish PR.
+ * @param root0 - Document toolbar props.
+ * @param root0.editor - The TipTap editor instance whose selection drives active state and commands.
+ * @returns The document toolbar element (mark and block toggle buttons).
  */
-export function DocumentToolbar({ editor }: DocumentToolbarProps) {
+export function DocumentToolbar({
+  editor,
+}: DocumentToolbarProps): React.JSX.Element {
   return (
     <div
       data-testid='document-toolbar'
@@ -95,7 +101,21 @@ export function DocumentToolbar({ editor }: DocumentToolbarProps) {
   );
 }
 
-function ToolButton({ tool, editor }: { tool: ToolDef; editor: Editor }) {
+/**
+ * A single toolbar toggle. Reflects the editor's current selection as
+ * pressed state and runs the tool's command on click.
+ * @param root0 - Tool button props.
+ * @param root0.tool - The tool definition (label, icon, active predicate, run command).
+ * @param root0.editor - The TipTap editor the tool reads from and acts on.
+ * @returns The toggle button element for one document tool.
+ */
+function ToolButton({
+  tool,
+  editor,
+}: {
+  tool: ToolDef;
+  editor: Editor;
+}): React.JSX.Element {
   const active = tool.isActive(editor);
   const Icon = tool.Icon;
   return (

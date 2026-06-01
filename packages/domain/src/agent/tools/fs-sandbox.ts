@@ -30,6 +30,10 @@ import { env, MONOREPO_ROOT } from "@breatic/core";
 
 /** Error thrown when a path would escape the sandbox. */
 export class SandboxError extends Error {
+  /**
+   * Create a SandboxError.
+   * @param message - Description of why the path was rejected.
+   */
   constructor(message: string) {
     super(message);
     this.name = "SandboxError";
@@ -49,6 +53,7 @@ let _sandboxRoot: string | null = null;
  * Reads `FILE_TOOL_SANDBOX_DIR` if set, otherwise defaults to
  * `<monorepo root>/sandbox`. The directory is created on first call
  * so subsequent `realpath` lookups succeed.
+ * @returns The realpath-normalized sandbox root, cached after first call.
  */
 function getSandboxRootLazy(): string {
   if (_sandboxRoot !== null) return _sandboxRoot;
@@ -61,7 +66,10 @@ function getSandboxRootLazy(): string {
   return _sandboxRoot;
 }
 
-/** Expose for testing. The value is already realpath-normalized. */
+/**
+ * Expose for testing. The value is already realpath-normalized.
+ * @returns The realpath-normalized sandbox root.
+ */
 export function getSandboxRoot(): string {
   return getSandboxRootLazy();
 }
@@ -74,10 +82,9 @@ export function getSandboxRoot(): string {
  *   - Absolute path pointing outside the sandbox
  *   - Relative path with `..` segments that escape the sandbox
  *   - Path whose realpath (after symlink resolution) escapes
- *
  * @param userPath - The path argument received from the agent tool
  * @returns The resolved real absolute path inside the sandbox
- * @throws SandboxError if the path would escape the sandbox
+ * @throws {SandboxError} if the path would escape the sandbox
  */
 export async function assertInSandbox(userPath: string): Promise<string> {
   if (typeof userPath !== "string" || userPath.length === 0) {
@@ -117,6 +124,8 @@ export async function assertInSandbox(userPath: string): Promise<string> {
  * `write_file` can create new files inside an existing sandbox
  * directory without confusing `realpath` by passing it a nonexistent
  * path.
+ * @param target - The absolute path to resolve, possibly with non-existent trailing components.
+ * @returns The realpath of the longest existing ancestor with the missing suffix reattached.
  */
 async function resolveRealPathAllowingMissing(target: string): Promise<string> {
   const suffix: string[] = [];

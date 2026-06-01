@@ -26,7 +26,6 @@ import {
 
 /**
  * Build DashScope image generation request body.
- *
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (size, image, seed, etc.)
@@ -59,7 +58,6 @@ function buildRequestBody(
 
 /**
  * Build DashScope authorization headers with async mode enabled.
- *
  * @param apiKey - Bearer token
  * @returns Headers with X-DashScope-Async: enable
  */
@@ -72,7 +70,6 @@ function authHeaders(apiKey: string): Record<string, string> {
 
 /**
  * Extract image URL from DashScope task result.
- *
  * @param data - Parsed JSON response
  * @returns Image URL string, or undefined
  */
@@ -86,7 +83,6 @@ function extractImageUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Extract cost from DashScope task result usage field.
- *
  * @param data - Parsed JSON response from task status endpoint
  * @returns Cost in USD, or 0 if usage data is missing
  */
@@ -103,12 +99,11 @@ function extractCost(data: Record<string, unknown>): number {
  * Generate an image asynchronously via DashScope API.
  *
  * Submits a task then polls until completion using the shared polling utility.
- *
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,

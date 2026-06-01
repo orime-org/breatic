@@ -42,7 +42,7 @@ interface RoleUpgradeRequestInput {
 /**
  * Viewer creates a role-upgrade request. Inserts a single
  * notification in the owner's inbox.
- *
+ * @param input - Owner, requester, project, and optional message for the request.
  * @returns the inserted notification (caller can echo the id back to
  *   the requester for client-side optimistic display).
  */
@@ -73,11 +73,11 @@ interface DecisionInput {
  * Atomic: (1) bump member role view → edit, (2) create approved
  * notification for the requester, (3) mark the request notification
  * as read on the owner's side.
- *
- * @throws {@link NotFoundError} if the request notification doesn't
- *   exist, was already decided (read), or doesn't belong to
- *   `ownerUserId`.
- * @throws {@link ValidationError} if the notification isn't a
+ * @param input - Notification id, owner id, and project name for the decision.
+ * @throws {NotFoundError} if the request notification doesn't
+ *   exist, was already decided (read), doesn't belong to
+ *   `ownerUserId`, or the member role bump finds no matching row.
+ * @throws {ValidationError} if the notification isn't a
  *   role-upgrade-request type (defense in depth — the route should
  *   already filter by id).
  */
@@ -111,8 +111,8 @@ export async function approve(input: DecisionInput): Promise<void> {
  *
  * Atomic: (1) create rejected notification for the requester,
  * (2) mark the request notification as read on the owner's side.
- *
- * @throws {@link NotFoundError} if the request notification doesn't
+ * @param input - Decision fields plus an optional rejection reason.
+ * @throws {NotFoundError} if the request notification doesn't
  *   exist, was already decided (read), or doesn't belong to
  *   `ownerUserId`.
  */
@@ -140,6 +140,17 @@ interface LoadedRequest {
   payload: { requesterUserId: string };
 }
 
+/**
+ * Load the request notification and enforce the decision gates:
+ * it must exist, belong to the owner, be a role-upgrade-request type,
+ * still be unread, and carry a valid requester id and project id.
+ * @param _tx - Active transaction handle (reserved; the repo currently reads outside it).
+ * @param input - Notification id and owner id identifying the request.
+ * @returns The validated request id, project id, and requester id.
+ * @throws {NotFoundError} if the notification is missing or already decided.
+ * @throws {ForbiddenError} if the notification doesn't belong to the owner.
+ * @throws {ValidationError} if the type, requester id, or project id is invalid.
+ */
 async function loadAndGate(
   _tx: unknown,
   input: DecisionInput,

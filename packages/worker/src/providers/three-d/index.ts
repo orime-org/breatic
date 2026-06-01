@@ -50,10 +50,9 @@ const _TRANSPORTS = new Map<string, typeof wavespeedTransport.generate>([
 
 /**
  * Look up the transport generate function for a provider.
- *
  * @param providerName - Provider key (e.g. "wavespeed")
  * @returns The transport generate function
- * @throws Error if no transport is registered for the provider
+ * @throws {Error} if no transport is registered for the provider
  */
 function getTransport(providerName: string): typeof wavespeedTransport.generate {
   const transport = _TRANSPORTS.get(providerName);
@@ -70,12 +69,11 @@ function getTransport(providerName: string): typeof wavespeedTransport.generate 
  * Generate a 3D model asynchronously with concurrency control.
  *
  * Uses a per-provider semaphore to limit concurrent requests.
- *
  * @param prompt - 3D object description prompt
  * @param modelName - Model name (required)
  * @param params - Additional parameters passed to the model family
  * @returns Object with url, model, and cost (actual API cost in USD)
- * @throws Error if model or provider resolution fails
+ * @throws {Error} if model or provider resolution fails
  */
 export async function generateAsync(
   prompt: string,
@@ -110,7 +108,6 @@ export async function generateAsync(
 
 /**
  * Validate and fill defaults for 3D generation parameters.
- *
  * @param modelName - Model name (required)
  * @param params - User-provided parameters to validate
  * @returns Tuple of [resolvedModelName, cleanedParams]
@@ -124,9 +121,8 @@ export function validateThreeDParams(
 
 /**
  * List all 3D models that have at least one provider with an active API key.
- *
  * @returns Array of model info dicts for skill injection
  */
-export function listAvailableThreeDModels() {
+export function listAvailableThreeDModels(): ReturnType<typeof listAvailableModels> {
   return listAvailableModels("three_d");
 }

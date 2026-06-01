@@ -14,12 +14,17 @@ interface MiniToolPreviewProps {
  * Renders the in-progress preview of a running mini-tool. Text tools
  * stream into the preview via SSE; AIGC tools show a skeleton until the
  * worker writes the URL.
+ * @param root0 - The component props.
+ * @param root0.outputModality - The modality of the node the tool will produce.
+ * @param root0.preview - The live preview content (text stream, image url, etc.).
+ * @param root0.pending - Whether the worker / SSE has not finished yet.
+ * @returns The preview card, showing a skeleton while pending without content.
  */
 export function MiniToolPreview({
   outputModality,
   preview,
   pending,
-}: MiniToolPreviewProps) {
+}: MiniToolPreviewProps): React.JSX.Element {
   return (
     <div
       data-testid='mini-tool-preview'

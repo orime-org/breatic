@@ -1,4 +1,5 @@
 import { Download, FileImage, FileJson, FileText } from 'lucide-react';
+import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -23,12 +24,15 @@ const EXPORT_FORMATS = [
  * Export menu — popover with the supported export formats. Actually
  * triggering the export goes through `data/api/canvas.ts` in a later PR;
  * here we just register click handlers so the chrome wires up.
+ * @param root0 - Export menu props.
+ * @param root0.onExport - Called with the chosen format id (`png` / `pdf` / `json`) when a menu item is clicked.
+ * @returns the export toolbar button with a popover listing the supported formats.
  */
 export function ExportMenu({
   onExport,
 }: {
   onExport?: (format: string) => void;
-}) {
+}): React.JSX.Element {
   const t = useTranslation();
   return (
     <Popover>

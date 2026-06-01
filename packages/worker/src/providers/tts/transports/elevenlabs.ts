@@ -15,12 +15,11 @@ import { logger } from "@breatic/core";
  *
  * Endpoint: POST /text-to-speech/{voice_id}
  * The API is synchronous -- the response body is raw audio bytes.
- *
  * @param _prompt - Text prompt (embedded in params as `text`)
  * @param resolved - Resolved model with provider connection details
  * @param params - Request payload (text, voice_id, stability, similarity)
  * @returns Object with `buffer`, `contentType`, `model`, and `cost`
- * @throws Error if the API returns an error or no audio data
+ * @throws {Error} if the API returns an error or no audio data
  */
 export async function generate(
   _prompt: string,

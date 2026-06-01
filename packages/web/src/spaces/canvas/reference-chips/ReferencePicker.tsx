@@ -34,12 +34,17 @@ interface ReferencePickerProps {
  *   1. Snapshots the referenced node's payload into the prompt context
  *   2. Draws a reference edge in the canvas
  *   3. Appends a `ReferenceChip` to the composer
+ * @param root0 - Reference picker props.
+ * @param root0.children - The trigger element that opens the popover (typically the composer's `@` button).
+ * @param root0.candidates - Selectable nodes shown in the command palette.
+ * @param root0.onPick - Called with the chosen candidate to snapshot it and draw the reference edge.
+ * @returns The popover-wrapped reference picker element.
  */
 export function ReferencePicker({
   children,
   candidates,
   onPick,
-}: ReferencePickerProps) {
+}: ReferencePickerProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>

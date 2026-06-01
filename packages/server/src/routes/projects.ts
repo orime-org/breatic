@@ -35,7 +35,6 @@ projects.use(requireAuth);
  * Resolves the caller's personal studio (creating it if missing) and
  * inserts the owner row in `project_members` inside the same
  * transaction as the projects insert.
- *
  * @returns `201` with `{ data: ProjectEntity }`
  */
 projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
@@ -51,7 +50,6 @@ projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
  * V1 personal-Studio mode: every user has one studio. Projects shared
  * with the caller but owned by someone else (Studio-phase feature)
  * are not exposed here yet — see spec §16 ★ "shared-projects entry on /studio".
- *
  * @returns `200` with `{ data: ProjectEntity[] }`
  */
 projects.get("/", zValidator("query", paginationSchema), async (c) => {
@@ -119,7 +117,6 @@ const projectUpdateSchema = z
  * breatic-inner-design#152 D1; aligns with `members.patch` precedent).
  * Requires `edit` (renaming etc. is content editing, not an admin-only
  * operation). v10 §7.2.1.
- *
  * @returns `200` with `{ data: ProjectEntity }`
  */
 membershipScoped.patch(
@@ -145,7 +142,6 @@ membershipScoped.patch(
  * Requires `view`: anyone who can read the source can fork it. The
  * duplicate is owned by the caller (new owner row in
  * `project_members`).
- *
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
 membershipScoped.post(
@@ -163,7 +159,6 @@ membershipScoped.post(
  * `DELETE /projects/:id` — soft-delete a project.
  *
  * Requires `owner` (cascades to all the project's children).
- *
  * @returns `200` with `{ data: { success: true } }`
  */
 membershipScoped.delete(

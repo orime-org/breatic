@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { useInpaintStore } from '@web/stores';
+import type { InpaintPoint } from '@web/spaces/canvas/inpaint/types';
 
 interface InpaintCanvasProps {
   /** Background image URL — drawn beneath the mask preview. */
@@ -18,8 +19,17 @@ interface InpaintCanvasProps {
  * PR 11 ships the structural overlay + pointer wiring; the visual
  * polish (cursor preview, dashed marquee, multi-canvas compositing)
  * arrives with the inpaint provider integration.
+ * @param root0 - Inpaint canvas props.
+ * @param root0.imageUrl - Source image drawn beneath the mask preview.
+ * @param root0.width - Natural image width, used as the mask coordinate system.
+ * @param root0.height - Natural image height, used as the mask coordinate system.
+ * @returns The inpaint editor overlay (source image with the live mask canvas on top).
  */
-export function InpaintCanvas({ imageUrl, width, height }: InpaintCanvasProps) {
+export function InpaintCanvas({
+  imageUrl,
+  width,
+  height,
+}: InpaintCanvasProps): React.JSX.Element {
   const tool = useInpaintStore((s) => s.tool);
   const brushSize = useInpaintStore((s) => s.brushSize);
   const opacity = useInpaintStore((s) => s.opacity);
@@ -53,7 +63,15 @@ export function InpaintCanvas({ imageUrl, width, height }: InpaintCanvasProps) {
     });
   }, [strokes, tool]);
 
-  const pointFromEvent = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  /**
+   * Converts a pointer event to a point in the image-pixel coordinate
+   * system, scaling from the rendered canvas size to the natural size.
+   * @param e - The pointer event over the mask canvas.
+   * @returns The pointer position in image-pixel coordinates.
+   */
+  const pointFromEvent = (
+    e: React.PointerEvent<HTMLCanvasElement>,
+  ): InpaintPoint => {
     const rect = e.currentTarget.getBoundingClientRect();
     const scaleX = width / rect.width;
     const scaleY = height / rect.height;

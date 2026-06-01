@@ -42,6 +42,9 @@ setLocaleResolver(() => _als.getStore());
  * Server middleware should wrap each request handler with this so
  * downstream errors thrown with `t("server.…")` carry the caller's
  * preferred language.
+ * @param locale - the locale to pin for the duration of `fn`
+ * @param fn - the function to run inside the locale-scoped store
+ * @returns whatever `fn` returns
  */
 export function runWithLocale<T>(locale: Locale, fn: () => T): T {
   return _als.run(locale, fn);
@@ -57,6 +60,7 @@ export function runWithLocale<T>(locale: Locale, fn: () => T): T {
  *
  * Node service entry points should call this once at boot, before any
  * `t()` call runs.
+ * @param localesDir - directory to scan for locale JSON files; defaults to the repo-root `locales/`
  */
 export function loadLocales(localesDir?: string): void {
   const dir = localesDir ?? resolve(MONOREPO_ROOT, "locales");

@@ -78,6 +78,8 @@ export interface EncodeInitialMetaStateArgs {
  * inserts are reproducible — important for migration replay and for
  * the single-row UPSERT semantics in
  * {@link insertInitialState}.
+ * @param args - the single Space entry plus actor / creator / timestamp fields to seed the meta doc
+ * @returns the encoded Yjs update bytes, ready to persist as the doc's initial state
  */
 export function encodeInitialMetaState(
   args: EncodeInitialMetaStateArgs,

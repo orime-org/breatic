@@ -32,7 +32,6 @@ type Part = FilePart | TextPart | InlineDataPart;
 
 /**
  * Build Google generateContent request body.
- *
  * @param prompt - Image description prompt
  * @param params - API-ready parameters (aspect_ratio, resolution, images, etc.)
  * @returns Request body for the Google API
@@ -87,7 +86,6 @@ function buildRequestBody(
  *
  * The Google API returns images as base64-encoded inline data. We return
  * a data URI that can be further processed (uploaded to storage).
- *
  * @param data - Parsed JSON response
  * @returns A data URI string (`data:image/png;base64,...`), or undefined
  */
@@ -111,7 +109,6 @@ function extractImageUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Calculate cost from Google API response usage metadata.
- *
  * @param data - Parsed JSON response containing `usageMetadata`
  * @param tokenPrice - Price per output token in USD
  * @returns Estimated cost in USD, or 0 if usage data is missing
@@ -127,12 +124,11 @@ function calculateCost(data: Record<string, unknown>, tokenPrice: number): numbe
 
 /**
  * Generate an image asynchronously via Google Gemini API.
- *
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if no image is returned
+ * @throws {Error} if no image is returned
  */
 export async function generate(
   prompt: string,

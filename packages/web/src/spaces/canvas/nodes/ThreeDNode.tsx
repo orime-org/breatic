@@ -1,4 +1,5 @@
 import { Box } from 'lucide-react';
+import type * as React from 'react';
 
 import type { ThreeDNodeData } from '@web/spaces/canvas/types/node';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
@@ -17,13 +18,19 @@ interface ThreeDNodeProps {
  * URL. PR 14 ships the structural slot; the real renderer (React
  * Three Fiber Canvas + OrbitControls + suspense loader) lands during
  * the M3+ media polish PR.
+ * @param root0 - 3D node props.
+ * @param root0.data - 3D node payload (model URL, status, optional error message).
+ * @param root0.selected - Whether the node is selected, driving the selection ring.
+ * @param root0.locked - Whether the node is locked, showing the lock indicator.
+ * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @returns The 3D node element (placeholder or model URL stub).
  */
 export function ThreeDNode({
   data,
   selected,
   locked,
   onActivate,
-}: ThreeDNodeProps) {
+}: ThreeDNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.url);
   return (
     <NodeShell

@@ -61,7 +61,12 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
  */
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
-export default function ProjectPage() {
+/**
+ * Project page shell rendering the TopBar, the per-user Agent chat column,
+ * and the Space tab bar with the active Space body.
+ * @returns The project workspace, or a loading screen while the websocket connects.
+ */
+export default function ProjectPage(): React.JSX.Element {
   const t = useTranslation();
   const { projectId = 'demo' } = useParams<{
     projectId: string;
@@ -221,16 +226,22 @@ export default function ProjectPage() {
 
   // ---- Handlers ----
 
-  /** Activate a Space - open the tab if not open + mark active. */
-  const onActivate = (id: string) => {
+  /**
+   * Activate a Space - open the tab if not open + mark active.
+   * @param id - The Space id to open and mark active.
+   */
+  const onActivate = (id: string): void => {
     if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
     openSpaceTab(projectId, userId, id);
     setActiveSpace(projectId, userId, id);
   };
 
-  /** Close a Space tab - does NOT delete the Space; just removes from
-   *  this user's tab bar. */
-  const onCloseTab = (id: string) => {
+  /**
+   * Close a Space tab - does NOT delete the Space; just removes from
+   *  this user's tab bar.
+   * @param id - The Space id to remove from this user's open tabs.
+   */
+  const onCloseTab = (id: string): void => {
     if (!userId) return;
     closeSpaceTab(projectId, userId, id);
     if (id === activeSpaceId) {
@@ -274,8 +285,13 @@ export default function ProjectPage() {
    * RPC. The collab process applies the write under the system user;
    * the effect above auto-opens the new tab and dismisses the overlay
    * when the doc broadcast lands.
+   * @param type - The Space template type to instantiate.
+   * @param name - The display name for the new Space.
    */
-  const onCreateSpace = async (type: SpaceType, name: string) => {
+  const onCreateSpace = async (
+    type: SpaceType,
+    name: string,
+  ): Promise<void> => {
     setSpaceOpInProgress('creating');
     const spaceId = nanoid();
     // Pin the pending id BEFORE the RPC await - Yjs sync from collab
@@ -316,16 +332,24 @@ export default function ProjectPage() {
    * spinner to prevent double-click within the same row.
    *
    * Errors still surface - callRpc raises a toast on RPC failure.
+   * @param spaceId - The id of the Space to soft-delete.
    */
-  const onDeleteSpace = async (spaceId: string) => {
+  const onDeleteSpace = async (spaceId: string): Promise<void> => {
     await callRpc(
       { type: 'space:delete', payload: { spaceId } },
       'spaces.drawer.action.deleteFail',
     );
   };
 
-  /** Toggle Space lock - `space:lock` RPC (lock + unlock same handler). */
-  const onSetSpaceLocked = async (spaceId: string, locked: boolean) => {
+  /**
+   * Toggle Space lock - `space:lock` RPC (lock + unlock same handler).
+   * @param spaceId - The id of the Space to lock or unlock.
+   * @param locked - The desired lock state (true to lock, false to unlock).
+   */
+  const onSetSpaceLocked = async (
+    spaceId: string,
+    locked: boolean,
+  ): Promise<void> => {
     await callRpc(
       { type: 'space:lock', payload: { spaceId, locked } },
       locked
@@ -340,16 +364,24 @@ export default function ProjectPage() {
    * toast surfaces via callRpc. The 80-char cap mirrors the project
    * title - enforced both on the client (`SPACE_NAME_MAX_LEN`) and
    * on the server (`SpaceRenamePayloadSchema`).
+   * @param spaceId - The id of the Space to rename.
+   * @param name - The new Space name (capped at 80 chars).
    */
-  const onRenameSpace = async (spaceId: string, name: string) => {
+  const onRenameSpace = async (
+    spaceId: string,
+    name: string,
+  ): Promise<void> => {
     await callRpc(
       { type: 'space:rename', payload: { spaceId, name } },
       'spaces.rename.error.failed',
     );
   };
 
-  /** Owner-only: restore a soft-deleted Space - `space:restore` RPC. */
-  const onRestoreSpace = async (spaceId: string) => {
+  /**
+   * Owner-only: restore a soft-deleted Space - `space:restore` RPC.
+   * @param spaceId - The id of the soft-deleted Space to restore.
+   */
+  const onRestoreSpace = async (spaceId: string): Promise<void> => {
     await callRpc(
       { type: 'space:restore', payload: { spaceId } },
       'project.space.error.create',
@@ -357,15 +389,18 @@ export default function ProjectPage() {
   };
 
   /** Owner-only: clear all entries in `meta.projectMessages`. */
-  const onClearMessages = async () => {
+  const onClearMessages = async (): Promise<void> => {
     await callRpc(
       { type: 'messages:clear', payload: { all: true } },
       'project.space.error.create',
     );
   };
 
-  /** Open the read-only preview sheet for a Space. */
-  const onViewSpace = (id: string) => {
+  /**
+   * Open the read-only preview sheet for a Space.
+   * @param id - The id of the Space to preview read-only.
+   */
+  const onViewSpace = (id: string): void => {
     setReadOnlyViewSpaceId(id);
     setRoSheetOpen(true);
   };

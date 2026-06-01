@@ -12,7 +12,6 @@ import { createPgClient } from "@breatic/core";
  * Create a Database extension for Hocuspocus using PostgreSQL.
  *
  * Documents are stored as binary blobs in the `yjs_documents` table.
- *
  * @param databaseUrl - PostgreSQL connection string
  * @returns Configured Database extension
  */

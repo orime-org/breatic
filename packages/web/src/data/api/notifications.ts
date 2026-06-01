@@ -29,29 +29,41 @@ export const notificationsApi = {
    * List the caller's notifications. `unreadOnly=true` (default)
    * returns only unread items (BellMenu opens with this). Pass
    * `false` for the full history view.
+   * @param unreadOnly - When true (default), return only unread notifications.
+   * @returns The caller's notifications.
    */
-  list(unreadOnly = true) {
+  list(unreadOnly = true): Promise<{ data: Notification[] }> {
     const qs = unreadOnly ? '?unread=true' : '?unread=false';
     return apiGet<{ data: Notification[] }>(`/users/me/notifications${qs}`);
   },
 
-  /** Unread count — drives the red-dot badge on the bell icon. */
-  count() {
+  /**
+   * Unread count — drives the red-dot badge on the bell icon.
+   * @returns The number of unread notifications for the caller.
+   */
+  count(): Promise<{ data: { count: number } }> {
     return apiGet<{ data: { count: number } }>(
       '/users/me/notifications/count',
     );
   },
 
-  /** Mark a single notification as read. */
-  markRead(id: string) {
+  /**
+   * Mark a single notification as read.
+   * @param id - The notification to mark as read.
+   * @returns An acknowledgement once the notification is marked read.
+   */
+  markRead(id: string): Promise<{ data: { ok: true } }> {
     return apiPatch<{ data: { ok: true } }, undefined>(
       `/users/me/notifications/${id}/read`,
       undefined,
     );
   },
 
-  /** Mark every unread notification as read. */
-  markAllRead() {
+  /**
+   * Mark every unread notification as read.
+   * @returns The number of notifications that were marked read.
+   */
+  markAllRead(): Promise<{ data: { count: number } }> {
     return apiPost<{ data: { count: number } }, undefined>(
       '/users/me/notifications/read-all',
       undefined,

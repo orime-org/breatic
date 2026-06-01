@@ -44,6 +44,9 @@ type ProjectControlEvent = MembersChangedEvent;
  * any doc under this project. The Hocuspocus client reconnects
  * automatically; the next `onAuthenticate` re-runs the role lookup
  * with the freshly-written `project_members` state.
+ * @param hocuspocus - Running Hocuspocus server whose loaded documents are scanned for the user's connections.
+ * @param projectId - Project whose docs the kick is restricted to.
+ * @param userId - User whose connections are closed with code 4403 to force an onAuthenticate re-check.
  */
 function kickUserFromProject(
   hocuspocus: Hocuspocus,
@@ -75,6 +78,9 @@ function kickUserFromProject(
  *
  * If no client is connected (Document not loaded), this is a no-op
  * — connected clients will rehydrate via REST on next page load.
+ * @param hocuspocus - Running Hocuspocus server holding the project's loaded meta doc.
+ * @param projectId - Project whose meta doc receives the stateless broadcast.
+ * @param payload - Control event serialized and sent as the stateless invalidate signal.
  */
 function broadcastInvalidate(
   hocuspocus: Hocuspocus,
@@ -91,6 +97,14 @@ function broadcastInvalidate(
   }
 }
 
+/**
+ * Decode one raw control-plane pub/sub message and dispatch it. For a
+ * `project-members:changed` event, kick the affected user(s) and
+ * broadcast a meta-doc invalidate; unknown / unparseable messages are
+ * logged and ignored.
+ * @param hocuspocus - Running Hocuspocus server passed through to the kick / broadcast handlers.
+ * @param raw - Raw JSON message body received on the project control channel.
+ */
 async function handleEvent(
   hocuspocus: Hocuspocus,
   raw: string,
@@ -140,7 +154,6 @@ async function handleEvent(
  * subscriber connection. The caller still owns the original
  * `redis` argument; we duplicate it here because pub/sub
  * subscribers must be on a dedicated connection.
- *
  * @param hocuspocus - Running Hocuspocus server instance
  * @param redis - Source Redis client (DB2 / `REDIS_STREAM_URL`);
  *   we `.duplicate()` it for the dedicated subscriber connection

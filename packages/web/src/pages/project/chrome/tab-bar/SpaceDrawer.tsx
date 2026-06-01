@@ -79,7 +79,7 @@ const TYPE_META: Record<
  * Row anatomy:
  *
  *   [type icon]  Space name  [editing / open chip] [lock if locked]
- *                type · N nodes · @author · time
+ *                type · N nodes · `@author` · time
  *
  *   hover actions (right):
  *     [view] [lock toggle] [delete (disabled if locked)]
@@ -102,6 +102,15 @@ const TYPE_META: Record<
  *     array. Lock uses inline spinner (quick op); delete uses the
  *     full-screen overlay owned by ProjectPage.
  *   - Delete is disabled when the Space is locked.
+ * @param root0 - Component props.
+ * @param root0.spaces - All spaces in the project to list in the drawer.
+ * @param root0.openTabIds - Ids of spaces this user currently has open as tabs.
+ * @param root0.activeSpaceId - Id of this user's active space, driving the "editing" chip.
+ * @param root0.onActivate - Activates a space (opens its tab and makes it active).
+ * @param root0.onView - Opens a space in the read-only preview sheet.
+ * @param root0.onDeleteSpace - RPC handler to delete a space; when omitted, rows render read-only.
+ * @param root0.onSetSpaceLocked - RPC handler to lock/unlock a space; when omitted, rows render read-only.
+ * @returns The "All Spaces" drawer trigger button and its sheet listing every space.
  */
 export function SpaceDrawer({
   spaces,
@@ -111,7 +120,7 @@ export function SpaceDrawer({
   onView,
   onDeleteSpace,
   onSetSpaceLocked,
-}: SpaceDrawerProps) {
+}: SpaceDrawerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('space-drawer');
   return (
@@ -200,6 +209,19 @@ interface SpaceDrawerRowProps {
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
 }
 
+/**
+ * A single space row in the drawer: type icon, name, status chip, and the
+ * hover-revealed view / lock / delete actions.
+ * @param root0 - Component props.
+ * @param root0.space - The space rendered by this row.
+ * @param root0.isActive - Whether this space is the user's active tab (shows the "editing" chip).
+ * @param root0.isOpen - Whether this space is open as one of the user's tabs (shows the "open" chip).
+ * @param root0.onActivate - Activates this space.
+ * @param root0.onView - Opens this space (read-only preview, or activates if already open).
+ * @param root0.onDeleteSpace - RPC handler to delete this space; when omitted, the delete action is read-only.
+ * @param root0.onSetSpaceLocked - RPC handler to lock/unlock this space; when omitted, the lock action is read-only.
+ * @returns The drawer row for the space.
+ */
 function SpaceDrawerRow({
   space,
   isActive,
@@ -208,14 +230,19 @@ function SpaceDrawerRow({
   onView,
   onDeleteSpace,
   onSetSpaceLocked,
-}: SpaceDrawerRowProps) {
+}: SpaceDrawerRowProps): React.JSX.Element {
   const t = useTranslation();
   const meta = TYPE_META[space.type];
   const Icon = meta.icon;
   const [lockBusy, setLockBusy] = React.useState(false);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
 
-  const onToggleLock = async (e: React.MouseEvent) => {
+  /**
+   * Toggles the space's locked state via `onSetSpaceLocked`, surfacing a
+   * toast on failure.
+   * @param e - The click event from the lock action button.
+   */
+  const onToggleLock = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
     if (lockBusy || !onSetSpaceLocked) return;
     setLockBusy(true);
@@ -237,7 +264,12 @@ function SpaceDrawerRow({
     }
   };
 
-  const onDelete = async (e: React.MouseEvent) => {
+  /**
+   * Deletes the space via `onDeleteSpace` (no-op when locked or already busy);
+   * the live Y.Doc update drives the resulting UI changes.
+   * @param e - The click event from the delete confirm action.
+   */
+  const onDelete = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
     if (deleteBusy || space.locked || !onDeleteSpace) return;
     setDeleteBusy(true);
@@ -393,6 +425,18 @@ interface RowActionProps {
   busy?: boolean;
 }
 
+/**
+ * Tooltip-wrapped icon button used for a drawer row's hover actions
+ * (view / lock / delete).
+ * @param root0 - Component props.
+ * @param root0.label - Accessible label and tooltip text for the action.
+ * @param root0.testId - Test id applied to the action button.
+ * @param root0.onClick - Click handler for the action.
+ * @param root0.children - Icon content rendered inside the button.
+ * @param root0.disabled - When `true`, the button is disabled and shows a not-allowed cursor.
+ * @param root0.busy - When `true`, the button is disabled and pulses to indicate an in-flight operation.
+ * @returns The icon action button with its tooltip.
+ */
 function RowAction({
   label,
   testId,
@@ -400,7 +444,7 @@ function RowAction({
   children,
   disabled,
   busy,
-}: RowActionProps) {
+}: RowActionProps): React.JSX.Element {
   // Wrap the icon button in a shadcn Tooltip (visual / timing
   // consistent with the rest of the chrome). Native `title` attribute
   // was inconsistent across OS/browsers (long delay, OS-themed bubble

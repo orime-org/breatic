@@ -29,6 +29,10 @@ interface ProtectedRouteProps {
  * Use at the route-table level (`routes.tsx`), wrapping any page that
  * depends on `useCurrentUserStore.user` being non-null — Studio,
  * Project, and any future authenticated surfaces.
+ * @param root0 - The component props.
+ * @param root0.children - The protected page to render once the user is authenticated.
+ * @returns A loading shell while bootstrapping, a redirect to `/login` when
+ *   unauthenticated, or the `children` page when authenticated.
  */
 export default function ProtectedRoute({
   children,

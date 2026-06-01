@@ -89,10 +89,20 @@ export const MINI_TOOLS: ReadonlyArray<MiniTool> = [
 
 const BY_ID = new Map(MINI_TOOLS.map((t) => [t.id, t]));
 
+/**
+ * Look up a mini-tool definition by its id.
+ * @param id - The mini-tool id to look up.
+ * @returns The matching mini-tool, or undefined when no tool has that id.
+ */
 export function getMiniTool(id: string): MiniTool | undefined {
   return BY_ID.get(id);
 }
 
+/**
+ * List the mini-tools whose source modality matches the given modality.
+ * @param modality - The source modality to filter by.
+ * @returns The mini-tools that accept the given modality as input.
+ */
 export function miniToolsForModality(
   modality: Modality,
 ): ReadonlyArray<MiniTool> {

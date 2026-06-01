@@ -10,8 +10,13 @@ interface ThinkingFoldProps {
  * by default; expansion is a per-bubble UI affordance — the thinking
  * payload is never sent back to the LLM (see CLAUDE.md turn compression
  * notes).
+ * @param root0 - The component props.
+ * @param root0.thinking - The assistant's thinking text to show when expanded.
+ * @returns The collapsible thinking block.
  */
-export function ThinkingFold({ thinking }: ThinkingFoldProps) {
+export function ThinkingFold({
+  thinking,
+}: ThinkingFoldProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   return (
     <div

@@ -30,7 +30,17 @@ const client = new QueryClient({
   },
 });
 
-export function QueryClientProvider({ children }: { children: React.ReactNode }) {
+/**
+ * Provides the shared TanStack Query `client` to the subtree.
+ * @param root0 - The component props.
+ * @param root0.children - The subtree that gains access to the query client.
+ * @returns The `children` wrapped in the TanStack Query provider.
+ */
+export function QueryClientProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
   return <RqProvider client={client}>{children}</RqProvider>;
 }
 

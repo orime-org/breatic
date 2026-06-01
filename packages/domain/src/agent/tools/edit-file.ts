@@ -3,8 +3,6 @@
  *
  * Ported from backend/agent/tools/builtin/filesystem.py (EditFileTool).
  * Paths are confined to the file-tool sandbox (see {@link assertInSandbox}).
- *
- * @module
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { tool } from "ai";

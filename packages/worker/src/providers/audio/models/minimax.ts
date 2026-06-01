@@ -28,7 +28,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for MiniMax music models.
- *
  * @param prompt - User's music description
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

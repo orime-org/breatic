@@ -18,7 +18,6 @@ const models = new Hono();
  * and cost info. Models without configured API keys are excluded.
  *
  * Frontend should call this once at startup and cache the result.
- *
  * @returns Model catalog with total count
  */
 models.get("/", (c) => {

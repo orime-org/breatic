@@ -90,6 +90,8 @@ export interface ProcessAwarenessResult {
  * Returns null if the state has no `user` object or the required
  * fields are missing / malformed — better to no-op than to write
  * partial garbage into meta.users.
+ * @param state - Raw awareness state for one client (the value a peer set via `setLocalStateField`), of unknown shape.
+ * @returns The validated `{ id, name, avatarUrl }` user field, or null when no well-formed `user` object is present.
  */
 function readUserField(state: unknown): AwarenessUserField | null {
   if (!state || typeof state !== "object") return null;
@@ -116,6 +118,15 @@ function readUserField(state: unknown): AwarenessUserField | null {
  * Designed to be called from Hocuspocus's `onAwarenessUpdate` hook
  * with the hook's `added`/`updated` client ids + `awareness` instance
  * + `document` + `context`.
+ * @param args - Awareness-update inputs forwarded from the Hocuspocus hook.
+ * @param args.documentName - Meta doc name, used as the debounce-map key prefix.
+ * @param args.document - The meta Y.Doc whose `users` map receives the projected entries.
+ * @param args.awareness - Awareness instance to read each changed client's state from.
+ * @param args.added - Client ids that just joined awareness.
+ * @param args.updated - Client ids whose awareness state changed.
+ * @param args.contextUserId - Authenticated user id from the connection context; writes are honored only when a state's `user.id` matches it (anti-spoof + multi-instance dedup).
+ * @param args.now - Current timestamp in ms, written as `lastSeenAt` and used for the debounce window.
+ * @returns A breakdown of which user ids were written, rejected (identity mismatch), or skipped (no change within the debounce window).
  */
 export function projectAwarenessIntoMetaUsers(args: {
   documentName: string;

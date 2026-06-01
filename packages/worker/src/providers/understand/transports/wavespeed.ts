@@ -22,13 +22,12 @@ import {
  * Uses submit + poll pattern. The shared `requestWithRetry` handles
  * 429 exponential backoff. After completion, queries WaveSpeed billing
  * for actual cost.
- *
  * @param resolved - Resolved model with WaveSpeed connection details
  * @param family - Model family module with `buildRequest()`
  * @param prompt - Unused for transcription (guidance prompt passed via params)
  * @param params - Must include `audio` URL
  * @returns Object with `text` (transcription) and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   resolved: ResolvedModel,

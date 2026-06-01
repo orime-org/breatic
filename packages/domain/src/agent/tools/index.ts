@@ -1,7 +1,5 @@
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
- *
- * @module
  */
 import type { Tool } from "ai";
 
@@ -55,10 +53,8 @@ export const DEFAULT_TOOLS: ReadonlySet<string> = new Set([
  *
  * Unknown names are silently skipped. Pass an empty array to get an
  * empty set — use `DEFAULT_TOOLS` for the standard set.
- *
  * @param toolNames - Array of tool name strings to include.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
- *
  * @example
  * ```ts
  * import { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/tools/index.js";

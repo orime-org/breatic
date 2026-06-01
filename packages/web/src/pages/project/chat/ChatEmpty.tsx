@@ -1,4 +1,5 @@
 import { Image, Music, PenTool } from 'lucide-react';
+import type * as React from 'react';
 
 import { useCurrentUserStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -34,8 +35,13 @@ interface ChatEmptyProps {
  * back to a plain greeting when unauthenticated (dev / pre-login). All
  * strings come from `chat.empty.*` so the surface localizes through
  * the LangSwitcher.
+ * @param root0 - The component props.
+ * @param root0.onQuickAction - Called with a quick-action label when one is picked.
+ * @returns The empty-conversation greeting with stacked quick-action buttons.
  */
-export function ChatEmpty({ onQuickAction }: ChatEmptyProps) {
+export function ChatEmpty({
+  onQuickAction,
+}: ChatEmptyProps): React.JSX.Element {
   const t = useTranslation();
   const userName = useCurrentUserStore((s) => s.user?.name);
   const greeting = userName

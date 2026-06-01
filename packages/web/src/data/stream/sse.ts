@@ -33,6 +33,15 @@ interface SseOptions<TEvent> {
  *
  * Caller controls cancellation via an `AbortController` passed as
  * `signal` — closing the stream when the user clicks Abort.
+ * @param root0 - SSE connection options.
+ * @param root0.url - Endpoint relative to `/api`, or an absolute URL.
+ * @param root0.body - POST body sent with the open request.
+ * @param root0.parseEvent - Parses each `data:` payload into a typed event, or null to skip.
+ * @param root0.onEvent - Invoked for every successfully parsed event.
+ * @param root0.onClose - Invoked when the stream closes cleanly.
+ * @param root0.onError - Invoked on transport / parse / abort error.
+ * @param root0.signal - Abort signal for caller-controlled cancellation.
+ * @returns A promise that resolves when the stream closes or is aborted.
  */
 export async function sseStream<TEvent>({
   url,

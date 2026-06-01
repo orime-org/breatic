@@ -16,7 +16,6 @@ import { logger } from "@breatic/core";
 
 /**
  * Build Topaz authentication headers.
- *
  * @param apiKey - Topaz API key
  * @returns Headers with X-API-Key
  */
@@ -31,7 +30,6 @@ function authHeaders(apiKey: string): Record<string, string> {
  * Build URL-encoded form data for Topaz API.
  *
  * Converts all values to strings. Booleans become lowercase `"true"` / `"false"`.
- *
  * @param params - API parameters
  * @param sourceUrl - Source image URL
  * @returns URLSearchParams-compatible entries
@@ -62,7 +60,6 @@ function buildFormData(
  *
  * Calls `POST /image/v1/estimate` to get the credit cost,
  * then converts credits to USD using `resolved.creditPrice`.
- *
  * @param resolved - Resolved provider endpoint
  * @param headers - Auth headers
  * @param params - API parameters
@@ -99,7 +96,6 @@ async function estimateCost(
 
 /**
  * Submit to sync Topaz endpoint and get result URL.
- *
  * @param resolved - Resolved provider endpoint
  * @param headers - Auth headers
  * @param params - API parameters
@@ -136,7 +132,6 @@ async function generateSync(
 
 /**
  * Submit to async Topaz endpoint and poll for result.
- *
  * @param resolved - Resolved provider endpoint
  * @param headers - Auth headers
  * @param params - API parameters
@@ -202,12 +197,11 @@ async function generateAsyncPoll(
  *
  * Uses the async endpoint for generative models (Redefine, Recovery V2),
  * and the sync endpoint for standard models (Standard V2, etc.).
- *
- * @param prompt - Image description (not used by Topaz standard models)
+ * @param _prompt - Image description (unused — Topaz enhances an existing source image)
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters from `buildRequest()`
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   _prompt: string,

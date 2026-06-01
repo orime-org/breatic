@@ -1,10 +1,13 @@
+import type * as React from 'react';
+
 import { useCurrentUserStore } from '@web/stores';
 
 /**
  * Settings panel placeholder — V1 surfaces only the viewer's identity. Tabs
  * for profile / credits / billing land in a later PR.
+ * @returns the settings panel showing the current signed-in user's identity.
  */
-export function SettingsPanel() {
+export function SettingsPanel(): React.JSX.Element {
   const user = useCurrentUserStore((s) => s.user);
   return (
     <div className='mx-auto flex max-w-2xl flex-col gap-4'>

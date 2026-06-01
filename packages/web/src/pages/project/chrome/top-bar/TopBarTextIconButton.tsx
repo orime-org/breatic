@@ -50,7 +50,11 @@ export const TopBarTextIconButton = React.forwardRef<
 });
 TopBarTextIconButton.displayName = 'TopBarTextIconButton';
 
-function ChevronDown() {
+/**
+ * Small chevron-down glyph rendered on dropdown-trigger buttons.
+ * @returns the inline chevron-down SVG icon.
+ */
+function ChevronDown(): React.JSX.Element {
   return (
     <svg
       width='14'

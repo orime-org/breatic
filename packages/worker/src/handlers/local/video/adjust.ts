@@ -28,6 +28,12 @@ interface AdjustParams {
   value: AdjustValue;
 }
 
+/**
+ * Validate and normalise the raw job params into a typed adjust payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, value }` adjust params
+ * @throws {Error} when `video` is not an http(s) URL
+ */
 function parseParams(raw: Record<string, unknown>): AdjustParams {
   const video = raw.video;
   if (typeof video !== "string" || !/^https?:\/\//i.test(video)) {
@@ -36,6 +42,13 @@ function parseParams(raw: Record<string, unknown>): AdjustParams {
   return { video, value: parseAdjustValue(raw.value) };
 }
 
+/**
+ * Apply the brightness/contrast/etc. adjust filter chain to a video via FFmpeg.
+ * Neutral (all-zero) values short-circuit and return the source URL unchanged.
+ * @param rawParams - Raw mini-tool params carrying the video URL and adjust value
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the adjusted video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, value } = parseParams(rawParams);
 

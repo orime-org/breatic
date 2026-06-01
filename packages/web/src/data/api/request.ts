@@ -19,6 +19,7 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/typ
  * - `baseURL` defaults to `/api` so production nginx routes everything
  *   under one origin; dev uses Vite proxy.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.
+ * @returns A configured axios instance with the error-normalizing interceptor attached.
  */
 function createClient(): AxiosInstance {
   const instance = axios.create({
@@ -43,6 +44,13 @@ function createClient(): AxiosInstance {
   return instance;
 }
 
+/**
+ * Convert an arbitrary thrown value into a normalized `ApiError`.
+ * Pulls status / code / message out of the backend error envelope when
+ * the value is an `AxiosError`, and degrades gracefully otherwise.
+ * @param err - The unknown value caught from a failed axios request.
+ * @returns A normalized error with HTTP status, message, and optional code.
+ */
 function normalizeError(err: unknown): ApiError {
   if (err instanceof AxiosError) {
     const status = err.response?.status ?? 0;
@@ -63,7 +71,13 @@ function normalizeError(err: unknown): ApiError {
 
 export const request = createClient();
 
-/** Typed GET helper — unwraps `{ data: T }` envelope, throws `ApiException`. */
+/**
+ * Typed GET helper — unwraps `{ data: T }` envelope, throws `ApiException`.
+ * @param url - Resource path relative to the API base URL.
+ * @param config - Optional axios request config (query params, headers, signal).
+ * @returns The unwrapped response payload of type `T`.
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
 export async function apiGet<T>(
   url: string,
   config?: AxiosRequestConfig,
@@ -72,7 +86,14 @@ export async function apiGet<T>(
   return res.data.data;
 }
 
-/** Typed POST helper — unwraps `{ data: T }` envelope. */
+/**
+ * Typed POST helper — unwraps `{ data: T }` envelope.
+ * @param url - Resource path relative to the API base URL.
+ * @param body - Optional request body serialized as JSON.
+ * @param config - Optional axios request config (headers, signal).
+ * @returns The unwrapped response payload of type `T`.
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
 export async function apiPost<T, B = unknown>(
   url: string,
   body?: B,
@@ -82,7 +103,14 @@ export async function apiPost<T, B = unknown>(
   return res.data.data;
 }
 
-/** Typed PATCH helper — unwraps `{ data: T }` envelope. */
+/**
+ * Typed PATCH helper — unwraps `{ data: T }` envelope.
+ * @param url - Resource path relative to the API base URL.
+ * @param body - Optional partial-update request body serialized as JSON.
+ * @param config - Optional axios request config (headers, signal).
+ * @returns The unwrapped response payload of type `T`.
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
 export async function apiPatch<T, B = unknown>(
   url: string,
   body?: B,
@@ -92,7 +120,13 @@ export async function apiPatch<T, B = unknown>(
   return res.data.data;
 }
 
-/** Typed DELETE helper — unwraps `{ data: T }` envelope. */
+/**
+ * Typed DELETE helper — unwraps `{ data: T }` envelope.
+ * @param url - Resource path relative to the API base URL.
+ * @param config - Optional axios request config (headers, signal).
+ * @returns The unwrapped response payload of type `T` (defaults to `void`).
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
 export async function apiDelete<T = void>(
   url: string,
   config?: AxiosRequestConfig,

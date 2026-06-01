@@ -10,12 +10,10 @@ import { expect } from 'vitest';
  * static issues at build time; this layer catches runtime issues (e.g.
  * Radix Missing Description, mis-wired aria-labelledby, etc.) once the
  * component is actually rendered.
- *
  * @param container — the root element returned by Testing Library's
  *   `render()` call. Pass the entire popup overlay element when the
  *   component renders into a portal outside `container` (e.g. dialog,
  *   popover, sheet) — use `document.body` instead.
- *
  * @example
  *   it('has no a11y violations', async () => {
  *     const { container } = render(<TopBar {...defaultProps} />);
@@ -31,6 +29,13 @@ import { expect } from 'vitest';
  */
 type RuleOverrides = Record<string, { enabled: boolean }>;
 
+/**
+ * Run axe-core against `container` and assert there are no violations.
+ * @param container - The element (or selector) returned by Testing Library's
+ *   `render()`; pass `document.body` when the component portals outside it.
+ * @param extraRules - Per-call axe rule overrides merged on top of the defaults.
+ * @returns A promise that resolves once the assertion has run.
+ */
 export async function expectNoA11yViolations(
   container: Element | string,
   extraRules: RuleOverrides = {},

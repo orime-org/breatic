@@ -66,6 +66,12 @@ export interface MemberJoinedPayload {
  * Create a notification for the owner that a viewer wants editor
  * access. Returns the inserted row so the caller can return its id
  * to the requester (or surface it in the broadcast).
+ * @param input - Owner inbox, project scope, payload, and optional transaction
+ * @param input.ownerUserId - Project owner who receives the request in their inbox
+ * @param input.projectId - Project the upgrade is requested for
+ * @param input.payload - Requester, project name, requested role, and message
+ * @param input.tx - Optional transaction to bundle with the role-bump write
+ * @returns The inserted `access.role_upgrade_request` notification
  */
 export async function createRoleUpgradeRequest(input: {
   ownerUserId: string;
@@ -87,6 +93,12 @@ export async function createRoleUpgradeRequest(input: {
 /**
  * Create a notification for the requester that their upgrade was
  * approved by the owner.
+ * @param input - Requester inbox, project scope, payload, and optional transaction
+ * @param input.requesterUserId - Viewer who receives the approval in their inbox
+ * @param input.projectId - Project the upgrade was approved for
+ * @param input.payload - Project name and the newly granted role
+ * @param input.tx - Optional transaction to bundle with the role-bump write
+ * @returns The inserted `access.role_upgrade_approved` notification
  */
 export async function createRoleUpgradeApproved(input: {
   requesterUserId: string;
@@ -108,6 +120,12 @@ export async function createRoleUpgradeApproved(input: {
 /**
  * Create a notification for the requester that their upgrade was
  * rejected by the owner.
+ * @param input - Requester inbox, project scope, payload, and optional transaction
+ * @param input.requesterUserId - Viewer who receives the rejection in their inbox
+ * @param input.projectId - Project the upgrade was rejected for
+ * @param input.payload - Project name and optional rejection reason
+ * @param input.tx - Optional transaction to bundle with related writes
+ * @returns The inserted `access.role_upgrade_rejected` notification
  */
 export async function createRoleUpgradeRejected(input: {
   requesterUserId: string;
@@ -129,6 +147,12 @@ export async function createRoleUpgradeRejected(input: {
 /**
  * Create a notification for the owner that a new member joined via
  * consume link.
+ * @param input - Owner inbox, project scope, payload, and optional transaction
+ * @param input.ownerUserId - Project owner who receives the join notice in their inbox
+ * @param input.projectId - Project the new member joined
+ * @param input.payload - New member, project name, and the role they joined with
+ * @param input.tx - Optional transaction to bundle with the member insert
+ * @returns The inserted `access.member_joined` notification
  */
 export async function createMemberJoined(input: {
   ownerUserId: string;
@@ -155,7 +179,6 @@ export async function createMemberJoined(input: {
  *
  * Thin pass-through to the notification repository so route handlers
  * reach the data layer through the service (prohibition #1).
- *
  * @param id - Notification UUID
  * @returns The notification entity, or null if not found / soft-deleted
  */
@@ -166,6 +189,8 @@ export async function getById(id: string): Promise<NotificationEntity | null> {
 /**
  * List a user's unread notifications, newest first.
  * BellMenu pulls this on open + on stateless invalidate signal.
+ * @param userId - Inbox owner whose unread notifications to fetch
+ * @returns The user's unread notifications, newest first
  */
 export async function listUnread(userId: string): Promise<NotificationEntity[]> {
   return notificationRepo.listUnreadByUser(userId);
@@ -173,6 +198,8 @@ export async function listUnread(userId: string): Promise<NotificationEntity[]> 
 
 /**
  * List all of a user's notifications (read + unread) — history view.
+ * @param userId - Inbox owner whose full history to fetch
+ * @returns The user's read and unread notifications, newest first
  */
 export async function listAll(userId: string): Promise<NotificationEntity[]> {
   return notificationRepo.listAllByUser(userId);
@@ -180,6 +207,8 @@ export async function listAll(userId: string): Promise<NotificationEntity[]> {
 
 /**
  * Unread count — drives the red-dot badge on the bell icon.
+ * @param userId - Inbox owner whose unread notifications to count
+ * @returns Number of unread notifications
  */
 export async function countUnread(userId: string): Promise<number> {
   return notificationRepo.countUnread(userId);
@@ -189,8 +218,9 @@ export async function countUnread(userId: string): Promise<number> {
 
 /**
  * Mark a single notification as read.
- *
- * @throws {@link NotFoundError} if the notification doesn't exist,
+ * @param id - Notification UUID to mark read
+ * @param userId - Owner guard; only this user's row may be marked
+ * @throws {NotFoundError} if the notification doesn't exist,
  *   is already read, or doesn't belong to `userId` (the repo guards
  *   userId match defense-in-depth).
  */
@@ -204,6 +234,8 @@ export async function markRead(id: string, userId: string): Promise<void> {
 /**
  * Mark all of a user's unread notifications as read. Idempotent —
  * returns the count of rows updated (0 if nothing was unread).
+ * @param userId - Inbox owner whose unread notifications to clear
+ * @returns Count of notifications marked read (0 if none were unread)
  */
 export async function markAllRead(userId: string): Promise<number> {
   return notificationRepo.markAllRead(userId);

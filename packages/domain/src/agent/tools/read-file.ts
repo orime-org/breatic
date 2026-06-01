@@ -3,8 +3,6 @@
  *
  * Ported from backend/agent/tools/builtin/filesystem.py (ReadFileTool).
  * Paths are confined to the file-tool sandbox (see {@link assertInSandbox}).
- *
- * @module
  */
 import { readFile, stat } from "node:fs/promises";
 import { tool } from "ai";

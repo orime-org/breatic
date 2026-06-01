@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import type { WebNodeData } from '@web/spaces/canvas/types/node';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -15,13 +17,19 @@ interface WebNodeProps {
  * users can pin reference pages right next to their content nodes.
  * Sandbox flags are restrictive by default; opening the page in a new
  * tab remains the safe fallback for sites that block framing.
+ * @param root0 - Web node props.
+ * @param root0.data - Web node payload (embedded page URL, status, optional error message).
+ * @param root0.selected - Whether the node is selected, driving the selection ring.
+ * @param root0.locked - Whether the node is locked, showing the lock indicator.
+ * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @returns The web node element (placeholder or sandboxed iframe).
  */
 export function WebNode({
   data,
   selected,
   locked,
   onActivate,
-}: WebNodeProps) {
+}: WebNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.url);
   return (
     <NodeShell

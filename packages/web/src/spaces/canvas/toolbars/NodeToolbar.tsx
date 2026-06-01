@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 import type { Modality } from '@web/spaces/canvas/types/node';
@@ -35,6 +37,14 @@ interface NodeToolbarProps {
  *
  * The vertical separator keeps the two intents visually distinct so
  * users never confuse "edit this node" with "branch a new node."
+ * @param root0 - Node toolbar props.
+ * @param root0.nodeId - ID of the node this toolbar acts on, stamped on the root for selectors.
+ * @param root0.modality - Node modality, forwarded to the generate / load / mini-tool controls.
+ * @param root0.onGenerate - Generate handler that runs the AI prompt against this node in place.
+ * @param root0.onLoad - Load handler that replaces the node's content with a file payload.
+ * @param root0.onPickMiniTool - Mini-tool selection handler that creates a new sibling node + primary edge.
+ * @param root0.visible - Whether the toolbar is shown (on node hover / selection).
+ * @returns The floating two-zone node toolbar element.
  */
 export function NodeToolbar({
   nodeId,
@@ -43,7 +53,7 @@ export function NodeToolbar({
   onLoad,
   onPickMiniTool,
   visible = true,
-}: NodeToolbarProps) {
+}: NodeToolbarProps): React.JSX.Element {
   return (
     <div
       data-testid='node-toolbar'

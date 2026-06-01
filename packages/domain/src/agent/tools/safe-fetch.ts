@@ -35,6 +35,10 @@ import ipaddr from "ipaddr.js";
 
 /** Error thrown when a URL would reach a forbidden host or IP. */
 export class SsrfError extends Error {
+  /**
+   * Create an SsrfError.
+   * @param message - Description of why the URL or host was rejected.
+   */
   constructor(message: string) {
     super(message);
     this.name = "SsrfError";
@@ -83,9 +87,8 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * system resolver typically prefers the first record. For defense in
  * depth we call `lookup(host, { all: true })` when possible. `{ all: true }`
  * is supported in Node.js and returns every address record.
- *
  * @param hostname - The raw hostname from the URL
- * @throws SsrfError if the hostname is blocked or resolves to a private IP
+ * @throws {SsrfError} if the hostname is blocked or resolves to a private IP
  */
 async function assertHostnameAllowed(hostname: string): Promise<void> {
   const normalized = hostname.toLowerCase().trim();
@@ -124,6 +127,7 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
 /**
  * Throw {@link SsrfError} if the given IP (v4 or v6 string) is not
  * in the allowed unicast range.
+ * @param ip - The IPv4 or IPv6 address literal to validate.
  */
 function assertIpAllowed(ip: string): void {
   if (!ipaddr.isValid(ip)) {
@@ -150,13 +154,12 @@ export interface SafeFetchOptions {
  * DNS and the IP deny list.
  *
  * The caller receives a native `Response` on success.
- *
  * @param url - The initial URL to fetch
  * @param opts - Optional headers and hop timeout
  * @returns A `Response` from the final (non-redirect) hop
- * @throws SsrfError if any hop resolves to a non-public IP or matches
+ * @throws {SsrfError} if any hop resolves to a non-public IP or matches
  *   a blocked hostname
- * @throws TypeError for malformed URLs
+ * @throws {TypeError} for malformed URLs
  */
 export async function safeFetch(
   url: string,

@@ -11,8 +11,15 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // flatConfigs.recommended entry is used unchanged.
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
+import jsdoc from 'eslint-plugin-jsdoc';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Function-definition format spec (docs/coding-standards.md). web has its own
+// ESLint 9 config, so the same jsdoc rule set declared in the root
+// eslint.config.mjs is repeated here. recommended-typescript-error: param/
+// return types come from the TS signature (no-types on), not the comment.
+const jsdocTs = jsdoc.configs['flat/recommended-typescript-error'];
 
 export default [
   js.configs.recommended,
@@ -149,6 +156,51 @@ export default [
       'no-relative-import-paths/no-relative-import-paths': [
         'error',
         { allowSameFolder: false, rootDir: 'src', prefix: '@' },
+      ],
+    },
+  },
+  {
+    // Function-definition format spec (docs/coding-standards.md). Same rule
+    // set as the root eslint.config.mjs jsdoc block: every named function unit
+    // needs a TSDoc block + explicit return type; type info lives in the
+    // signature; only the exception type goes in `@throws {ErrorType}`.
+    // shadcn vendor primitives (components/ui) and tests are exempt.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/components/ui/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+      '**/__tests__/**',
+    ],
+    plugins: jsdocTs.plugins,
+    rules: {
+      ...jsdocTs.rules,
+      'jsdoc/require-jsdoc': [
+        'error',
+        {
+          publicOnly: false,
+          require: {
+            ArrowFunctionExpression: false,
+            ClassDeclaration: true,
+            ClassExpression: true,
+            FunctionDeclaration: true,
+            FunctionExpression: false,
+            MethodDefinition: true,
+          },
+          contexts: [
+            'VariableDeclarator > ArrowFunctionExpression',
+            'VariableDeclarator > FunctionExpression',
+            'PropertyDefinition > ArrowFunctionExpression',
+            'PropertyDefinition > FunctionExpression',
+          ],
+        },
+      ],
+      'jsdoc/require-throws-type': 'error',
+      'jsdoc/require-yields-type': 'off',
+      'jsdoc/require-next-type': 'off',
+      '@typescript-eslint/explicit-function-return-type': [
+        'error',
+        { allowExpressions: true },
       ],
     },
   },

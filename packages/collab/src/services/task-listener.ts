@@ -51,10 +51,21 @@ const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "handlingBy",
 ] as const);
 
+/**
+ * Build the Redis Streams key the Worker publishes task events to.
+ * @param envPrefix - Environment prefix (e.g. `dev`) that namespaces the key.
+ * @returns The `{envPrefix}:stream:task-events` stream key.
+ */
 function taskEventsStreamKey(envPrefix: string): string {
   return `${envPrefix}:stream:task-events`;
 }
 
+/**
+ * Build the Redis key where this consumer persists its last-handled
+ * stream id for durable resume.
+ * @param envPrefix - Environment prefix (e.g. `dev`) that namespaces the key.
+ * @returns The `{envPrefix}:collab:task-events:last-id` resume-cursor key.
+ */
 function taskEventsLastIdKey(envPrefix: string): string {
   return `${envPrefix}:collab:task-events:last-id`;
 }
@@ -78,6 +89,8 @@ function taskEventsLastIdKey(envPrefix: string): string {
  *
  * Idempotent — applying the same update twice produces the same
  * result (Y.Map set/delete is last-write-wins), so stream redelivery is safe.
+ * @param hocuspocus - Running Hocuspocus server used to open a direct connection to the target canvas doc.
+ * @param event - Node-state update emitted by the Worker, carrying the doc name, node id, and partial data patch.
  */
 export async function handleNodeStateUpdateEvent(
   hocuspocus: Hocuspocus,
@@ -256,6 +269,8 @@ export async function handleNodeStateUpdateEvent(
  *
  * Currently only `NodeStateUpdateEvent` is in the union, but the guard
  * is explicit for forward-compatibility.
+ * @param hocuspocus - Running Hocuspocus server forwarded to the selected handler.
+ * @param event - Incoming node event read off the task-events stream.
  */
 async function handleNodeEvent(
   hocuspocus: Hocuspocus,
@@ -273,7 +288,6 @@ async function handleNodeEvent(
 
 /**
  * Start listening for task lifecycle events on the Redis stream.
- *
  * @param hocuspocus - Running Hocuspocus server instance
  * @param streamRedisUrl - Redis URL for Streams (DB 2)
  * @param envPrefix - Environment prefix for stream + last-id keys

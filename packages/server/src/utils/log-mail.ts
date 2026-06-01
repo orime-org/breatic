@@ -21,6 +21,11 @@ export interface LogMailCtx {
   subject: string;
 }
 
+/**
+ * Apply the shared mail-result logging policy at the application boundary.
+ * @param result - The {@link SendMailResult} returned by `sendMail`.
+ * @param ctx - Correlation context (recipient user id and mail subject tag) merged into the log line.
+ */
 export function logMailResult(result: SendMailResult, ctx: LogMailCtx): void {
   if (result.status === "backend_console") {
     logger.info(

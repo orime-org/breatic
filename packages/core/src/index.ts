@@ -1,16 +1,16 @@
 /**
- * @breatic/core — shared backend runtime.
+ * `@breatic/core` — shared backend runtime.
  *
  * All business logic, infrastructure, agent capabilities, and
- * configuration. Imported by @breatic/server and @breatic/worker.
+ * configuration. Imported by `@breatic/server` and `@breatic/worker`.
  *
- * @breatic/collab also depends on this package: it reaches for the
+ * `@breatic/collab` also depends on this package: it reaches for the
  * shared infrastructure (connection factories / logging / config)
  * AND the shared authentication kernel (session-store + the
  * `projectMembers` repo + `loadProjectRole`). Auth / session / role
  * is "must be identical across every backend service" logic, so it
  * lives here once instead of being hand-rolled per service. collab
- * does NOT touch @breatic/domain (server+worker-only AIGC business).
+ * does NOT touch `@breatic/domain` (server+worker-only AIGC business).
  */
 
 // ── Database ─────────────────────────────────────────────────────

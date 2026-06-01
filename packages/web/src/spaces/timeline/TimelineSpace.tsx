@@ -1,4 +1,5 @@
 import { Film } from 'lucide-react';
+import type * as React from 'react';
 
 import type { SpaceBodyProps } from '@web/spaces';
 import type { TimelineTrack } from '@web/spaces/timeline/types';
@@ -14,13 +15,19 @@ interface TimelineSpaceProps extends SpaceBodyProps {
  * the project can mount a TimelineSpace without `null` checks; the real
  * editor (canvas-native primitives, transport controls, scrubbing) lands
  * during the M3+ media polish PR.
+ * @param root0 - Timeline space props (space body props plus track data).
+ * @param root0.spaceId - ID of the timeline space, stamped on the root element for selectors.
+ * @param root0.projectId - ID of the owning project, stamped on the root element for selectors.
+ * @param root0.tracks - Timeline tracks to render; empty renders the empty-state surface.
+ * @param root0.pixelsPerMs - Horizontal scale factor mapping clip milliseconds to pixels.
+ * @returns The timeline surface element (empty state or tracks rail with clips).
  */
 export function TimelineSpace({
   spaceId,
   projectId,
   tracks = [],
   pixelsPerMs = 0.04,
-}: TimelineSpaceProps) {
+}: TimelineSpaceProps): React.JSX.Element {
   if (tracks.length === 0) {
     return (
       <div

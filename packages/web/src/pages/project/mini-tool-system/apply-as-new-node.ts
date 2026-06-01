@@ -38,6 +38,9 @@ export interface ApplyMutation {
  *
  * The source node is NEVER mutated. Callers compose this with the canvas
  * write adapter (Yjs nodes + edges maps) at the commit step.
+ * @param input - The source node, tool id, id generator, and optional commit hook.
+ * @returns The mutation describing the new node and the primary edge to it.
+ * @throws {Error} When the tool id is not found in the mini-tool catalog.
  */
 export function applyAsNewNode(input: ApplyMiniToolInput): ApplyMutation {
   const tool = getMiniTool(input.toolId);

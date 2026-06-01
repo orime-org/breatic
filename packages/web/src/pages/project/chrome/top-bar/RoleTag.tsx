@@ -40,15 +40,25 @@ interface RoleTagProps {
  * to click it.
  *
  * Spec: access-permission design (2026-05-28) § 6.3.
+ * @param root0 - Role tag props.
+ * @param root0.role - Viewer's role in the project; decides whether the chip is read-only or clickable.
+ * @param root0.projectId - Id of the project the upgrade request targets.
+ * @returns a read-only role chip for owners/editors, or a clickable request-edit-access chip for viewers.
  */
-export function RoleTag({ role, projectId }: RoleTagProps) {
+export function RoleTag({ role, projectId }: RoleTagProps): React.JSX.Element {
   if (role !== 'view') {
     return <ReadOnlyRoleTag role={role} />;
   }
   return <ClickableViewerRoleTag projectId={projectId} />;
 }
 
-function ReadOnlyRoleTag({ role }: { role: ProjectRole }) {
+/**
+ * Static role chip shown to owners and editors (no interaction).
+ * @param root0 - Read-only role tag props.
+ * @param root0.role - Role to label; owner text is emphasized over editor.
+ * @returns the non-interactive role chip.
+ */
+function ReadOnlyRoleTag({ role }: { role: ProjectRole }): React.JSX.Element {
   const isOwner = role === 'owner';
   return (
     <span
@@ -64,7 +74,17 @@ function ReadOnlyRoleTag({ role }: { role: ProjectRole }) {
   );
 }
 
-function ClickableViewerRoleTag({ projectId }: { projectId: string }) {
+/**
+ * Viewer role chip that opens a popover to request edit access.
+ * @param root0 - Clickable viewer role tag props.
+ * @param root0.projectId - Id of the project the role-upgrade request is submitted against.
+ * @returns the clickable viewer chip with its request-edit-access popover form.
+ */
+function ClickableViewerRoleTag({
+  projectId,
+}: {
+  projectId: string;
+}): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [message, setMessage] = React.useState('');

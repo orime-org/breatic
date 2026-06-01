@@ -7,6 +7,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
+import type * as React from 'react';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
@@ -34,8 +35,17 @@ const ICONS: Record<Modality, typeof FileText> = {
  * node's prompt context. Driven by the canvas's edge graph + the snapshot
  * payload — NOT a node type. The picker that produces these lives in
  * `ReferencePicker.tsx`.
+ * @param root0 - Reference chip props.
+ * @param root0.modality - Referenced node's modality, selecting the leading icon.
+ * @param root0.label - Short display label (truncated text snippet or filename).
+ * @param root0.onRemove - Optional handler; when present, renders a ✕ that unlinks the reference.
+ * @returns The reference chip badge element.
  */
-export function ReferenceChip({ modality, label, onRemove }: ReferenceChipProps) {
+export function ReferenceChip({
+  modality,
+  label,
+  onRemove,
+}: ReferenceChipProps): React.JSX.Element {
   const Icon = ICONS[modality];
   return (
     <Badge

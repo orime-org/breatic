@@ -14,6 +14,11 @@ interface ExportMaskInput {
  *
  * Returns null in a non-DOM environment (lets callers gracefully degrade
  * in SSR / node test runners that lack OffscreenCanvas).
+ * @param root0 - Mask export input.
+ * @param root0.width - Mask width in image pixels.
+ * @param root0.height - Mask height in image pixels.
+ * @param root0.strokes - Strokes to rasterize, in image-pixel coordinates.
+ * @returns The mask PNG as a data URL, or null when no DOM / 2D context is available.
  */
 export function exportMask({
   width,
@@ -52,6 +57,11 @@ export function exportMask({
   return canvas.toDataURL('image/png');
 }
 
+/**
+ * Clamps a number into the [0, 1] range, mapping NaN to 0.
+ * @param n - The value to clamp.
+ * @returns The value constrained to [0, 1].
+ */
 function clamp01(n: number): number {
   if (Number.isNaN(n)) return 0;
   if (n < 0) return 0;

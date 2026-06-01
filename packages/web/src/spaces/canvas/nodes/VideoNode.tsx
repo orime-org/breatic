@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import type { VideoNodeData } from '@web/spaces/canvas/types/node';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -14,13 +16,19 @@ interface VideoNodeProps {
  * Video node — native <video> element with a cover poster. Heavier
  * playback affordances (scrub, hot-key, picture-in-picture trigger)
  * arrive in a later polish PR.
+ * @param root0 - Video node props.
+ * @param root0.data - Video node payload (asset URL, cover poster, status, optional error message).
+ * @param root0.selected - Whether the node is selected, driving the selection ring.
+ * @param root0.locked - Whether the node is locked, showing the lock indicator.
+ * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @returns The video node element (placeholder or native video player).
  */
 export function VideoNode({
   data,
   selected,
   locked,
   onActivate,
-}: VideoNodeProps) {
+}: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.url);
   return (
     <NodeShell

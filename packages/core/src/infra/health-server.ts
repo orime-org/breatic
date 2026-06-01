@@ -28,9 +28,11 @@
 
 import { createServer, type Server } from "node:http";
 
-/** Per-check timeout - long enough to differentiate "slow but
+/**
+ * Per-check timeout - long enough to differentiate "slow but
  * recovering" from "stuck", short enough that a misbehaving probe
- * doesn't pile up if the LB hammers it every second. */
+ * doesn't pile up if the LB hammers it every second.
+ */
 const CHECK_TIMEOUT_MS = 2000;
 
 /**
@@ -45,14 +47,20 @@ export interface HealthCheck {
 }
 
 export interface HealthServerOptions {
-  /** Port to listen on. Must NOT collide with the service's main
-   * port (e.g. 1234 for collab WS). */
+  /**
+   * Port to listen on. Must NOT collide with the service's main
+   * port (e.g. 1234 for collab WS).
+   */
   port: number;
-  /** Service name tag forwarded to {@link HealthServerOptions.onEvent}
-   * (`collab` / `worker`). */
+  /**
+   * Service name tag forwarded to {@link HealthServerOptions.onEvent}
+   * (`collab` / `worker`).
+   */
   serviceName: string;
-  /** Dependencies to probe. Order does not matter; they're awaited
-   * in parallel. */
+  /**
+   * Dependencies to probe. Order does not matter; they're awaited
+   * in parallel.
+   */
   checks: HealthCheck[];
   /**
    * Optional observer for lifecycle events (listening, check
@@ -89,6 +97,11 @@ export type HealthServerEvent =
       err: unknown;
     };
 
+/**
+ * Run one health check, racing it against {@link CHECK_TIMEOUT_MS}.
+ * @param check - the dependency probe to run
+ * @returns the check outcome with latency, marking it failed on throw or timeout
+ */
 async function runCheck(
   check: HealthCheck,
 ): Promise<CheckResult> {
@@ -115,9 +128,9 @@ async function runCheck(
 
 /**
  * Start a `/healthz` HTTP server for a long-lived service.
- *
- * @returns A function that gracefully shuts the server down; call
- *   it from your SIGTERM handler.
+ * @param opts - port, service name, dependency checks, and optional event observer
+ * @returns the running `server` plus a `stop` function that gracefully
+ *   shuts it down; call `stop` from your SIGTERM handler.
  */
 export function startHealthServer(opts: HealthServerOptions): {
   server: Server;

@@ -45,7 +45,6 @@ let _cachedTiers: PricingTier[] | null = null;
  * Selects `test` or `live` Stripe Price ID based on `ENV`:
  * - `dev` / `staging` → `test`
  * - `prod` → `live`
- *
  * @returns Array of resolved pricing tiers
  */
 export function getPricingTiers(): PricingTier[] {
@@ -71,7 +70,6 @@ export function getPricingTiers(): PricingTier[] {
 
 /**
  * Find a tier by name (case-insensitive).
- *
  * @param name - Tier name (e.g. "Pro")
  * @returns The matching tier, or undefined
  */
@@ -85,7 +83,6 @@ export function findTierByName(name: string): PricingTier | undefined {
  * Find a tier by its Stripe Price ID.
  *
  * Used during webhook handling to determine how many credits to grant.
- *
  * @param priceId - Stripe Price ID from the checkout session
  * @returns The matching tier, or undefined
  */

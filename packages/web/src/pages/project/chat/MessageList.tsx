@@ -16,8 +16,15 @@ interface MessageListProps {
  * message count grows so the user follows along with the assistant's
  * streaming output. Renders `<ChatEmpty />` when there are no messages
  * yet (new conversation greeting + quick actions).
+ * @param root0 - The component props.
+ * @param root0.messages - The messages to render in order.
+ * @param root0.onQuickAction - Called with a quick-action label from the empty state.
+ * @returns The scrollable message column, or the empty-conversation state.
  */
-export function MessageList({ messages, onQuickAction }: MessageListProps) {
+export function MessageList({
+  messages,
+  onQuickAction,
+}: MessageListProps): React.JSX.Element {
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const count = messages.length;
   React.useEffect(() => {

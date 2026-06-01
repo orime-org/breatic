@@ -16,9 +16,8 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Build background removal API request.
- *
  * @param prompt - Not used for background removal
- * @param modelName - Resolved model name
+ * @param _modelName - Resolved model name (unused; background removal has no model-specific request shaping)
  * @param params - Validated params (image only)
  * @returns Tuple of [prompt, apiParams]
  */

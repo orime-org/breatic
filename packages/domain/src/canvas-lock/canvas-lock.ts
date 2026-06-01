@@ -33,9 +33,9 @@ export const CANVAS_LOCK_TTL_SECONDS = 7200;
  * which t3-env stripped to `undefined` at runtime, emitting
  * `undefined:canvas:lock:…` keys; the env-injection refactor's
  * stricter typing surfaced and fixed that (2026-05-30).
- *
  * @param projectId - UUID of the project owning the node
  * @param nodeId - UUID of the canvas node being locked
+ * @returns The namespaced Redis key `{env}:canvas:lock:{projectId}:{nodeId}`.
  */
 export function canvasNodeLockKey(projectId: string, nodeId: string): string {
   return `${env.ENV}:canvas:lock:${projectId}:${nodeId}`;
@@ -43,7 +43,6 @@ export function canvasNodeLockKey(projectId: string, nodeId: string): string {
 
 /**
  * Try to acquire an exclusive lock on a canvas node for an overwrite task.
- *
  * @param projectId - UUID of the project
  * @param nodeId - UUID of the target canvas node
  * @param taskId - The acquiring task's UUID (becomes the lock value)
@@ -71,7 +70,6 @@ export async function acquireCanvasNodeLock(
  * Read who currently holds the lock for a canvas node. Used by the conflict
  * 409 handler to look up holder details (taskId / userId / startedAt) for
  * the toast.
- *
  * @param projectId - UUID of the project
  * @param nodeId - UUID of the target canvas node
  * @param redis - Optional Redis client (defaults to general-purpose DB 0)
@@ -90,7 +88,6 @@ export async function readCanvasNodeLockHolder(
  * before writing the result to Yjs — if the TTL expired and someone else
  * grabbed the lock, the worker must NOT publish its stale result (spec
  * §10.15.5).
- *
  * @param projectId - UUID of the project
  * @param nodeId - UUID of the target canvas node
  * @param taskId - The worker's own task UUID
@@ -111,7 +108,6 @@ export async function verifyCanvasNodeLock(
  * Release the lock — only deletes if the caller still owns it. Safe to call
  * unconditionally in a `finally` block; if the TTL already expired or someone
  * else owns the key, this is a no-op.
- *
  * @param projectId - UUID of the project
  * @param nodeId - UUID of the target canvas node
  * @param taskId - The worker's own task UUID (must match the stored value)

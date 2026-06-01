@@ -11,8 +11,6 @@
  * Distinguished from `ask_user_question` (free-form text answer) — use
  * this when the agent has a discrete set of options the user should pick
  * from. DO NOT call for simple yes/no — use plain text for those.
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";

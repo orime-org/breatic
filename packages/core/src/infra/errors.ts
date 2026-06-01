@@ -34,6 +34,12 @@ export class InfraNotReadyError extends Error {
   public readonly hint: string;
   public override readonly cause: unknown;
 
+  /**
+   * Construct a startup-dependency-unreachable error.
+   * @param component - short stable tag for the failed dependency (e.g. `"PostgreSQL"`)
+   * @param hint - human-readable recovery instruction for the oncall reader
+   * @param cause - the original error from the failed probe, preserved for the stack
+   */
   constructor(component: string, hint: string, cause: unknown) {
     const causeMsg = cause instanceof Error ? cause.message : String(cause);
     super(`${component} not reachable: ${causeMsg}`);

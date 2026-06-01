@@ -30,7 +30,6 @@ interface ContentPart {
 
 /**
  * Build LLM messages with multimodal content for Gemini.
- *
  * @param prompt - Analysis instruction text
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params (images, video_url, audio_url, max_tokens)

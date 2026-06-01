@@ -46,10 +46,22 @@ export type { ShareLinkKind };
 /** Roles a share link can grant — `owner` is never grantable. */
 export type GrantableRole = Exclude<ProjectRole, "owner">;
 
+/**
+ * Type guard: narrow an arbitrary role string to a grantable role
+ * (`owner` is never grantable via a share link).
+ * @param role - Role string to check
+ * @returns True if `role` is 'edit' or 'view'
+ */
 function isGrantableRole(role: string): role is GrantableRole {
   return role === "edit" || role === "view";
 }
 
+/**
+ * Detect a PostgreSQL unique-violation error (SQLSTATE 23505), used to
+ * map a token collision to a Conflict.
+ * @param err - Caught error of unknown shape
+ * @returns True if the error carries the `23505` SQLSTATE code
+ */
 function isUniqueViolation(err: unknown): boolean {
   return (
     typeof err === "object" &&
@@ -62,6 +74,7 @@ function isUniqueViolation(err: unknown): boolean {
 /**
  * Generate a base64url-encoded 32-byte token (~43 chars).
  * URL-safe — no padding, no '+' or '/'.
+ * @returns A cryptographically random, URL-safe share link token
  */
 export function generateToken(): string {
   return randomBytes(32).toString("base64url");
@@ -79,10 +92,16 @@ const EMAIL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  *     (recipient address). The link expires in 7 days.
  *   - kind='link' MUST be passed with no `boundEmail` (or null).
  *     The link is multi-use with no expiry.
- *
- * @throws {@link ValidationError} if `role` is not 'edit' / 'view',
+ * @param input - Share link creation parameters
+ * @param input.projectId - Project the link grants access to
+ * @param input.createdByUserId - User creating the link
+ * @param input.role - Role granted on consume ('edit' or 'view')
+ * @param input.kind - Link mode ('email' single-use, or 'link' multi-use)
+ * @param input.boundEmail - Recipient email; required for 'email', must be absent for 'link'
+ * @returns The created share link (with the server-generated token)
+ * @throws {ValidationError} if `role` is not 'edit' / 'view',
  *   or if `kind` and `boundEmail` are mismatched
- * @throws {@link ConflictError} if the token randomly collides
+ * @throws {ConflictError} if the token randomly collides
  *   (astronomically rare; caller should retry once)
  */
 export async function createLink(input: {
@@ -126,15 +145,19 @@ export async function createLink(input: {
   }
 }
 
-/** List active links for a project. Route enforces owner/admin gate. */
+/**
+ * List active links for a project. Route enforces owner/admin gate.
+ * @param projectId - Project UUID
+ * @returns The project's active share links, newest first
+ */
 export async function listByProject(projectId: string): Promise<ShareLink[]> {
   return shareLinkRepo.listByProject(projectId);
 }
 
 /**
  * Revoke a share link (soft-delete).
- *
- * @throws {@link NotFoundError} if the link doesn't exist or is
+ * @param linkId - Share link UUID to revoke
+ * @throws {NotFoundError} if the link doesn't exist or is
  *   already revoked
  */
 export async function revokeLink(linkId: string): Promise<void> {
@@ -156,14 +179,14 @@ export async function revokeLink(linkId: string): Promise<void> {
  * kind='email': single-use; consume sets consumed_at; bound email
  * mismatch raises Forbidden; expired raises Forbidden.
  * kind='link':  multi-use; consume returns the link without mutation.
- *
  * @param token — the link token from the URL
  * @param callerEmail — the authenticated user's email; used only
  *   for the boundEmail check on kind='email' links
- *
- * @throws {@link NotFoundError} if the token doesn't exist or the
+ * @returns The resolved share link (with `consumedAt` set for a freshly
+ *   consumed email-invite link; unchanged for a multi-use 'link')
+ * @throws {NotFoundError} if the token doesn't exist or the
  *   link has been revoked
- * @throws {@link ForbiddenError} if the link is expired, the email
+ * @throws {ForbiddenError} if the link is expired, the email
  *   doesn't match the bound recipient, or the single-use link was
  *   already consumed
  */

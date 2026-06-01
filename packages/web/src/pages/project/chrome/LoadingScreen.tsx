@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -20,8 +21,9 @@ import { useTranslation } from '@web/i18n/use-translation';
  * Visual: project background color + centered spinner + "Loading..."
  * (uses the project-wide `loading` i18n key — same string as elsewhere
  * in the app).
+ * @returns The full-viewport centered spinner with localized loading text.
  */
-export function LoadingScreen() {
+export function LoadingScreen(): React.JSX.Element {
   const t = useTranslation();
   return (
     <div

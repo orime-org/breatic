@@ -20,6 +20,12 @@ interface DenoiseParams {
   intensity: number;
 }
 
+/**
+ * Validate and normalise the raw job params into a typed denoise payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, intensity }` denoise params
+ * @throws {Error} when `video` is not an http(s) URL or `intensity` is outside [0, 100]
+ */
 function parseParams(raw: Record<string, unknown>): DenoiseParams {
   const video = raw.video;
   const intensity = raw.intensity;
@@ -35,6 +41,13 @@ function parseParams(raw: Record<string, unknown>): DenoiseParams {
   return { video, intensity };
 }
 
+/**
+ * Denoise a video's audio track with FFmpeg `afftdn`, copying the video stream.
+ * Intensity below 1 short-circuits and returns the source URL unchanged.
+ * @param rawParams - Raw mini-tool params carrying the video URL and intensity
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the denoised video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, intensity } = parseParams(rawParams);
 

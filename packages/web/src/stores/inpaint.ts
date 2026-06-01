@@ -44,6 +44,10 @@ interface InpaintState {
 }
 
 let strokeSeq = 0;
+/**
+ * Generate a process-unique stroke id from a monotonic counter.
+ * @returns A new `stroke-<n>` id that is unique within the session.
+ */
 function nextStrokeId(): string {
   strokeSeq += 1;
   return `stroke-${strokeSeq}`;

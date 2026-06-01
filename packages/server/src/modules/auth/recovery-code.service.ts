@@ -34,6 +34,7 @@ const BCRYPT_COST = 12;
  *
  * Uses `crypto.randomInt(0, 32)` per character — unbiased selection
  * from the 32-char alphabet. 16 characters → ~80 bits of entropy.
+ * @returns A fresh plaintext recovery code in `XXXX-XXXX-XXXX-XXXX` format
  */
 export function generateRecoveryCode(): string {
   let s = "";
@@ -49,6 +50,8 @@ export function generateRecoveryCode(): string {
  * Use the returned string as `users.recovery_code_hash`. Never store
  * the plaintext code server-side — it is shown to the user exactly
  * once after generation.
+ * @param code - Plaintext recovery code to hash
+ * @returns The bcrypt hash to persist as `users.recovery_code_hash`
  */
 export async function hashRecoveryCode(code: string): Promise<string> {
   return bcrypt.hash(code, BCRYPT_COST);
@@ -56,7 +59,8 @@ export async function hashRecoveryCode(code: string): Promise<string> {
 
 /**
  * Verify a plaintext code against a stored bcrypt hash.
- *
+ * @param code - Plaintext recovery code supplied by the user
+ * @param hash - Stored bcrypt hash from `users.recovery_code_hash`
  * @returns `true` when `code` matches `hash`, `false` otherwise.
  *   Case-sensitive and format-strict (verification compares the
  *   exact bytes — `xxxx-xxxx...` lowercase or `XXXXXXXXXXXXXXXX`

@@ -10,7 +10,12 @@ import { AppError, ConflictLockedError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 
-/** Global error handler for the Hono app. */
+/**
+ * Global error handler for the Hono app.
+ * @param err - The thrown error to map to an HTTP response.
+ * @param c - The Hono request context used to build the JSON response.
+ * @returns A structured JSON response: the locked-resource detail for {@link ConflictLockedError}, the status + message for {@link AppError}, or a 500 for unknown errors.
+ */
 export const errorHandler: ErrorHandler = (err, c) => {
   // ConflictLockedError carries a structured `detail` payload (holder
   // identity / start time / etc.) that the client renders into a toast.

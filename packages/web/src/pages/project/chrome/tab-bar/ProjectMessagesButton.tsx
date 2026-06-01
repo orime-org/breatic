@@ -1,5 +1,5 @@
 import { AlertTriangle, History, RotateCcw, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 
 import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
 import {
@@ -83,6 +83,13 @@ export interface RelativeTime {
   params?: Record<string, string | number>;
 }
 
+/**
+ * Buckets a past timestamp into a relative-time ICU descriptor
+ * (just now / minutes / hours / yesterday / days / weeks / months / ISO date).
+ * @param epochMs - The event timestamp in epoch milliseconds.
+ * @param now - Reference "now" in epoch milliseconds; defaults to the current time.
+ * @returns The ICU message key plus optional plural params for `t(...)`.
+ */
 function relativeTime(epochMs: number, now = Date.now()): RelativeTime {
   if (!Number.isFinite(epochMs))
     return {
@@ -151,13 +158,26 @@ const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
  */
 const CLEAR_ALL_ENABLED: boolean = false;
 
+/**
+ * History clock icon on the right of the tab bar that opens the
+ * project-wide message / audit channel sheet (created / deleted / locked
+ * / renamed / restored events) with owner-only restore and clear-all
+ * affordances.
+ * @param root0 - Component props.
+ * @param root0.messages - Project message entries to render, newest shown first (last 100 cap).
+ * @param root0.usersById - Live user lookup used to render each entry's actor id as a display name.
+ * @param root0.currentUserRole - Caller's role on the project, driving owner-only affordances.
+ * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
+ * @param root0.onClearAll - Owner clear-all handler for wiping the message channel.
+ * @returns The history trigger button and its message-channel sheet.
+ */
 export function ProjectMessagesButton({
   messages,
   usersById,
   currentUserRole,
   onRestore,
   onClearAll,
-}: ProjectMessagesButtonProps) {
+}: ProjectMessagesButtonProps): JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-messages');
   const isOwner = currentUserRole === 'owner';
@@ -166,7 +186,11 @@ export function ProjectMessagesButton({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
 
-  const onClickRestore = async (spaceId: string) => {
+  /**
+   * Restores a deleted space via `onRestore`, tracking per-entry busy state.
+   * @param spaceId - Id of the deleted space to restore.
+   */
+  const onClickRestore = async (spaceId: string): Promise<void> => {
     if (!onRestore) return;
     setBusyId(spaceId);
     try {
@@ -175,7 +199,10 @@ export function ProjectMessagesButton({
       setBusyId(null);
     }
   };
-  const onClickClear = async () => {
+  /**
+   * Clears the whole message channel via `onClearAll`, tracking busy state.
+   */
+  const onClickClear = async (): Promise<void> => {
     if (!onClearAll) return;
     setClearing(true);
     try {

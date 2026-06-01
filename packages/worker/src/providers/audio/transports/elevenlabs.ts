@@ -14,12 +14,11 @@ import { logger } from "@breatic/core";
  * Generate sound effects via ElevenLabs official API.
  *
  * The API is synchronous -- the response body is raw audio bytes.
- *
  * @param _prompt - Audio description prompt (embedded in params as `text`)
  * @param resolved - Resolved model with provider connection details
  * @param params - Request payload (text, duration_seconds, prompt_influence, loop)
  * @returns Object with `buffer`, `contentType`, `model`, and `cost`
- * @throws Error if the API returns an error or no audio data
+ * @throws {Error} if the API returns an error or no audio data
  */
 export async function generate(
   _prompt: string,

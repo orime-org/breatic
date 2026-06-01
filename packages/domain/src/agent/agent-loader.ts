@@ -4,7 +4,6 @@
  * Each agent file is a Markdown document with YAML frontmatter defining
  * the agent's role, tools, model, and default skills. The body is the
  * system prompt.
- *
  * @module
  */
 
@@ -33,7 +32,7 @@ export interface AgentDefinition {
 
 /**
  * Parse YAML frontmatter from a markdown string.
- *
+ * @param content - Raw markdown file content with optional `---` frontmatter.
  * @returns Tuple of [frontmatter object, body string]
  */
 function parseFrontmatter(content: string): [Record<string, unknown>, string] {
@@ -70,7 +69,6 @@ let _cache: ReadonlyMap<string, AgentDefinition> | null = null;
  * Load all agent definitions from the agents/ directory.
  *
  * Results are cached after first load.
- *
  * @returns Map of agent name to AgentDefinition
  */
 export function loadAgents(): ReadonlyMap<string, AgentDefinition> {
@@ -119,7 +117,6 @@ export function loadAgents(): ReadonlyMap<string, AgentDefinition> {
 
 /**
  * Get a single agent definition by name.
- *
  * @param name - Agent name (e.g. "researcher")
  * @returns AgentDefinition or undefined if not found
  */
@@ -131,6 +128,7 @@ export function getAgent(name: string): AgentDefinition | undefined {
  * List all available agent names and descriptions.
  *
  * Used by MainAgent's system prompt to describe available sub-agents.
+ * @returns Each agent's name and description.
  */
 export function listAgents(): ReadonlyArray<{ name: string; description: string }> {
   return [...loadAgents().values()].map(({ name, description }) => ({ name, description }));

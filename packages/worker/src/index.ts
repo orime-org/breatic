@@ -2,7 +2,7 @@
  * BullMQ Worker entry point.
  *
  * Standalone process that consumes tasks from the "tasks" queue.
- * All shared modules (db, redis, services) come from @breatic/core.
+ * All shared modules (db, redis, services) come from `@breatic/core`.
  */
 
 // MUST be first: reads process.env + initCore before any env.* read.
@@ -27,6 +27,9 @@ import type { TaskJobData } from "@worker/handlers/dispatch.js";
 // Health probe port from the validated config (default 9101).
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;
 
+/**
+ *
+ */
 export function startWorker(): void {
   // Production error logging for shared Redis singletons. The core
   // `createRedisClient` factory installs a no-op `error` listener so
@@ -105,7 +108,11 @@ export function startWorker(): void {
   // preStop expects. SIGINT (Ctrl+C in dev) follows the same
   // path so `pnpm dev:worker` shutdown in a terminal isn't
   // SIGKILL-equivalent either.
-  const shutdown = async (signal: string) => {
+  /**
+   * Drain the worker and health probe, then exit, on a termination signal.
+   * @param signal - The received signal name (e.g. "SIGTERM", "SIGINT")
+   */
+  const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "worker_shutdown_starting");
     try {
       // Stop health probe first so the LB stops sending traffic

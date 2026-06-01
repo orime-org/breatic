@@ -42,9 +42,9 @@ const BCRYPT_ROUNDS = 12;
  * (self-host friendly). The plaintext code is returned exactly once
  * - callers MUST display it to the user with a "save this now" UX;
  * only the bcrypt hash is persisted server-side.
- *
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
+ * @param name - Optional display name; falls back to the email local-part
  * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
@@ -88,7 +88,6 @@ export async function register(
 
 /**
  * Authenticate a user via email and password.
- *
  * @param email - The user's email address
  * @param password - Plaintext password to verify
  * @returns The authenticated user and a session token
@@ -125,7 +124,6 @@ export async function loginEmail(
  *
  * If a user with the given Google ID exists, logs them in. Otherwise,
  * links to an existing email account or creates a new user.
- *
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
  * @param name - Display name from Google (optional)
@@ -173,7 +171,6 @@ export async function loginOrCreateGoogle(
  *
  * Thin pass-through to the user repository so route handlers reach
  * the data layer through the service (prohibition #1).
- *
  * @param userId - The user UUID to resolve
  * @returns The matching {@link UserEntity}, or null if not found / soft-deleted
  */
@@ -186,7 +183,6 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
  *
  * Thin pass-through to the user repository so route handlers reach
  * the data layer through the service (prohibition #1).
- *
  * @param ids - User UUIDs to resolve (soft-deleted / missing ids are dropped)
  * @returns The matching {@link UserEntity} rows in arbitrary order
  */
@@ -196,7 +192,6 @@ export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
 
 /**
  * Resolve a session token to a user.
- *
  * @param token - The session token string
  * @returns The corresponding user entity, or null if invalid/expired
  */
@@ -211,7 +206,6 @@ export async function getUserByToken(
 
 /**
  * Invalidate a single session.
- *
  * @param token - The session token to revoke
  */
 export async function logout(token: string): Promise<void> {
@@ -221,7 +215,6 @@ export async function logout(token: string): Promise<void> {
 
 /**
  * Invalidate all sessions for a user (logout everywhere).
- *
  * @param userId - The ID of the user whose sessions should be revoked
  */
 export async function logoutAll(userId: string): Promise<void> {
@@ -249,6 +242,10 @@ export type ForgotPasswordResult =
  * enumeration). The returned discriminant lets the caller log
  * audit context internally without ever leaking the
  * existence/non-existence of the email back to the client.
+ * @param email - Email address the reset was requested for
+ * @param resetBaseUrl - Base URL the reset token is appended to in the email link
+ * @returns `{ status: "unknown_email" }` when no user matches, otherwise
+ *   `{ status: "reset_email_sent", userId, mailResult }` for audit logging
  */
 export async function forgotPassword(
   email: string,
@@ -280,7 +277,8 @@ export async function forgotPassword(
 
 /**
  * Verify reset token and update password.
- *
+ * @param token - One-time reset token from the email link
+ * @param newPassword - New plaintext password to hash and store
  * @throws {UnauthorizedError} if token is invalid or expired
  */
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
@@ -323,7 +321,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
  *   7. deleteAllSessions (force re-login on all devices)
  *   8. Return the new plaintext code (shown once - frontend MUST
  *      re-prompt user to save it)
- *
+ * @param email - Email address the reset is requested for
+ * @param code - Plaintext recovery code the user supplied
+ * @param newPassword - New plaintext password to hash and store
  * @returns `{ newRecoveryCode }` - fresh plaintext code to display
  * @throws {UnauthorizedError} on any failure (uniform error to
  *   prevent oracle attacks on email vs. code)
@@ -378,7 +378,7 @@ const EMAIL_VERIFY_TTL = 24 * 3600; // 24 hours
  * Stored in Redis (`${env.ENV}:email-verify:{token}` → userId) with
  * 24h TTL. Caller is responsible for sending the user a link that
  * embeds the returned token. Auto-removed on consume or expiry.
- *
+ * @param userId - User the verification token is issued for
  * @returns The 64-char hex token to embed in the verify URL.
  */
 export async function generateVerifyEmailToken(userId: string): Promise<string> {
@@ -394,7 +394,8 @@ export async function generateVerifyEmailToken(userId: string): Promise<string> 
  *
  * Looks up the token in Redis, flips `users.email_verified = true`
  * for the resolved user, deletes the token (single-use), and logs.
- *
+ * @param token - One-time email-verification token from the verify link
+ * @returns `{ userId }` of the user whose email was verified (for audit logging)
  * @throws {UnauthorizedError} if the token is missing / expired / used.
  */
 export async function verifyEmail(token: string): Promise<{ userId: string }> {
@@ -422,6 +423,10 @@ export async function verifyEmail(token: string): Promise<{ userId: string }> {
  * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` - caller
  * should gate accordingly; this function will still run (Redis token
  * stored) but `sendMail` will no-op + return false in disabled mode.
+ * @param userId - User the fresh verification token is issued for
+ * @param email - Destination address for the verification email
+ * @param verifyBaseUrl - Base URL the verify token is appended to in the email link
+ * @returns `{ mailResult }` reporting whether the mailer dispatched the email
  */
 export async function resendVerificationEmail(
   userId: string,

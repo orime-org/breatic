@@ -48,12 +48,17 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  *   - Enter / blur commit (trim, drop newlines, slice to MAX_TITLE_LEN,
  *     reject empty).
  *   - Escape cancel (restore previous value, exit edit mode).
+ * @param root0 - Editable title props.
+ * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
+ * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
+ * @param root0.maxWidth - Visible width cap in pixels; defaults to the Agent column width.
+ * @returns the static truncated title span, or the editing input while in edit mode.
  */
 export function TitleEditable({
   value,
   onChange,
   maxWidth = DEFAULT_TITLE_MAX_WIDTH,
-}: TitleEditableProps) {
+}: TitleEditableProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -71,14 +76,21 @@ export function TitleEditable({
     }
   }, [editing]);
 
-  const commit = () => {
+  /**
+   * Commits the draft as the new title — normalizes whitespace, caps length,
+   * fires `onChange` when changed and non-empty, and leaves edit mode.
+   */
+  const commit = (): void => {
     const next = draft.replace(/\n/g, '').trim().slice(0, MAX_TITLE_LEN);
     if (next.length > 0 && next !== value) onChange(next);
     if (next.length === 0) setDraft(value);
     setEditing(false);
   };
 
-  const cancel = () => {
+  /**
+   * Cancels the edit — restores the draft to the current value and leaves edit mode.
+   */
+  const cancel = (): void => {
     setDraft(value);
     setEditing(false);
   };

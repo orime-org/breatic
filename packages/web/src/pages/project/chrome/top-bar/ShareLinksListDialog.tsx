@@ -24,6 +24,11 @@ interface ShareLinksListDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Builds the public invite URL for a link token, preferring the current origin.
+ * @param token - Invite link token to embed in the URL path.
+ * @returns the absolute `/invite/:token` URL.
+ */
 function inviteUrlFor(token: string): string {
   if (typeof window !== 'undefined' && window.location.origin) {
     return `${window.location.origin}/invite/${token}`;
@@ -31,6 +36,11 @@ function inviteUrlFor(token: string): string {
   return `https://breatic.ai/invite/${token}`;
 }
 
+/**
+ * Abbreviates a long invite token to a `first6…last3` form for compact display.
+ * @param token - Full invite token to shorten.
+ * @returns the shortened token, or the original when it is 12 characters or fewer.
+ */
 function shortenToken(token: string): string {
   // 6-3 split: first 6 chars + "…" + last 3 — owners scan many tokens
   // at once, this keeps each row's tail recognisable.
@@ -38,7 +48,16 @@ function shortenToken(token: string): string {
   return `${token.slice(0, 6)}…${token.slice(-3)}`;
 }
 
-function relativeTime(iso: string, t: ReturnType<typeof useTranslation>): string {
+/**
+ * Formats a timestamp as a localized coarse relative time (just now / minutes / hours / days).
+ * @param iso - ISO timestamp to compare against now.
+ * @param t - Translation function used to render the localized phrase.
+ * @returns the localized relative-time label.
+ */
+function relativeTime(
+  iso: string,
+  t: ReturnType<typeof useTranslation>,
+): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.max(0, Math.round(diffMs / 60_000));
   if (minutes < 1) return t('share.relativeTime.justNow');
@@ -65,12 +84,17 @@ function relativeTime(iso: string, t: ReturnType<typeof useTranslation>): string
  * server; the React Query cache is invalidated so the row disappears.
  *
  * Spec: access-permission design (2026-05-28) § 4.3.
+ * @param root0 - Links list dialog props.
+ * @param root0.projectId - Id of the project whose active invite links are listed.
+ * @param root0.open - Whether the dialog is open; also gates the links query.
+ * @param root0.onOpenChange - Called when the dialog requests to open or close.
+ * @returns the dialog listing active invite links with per-row copy and revoke actions.
  */
 export function ShareLinksListDialog({
   projectId,
   open,
   onOpenChange,
-}: ShareLinksListDialogProps) {
+}: ShareLinksListDialogProps): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
 
@@ -152,11 +176,26 @@ interface LinkRowProps {
   pending: boolean;
 }
 
-function LinkRow({ link, onRevoke, pending }: LinkRowProps) {
+/**
+ * One invite-link row — shortened token, role badge, age, and copy/revoke actions.
+ * @param root0 - Link row props.
+ * @param root0.link - Invite link rendered by this row.
+ * @param root0.onRevoke - Called when the owner revokes this link.
+ * @param root0.pending - Whether the revoke request for this link is in flight (disables the button).
+ * @returns the invite-link row with its copy and revoke controls.
+ */
+function LinkRow({
+  link,
+  onRevoke,
+  pending,
+}: LinkRowProps): React.JSX.Element {
   const t = useTranslation();
   const url = inviteUrlFor(link.token);
 
-  const copy = async () => {
+  /**
+   * Copies this link's full invite URL to the clipboard.
+   */
+  const copy = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(url);
       toast(t('share.linksList.copied'));
@@ -212,7 +251,13 @@ function LinkRow({ link, onRevoke, pending }: LinkRowProps) {
   );
 }
 
-function RoleBadge({ role }: { role: string }) {
+/**
+ * Small role badge labeling an invite link as view or edit access.
+ * @param root0 - Role badge props.
+ * @param root0.role - Granted role; falls back to the raw value when unrecognized.
+ * @returns the role badge.
+ */
+function RoleBadge({ role }: { role: string }): React.JSX.Element {
   const t = useTranslation();
   const label =
     role === 'edit'

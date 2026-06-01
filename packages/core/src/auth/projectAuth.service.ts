@@ -7,7 +7,7 @@
  *   - server `requireRole` middleware + `project.service`
  *   - collab `onAuthenticate` hook
  *
- * It lives in @breatic/core because auth / role resolution must be
+ * It lives in `@breatic/core` because auth / role resolution must be
  * identical across every backend service. collab used to hand-roll
  * its own copy (raw SQL in `collab/auth.ts`), which drifted from this
  * one; both now call this single primitive.
@@ -26,7 +26,6 @@ import type { ProjectRole } from "@breatic/shared";
 
 /**
  * Resolve the caller's role on a project.
- *
  * @param userId - Authenticated user UUID
  * @param projectId - Project UUID from request input
  * @returns The role, or `null` if the project is missing/deleted or

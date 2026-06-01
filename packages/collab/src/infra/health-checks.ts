@@ -34,7 +34,6 @@ export interface CollabHealthProbes {
 
 /**
  * Assemble the `/healthz` check list for the collab service.
- *
  * @param probes - Per-dependency reachability thunks
  * @returns The check array to hand to {@link startHealthServer}
  */

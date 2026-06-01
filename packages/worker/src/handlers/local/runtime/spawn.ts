@@ -21,13 +21,13 @@ export interface SpawnResult {
 /**
  * Spawn a command with arguments, capture stdout/stderr, and resolve
  * when the process exits with code 0. Reject otherwise.
- *
  * @param command - Executable name (looked up via PATH) or absolute path.
  *   Expected to be a trusted binary installed in the Worker Docker image
  *   — NEVER a user-supplied string.
  * @param args - CLI arguments as a pre-split array (no shell).
  * @param options - Passed through to `spawn`. Useful for `cwd`.
- * @throws `Error` with `{command, code, signal, stderr}` context on
+ * @returns The captured `{ stdout, stderr }` once the process exits with code 0
+ * @throws {Error} with `{command, code, signal, stderr}` context on
  *   non-zero exit or spawn failure.
  */
 export async function spawnCollected(

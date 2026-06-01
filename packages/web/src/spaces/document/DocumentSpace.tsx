@@ -13,8 +13,15 @@ import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
  *
  * Content is local state for now; Yjs collaboration arrives when the
  * Document Yjs binding ships (M2 milestone).
+ * @param root0 - Space body props supplied by the project space outlet.
+ * @param root0.spaceId - ID of the document space, stamped on the root element for selectors.
+ * @param root0.projectId - ID of the owning project, stamped on the root element for selectors.
+ * @returns The document editor element, or a loading placeholder while TipTap initializes.
  */
-export function DocumentSpace({ spaceId, projectId }: SpaceBodyProps) {
+export function DocumentSpace({
+  spaceId,
+  projectId,
+}: SpaceBodyProps): React.JSX.Element {
   const editor = useEditor({
     extensions: [StarterKit],
     content: '<p></p>',

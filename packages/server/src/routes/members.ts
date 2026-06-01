@@ -28,7 +28,6 @@ members.use(requireAuth);
  * Any current member (including view) can list. Returns the role
  * relation rows; the frontend joins with `useUsers` for display
  * fields (avatar / username / email).
- *
  * @returns `200` with `{ data: ProjectMember[] }`
  */
 members.get("/", requireRole("view"), async (c) => {
@@ -49,7 +48,6 @@ const inviteBodySchema = z.object({
  *
  * Owner only. If the target was previously removed, the existing
  * row is revived with the new role.
- *
  * @returns `201` with `{ data: { ok: true } }`
  */
 members.post(
@@ -78,7 +76,6 @@ const patchBodySchema = z.object({
  * `PATCH /api/v1/projects/:pid/members/:userId` — change role.
  *
  * Owner only. Owner role itself is immutable (transfer-owner deferred).
- *
  * @returns `200` with `{ data: { ok: true } }`
  */
 members.patch(
@@ -98,7 +95,6 @@ members.patch(
  * `DELETE /api/v1/projects/:pid/members/:userId` — soft-remove a member.
  *
  * Owner only. Owner cannot be removed (transfer-owner is V2).
- *
  * @returns `200` with `{ data: { ok: true } }`
  */
 members.delete(

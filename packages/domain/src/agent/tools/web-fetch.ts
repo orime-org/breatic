@@ -4,8 +4,6 @@
  * Ported from backend/agent/tools/builtin/web.py (WebFetchTool).
  * Uses {@link safeFetch} to block SSRF against internal / metadata
  * endpoints on every hop (including redirects).
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";
@@ -16,7 +14,11 @@ const USER_AGENT =
 
 const DEFAULT_MAX_CHARS = 60_000;
 
-/** Remove HTML tags, scripts, and styles; unescape entities. */
+/**
+ * Remove HTML tags, scripts, and styles; unescape entities.
+ * @param html - Raw HTML source to strip.
+ * @returns The plain-text content with common entities unescaped and trimmed.
+ */
 function stripTags(html: string): string {
   let text = html;
   text = text.replace(/<script[\s\S]*?<\/script>/gi, "");
@@ -33,7 +35,11 @@ function stripTags(html: string): string {
   return text.trim();
 }
 
-/** Collapse excessive whitespace and blank lines. */
+/**
+ * Collapse excessive whitespace and blank lines.
+ * @param text - The text to normalize.
+ * @returns The text with runs of spaces/tabs collapsed and 3+ blank lines reduced to two, trimmed.
+ */
 function normalize(text: string): string {
   return text
     .replace(/[ \t]+/g, " ")

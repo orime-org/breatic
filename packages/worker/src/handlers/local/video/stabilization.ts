@@ -31,6 +31,12 @@ interface StabilizationParams {
 
 const MAX_CROP_PCT = 14;
 
+/**
+ * Validate and normalise the raw job params into a typed stabilization payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, cropPct }` stabilization params
+ * @throws {Error} when `video` is not an http(s) URL or `cropPct` is outside [0, MAX_CROP_PCT]
+ */
 function parseParams(raw: Record<string, unknown>): StabilizationParams {
   const video = raw.video;
   const cropPct = raw.cropPct;
@@ -52,12 +58,21 @@ function parseParams(raw: Record<string, unknown>): StabilizationParams {
  *
  * Uses `trunc(... /2)*2` on both dimensions and offsets because x264
  * rejects odd sizes with its default chroma sub-sampling.
+ * @param cropPct - Symmetric crop percentage off each edge
+ * @returns The FFmpeg `crop=...` filter string with even-rounded dimensions
  */
 function buildCropFilter(cropPct: number): string {
   const p = cropPct / 100;
   return `crop=trunc(iw*(1-2*${p})/2)*2:trunc(ih*(1-2*${p})/2)*2:trunc(iw*${p}/2)*2:trunc(ih*${p}/2)*2,setsar=1`;
 }
 
+/**
+ * Hide shaky borders by symmetrically cropping the frame inward via FFmpeg.
+ * A `cropPct` of 0 short-circuits and returns the source URL unchanged.
+ * @param rawParams - Raw mini-tool params carrying the video URL and crop percentage
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the cropped video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, cropPct } = parseParams(rawParams);
 

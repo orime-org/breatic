@@ -20,7 +20,6 @@ import { InfraNotReadyError } from "@core/infra/errors.js";
 
 /**
  * Check that PostgreSQL and Redis are reachable.
- *
  * @throws {InfraNotReadyError} If either check fails. The
  *   application entry catches, logs `{ component, hint, cause }`,
  *   and calls `process.exit(1)`.

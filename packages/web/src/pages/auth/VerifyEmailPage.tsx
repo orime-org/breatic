@@ -23,7 +23,11 @@ import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
  */
 type Status = 'verifying' | 'success' | 'failed' | 'no-token';
 
-export default function VerifyEmailPage() {
+/**
+ * @returns the verify-email page in one of four states: verifying, success,
+ * failed, or the "check your inbox" prompt when no token is present.
+ */
+export default function VerifyEmailPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();

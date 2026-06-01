@@ -6,6 +6,7 @@ import {
   Music,
   Video,
 } from 'lucide-react';
+import type * as React from 'react';
 
 import type { Modality } from '@web/spaces/canvas/types/node';
 
@@ -39,12 +40,17 @@ const DEFAULT_HINT: Record<Modality, string> = {
  * Empty-state body shown when a content node has no `content` / `url`
  * yet. Acts as the entry to the toolbar's left-zone generate/load
  * popover (double-click → `onActivate`).
+ * @param root0 - Node placeholder props.
+ * @param root0.modality - Node modality, selecting the icon and the default hint copy.
+ * @param root0.hint - Optional hint text overriding the modality default.
+ * @param root0.onActivate - Called on click / double-click to open the generate/load popover.
+ * @returns The empty-state call-to-action button.
  */
 export function NodePlaceholder({
   modality,
   hint,
   onActivate,
-}: NodePlaceholderProps) {
+}: NodePlaceholderProps): React.JSX.Element {
   const Icon = ICONS[modality];
   return (
     <button

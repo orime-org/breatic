@@ -135,6 +135,9 @@ export interface ProjectMetaState {
  * `userId` is required to read the per-user subtree. If undefined (e.g.
  * pre-auth dev mode), the hook falls back to "all spaces open, first
  * one active" so the UI doesn't blank out.
+ * @param projectId - Project whose meta document to subscribe to.
+ * @param userId - Current user, used to read their per-user tab subtree; optional pre-auth.
+ * @returns Live meta state: spaces, this user's tabs, online users, provider, and connection status.
  */
 export function useProjectMeta(
   projectId: string,
@@ -157,7 +160,11 @@ export function useProjectMeta(
   }>(() => readMetaState(doc, userId));
 
   React.useEffect(() => {
-    const update = () => setState(readMetaState(doc, userId));
+    /**
+     * Re-read spaces / per-user / users state from the doc into React state.
+     * @returns Nothing.
+     */
+    const update = (): void => setState(readMetaState(doc, userId));
     // SPACES is a Y.Map keyed by spaceId on the collab side (see
     // `packages/collab/src/space-rpc.ts` + `auth.ts` +
     // `core/src/db/yjs-bootstrap.ts`). Client must observe the same
@@ -214,7 +221,10 @@ export function useProjectMeta(
       setOnlineUserIds(new Set());
       return;
     }
-    const update = () => {
+    /**
+     * Recompute the set of currently-online user ids from awareness states.
+     */
+    const update = (): void => {
       const next = new Set<string>();
       awareness.getStates().forEach((state) => {
         const userField = (state as { user?: { id?: unknown } }).user;
@@ -248,6 +258,8 @@ export function useProjectMeta(
  *
  * Returns an immutable array snapshot; re-renders on any push / delete
  * coming from collab.
+ * @param projectId - Project whose meta document carries the messages channel.
+ * @returns The current project messages snapshot and whether the doc has synced.
  */
 export function useProjectMessages(projectId: string): {
   messages: ReadonlyArray<ProjectMessageEntry>;
@@ -268,7 +280,11 @@ export function useProjectMessages(projectId: string): {
 
   React.useEffect(() => {
     const arr = doc.getArray<Y.Map<unknown>>(PROJECT_MESSAGES_KEY);
-    const update = () => setMessages(readProjectMessages(doc));
+    /**
+     * Re-read all project messages from the doc into React state.
+     * @returns Nothing.
+     */
+    const update = (): void => setMessages(readProjectMessages(doc));
     arr.observeDeep(update);
     update();
     return () => arr.unobserveDeep(update);
@@ -292,6 +308,9 @@ export function useProjectMessages(projectId: string): {
  * would no longer fire, so every Space EXCEPT the one just opened
  * would silently disappear from the tab bar (`Y.Map.forEach` order
  * is not insertion order, so even the "first" tab is unstable).
+ * @param projectId - Project whose meta document holds the per-user tabs.
+ * @param userId - User whose tab bar to open the Space in.
+ * @param spaceId - Space to open as a tab.
  */
 export function openSpaceTab(
   projectId: string,
@@ -327,6 +346,9 @@ export function openSpaceTab(
  * Does NOT delete the Space — the Space stays in `spaces`; the user's
  * tab bar just stops showing it. To fully delete a Space, call the
  * server `DELETE /spaces/:id` endpoint.
+ * @param projectId - Project whose meta document holds the per-user tabs.
+ * @param userId - User whose tab bar to close the Space in.
+ * @param spaceId - Space tab to close.
  */
 export function closeSpaceTab(
   projectId: string,
@@ -348,6 +370,9 @@ export function closeSpaceTab(
  * Set the active Space tab for the given user. Setting to a Space not
  * in `openTabIds` is allowed; the caller is expected to also
  * `openSpaceTab` first.
+ * @param projectId - Project whose meta document holds the per-user state.
+ * @param userId - User whose active Space to set.
+ * @param spaceId - Space to activate, or null to clear the active tab.
  */
 export function setActiveSpace(
   projectId: string,
@@ -364,10 +389,12 @@ export function setActiveSpace(
 
 /**
  * Legacy direct-write helper, kept for tests and demo scaffolding only.
- *
- * @internal — production writes route through collab via
- * `sendSpaceRpc({ type: 'space:create', ... })`; the client write here
- * is rejected by `beforeHandleMessage` in collab in connected sessions.
+ * Production code creates Spaces via
+ * `sendSpaceRpc({ type: 'space:create', ... })`; a direct client write
+ * here is rejected by `beforeHandleMessage` in collab in connected sessions.
+ * @param projectId - Project whose meta document to write the Space into.
+ * @param space - The Space record to append.
+ * @internal
  */
 export function appendSpace(projectId: string, space: ProjectSpace): void {
   const doc = getDoc(docName.projectMeta(projectId));
@@ -384,9 +411,11 @@ export function appendSpace(projectId: string, space: ProjectSpace): void {
 
 /**
  * Legacy direct-write helper, kept for tests and demo scaffolding only.
- *
- * @internal — production deletes route through collab via
+ * Production code deletes Spaces via
  * `sendSpaceRpc({ type: 'space:delete', ... })`.
+ * @param projectId - Project whose meta document to remove the Space from.
+ * @param spaceId - Id of the Space to remove.
+ * @internal
  */
 export function removeSpace(projectId: string, spaceId: string): void {
   const doc = getDoc(docName.projectMeta(projectId));
@@ -400,8 +429,9 @@ export function removeSpace(projectId: string, spaceId: string): void {
  * Test / scaffolding helper. Production writes to `projectMessages`
  * happen exclusively inside the collab process via `space-rpc.ts`; the
  * client never writes directly (rejected by `beforeHandleMessage`).
- *
- * @internal — use only from tests + storybook fixtures.
+ * @param projectId - Project whose meta document holds the messages channel.
+ * @param entry - The project message entry to append.
+ * @internal
  */
 export function appendProjectMessage(
   projectId: string,
@@ -428,6 +458,8 @@ export function appendProjectMessage(
  * Read all `meta.projectMessages` entries as plain objects. Skips entries
  * that fail Zod parsing (defensive — collab is the only writer but a
  * forward-compat schema change could leak a malformed entry).
+ * @param doc - The project meta Y.Doc to read messages from.
+ * @returns The validated project message entries, in document order.
  */
 export function readProjectMessages(
   doc: Y.Doc,
@@ -446,6 +478,12 @@ export function readProjectMessages(
   return out;
 }
 
+/**
+ * Get-or-create the `perUser[userId]` Y.Map subtree for a user.
+ * @param doc - The project meta Y.Doc.
+ * @param userId - User whose per-user subtree to return.
+ * @returns The user's per-user Y.Map, created if it did not exist.
+ */
 function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   let userMap = perUser.get(userId);
@@ -456,6 +494,11 @@ function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
   return userMap;
 }
 
+/**
+ * Read all spaces from the doc's `spaces` map into a plain array.
+ * @param doc - The project meta Y.Doc to read from.
+ * @returns The current project spaces, with defaults applied for missing fields.
+ */
 function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
   const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
   const out: ProjectSpace[] = [];
@@ -470,6 +513,11 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
   return out;
 }
 
+/**
+ * Read the live `meta.users` map into a `userId → ProjectUser` map.
+ * @param doc - The project meta Y.Doc to read from.
+ * @returns The known users keyed by id, with defaults applied for missing fields.
+ */
 function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
   const usersMap = doc.getMap<Y.Map<unknown>>(USERS_KEY);
   const out = new Map<string, ProjectUser>();
@@ -487,6 +535,13 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
   return out;
 }
 
+/**
+ * Project the meta doc into the React-facing state shape for one user,
+ * applying the pre-auth and first-visit "all spaces open" fallbacks.
+ * @param doc - The project meta Y.Doc to read from.
+ * @param userId - Current user whose per-user subtree to read; undefined pre-auth.
+ * @returns The spaces, the user's open tabs, their active tab, and the users map.
+ */
 function readMetaState(
   doc: Y.Doc,
   userId: string | undefined,

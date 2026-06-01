@@ -4,7 +4,6 @@
  * Stores user identity, conversation info, memory context, and compressed
  * conversation history. Set once per request at the route layer, then
  * accessible anywhere in the async call chain — including SubAgents.
- *
  * @module
  */
 
@@ -51,11 +50,9 @@ const storage = new AsyncLocalStorage<RequestStore>();
  *
  * Typically called in the route handler to establish context for
  * the entire request processing chain.
- *
  * @param store - Request context data
  * @param fn - Async callback to run within the context
  * @returns The callback's return value
- *
  * @example
  * ```ts
  * runWithContext({ userId, conversationId, memoryContext, compressedHistory }, async () => {
@@ -70,9 +67,8 @@ export function runWithContext<T>(store: RequestStore, fn: () => T): T {
 
 /**
  * Get the current request context.
- *
  * @returns The RequestStore for the current async context
- * @throws Error if called outside of a request context
+ * @throws {Error} if called outside of a request context
  */
 export function getContext(): RequestStore {
   const store = storage.getStore();
@@ -87,6 +83,7 @@ export function getContext(): RequestStore {
  *
  * Use this in code paths that may run both inside and outside a request
  * (e.g., background consolidation tasks).
+ * @returns the current RequestStore, or `undefined` when outside any request context
  */
 export function tryGetContext(): RequestStore | undefined {
   return storage.getStore();

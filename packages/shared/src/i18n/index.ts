@@ -50,6 +50,7 @@ let _localeResolver: (() => Locale | undefined) | null = null;
 /**
  * Install a per-call locale resolver. Called once by the node-side
  * loader during boot — never by application code.
+ * @param resolver - the per-call locale getter, or `null` to clear it
  */
 export function setLocaleResolver(
   resolver: (() => Locale | undefined) | null,
@@ -57,7 +58,10 @@ export function setLocaleResolver(
   _localeResolver = resolver;
 }
 
-/** Resolve the effective locale for a single `t()` call. */
+/**
+ * Resolve the effective locale for a single `t()` call.
+ * @returns the resolver's locale when one is installed, else the global `_currentLocale`
+ */
 function activeLocale(): Locale {
   return _localeResolver?.() ?? _currentLocale;
 }
@@ -66,6 +70,8 @@ function activeLocale(): Locale {
  * Set messages for a locale. Called by the web bootstrap with JSON
  * imported via the Vite `@locales` alias, and by the Node-only
  * `loadLocales()` loader on the server.
+ * @param locale - the locale code these messages belong to
+ * @param messages - the key → ICU-string map for that locale
  */
 export function setLocaleMessages(
   locale: Locale,
@@ -77,18 +83,27 @@ export function setLocaleMessages(
   }
 }
 
-/** Set the active locale. */
+/**
+ * Set the active locale.
+ * @param locale - the locale code to make active
+ */
 export function setLocale(locale: Locale): void {
   _currentLocale = locale;
   _notifyLocaleListeners();
 }
 
-/** Get the current locale. */
+/**
+ * Get the current locale.
+ * @returns the currently active locale code
+ */
 export function getLocale(): Locale {
   return _currentLocale;
 }
 
-/** Get all available locale codes that have been registered. */
+/**
+ * Get all available locale codes that have been registered.
+ * @returns the list of registered locale codes
+ */
 export function getAvailableLocales(): Locale[] {
   return [..._locales.keys()];
 }
@@ -101,7 +116,6 @@ export function getAvailableLocales(): Locale[] {
  * Supports dot-notation keys: `t("server.auth.invalid_credentials")`
  * Falls back to English if the key is missing in the current locale,
  * then to the key itself.
- *
  * @param key - Dot-notation translation key
  * @param params - Optional parameter map for ICU placeholders
  * @returns Formatted string, or the key itself if not found
@@ -135,7 +149,11 @@ export function t(
   return typeof formatted === "string" ? formatted : String(formatted);
 }
 
-/** Resolve a key against current locale → en fallback → undefined. */
+/**
+ * Resolve a key against current locale → en fallback → undefined.
+ * @param key - the dot-notation translation key to look up
+ * @returns the raw ICU message, or `undefined` when absent in both current and en locales
+ */
 function resolveMessage(key: string): string | undefined {
   const locale = activeLocale();
   const current = _locales.get(locale);
@@ -144,7 +162,12 @@ function resolveMessage(key: string): string | undefined {
     ?? (fallback ? resolveKey(fallback, key) : undefined);
 }
 
-/** Resolve a dot-notation key from a nested object. */
+/**
+ * Resolve a dot-notation key from a nested object.
+ * @param obj - the (possibly nested) messages object to walk
+ * @param key - the dot-notation path, e.g. `server.auth.invalid`
+ * @returns the string at that path, or `undefined` when missing / non-string
+ */
 function resolveKey(obj: Record<string, unknown>, key: string): string | undefined {
   let current: unknown = obj;
   for (const part of key.split(".")) {
@@ -172,6 +195,8 @@ const _localeListeners = new Set<LocaleListener>();
  * Subscribe to locale changes. Returns an unsubscribe function.
  * Used by the web `useTranslation()` hook to re-render components
  * when the active locale changes.
+ * @param listener - callback invoked with the new locale on every change
+ * @returns an unsubscribe function that removes the listener
  */
 export function onLocaleChange(listener: LocaleListener): () => void {
   _localeListeners.add(listener);
@@ -180,6 +205,7 @@ export function onLocaleChange(listener: LocaleListener): () => void {
   };
 }
 
+/** Fire every registered locale-change listener with the current locale. */
 function _notifyLocaleListeners(): void {
   for (const listener of _localeListeners) {
     listener(_currentLocale);

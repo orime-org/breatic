@@ -9,7 +9,6 @@ import { env } from "@core/config/env.js";
 
 /**
  * Check if a request is allowed under the rate limit.
- *
  * @param redis - ioredis client
  * @param key - Rate limit key (e.g. `"login:{ip}"`)
  * @param maxRequests - Maximum requests allowed in the window

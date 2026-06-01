@@ -37,6 +37,11 @@ export interface SendSpaceRpcOptions {
  * The caller is responsible for picking a provider that is already
  * authenticated against `project-{pid}/meta` (typically the live
  * provider yielded by `useSocket`).
+ * @param provider - Live Hocuspocus provider authenticated on the project meta doc.
+ * @param request - The Space RPC request without its correlation id (generated here).
+ * @param opts - Optional timeout and correlation-id-generator overrides.
+ * @returns The matching Space RPC response from the collab process.
+ * @throws {Error} When no response arrives within the round-trip timeout.
  */
 export async function sendSpaceRpc(
   provider: RpcCapableProvider,
@@ -49,7 +54,13 @@ export async function sendSpaceRpc(
   return new Promise<SpaceRpcResponse>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const onMessage = (data: { payload: string }) => {
+    /**
+     * Handle a stateless message: parse, validate, and resolve when the
+     * correlation id matches this request.
+     * @param data - The stateless message envelope from the provider.
+     * @param data.payload - The raw JSON-encoded RPC response payload.
+     */
+    const onMessage = (data: { payload: string }): void => {
       let parsed: unknown;
       try {
         parsed = JSON.parse(data.payload);
@@ -63,7 +74,10 @@ export async function sendSpaceRpc(
       resolve(r.data);
     };
 
-    const cleanup = () => {
+    /**
+     * Detach the stateless listener and clear the timeout timer.
+     */
+    const cleanup = (): void => {
       provider.off('stateless', onMessage);
       if (timer !== null) {
         clearTimeout(timer);

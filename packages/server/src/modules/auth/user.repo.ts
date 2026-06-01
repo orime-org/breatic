@@ -9,7 +9,11 @@ import { db } from "@breatic/core";
 import { users } from "@breatic/core";
 import type { UserEntity } from "@breatic/shared";
 
-/** Convert a Drizzle row to a UserEntity (strips hashed_password). */
+/**
+ * Convert a Drizzle row to a UserEntity (strips hashed_password).
+ * @param row - Raw `users` table row from a Drizzle select
+ * @returns The public user entity with the password hash omitted
+ */
 function toEntity(row: typeof users.$inferSelect): UserEntity {
   return {
     id: row.id,
@@ -24,7 +28,11 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
   };
 }
 
-/** Find a user by ID (excludes soft-deleted). */
+/**
+ * Find a user by ID (excludes soft-deleted).
+ * @param userId - User UUID to look up
+ * @returns The user entity, or null if not found or soft-deleted
+ */
 export async function getUserById(userId: string): Promise<UserEntity | null> {
   const rows = await db
     .select()
@@ -40,8 +48,8 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
  * Returns rows in arbitrary order — caller is expected to map by
  * id. Backs `GET /api/v1/users?ids=` (the frontend joins
  * `useProjectMembers` with display info).
- *
  * @param ids - Up to 100 user UUIDs (caller caps the input)
+ * @returns Matching user entities in arbitrary order (empty array for empty input)
  */
 export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
   if (ids.length === 0) return [];
@@ -52,7 +60,11 @@ export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
   return rows.map(toEntity);
 }
 
-/** Find a user by email (excludes soft-deleted). */
+/**
+ * Find a user by email (excludes soft-deleted).
+ * @param email - Email address to look up
+ * @returns The user entity, or null if not found or soft-deleted
+ */
 export async function getUserByEmail(email: string): Promise<UserEntity | null> {
   const rows = await db
     .select()
@@ -62,7 +74,11 @@ export async function getUserByEmail(email: string): Promise<UserEntity | null> 
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** Find a user by Google ID (excludes soft-deleted). */
+/**
+ * Find a user by Google ID (excludes soft-deleted).
+ * @param googleId - Google account identifier to look up
+ * @returns The user entity, or null if not found or soft-deleted
+ */
 export async function getUserByGoogleId(googleId: string): Promise<UserEntity | null> {
   const rows = await db
     .select()
@@ -72,7 +88,11 @@ export async function getUserByGoogleId(googleId: string): Promise<UserEntity | 
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** Get the hashed password for login verification. */
+/**
+ * Get the hashed password for login verification.
+ * @param userId - User UUID whose stored password hash to fetch
+ * @returns The bcrypt hash, or null if the user has no password (OAuth-only) or no row
+ */
 export async function getHashedPassword(userId: string): Promise<string | null> {
   const rows = await db
     .select({ hashedPassword: users.hashedPassword })
@@ -84,7 +104,11 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
 
 /**
  * Create a new user.
- *
+ * @param data - User fields to insert
+ * @param data.email - Email address (unique per active user)
+ * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
+ * @param data.googleId - Optional linked Google account identifier
+ * @param data.username - Optional display name
  * @returns The created UserEntity
  */
 export async function createUser(data: {
@@ -105,7 +129,12 @@ export async function createUser(data: {
   return toEntity(rows[0]!);
 }
 
-/** Update user profile fields. */
+/**
+ * Update user profile fields.
+ * @param userId - User UUID to update
+ * @param data - Partial set of profile fields to overwrite (username / avatarUrl / emailVerified / googleId)
+ * @returns The updated user entity, or null if no row matched
+ */
 export async function updateUser(
   userId: string,
   data: Partial<Pick<typeof users.$inferInsert, "username" | "avatarUrl" | "emailVerified" | "googleId">>,
@@ -118,7 +147,11 @@ export async function updateUser(
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** Update a user's hashed password. */
+/**
+ * Update a user's hashed password.
+ * @param userId - User UUID whose password to replace
+ * @param hashedPassword - New bcrypt password hash to store
+ */
 export async function updatePassword(userId: string, hashedPassword: string): Promise<void> {
   await db
     .update(users)
@@ -131,6 +164,8 @@ export async function updatePassword(userId: string, hashedPassword: string): Pr
  *
  * Called at registration (initial code) and after a successful
  * recovery-code-based password reset (rotate to a fresh code).
+ * @param userId - User UUID whose recovery code to set
+ * @param recoveryCodeHash - Bcrypt hash of the new recovery code
  */
 export async function setRecoveryCode(
   userId: string,
@@ -152,6 +187,8 @@ export async function setRecoveryCode(
  * Returns `null` when the user has no recovery code set (legacy
  * accounts predating PR-a) or when the user does not exist / is
  * soft-deleted.
+ * @param userId - User UUID whose recovery code to fetch
+ * @returns `{ hash, usedAt }` when a code is set, or null when none / user missing
  */
 export async function getRecoveryCode(
   userId: string,
@@ -175,6 +212,7 @@ export async function getRecoveryCode(
  * Caller must immediately set a fresh code via `setRecoveryCode` and
  * return the plaintext to the user — losing access to the new code
  * after a reset would lock them out for future resets.
+ * @param userId - User UUID whose recovery code to mark consumed
  */
 export async function markRecoveryCodeUsed(userId: string): Promise<void> {
   await db

@@ -45,11 +45,18 @@ interface RecoveryCodeDialogProps {
   onContinue: () => void;
 }
 
+/**
+ * @param root0 - component props
+ * @param root0.open - whether the dialog is shown
+ * @param root0.code - the plaintext recovery code to reveal
+ * @param root0.onContinue - called once the user acknowledges and clicks Continue
+ * @returns a non-dismissible dialog revealing the recovery code with copy/download and an acknowledge gate.
+ */
 export function RecoveryCodeDialog({
   open,
   code,
   onContinue,
-}: RecoveryCodeDialogProps) {
+}: RecoveryCodeDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [acknowledged, setAcknowledged] = React.useState(false);
 
@@ -58,7 +65,10 @@ export function RecoveryCodeDialog({
     if (open) setAcknowledged(false);
   }, [open, code]);
 
-  async function copyToClipboard() {
+  /**
+   * Copy the recovery code to the clipboard and toast the outcome.
+   */
+  async function copyToClipboard(): Promise<void> {
     try {
       await navigator.clipboard.writeText(code);
       toast.success(t('auth.recovery.copied'), { id: 'auth-recovery' });
@@ -67,7 +77,11 @@ export function RecoveryCodeDialog({
     }
   }
 
-  function downloadAsFile() {
+  /**
+   * Download the recovery code as a plain-text `.txt` file via a transient
+   * object-URL anchor.
+   */
+  function downloadAsFile(): void {
     const blob = new Blob([code + '\n'], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

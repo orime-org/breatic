@@ -39,6 +39,12 @@ interface HdrConversionParams {
   aiEnhance: boolean;
 }
 
+/**
+ * Validate and normalise the raw job params into a typed HDR-conversion payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, preset, intensity, aiEnhance }` params
+ * @throws {Error} when any field is missing, wrongly typed, or out of range
+ */
 function parseParams(raw: Record<string, unknown>): HdrConversionParams {
   const video = raw.video;
   const preset = raw.preset;
@@ -69,11 +75,18 @@ function parseParams(raw: Record<string, unknown>): HdrConversionParams {
  * all presets (web decode stability); preserved here verbatim so the
  * handler stays a drop-in replacement. The `preset` parameter is still
  * carried on the task for future routing to a real HDR backend.
+ * @param _preset - Requested output preset (reserved; currently unused)
+ * @returns The FFmpeg colorspace tagging args (always Rec.709)
  */
 function buildPresetTuningArgs(_preset: HdrOutputPreset): string[] {
   return ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"];
 }
 
+/**
+ * Build the non-AI `eq` filter chain (contrast + saturation) scaled by intensity.
+ * @param intensity - Slider strength in [0, 100]
+ * @returns The FFmpeg `-vf` filter string
+ */
 function buildTraditionalFilter(intensity: number): string {
   const i = intensity / 100;
   const saturation = (1 + i * 0.22).toFixed(4);
@@ -81,6 +94,11 @@ function buildTraditionalFilter(intensity: number): string {
   return `eq=contrast=${contrast}:saturation=${saturation},setsar=1`;
 }
 
+/**
+ * Build the AI-enhance `eq` + `unsharp` filter chain scaled by intensity.
+ * @param intensity - Slider strength in [0, 100]
+ * @returns The FFmpeg `-vf` filter string including local sharpening
+ */
 function buildAiEnhanceFilter(intensity: number): string {
   const i = intensity / 100;
   const saturation = (1 + i * 0.28).toFixed(4);
@@ -89,6 +107,13 @@ function buildAiEnhanceFilter(intensity: number): string {
   return `eq=contrast=${contrast}:saturation=${saturation},unsharp=7:7:${sharpness}:7:7:0.0,setsar=1`;
 }
 
+/**
+ * Apply the colour-enhancement ("HDR conversion") filter chain to a video,
+ * choosing the AI-enhance or traditional path based on `aiEnhance`.
+ * @param rawParams - Raw mini-tool params carrying the video URL, preset, intensity and aiEnhance flag
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the enhanced video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, preset, intensity, aiEnhance } = parseParams(rawParams);
 

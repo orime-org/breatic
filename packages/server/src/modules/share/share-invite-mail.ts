@@ -22,6 +22,12 @@ import type { SendMailOptions } from "@server/infra/mailer.js";
 
 const BRAND = "Breatic";
 
+/**
+ * Escape HTML-special characters so caller-supplied strings are safe to
+ * interpolate into the mail body.
+ * @param s - Raw string to escape
+ * @returns The HTML-escaped string
+ */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -48,6 +54,8 @@ export interface ShareInviteMailInput {
  * (spec 2026-05-28 § 3). Generate links are NOT sent via email - owner
  * copies the URL manually - so this mail builder doesn't need a
  * variant for them.
+ * @param input - Invite details (recipient email, inviter name, project name, link, role)
+ * @returns The `SendMailOptions` (to / subject / HTML body) for the caller to dispatch
  */
 export function buildShareInviteMail(input: ShareInviteMailInput): SendMailOptions {
   const inviter = escapeHtml(input.inviterName);

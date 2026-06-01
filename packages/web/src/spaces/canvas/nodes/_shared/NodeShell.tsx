@@ -28,6 +28,14 @@ const STATUS_RING: Record<NodeStatus, string> = {
  *   - `idle`     → no ring
  *   - `handling` → info ring (AI generating / mini-tool running)
  *   - `error`    → error ring (last operation failed)
+ * @param root0 - Node shell props.
+ * @param root0.status - Node status, selecting the status ring (idle / handling / error).
+ * @param root0.selected - Whether the node is selected, drawing the primary selection ring.
+ * @param root0.locked - Whether the node is locked, rendering the lock indicator.
+ * @param root0.children - The type node's body rendered inside the shell.
+ * @param root0.className - Extra classes merged onto the shell (per-modality sizing / color).
+ * @param root0.testId - Stable test id for the shell root, per type node.
+ * @returns The outer node shell element wrapping the body.
  */
 export function NodeShell({
   status = 'idle',
@@ -36,7 +44,7 @@ export function NodeShell({
   children,
   className,
   testId,
-}: NodeShellProps) {
+}: NodeShellProps): React.JSX.Element {
   return (
     <div
       data-testid={testId ?? 'node-shell'}

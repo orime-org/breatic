@@ -94,8 +94,10 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
 
 /**
  * Look up a mini-tool entry, or throw a clear error if unregistered.
- *
- * @throws `Error` when the `(taskType, toolName)` pair is unknown.
+ * @param taskType - Task type the tool belongs to (e.g. "image", "video", "audio")
+ * @param toolName - Mini-tool name within that task type
+ * @returns The registered `MiniToolEntry` describing the local or provider handler
+ * @throws {Error} when the `(taskType, toolName)` pair is unknown.
  */
 export function resolveMiniToolEntry(taskType: string, toolName: string): MiniToolEntry {
   const taskTypeEntries = MINI_TOOL_REGISTRY[taskType];

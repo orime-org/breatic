@@ -34,6 +34,12 @@ interface CropParams {
   h: number;
 }
 
+/**
+ * Validate and normalise the raw job params into a typed crop payload.
+ * @param raw - Raw mini-tool params from the job payload
+ * @returns The validated `{ video, x, y, w, h }` crop rectangle
+ * @throws {Error} when `video` is not an http(s) URL or the crop rect is invalid
+ */
 function parseParams(raw: Record<string, unknown>): CropParams {
   const video = raw.video;
   const x = raw.x;
@@ -56,11 +62,22 @@ function parseParams(raw: Record<string, unknown>): CropParams {
   return { video, x, y, w, h };
 }
 
-/** Clamp to even integer (FFmpeg encoder friendliness). */
+/**
+ * Clamp to even integer (FFmpeg encoder friendliness).
+ * @param value - The dimension to clamp
+ * @returns The value rounded down to an even integer, with a floor of 2
+ */
 function evenInt(value: number): number {
   return Math.max(2, Math.floor(value / 2) * 2);
 }
 
+/**
+ * Crop a video to the given rectangle via FFmpeg's `crop` filter, clamping
+ * the width/height to even integers for encoder compatibility.
+ * @param rawParams - Raw mini-tool params carrying the video URL and crop rect
+ * @param ctx - Local-handler context (temp dir, user / project / task ids)
+ * @returns A single-output result with the cropped video URL and zero cost
+ */
 const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResult> => {
   const { video, x, y, w, h } = parseParams(rawParams);
   const cropW = evenInt(w);

@@ -50,6 +50,11 @@ const ROLE_OPTIONS: ReadonlyArray<{
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Derives up-to-two uppercase initials from a member's display name.
+ * @param name - Member display name to abbreviate.
+ * @returns the initials, or `?` when the name is empty.
+ */
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -71,12 +76,17 @@ function initialsOf(name: string): string {
  *     called out as wrong).
  *
  * Spec: access-permission design (2026-05-28) § 5.
+ * @param root0 - Members modal props.
+ * @param root0.projectId - Id of the project whose membership is managed; invite/role/remove calls target it.
+ * @param root0.members - Members to list; defaults to stub data when not supplied.
+ * @param root0.currentUserId - Viewer's user id, used to mark and protect their own row.
+ * @returns the collaborator management dialog with invite, role and remove controls.
  */
 export function MembersModal({
   projectId,
   members = STUB_MEMBERS,
   currentUserId,
-}: MembersModalProps) {
+}: MembersModalProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('members-modal');
   const [invite, setInvite] = React.useState('');
@@ -84,7 +94,10 @@ export function MembersModal({
   const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [pendingRowId, setPendingRowId] = React.useState<string | null>(null);
 
-  async function handleInvite() {
+  /**
+   * Validates the invite email and sends an invitation, showing a success or error toast.
+   */
+  async function handleInvite(): Promise<void> {
     if (!projectId || inviteSubmitting) return;
     const trimmed = invite.trim();
     if (!EMAIL_RX.test(trimmed)) {
@@ -104,10 +117,15 @@ export function MembersModal({
     }
   }
 
+  /**
+   * Changes a member's role on the backend, showing a success or error toast.
+   * @param member - Member whose role is being changed.
+   * @param next - New non-owner role to assign.
+   */
   async function handleSetRole(
     member: Member,
     next: Exclude<MemberRole, 'owner'>,
-  ) {
+  ): Promise<void> {
     if (!projectId || pendingRowId) return;
     setPendingRowId(member.id);
     try {
@@ -120,7 +138,11 @@ export function MembersModal({
     }
   }
 
-  async function handleRemove(member: Member) {
+  /**
+   * Removes a member from the project, showing a success or error toast.
+   * @param member - Member to remove.
+   */
+  async function handleRemove(member: Member): Promise<void> {
     if (!projectId || pendingRowId) return;
     setPendingRowId(member.id);
     try {
@@ -221,13 +243,23 @@ interface ModalMemberRowProps {
   onRemove: () => void;
 }
 
+/**
+ * One member row inside the modal — avatar, name/email, role select and remove button.
+ * @param root0 - Member row props.
+ * @param root0.member - Member rendered by this row.
+ * @param root0.isMe - Whether this row is the current viewer (role becomes static, not editable).
+ * @param root0.pending - Whether a role/remove mutation is in flight for this row (disables controls).
+ * @param root0.onSetRole - Called with the new role when the viewer changes this member's role.
+ * @param root0.onRemove - Called when the viewer removes this member.
+ * @returns the member row with its role and remove controls.
+ */
 function ModalMemberRow({
   member,
   isMe,
   pending,
   onSetRole,
   onRemove,
-}: ModalMemberRowProps) {
+}: ModalMemberRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div className='flex items-center gap-3 py-2'>

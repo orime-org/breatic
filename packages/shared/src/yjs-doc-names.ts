@@ -33,7 +33,6 @@ export type ParsedDocName =
 
 /**
  * Build the meta doc name for a project.
- *
  * @param projectId - Project UUID
  * @returns `"project-{projectId}/meta"`
  */
@@ -43,7 +42,6 @@ export function projectMetaDocName(projectId: string): string {
 
 /**
  * Build the Canvas Space doc name.
- *
  * @param projectId - Project UUID
  * @param spaceId - Space UUID (a Canvas-kind space inside the project)
  * @returns `"project-{projectId}/canvas-{spaceId}"`
@@ -54,7 +52,6 @@ export function canvasSpaceDocName(projectId: string, spaceId: string): string {
 
 /**
  * Build the Document Space doc name (future kind).
- *
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
  * @returns `"project-{projectId}/document-{spaceId}"`
@@ -65,7 +62,6 @@ export function documentSpaceDocName(projectId: string, spaceId: string): string
 
 /**
  * Build the Timeline Space doc name (future kind).
- *
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
  * @returns `"project-{projectId}/timeline-{spaceId}"`
@@ -90,7 +86,6 @@ export function timelineSpaceDocName(projectId: string, spaceId: string): string
  * The parser intentionally does NOT validate UUID format on the ids —
  * that is the caller's job at the persistence/auth boundary, where it
  * can return a structured error rather than a parse miss.
- *
  * @param docName - Document name string from WebSocket handshake or
  *   persistence layer
  * @returns Parsed structure, or `null` if the name is not recognized
@@ -124,6 +119,8 @@ export function parseDocName(docName: string): ParsedDocName | null {
  *
  * Convenience for hocuspocus auth gates and stream consumers that just
  * need a yes/no without caring about kind/ids.
+ * @param docName - the Yjs document name to test
+ * @returns `true` when `docName` parses as a project-scoped doc
  */
 export function isProjectScopedDocName(docName: string): boolean {
   return parseDocName(docName) !== null;

@@ -54,11 +54,15 @@ const MODELS: Record<Modality, ReadonlyArray<{ id: string; label: string }>> = {
  * prompt input + model select + send. Submit fires `onGenerate(prompt,
  * model)`; the page-level handler kicks the AI request and updates the
  * NODE IN PLACE (does not create a new node).
+ * @param root0 - Generate popover props.
+ * @param root0.modality - Active node's modality, selecting the model list for the picker.
+ * @param root0.onGenerate - Called with the trimmed prompt and chosen model when the user sends.
+ * @returns The generate trigger button and its prompt/model popover.
  */
 export function NodeGeneratePopover({
   modality,
   onGenerate,
-}: NodeGeneratePopoverProps) {
+}: NodeGeneratePopoverProps): React.JSX.Element {
   const models = MODELS[modality];
   const [open, setOpen] = React.useState(false);
   const [prompt, setPrompt] = React.useState('');
@@ -68,7 +72,11 @@ export function NodeGeneratePopover({
     setModel(models[0]?.id ?? '');
   }, [models]);
 
-  const submit = () => {
+  /**
+   * Validates the prompt and model, fires `onGenerate`, then clears the
+   * prompt and closes the popover.
+   */
+  const submit = (): void => {
     if (prompt.trim().length === 0 || model.length === 0) return;
     onGenerate?.(prompt.trim(), model);
     setPrompt('');

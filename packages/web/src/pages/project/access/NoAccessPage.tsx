@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button } from '@web/components/ui/button';
@@ -15,8 +16,9 @@ import { useTranslation } from '@web/i18n/use-translation';
  * This page replaces the old AccessRequestPage which assumed the
  * pre-spec "request to join + owner approves" flow; that flow was
  * cut on 2026-05-28 in favour of "link = direct access" semantics.
+ * @returns The full-screen no-access notice with a link back to Studio.
  */
-export default function NoAccessPage() {
+export default function NoAccessPage(): React.JSX.Element {
   const t = useTranslation();
   return (
     <main

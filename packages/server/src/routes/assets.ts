@@ -40,6 +40,11 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp
 const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"]);
 const AUDIO_TYPES = new Set(["audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/aac", "audio/mp3"]);
 
+/**
+ * Classify an upload into a coarse asset kind from its MIME type.
+ * @param contentType - The MIME content type of the uploaded file.
+ * @returns The detected asset kind: `image`, `video`, `audio`, `document` (text/PDF), or `file` for anything else.
+ */
 function detectKind(contentType: string): "image" | "video" | "audio" | "document" | "file" {
   if (IMAGE_TYPES.has(contentType)) return "image";
   if (VIDEO_TYPES.has(contentType)) return "video";
@@ -50,6 +55,12 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
 
 // ── Rate limit for presign ──────────────────────────────────────────
 
+/**
+ * Per-user rate limit for presign requests — 30 per 60s, keyed by user id (or `anonymous`).
+ * @param c - The Hono request context; the authenticated user id keys the limiter.
+ * @param next - The downstream handler, invoked only when under the limit.
+ * @returns A 429 JSON response when the limit is exceeded; otherwise nothing (control passes to `next`).
+ */
 const presignRateLimit: MiddlewareHandler = async (c, next) => {
   const user = c.get("user") as { id: string } | undefined;
   const key = user?.id ?? "anonymous";

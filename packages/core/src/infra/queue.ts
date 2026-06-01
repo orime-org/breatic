@@ -15,6 +15,7 @@ import { getWorkerConfig } from "@core/config/worker.js";
  *
  * BullMQ accepts a plain connection config object, avoiding ioredis
  * version mismatch issues.
+ * @returns BullMQ connection options derived from `REDIS_QUEUE_URL`
  */
 function parseRedisUrl(): ConnectionOptions {
   const url = new URL(env.REDIS_QUEUE_URL);
@@ -33,7 +34,6 @@ const _workers: Worker[] = [];
 
 /**
  * Create a BullMQ queue.
- *
  * @param name - Queue name
  * @returns A new BullMQ Queue instance
  */
@@ -53,7 +53,6 @@ export function createQueue(name: string): Queue {
  *   will consider the job "stalled" and hand it to another Worker —
  *   in which case the re-entry guard in `runTask` (checks
  *   `tasks.provider_result_url`) prevents a duplicate provider call.
- *
  * @param name - Queue name to consume from
  * @param processor - Job processor function
  * @returns A new BullMQ Worker instance
@@ -83,6 +82,7 @@ export function createWorker<T>(
  * - `backoff` uses exponential delay (base * 2^attempt) so the
  *   second retry waits longer than the first.
  * - `removeOnComplete` / `removeOnFail` keep the Redis queue clean.
+ * @returns the default BullMQ job options (attempts, backoff, retention)
  */
 export function defaultJobOpts(): {
   attempts: number;

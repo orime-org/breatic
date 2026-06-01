@@ -14,7 +14,6 @@ import { getModel } from "@breatic/domain";
 
 /**
  * Run multimodal analysis via LLM using AI SDK.
- *
  * @param resolved - Resolved model with litellmModel string and API key
  * @param family - Model family module with `buildMessages()`
  * @param prompt - Analysis instruction text

@@ -83,6 +83,30 @@ interface SpaceTabBarProps {
  */
 const EMPTY_USERS_MAP: ReadonlyMap<string, { name: string }> = new Map();
 
+/**
+ * The 40px space tab bar: agent-column toggle, scrollable open-tab strip
+ * with smart scroll arrows, and the new-space / all-spaces drawer /
+ * project-messages chrome controls.
+ * @param root0 - Component props.
+ * @param root0.spaces - Tabs currently open in the bar (resolved from per-user open tab ids).
+ * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
+ * @param root0.openTabIds - Per-user open tab id list, for the drawer's status chip computation.
+ * @param root0.activeSpaceId - Id of the active space, used to highlight and scroll to its tab.
+ * @param root0.projectId - Project id, threaded to the drawer for row test ids.
+ * @param root0.onActivate - Activates the space with the given id.
+ * @param root0.onCreate - Creates a new space of the given type and name.
+ * @param root0.onClose - Closes a tab (removes it from the bar without deleting the space).
+ * @param root0.onViewSpace - Opens the read-only preview sheet for a space (drawer "view" action).
+ * @param root0.projectMessages - Project-wide message channel entries; defaults to empty.
+ * @param root0.usersById - Live user lookup used to render message-channel actor display names.
+ * @param root0.currentUserRole - Caller's role on the project, driving owner-only message actions.
+ * @param root0.onRestoreSpace - Owner-only handler to restore a soft-deleted space.
+ * @param root0.onClearMessages - Owner-only handler to clear all project message entries.
+ * @param root0.onDeleteSpace - Handler to soft-delete a space (drawer row delete button).
+ * @param root0.onSetSpaceLocked - Handler to toggle a space's lock (drawer row lock button).
+ * @param root0.onRenameSpace - Handler to rename a space inline from the tab strip.
+ * @returns The space tab bar toolbar.
+ */
 export function SpaceTabBar({
   spaces,
   allSpaces,
@@ -101,7 +125,7 @@ export function SpaceTabBar({
   onDeleteSpace,
   onSetSpaceLocked,
   onRenameSpace,
-}: SpaceTabBarProps) {
+}: SpaceTabBarProps): React.JSX.Element {
   const t = useTranslation();
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
@@ -212,8 +236,9 @@ export function SpaceTabBar({
    *     snaps it flush left.
    *
    * A 1-px tolerance absorbs sub-pixel rounding from CSS gap / padding.
+   * @param direction - Which way to scroll: bring the next off-screen tab in from the left or right.
    */
-  const scrollOneTab = (direction: 'left' | 'right') => {
+  const scrollOneTab = (direction: 'left' | 'right'): void => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
     const tabs = Array.from(scroller.children).filter(
@@ -242,6 +267,15 @@ export function SpaceTabBar({
     });
   };
 
+  /**
+   * Scroll arrow button for the tab strip; hidden when tabs don't overflow
+   * and dimmed when disabled at a scroll boundary.
+   * @param root0 - Component props.
+   * @param root0.direction - Whether this is the left or right scroll arrow.
+   * @param root0.onClick - Click handler that scrolls the tab strip one tab in the arrow's direction.
+   * @param root0.disabled - When `true`, the arrow is at a scroll boundary and is disabled/dimmed.
+   * @returns The scroll arrow button.
+   */
   const ArrowButton = ({
     direction,
     onClick,
@@ -250,7 +284,7 @@ export function SpaceTabBar({
     direction: 'left' | 'right';
     onClick: () => void;
     disabled: boolean;
-  }) => (
+  }): React.JSX.Element => (
     <Button
       variant='chrome-ghost'
       size='chrome'

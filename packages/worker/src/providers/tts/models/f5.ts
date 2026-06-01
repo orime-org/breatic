@@ -18,7 +18,6 @@ export const MODELS: ReadonlySet<string> = new Set([
 
 /**
  * Convert user-facing params to API params for F5 TTS voice cloning.
- *
  * @param prompt - Text to speak in cloned voice
  * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config

@@ -17,6 +17,11 @@ import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects } from "@core/db/schema.js";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
 
+/**
+ * Map a raw `project_members` drizzle row to the shared domain entity.
+ * @param row - selected `project_members` row from drizzle
+ * @returns the `ProjectMember` domain entity
+ */
 function toEntity(
   row: typeof projectMembers.$inferSelect,
 ): ProjectMember {
@@ -48,7 +53,6 @@ function toEntity(
  * that keeps a deleted project unreachable even if a member row ever
  * lingered, and it lets this one query replace a separate existence
  * SELECT (no raw `db` access outside this repo).
- *
  * @param projectId - Project UUID
  * @param userId - User UUID
  * @returns Role, or null if the project is missing/deleted or the
@@ -79,7 +83,6 @@ export async function getRole(
  *
  * Owner uniqueness is enforced by the partial unique index
  * `project_members_one_owner_per_project`; at most one row matches.
- *
  * @param projectId - Project UUID
  * @returns Owner's user UUID, or null if the project has no active
  *   owner (should not happen — every project has an owner row in
@@ -105,7 +108,6 @@ export async function getOwner(projectId: string): Promise<string | null> {
  *
  * Caller-side ordering: owner first, then edits, then views (the
  * frontend joins this with `useUsers` for display info).
- *
  * @param projectId - Project UUID
  * @returns Members ordered by role rank desc, then addedAt asc
  */
@@ -130,7 +132,6 @@ export async function listByProjectId(
  * `addedBy` is null because the creator has no inviter. Must run in
  * the same transaction as the project insert; the caller passes the
  * `tx` handle.
- *
  * @param projectId - Project UUID
  * @param ownerUserId - The creator's user UUID
  * @param tx - Drizzle transaction handle
@@ -158,7 +159,6 @@ export async function insertOwner(
  *
  * The route layer enforces `role !== 'owner'` (owner promotion goes
  * through transfer-owner, which is V1-deferred).
- *
  * @param projectId - Project UUID
  * @param userId - User UUID being invited
  * @param role - 'edit' | 'view'
@@ -199,7 +199,6 @@ export async function upsertMember(
  * Caller MUST verify the target is not already an owner (V1: owner
  * role cannot be PATCH'd; transfer-owner deferred). Returns `false`
  * if no active row matched.
- *
  * @param projectId - Project UUID
  * @param userId - Target user UUID
  * @param role - New role ('edit' | 'view')
@@ -230,7 +229,6 @@ export async function updateRole(
  * Caller MUST refuse to remove an owner (V1: owners are removed
  * only via transfer-owner, which is deferred). Returns `false` if
  * no active row matched.
- *
  * @param projectId - Project UUID
  * @param userId - Target user UUID
  * @returns `true` if a row was soft-deleted

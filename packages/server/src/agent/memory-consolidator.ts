@@ -51,7 +51,6 @@ Rules:
  *
  * Called after each MainAgent response (fire-and-forget).
  * Does nothing if the conversation is under the memory_window turn threshold.
- *
  * @param userId - Current user ID
  * @param conversationId - Current conversation ID
  * @param projectId - Associated project ID (may be undefined)

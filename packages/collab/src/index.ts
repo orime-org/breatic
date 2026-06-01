@@ -37,6 +37,9 @@ const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
 const ENV_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
+/**
+ *
+ */
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the
   // server. `checkCollabInfraReady` throws InfraNotReadyError per
@@ -161,7 +164,13 @@ async function main(): Promise<void> {
   });
 
   // Graceful shutdown
-  const shutdown = async (signal: string) => {
+  /**
+   * Gracefully tear down the collab process: stop the health server,
+   * members-sync subscriber, Redis/Postgres clients, stream listener,
+   * and Hocuspocus server, then exit with code 0.
+   * @param signal - Name of the OS signal that triggered shutdown (`SIGTERM` / `SIGINT`), logged for traceability.
+   */
+  const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
     await healthServer.stop();
     await stopMembersSync();

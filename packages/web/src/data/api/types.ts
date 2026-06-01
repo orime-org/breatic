@@ -21,10 +21,18 @@ export interface ApiError {
   code?: string;
 }
 
+/**
+ * Error thrown by the API helpers when a request fails, carrying the
+ * normalized HTTP status and optional backend error code.
+ */
 export class ApiException extends Error {
   readonly status: number;
   readonly code?: string;
 
+  /**
+   * Build an `ApiException` from a normalized API error.
+   * @param error - The normalized error with status, message, and optional code.
+   */
   constructor(error: ApiError) {
     super(error.message);
     this.name = 'ApiException';

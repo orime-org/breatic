@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Home, FolderOpen, Users, Settings as SettingsIcon } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
@@ -29,8 +30,12 @@ interface StudioNavProps {
  * V1 surfaces only Projects (Home) and Settings. Assets and Team are
  * disabled placeholders (filled in V2). The active item gets a
  * `bg-muted text-foreground` row; disabled items get `opacity-50`.
+ * @param root0 - component props
+ * @param root0.active - the currently active section, highlighted in the nav
+ * @param root0.onChange - called with the chosen section when an enabled item is clicked
+ * @returns the studio left navigation list.
  */
-export function StudioNav({ active, onChange }: StudioNavProps) {
+export function StudioNav({ active, onChange }: StudioNavProps): React.JSX.Element {
   return (
     <nav className='flex h-full w-56 flex-col gap-1 border-r border-border bg-card p-3'>
       <div className='mb-2 px-2 text-sm font-semibold tracking-tight'>

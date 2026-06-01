@@ -153,13 +153,12 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
 
 /**
  * Validate a raw environment map into a typed {@link CoreConfig}.
- *
  * @param rawEnv - The raw key/value map the application read from
  *   `process.env` (the entry owns the `process.env` read; this
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
- * @throws ZodError if a required variable is missing / malformed.
- * @throws Error if payments are enabled without Stripe secrets.
+ * @throws {z.ZodError} if a required variable is missing / malformed.
+ * @throws {Error} if payments are enabled without Stripe secrets.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);

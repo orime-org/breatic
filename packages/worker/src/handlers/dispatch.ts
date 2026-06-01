@@ -100,6 +100,9 @@ export interface TaskJobData {
  * Centralises the v10 multi-doc rule in one place: every site that
  * formerly called `projectDocName(projectId)` now goes through
  * here, guaranteeing the spaceId arrives at the doc-name builder.
+ * @param projectId - Project the task is scoped to, or undefined for non-canvas tasks
+ * @param spaceId - Space within the project the result is written to, or undefined for non-canvas tasks
+ * @returns The `project-{projectId}/canvas-{spaceId}` doc name, or null when either id is missing
  */
 function resolveCanvasDocName(
   projectId: string | undefined,
@@ -130,7 +133,6 @@ function resolveCanvasDocName(
  * the job. Errors after (persist failure, markCompleted failure) cause
  * the task to be marked failed with **no charge** — the user can re-run
  * from scratch if they want the result.
- *
  * @param job - BullMQ job with TaskJobData payload
  * @returns Result dict on success, or a failure status marker
  */
@@ -148,6 +150,8 @@ function resolveCanvasDocName(
  * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 (error path)
  * (Worker crash → finally block del lock; if that also fails, the TTL is
  * the safety net).
+ * @param job - BullMQ job carrying the TaskJobData payload to execute
+ * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
   const { taskId, projectId, targetNodeIds, mode } = job.data;
@@ -181,9 +185,10 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
  * Internal task execution body. Same logic as the original `runTask`, but
  * extracted so the public {@link runTask} wrapper can manage the canvas-node
  * lock lifecycle without indenting this body inside a `try`.
- *
+ * @param job - BullMQ job carrying the TaskJobData payload to execute
  * @param lockTargetNodeId - Non-null when this task holds an overwrite lock
  *   and should verify ownership before publishing the success event.
+ * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 async function runTaskBody(
   job: Job<TaskJobData>,
@@ -490,7 +495,6 @@ export interface NodeStateDoneFields {
  * `handlingBy` is explicitly set to `null` so the Collab consumer
  * deletes the key from the node's data Y.Map (clearing the actor badge).
  * null is used instead of undefined because JSON.stringify strips undefined.
- *
  * @param streamRedis - Redis client for the stream DB
  * @param docName - Project doc name (e.g. "project-{projectId}")
  * @param nodeId - Canvas node receiving the update
@@ -525,7 +529,6 @@ export async function emitNodeStateDone(
  * single node.
  *
  * Exported for unit testing.
- *
  * @param streamRedis - Redis client for the stream DB
  * @param docName - Project doc name (e.g. "project-{projectId}")
  * @param nodeId - Canvas node receiving the update
@@ -553,7 +556,16 @@ export async function emitNodeStateFailed(
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
-/** Record failed-generation entries in node_history (non-fatal). */
+/**
+ * Record failed-generation entries in node_history (non-fatal).
+ * @param taskId - Task whose failure is being recorded
+ * @param projectId - Project the failed nodes belong to; when undefined the call is a no-op
+ * @param nodeIds - Canvas nodes that should receive a failure history entry
+ * @param userId - User who owns the failed task
+ * @param model - Model name used for the attempt, if any
+ * @param params - Original task params, stored in the history metadata
+ * @param errorMessage - Human-readable failure reason
+ */
 async function recordFailureHistory(
   taskId: string,
   projectId: string | undefined,
@@ -588,6 +600,8 @@ async function recordFailureHistory(
  * (always one output). Local handlers return
  * `{outputs:[{url,cover_url?,extra?}], cost}` (N outputs). Callers
  * downstream consume a single shape.
+ * @param raw - Raw provider or local-handler result dict
+ * @returns The normalised `{ outputs, extras }` view where `outputs` is always an array
  */
 function toUnifiedOutputs(raw: Record<string, unknown>): {
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
@@ -615,6 +629,13 @@ function toUnifiedOutputs(raw: Record<string, unknown>): {
 /**
  * Persist each output's URL / buffer to permanent storage. Mirrors the
  * pre-refactor `persistResultUrls` but iterates outputs.
+ * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
+ * @param extras - Non-output result fields that may also carry re-hostable URLs
+ * @param opts - Persistence context
+ * @param opts.taskType - Task type, used to pick the storage extension and key prefix
+ * @param opts.userId - User who owns the persisted assets
+ * @param opts.projectId - Project the assets belong to, if any
+ * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
  */
 async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
@@ -630,7 +651,11 @@ async function persistOutputs(
     understand: ".json",
   };
   const ext = extMap[opts.taskType] ?? ".bin";
-  const makeKey = () => storageKey({
+  /**
+   * Build a fresh storage key for one persisted asset.
+   * @returns A unique storage key scoped to the user / project / task type
+   */
+  const makeKey = (): string => storageKey({
     userId: opts.userId,
     projectId: opts.projectId,
     taskType: opts.taskType,
@@ -710,6 +735,12 @@ interface RunMiniToolOpts {
   projectId: string | undefined;
 }
 
+/**
+ * Execution path 1: run a mini-tool, dispatching to a local ffmpeg/Sharp
+ * handler or to an AIGC provider depending on the registry entry kind.
+ * @param opts - Mini-tool invocation context (tool name, task type, params, ids)
+ * @returns A `[result, credits]` tuple: the provider/handler result dict and the credits to charge
+ */
 async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
@@ -757,6 +788,13 @@ async function runMiniTool(
   return [result, credits];
 }
 
+/**
+ * Execution path 2: run media understanding (image / video / audio
+ * analysis or ASR) via the understand provider.
+ * @param model - Model override, or undefined to use the per-source-type default
+ * @param params - Task params carrying `source_type`, `source_url` and an optional prompt
+ * @returns A `[result, credits]` tuple: the analysis result dict and the credits to charge
+ */
 async function runUnderstand(
   model: string | undefined,
   params: Record<string, unknown>,
@@ -782,6 +820,15 @@ async function runUnderstand(
   return [result, credits];
 }
 
+/**
+ * Execution path 3: run an AIGC provider directly with explicit params
+ * (no skill agent loop). Strips and sanitises the prompt before sending.
+ * @param taskType - AIGC task type (image / audio / video / tts / three_d)
+ * @param model - Model name to invoke; required for this path
+ * @param params - Task params, including the raw prompt/text to sanitise
+ * @returns A `[result, credits]` tuple: the provider result dict and the credits to charge
+ * @throws {Error} when `model` is not provided
+ */
 async function runAigcDirect(
   taskType: string,
   model: string | undefined,
@@ -807,6 +854,16 @@ async function runAigcDirect(
   return [result, credits];
 }
 
+/**
+ * Execution paths 4 & 5: run an AI SDK agent loop driven by a skill.
+ * Path 4 uses an explicit skill; path 5 auto-selects and merges all skills
+ * registered for the task-type category and lets the LLM choose tools.
+ * @param taskType - Task type, used as the skill category for auto-select
+ * @param skillName - Explicit skill to run (path 4), or undefined to auto-select (path 5)
+ * @param params - Task params serialised into the user message for the agent
+ * @returns A `[text, resolvedSkills]` tuple: the agent's final text and the skill names used
+ * @throws {Error} when the explicit skill is missing, or no skills exist for the category
+ */
 async function runSkillAgent(
   taskType: string,
   skillName: string | undefined,
@@ -857,16 +914,31 @@ async function runSkillAgent(
 }
 
 
-/** Dynamic provider import by task type. */
+/**
+ * Dynamic provider import by task type.
+ * @param taskType - Task type whose modality selects the provider module to load
+ * @returns The provider's `validateParams` / `generateAsync` pair
+ * @throws {Error} when the task type maps to an unknown AIGC modality
+ */
 async function importProvider(taskType: string): Promise<{
   validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
   generateAsync: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }> {
   const modality = AIGC_TASK_TYPES[taskType] ?? taskType;
+  /**
+   * Normalise a provider module's validate/generate exports into the
+   * common `{ validateParams, generateAsync }` shape used by callers.
+   * @param validate - Provider param validator (model may be undefined)
+   * @param generate - Provider async generation function
+   * @returns The wrapped provider interface with a non-optional model on `validateParams`
+   */
   const wrap = (
     validate: (m: string | undefined, p?: Record<string, unknown>) => [string, Record<string, unknown>],
     generate: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>,
-  ) => ({
+  ): {
+    validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
+    generateAsync: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  } => ({
     validateParams: (model: string, params: Record<string, unknown>) => validate(model, params),
     generateAsync: generate,
   });

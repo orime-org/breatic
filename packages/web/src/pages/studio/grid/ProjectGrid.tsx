@@ -21,8 +21,9 @@ import { ProjectCard } from '@web/pages/studio/grid/ProjectCard';
  *   - create mutation invalidates the list so the new project appears
  *     when the user comes back from `/project/:id`
  *   - filter / sort run client-side on whatever the server returned
+ * @returns the project grid header, search box, project tiles, and create dialog.
  */
-export function ProjectGrid() {
+export function ProjectGrid(): React.JSX.Element {
   const t = useTranslation();
   const search = useStudioStore((s) => s.search);
   const sortKey = useStudioStore((s) => s.sortKey);

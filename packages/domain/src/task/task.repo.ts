@@ -9,7 +9,11 @@ import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { TaskEntity } from "@breatic/shared";
 
-/** Convert a Drizzle row to a TaskEntity. */
+/**
+ * Convert a Drizzle row to a TaskEntity.
+ * @param row - The raw Drizzle row selected from the `tasks` table.
+ * @returns The mapped {@link TaskEntity}.
+ */
 function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
   return {
     id: row.id,
@@ -40,7 +44,11 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
   };
 }
 
-/** Get a task by ID (excludes soft-deleted). */
+/**
+ * Get a task by ID (excludes soft-deleted).
+ * @param id - UUID of the task to fetch.
+ * @returns The {@link TaskEntity}, or null if not found or soft-deleted.
+ */
 export async function getTaskById(id: string): Promise<TaskEntity | null> {
   const rows = await db
     .select()
@@ -50,7 +58,13 @@ export async function getTaskById(id: string): Promise<TaskEntity | null> {
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/** List active (non-deleted) tasks for a user, ordered by most recent. */
+/**
+ * List active (non-deleted) tasks for a user, ordered by most recent.
+ * @param userId - ID of the user whose tasks to list.
+ * @param limit - Maximum rows to return; capped at 100. Defaults to 20.
+ * @param offset - Number of rows to skip for pagination. Defaults to 0.
+ * @returns The matching {@link TaskEntity} records.
+ */
 export async function listTasksByUser(
   userId: string,
   limit = 20,
@@ -67,7 +81,10 @@ export async function listTasksByUser(
   return rows.map(toEntity);
 }
 
-/** Soft-delete a task (reserved for future "clear history" UI). */
+/**
+ * Soft-delete a task (reserved for future "clear history" UI).
+ * @param id - UUID of the task to soft-delete.
+ */
 export async function softDeleteTask(id: string): Promise<void> {
   await db
     .update(tasks)
@@ -75,7 +92,20 @@ export async function softDeleteTask(id: string): Promise<void> {
     .where(eq(tasks.id, id));
 }
 
-/** Create a new task. */
+/**
+ * Create a new task in the `queued` default state.
+ * @param data - The task fields to insert.
+ * @param data.userId - ID of the user who owns the task.
+ * @param data.projectId - ID of the project the task targets, if any.
+ * @param data.spaceId - ID of the space within the project the task writes results to.
+ * @param data.taskType - Task type discriminator (e.g. AIGC mini-tool / generation kind).
+ * @param data.mode - `"append"` for new-sibling flows or `"overwrite"` for in-place replacement.
+ * @param data.params - Provider/tool parameters for the task.
+ * @param data.model - Model identifier to run the task with, if applicable.
+ * @param data.skillName - Skill name driving the task, if applicable.
+ * @param data.source - Origin of the task; defaults to `"canvas"`.
+ * @returns The created {@link TaskEntity}.
+ */
 export async function createTask(data: {
   userId: string;
   projectId?: string;
@@ -120,6 +150,13 @@ export async function createTask(data: {
  *
  * - RUNNING → sets started_at
  * - COMPLETED/FAILED/CANCELLED → sets completed_at
+ * @param id - UUID of the task to update.
+ * @param status - New status string (e.g. `"running"`, `"completed"`, `"failed"`, `"cancelled"`).
+ * @param options - Optional result/error and usage metrics to persist alongside the status.
+ * @param options.result - Provider/tool result payload to store.
+ * @param options.error - Error message to store on failure.
+ * @param options.creditsUsed - Credits consumed by the task.
+ * @param options.durationMs - Wall-clock duration of the task in milliseconds.
  */
 export async function updateTaskStatus(
   id: string,
@@ -151,7 +188,11 @@ export async function updateTaskStatus(
   await db.update(tasks).set(updates).where(eq(tasks.id, id));
 }
 
-/** Set the ARQ/BullMQ job ID on a task. */
+/**
+ * Set the ARQ/BullMQ job ID on a task.
+ * @param id - UUID of the task to update.
+ * @param jobId - Queue job ID linking the task to its enqueued worker job.
+ */
 export async function setJobId(id: string, jobId: string): Promise<void> {
   await db
     .update(tasks)
@@ -159,7 +200,11 @@ export async function setJobId(id: string, jobId: string): Promise<void> {
     .where(eq(tasks.id, id));
 }
 
-/** Backfill the resolved skills list after execution. */
+/**
+ * Backfill the resolved skills list after execution.
+ * @param id - UUID of the task to update.
+ * @param skills - The fully-resolved skill names used during execution.
+ */
 export async function setResolvedSkills(id: string, skills: string[]): Promise<void> {
   await db.execute(
     sql`UPDATE tasks SET resolved_skills = ${JSON.stringify(skills)}::jsonb, updated_at = NOW()
@@ -172,7 +217,6 @@ export async function setResolvedSkills(id: string, skills: string[]): Promise<v
  * no provider retry". Subsequent Worker pickups of this task (e.g. after
  * a Worker crash) must check this field and fail-fast if it's set,
  * because the provider has already been invoked once.
- *
  * @param id - Task UUID
  * @param providerResultUrl - URL returned by the provider (pre-persistence)
  */
@@ -195,7 +239,10 @@ export async function recordProviderResult(
  * The `billed_at` column is set here as the idempotency guard. A
  * subsequent `chargeOnce()` call uses this column to determine whether
  * to actually deduct credits (first call wins, retries are no-ops).
- *
+ * @param id - UUID of the task to mark completed.
+ * @param result - Provider/tool result payload to persist on the task.
+ * @param creditsUsed - Credits consumed; also written to the `billed_credits` guard column.
+ * @param durationMs - Wall-clock duration of the task in milliseconds.
  * @returns `true` if this call performed the transition, `false` if already completed
  */
 export async function markCompletedAndBill(

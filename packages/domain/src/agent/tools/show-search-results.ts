@@ -14,8 +14,6 @@
  * Distinguished from `web_search` (the real tool that performs the
  * search): web_search returns raw results to the LLM; this tool packages
  * a curated subset back to the frontend for visual presentation.
- *
- * @module
  */
 import { tool } from "ai";
 import { z } from "zod";

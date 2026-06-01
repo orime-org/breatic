@@ -36,7 +36,10 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
  */
 declare const __GOOGLE_CLIENT_ID__: string;
 
-export default function LoginPage() {
+/**
+ * @returns the login page with the email/password form and optional Google button.
+ */
+export default function LoginPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -55,7 +58,12 @@ export default function LoginPage() {
   }>({});
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  /**
+   * Validate the credentials client-side, then call the login API and
+   * mirror the returned user into the store before navigating away.
+   * @param e - the form submit event, prevented so the page does not reload
+   */
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);
@@ -182,12 +190,17 @@ export default function LoginPage() {
  * because it's the LoginPage's only consumer and the wiring is tiny.
  * Promotes to its own file the moment a second page (e.g. settings)
  * needs to re-link Google to an existing account.
+ * @returns the "Continue with Google" button.
  */
-function GoogleSignInButton() {
+function GoogleSignInButton(): React.JSX.Element {
   const t = useTranslation();
   const [busy, setBusy] = React.useState(false);
 
-  async function handleClick() {
+  /**
+   * Lazily start the Google Sign-In flow on first click; currently shows
+   * a "coming soon" toast until the GIS popup exchange is wired up.
+   */
+  async function handleClick(): Promise<void> {
     if (busy) return;
     setBusy(true);
     try {

@@ -32,7 +32,6 @@ import {
  *
  * The KlingAI API requires JWT authentication. If the `apiKey` does not
  * contain a colon, it is used directly as a pre-signed Bearer token.
- *
  * @param apiKey - Combined `"access_key:secret_key"` or pre-signed JWT
  * @returns JWT token string
  */
@@ -47,6 +46,11 @@ function buildJwt(apiKey: string): string {
   const header = { alg: "HS256", typ: "JWT" };
   const payload = { iss: accessKey, exp: now + 1800, nbf: now - 5 };
 
+  /**
+   * Base64url-encode raw bytes for use in a JWT segment.
+   * @param data - Raw bytes to encode
+   * @returns The base64url string (no padding)
+   */
   const b64url = (data: Uint8Array): string =>
     Buffer.from(data).toString("base64url");
 
@@ -59,7 +63,6 @@ function buildJwt(apiKey: string): string {
 
 /**
  * Build KlingAI authorization headers with JWT.
- *
  * @param apiKey - Access key (may be `"access_key:secret_key"`)
  * @returns Headers dict
  */
@@ -72,7 +75,6 @@ function authHeaders(apiKey: string): Record<string, string> {
 
 /**
  * Infer the API endpoint from request params.
- *
  * @param params - API-ready params (after model family conversion)
  * @returns Endpoint suffix (e.g. `"text2video"`)
  */
@@ -84,7 +86,6 @@ function inferEndpoint(params: Record<string, unknown>): string {
 
 /**
  * Extract the first video URL from KlingAI API response.
- *
  * @param data - Parsed JSON response
  * @returns Video URL string, or undefined
  */
@@ -100,12 +101,11 @@ function extractVideoUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Generate a video asynchronously via KlingAI official API.
- *
  * @param prompt - Video description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by model family)
  * @returns Object with `url`, `model`, and `cost`
- * @throws Error if the task fails or returns no output
+ * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
   prompt: string,

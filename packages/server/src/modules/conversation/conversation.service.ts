@@ -13,12 +13,11 @@ import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**
  * Validate that a conversation exists and belongs to the given user.
- *
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
  * @returns The validated conversation entity
- * @throws NotFoundError if conversation does not exist
- * @throws ForbiddenError if userId does not match the conversation owner
+ * @throws {NotFoundError} if conversation does not exist
+ * @throws {ForbiddenError} if userId does not match the conversation owner
  */
 async function validateOwnership(
   conversationId: string,
@@ -37,11 +36,10 @@ async function validateOwnership(
  * cross-tenant reads (e.g. conversation attachment listings) before
  * doing any work. Discards the returned entity so call sites read
  * as an assertion rather than a fetch.
- *
  * @param conversationId - Conversation UUID from untrusted client input
  * @param userId - Authenticated user UUID from the session
- * @throws NotFoundError if conversation does not exist
- * @throws ForbiddenError if the user does not own the conversation
+ * @throws {NotFoundError} if conversation does not exist
+ * @throws {ForbiddenError} if the user does not own the conversation
  */
 export async function assertAccess(
   conversationId: string,
@@ -59,7 +57,6 @@ export async function assertAccess(
  * provided, the caller's access to that project is verified before
  * linking — otherwise a user could silently attach a conversation to
  * someone else's project.
- *
  * @param userId - Owner user UUID
  * @param conversationId - Optional existing conversation UUID
  * @param firstMessage - Content of the first message (used as title for new conversations)
@@ -97,8 +94,8 @@ export async function getOrCreate(
 
 /**
  * List conversations for a user, ordered by most recently updated.
- *
  * @param userId - Owner user UUID
+ * @param opts - Optional project scope and pagination window
  * @param opts.projectId - Optional project scope; when set, returns only
  *   conversations belonging to that project.
  * @param opts.limit - Maximum number of results (default 50)
@@ -114,12 +111,11 @@ export async function list(
 
 /**
  * Fetch a conversation with its message history.
- *
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
  * @returns The conversation entity and its messages
- * @throws NotFoundError if conversation does not exist
- * @throws ForbiddenError if userId does not match the conversation owner
+ * @throws {NotFoundError} if conversation does not exist
+ * @throws {ForbiddenError} if userId does not match the conversation owner
  */
 export async function getWithMessages(
   conversationId: string,
@@ -137,7 +133,6 @@ export async function getWithMessages(
  * reach the data layer through the service (prohibition #1). Callers
  * that need a tenancy guard must use {@link assertAccess} /
  * {@link getWithMessages} instead.
- *
  * @param id - Conversation UUID
  * @returns The conversation entity, or null if not found / soft-deleted
  */
@@ -153,7 +148,6 @@ export async function getConversation(
  * Thin pass-through to the conversation repository so route handlers
  * reach the data layer through the service (prohibition #1). Skips
  * already-consolidated turns and strips internal-only fields.
- *
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @returns Messages from turns after the consolidated boundary
@@ -171,11 +165,10 @@ export async function getMessagesForLlm(
  * Sets `deleted_at` on the conversation record. The underlying messages
  * and any related attachments remain in the database and can be
  * restored by clearing `deleted_at` if needed.
- *
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
- * @throws NotFoundError if conversation does not exist
- * @throws ForbiddenError if userId does not match the conversation owner
+ * @throws {NotFoundError} if conversation does not exist
+ * @throws {ForbiddenError} if userId does not match the conversation owner
  */
 export async function deleteConversation(
   conversationId: string,

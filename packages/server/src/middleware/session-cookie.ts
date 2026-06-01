@@ -41,6 +41,7 @@ const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
  * `secure: true` cookie would be silently dropped by the browser.
  * Staging / prod must run over HTTPS, so `secure: true` is mandatory
  * there.
+ * @returns The cookie options (httpOnly, secure, sameSite=Lax, path, 30-day maxAge, optional domain) shared by all session-cookie writes.
  */
 function baseOptions(): {
   httpOnly: true;
@@ -61,12 +62,20 @@ function baseOptions(): {
   };
 }
 
-/** Write the session cookie on the Hono response. */
+/**
+ * Write the session cookie on the Hono response.
+ * @param c - The Hono request context whose response receives the `Set-Cookie` header.
+ * @param token - The opaque session token to store in the cookie.
+ */
 export function setSessionCookie(c: Context, token: string): void {
   setCookie(c, SESSION_COOKIE_NAME, token, baseOptions());
 }
 
-/** Read the session cookie value from the Hono request. */
+/**
+ * Read the session cookie value from the Hono request.
+ * @param c - The Hono request context whose cookies are read.
+ * @returns The session token from the cookie, or `undefined` when the cookie is absent.
+ */
 export function readSessionCookie(c: Context): string | undefined {
   return getCookie(c, SESSION_COOKIE_NAME);
 }
@@ -75,6 +84,7 @@ export function readSessionCookie(c: Context): string | undefined {
  * Clear the session cookie. Must echo the same `path` + `domain` as
  * `setSessionCookie` or the browser will not match and the cookie
  * lingers.
+ * @param c - The Hono request context whose response clears the session cookie.
  */
 export function clearSessionCookie(c: Context): void {
   const domain = env.COOKIE_DOMAIN.trim();

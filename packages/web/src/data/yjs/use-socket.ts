@@ -70,6 +70,11 @@ interface SocketState {
  * the second is created.
  *
  * (Lesson from PR #99 — see memory `feedback_strictmode_resource_hook`.)
+ * @param root0 - Socket binding options.
+ * @param root0.name - Document name to open on the Hocuspocus server (e.g. `project-abc/meta`).
+ * @param root0.doc - The Y.Doc instance to bind to the provider.
+ * @param root0.url - WebSocket URL or path to the Hocuspocus server; defaults to `/ws`.
+ * @returns The live provider plus sync flag, connection status, and any auth-failure reason.
  */
 export function useSocket({
   name,

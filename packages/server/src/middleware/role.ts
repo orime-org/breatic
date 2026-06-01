@@ -37,6 +37,9 @@ export type AuthRoleVariables = AuthVariables & RoleVariables;
 /**
  * Build a middleware that requires the caller to have at least
  * `min` role on the project named by route param `paramName`.
+ * @param paramName - The route param holding the project UUID (e.g. `pid` or `id`).
+ * @param min - The minimum project role required to pass the gate.
+ * @returns A Hono middleware that loads the caller's role, throws {@link ForbiddenError} on missing project/membership or insufficient role, and stamps `projectId` + `role` on the context.
  */
 export function requireRoleOnParam(
   paramName: string,
@@ -67,6 +70,8 @@ export function requireRoleOnParam(
  * `requireRole(min)` — middleware preset for routes that take the
  * project UUID under route param `:pid`. Routes that don't use
  * `:pid` should call {@link requireRoleOnParam} directly.
+ * @param min - The minimum project role required to pass the gate.
+ * @returns A Hono middleware bound to the `:pid` route param via {@link requireRoleOnParam}.
  */
 export function requireRole(
   min: ProjectRole,
@@ -77,6 +82,8 @@ export function requireRole(
 /**
  * Helper for routes that already loaded the role and want to read
  * it back without re-querying.
+ * @param c - The Hono request context, downstream of {@link requireRole}.
+ * @returns The caller's project role stamped by the role middleware.
  */
 export function getRole(c: Context<{ Variables: AuthRoleVariables }>): ProjectRole {
   return c.get("role");
@@ -90,6 +97,8 @@ export function getRole(c: Context<{ Variables: AuthRoleVariables }>): ProjectRo
  * middleware already resolved + validated the param) and dishonest
  * (it asserts non-undefined where the typed `c.var.projectId` proves
  * it). Only valid downstream of `requireRole` / `requireRoleOnParam`.
+ * @param c - The Hono request context, downstream of {@link requireRole}.
+ * @returns The validated project UUID stamped by the role middleware.
  */
 export function getProjectId(c: Context<{ Variables: AuthRoleVariables }>): string {
   return c.get("projectId");

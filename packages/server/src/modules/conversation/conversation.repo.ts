@@ -34,7 +34,11 @@ export type { DbTx };
 
 const MAX_HISTORY = 50;
 
-/** Convert a Drizzle row to a ConversationEntity. */
+/**
+ * Convert a Drizzle row to a ConversationEntity.
+ * @param row - Raw `conversations` table row from a Drizzle select
+ * @returns The mapped domain entity (keeps `$inferSelect` out of callers)
+ */
 function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
   return {
     id: row.id,
@@ -48,7 +52,12 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
   };
 }
 
-/** Create a new conversation. */
+/**
+ * Create a new conversation.
+ * @param userId - Owner of the new conversation (conversations are user-scoped)
+ * @param title - Display title; truncated to 200 chars before insert
+ * @returns The newly created conversation entity
+ */
 export async function createConversation(
   userId: string,
   title = "New conversation",
@@ -60,7 +69,11 @@ export async function createConversation(
   return toEntity(rows[0]!);
 }
 
-/** Get a conversation by ID (excludes soft-deleted). */
+/**
+ * Get a conversation by ID (excludes soft-deleted).
+ * @param id - Conversation UUID to look up
+ * @returns The conversation entity, or null if not found or soft-deleted
+ */
 export async function getConversation(id: string): Promise<ConversationEntity | null> {
   const rows = await db
     .select()
@@ -73,12 +86,15 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
 /**
  * List active (non-deleted) conversations for a user, optionally
  * scoped to a single project.
- *
  * @param userId - Conversations are user-owned; this is the auth boundary.
+ * @param opts - Optional project scope and pagination window
  * @param opts.projectId - When set, restricts to conversations belonging
  *   to that project. ChatPanel passes the active space's project id so
  *   it doesn't have to client-side-filter a paginated response (which
  *   silently dropped the target when it sat past page boundary).
+ * @param opts.limit - Maximum rows to return (defaults to 50)
+ * @param opts.offset - Number of rows to skip for pagination (defaults to 0)
+ * @returns Active conversations ordered by most-recently-updated first
  */
 export async function listConversations(
   userId: string,
@@ -122,7 +138,6 @@ export async function listConversations(
  * Must be called inside a transaction — the caller owns the atomicity
  * boundary so `deleteProject` can wrap both conversation and non-
  * conversation children in one transaction.
- *
  * @param tx - Transaction handle from {@link db.transaction}
  * @param convIds - Conversation UUIDs to cascade (safe with 0 entries)
  * @param now - Timestamp to stamp on every affected row (defaults to `new Date()`)
@@ -182,6 +197,7 @@ export async function cascadeDeleteConversations(
  *
  * Wraps {@link cascadeDeleteConversations} in a single-statement
  * transaction. Safe to call on an already-deleted conversation (no-op).
+ * @param id - Conversation UUID to soft-delete
  */
 export async function softDeleteConversation(id: string): Promise<void> {
   await db.transaction(async (tx) => {
@@ -192,6 +208,8 @@ export async function softDeleteConversation(id: string): Promise<void> {
 /**
  * Update conversation title. No-op when the conversation is soft-deleted
  * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
+ * @param id - Conversation UUID to rename
+ * @param title - New display title; truncated to 200 chars before update
  */
 export async function updateTitle(id: string, title: string): Promise<void> {
   await db
@@ -200,7 +218,11 @@ export async function updateTitle(id: string, title: string): Promise<void> {
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
-/** Set the project_id on a conversation. No-op if soft-deleted. */
+/**
+ * Set the project_id on a conversation. No-op if soft-deleted.
+ * @param id - Conversation UUID to link
+ * @param projectId - Project UUID to associate the conversation with
+ */
 export async function setProjectId(id: string, projectId: string): Promise<void> {
   await db
     .update(conversations)
@@ -221,8 +243,10 @@ export async function setProjectId(id: string, projectId: string): Promise<void>
  * would race against concurrent appends.
  *
  * Uses PostgreSQL `||` operator for atomic JSONB append.
- *
- * @throws NotFoundError if the conversation does not exist or is soft-deleted.
+ * @param id - Conversation UUID to append to
+ * @param message - Message to append; `turnIndex` is computed when omitted
+ * @returns The `turnIndex` assigned to the appended message
+ * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  *   This surfaces deletion-mid-stream cleanly to callers — `main-agent.ts`
  *   relies on this to abort billing when the conversation was deleted
  *   during a chat turn.
@@ -274,7 +298,12 @@ export async function addMessage(
   return turnIndex;
 }
 
-/** Get the last N messages from a conversation (empty array if deleted). */
+/**
+ * Get the last N messages from a conversation (empty array if deleted).
+ * @param id - Conversation UUID to read
+ * @param limit - Maximum number of trailing messages to return (defaults to 50)
+ * @returns The last `limit` messages, or an empty array if not found / deleted
+ */
 export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
   const rows = await db
     .select({ messages: conversations.messages })
@@ -291,9 +320,9 @@ export async function getMessages(id: string, limit = MAX_HISTORY): Promise<Mess
  *
  * Skips already-consolidated turns and strips internal fields
  * (ts, turnIndex, thinking) that the LLM doesn't need.
- *
  * @param id - Conversation ID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
+ * @returns Unconsolidated messages with internal-only fields stripped for the LLM
  */
 export async function getMessagesForLlm(
   id: string,
@@ -314,7 +343,11 @@ export async function getMessagesForLlm(
   return unconsolidated.map(({ ts: _ts, turnIndex: _ti, thinking: _th, ...rest }) => rest as MessageData);
 }
 
-/** Get count of unconsolidated turns. */
+/**
+ * Get count of unconsolidated turns.
+ * @param id - Conversation UUID to inspect
+ * @returns Number of turns past the last consolidated boundary (0 if not found)
+ */
 export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
   const rows = await db
     .select({
@@ -337,10 +370,10 @@ export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
  * Returns all messages from turns after lastConsolidatedTurn up to
  * (maxTurn - keepTurns). The full step detail is preserved for
  * high-quality LLM summarization.
- *
  * @param id - Conversation ID
  * @param lastConsolidatedTurn - Turn index already consolidated
  * @param keepTurns - Number of recent turns to keep unconsolidated
+ * @returns Messages in the consolidatable turn range (empty when nothing is eligible)
  */
 export async function getMessagesForConsolidation(
   id: string,
@@ -365,7 +398,11 @@ export async function getMessagesForConsolidation(
   );
 }
 
-/** Update the consolidated turn index. No-op if soft-deleted. */
+/**
+ * Update the consolidated turn index. No-op if soft-deleted.
+ * @param id - Conversation UUID to update
+ * @param turn - New `last_consolidated_turn` watermark to persist
+ */
 export async function updateConsolidatedTurn(id: string, turn: number): Promise<void> {
   await db
     .update(conversations)

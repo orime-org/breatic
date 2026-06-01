@@ -69,6 +69,21 @@ interface ViewportToolbarProps {
  *     dot-grid canvas.
  *   - No viewport-lock button (lock is space-level, surfaced in the
  *     SpaceDrawer hover actions and SpaceTab indicator).
+ * @param root0 - Component props.
+ * @param root0.zoom - Current canvas zoom level (1 = 100%).
+ * @param root0.minimapVisible - Whether the minimap is currently shown (drives the minimap toggle's pressed state).
+ * @param root0.snapToGrid - Whether snap-to-grid is enabled (drives the snap toggle's pressed state).
+ * @param root0.canUndo - Whether an undo is available; when `false`, the undo button is disabled.
+ * @param root0.canRedo - Whether a redo is available; when `false`, the redo button is disabled.
+ * @param root0.onZoomIn - Zooms the canvas in by one step.
+ * @param root0.onZoomOut - Zooms the canvas out by one step.
+ * @param root0.onZoomChange - Applies an arbitrary zoom (popover preset or custom input).
+ * @param root0.onFit - Fits all nodes into the viewport.
+ * @param root0.onToggleSnap - Toggles snap-to-grid.
+ * @param root0.onToggleMinimap - Toggles minimap visibility.
+ * @param root0.onUndo - Undo handler, wired when the canvas history engine lands.
+ * @param root0.onRedo - Redo handler, wired when the canvas history engine lands.
+ * @returns The floating canvas viewport toolbar.
  */
 export function ViewportToolbar({
   zoom,
@@ -84,7 +99,7 @@ export function ViewportToolbar({
   onToggleMinimap,
   onUndo,
   onRedo,
-}: ViewportToolbarProps) {
+}: ViewportToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div
@@ -174,13 +189,21 @@ export function ViewportToolbar({
   );
 }
 
+/**
+ * Visual grouping of toolbar buttons with a trailing divider unless it is
+ * the last group.
+ * @param root0 - Component props.
+ * @param root0.children - The toolbar buttons rendered inside the group.
+ * @param root0.last - When `true`, the group omits its trailing divider.
+ * @returns The button group wrapper.
+ */
 function Group({
   children,
   last,
 }: {
   children: React.ReactNode;
   last?: boolean;
-}) {
+}): React.JSX.Element {
   return (
     <div
       className={cn(
@@ -198,13 +221,23 @@ interface VtButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   active?: boolean;
 }
 
+/**
+ * Tooltip-wrapped icon button used for every viewport-toolbar control,
+ * with active (pressed) and disabled visual states.
+ * @param root0 - Component props (plus any native button attributes spread onto the element).
+ * @param root0.tooltip - Tooltip text shown above the button.
+ * @param root0.active - When `true`, renders the pressed/active visual state.
+ * @param root0.disabled - When `true`, disables the button and renders the dimmed visual state.
+ * @param root0.children - Icon content rendered inside the button.
+ * @returns The toolbar icon button with its tooltip.
+ */
 function VtButton({
   tooltip,
   active,
   disabled,
   children,
   ...rest
-}: VtButtonProps) {
+}: VtButtonProps): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -251,8 +284,12 @@ interface ZoomMenuProps {
  * Zoom is currently a ProjectPage local state placeholder — when
  * ReactFlow integration lands, `onZoomChange` should drive the
  * `setViewport` API and `zoom` should read back from it.
+ * @param root0 - Component props.
+ * @param root0.zoom - Current zoom level shown in the readout and used to mark the active preset.
+ * @param root0.onZoomChange - Applies the chosen zoom (clamped to the toolbar's min/max).
+ * @returns The zoom readout trigger and its preset/custom-input popover.
  */
-function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
+function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState('');
@@ -265,13 +302,22 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps) {
     if (open) setDraft(String(Math.round(zoom * 100)));
   }, [open, zoom]);
 
-  const apply = (next: number) => {
+  /**
+   * Clamps the given zoom to the toolbar's min/max, applies it, and closes
+   * the popover.
+   * @param next - The requested zoom level (1 = 100%).
+   */
+  const apply = (next: number): void => {
     const clamped = Math.min(Math.max(next, ZOOM_MIN), ZOOM_MAX);
     onZoomChange(clamped);
     setOpen(false);
   };
 
-  const applyDraft = () => {
+  /**
+   * Parses the custom-input draft as a percentage and applies it, or just
+   * closes the popover when the input is not a positive number.
+   */
+  const applyDraft = (): void => {
     const parsed = Number.parseFloat(draft.replace('%', '').trim());
     if (Number.isFinite(parsed) && parsed > 0) {
       apply(parsed / 100);

@@ -16,6 +16,8 @@ import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
  * Mirrors Figma's "Drafts" model — a per-user implicit workspace
  * that acts as the FK target for the user's projects until team
  * studios ship.
+ * @param username - Display name to personalize the studio name, or null for the generic fallback.
+ * @returns A name like `"{username}'s Studio"`, or `"Personal Studio"` when no username is given.
  */
 function defaultStudioName(username: string | null): string {
   return username ? `${username}'s Studio` : "Personal Studio";
@@ -26,7 +28,6 @@ function defaultStudioName(username: string | null): string {
  *
  * Idempotent: safe to call from register, login, or any code path
  * that needs to dereference `projects.studio_id` for the user.
- *
  * @param userId - User UUID
  * @param username - Optional display name; falls back to "Personal
  *   Studio" if null
@@ -48,7 +49,6 @@ export async function ensurePersonalStudio(
  *
  * Use when callers want to surface "no studio" as an error (e.g.
  * project creation expecting register hook to have run).
- *
  * @param userId - User UUID
  * @returns The user's studio, or `null` if none exists
  */

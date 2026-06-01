@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 import { cn } from '@web/lib/utils';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
@@ -12,8 +14,13 @@ interface MessageBubbleProps {
  * Renders one message in the chat list. Layout flips left/right based on
  * role; thinking + tool calls nest inside the bubble so they share the
  * bubble's column.
+ * @param root0 - The component props.
+ * @param root0.message - The chat message to render.
+ * @returns The message bubble with optional thinking fold and tool-call cards.
  */
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+}: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   return (
     <div

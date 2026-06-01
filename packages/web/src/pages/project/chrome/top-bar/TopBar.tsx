@@ -1,4 +1,5 @@
 import { ArrowLeft, Plus, Star } from 'lucide-react';
+import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
@@ -36,6 +37,14 @@ interface TopBarProps {
  *       group B (3 icon-only): Export · Share · Bell
  *
  *   (Tweaks removed 2026-05-19 per user — defaults fixed in tokens.css.)
+ * @param root0 - Top-bar props.
+ * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
+ * @param root0.projectName - Current project name shown in the editable title.
+ * @param root0.role - Viewer's role in this project, surfaced via the role tag.
+ * @param root0.credits - Current credit balance shown in the credits pill.
+ * @param root0.onRename - Called with the new title when the user finishes editing the project name.
+ * @param root0.onAddCredits - Called when the user clicks the add-credits button on the credits pill.
+ * @returns the project chrome top bar with its left identity block and right action groups.
  */
 export function TopBar({
   projectId,
@@ -44,7 +53,7 @@ export function TopBar({
   credits,
   onRename,
   onAddCredits,
-}: TopBarProps) {
+}: TopBarProps): React.JSX.Element {
   return (
     <header
       data-testid='top-bar'
@@ -87,7 +96,11 @@ export function TopBar({
   );
 }
 
-function BackLink() {
+/**
+ * Back-to-Studio navigation link rendered in the top bar's left block.
+ * @returns the back link pointing to the Studio route.
+ */
+function BackLink(): React.JSX.Element {
   return (
     <Link
       to='/studio'
@@ -101,13 +114,20 @@ function BackLink() {
   );
 }
 
+/**
+ * Credits pill — shows the formatted credit balance with an add-credits button.
+ * @param root0 - Credits pill props.
+ * @param root0.credits - Current credit balance, rendered with locale grouping.
+ * @param root0.onAdd - Called when the user clicks the add-credits button.
+ * @returns the top-bar credits chip with its balance and add button.
+ */
 function CreditsPill({
   credits,
   onAdd,
 }: {
   credits: number;
   onAdd?: () => void;
-}) {
+}): React.JSX.Element {
   return (
     <span
       data-testid='credits-chip'

@@ -35,6 +35,17 @@ export const chatApi = {
    * stream closes; events are pushed via `onEvent` as they arrive.
    *
    * Use an `AbortController` (`signal`) to let the user click Abort.
+   * @param body - The message request payload.
+   * @param body.projectId - Project the conversation belongs to.
+   * @param body.conversationId - Existing conversation to append to; omitted to start a new one.
+   * @param body.content - The user's message text.
+   * @param body.references - Canvas entities (nodes / spaces) attached as context.
+   * @param handlers - Stream lifecycle callbacks.
+   * @param handlers.onEvent - Invoked for each parsed agent stream event.
+   * @param handlers.onClose - Invoked when the stream closes cleanly.
+   * @param handlers.onError - Invoked on transport / parse / abort error.
+   * @param handlers.signal - Abort signal to cancel the stream on user request.
+   * @returns A promise that resolves when the SSE stream closes.
    */
   streamMessage(
     body: {
@@ -49,7 +60,7 @@ export const chatApi = {
       onError?: (err: unknown) => void;
       signal?: AbortSignal;
     },
-  ) {
+  ): Promise<void> {
     return sseStream<ChatStreamEvent>({
       url: '/chat/message',
       body,
