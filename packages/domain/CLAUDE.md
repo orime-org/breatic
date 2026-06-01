@@ -14,12 +14,12 @@
 
 ## 可 import 谁
 - ✅ `@breatic/core` · `@breatic/shared` + 外部 npm
-- ❌ `@server` / `@worker` / `@collab` / `@web` —— 库不能 import 应用层(`lint:no-app-import-in-core` 把 domain 一并扫描强制)
+- ❌ `@server` / `@worker` / `@collab` / `@web` —— 库不能 import 应用层(`lint:dependency-cruiser` 的 `library-no-app-import` 规则把 domain 一并扫描强制)
 - 本包内部用 `@domain/*` 前缀
 
 ## 谁能 import 我
 - ✅ `@server` / `@worker`
-- ❌ `@collab` —— collab 是 server+worker 之外的进程,绝不碰 AIGC 业务(`lint:no-domain-import-in-collab` 强制)
+- ❌ `@collab` —— collab 是 server+worker 之外的进程,绝不碰 AIGC 业务(`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则强制)
 
 ## 怎么拿配置
 经 core 的 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(同 core 纪律,`lint:no-core-process-env` 把 domain 一并扫描强制)。

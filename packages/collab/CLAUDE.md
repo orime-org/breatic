@@ -13,7 +13,7 @@
 
 ## 可 import 谁
 - ✅ `@breatic/core` 的**基础设施**(`createPgClient` / `createRedisClient` / `HealthCheck` / `initCore` / `MONOREPO_ROOT`)+ `@breatic/shared` + 外部 npm
-- ❌ `@server` / `@worker` / `@breatic/domain` —— 服务之间互不 import;**collab 绝不依赖 domain**(server+worker-only 的 AIGC 业务,`lint:no-domain-import-in-collab` 强制)
+- ❌ `@server` / `@worker` / `@breatic/domain` —— 服务之间互不 import;**collab 绝不依赖 domain**(server+worker-only 的 AIGC 业务,`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则强制)
 - ⚠️ **但 collab ≠ 只用 core infra**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 用 core 的统一鉴权。**鉴权已统一(二次调整 PR2)**:`hooks/auth.ts` 调 core 的 `getSession` + `projectAuthService.loadProjectRole`,跟 server 共用同一套原语,不再手写 `redis.get(:session:)` / 裸 SQL `loadProjectRole`(collab 仅剩对自己 `yjs_documents` 表的空间存在性查询)。旧表述「collab 只借 core infra、业务不引入」**已作废**(它把鉴权漂移当成了设计)
 - 本包内部用 `@collab/*` 前缀
 
