@@ -9,7 +9,7 @@
 
 import { execFile } from "node:child_process";
 import { resolve, extname } from "node:path";
-import { existsSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { tool } from "ai";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@breatic/core";
@@ -60,8 +60,13 @@ export const runScript = tool({
       return "Error: Invalid script path — path traversal detected.";
     }
 
-    // Check the script exists
-    if (!existsSync(scriptPath)) {
+    // Check the script exists (async — this runs per agent tool call,
+    // so a sync existsSync would block the event loop; prohibition #10).
+    const scriptExists = await access(scriptPath).then(
+      () => true,
+      () => false,
+    );
+    if (!scriptExists) {
       return `Error: Script not found at skills/${skill}/scripts/${script}`;
     }
 

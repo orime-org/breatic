@@ -189,6 +189,27 @@ jobs:
         # the service layer. See scripts/lint-no-service-import-hono.sh.
         run: pnpm lint:no-service-import-hono
 
+      - name: Lint no-cors-wildcard-credentials (security)
+        # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): a CORS config must NOT pair
+        # a wildcard origin ("*" / ["*"]) with credentials: true — that
+        # would accept credentialed cross-origin requests from any origin.
+        # Origins must be a specific whitelist (env ALLOWED_ORIGINS).
+        # See scripts/lint-no-cors-wildcard-credentials.sh.
+        run: pnpm lint:no-cors-wildcard-credentials
+
+      - name: Lint no-sync-in-request-path (event loop)
+        # Enforce CLAUDE.md prohibition list #10 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): synchronous fs/child_process
+        # calls (readFileSync / execSync / …) block the event loop and are
+        # forbidden in request-handling code — use the async form. This is
+        # a path proxy: boot-time / first-use loaders (config/, infra/,
+        # *-loader.ts, model-catalog/, fs-sandbox, worker providers/shared)
+        # are allowlisted with justification in the script; prohibition
+        # #10 still needs human review for hot-path sync I/O. See
+        # scripts/lint-no-sync-in-request-path.sh.
+        run: pnpm lint:no-sync-in-request-path
+
       - name: Lint no-param-as-string (all packages)
         # Enforce 2026-05-30 type-assertion governance: a Hono route
         # param `c.req.param(name)` already resolves to `string`, so
