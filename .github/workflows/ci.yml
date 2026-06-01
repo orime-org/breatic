@@ -213,6 +213,20 @@ jobs:
         # See scripts/lint-no-cors-wildcard-credentials.sh.
         run: pnpm lint:no-cors-wildcard-credentials
 
+      - name: Lint no-hardcoded-secrets (security)
+        # Enforce CLAUDE.md prohibition list #4 (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01): API keys, tokens, passwords
+        # and credentialed connection strings must come from the
+        # environment, never be committed inline in source. Detection is
+        # secretlint + preset-recommend (27 battle-tested provider rules:
+        # AWS / GCP / Stripe / GitHub / Slack / OpenAI / private keys / DB
+        # connection strings / …) — provider token formats are low-FP.
+        # Complements the .husky/pre-commit hook (which blocks secret
+        # FILES); this catches inline secrets. The local-dev default DSN is
+        # allowlisted with justification in .secretlintrc.json. Hard-fails
+        # the PR. See scripts/lint-no-hardcoded-secrets.sh.
+        run: pnpm lint:no-hardcoded-secrets
+
       - name: Lint no-sync-in-request-path (event loop)
         # Enforce CLAUDE.md prohibition list #10 (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01): synchronous fs/child_process
