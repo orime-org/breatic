@@ -2,12 +2,12 @@
  * Fail-fast connectivity check for infrastructure dependencies.
  *
  * Called at service startup (API/Worker) before any business logic.
- * Per CLAUDE.md "进程生命周期" mandate: library code doesn't decide
+ * Per CLAUDE.md "process lifecycle" mandate: library code doesn't decide
  * when the process dies. If a dependency probe fails this throws
  * `InfraNotReadyError` and the application entry's top-level
  * catch logs + exits.
  *
- * This is intentionally called at startup — it cannot be bypassed
+ * This is intentionally called at startup - it cannot be bypassed
  * by running the service from a non-standard entry point (e.g. via
  * `tsx packages/server/src/index.ts` directly).
  */

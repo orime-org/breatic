@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
 /**
- * Global UI store — chrome-level state shared across pages.
+ * Global UI store - chrome-level state shared across pages.
  *
  * Scope:
  *   - chatPanelCollapsed: chat panel collapse state
@@ -17,7 +17,7 @@ interface UIState {
   drawerOpen: boolean;
   sidebarOpen: boolean;
   modalStack: string[];
-  /** Share popover open state — controlled so other surfaces can open it. */
+  /** Share popover open state - controlled so other surfaces can open it. */
   shareOpen: boolean;
   /** Members management modal open state. */
   // membersModalOpen removed 2026-05-25: superseded by activeOverlayId
@@ -38,8 +38,8 @@ interface UIState {
   readOnlyViewSpaceId: string | null;
   /**
    * Currently visible Sheet / Dialog id. There may only be one open
-   * at a time per the design rule "Sheet/Dialog 默认 non-modal + 全局
-   * exclusive(2026-05-25)". Switching to a new overlay automatically
+   * at a time per the design rule "Sheet/Dialog default to non-modal +
+   * globally exclusive" (2026-05-25). Switching to a new overlay automatically
    * closes the previously active one (each consumer's
    * `useExclusiveOverlay(id)` watches this and clears its own open
    * state when `activeOverlayId !== id`).
@@ -52,7 +52,7 @@ interface UIState {
   pushModal: (id: string) => void;
   popModal: () => void;
   setShareOpen: (open: boolean) => void;
-  // setMembersModalOpen removed — use setActiveOverlayId('members-modal')
+  // setMembersModalOpen removed - use setActiveOverlayId('members-modal')
   setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
   setReadOnlyViewSpaceId: (id: string | null) => void;
   setActiveOverlayId: (id: string | null) => void;
@@ -65,7 +65,7 @@ export const useUIStore = create<UIState>()(
     sidebarOpen: true,
     modalStack: [],
     shareOpen: false,
-    // (membersModalOpen field removed — see activeOverlayId)
+    // (membersModalOpen field removed - see activeOverlayId)
     spaceOpInProgress: null,
     readOnlyViewSpaceId: null,
     activeOverlayId: null,
@@ -97,7 +97,7 @@ export const useUIStore = create<UIState>()(
       set((s) => {
         s.shareOpen = open;
       }),
-    // setMembersModalOpen removed — see setActiveOverlayId('members-modal')
+    // setMembersModalOpen removed - see setActiveOverlayId('members-modal')
     setSpaceOpInProgress: (op) =>
       set((s) => {
         s.spaceOpInProgress = op;

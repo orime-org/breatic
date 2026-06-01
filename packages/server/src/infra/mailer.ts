@@ -1,10 +1,10 @@
 /**
- * Email sender — EMAIL_BACKEND 3-state dispatch.
+ * Email sender - EMAIL_BACKEND 3-state dispatch.
  *
  * `env.EMAIL_BACKEND` routes `sendMail` to one of three backends:
  *
  *   disabled : no email sent, returns false silently. Self-host
- *              default — pair with recovery-code based password reset
+ *              default - pair with recovery-code based password reset
  *              for SMTP-less installs.
  *   console  : email content logged to server log (dev: lift magic
  *              link / verify token straight out of stdout). Returns true.
@@ -13,7 +13,7 @@
  *              not configured (legacy fallback preserved).
  *
  * Any SMTP-compatible service works under `smtp` (self-hosted postfix,
- * Resend, SendGrid, AWS SES, Gmail — all expose RFC 5321 SMTP).
+ * Resend, SendGrid, AWS SES, Gmail - all expose RFC 5321 SMTP).
  */
 
 import nodemailer from "nodemailer";
@@ -49,8 +49,8 @@ export interface SendMailOptions {
 
 /**
  * Discriminated result of {@link sendMail}. Per CLAUDE.md
- * "core 和 shared 不写任何日志" mandate, the library returns
- * status instead of logging — the application caller (server
+ * "core and shared must not log" mandate, the library returns
+ * status instead of logging - the application caller (server
  * route handler) decides what to log (e.g. info on `sent`,
  * warn on `smtp_not_configured`, dev-only console dump on
  * `backend_console`).
@@ -67,7 +67,7 @@ export type SendMailResult =
  * @returns A {@link SendMailResult} describing what happened
  *   (sent / console-only / skipped). The application caller is
  *   responsible for logging audit / warning lines based on the
- *   status — see CLAUDE.md "core 和 shared 不写任何日志".
+ *   status - see CLAUDE.md "core and shared must not log".
  */
 export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
   if (env.EMAIL_BACKEND === "disabled") {

@@ -7,7 +7,7 @@
  *   1. The supplied session cookie resolves to a user id (delegated to
  *      core `getSession`, the same Redis-backed store the API server
  *      writes / reads through).
- *   2. The `documentName` matches the v10 multi-doc convention —
+ *   2. The `documentName` matches the v10 multi-doc convention -
  *      `project-{pid}/meta` or `project-{pid}/{kind}-{spaceId}` for
  *      `kind ∈ {canvas, document, timeline}`. Legacy single-doc
  *      `project-{pid}` and pre-v10 `project-{pid}/canvas` /
@@ -15,7 +15,7 @@
  *   3. The user has an active role on the doc's project (delegated to
  *      core `projectAuthService.loadProjectRole`). The role is returned
  *      so Hocuspocus can apply `connection.readOnly = true` for
- *      view-only members (writes are blocked at the protocol level —
+ *      view-only members (writes are blocked at the protocol level -
  *      no UI trust).
  *
  * Cross-tenant probing is impossible by design: any doc whose
@@ -43,9 +43,9 @@ import type { ProjectRole } from "@breatic/shared";
 import { createLogger } from "@collab/logger.js";
 
 /**
- * Auth hook logger — every onAuthenticate decision (success or
+ * Auth hook logger - every onAuthenticate decision (success or
  * failure) lands here with structured context. Per the
- * CLAUDE.md "服务器端工业级标准" mandate: every server-side error
+ * CLAUDE.md "industrial-grade server standards" mandate: every server-side error
  * path must leave a server-side log trail so a 3am oncall can
  * trace from "user sees banner stuck" back to the root cause
  * (e.g. stale Redis client, dropped Postgres connection,
@@ -104,7 +104,7 @@ export interface CreateAuthHookOptions {
  * Yjs doc. Used to refuse a WebSocket connection to a
  * `project-{pid}/canvas-{deletedSpaceId}` after the Space has been
  * removed from `meta.spaces` (per ADR 2026-05-23-yjs-collab-only-write-authz
- * §"Bootstrap 边界例外" and §"删除可恢复"):
+ * §"bootstrap boundary exception" and §"recoverable deletion"):
  *
  *   - `meta.spaces[id] = {...}` is the source of truth for "this
  *     Space exists right now". A soft-deleted `yjs_documents` row for
@@ -166,15 +166,14 @@ export function createAuthHook({
     documentName: string;
     requestHeaders: IncomingHttpHeaders;
   }): Promise<AuthContext> => {
-    // Every decision below — accept or reject — logs structured
+    // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
     // bare-throw style let onAuthenticate fail silently from the
     // server's perspective: the client got "Unauthorized" and
     // surfaced the banner, but `oncall` had no server-side trail
     // to confirm whether the rejection came from a missing cookie,
     // expired Redis session, dropped Postgres connection, or
-    // membership lookup miss. Per the CLAUDE.md "服务器端工业级
-    // 标准" mandate and memory `feedback_dev_collab_long_running_drift`,
+    // membership lookup miss. Per the CLAUDE.md "industrial-grade server standards" mandate and memory `feedback_dev_collab_long_running_drift`,
     // every rejection logs first then throws, and the outer
     // try/catch surfaces unexpected infrastructure errors
     // (Redis/Postgres connection-level failures) with the same
@@ -183,8 +182,8 @@ export function createAuthHook({
       // Session token travels exclusively as the httpOnly
       // `breatic_session` cookie sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
-      // `token` field — sent by the client in the application-level
-      // auth frame — is treated as opaque and ignored; the client
+      // `token` field - sent by the client in the application-level
+      // auth frame - is treated as opaque and ignored; the client
       // sends a placeholder like `"__cookie_auth__"` purely to trip
       // Hocuspocus into invoking this hook (an empty token short-
       // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
@@ -197,7 +196,7 @@ export function createAuthHook({
         throw new Error("Missing session cookie");
       }
 
-      // Resolve the session through core's shared session store — the
+      // Resolve the session through core's shared session store - the
       // same `{env}:session:{token}` key the API server writes, so the
       // collab + server views can never drift on key prefix.
       const userId = await getSession(redis, token);
@@ -220,7 +219,7 @@ export function createAuthHook({
         );
       }
 
-      // Resolve the role through core's shared auth primitive — the
+      // Resolve the role through core's shared auth primitive - the
       // same `loadProjectRole` the server `requireRole` middleware
       // calls. `null` means project missing/deleted OR not a member;
       // both collapse so we never leak project existence.
@@ -278,7 +277,7 @@ export function createAuthHook({
       // (reason in {missing_cookie, session_not_found,
       // doc_name_invalid, not_member, space_deleted}). Anything
       // landing here without one of those tags is an unexpected
-      // infrastructure failure — Redis ping fail, postgres-js
+      // infrastructure failure - Redis ping fail, postgres-js
       // connection drop, Yjs lib error. We log with `unexpected`
       // tag so dashboards can split "policy reject" vs "infra
       // fail" trends and re-throw so Hocuspocus still closes the

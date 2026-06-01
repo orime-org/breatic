@@ -27,17 +27,17 @@ import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 interface SpaceTabBarProps {
   /** Tabs currently open in the bar (resolved from per-user openTabIds). */
   spaces: ReadonlyArray<ProjectSpace>;
-  /** All Spaces in the project — used by the drawer to list everything. */
+  /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
   /** Per-user open tab id list, for the drawer's status chip computation. */
   openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
-  /** Project id — drawer uses it for row test ids only (RPCs are by handler). */
+  /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
   projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
   onCreate: (type: SpaceType, name: string) => Promise<void> | void;
-  /** Close a tab — does NOT delete the Space, just removes from the bar. */
+  /** Close a tab - does NOT delete the Space, just removes from the bar. */
   onClose?: (id: string) => void;
   /** Open the read-only preview sheet for a Space (drawer "view" action). */
   onViewSpace: (id: string) => void;
@@ -53,7 +53,7 @@ interface SpaceTabBarProps {
    * retroactively updates every old message.
    */
   usersById?: ReadonlyMap<string, { name: string }>;
-  /** Caller's role on the project — drives owner-only message actions. */
+  /** Caller's role on the project - drives owner-only message actions. */
   currentUserRole?: ProjectRole;
   /** Owner-only: restore a soft-deleted Space via collab `space:restore` RPC. */
   onRestoreSpace?: (spaceId: string) => Promise<void> | void;
@@ -72,7 +72,7 @@ interface SpaceTabBarProps {
 }
 
 /**
- * Space tab bar — chrome-baseline mock `.space-header` (40px).
+ * Space tab bar - chrome-baseline mock `.space-header` (40px).
  *
  * Layout (mock § space-header):
  *   [agent-toggle | divider] [scroll-left] [.space-tabs] [scroll-right]
@@ -108,7 +108,7 @@ export function SpaceTabBar({
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
 
-  // Q11 v2 — ProjectMessagesButton renders display names via O(1) Map
+  // Q11 v2 - ProjectMessagesButton renders display names via O(1) Map
   // lookup against the live `meta.spaces` Y.Map. Build the lookup
   // here from the array `allSpaces` (already supplied for the drawer)
   // so the bell needn't iterate the array per message at render time.
@@ -129,14 +129,14 @@ export function SpaceTabBar({
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    // atStart / atEnd are DOM-rect-based — same yardstick as the
+    // atStart / atEnd are DOM-rect-based - same yardstick as the
     // `scrollOneTab` algorithm below, so the arrow's enabled predicate
     // ("can we still scroll?") always matches what the arrow click
     // would actually do ("is there a tab left to bring on-screen?").
     //
     // Why not scrollLeft-based (prior approach, commit 626ec56 + 4870de6):
     // smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft at
-    // the scroller's content-area edge — that's `padding-left` (~8 px
+    // the scroller's content-area edge - that's `padding-left` (~8 px
     // with `padding: 0 var(--space-2)`), NOT zero. A `scrollLeft <= 1`
     // boundary check therefore stayed false at the visual left edge,
     // leaving the arrow stuck enabled. Mouse-wheel scroll did snap to
@@ -199,7 +199,7 @@ export function SpaceTabBar({
    * strip standard).
    *
    * Why not a fixed pixel `scrollBy(±120)` like the prior implementation:
-   * tab width is content-driven (short "Main" ≈ 60px, long "你叫什么名字
+   * tab width is content-driven (short "Main" ≈ 60px, long "what is your name
    * ..." ≈ 280px). A fixed delta either over- or under-scrolls; long-name
    * tabs took 2–3 clicks to fully reveal (PR #140 user report 2026-05-25).
    *

@@ -5,7 +5,7 @@
  * Called at startup by both the API server and Worker to ensure
  * the schema is always up-to-date before serving requests.
  *
- * Safe to call concurrently — Drizzle uses a lock table to prevent
+ * Safe to call concurrently - Drizzle uses a lock table to prevent
  * duplicate migration runs.
  */
 
@@ -17,7 +17,7 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 /**
  * Run all pending database migrations.
  *
- * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this library
+ * Per CLAUDE.md "core and shared must not log" mandate, this library
  * function does NOT log progress/completion. The application
  * caller (`scripts/db-migrate.ts` CLI) wraps the call and emits
  * its own console output around it.

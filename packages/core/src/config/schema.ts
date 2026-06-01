@@ -4,25 +4,25 @@
  * This module is **pure**: it describes what valid configuration
  * looks like (the Zod schema) and how to validate a raw key/value
  * map into a typed {@link CoreConfig}. It NEVER reads `process.env`
- * or loads a `.env` file — that is configuration ACQUISITION, which
+ * or loads a `.env` file - that is configuration ACQUISITION, which
  * belongs to the application layer (server / worker / collab
  * entries = the composition root). The entry reads `process.env`
  * once and hands the raw map to {@link parseConfig}; library code
  * reads the validated result through the accessors in
  * `@core/config/runtime` (the `env` Proxy / `getConfig()`).
  *
- * See CLAUDE.md "core / shared 不读环境变量" mandate — the same
+ * See CLAUDE.md "core/shared must not read env vars" mandate - the same
  * "library doesn't make application decisions" principle that bans
  * `logger.*` and `process.exit()` in library code. Plain Zod is
  * used (not `@t3-oss/env-core`) precisely because that library's
- * job is to wire `process.env` into a schema — and the whole point
+ * job is to wire `process.env` into a schema - and the whole point
  * here is to decouple the schema from the `process.env` read.
  */
 
 import { z } from "zod";
 
 /**
- * The core configuration schema. Plain Zod — `.parse()` coerces /
+ * The core configuration schema. Plain Zod - `.parse()` coerces /
  * applies defaults / strips unknown keys. Blank-string vars keep
  * their `""` value (Zod does not treat `""` as undefined), matching
  * the previous `emptyStringAsUndefined: false` behaviour.
@@ -36,7 +36,7 @@ export const coreConfigSchema = z.object({
     .transform((v) => v === "true"),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  // ── Health probe ports (主+1 scheme; one per long-lived service) ──
+  // ── Health probe ports (primary+1 scheme; one per long-lived service) ──
   // Each long-lived service exposes `GET /healthz` on a dedicated
   // port so probe traffic doesn't touch the main WS / API port.
   // Centralized here (previously each entry read these directly
@@ -132,7 +132,7 @@ export const coreConfigSchema = z.object({
   UPLOAD_MAX_DOCUMENT_MB: z.coerce.number().positive().default(20),
 
   // ── Email ────────────────────────────────────────
-  // Mailer backend dispatch — self-host friendly default. See
+  // Mailer backend dispatch - self-host friendly default. See
   // `packages/core/src/infra/mailer.ts:sendMail` for routing.
   //   disabled : noop (no email, returns false). Pair with recovery-code
   //              based password reset for SMTP-less self-hosts.
@@ -140,7 +140,7 @@ export const coreConfigSchema = z.object({
   //              link / verify token straight out of stdout).
   //   smtp     : dispatch via nodemailer using SMTP_* below. Any SMTP
   //              relay works (self-hosted postfix, Resend, SendGrid,
-  //              AWS SES — all expose RFC 5321 SMTP).
+  //              AWS SES - all expose RFC 5321 SMTP).
   EMAIL_BACKEND: z.enum(["disabled", "console", "smtp"]).default("disabled"),
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().default(587),
@@ -164,7 +164,7 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
 
-  // Startup safety check — Stripe secrets must be present (and
+  // Startup safety check - Stripe secrets must be present (and
   // non-whitespace) when payments are on. Both default to "" so the
   // app boots with PAYMENT_ENABLED=false; if enabled and empty,
   // webhook signature verification fails confusingly at runtime.

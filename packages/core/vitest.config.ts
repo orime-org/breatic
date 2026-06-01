@@ -1,11 +1,11 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
-// Per CLAUDE.md "服务器端工业级标准" the project tightens
+// Per CLAUDE.md "industrial-grade server standards" the project tightens
 // vitest's default `testTimeout` from 5s to 15s. The 5s default
 // is too tight for two project realities:
 //
-// - bcrypt-cost-12 invariants (auth.service.invariant.test.ts) —
+// - bcrypt-cost-12 invariants (auth.service.invariant.test.ts) -
 //   each `bcrypt.hash` call is ~500ms on a warm CPU; under turbo
 //   parallelism the worker can be CPU-starved and a single hash
 //   has been observed to push past 5s. Lowering the cost would

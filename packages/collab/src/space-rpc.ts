@@ -3,8 +3,8 @@
  *
  * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  *
- *   - create / delete / lock / unlock / rename — caller role ≥ edit
- *   - restore / messages:clear                  — caller role = owner
+ *   - create / delete / lock / unlock / rename - caller role ≥ edit
+ *   - restore / messages:clear                  - caller role = owner
  *
  * Each handler:
  *
@@ -17,10 +17,10 @@
  *      push a `projectMessages` entry, etc.) in a single Y transaction.
  *   4. For delete: also soft-deletes the canvas-{spaceId} row in PG so
  *      stale tabs cannot resurrect the data via Hocuspocus persistence
- *      (per `auth.ts` space-exists check — meta.spaces is the source of
+ *      (per `auth.ts` space-exists check - meta.spaces is the source of
  *      truth for "exists right now", `yjs_documents.deletedAt` is the
  *      defense-in-depth backstop).
- *   5. For restore: reverses both — sets the entry back and clears the
+ *   5. For restore: reverses both - sets the entry back and clears the
  *      `deletedAt` column on the canvas row.
  *
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
@@ -77,7 +77,7 @@ function err(
   return { id, ok: false, error: { code, message } };
 }
 
-/** Role rank — higher is more privileged. */
+/** Role rank - higher is more privileged. */
 const ROLE_RANK: Record<ProjectRole, number> = { view: 1, edit: 2, owner: 3 };
 
 function requireAtLeast(role: ProjectRole, min: ProjectRole): boolean {
@@ -86,27 +86,26 @@ function requireAtLeast(role: ProjectRole, min: ProjectRole): boolean {
 
 /**
  * Push a `projectMessages` entry inside the given Yjs transaction. The
- * caller must already hold a transact() context — this helper does not
+ * caller must already hold a transact() context - this helper does not
  * open its own. Snapshot fields exist so a `space-deleted` entry can
  * be reverse-engineered into a restore later without keeping the
  * deleted entry in `meta.spaces`.
  */
 /**
- * Q11 v2 — projectMessages stores pointers, not snapshot strings.
+ * Q11 v2 - projectMessages stores pointers, not snapshot strings.
  *
  * `actor` is the caller's userId (UUID); the frontend looks up
  * `meta.users[actor].name` at render time so a username rename
  * propagates retroactively. Likewise `spaceId` is enough on its own
- * — `meta.spaces[spaceId].name` gives the live name, so a Space
+ * - `meta.spaces[spaceId].name` gives the live name, so a Space
  * rename is reflected in every historical message that references
  * it. `spaceSnapshot` is preserved for `space-deleted` because the
  * id leaves `meta.spaces` at delete time and Restore needs the
  * original name + type to re-create the entry.
  *
  * The `id` field is the full Yjs entry identifier (`pm-${ts}-${full
- * uuid}`); no slice truncation per the design discussion ("以后所有
- * ID 不 slice"). `Math.random()` was avoided because it would break
- * `encodeInitialMetaState`'s determinism contract — and consistency
+ * uuid}`); no slice truncation per the design discussion ("never slice any ID from now on"). `Math.random()` was avoided because it would break
+ * `encodeInitialMetaState`'s determinism contract - and consistency
  * across collab + bootstrap paths is easier when both use the same
  * id-generation shape.
  */
@@ -114,19 +113,19 @@ function pushProjectMessage(
   doc: Y.Doc,
   args: {
     kind: ProjectMessageKind;
-    /** userId (UUID) — render-time lookup via meta.users for name. */
+    /** userId (UUID) - render-time lookup via meta.users for name. */
     actor: string;
     /** Pointer into `meta.spaces` for non-name metadata (e.g. type). */
     spaceId?: string;
     /**
-     * Space name at event time. Frozen snapshot — rename will push
+     * Space name at event time. Frozen snapshot - rename will push
      * its own `space-renamed` audit entry, leaving every prior entry
      * carrying the historical name. The frontend renders this
      * verbatim and does NOT look up the live name (Q11 v2.1).
      */
     spaceName?: string;
     /**
-     * `space-renamed` only — pre-rename name snapshot. Paired with
+     * `space-renamed` only - pre-rename name snapshot. Paired with
      * `spaceName` (the new name) the frontend renders the transition.
      */
     oldSpaceName?: string;
@@ -155,7 +154,7 @@ function pushProjectMessage(
 
 /**
  * Read a Y.Map's contents as a plain JS object suitable for stashing
- * inside a projectMessages snapshot field. Skips nested CRDTs — Space
+ * inside a projectMessages snapshot field. Skips nested CRDTs - Space
  * entries are flat (id / type / name / order / locked / createdAt), so
  * `toJSON()` returns a plain object.
  */
@@ -331,7 +330,7 @@ async function handleLock(
 
 /**
  * Rename an existing Space's `name`. Caller role ≥ edit. Refuses
- * with `FORBIDDEN` if the Space is currently locked — locked Spaces
+ * with `FORBIDDEN` if the Space is currently locked - locked Spaces
  * must be unlocked before any metadata mutation.
  */
 async function handleRename(
@@ -367,7 +366,7 @@ async function handleRename(
       const oldSpaceName =
         typeof previousName === "string" ? previousName : "";
       if (oldSpaceName === name) {
-        // Idempotent no-op — skip the audit entry so a rename to the
+        // Idempotent no-op - skip the audit entry so a rename to the
         // same name doesn't pollute projectMessages with a phantom
         // "X renamed Foo to Foo".
         noop = true;
@@ -422,15 +421,15 @@ async function handleRestore(
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       if (spaces.has(spaceId)) {
-        // Already present — owner clicked restore on a Space that's
+        // Already present - owner clicked restore on a Space that's
         // not deleted. Treat as conflict so the client surfaces a
         // distinct error UX.
         return;
       }
       // Find the most recent UNRESTORED `space-deleted` entry for
-      // this spaceId — we read its snapshot to rebuild the Space
+      // this spaceId - we read its snapshot to rebuild the Space
       // AND mutate `restored = true` on the same entry so the bell
-      // sheet's restore button can render a disabled "已恢复" badge
+      // sheet's restore button can render a disabled "restored" badge
       // without round-tripping a second time. The `restored !==
       // true` filter is what keeps a delete → restore → delete →
       // restore loop honest: each cycle finds its own unrestored
@@ -475,8 +474,8 @@ async function handleRestore(
       // looking at the audit log knows the row was brought back.
       // Same transact as the spaces.set + pushProjectMessage above,
       // so peers receive the rebuild + new audit entry + restored
-      // flag atomically (a partial state — restored entry pushed
-      // but the deleted row still flagged unrestored — never
+      // flag atomically (a partial state - restored entry pushed
+      // but the deleted row still flagged unrestored - never
       // appears on the wire).
       deletedEntry.set("restored", true);
     });

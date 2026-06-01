@@ -35,15 +35,15 @@ import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/View
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 
 /**
- * Project page shell — TopBar above two columns:
- *   - left:  Agent column (320 px, collapsible) — ChatPanel
+ * Project page shell - TopBar above two columns:
+ *   - left:  Agent column (320 px, collapsible) - ChatPanel
  *   - right: SpaceTabBar + Space body + floating menus
  *
  * State model (2026-05-21 redesign):
  *   - Shared `spaces` list  → Yjs project-meta `Y.Array('spaces')`
  *   - Per-user `openTabIds` → Yjs project-meta `perUser[userId].openTabIds`
  *   - Per-user `activeSpaceId` → same subtree, same key
- *   - URL `:spaceId` param is treated as a *navigation request* — when
+ *   - URL `:spaceId` param is treated as a *navigation request* - when
  *     present it triggers `setActiveSpace` (and `openSpaceTab` if needed)
  *     so deep links work, but the source of truth lives in Yjs so the
  *     tab bar + active tab can be restored across machines.
@@ -55,7 +55,7 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
  *     performs the privileged Yjs write, and broadcasts back. Server
  *     REST routes + Redis pub/sub are gone.
  *   - The client does NOT write `meta.spaces` / `meta.projectMessages`
- *     directly — `beforeHandleMessage` would reject it. A global
+ *     directly - `beforeHandleMessage` would reject it. A global
  *     loading overlay covers the 50-200ms round trip; a 10-second
  *     timeout guards against a wedged collab.
  */
@@ -74,7 +74,7 @@ export default function ProjectPage() {
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
     enabled: projectId !== 'demo',
-    // 403 = caller is NOT_MEMBER of this project — bail to the
+    // 403 = caller is NOT_MEMBER of this project - bail to the
     // access request page instead of looping a useless retry. The
     // 404 path also short-circuits (project may have been deleted).
     retry: (failureCount, err) => {
@@ -86,7 +86,7 @@ export default function ProjectPage() {
     },
   });
 
-  // NOT_MEMBER redirect — caller bounced off a project they can't
+  // NOT_MEMBER redirect - caller bounced off a project they can't
   // see → route them to the access request page so they can ask the
   // owner for permission (PR-d NOT_MEMBER path 1).
   React.useEffect(() => {
@@ -130,7 +130,7 @@ export default function ProjectPage() {
       // Studio's ProjectGrid keys its list query on `['projects', 'list']`
       // (see `pages/studio/grid/ProjectGrid.tsx`). Without this second
       // invalidation, hitting Back → Studio after a rename would show
-      // the cached old name until the user manually refreshed — the
+      // the cached old name until the user manually refreshed - the
       // Q5 bug. Invalidating both keys keeps the in-project header
       // and the Studio list in sync on the next focus / refetch.
       queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
@@ -150,7 +150,7 @@ export default function ProjectPage() {
   const { messages: projectMessages } = useProjectMessages(projectId);
 
   // Tabs shown in the tab bar = each open tab id resolved against the
-  // shared spaces list (drop missing ids — happens if another user
+  // shared spaces list (drop missing ids - happens if another user
   // deleted a Space while we had it open).
   const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
     () =>
@@ -195,10 +195,10 @@ export default function ProjectPage() {
         }
       }
     }
-    // Delete no longer uses spaceOpInProgress — see onDeleteSpace.
+    // Delete no longer uses spaceOpInProgress - see onDeleteSpace.
   }, [spaces, spaceOpInProgress, projectId, userId, setSpaceOpInProgress]);
 
-  // Safety timeout — if the collab broadcast never lands, free the UI
+  // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
   // wedged spinner.
   React.useEffect(() => {
@@ -221,14 +221,14 @@ export default function ProjectPage() {
 
   // ---- Handlers ----
 
-  /** Activate a Space — open the tab if not open + mark active. */
+  /** Activate a Space - open the tab if not open + mark active. */
   const onActivate = (id: string) => {
     if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
     openSpaceTab(projectId, userId, id);
     setActiveSpace(projectId, userId, id);
   };
 
-  /** Close a Space tab — does NOT delete the Space; just removes from
+  /** Close a Space tab - does NOT delete the Space; just removes from
    *  this user's tab bar. */
   const onCloseTab = (id: string) => {
     if (!userId) return;
@@ -250,7 +250,7 @@ export default function ProjectPage() {
       errorToastKey: string,
     ): Promise<SpaceRpcResponse> => {
       if (!provider) {
-        // Surface a toast on the "no provider yet" path too — without this
+        // Surface a toast on the "no provider yet" path too - without this
         // the catch block in callers received a silent `Error('notSynced')`
         // and (because `err.message.length > 0`) the fallback toast was
         // skipped, leaving the user staring at a dismissed dialog and no
@@ -270,7 +270,7 @@ export default function ProjectPage() {
   );
 
   /**
-   * Create a Space — client-side nanoid id (ADR B1.1) + `space:create`
+   * Create a Space - client-side nanoid id (ADR B1.1) + `space:create`
    * RPC. The collab process applies the write under the system user;
    * the effect above auto-opens the new tab and dismisses the overlay
    * when the doc broadcast lands.
@@ -278,7 +278,7 @@ export default function ProjectPage() {
   const onCreateSpace = async (type: SpaceType, name: string) => {
     setSpaceOpInProgress('creating');
     const spaceId = nanoid();
-    // Pin the pending id BEFORE the RPC await — Yjs sync from collab
+    // Pin the pending id BEFORE the RPC await - Yjs sync from collab
     // can race ahead of the RPC ack (collab broadcasts the meta-doc
     // mutation as soon as space-rpc transact runs, which often beats
     // the broadcastStateless response by a few ms). If we only set
@@ -306,16 +306,16 @@ export default function ProjectPage() {
     }
   };
 
-  /** Soft-delete a Space — `space:delete` RPC. */
+  /** Soft-delete a Space - `space:delete` RPC. */
   /**
-   * Delete is fast (~50-200ms) and already self-evident in the UI —
+   * Delete is fast (~50-200ms) and already self-evident in the UI -
    * the deleted tab vanishes the moment Yjs sync lands. Showing the
    * full-screen LoadingOverlay for that window just flashes a black
    * backdrop in and out, which the user reads as flicker rather than
    * progress. The SpaceDrawer row keeps its own inline `deleteBusy`
    * spinner to prevent double-click within the same row.
    *
-   * Errors still surface — callRpc raises a toast on RPC failure.
+   * Errors still surface - callRpc raises a toast on RPC failure.
    */
   const onDeleteSpace = async (spaceId: string) => {
     await callRpc(
@@ -324,7 +324,7 @@ export default function ProjectPage() {
     );
   };
 
-  /** Toggle Space lock — `space:lock` RPC (lock + unlock same handler). */
+  /** Toggle Space lock - `space:lock` RPC (lock + unlock same handler). */
   const onSetSpaceLocked = async (spaceId: string, locked: boolean) => {
     await callRpc(
       { type: 'space:lock', payload: { spaceId, locked } },
@@ -335,10 +335,10 @@ export default function ProjectPage() {
   };
 
   /**
-   * Rename a Space's name — `space:rename` RPC. Caller role ≥ edit.
+   * Rename a Space's name - `space:rename` RPC. Caller role ≥ edit.
    * Locked Spaces refuse rename on the server side and the failure
    * toast surfaces via callRpc. The 80-char cap mirrors the project
-   * title — enforced both on the client (`SPACE_NAME_MAX_LEN`) and
+   * title - enforced both on the client (`SPACE_NAME_MAX_LEN`) and
    * on the server (`SpaceRenamePayloadSchema`).
    */
   const onRenameSpace = async (spaceId: string, name: string) => {
@@ -348,7 +348,7 @@ export default function ProjectPage() {
     );
   };
 
-  /** Owner-only: restore a soft-deleted Space — `space:restore` RPC. */
+  /** Owner-only: restore a soft-deleted Space - `space:restore` RPC. */
   const onRestoreSpace = async (spaceId: string) => {
     await callRpc(
       { type: 'space:restore', payload: { spaceId } },
@@ -380,7 +380,7 @@ export default function ProjectPage() {
   // Defer project page mount until the websocket has reached a final
   // state (connected / authFailed / disconnected). Without this gate,
   // `connecting` (the initial state from useSocket) makes the banner +
-  // overlay return null on first paint — the user sees a clean project
+  // overlay return null on first paint - the user sees a clean project
   // page for a few hundred ms, then banner + overlay pop in on the next
   // frame when auth fails (visible "page → flash banner+overlay"
   // jitter, 2026-05-26 user spec). Showing LoadingScreen during
@@ -390,18 +390,18 @@ export default function ProjectPage() {
   }
 
   // When the WS auth has failed, the workspace below the banner is
-  // unusable — any mutation (create space, send chat, edit node) will
+  // unusable - any mutation (create space, send chat, edit node) will
   // silently fail because the same expired token is sent to the API +
   // collab. Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
   // (b) intercepts clicks via `onClick` + `preventDefault` so users
-  //     can't trigger half-broken flows like "正在创建 Space..." that
+  //     can't trigger half-broken flows like "creating Space..." that
   //     never resolves (2026-05-26 user smoke report),
   // (c) surfaces the OS-level "not-allowed" cursor on hover so users
   //     get an instant, language-agnostic affordance that this region
   //     is intentionally inert.
-  // Banner itself sits OUTSIDE the wrapper so its "重新登录" / "刷新"
+  // Banner itself sits OUTSIDE the wrapper so its "re-login" / "refresh"
   // actions stay clickable.
   const workspaceDisabled = connectionStatus === 'authFailed';
 
@@ -493,13 +493,13 @@ export default function ProjectPage() {
                     disabled={isViewer}
                     onPick={(_tool) => {
                     // TODO: dispatch per-button actions
-                    //   nodes        — open node-library popover
-                    //   upload       — open file picker (presigned URL upload)
-                    //   comment      — enter annotation mode
-                    //   asset-group  — placeholder (M1+)
-                    //   help         — placeholder (M1+)
-                    //   feedback     — placeholder (M1+)
-                    // Buttons never store a "selected" state — they fire and forget.
+                    //   nodes        - open node-library popover
+                    //   upload       - open file picker (presigned URL upload)
+                    //   comment      - enter annotation mode
+                    //   asset-group  - placeholder (M1+)
+                    //   help         - placeholder (M1+)
+                    //   feedback     - placeholder (M1+)
+                    // Buttons never store a "selected" state - they fire and forget.
                     }}
                   />
                   <ViewportToolbar

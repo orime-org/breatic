@@ -1,5 +1,5 @@
 /**
- * Payment routes — Stripe Checkout, webhooks, tiers, and history.
+ * Payment routes - Stripe Checkout, webhooks, tiers, and history.
  *
  * The webhook endpoint skips authentication; Stripe signature
  * verification is handled via `verifyWebhookSignature()`.
@@ -18,7 +18,7 @@ import { logger } from "@breatic/core";
 const payment = new Hono<{ Variables: AuthVariables }>();
 
 /**
- * `GET /payment/tiers` — list available credit purchase tiers.
+ * `GET /payment/tiers` - list available credit purchase tiers.
  *
  * Public pricing info for the frontend (no auth required).
  */
@@ -27,7 +27,7 @@ payment.get("/tiers", async (c) => {
   return c.json({ data: tiers });
 });
 
-/** `POST /payment/checkout` — create a Stripe Checkout session. */
+/** `POST /payment/checkout` - create a Stripe Checkout session. */
 payment.post(
   "/checkout",
   requireAuth,
@@ -42,7 +42,7 @@ payment.post(
       body.cancel_url,
     );
     // Audit log moved from payment.service.ts per CLAUDE.md
-    // "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+    // "core and shared must not log" mandate (2026-05-27 PR
     // `feat/2026-05-27-collab-infra-resilience`).
     logger.info(
       { userId: user.id, tier: body.tier, paymentId: result.paymentId },
@@ -53,7 +53,7 @@ payment.post(
 );
 
 /**
- * `POST /payment/webhook` — Stripe webhook receiver.
+ * `POST /payment/webhook` - Stripe webhook receiver.
  *
  * No auth middleware. Verifies Stripe signature to prevent tampering.
  */
@@ -109,7 +109,7 @@ payment.post("/webhook", async (c) => {
   return c.json({ received: true });
 });
 
-/** `GET /payment/history` — list the authenticated user's payments. */
+/** `GET /payment/history` - list the authenticated user's payments. */
 payment.get(
   "/history",
   requireAuth,
@@ -122,7 +122,7 @@ payment.get(
   },
 );
 
-/** `GET /payment/:id` — get a single payment by ID. */
+/** `GET /payment/:id` - get a single payment by ID. */
 payment.get("/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");

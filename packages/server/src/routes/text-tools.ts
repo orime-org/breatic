@@ -1,5 +1,5 @@
 /**
- * Text mini-tool route — SSE streaming AI text operations.
+ * Text mini-tool route - SSE streaming AI text operations.
  *
  * Unlike AIGC mini-tools (async Worker + Yjs), text tools stream
  * results directly to the requesting client via SSE. The user
@@ -21,13 +21,13 @@ const textTools = new Hono<{ Variables: AuthVariables }>();
 textTools.use(requireAuth);
 
 /**
- * `POST /mini-tools/text` — execute a text AI tool with streaming output.
+ * `POST /mini-tools/text` - execute a text AI tool with streaming output.
  *
  * Returns an SSE stream with events:
- * - `text_delta` — incremental text chunk
- * - `done` — generation complete, includes token count and credits used
- * - `aborted` — user cancelled, includes consumed tokens and credits
- * - `error` — tool execution failed
+ * - `text_delta` - incremental text chunk
+ * - `done` - generation complete, includes token count and credits used
+ * - `aborted` - user cancelled, includes consumed tokens and credits
+ * - `error` - tool execution failed
  */
 textTools.post(
   "/",
@@ -41,7 +41,7 @@ textTools.post(
     // Idempotency: the client may send `Idempotency-Key` (per RFC draft,
     // matches what Stripe/Square expect). When set, a retry of the same
     // request bills exactly once via deductOnce. When absent, we fall back
-    // to a server-generated UUID — each retry then becomes a separate
+    // to a server-generated UUID - each retry then becomes a separate
     // logical charge, which is acceptable since text tools re-generate
     // content on every call.
     const idempotencyKey = c.req.header("Idempotency-Key") ?? randomUUID();
@@ -76,7 +76,7 @@ textTools.post(
         }
 
         // Audit log moved from text-tool.service.ts per CLAUDE.md
-        // "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+        // "core and shared must not log" mandate (2026-05-27 PR
         // `feat/2026-05-27-collab-infra-resilience`).
         if (event.type === "done") {
           logger.info(

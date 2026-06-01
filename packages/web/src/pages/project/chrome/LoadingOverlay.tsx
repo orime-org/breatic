@@ -4,7 +4,7 @@ interface LoadingOverlayProps {
   /** Visible message displayed under the spinner. */
   message: string;
   /**
-   * Test id for the overlay's outer container — callers thread their
+   * Test id for the overlay's outer container - callers thread their
    * own id so each loading state (`creating-space-overlay` /
    * `deleting-space-overlay`) can be asserted independently.
    */
@@ -17,7 +17,7 @@ interface LoadingOverlayProps {
  * to round-trip through collab → Y.Doc → WS broadcast.
  *
  * Why an overlay (not a toast):
- *   - Operation is destructive (delete) or scope-changing (create) —
+ *   - Operation is destructive (delete) or scope-changing (create) -
  *     the user's next click depends on which Space is active. Letting
  *     them click around mid-flight produces stale tabs and confusing
  *     navigation jumps when the WS update finally arrives.
@@ -28,8 +28,8 @@ interface LoadingOverlayProps {
  * backdrop blur) so a LoadingOverlay opened from inside / right after a
  * Dialog reads as the same surface and doesn't visibly tint-shift. Sits
  * at z-index 50 so it covers chrome layers. Inner card uses
- * `bg-popover` — same token as Dialog content for surface consistency.
- * (2026-05-25 user ask: bg + 透明度 必须跟 Dialog 一致。)
+ * `bg-popover` - same token as Dialog content for surface consistency.
+ * (2026-05-25 user ask: bg + opacity must match Dialog. )
  */
 export function LoadingOverlay({
   message,

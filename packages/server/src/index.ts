@@ -24,7 +24,7 @@ const HEALTH_PORT = env.SERVER_HEALTH_PORT;
 
 // Fail-fast: verify PG + Redis are reachable before starting the
 // server. `checkInfraReady` throws InfraNotReadyError per the
-// "进程生命周期(library 层禁)" mandate — application entry catches,
+// "process lifecycle (forbidden in the library layer)" mandate - application entry catches,
 // logs with full application context, and exits with code 1.
 try {
   await checkInfraReady();
@@ -43,8 +43,7 @@ try {
 // Production error logging for shared Redis singletons. The core
 // `createRedisClient` factory installs a no-op `error` listener so
 // emitted errors don't crash the process; the application entry is
-// responsible for the real logging per the "core 和 shared 不写
-// 任何日志" mandate.
+// responsible for the real logging per the "core and shared must not log" mandate.
 for (const [client, instance] of [
   ["general", getRedis()],
   ["queue", getQueueRedis()],
@@ -68,13 +67,13 @@ const server = serve(
   },
 );
 
-// Health probe — separate port so probe traffic stays off the main
+// Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
 // docker / k8s / LB healthcheck kills the instance on N consecutive
 // 503s so an api whose Redis or Postgres pool has drifted gets a
-// fresh process automatically. Per CLAUDE.md "服务器端工业级标准"
+// fresh process automatically. Per CLAUDE.md "industrial-grade server standards"
 // mandate; mirrors worker (port 9101) + collab (port 1235) shape so
-// all three services expose `GET /healthz` on a `主+1` style port.
+// all three services expose `GET /healthz` on a `primary+1` style port.
 const health = startHealthServer({
   port: HEALTH_PORT,
   serviceName: "server",

@@ -2,7 +2,7 @@
  * Health check HTTP server for long-lived services (collab, worker).
  *
  * Every long-lived service in the codebase must expose a `/healthz`
- * endpoint per the CLAUDE.md "服务器端工业级标准" mandate — a
+ * endpoint per the CLAUDE.md "industrial-grade server standards" mandate - a
  * docker / k8s / LB health probe with N-fail kill semantics is the
  * only mechanism that actually self-heals a process whose
  * downstream dependencies (PG pool, Redis connection) have drifted
@@ -12,14 +12,14 @@
  *
  * Contract:
  *
- * - `GET /healthz` — 200 `{status: 'ok', checks: {...}}` when every
+ * - `GET /healthz` - 200 `{status: 'ok', checks: {...}}` when every
  *   registered check resolves truthy in under {@link CHECK_TIMEOUT_MS};
  *   503 `{status: 'fail', checks: {...}}` otherwise.
  *   Per-check `ms` field shows latency so dashboards can graph
  *   trends (a slowly-drifting connection often shows up as
  *   creeping check latency before it outright fails).
  * - Any other path → 404 (keep the surface tiny on purpose; no
- *   metrics endpoint here — that's a separate concern).
+ *   metrics endpoint here - that's a separate concern).
  *
  * The server runs on an isolated port so the main WS / queue port
  * isn't impacted by probe traffic, and so per-port failure
@@ -28,14 +28,14 @@
 
 import { createServer, type Server } from "node:http";
 
-/** Per-check timeout — long enough to differentiate "slow but
+/** Per-check timeout - long enough to differentiate "slow but
  * recovering" from "stuck", short enough that a misbehaving probe
  * doesn't pile up if the LB hammers it every second. */
 const CHECK_TIMEOUT_MS = 2000;
 
 /**
  * A single health check. `name` is the JSON key the response
- * surfaces (`pg`, `redis_general`, etc.) — keep it short and
+ * surfaces (`pg`, `redis_general`, etc.) - keep it short and
  * stable so dashboards can grep it. `check` resolves truthy for
  * healthy / throws or resolves falsy for unhealthy.
  */
@@ -58,8 +58,8 @@ export interface HealthServerOptions {
    * Optional observer for lifecycle events (listening, check
    * failures, unexpected handler errors).
    *
-   * Per CLAUDE.md "core 和 shared 不写任何日志" mandate, this
-   * library does NOT log directly — the application entry that
+   * Per CLAUDE.md "core and shared must not log" mandate, this
+   * library does NOT log directly - the application entry that
    * starts the server is responsible for routing observed events
    * to its own logger. If omitted, events are dropped silently
    * (acceptable for tests; production callers should always
@@ -153,7 +153,7 @@ export function startHealthServer(opts: HealthServerOptions): {
         }
       })
       .catch((err) => {
-        // Should be unreachable — runCheck swallows per-check
+        // Should be unreachable - runCheck swallows per-check
         // failures into the CheckResult shape. 500 as a safety
         // net so we never silently leave the LB without a
         // response; the application caller routes the event to

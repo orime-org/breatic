@@ -1,22 +1,21 @@
 /**
  * Core runtime configuration holder + injection boundary.
  *
- * `@breatic/core` does NOT read `process.env` (CLAUDE.md "core /
- * shared 不读环境变量" mandate). Instead, each application entry
+ * `@breatic/core` does NOT read `process.env` (CLAUDE.md "core/shared must not read env vars" mandate). Instead, each application entry
  * (server / worker / collab = the composition root) reads
  * `process.env` once at startup and injects it via {@link initCore}.
  * Library code then reads the validated config through:
  *
- *   - {@link env} — a Proxy so existing `env.DATABASE_URL` call sites
+ *   - {@link env} - a Proxy so existing `env.DATABASE_URL` call sites
  *     keep working unchanged (they resolve against the injected,
  *     validated config at access time);
- *   - {@link getConfig} — the explicit typed accessor;
- *   - {@link getRawEnvVar} — for dynamic lookups that aren't part of
+ *   - {@link getConfig} - the explicit typed accessor;
+ *   - {@link getRawEnvVar} - for dynamic lookups that aren't part of
  *     the typed schema (a Skill's declared required env var, the
  *     host `PATH` / `HOME` forwarded to the agent script sandbox).
  *
  * Accessing config before {@link initCore} runs throws a clear error
- * rather than silently using `undefined` — the composition root must
+ * rather than silently using `undefined` - the composition root must
  * initialize before any library code runs (it does: `initCore` is
  * the first statement in each entry's `main()`).
  */
@@ -29,7 +28,7 @@ import { parseConfig, type CoreConfig } from "@core/config/schema.js";
  * Find the monorepo root by walking up from this file until
  * `pnpm-workspace.yaml` is found. Works from both source
  * (`packages/core/src/config/`) and compiled (`packages/core/dist/`).
- * Reads the filesystem + `process.cwd()` — NOT `process.env` — so it
+ * Reads the filesystem + `process.cwd()` - NOT `process.env` - so it
  * stays within the "no env reads" mandate (cwd is not configuration).
  */
 function findMonorepoRoot(): string {
@@ -47,11 +46,11 @@ function findMonorepoRoot(): string {
 /** Absolute path to the monorepo root (filesystem-derived). */
 export const MONOREPO_ROOT = findMonorepoRoot();
 
-/** Injected, validated config — null until {@link initCore} runs. */
+/** Injected, validated config - null until {@link initCore} runs. */
 let _config: CoreConfig | null = null;
 
 /**
- * The raw env map the application injected — kept for dynamic lookups
+ * The raw env map the application injected - kept for dynamic lookups
  * (Skill required-env checks, host PATH/HOME forwarding) that aren't
  * part of the typed schema. Null until {@link initCore} runs.
  */
@@ -93,7 +92,7 @@ export function getConfig(): CoreConfig {
 }
 
 /**
- * Read a single raw environment variable by name — for dynamic
+ * Read a single raw environment variable by name - for dynamic
  * lookups that aren't in the typed schema (a Skill's declared
  * required env var, the host `PATH` / `HOME` forwarded to the agent
  * script sandbox). Returns `undefined` if not set or before
