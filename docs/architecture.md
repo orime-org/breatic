@@ -33,7 +33,7 @@ Frontend stack: see [frontend.md](./frontend.md#tech-stack).
 packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
-│              modules/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
+│              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 22 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
 ├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(loader/skills/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
 ├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域 service+repo:auth/conversation/memory/payment/project/projectMembers〔service〕/shareLink/roleUpgradeRequest/notification/studio/skill/text-tool + user.repo) + infra/(stripe/mailer) + config/(pricing/text-tools)(healthz 走独立 :3001 进程,见 DEPLOY.md)
