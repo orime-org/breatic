@@ -123,6 +123,21 @@ jobs:
         # scripts/lint-no-cjk.sh).
         run: pnpm lint:no-cjk
 
+      - name: Lint no-trojan-source (CVE-2021-42574 security)
+        # Enforce the source character-set SECURITY guard (CI maximal-
+        # strictness guard suite, inner ADR 2026-06-01): block Trojan Source
+        # attacks — bidirectional-override + invisible control characters
+        # that make the code a human reviewer sees differ from what the
+        # compiler parses (a hidden logic flip can pass review this way).
+        # Detection is anti-trojan-source's public hasConfusablesInFiles API
+        # (scripts/check-trojan-source.mjs), not its bin/ CLI (which crashes
+        # on Node 24). This is the security half of the charset story; the
+        # readability half (no CJK comments) is lint:no-cjk above. It only
+        # flags the dangerous bidi / zero-width subset — ordinary non-ASCII
+        # text (CJK, accents, typography, emoji) is NOT flagged. Hard-fails
+        # the PR. See scripts/lint-no-trojan-source.sh.
+        run: pnpm lint:no-trojan-source
+
       - name: Lint no-app-import-in-core (library can't import app)
         # Enforce ADR 2026-05-31 "backend convergence to a modular monolith" + root CLAUDE.md
         # three-layer boundary: @breatic/core, @breatic/shared and @breatic/domain must

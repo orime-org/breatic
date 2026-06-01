@@ -29,6 +29,7 @@
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "lint:no-service-import-hono": "bash scripts/lint-no-service-import-hono.sh",
     "lint:no-sync-in-request-path": "bash scripts/lint-no-sync-in-request-path.sh",
+    "lint:no-trojan-source": "bash scripts/lint-no-trojan-source.sh",
     "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "typecheck": "turbo run typecheck",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "anti-trojan-source": "^1.11.3",
     "eslint": "^10.1.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-no-relative-import-paths": "^1.6.1",
