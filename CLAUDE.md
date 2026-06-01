@@ -49,6 +49,7 @@ pnpm test / typecheck / lint
 - **软删除(MANDATORY)**:所有表用 `deleted_at` 标记,FK `restrict`,list 默认过滤 `deleted_at IS NULL`。**禁止硬删除**(GDPR 删号走单独流程)
 - **`created_at`(MANDATORY)**:所有 PG 表必须有 `created_at timestamp with time zone DEFAULT now() NOT NULL`。业务实体表用 `timestamps` helper(`created_at` + `updated_at` 一对);append-only 历史 / 事件表只用 `created_at`。Drizzle schema 审查时强制
 - **禁止 AI 作者署名(MANDATORY)**:commit 署名禁 AI 工具名,`.husky/commit-msg` + PR CI 强制
+- **语言(MANDATORY)**:breatic 是全球开源项目,贡献者来自世界各地 → **代码 + 注释必须英文**(给人读,方便全球协作)。三类例外可非英文:① i18n 多语言文案(`locales/*.json` + 语言原生名等故意产品数据)· ② 测试 fixtures(`*.test.*` / `__tests__/` 的 Unicode / locale 测试逻辑)· ③ `lint:no-cjk` allowlist 里的故意产品数据字符串。**规范文档(`CLAUDE.md` / `docs/*` / 各包 `CLAUDE.md` 等 `.md`)是给机器(AI)读的,中文 OK、不强制英文** —— 代码给人看(英文)、文档给机器读(中文)是两个层面。判定题:**这内容会编译进产物 / 被开发者直接读吗?会 → 英文(代码 + 注释);只是给 AI 读的规范说明 → 中文 OK**。`lint:no-cjk` CI 强制(扫 `.ts/.tsx/.css` 含注释)
 - **PostgreSQL**:Drizzle + UUID + JSONB,积分扣费走 `db.transaction()`(扣费+记流水原子)
 - **Redis 3 DB**:DB0 session/lock/rate-limit,DB1 BullMQ,DB2 Streams + Hocuspocus pub/sub。Key `{env}:{service}:{entity}:{id}`,**禁止无 TTL**,Stream MAXLEN ~10000
 - **Auth 安全**:登录 5/分,注册 10/时,Google OAuth 10/分(Redis 滑窗)。NoAccount 仅 dev,prod 启动拒绝
