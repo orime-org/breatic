@@ -138,35 +138,21 @@ jobs:
         # the PR. See scripts/lint-no-trojan-source.sh.
         run: pnpm lint:no-trojan-source
 
-      - name: Lint no-app-import-in-core (library can't import app)
-        # Enforce ADR 2026-05-31 "backend convergence to a modular monolith" + root CLAUDE.md
-        # three-layer boundary: @breatic/core, @breatic/shared and @breatic/domain must
-        # NOT import any application package (@server / @worker / @collab /
-        # @web). The dependency direction is app → domain → core/shared,
-        # never the reverse. Machine enforcement of the modular-monolith
-        # boundary. See scripts/lint-no-app-import-in-core.sh.
-        run: pnpm lint:no-app-import-in-core
-
-      - name: Lint no-domain-import-in-collab (collab can't import domain)
-        # Enforce ADR 2026-05-31 "second-pass adjustment: extract @breatic/domain": collab
-        # depends on core + shared ONLY; it must NOT import @breatic/domain
-        # (the server+worker-only AIGC business — credit / task /
-        # node-history / agent / model-catalog / canvas-lock). Directional
-        # companion to no-app-import-in-core (which bans the reverse).
-        # See scripts/lint-no-domain-import-in-collab.sh.
-        run: pnpm lint:no-domain-import-in-collab
-
-      - name: Lint dependency-cruiser (route↛repo + server↛AIGC)
-        # Enforce CLAUDE.md prohibition #1 + #14 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01) via dependency-cruiser's
-        # declarative forbidden rules over packages/server/src:
+      - name: Lint dependency-cruiser (import-boundary rules)
+        # Declarative import-boundary enforcement (CI maximal-strictness
+        # guard suite, inner ADR 2026-06-01) over all packages/*/src via
+        # .dependency-cruiser.cjs forbidden rules:
         #   - routes-no-data-layer (#1): a server route must call a
         #     *.service, never a *.repo directly.
-        #   - server-no-sync-aigc (#14, PROXY): only the 3 allowlisted
-        #     SSE entry points (agent chat / memory consolidation / text
-        #     mini-tool) may import the AI SDK; any other server module
-        #     doing so is a new synchronous AIGC surface — move it to the
-        #     worker. See .dependency-cruiser.cjs.
+        #   - server-no-sync-aigc (#14, PROXY): only the 3 allowlisted SSE
+        #     entry points may import the AI SDK.
+        #   - library-no-app-import: @breatic/core|shared|domain must NOT
+        #     import an application package (@server/@worker/@collab/@web).
+        #   - collab-no-domain-import: collab must NOT import @breatic/domain.
+        #   - service-no-hono (#2): a *.service.ts must NOT import hono.
+        # The last three were migrated from hand-rolled bash grep guards —
+        # dependency-cruiser sees only real imports (not comments), so it
+        # can't false-positive on a doc-comment naming a banned alias.
         run: pnpm lint:dependency-cruiser
 
       - name: Lint no-raw-sql-outside-repo (core + server)
@@ -207,15 +193,6 @@ jobs:
         # any relative import in non-test source. See
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
-
-      - name: Lint no-service-import-hono (service layer stays protocol-agnostic)
-        # Enforce CLAUDE.md prohibition list #2 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): a *.service.ts file must NOT
-        # import hono / @hono/*. The route layer (route / handler / hook)
-        # owns the transport; the domain service writes business logic and
-        # throws a typed AppError. Hard-fails the PR on any hono import in
-        # the service layer. See scripts/lint-no-service-import-hono.sh.
-        run: pnpm lint:no-service-import-hono
 
       - name: Lint no-cors-wildcard-credentials (security)
         # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness

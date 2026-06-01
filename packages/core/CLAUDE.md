@@ -15,7 +15,7 @@
 
 ## 可 import 谁
 - ✅ `@breatic/shared` + 外部 npm
-- ❌ `@server` / `@worker` / `@collab` —— **库不能 import 应用层**(`lint:no-app-import-in-core` CI 强制)
+- ❌ `@server` / `@worker` / `@collab` —— **库不能 import 应用层**(`lint:dependency-cruiser` 的 `library-no-app-import` 规则 CI 强制)
 - 本包内部用 `@core/*` 前缀
 
 ## 怎么拿配置
