@@ -207,7 +207,7 @@ it('deductOnce is idempotent', () => {
         const before = await getBalance(userId);
         await deductOnce(userId, amount, refKey);
         const after1 = await getBalance(userId);
-        // Idempotency: 同 refKey 第二次调用余额不变
+        // Idempotency: a second call with the same refKey leaves the balance unchanged
         await deductOnce(userId, amount, refKey);
         const after2 = await getBalance(userId);
         return after1 === after2;
