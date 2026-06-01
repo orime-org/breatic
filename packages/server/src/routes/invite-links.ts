@@ -30,9 +30,9 @@ import {
   shareLinkService,
   shareInviteMail,
   projectService,
+  authService,
 } from "@server/modules";
 import { logger } from "@breatic/core";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
 import { logMailResult } from "@server/utils/log-mail.js";
 
@@ -210,7 +210,7 @@ async function dispatchInviteeMail(
   inviteeEmail: string,
 ): Promise<void> {
   const [inviter, project] = await Promise.all([
-    userRepo.getUserById(inviterUserId),
+    authService.getUserById(inviterUserId),
     projectService.get(projectId, inviterUserId).catch(() => null),
   ]);
   if (!inviter) return;

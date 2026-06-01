@@ -60,6 +60,13 @@ export const mocks = {
       token: "sess-token",
     }),
     getUserByToken: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
+    // Thin pass-throughs to the user repo (prohibition #1: routes call
+    // the service, not the repo). Aliased to the `userRepo` spies below
+    // (see the assignment after the `mocks` literal) so a single
+    // `mocks.userRepo.getUserById.mockResolvedValue(...)` drives the
+    // route path that now goes through `authService.getUserById`.
+    getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
+    getUsersByIds: vi.fn().mockResolvedValue([]),
     logout: vi.fn(),
     // Default discriminant matches the post-17B auth.service contract
     // (anti-enumeration "unknown_email" branch returns no userId).
@@ -131,6 +138,12 @@ export const mocks = {
   memoryService: {
     buildContext: vi.fn().mockResolvedValue({ userMemory: "", projectMemory: "", conversationMemory: "" }),
   },
+  // User identity read fns. Routes reach these through `authService`
+  // (prohibition #1 — routes call services, not repos); the auth service
+  // is a thin pass-through to user.repo. We expose the SAME spy refs on
+  // both `userRepo` (used by auth.service unit tests that mock the repo
+  // directly) and `authService.getUserById` / `getUsersByIds` (used by
+  // route tests) so a single `mockResolvedValue` drives both boundaries.
   userRepo: {
     getUserById: vi.fn().mockResolvedValue({ id: "user-1", email: "u@x.com" }),
     getUsersByIds: vi.fn().mockResolvedValue([]),
@@ -218,6 +231,7 @@ export const mocks = {
     }),
   },
   notificationService: {
+    getById: vi.fn().mockResolvedValue(null),
     listUnread: vi.fn().mockResolvedValue([]),
     listAll: vi.fn().mockResolvedValue([]),
     countUnread: vi.fn().mockResolvedValue(0),
@@ -285,6 +299,15 @@ export const mocks = {
     softDeleteByName: vi.fn().mockResolvedValue(true),
   },
 };
+
+// Alias the auth service's user-read pass-throughs to the userRepo spies
+// so route tests (which mock at the service boundary) and auth.service
+// unit tests (which mock the repo directly) share a single control point.
+mocks.authService.getUserById = mocks.userRepo.getUserById;
+mocks.authService.getUsersByIds = mocks.userRepo.getUsersByIds;
+// Notification read-by-id pass-through shares the repo spy for the same
+// reason (the decision route now calls notificationService.getById).
+mocks.notificationService.getById = mocks.notificationRepo.findById;
 
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();

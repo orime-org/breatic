@@ -39,7 +39,9 @@ const NID = "33333333-3333-4333-8333-333333333333";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectAuthService.loadProjectRole.mockResolvedValue("view");
-  mocks.projectMembersRepo.getOwner.mockResolvedValue("u-owner");
+  // The POST route resolves the owner through the service (prohibition
+  // #1 — routes call services, not repos), so drive the service mock.
+  mocks.projectMembersService.getOwner.mockResolvedValue("u-owner");
   mocks.projectService.get.mockResolvedValue({
     id: PID,
     name: "Demo Project",

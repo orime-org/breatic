@@ -150,6 +150,20 @@ export async function createMemberJoined(input: {
 // ── Read APIs ───────────────────────────────────────────────────────
 
 /**
+ * Fetch a single notification by id (no user gate — callers in the
+ * application layer have already authenticated the user).
+ *
+ * Thin pass-through to the notification repository so route handlers
+ * reach the data layer through the service (prohibition #1).
+ *
+ * @param id - Notification UUID
+ * @returns The notification entity, or null if not found / soft-deleted
+ */
+export async function getById(id: string): Promise<NotificationEntity | null> {
+  return notificationRepo.findById(id);
+}
+
+/**
  * List a user's unread notifications, newest first.
  * BellMenu pulls this on open + on stateless invalidate signal.
  */

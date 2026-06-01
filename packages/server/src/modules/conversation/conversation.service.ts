@@ -131,6 +131,41 @@ export async function getWithMessages(
 }
 
 /**
+ * Fetch a conversation by id without an ownership check.
+ *
+ * Thin pass-through to the conversation repository so route handlers
+ * reach the data layer through the service (prohibition #1). Callers
+ * that need a tenancy guard must use {@link assertAccess} /
+ * {@link getWithMessages} instead.
+ *
+ * @param id - Conversation UUID
+ * @returns The conversation entity, or null if not found / soft-deleted
+ */
+export async function getConversation(
+  id: string,
+): Promise<ConversationEntity | null> {
+  return conversationRepo.getConversation(id);
+}
+
+/**
+ * Get a conversation's messages formatted for LLM context.
+ *
+ * Thin pass-through to the conversation repository so route handlers
+ * reach the data layer through the service (prohibition #1). Skips
+ * already-consolidated turns and strips internal-only fields.
+ *
+ * @param id - Conversation UUID
+ * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
+ * @returns Messages from turns after the consolidated boundary
+ */
+export async function getMessagesForLlm(
+  id: string,
+  lastConsolidatedTurn = 0,
+): Promise<MessageData[]> {
+  return conversationRepo.getMessagesForLlm(id, lastConsolidatedTurn);
+}
+
+/**
  * Soft-delete a conversation after validating ownership.
  *
  * Sets `deleted_at` on the conversation record. The underlying messages

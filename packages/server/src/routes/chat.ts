@@ -18,7 +18,6 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
-import { conversationRepo } from "@server/modules";
 import { memoryService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
@@ -94,9 +93,9 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   const memoryContext = await memoryService.buildContext(
     user.id, conversation.id, body.project_id, "agent_chat",
   );
-  const conv = await conversationRepo.getConversation(conversation.id);
+  const conv = await conversationService.getConversation(conversation.id);
   const lastTurn = conv?.lastConsolidatedTurn ?? 0;
-  const rawHistory = await conversationRepo.getMessagesForLlm(conversation.id, lastTurn);
+  const rawHistory = await conversationService.getMessagesForLlm(conversation.id, lastTurn);
   const compressedHistory = compressForContext(rawHistory, agentCfg.full_detail_turns);
 
   c.header("Content-Type", "text/event-stream");
@@ -168,9 +167,9 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   const memoryContext = await memoryService.buildContext(
     user.id, conversation.id, body.project_id, "agent_chat",
   );
-  const conv = await conversationRepo.getConversation(conversation.id);
+  const conv = await conversationService.getConversation(conversation.id);
   const lastTurn = conv?.lastConsolidatedTurn ?? 0;
-  const rawHistory = await conversationRepo.getMessagesForLlm(conversation.id, lastTurn);
+  const rawHistory = await conversationService.getMessagesForLlm(conversation.id, lastTurn);
   const compressedHistory = compressForContext(rawHistory, agentCfg.full_detail_turns);
 
   c.header("Content-Type", "text/event-stream");

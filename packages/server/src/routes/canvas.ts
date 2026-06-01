@@ -18,9 +18,8 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService } from "@breatic/domain";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { nodeHistoryService } from "@breatic/domain";
-import { projectService } from "@server/modules";
+import { projectService, authService } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   ValidationError,
@@ -110,7 +109,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
         ? await taskService.getByIdInternal(holderTaskId)
         : null;
       const holder = holderTask
-        ? await userRepo.getUserById(holderTask.userId)
+        ? await authService.getUserById(holderTask.userId)
         : null;
       // Roll back our just-created task so it doesn't sit in pending forever.
       await taskService.markFailed(

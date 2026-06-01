@@ -12,7 +12,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { authService } from "@server/modules";
 
 const users = new Hono<{ Variables: AuthVariables }>();
 
@@ -45,7 +45,7 @@ users.get("/", zValidator("query", querySchema), async (c) => {
     .filter((s) => s.length > 0)
     .slice(0, 100);
 
-  const rows = await userRepo.getUsersByIds(idList);
+  const rows = await authService.getUsersByIds(idList);
   return c.json({
     data: rows.map((u) => ({
       id: u.id,
