@@ -24,12 +24,12 @@
  */
 
 import { db } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification.repo.js";
-import * as notificationService from "@server/modules/notification.service.js";
+import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import * as notificationService from "@server/modules/notification/notification.service.js";
 import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { Notification } from "@server/modules/notification.repo.js";
+import type { Notification } from "@server/modules/notification/notification.repo.js";
 
 interface RoleUpgradeRequestInput {
   ownerUserId: string;

@@ -18,7 +18,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
 import type { Notification, NewNotification } from "@breatic/core";
-import type { DbTx } from "@server/modules/conversation.repo.js";
+import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
  * Allowed notification types. Mirrors the SQL CHECK constraint on
@@ -31,7 +31,7 @@ export type NotificationType =
   | "access.member_joined";
 
 export type { Notification, NewNotification };
-export type { DbTx } from "@server/modules/conversation.repo.js";
+export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
  * Create a notification row.

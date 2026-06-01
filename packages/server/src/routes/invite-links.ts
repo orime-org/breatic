@@ -32,7 +32,7 @@ import {
   projectService,
 } from "@server/modules";
 import { logger } from "@breatic/core";
-import * as userRepo from "@server/modules/user.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
 import { logMailResult } from "@server/utils/log-mail.js";
 

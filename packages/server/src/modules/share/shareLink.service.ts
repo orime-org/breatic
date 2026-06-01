@@ -30,7 +30,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import * as shareLinkRepo from "@server/modules/shareLink.repo.js";
+import * as shareLinkRepo from "@server/modules/share/shareLink.repo.js";
 import {
   ConflictError,
   ForbiddenError,
@@ -39,7 +39,7 @@ import {
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-import type { ShareLink, ShareLinkKind } from "@server/modules/shareLink.repo.js";
+import type { ShareLink, ShareLinkKind } from "@server/modules/share/shareLink.repo.js";
 
 export type { ShareLinkKind };
 

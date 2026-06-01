@@ -5,8 +5,8 @@
  * to the conversation repository.
  */
 
-import * as conversationRepo from "@server/modules/conversation.repo.js";
-import * as projectService from "@server/modules/project.service.js";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as projectService from "@server/modules/project/project.service.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";

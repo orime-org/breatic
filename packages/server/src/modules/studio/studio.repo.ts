@@ -10,7 +10,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { studios } from "@breatic/core";
 import type { Studio } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation.repo.js";
+import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 function toEntity(row: typeof studios.$inferSelect): Studio {
   return {

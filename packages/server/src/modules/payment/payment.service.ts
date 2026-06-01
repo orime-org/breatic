@@ -5,7 +5,7 @@
  * Webhook handler is idempotent (safe to replay).
  */
 
-import * as paymentRepo from "@server/modules/payment.repo.js";
+import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { creditRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
 import { findTierByName, getPricingTiers } from "@server/config/pricing.js";

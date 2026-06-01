@@ -3,7 +3,7 @@
  * attachment pool used as reference material in Agent chat.
  */
 
-import * as repo from "@server/modules/conversation-attachment.repo.js";
+import * as repo from "@server/modules/conversation/conversation-attachment.repo.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "@breatic/core";
 import type { ConversationAttachmentEntity, AssetKind } from "@breatic/shared";
 
