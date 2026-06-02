@@ -50,7 +50,12 @@ export {
   getStreamRedis,
   closeStreamRedis,
   createRedisClient,
+  pingRedis,
 } from "@core/infra/redis.js";
+// Re-export the ioredis client type so consumers (collab subscriber
+// clients, domain canvas-lock) type their client refs without taking a
+// direct `ioredis` dependency — the driver lives only in core.
+export type { Redis } from "ioredis";
 export { checkRateLimit } from "@core/infra/rate-limiter.js";
 export {
   startHealthServer,
@@ -61,7 +66,7 @@ export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
-export { publishNodeEvent } from "@core/infra/event-stream.js";
+export { publishNodeEvent, taskEventsStreamKey } from "@core/infra/event-stream.js";
 export { publishMembersChanged } from "@core/infra/control-events.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";

@@ -12,10 +12,11 @@
 - 根:`index.ts` = composition root(启动 `initCore(process.env)`,唯一读 env 处)· `hocuspocus.ts` = Hocuspocus 装配(把 hooks + services 接进 Server)· `bootstrap-config.ts` / `config.ts` = 引导 + 配置
 
 ## 可 import 谁
-- ✅ `@breatic/core` 的**基础设施**(`createRedisClient` / `pingDb` / `checkPgReachable` / `startHealthServer` / `initCore` / `MONOREPO_ROOT`)+ `@breatic/shared` + 外部 npm
+- ✅ `@breatic/core` 的**基础设施**(`getRedis` / `createRedisClient` / `pingDb` / `pingRedis` / `checkPgReachable` / `taskEventsStreamKey` / `startHealthServer` / `initCore` / `MONOREPO_ROOT`,以及 `Redis` 类型)+ `@breatic/shared` + 外部 npm
 - ❌ `@server` / `@worker` / `@breatic/domain` —— 服务之间互不 import;**collab 绝不依赖 domain**(server+worker-only 的 AIGC 业务,`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则强制)
 - ⚠️ **但 collab ≠ 只用 core infra**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 用 core 的统一鉴权。**鉴权已统一(二次调整 PR2)**:`hooks/auth.ts` 调 core 的 `getSession` + `projectAuthService.loadProjectRole`,跟 server 共用同一套原语,不再手写 `redis.get(:session:)` / 裸 SQL `loadProjectRole`。旧表述「collab 只借 core infra、业务不引入」**已作废**(它把鉴权漂移当成了设计)
 - 🗄️ **DB 适配统一(2026-06-02)**:collab **不直接碰 postgres.js 驱动、不手搓连接池**。`yjs_documents` 持久化(`persistence`)/ 空间存在性读(`auth`)/ space-rpc 软删·恢复全走 core 的 `yjsDocumentsRepo`(那张共享表的唯一 repo 家),经 core 的 `db` 单例(per 进程自动建池,跟 server/worker 一样)。健康探针走 `pingDb()`,boot 连通性检查走 `checkPgReachable()`。`postgres` 包已从本包 `dependencies` 移除。CI 强制:`lint:no-postgres-outside-core`(驱动只许 core)+ `lint:no-yjs-documents-sql-outside-repo`(一表一 repo)+ `lint:no-raw-sql-outside-repo`(现扫 collab,本包零裸 SQL)
+- 🔴 **Redis 适配统一(2026-06-02)**:collab **不直接依赖 ioredis 驱动**。`Redis` 类型从 core re-export 拿(`import type { Redis } from "@breatic/core"`);会话查的 Redis 改用进程 `getRedis()` 单例(DB0,同 server/worker);**订阅 / 阻塞流 / Hocuspocus pub-sub 等专用连接**仍经 core 的 `createRedisClient` 工厂建——Redis 协议要求每个角色独占 socket,**连接数收不了**(跟 postgres 单池多路复用本质不同)。stream key `:stream:task-events` 从 core 的 `taskEventsStreamKey()` 拿(跟 worker 发布同源,消灭两处各造的静默断风险);健康探针走 `pingRedis()`。`ioredis` 包已从本包 `dependencies` 移除。CI 强制:`lint:no-ioredis-outside-core`(驱动只许 core)
 - 本包内部用 `@collab/*` 前缀
 
 ## 怎么拿配置

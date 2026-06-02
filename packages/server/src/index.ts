@@ -13,7 +13,7 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis, pingDb } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -103,7 +103,8 @@ const health = startHealthServer({
     },
     {
       name: "redis_general",
-      check: async () => (await getRedis().ping()) === "PONG",
+      // Single PING liveness helper, shared across all services.
+      check: () => pingRedis(getRedis()),
     },
   ],
 });

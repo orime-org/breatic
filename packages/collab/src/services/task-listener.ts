@@ -24,6 +24,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
+import { taskEventsStreamKey } from "@breatic/core";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
 import { createLogger } from "@collab/infra/logger.js";
 
@@ -51,14 +52,6 @@ const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "handlingBy",
 ] as const);
 
-/**
- * Build the Redis Streams key the Worker publishes task events to.
- * @param envPrefix - Environment prefix (e.g. `dev`) that namespaces the key.
- * @returns The `{envPrefix}:stream:task-events` stream key.
- */
-function taskEventsStreamKey(envPrefix: string): string {
-  return `${envPrefix}:stream:task-events`;
-}
 
 /**
  * Build the Redis key where this consumer persists its last-handled
@@ -298,7 +291,7 @@ export function startTaskListener(
   streamRedisUrl: string,
   envPrefix: string,
 ): () => Promise<void> {
-  const streamKey = taskEventsStreamKey(envPrefix);
+  const streamKey = taskEventsStreamKey();
   const lastIdKey = taskEventsLastIdKey(envPrefix);
 
   logger.info({ streamKey }, "Task event listener starting");

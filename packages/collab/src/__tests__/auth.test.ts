@@ -30,7 +30,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type Redis from "ioredis";
+import type { Redis } from "@breatic/core";
 import * as Y from "yjs";
 
 // `vi.hoisted` lifts these above the `vi.mock` factories (vitest hoists

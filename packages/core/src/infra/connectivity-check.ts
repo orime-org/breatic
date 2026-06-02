@@ -13,7 +13,7 @@
  */
 
 import { pingDb } from "@core/db/client.js";
-import { getRedis } from "@core/infra/redis.js";
+import { getRedis, pingRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/env.js";
 import { InfraNotReadyError } from "@core/infra/errors.js";
 
@@ -36,12 +36,10 @@ export async function checkInfraReady(): Promise<void> {
     );
   }
 
-  // Redis: PING round-trip confirms the server is ready
+  // Redis: PING round-trip confirms the server is ready (shared helper).
   try {
-    const redis = getRedis();
-    const pong = await redis.ping();
-    if (pong !== "PONG") {
-      throw new Error(`unexpected PING response: ${pong}`);
+    if (!(await pingRedis(getRedis()))) {
+      throw new Error("unexpected PING response");
     }
   } catch (err) {
     throw new InfraNotReadyError(

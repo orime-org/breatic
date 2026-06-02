@@ -13,7 +13,7 @@
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
-import { createRedisClient } from "@breatic/core";
+import { createRedisClient, getRedis } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import * as Y from "yjs";
 import {
@@ -35,8 +35,6 @@ const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
-  /** General Redis (DB 0) — session verification in auth hook. */
-  redisUrl: string;
   /** Stream Redis (DB 2) — Hocuspocus cross-instance pub/sub. */
   streamRedisUrl: string;
   envPrefix: string;
@@ -53,15 +51,14 @@ export interface CollabServerInfra {
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus }> {
   const cfg = getCollabConfig();
 
-  // Session lookup client for the onAuthenticate hook. Routes
-  // through the core `createRedisClient` factory so it picks up
-  // the production-safety defaults (keepAlive / commandTimeout /
-  // reconnectOnError / error logging tagged `collab-auth`) —
-  // bare `new IoRedis(url)` was the exact pattern that left the
-  // long-running dev:collab drift without a server-side trail.
-  const authRedis = createRedisClient(infra.redisUrl, {
-    name: "collab-auth",
-  });
+  // Session lookup client for the onAuthenticate hook. Uses the
+  // process-wide `getRedis()` singleton (DB 0, the same general-purpose
+  // client server / worker use) — a session GET is a plain command, so
+  // it shares the per-process singleton rather than hand-rolling a
+  // dedicated client. Subscriber / stream / Hocuspocus pub-sub
+  // connections below stay separate (protocol requires dedicated
+  // sockets for blocking / subscribe modes).
+  const authRedis = getRedis();
 
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

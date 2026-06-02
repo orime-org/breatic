@@ -12,6 +12,7 @@
 import {
   checkPgReachable,
   createRedisClient,
+  pingRedis,
   InfraNotReadyError,
 } from "@breatic/core";
 
@@ -54,8 +55,7 @@ export async function checkCollabInfraReady(
   });
   try {
     await redis.connect();
-    const pong = await redis.ping();
-    if (pong !== "PONG") throw new Error(`unexpected PING response: ${pong}`);
+    if (!(await pingRedis(redis))) throw new Error("unexpected PING response");
     await redis.quit();
   } catch (err) {
     redis.disconnect();
@@ -75,8 +75,7 @@ export async function checkCollabInfraReady(
     });
     try {
       await streamRedis.connect();
-      const pong = await streamRedis.ping();
-      if (pong !== "PONG") throw new Error(`unexpected PING response: ${pong}`);
+      if (!(await pingRedis(streamRedis))) throw new Error("unexpected PING response");
       await streamRedis.quit();
     } catch (err) {
       streamRedis.disconnect();
