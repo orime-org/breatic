@@ -46,6 +46,8 @@ interface RecoveryCodeDialogProps {
 }
 
 /**
+ * Non-dismissible dialog revealing the recovery code with copy / download and
+ * an acknowledge gate.
  * @param root0 - component props
  * @param root0.open - whether the dialog is shown
  * @param root0.code - the plaintext recovery code to reveal

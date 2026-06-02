@@ -38,7 +38,8 @@ const ENV_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
 /**
- *
+ * Collab service entry point: fail-fast on infra connectivity, then start the
+ * Hocuspocus realtime server (log + exit(1) on a startup failure).
  */
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the

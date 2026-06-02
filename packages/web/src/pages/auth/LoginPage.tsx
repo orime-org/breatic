@@ -37,6 +37,7 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
 declare const __GOOGLE_CLIENT_ID__: string;
 
 /**
+ * Login page with the email/password form and optional Google sign-in.
  * @returns the login page with the email/password form and optional Google button.
  */
 export default function LoginPage(): React.JSX.Element {

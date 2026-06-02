@@ -64,7 +64,8 @@ export function startStreamConsumer<T>(opts: {
   let stopped = false;
 
   /**
-   *
+   * Consume the project event stream in a blocking loop, dispatching each new
+   * entry until the consumer is stopped.
    */
   async function loop(): Promise<void> {
     let lastId = (await redis.get(lastIdKey)) ?? "0-0";

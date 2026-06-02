@@ -74,6 +74,8 @@ import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip'
 import { usePreferencesStore } from '@web/stores';
 
 /**
+ * Dev-only gallery rendering every shadcn primitive for eyeballing the design
+ * tokens across light and dark themes.
  * @returns the dev-only primitives gallery page used to verify design tokens
  * across light and dark themes.
  */

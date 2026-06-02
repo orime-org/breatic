@@ -33,6 +33,8 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
 type Step = 'choose' | 'email-sent';
 
 /**
+ * Forgot-password page: request a reset link, then show the "email sent"
+ * confirmation.
  * @returns the forgot-password page: either the channel-choice form or the
  * "email sent" confirmation once a reset link has been requested.
  */
