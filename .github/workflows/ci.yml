@@ -174,23 +174,34 @@ jobs:
         # drift. See scripts/lint-no-collab-auth-table-sql.sh.
         run: pnpm lint:no-collab-auth-table-sql
 
-      - name: Lint no-library-logger (core + shared only)
+      - name: Lint no-library-logger (core + shared + domain)
         # Enforce CLAUDE.md "server-side industrial-grade standards" mandate (commits
-        # adf36d1 / 026c5aa / 201a839): @breatic/core and
-        # @breatic/shared must NOT call logger.{info,warn,error,debug,
-        # fatal,trace}. Library code throws or returns a sentinel; the
-        # application layer (server route / collab hook / worker job
-        # handler) owns audit logging. Hard-fails the PR on any
-        # library logger call. See scripts/lint-no-library-logger.sh
-        # for the exclusion list and rationale.
+        # adf36d1 / 026c5aa / 201a839): @breatic/core, @breatic/shared
+        # and @breatic/domain must NOT call logger.{info,warn,error,
+        # debug,fatal,trace} or console.* (console output counts as
+        # logging too). Library code throws or returns a sentinel;
+        # the application layer (server route / collab hook / worker job
+        # handler) owns audit logging. Hard-fails the PR on any library
+        # logger/console call. See scripts/lint-no-library-logger.sh for
+        # the exclusion list and rationale.
         run: pnpm lint:no-library-logger
+
+      - name: Lint no-library-process-exit (core + shared + domain)
+        # Enforce CLAUDE.md "process lifecycle, library layer forbidden" mandate:
+        # @breatic/core, @breatic/shared and @breatic/domain must NOT
+        # call process.exit(). A library throws a typed error
+        # (InfraNotReadyError etc.); the application entry (server /
+        # worker / collab) catches it, logs the context, and decides
+        # whether to process.exit(1). See
+        # scripts/lint-no-library-process-exit.sh for rationale.
+        run: pnpm lint:no-library-process-exit
 
       - name: Lint no-relative-import (all packages)
         # Enforce CLAUDE.md prohibition list (2026-05-29): non-test source must
         # import via a path alias, never a relative './' or '../' path.
-        # Consumed packages use a globally-unique prefix (@shared / @core
-        # / @collab / @worker); server / web use @/. Hard-fails the PR on
-        # any relative import in non-test source. See
+        # Every package uses a globally-unique prefix (@shared / @core /
+        # @domain / @collab / @worker / @server / @web); no bare @/.
+        # Hard-fails the PR on any relative import in non-test source. See
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
 
@@ -262,14 +273,14 @@ jobs:
         # it). Hard-fails the PR. See scripts/lint-no-param-as-string.sh.
         run: pnpm lint:no-param-as-string
 
-      - name: Lint no-core-process-env (core + shared only)
-        # Enforce CLAUDE.md env-injection mandate: @breatic/core and
-        # @breatic/shared must NOT read process.env / load .env — config
-        # ACQUISITION is an application decision. The composition root
-        # (server / worker / collab entry) calls initCore(process.env)
-        # once; library code reads injected config via the env Proxy /
-        # getConfig() / getRawEnvVar(). Hard-fails the PR on any
-        # process.env in library src. See
+      - name: Lint no-core-process-env (core + shared + domain)
+        # Enforce CLAUDE.md env-injection mandate: @breatic/core,
+        # @breatic/shared and @breatic/domain must NOT read process.env /
+        # load .env — config ACQUISITION is an application decision. The
+        # composition root (server / worker / collab entry) calls
+        # initCore(process.env) once; library code reads injected config
+        # via the env Proxy / getConfig() / getRawEnvVar(). Hard-fails the
+        # PR on any process.env in library src. See
         # scripts/lint-no-core-process-env.sh.
         run: pnpm lint:no-core-process-env
 

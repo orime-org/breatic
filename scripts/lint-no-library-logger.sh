@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lint-no-library-logger — forbid `logger.*` calls in @breatic/core,
-# @breatic/shared and @breatic/domain production source.
+# lint-no-library-logger — forbid `logger.*` and `console.*` calls in
+# @breatic/core, @breatic/shared and @breatic/domain production source.
 #
 # Rationale (CLAUDE.md "服务器端工业级标准" mandate, 2026-05-27):
 # Library packages don't decide what to log — only the application
@@ -50,8 +50,12 @@ cd "$REPO_ROOT"
 
 # Logger method names that count as a violation. `trace` and
 # `fatal` are pino-specific but a hypothetical library using them
-# would still violate the mandate, so we include them.
-LOGGER_REGEX='\blogger\.(info|warn|error|debug|fatal|trace)\b'
+# would still violate the mandate, so we include them. `console.*`
+# counts too — CLAUDE.md treats console output as logging ("console
+# also counts as a log; forbidden in the library layer"), so a
+# library reaching for console.{log,error,warn,...} violates the same
+# "library must not log" mandate.
+LOGGER_REGEX='\blogger\.(info|warn|error|debug|fatal|trace)\b|\bconsole\.[a-zA-Z]+'
 
 # Restrict the scan to library packages — server / collab / worker
 # entries are the application layer and SHOULD log.
@@ -123,14 +127,14 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   echo "Per CLAUDE.md 'core 和 shared 不写任何日志' mandate, library" >&2
   echo "code must either throw or return a sentinel — never call" >&2
-  echo "logger.{info,warn,error,debug,fatal,trace}. Move audit logs" >&2
-  echo "to the application boundary (server route handler, collab" >&2
-  echo "hook, worker job handler) where userId / requestId context" >&2
-  echo "is available." >&2
+  echo "logger.{info,warn,error,debug,fatal,trace} or console.*. Move" >&2
+  echo "audit logs to the application boundary (server route handler," >&2
+  echo "collab hook, worker job handler) where userId / requestId" >&2
+  echo "context is available." >&2
   echo "" >&2
   echo "If a match is a legitimate exception, document the reason" >&2
   echo "and add a narrower exclusion to scripts/lint-no-library-logger.sh." >&2
   exit 1
 fi
 
-echo "lint:no-library-logger — clean (no logger.* calls in @breatic/core, @breatic/shared or @breatic/domain)"
+echo "lint:no-library-logger — clean (no logger.* or console.* calls in @breatic/core, @breatic/shared or @breatic/domain)"

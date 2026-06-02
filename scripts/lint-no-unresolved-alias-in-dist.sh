@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-no-unresolved-alias-in-dist — fail if any built `dist/` output
 # still contains an UNRESOLVED internal path-alias import
-# (@shared / @core / @collab / @worker).
+# (@shared / @core / @domain / @collab / @worker / @server / @web).
 #
 # Why this guard exists (2026-05-29, regression from PR #163):
 # the alias-only-import refactor switched every package's internal
@@ -40,7 +40,7 @@ cd "$REPO_ROOT"
 # of the internal alias prefixes — i.e. an alias that escaped into dist:
 #   from "@shared/x"     from '@core/x'
 #   import("@collab/x")  import "@worker/x"
-ALIAS_REGEX="(from|import)[[:space:]]*\(?[[:space:]]*['\"]@(shared|core|collab|worker)/"
+ALIAS_REGEX="(from|import)[[:space:]]*\(?[[:space:]]*['\"]@(shared|core|domain|collab|worker|server|web)/"
 
 DIST_FILES=$(find packages/*/dist \
   -type f \
@@ -67,9 +67,10 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "A shipped dist must be self-contained: its internal @shared/@core/" >&2
-  echo "@collab/@worker aliases must be resolved at build time, not left as" >&2
-  echo "bare specifiers that downstream bundlers (web vite, node) can't find." >&2
+  echo "A shipped dist must be self-contained: its internal aliases" >&2
+  echo "(@shared/@core/@domain/@collab/@worker/@server/@web) must be resolved" >&2
+  echo "at build time, not left as bare specifiers that downstream bundlers" >&2
+  echo "(web vite, node) can't find." >&2
   echo "Fix the leaking package's tsup build to resolve its own alias" >&2
   echo "(esbuildOptions alias → src). See this script's header comment." >&2
   exit 1

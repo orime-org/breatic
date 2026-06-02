@@ -8,6 +8,7 @@
 #
 #   - @breatic/shared internal → @shared/*
 #   - @breatic/core internal   → @core/*
+#   - @breatic/domain internal → @domain/*
 #   - @breatic/collab internal → @collab/*
 #   - @breatic/worker internal → @worker/*
 #   - @breatic/server internal → @server/*
@@ -54,6 +55,7 @@ RELATIVE_REGEX="(from|import)[[:space:]]*\(?[[:space:]]*['\"]\.\.?/"
 SCAN_DIRS=(
   packages/shared/src
   packages/core/src
+  packages/domain/src
   packages/server/src
   packages/worker/src
   packages/collab/src
@@ -113,8 +115,8 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   echo "Per CLAUDE.md 禁止清单, non-test source must import via a path" >&2
   echo "alias, never a relative './' or '../' path. Use the package's" >&2
-  echo "alias: @shared/* (shared), @core/* (core), @collab/* (collab)," >&2
-  echo "@worker/* (worker), @server/* (server), @web/* (web)." >&2
+  echo "alias: @shared/* (shared), @core/* (core), @domain/* (domain)," >&2
+  echo "@collab/* (collab), @worker/* (worker), @server/* (server), @web/* (web)." >&2
   exit 1
 fi
 

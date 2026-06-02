@@ -86,10 +86,20 @@ export default [
         },
       ],
 
-      // Variables
+      // Variables — error level, matching the backend (root CLAUDE.md
+      // frontend industrial-grade standard "TS strict, zero any"; rules
+      // are binary 0/1, not split per package).
       'no-unused-vars': 'off', // 使用 TypeScript ESLint 的规则代替
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn', // 警告使用 any 类型
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+      '@typescript-eslint/no-explicit-any': 'error', // forbid any (frontend: zero any)
       'no-undef-init': 'off',
       'no-undefined': 'off',
       'no-use-before-define': 'off',

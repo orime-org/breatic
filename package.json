@@ -24,6 +24,7 @@
     "lint:no-drizzle-type-leak": "bash scripts/lint-no-drizzle-type-leak.sh",
     "lint:no-hardcoded-secrets": "bash scripts/lint-no-hardcoded-secrets.sh",
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
+    "lint:no-library-process-exit": "bash scripts/lint-no-library-process-exit.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
     "lint:no-param-as-string": "bash scripts/lint-no-param-as-string.sh",
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
