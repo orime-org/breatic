@@ -293,21 +293,19 @@ export class MainAgent {
   }
 
   /**
-   * Build an SSE event with user_id and project_id injected.
+   * Wrap a payload into the SSE event envelope.
+   *
+   * SSE events intentionally carry NO ownership ids. The stream is a
+   * per-request private response, and the conversation's user_id /
+   * project_id already live on the `conversations` row — repeating them on
+   * every event (incl. each token chunk) is redundant and has no consumer
+   * (the frontend routes by stream, not by id). See CLAUDE.md "SSE".
    * @param event - The SSE event type to emit.
-   * @param data - The event payload; merged with the injected user and project ids.
-   * @returns The SSE event with `user_id` and `project_id` added to its data.
+   * @param data - The event payload.
+   * @returns The SSE event envelope.
    */
   private sse(event: SSEEventType, data: Record<string, unknown>): SSEEvent {
-    const { userId, projectId } = this.ctx;
-    return {
-      event,
-      data: {
-        ...data,
-        user_id: userId,
-        project_id: projectId ?? null,
-      },
-    };
+    return { event, data };
   }
 
   /**
