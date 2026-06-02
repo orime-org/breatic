@@ -202,14 +202,18 @@ export async function upsertMember(
  * @param projectId - Project UUID
  * @param userId - Target user UUID
  * @param role - New role ('edit' | 'view')
+ * @param tx - Optional drizzle transaction handle so the role bump can join
+ *   the caller's atomic decision (e.g. role-upgrade approve)
  * @returns `true` if a row was updated
  */
 export async function updateRole(
   projectId: string,
   userId: string,
   role: Exclude<ProjectRole, "owner">,
+  tx?: DbTx,
 ): Promise<boolean> {
-  const rows = await db
+  const handle = tx ?? db;
+  const rows = await handle
     .update(projectMembers)
     .set({ role })
     .where(
