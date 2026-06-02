@@ -4,9 +4,13 @@
  * The service composes notification + projectMembers writes in a
  * single tx, so tests focus on:
  *   - request: viewer creates one notification in the owner's inbox
- *   - approve: gate the request, then role-bump + double notification
- *     + mark-read happen
- *   - reject: gate the request, then rejected-notification + mark-read
+ *   - approve: gate the request → mark-read CAS (decide-once) → role-bump
+ *     + approved notification
+ *   - reject: gate the request → mark-read CAS → rejected notification
+ *
+ * The mark-read CAS returning false (a concurrent decision already won) is
+ * covered as its own case; the real-Postgres concurrency invariant lives in
+ * `__tests__/integration/role-upgrade-decision-concurrency.integration.test.ts`.
  *
  * Repo + notification.service are mocked; db.transaction is mocked to
  * run the callback inline so transactional code paths execute without
@@ -149,6 +153,7 @@ describe("approve", () => {
       PID,
       VIEWER,
       "edit",
+      expect.anything(),
     );
     expect(
       notificationService.createRoleUpgradeApproved,
@@ -158,7 +163,11 @@ describe("approve", () => {
         projectId: PID,
       }),
     );
-    expect(notificationRepo.markRead).toHaveBeenCalledWith(NID, OWNER);
+    expect(notificationRepo.markRead).toHaveBeenCalledWith(
+      NID,
+      OWNER,
+      expect.anything(),
+    );
   });
 
   it("throws NotFound when the request notification doesn't exist", async () => {
@@ -215,6 +224,7 @@ describe("approve", () => {
 
   it("throws NotFound when role bump fails (requester no longer a member)", async () => {
     vi.mocked(notificationRepo.findById).mockResolvedValueOnce(fakeRequest());
+    vi.mocked(notificationRepo.markRead).mockResolvedValueOnce(true);
     vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(false);
     await expect(
       roleUpgradeRequestService.approve({
@@ -223,6 +233,24 @@ describe("approve", () => {
         projectName: "Demo",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
+    expect(
+      notificationService.createRoleUpgradeApproved,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFound and bumps nothing when a concurrent decision already won (mark-read CAS lost)", async () => {
+    vi.mocked(notificationRepo.findById).mockResolvedValueOnce(fakeRequest());
+    // The CAS mark-read returns false → another decision flipped read_at first.
+    vi.mocked(notificationRepo.markRead).mockResolvedValueOnce(false);
+    await expect(
+      roleUpgradeRequestService.approve({
+        notificationId: NID,
+        ownerUserId: OWNER,
+        projectName: "Demo",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    // Loser does no work: no role bump, no approved notification.
+    expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
     expect(
       notificationService.createRoleUpgradeApproved,
     ).not.toHaveBeenCalled();
@@ -256,7 +284,11 @@ describe("reject", () => {
         }),
       }),
     );
-    expect(notificationRepo.markRead).toHaveBeenCalledWith(NID, OWNER);
+    expect(notificationRepo.markRead).toHaveBeenCalledWith(
+      NID,
+      OWNER,
+      expect.anything(),
+    );
   });
 
   it("throws Forbidden when the notification belongs to a different owner", async () => {

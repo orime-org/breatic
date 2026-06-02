@@ -157,14 +157,18 @@ export async function listAllByUser(
  * top of the route-layer auth).
  * @param id - Notification UUID to mark read
  * @param userId - Owner guard; only this user's row is updated
+ * @param tx - Optional drizzle transaction handle so this CAS mark-read can
+ *   serve as the serialization point inside the caller's transaction
  * @returns true if a row was updated (i.e. the notification was
  *   unread and owned by `userId`); false otherwise.
  */
 export async function markRead(
   id: string,
   userId: string,
+  tx?: DbTx,
 ): Promise<boolean> {
-  const rows = await db
+  const handle = tx ?? db;
+  const rows = await handle
     .update(notifications)
     .set({ readAt: sql`now()` })
     .where(
@@ -223,12 +227,16 @@ export async function countUnread(userId: string): Promise<number> {
  * layer which already authenticated the user). Returns null on
  * miss or soft-deleted.
  * @param id - Notification UUID to look up
+ * @param tx - Optional drizzle transaction handle so the read joins the
+ *   caller's transaction (consistent snapshot for a gated decision)
  * @returns The notification entity, or null if missing / soft-deleted
  */
 export async function findById(
   id: string,
+  tx?: DbTx,
 ): Promise<NotificationEntity | null> {
-  const rows = await db
+  const handle = tx ?? db;
+  const rows = await handle
     .select()
     .from(notifications)
     .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))

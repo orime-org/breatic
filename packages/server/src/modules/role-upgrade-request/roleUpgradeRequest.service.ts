@@ -17,10 +17,14 @@
  *   - request: caller must be an active member of the project, role 'view'
  *   - approve / reject: caller must be the project owner
  *
- * Atomicity: approve runs in a single db transaction so role bump +
- * approved notification + mark-read happen together; reject also runs
- * in a transaction for the same reason. If any step fails, the whole
- * decision is rolled back.
+ * Atomicity & once-only: approve / reject each run in a single db
+ * transaction — the gate read, the mark-read CAS, the role bump, and the
+ * outcome notification all share one transaction, so any failure rolls the
+ * whole decision back. The mark-read CAS (UPDATE … WHERE read_at IS NULL) is
+ * the serialization point: under concurrency only the first decision flips
+ * read_at; the loser's UPDATE matches zero rows and aborts. A request is
+ * therefore decided EXACTLY ONCE — never approved twice, never approved AND
+ * rejected.
  */
 
 import { db } from "@breatic/core";
@@ -28,6 +32,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
 
@@ -84,11 +89,21 @@ interface DecisionInput {
 export async function approve(input: DecisionInput): Promise<void> {
   await db.transaction(async (tx) => {
     const req = await loadAndGate(tx, input);
+    // Serialization point: the mark-read CAS (UPDATE … WHERE read_at IS NULL)
+    // flips the request to decided. Under concurrency the row lock makes a
+    // losing decision's UPDATE match zero rows → won=false → abort, rolling
+    // back the whole transaction. Runs BEFORE the role bump so the loser does
+    // no work. A request is decided exactly once.
+    const won = await notificationRepo.markRead(req.id, input.ownerUserId, tx);
+    if (!won) {
+      throw new NotFoundError(t("server.error.notFound"));
+    }
     const requesterUserId = String(req.payload.requesterUserId);
     const ok = await projectMembersRepo.updateRole(
       String(req.projectId),
       requesterUserId,
       "edit",
+      tx,
     );
     if (!ok) {
       throw new NotFoundError(t("server.error.notFound"));
@@ -102,7 +117,6 @@ export async function approve(input: DecisionInput): Promise<void> {
       },
       tx,
     });
-    await notificationRepo.markRead(req.id, input.ownerUserId);
   });
 }
 
@@ -121,6 +135,13 @@ export async function reject(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const req = await loadAndGate(tx, input);
+    // Serialization point — see `approve`. The mark-read CAS decides the
+    // request exactly once; a losing concurrent decision aborts here and
+    // rolls back before the rejected notification is written.
+    const won = await notificationRepo.markRead(req.id, input.ownerUserId, tx);
+    if (!won) {
+      throw new NotFoundError(t("server.error.notFound"));
+    }
     await notificationService.createRoleUpgradeRejected({
       requesterUserId: String(req.payload.requesterUserId),
       projectId: String(req.projectId),
@@ -130,7 +151,6 @@ export async function reject(
       },
       tx,
     });
-    await notificationRepo.markRead(req.id, input.ownerUserId);
   });
 }
 
@@ -144,7 +164,8 @@ interface LoadedRequest {
  * Load the request notification and enforce the decision gates:
  * it must exist, belong to the owner, be a role-upgrade-request type,
  * still be unread, and carry a valid requester id and project id.
- * @param _tx - Active transaction handle (reserved; the repo currently reads outside it).
+ * @param tx - Active transaction handle; the read joins it so the gate sees
+ *   a snapshot consistent with the rest of the decision.
  * @param input - Notification id and owner id identifying the request.
  * @returns The validated request id, project id, and requester id.
  * @throws {NotFoundError} if the notification is missing or already decided.
@@ -152,10 +173,10 @@ interface LoadedRequest {
  * @throws {ValidationError} if the type, requester id, or project id is invalid.
  */
 async function loadAndGate(
-  _tx: unknown,
+  tx: DbTx,
   input: DecisionInput,
 ): Promise<LoadedRequest> {
-  const row = await notificationRepo.findById(input.notificationId);
+  const row = await notificationRepo.findById(input.notificationId, tx);
   if (!row) {
     throw new NotFoundError(t("server.error.notFound"));
   }
