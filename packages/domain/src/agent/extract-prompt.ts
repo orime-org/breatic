@@ -11,6 +11,8 @@
  */
 
 /**
+ * Reduce a raw prompt value to clean plain text for an AIGC provider —
+ * strips HTML tags, comments, and invisible characters.
  * @param prompt - Raw prompt value (string, HTML, or unknown)
  * @returns Clean plain text suitable for AIGC provider input
  */

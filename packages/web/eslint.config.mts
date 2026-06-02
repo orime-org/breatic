@@ -195,6 +195,7 @@ export default [
           ],
         },
       ],
+      'jsdoc/require-description': 'error',
       'jsdoc/require-throws-type': 'error',
       'jsdoc/require-yields-type': 'off',
       'jsdoc/require-next-type': 'off',

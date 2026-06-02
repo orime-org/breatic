@@ -30,6 +30,8 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
 type Mode = 'token' | 'recovery';
 
 /**
+ * Reset-password page: the token reset form when `?token=` is present, else
+ * the recovery-code reset form.
  * @returns the token-based reset form when `?token=` is present, otherwise
  * the recovery-code reset form.
  */

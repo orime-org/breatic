@@ -77,6 +77,7 @@ export interface CheckWriteAuthzInput {
  */
 export class WriteAuthzError extends Error {
   /**
+   * Build the error, naming the forbidden meta-doc path in the message.
    * @param message - Human-readable reason naming the forbidden path that was written.
    */
   constructor(message: string) {

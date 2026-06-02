@@ -6,12 +6,12 @@
 
 ## 核心原则
 
-> **类型信息归签名(代码,显式);人类描述归注释;签名表达不了的那一件事(异常类型)也归注释。**
+> **类型信息归签名(代码,显式);功能描述归注释;签名表达不了的那一件事(异常类型)也归注释。**
 
 一个函数定义由两部分组成,各管各的、互不重复:
 
 1. **签名(signature)** —— 携带**全部**类型信息(参数类型、返回类型、生成器 yield/next 类型),全部**显式**写在代码里。TypeScript 能静态检查、能随重构自动跟随,是类型的唯一真相源。
-2. **文档注释(TSDoc)** —— 携带**人类描述**(这函数做什么、为什么、每个参数代表什么),外加**唯一一件签名表达不了的类型信息:异常类型**(TS 没有 checked exception,编译器不追踪 `throw` 的类型)。
+2. **文档注释(TSDoc)** —— 携带**功能描述**(这函数做什么、为什么、每个参数代表什么),外加**唯一一件签名表达不了的类型信息:异常类型**(TS 没有 checked exception,编译器不追踪 `throw` 的类型)。
 
 把类型写进注释(如 `@param {string} name`)是被**禁止**的:类型已经在签名里了,注释里再写一遍就是两个真相源,重构改了签名、注释不改 → "代码 ↔ 注释"长期漂移。注释只做签名做不到的事。
 
@@ -23,7 +23,7 @@
 | 返回类型 | 能 | **签名**(显式) | `explicit-function-return-type` + `jsdoc/no-types` |
 | 生成器 yield / next 类型 | 能(`Generator<Y, R, N>` / `AsyncGenerator<Y, R, N>`) | **签名**(显式) | `explicit-function-return-type`;`require-yields-type` / `require-next-type` 关闭(同返回值,不在注释写) |
 | **异常类型** | **不能**(无 checked exception,编译器不追踪) | **注释** `@throws {ErrorType}` | `require-throws-type`(带花括号,error) |
-| 人类描述(做什么 / 为什么 / 每个参数含义) | 不能 | **注释** `@param name - desc` / `@returns desc` | `require-jsdoc` / `require-param` / `require-returns` |
+| 功能描述(做什么 / 为什么 / 每个参数含义) | 不能 | **注释** 摘要行 + `@param name - desc` / `@returns desc` | `require-jsdoc` / `require-description` / `require-param` / `require-returns` |
 
 一句话:**能被 TS 签名表达的类型,一律进签名、不进注释;唯独异常类型签名表达不了,进注释 `@throws {ErrorType}`。**
 
@@ -47,7 +47,7 @@ function computeCredits(usage: Usage) { ... }
 
 ### 规则 2 — 文档注释(TSDoc block)
 
-每个命名函数单元必须有 TSDoc 块。**不分导出 / 私有**:私有 helper 跟导出函数一样需要文档(规则只有 0/1,不按可见性把同类切两半)。
+每个命名函数单元必须有 TSDoc 块,且块内必须有**一行摘要描述**(说清这函数做什么)——不能只有 `@param`/`@returns` 标签没摘要(`require-description`,规则只有 0/1,摘要不留"可选"口子)。**不分导出 / 私有**:私有 helper 跟导出函数一样需要文档(不按可见性把同类切两半)。
 
 ```ts
 /**
@@ -125,6 +125,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 - `eslint-plugin-jsdoc` 的 `flat/recommended-typescript-error` 预设(给 TS 项目:关闭 `require-param-type` / `require-returns-type`、开启 `no-types`)
 - `jsdoc/require-jsdoc`:全量(`publicOnly: false`),覆盖上述全部命名函数单元;内联回调经 `contexts` 选择器排除
+- `jsdoc/require-description`:`error`——每个块必须有一行摘要描述,不只是标签(规则 2)
 - `jsdoc/require-throws-type`:`error`(规则 4)
 - `jsdoc/require-yields-type` / `jsdoc/require-next-type`:`off`(规则 5)
 - `@typescript-eslint/explicit-function-return-type`:`["error", { allowExpressions: true }]`(规则 1)

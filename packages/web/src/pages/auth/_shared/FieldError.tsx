@@ -21,6 +21,7 @@ interface FieldErrorProps extends React.HTMLAttributes<HTMLParagraphElement> {
 }
 
 /**
+ * Accessible inline error paragraph wired as an aria live region.
  * @param root0 - component props (plus any extra paragraph attributes)
  * @param root0.id - optional id to mirror in the Input's `aria-describedby`
  * @param root0.children - the error message text

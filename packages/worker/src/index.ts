@@ -28,7 +28,8 @@ import type { TaskJobData } from "@worker/handlers/dispatch.js";
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;
 
 /**
- *
+ * Start the worker process: install production error logging on the shared
+ * Redis singletons, then begin consuming the BullMQ task queue.
  */
 export function startWorker(): void {
   // Production error logging for shared Redis singletons. The core

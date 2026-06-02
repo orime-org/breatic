@@ -121,6 +121,11 @@ export default tseslint.config(
           ],
         },
       ],
+      // Every doc block must carry a one-line summary description, not just
+      // tags — a bare @param/@returns block is incomplete (规则只有 0/1, the
+      // summary is not an optional carve-out). The #850 cleanup already added
+      // summaries everywhere, so this holds at zero violations.
+      "jsdoc/require-description": "error",
       // Exception type → comment (signature can't carry it). The braces in
       // `@throws {AppError}` are the one place a type belongs in a doc tag.
       "jsdoc/require-throws-type": "error",

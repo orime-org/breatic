@@ -24,6 +24,8 @@ import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 type Status = 'verifying' | 'success' | 'failed' | 'no-token';
 
 /**
+ * Email-verification page driving the verifying / success / failed /
+ * check-your-inbox states.
  * @returns the verify-email page in one of four states: verifying, success,
  * failed, or the "check your inbox" prompt when no token is present.
  */

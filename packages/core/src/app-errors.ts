@@ -11,6 +11,7 @@ export class AppError extends Error {
   public readonly statusCode: number;
 
   /**
+   * Build an application error carrying an HTTP status and message.
    * @param statusCode - HTTP status code
    * @param message - Human-readable error message
    */

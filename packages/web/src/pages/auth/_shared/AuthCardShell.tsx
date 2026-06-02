@@ -19,6 +19,7 @@ interface AuthCardShellProps {
 }
 
 /**
+ * Centered auth-card shell framing a form with a title, body, and footer.
  * @param root0 - component props
  * @param root0.title - heading shown at the top of the card
  * @param root0.subtitle - optional supporting line beneath the title
