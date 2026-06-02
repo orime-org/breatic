@@ -14,7 +14,7 @@
 - 本包内部用 `@web/*` 前缀(全项目无 `@/`)
 
 ## 怎么拿配置
-浏览器环境,经 `import.meta.env`(Vite,类型化在 `lib/env.ts`);不碰 node `process.env`。
+浏览器环境,经 `import.meta.env`(Vite,类型来自 `vite/client`,见 `src/vite-env.d.ts`);不碰 node `process.env`。
 
 ## 工业级标准
 TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / Yjs 协作 / optimistic update race)100% test · a11y · i18n(ICU,禁硬编码文案,`lint:no-cjk` 强制)· 设计 token 严格(走语义 token)· 视觉改动必 ground truth + 真浏览器 verify。

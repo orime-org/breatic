@@ -10,7 +10,6 @@
 
 ## 装啥
 积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / extract-prompt / llm)· model-catalog(含每次成本)· canvas-lock(节点覆盖锁)。
-> 契约地基阶段为空壳,业务后续自 core 迁入。
 
 ## 可 import 谁
 - ✅ `@breatic/core` · `@breatic/shared` + 外部 npm
@@ -25,4 +24,4 @@
 经 core 的 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(同 core 纪律,`lint:no-core-process-env` 把 domain 一并扫描强制)。
 
 ## 出错怎么办
-**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel;**禁调 logger.\*、禁 `process.exit()`**(同 core 纪律,抛给应用层,`lint:no-library-logger` 把 domain 一并扫描强制)。
+**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel;**禁调 `logger.*` / `console.*`、禁 `process.exit()`**(同 core 纪律,抛给应用层;`lint:no-library-logger`(含 `console.*`)+ `lint:no-library-process-exit` 把 domain 一并扫描强制)。
