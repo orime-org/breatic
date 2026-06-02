@@ -16,7 +16,7 @@ import {
   logger,
   getRedis,
   getQueueRedis,
-  rawPg,
+  pingDb,
   startHealthServer,
 } from "@breatic/core";
 
@@ -92,10 +92,8 @@ export function startWorker(): void {
       },
       {
         name: "postgres",
-        check: async () => {
-          const rows = await rawPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
-          return rows[0]?.ok === 1;
-        },
+        // Single SELECT-1 liveness helper, shared across all services.
+        check: () => pingDb(),
       },
     ],
   });

@@ -27,9 +27,9 @@
  * the client can demultiplex concurrent in-flight RPCs.
  */
 import type { Hocuspocus } from "@hocuspocus/server";
-import type postgres from "postgres";
 import * as Y from "yjs";
 
+import { yjsDocumentsRepo } from "@breatic/core";
 import {
   canvasSpaceDocName,
   projectMetaDocName,
@@ -45,7 +45,6 @@ const logger = createLogger("space-rpc");
 
 export interface SpaceRpcContext {
   hocuspocus: Hocuspocus;
-  sql: ReturnType<typeof postgres>;
 }
 
 export interface SpaceRpcCaller {
@@ -195,41 +194,31 @@ function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
 }
 
 /**
- * Soft-delete the `yjs_documents` row for a canvas-{spaceId} doc.
- * @param sql - Postgres client targeting the collab-owned `yjs_documents` table.
+ * Soft-delete the `yjs_documents` row for a canvas-{spaceId} doc, via
+ * the shared core repo (the single home for that table's SQL).
  * @param projectId - Project the canvas doc belongs to.
  * @param spaceId - Space whose canvas doc row is marked deleted.
  */
 async function softDeleteCanvasRow(
-  sql: ReturnType<typeof postgres>,
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  const docName = canvasSpaceDocName(projectId, spaceId);
-  await sql`
-    UPDATE yjs_documents
-    SET deleted_at = now()
-    WHERE name = ${docName} AND deleted_at IS NULL
-  `;
+  await yjsDocumentsRepo.softDeleteByName(
+    canvasSpaceDocName(projectId, spaceId),
+  );
 }
 
 /**
- * Restore (clear deleted_at on) the canvas-{spaceId} row.
- * @param sql - Postgres client targeting the collab-owned `yjs_documents` table.
+ * Restore (clear deleted_at on) the canvas-{spaceId} row, via the
+ * shared core repo.
  * @param projectId - Project the canvas doc belongs to.
  * @param spaceId - Space whose canvas doc row has its `deleted_at` cleared.
  */
 async function restoreCanvasRow(
-  sql: ReturnType<typeof postgres>,
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  const docName = canvasSpaceDocName(projectId, spaceId);
-  await sql`
-    UPDATE yjs_documents
-    SET deleted_at = NULL
-    WHERE name = ${docName}
-  `;
+  await yjsDocumentsRepo.restoreByName(canvasSpaceDocName(projectId, spaceId));
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -237,7 +226,7 @@ async function restoreCanvasRow(
 /**
  * Create a new Space entry in `meta.spaces`. Caller role ≥ edit.
  * Returns `CONFLICT` if the spaceId already exists.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is added to.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:create` request carrying the new spaceId, type, and name.
@@ -294,7 +283,7 @@ async function handleCreate(
  * Delete a Space: remove its `meta.spaces` entry, push a
  * `space-deleted` audit message (with snapshot for Restore), then
  * soft-delete its canvas PG row. Caller role ≥ edit.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is removed from.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:delete` request carrying the target spaceId.
@@ -345,14 +334,14 @@ async function handleDelete(
   // a freshly reconnecting client cannot race in between (the
   // auth-hook space-exists check refuses the connection regardless,
   // belt-and-suspenders).
-  await softDeleteCanvasRow(ctx.sql, projectId, spaceId);
+  await softDeleteCanvasRow(projectId, spaceId);
   return ok(req.id);
 }
 
 /**
  * Lock or unlock a Space (set its `locked` flag) and push the matching
  * `space-locked` / `space-unlocked` audit message. Caller role ≥ edit.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc holds the target Space.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:lock` request carrying the spaceId and desired `locked` value.
@@ -402,7 +391,7 @@ async function handleLock(
  * Rename an existing Space's `name`. Caller role ≥ edit. Refuses
  * with `FORBIDDEN` if the Space is currently locked - locked Spaces
  * must be unlocked before any metadata mutation.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc holds the target Space.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:rename` request carrying the spaceId and new name.
@@ -478,7 +467,7 @@ async function handleRename(
  * from the latest unrestored `space-deleted` snapshot, mark that audit
  * entry `restored`, then clear `deleted_at` on its canvas PG row.
  * Caller role = owner.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is restored into.
  * @param caller - Authenticated caller's userId + role; only `owner` may restore.
  * @param req - The `space:restore` request carrying the target spaceId.
@@ -575,7 +564,7 @@ async function handleRestore(
   } finally {
     await conn.disconnect();
   }
-  await restoreCanvasRow(ctx.sql, projectId, spaceId);
+  await restoreCanvasRow(projectId, spaceId);
   return ok(req.id);
 }
 
@@ -583,7 +572,7 @@ async function handleRestore(
  * Clear `projectMessages` entries — all of them, a specific id set, or
  * those older than a cutoff timestamp, depending on the payload.
  * Caller role = owner.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc holds the `projectMessages` array.
  * @param caller - Authenticated caller's userId + role; only `owner` may clear messages.
  * @param req - The `messages:clear` request selecting all / specific ids / older-than entries.
@@ -647,7 +636,7 @@ async function handleMessagesClear(
  * Route a parsed SpaceRpcRequest to the matching handler and return
  * the response. Caller (server.ts onStateless) is responsible for the
  * Zod parse / error envelope.
- * @param ctx - Collab context providing the Hocuspocus server + Postgres client.
+ * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project the RPC operates on.
  * @param caller - Authenticated caller's userId + role, forwarded to each handler for authorization.
  * @param request - The parsed, type-discriminated Space RPC request.

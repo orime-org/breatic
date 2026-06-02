@@ -13,9 +13,9 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db } from "@breatic/core";
+import { db, yjsDocumentsRepo } from "@breatic/core";
 import {
   projects,
   studios,
@@ -25,7 +25,6 @@ import {
   projectMemories,
   projectMemoryEntries,
   tasks,
-  yjsDocuments,
 } from "@breatic/core";
 import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
 import type { ProjectEntity } from "@breatic/shared";
@@ -247,16 +246,10 @@ export async function duplicateProject(
       addedBy: null,
     });
 
-    const oldPrefix = `project-${sourceId}/`;
-    const newPrefix = `project-${newProject.id}/`;
-    await tx.execute(sql`
-      INSERT INTO yjs_documents (name, data, updated_at)
-      SELECT ${newPrefix} || substring(name from ${oldPrefix.length + 1}),
-             data,
-             NOW()
-      FROM yjs_documents
-      WHERE name LIKE ${oldPrefix + "%"}
-    `);
+    // yjs_documents is shared infra; its SQL lives in the single core
+    // repo. Copy every doc of the source project, rewriting the
+    // `project-{sourceId}/` name prefix to the new id, in this tx.
+    await yjsDocumentsRepo.duplicateByProjectPrefix(tx, sourceId, newProject.id);
 
     return toEntity(newProject);
   });
@@ -338,15 +331,10 @@ export async function deleteProject(id: string): Promise<void> {
         ),
       );
 
-    await tx
-      .update(yjsDocuments)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          sql`${yjsDocuments.name} LIKE ${`project-${id}/%`}`,
-          isNull(yjsDocuments.deletedAt),
-        ),
-      );
+    // yjs_documents is shared infra; its SQL lives in the single core
+    // repo. Soft-delete meta + every Space doc of this project in the
+    // same transaction.
+    await yjsDocumentsRepo.softDeleteByProjectPrefix(tx, id);
 
     await tx
       .update(projects)

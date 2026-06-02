@@ -12,7 +12,7 @@ import "@collab/bootstrap-config.js";
 import {
   env,
   createRedisClient,
-  createPgClient,
+  pingDb,
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
@@ -64,7 +64,6 @@ async function main(): Promise<void> {
 
   // Create and start Hocuspocus server
   const { server, hocuspocus } = await createCollabServer({
-    databaseUrl: DATABASE_URL,
     redisUrl: REDIS_URL,
     streamRedisUrl: REDIS_STREAM_URL,
     envPrefix: ENV_PREFIX,
@@ -100,18 +99,6 @@ async function main(): Promise<void> {
     );
   });
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
-
-  // Dedicated single-connection Postgres client for health probes.
-  // collab persists every Yjs document to PG (persistence.ts) and
-  // authenticates against it (auth.ts), so PG is a critical
-  // dependency the probe MUST cover. A dedicated `max: 1` client
-  // (named for pg_stat_activity visibility) keeps probe traffic off
-  // the persistence pool; postgres.js connects lazily, so this costs
-  // nothing until the first probe.
-  const healthPg = createPgClient(DATABASE_URL, {
-    name: "collab-healthz",
-    max: 1,
-  });
 
   // Health probe server - separate port so probe traffic doesn't
   // touch the WS port. Probes all three critical dependencies: the
@@ -153,10 +140,10 @@ async function main(): Promise<void> {
     // `healthcheck:` that would have looped-restarted prod collab.
     checks: buildCollabHealthChecks({
       pingRedisStream: async () => (await controlRedis.ping()) === "PONG",
-      pingPostgres: async () => {
-        const rows = await healthPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
-        return rows[0]?.ok === 1;
-      },
+      // Single SELECT-1 liveness helper, shared across all services,
+      // over the process-wide `db` singleton (same pool collab uses for
+      // persistence + auth — no dedicated probe pool).
+      pingPostgres: () => pingDb(),
       // `.listening` flips false the instant the listen socket closes
       // (graceful shutdown or crash) - a dead hocuspocus with a live
       // healthz is the worst possible state for the LB.
@@ -176,7 +163,6 @@ async function main(): Promise<void> {
     await healthServer.stop();
     await stopMembersSync();
     await controlRedis.quit();
-    await healthPg.end();
     await stopListener();
     await server.destroy();
     logger.info("Shutdown complete");

@@ -14,13 +14,17 @@
  */
 
 // ── Database ─────────────────────────────────────────────────────
-export { db, rawPg, closeDb, createPgClient } from "@core/db/client.js";
+export { db, rawPg, pingDb, checkPgReachable, closeDb, createPgClient } from "@core/db/client.js";
 export type { DbTx } from "@core/db/client.js";
 export { runMigrations } from "@core/db/migrate.js";
 export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
 export { encodeInitialMetaState } from "@core/db/yjs-bootstrap.js";
+// `yjs_documents` is shared infra (collab persistence/auth/space-rpc +
+// server project create/delete/duplicate); its single repo home lives
+// in core so the table's SQL can never scatter across services.
+export * as yjsDocumentsRepo from "@core/db/yjs-documents.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.

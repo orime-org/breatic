@@ -165,6 +165,29 @@ jobs:
         # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
         run: pnpm lint:no-raw-sql-outside-repo
 
+      - name: Lint no-yjs-documents-sql-outside-repo (one shared table, one repo)
+        # Enforce 2026-06-02 ADR "DB adapter unification": yjs_documents is
+        # shared infra (collab persistence/auth/space-rpc + server project
+        # create/delete/duplicate). no-raw-sql-outside-repo only proves SQL
+        # sits in SOME *.repo.ts; it does NOT prove a SHARED table has a
+        # SINGLE repo. This guard locks the table — by raw name or Drizzle
+        # symbol — to its one home (core/db/yjs-documents.repo.ts) so it can
+        # never scatter across services again. See
+        # scripts/lint-no-yjs-documents-sql-outside-repo.sh.
+        run: pnpm lint:no-yjs-documents-sql-outside-repo
+
+      - name: Lint no-postgres-outside-core (one DB driver home)
+        # Enforce 2026-06-02 ADR "DB adapter unification": the postgres.js
+        # driver may be imported only in @breatic/core (the pool factory +
+        # db/rawPg singletons + pingDb/checkPgReachable). Every other
+        # package reaches Postgres through those core exports + the repos,
+        # so the driver / its pool lifecycle / its `Sql` type never leak
+        # across the package boundary (collab used to hand-roll its own
+        # postgres.js pools). drizzle-orm/postgres-js (the Drizzle adapter)
+        # is a different specifier and is allowed. See
+        # scripts/lint-no-postgres-outside-core.sh.
+        run: pnpm lint:no-postgres-outside-core
+
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
         # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL

@@ -3,20 +3,35 @@
  *
  * Pins the role-validation matrix + dispatch routing + basic
  * happy/error response shapes. Full Yjs-mutation behavior is covered
- * by the integration smoke run in PR-b (where the frontend wires
- * onto these RPCs end-to-end with a real collab + PG).
+ * by the integration smoke run (where the frontend wires onto these
+ * RPCs end-to-end with a real collab + PG).
  *
  * Mock surface:
  *   - hocuspocus.openDirectConnection — returns a fake DirectConnection
  *     whose `transact(fn)` runs `fn` against a backing Y.Doc that the
  *     test inspects after the handler returns.
- *   - sql — a vi.fn() tagged template stub (returns []) so SQL writes
- *     (canvas row soft-delete / restore) don't crash.
+ *   - @breatic/core `yjsDocumentsRepo` — the canvas-row soft-delete /
+ *     restore now route through the shared core repo (the single home
+ *     for `yjs_documents` SQL); the two writers are vi.fn() stubs the
+ *     handlers call. Mocking the whole barrel also keeps the real core
+ *     module (and its `ai`/otel transitive deps) out of the vitest ESM
+ *     resolver.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
-import type postgres from "postgres";
+
+const { softDeleteByNameMock, restoreByNameMock } = vi.hoisted(() => ({
+  softDeleteByNameMock: vi.fn(),
+  restoreByNameMock: vi.fn(),
+}));
+
+vi.mock("@breatic/core", () => ({
+  yjsDocumentsRepo: {
+    softDeleteByName: softDeleteByNameMock,
+    restoreByName: restoreByNameMock,
+  },
+}));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";
 
@@ -43,22 +58,19 @@ function makeHocuspocus(): Hocuspocus {
   } as unknown as Hocuspocus;
 }
 
-// sql is a tagged template — calling it returns a Promise<rows>.
-function makeSql(): ReturnType<typeof postgres> {
-  return vi.fn(async () => []) as unknown as ReturnType<typeof postgres>;
-}
-
 beforeEach(() => {
   fakeMetaDoc = {
     doc: new Y.Doc(),
     disconnect: vi.fn(async () => {}),
   };
+  softDeleteByNameMock.mockReset();
+  restoreByNameMock.mockReset();
 });
 
 describe("handleSpaceRpc — role validation", () => {
   it("space:create refuses view role", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u", role: "view" },
       {
@@ -73,7 +85,7 @@ describe("handleSpaceRpc — role validation", () => {
 
   it("space:delete refuses view role", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u", role: "view" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
@@ -83,7 +95,7 @@ describe("handleSpaceRpc — role validation", () => {
 
   it("space:lock refuses view role", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u", role: "view" },
       {
@@ -97,7 +109,7 @@ describe("handleSpaceRpc — role validation", () => {
 
   it("space:restore refuses edit role (owner-only)", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u", role: "edit" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
@@ -108,7 +120,7 @@ describe("handleSpaceRpc — role validation", () => {
 
   it("messages:clear refuses edit role (owner-only)", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u", role: "edit" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
@@ -120,7 +132,7 @@ describe("handleSpaceRpc — role validation", () => {
 describe("handleSpaceRpc — happy paths", () => {
   it("space:create writes meta.spaces + pushes projectMessages", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -151,7 +163,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -164,7 +176,7 @@ describe("handleSpaceRpc — happy paths", () => {
     if (!res.ok) expect(res.error.code).toBe("CONFLICT");
   });
 
-  it("space:delete removes meta.spaces entry + pushes 'space-deleted' with snapshot", async () => {
+  it("space:delete removes meta.spaces entry + pushes 'space-deleted' with snapshot + soft-deletes the canvas row", async () => {
     const existing = new Y.Map();
     existing.set("id", SID);
     existing.set("type", "canvas");
@@ -173,9 +185,8 @@ describe("handleSpaceRpc — happy paths", () => {
     existing.set("order", 0);
     fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
 
-    const sql = makeSql();
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
@@ -193,12 +204,16 @@ describe("handleSpaceRpc — happy paths", () => {
       type: "canvas",
       name: "Main",
     });
-    expect(sql).toHaveBeenCalled(); // soft-delete canvas row
+    // The canvas-{spaceId} row is soft-deleted via the core repo with
+    // the canonical doc name.
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      `project-${PID}/canvas-${SID}`,
+    );
   });
 
   it("space:delete returns NOT_FOUND when spaceId is absent", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       { id: "r1", type: "space:delete", payload: { spaceId: "missing" } },
@@ -215,7 +230,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -239,7 +254,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -262,7 +277,7 @@ describe("handleSpaceRpc — happy paths", () => {
 
   it("space:rename returns NOT_FOUND for missing spaceId (no message pushed)", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -284,7 +299,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getMap("spaces").set(SID, locked);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "u-1", role: "edit" },
       {
@@ -299,7 +314,7 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(0);
   });
 
-  it("space:restore rebuilds entry from latest space-deleted snapshot (owner) + marks original deleted entry restored=true", async () => {
+  it("space:restore rebuilds entry from latest space-deleted snapshot (owner) + marks original deleted entry restored=true + restores the canvas row", async () => {
     // Seed: pretend a delete already happened — projectMessages has a
     // space-deleted entry with a full snapshot, meta.spaces is empty.
     const deletedMsg = new Y.Map();
@@ -317,9 +332,8 @@ describe("handleSpaceRpc — happy paths", () => {
     deletedMsg.set("createdAt", 1500);
     fakeMetaDoc.doc.getArray("projectMessages").push([deletedMsg]);
 
-    const sql = makeSql();
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "owner-1", role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
@@ -327,7 +341,10 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(res.ok).toBe(true);
     const restored = fakeMetaDoc.doc.getMap("spaces").get(SID) as Y.Map<unknown>;
     expect(restored.get("name")).toBe("Restored Me");
-    expect(sql).toHaveBeenCalled(); // un-soft-delete canvas row
+    // The canvas-{spaceId} row's deleted_at is cleared via the core repo.
+    expect(restoreByNameMock).toHaveBeenCalledWith(
+      `project-${PID}/canvas-${SID}`,
+    );
     // and a space-restored projectMessage was pushed
     expect(fakeMetaDoc.doc.getArray("projectMessages").length).toBe(2);
     // 2026-05-27 — original deleted entry is now marked restored=true
@@ -370,7 +387,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getArray("projectMessages").push([secondDeleted]);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "owner-1", role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
@@ -385,7 +402,7 @@ describe("handleSpaceRpc — happy paths", () => {
 
   it("space:restore returns NOT_FOUND when no delete record exists", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "owner-1", role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
@@ -402,7 +419,7 @@ describe("handleSpaceRpc — happy paths", () => {
     fakeMetaDoc.doc.getArray("projectMessages").push([m1]);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus(), sql: makeSql() },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: "owner-1", role: "owner" },
       { id: "r1", type: "messages:clear", payload: { all: true } },

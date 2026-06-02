@@ -21,29 +21,34 @@
  * upgrade request (Hocuspocus exposes the upgrade-request headers via
  * `requestHeaders`).
  *
- * Session + role resolution are delegated to `@breatic/core`
- * (`getSession` + `projectAuthService.loadProjectRole`) — the same
- * shared kernel the API server uses, so the two services cannot drift.
- * Both are mocked here so the test is hermetic; the only collab-owned
- * SQL left is the `yjs_documents` space-existence read, driven through
- * the staged `sqlQueue`.
+ * Session + role resolution AND the Yjs space-existence read are all
+ * delegated to `@breatic/core` (`getSession` +
+ * `projectAuthService.loadProjectRole` + `yjsDocumentsRepo.fetchDocData`)
+ * — the same shared kernel + single `yjs_documents` repo home the API
+ * server uses, so the services cannot drift. All three are mocked here
+ * so the test is hermetic; collab issues no raw SQL of its own.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type Redis from "ioredis";
-import type { IncomingHttpHeaders } from "node:http";
 import * as Y from "yjs";
 
 // `vi.hoisted` lifts these above the `vi.mock` factories (vitest hoists
 // mock calls to the top of the file). The factories below close over
 // them, so they must exist before any factory runs.
-const { loggerWarn, loggerError, getSessionMock, loadProjectRoleMock } =
-  vi.hoisted(() => ({
-    loggerWarn: vi.fn(),
-    loggerError: vi.fn(),
-    getSessionMock: vi.fn(),
-    loadProjectRoleMock: vi.fn(),
-  }));
+const {
+  loggerWarn,
+  loggerError,
+  getSessionMock,
+  loadProjectRoleMock,
+  fetchDocDataMock,
+} = vi.hoisted(() => ({
+  loggerWarn: vi.fn(),
+  loggerError: vi.fn(),
+  getSessionMock: vi.fn(),
+  loadProjectRoleMock: vi.fn(),
+  fetchDocDataMock: vi.fn(),
+}));
 
 vi.mock("../infra/logger.js", () => ({
   createLogger: () => ({
@@ -58,35 +63,34 @@ vi.mock("../infra/logger.js", () => ({
 // importing the real barrel pulls the `ai` SDK + opentelemetry
 // transitive deps that vitest's ESM resolver chokes on. auth.ts uses
 // exactly four exports — substitute each:
-//   - createPgClient: a tagged-template stub draining `sqlQueue` (the
-//     space-existence read is the only SQL collab still issues here)
 //   - getSession / loadProjectRole: the shared auth kernel, mocked
+//   - yjsDocumentsRepo.fetchDocData: the single home for `yjs_documents`
+//     SQL (the space-existence read), mocked to return a meta blob
 //   - SESSION_COOKIE_NAME: the cookie name constant
 vi.mock("@breatic/core", () => ({
-  createPgClient: () => () => {
-    const next = sqlQueue.shift();
-    return Promise.resolve(next ?? []);
-  },
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
+  yjsDocumentsRepo: { fetchDocData: fetchDocDataMock },
   SESSION_COOKIE_NAME: "breatic_session",
 }));
 
 import { createAuthHook } from "../hooks/auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
-function withCookie(token: string): IncomingHttpHeaders {
+function withCookie(token: string): { cookie: string } {
   return { cookie: `breatic_session=${token}` };
 }
 
 /**
  * Build a binary blob of a meta doc whose `spaces` Y.Map already
  * contains the given ids. Mirrors what `yjs-bootstrap.encodeInitialMetaState`
- * writes at project creation. Used to stage the space-existence read
- * (`SELECT data FROM yjs_documents WHERE name = project-{pid}/meta`)
- * in the space-exists test cases below.
+ * writes at project creation. Used to stage the
+ * `yjsDocumentsRepo.fetchDocData` return in the space-existence test
+ * cases below.
+ * @param ids - Space ids to seed into `meta.spaces`.
+ * @returns The encoded meta-doc bytes.
  */
-function encodeMetaWithSpaces(ids: string[]): Buffer {
+function encodeMetaWithSpaces(ids: string[]): Uint8Array {
   const doc = new Y.Doc();
   const spaces = doc.getMap("spaces");
   for (const id of ids) {
@@ -94,13 +98,8 @@ function encodeMetaWithSpaces(ids: string[]): Buffer {
     entry.set("id", id);
     spaces.set(id, entry);
   }
-  return Buffer.from(Y.encodeStateAsUpdate(doc));
+  return Y.encodeStateAsUpdate(doc);
 }
-
-// Drives the `createPgClient` stub. After session + role moved to core,
-// the only SQL the hook issues is the meta-doc space-existence read, so
-// at most one entry is staged per invocation.
-let sqlQueue: unknown[][];
 
 const mockRedis = {} as unknown as Redis;
 
@@ -110,18 +109,14 @@ const PLACEHOLDER_TOKEN = "__cookie_auth__";
 
 describe("createAuthHook", () => {
   beforeEach(() => {
-    sqlQueue = [];
     getSessionMock.mockReset();
     loadProjectRoleMock.mockReset();
+    fetchDocDataMock.mockReset();
     loggerWarn.mockReset();
     loggerError.mockReset();
   });
 
-  const buildHook = () =>
-    createAuthHook({
-      redis: mockRedis,
-      databaseUrl: "postgres://x",
-    });
+  const buildHook = () => createAuthHook({ redis: mockRedis });
 
   it("rejects when the session cookie is missing", async () => {
     const hook = buildHook();
@@ -225,8 +220,9 @@ describe("createAuthHook", () => {
   it("accepts an active owner; readOnly = false", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    // The space-existence read is the only SQL the hook still issues.
-    sqlQueue = [[{ data: encodeMetaWithSpaces([SID]) }]];
+    // The space-existence read is the only `yjs_documents` access the
+    // hook makes — staged through the core repo mock.
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
 
     const ctx = await hook({
@@ -257,13 +253,13 @@ describe("createAuthHook", () => {
       connection: { readOnly: false },
     });
     // The meta doc never triggers the space-exists read.
-    expect(sqlQueue.length).toBe(0);
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
   it("accepts an active viewer; readOnly = true", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("view");
-    sqlQueue = [[{ data: encodeMetaWithSpaces([SID]) }]];
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
 
     const ctx = await hook({
@@ -286,7 +282,7 @@ describe("createAuthHook", () => {
     // meta.spaces lists a different Space — the requested one has been
     // removed (soft-deleted; PG row may still hold the binary for owner
     // recovery, but the connection must be refused).
-    sqlQueue = [[{ data: encodeMetaWithSpaces(["other-space-id"]) }]];
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces(["other-space-id"]));
     const hook = buildHook();
 
     await expect(
@@ -301,7 +297,7 @@ describe("createAuthHook", () => {
   it("rejects when the meta doc itself is missing in PG (defensive — bootstrap should always seed it)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    sqlQueue = [[]]; // meta row gone — empty Set treats any spaceId as missing
+    fetchDocDataMock.mockResolvedValue(null); // meta row gone — empty Set treats any spaceId as missing
     const hook = buildHook();
 
     await expect(
@@ -323,7 +319,7 @@ describe("createAuthHook", () => {
       documentName: `project-${PID}/meta`,
       requestHeaders: withCookie("tok"),
     });
-    expect(sqlQueue.length).toBe(0);
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
   // ── Cookie parser robustness ───────────────────────────────────

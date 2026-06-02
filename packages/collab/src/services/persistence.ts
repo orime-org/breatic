@@ -1,54 +1,65 @@
 /**
  * PostgreSQL persistence for Hocuspocus documents.
  *
- * Uses the `@hocuspocus/extension-database` extension with
- * raw postgres.js queries for storing/loading Yjs documents.
+ * Wires `@hocuspocus/extension-database` to the shared core
+ * `yjsDocumentsRepo` (Drizzle, over the process-wide `db` singleton) so
+ * the Yjs binary store goes through the single `yjs_documents` repo home
+ * like every other access to that table — no collab-private postgres.js
+ * pool. The collab process's pool is the core `db` singleton, built
+ * lazily after `initCore` (one per-process pool, same as server /
+ * worker).
  */
 
 import { Database } from "@hocuspocus/extension-database";
-import { createPgClient } from "@breatic/core";
+import { yjsDocumentsRepo } from "@breatic/core";
 
 /**
- * Create a Database extension for Hocuspocus using PostgreSQL.
+ * Load a document's latest binary state (Hocuspocus `fetch`).
  *
- * Documents are stored as binary blobs in the `yjs_documents` table.
- * @param databaseUrl - PostgreSQL connection string
- * @returns Configured Database extension
+ * Soft-deleted rows read as absent (the repo filters `deleted_at`), so
+ * a stale client reconnecting after its project was deleted cannot
+ * recover the old content.
+ * @param args - Hocuspocus fetch payload.
+ * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
+ * @returns The stored Yjs update bytes, or null when no live row exists.
  */
-export function createPersistenceExtension(databaseUrl: string): Database {
-  const sql = createPgClient(databaseUrl, {
-    name: "collab-persistence",
-    max: 5,
-  });
-
-  return new Database({
-    fetch: async ({ documentName }) => {
-      // Filter soft-deleted docs so a stale client reconnecting after
-      // its project was deleted can't recover the old content.
-      const rows = await sql`
-        SELECT data FROM yjs_documents
-        WHERE name = ${documentName} AND deleted_at IS NULL
-        LIMIT 1
-      `;
-      return rows[0]?.data as Uint8Array | null;
-    },
-
-    store: async ({ documentName, state }) => {
-      // Upsert clears deleted_at so a store after soft-delete would
-      // resurrect the doc. In practice this can't happen because
-      // soft-delete cascades from project deletion, and a deleted
-      // project refuses WebSocket auth before Hocuspocus ever calls
-      // store. The explicit SET here is defense-in-depth and keeps
-      // the upsert semantics simple.
-      await sql`
-        INSERT INTO yjs_documents (name, data, updated_at, deleted_at)
-        VALUES (${documentName}, ${state}, NOW(), NULL)
-        ON CONFLICT (name) DO UPDATE
-        SET data = EXCLUDED.data, updated_at = NOW(), deleted_at = NULL
-      `;
-    },
-  });
+export async function fetchDoc({
+  documentName,
+}: {
+  documentName: string;
+}): Promise<Uint8Array | null> {
+  return yjsDocumentsRepo.fetchDocData(documentName);
 }
 
-// Table creation is handled by Drizzle migration (0000_dear_hardball.sql).
-// No ensureTable() needed — migrate service runs before all app services.
+/**
+ * Persist a document's binary state (Hocuspocus `store`).
+ *
+ * The upsert clears `deleted_at`, so a store after a soft-delete would
+ * resurrect the doc; in practice a soft-deleted project refuses
+ * WebSocket auth before `store` is ever called (defense in depth).
+ * @param args - Hocuspocus store payload.
+ * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
+ * @param args.state - Encoded Yjs update bytes to persist.
+ */
+export async function storeDoc({
+  documentName,
+  state,
+}: {
+  documentName: string;
+  state: Uint8Array;
+}): Promise<void> {
+  await yjsDocumentsRepo.upsertDocData(documentName, state);
+}
+
+/**
+ * Create a Database extension for Hocuspocus backed by `yjs_documents`.
+ *
+ * Documents are stored as binary blobs; all SQL lives in the core
+ * `yjsDocumentsRepo`. Table creation is handled by the Drizzle
+ * migration (0000_dear_hardball.sql) — the migrate service runs before
+ * any app service, so no `ensureTable()` is needed here.
+ * @returns Configured Database extension delegating to the core repo.
+ */
+export function createPersistenceExtension(): Database {
+  return new Database({ fetch: fetchDoc, store: storeDoc });
+}
