@@ -36,6 +36,7 @@
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
 import { createPgClient, getSession, projectAuthService, SESSION_COOKIE_NAME } from "@breatic/core";
+import { fetchDocumentData } from "@collab/services/yjs-documents.repo.js";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -121,9 +122,10 @@ export interface CreateAuthHookOptions {
  * the empty-set path is a defensive fallback rather than a real
  * expected state).
  *
- * This is collab-private `yjs_documents` access. Consolidating every
- * collab `yjs_documents` query into one repo is the collab internal
- * reorg (a separate PR); for now it stays here behind the auth pool.
+ * This is collab-private `yjs_documents` access. The raw SQL now lives in
+ * the collab `yjs-documents.repo` ("one table, one repo home"); this hook
+ * reads the meta blob through the repo and decodes the Yjs `meta.spaces`
+ * set.
  * @param sql - Postgres client used to read the collab-private `yjs_documents` table.
  * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
  * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when the meta row is missing.
@@ -132,17 +134,11 @@ async function loadProjectSpaceIds(
   sql: ReturnType<typeof createPgClient>,
   projectId: string,
 ): Promise<Set<string>> {
-  const docName = projectMetaDocName(projectId);
-  const rows = await sql<{ data: Buffer }[]>`
-    SELECT data
-    FROM yjs_documents
-    WHERE name = ${docName} AND deleted_at IS NULL
-    LIMIT 1
-  `;
-  if (rows.length === 0 || !rows[0]?.data) return new Set();
+  const data = await fetchDocumentData(sql, projectMetaDocName(projectId));
+  if (!data) return new Set();
 
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, new Uint8Array(rows[0].data));
+  Y.applyUpdate(doc, new Uint8Array(data));
   const spaces = doc.getMap("spaces");
   return new Set(spaces.keys());
 }

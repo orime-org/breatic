@@ -28,6 +28,10 @@
  */
 import type { Hocuspocus } from "@hocuspocus/server";
 import type postgres from "postgres";
+import {
+  softDeleteDocument,
+  restoreDocument,
+} from "@collab/services/yjs-documents.repo.js";
 import * as Y from "yjs";
 
 import {
@@ -205,12 +209,7 @@ async function softDeleteCanvasRow(
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  const docName = canvasSpaceDocName(projectId, spaceId);
-  await sql`
-    UPDATE yjs_documents
-    SET deleted_at = now()
-    WHERE name = ${docName} AND deleted_at IS NULL
-  `;
+  await softDeleteDocument(sql, canvasSpaceDocName(projectId, spaceId));
 }
 
 /**
@@ -224,12 +223,7 @@ async function restoreCanvasRow(
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  const docName = canvasSpaceDocName(projectId, spaceId);
-  await sql`
-    UPDATE yjs_documents
-    SET deleted_at = NULL
-    WHERE name = ${docName}
-  `;
+  await restoreDocument(sql, canvasSpaceDocName(projectId, spaceId));
 }
 
 // ── Handlers ────────────────────────────────────────────────────────

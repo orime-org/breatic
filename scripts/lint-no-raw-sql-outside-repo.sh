@@ -34,11 +34,11 @@
 # queries freely. `connectivity-check.ts` is also exempt — its
 # `sql`SELECT 1`` is a liveness ping (no table), not table data access.
 #
-# collab is NOT scanned here: its only remaining raw SQL is against its
-# private `yjs_documents` table (persistence + space-existence). That
-# consolidation is the collab internal reorg (a separate PR); the
-# auth-table drift collab used to have is locked by the companion
-# guard lint-no-collab-auth-table-sql.
+# collab IS scanned: its only raw SQL is against its private
+# `yjs_documents` table, now consolidated into
+# `collab/src/services/yjs-documents.repo.ts` ("one table, one repo
+# home"). The auth-table drift collab used to have is additionally
+# locked by the companion guard lint-no-collab-auth-table-sql.
 #
 # Runs in CI and as `pnpm lint:no-raw-sql-outside-repo`. Non-zero exit
 # blocks the PR.
@@ -62,6 +62,7 @@ SCAN_DIRS=(
   packages/core/src
   packages/server/src
   packages/domain/src
+  packages/collab/src
 )
 
 CANDIDATES=$(find "${SCAN_DIRS[@]}" \
@@ -121,4 +122,4 @@ if [[ -n "$MATCHES" ]]; then
   exit 1
 fi
 
-echo "lint:no-raw-sql-outside-repo — clean (core + server keep raw SQL in *.repo.ts)"
+echo "lint:no-raw-sql-outside-repo — clean (core + server + domain + collab keep raw SQL in *.repo.ts)"
