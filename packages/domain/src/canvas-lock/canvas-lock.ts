@@ -14,7 +14,7 @@
  *
  * Storage: DB 0 (general purpose; same as session / rate-limit).
  */
-import type Redis from "ioredis";
+import type { Redis } from "@breatic/core";
 import { env } from "@breatic/core";
 import { getRedis } from "@breatic/core";
 

@@ -34,7 +34,7 @@
  * own.
  */
 
-import type Redis from "ioredis";
+import type { Redis } from "@breatic/core";
 import type { IncomingHttpHeaders } from "node:http";
 import { getSession, projectAuthService, SESSION_COOKIE_NAME, yjsDocumentsRepo } from "@breatic/core";
 import * as Y from "yjs";

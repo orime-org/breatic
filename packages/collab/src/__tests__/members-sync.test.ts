@@ -16,7 +16,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import * as Y from "yjs";
-import type Redis from "ioredis";
+import type { Redis } from "@breatic/core";
 import type { Hocuspocus } from "@hocuspocus/server";
 import {
   membersChangedChannel,

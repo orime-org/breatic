@@ -188,6 +188,18 @@ jobs:
         # scripts/lint-no-postgres-outside-core.sh.
         run: pnpm lint:no-postgres-outside-core
 
+      - name: Lint no-ioredis-outside-core (one Redis driver home)
+        # Enforce the 2026-06-02 Redis adapter unification plan: the ioredis driver may
+        # be imported only in @breatic/core (the client factory +
+        # get{Redis,QueueRedis,StreamRedis} singletons + pingRedis + the
+        # re-exported Redis type). Every other package reaches Redis
+        # through those core exports, so the driver / its Redis type never
+        # leak across the package boundary (collab + domain used to import
+        # ioredis directly). Redis is multi-connection by protocol so the
+        # *connections* aren't collapsed — only the *driver package* is
+        # locked to core. See scripts/lint-no-ioredis-outside-core.sh.
+        run: pnpm lint:no-ioredis-outside-core
+
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
         # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL

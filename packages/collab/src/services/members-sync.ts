@@ -26,7 +26,7 @@
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
-import type Redis from "ioredis";
+import type { Redis } from "@breatic/core";
 import {
   ALL_PROJECT_CHANNELS_PATTERN,
   parseDocName,

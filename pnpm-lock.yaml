@@ -80,9 +80,6 @@ importers:
       dotenv:
         specifier: ^16.4.0
         version: 16.4.0
-      ioredis:
-        specifier: 5.10.1
-        version: 5.10.1
       lib0:
         specifier: ^0.2.117
         version: 0.2.117
@@ -250,9 +247,6 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.0)(postgres@3.4.0)
-      ioredis:
-        specifier: 5.10.1
-        version: 5.10.1
       ipaddr.js:
         specifier: ^2.3.0
         version: 2.3.0

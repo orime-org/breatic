@@ -17,6 +17,7 @@ import {
   getRedis,
   getQueueRedis,
   pingDb,
+  pingRedis,
   startHealthServer,
 } from "@breatic/core";
 
@@ -88,7 +89,8 @@ export function startWorker(): void {
     checks: [
       {
         name: "redis_general",
-        check: async () => (await getRedis().ping()) === "PONG",
+        // Single PING liveness helper, shared across all services.
+        check: () => pingRedis(getRedis()),
       },
       {
         name: "postgres",

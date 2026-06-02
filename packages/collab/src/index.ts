@@ -13,6 +13,7 @@ import {
   env,
   createRedisClient,
   pingDb,
+  pingRedis,
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
@@ -64,7 +65,6 @@ async function main(): Promise<void> {
 
   // Create and start Hocuspocus server
   const { server, hocuspocus } = await createCollabServer({
-    redisUrl: REDIS_URL,
     streamRedisUrl: REDIS_STREAM_URL,
     envPrefix: ENV_PREFIX,
   });
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
     // → always false → /healthz always 503; with the docker
     // `healthcheck:` that would have looped-restarted prod collab.
     checks: buildCollabHealthChecks({
-      pingRedisStream: async () => (await controlRedis.ping()) === "PONG",
+      pingRedisStream: () => pingRedis(controlRedis),
       // Single SELECT-1 liveness helper, shared across all services,
       // over the process-wide `db` singleton (same pool collab uses for
       // persistence + auth — no dedicated probe pool).
