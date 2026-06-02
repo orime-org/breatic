@@ -2,7 +2,7 @@
 # lint-no-drizzle-type-leak — forbid Drizzle's `$inferSelect` /
 # `$inferInsert` row-type helpers outside the repository layer.
 #
-# Rationale (CLAUDE.md 禁止清单 #3 "Drizzle 类型泄漏" + CI maximal-
+# Rationale (CLAUDE.md prohibition list #3 "Drizzle type leak" + CI maximal-
 # strictness guard suite, inner ADR 2026-06-01): a Drizzle-inferred row
 # type must NOT become the domain / service / API type. The repo layer
 # (`*.repo.ts`) is the single place allowed to touch the inferred row
@@ -16,7 +16,7 @@
 # explicit `$inferSelect` / `$inferInsert` tokens used outside a
 # `*.repo.ts`. It CANNOT detect an IMPLICIT leak (e.g. returning a bare
 # `db.select()` result, whose type is still Drizzle-shaped, without ever
-# writing `$inferSelect`). 禁#3 still needs human review for implicit
+# writing `$inferSelect`). prohibition #3 still needs human review for implicit
 # Drizzle types reaching a service / route signature.
 #
 # Runs in CI (.github/workflows/ci.yml) and as
@@ -81,7 +81,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 禁止清单 #3, a Drizzle-inferred row type must not" >&2
+  echo "Per CLAUDE.md prohibition list #3, a Drizzle-inferred row type must not" >&2
   echo "leak out of the repo layer. Keep \$inferSelect inside a *.repo.ts" >&2
   echo "toEntity() mapping and expose a hand-written domain entity (e.g." >&2
   echo "in @breatic/shared) to services / routes instead." >&2

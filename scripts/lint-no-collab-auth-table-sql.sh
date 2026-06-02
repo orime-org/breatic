@@ -2,7 +2,8 @@
 # lint-no-collab-auth-table-sql — forbid @breatic/collab from
 # hand-rolling the shared authentication lookups.
 #
-# Rationale (2026-05-31 ADR "二次调整" 鉴权统一): collab used to
+# Rationale (2026-05-31 ADR "the domain-extraction follow-up", auth
+# unification): collab used to
 # hand-roll its own auth — a raw `redis.get(`${env}:session:${token}`)`
 # for the session and raw SQL `SELECT ... FROM project_members JOIN
 # users` for the role — which drifted from the API server's path. PR2
@@ -96,8 +97,8 @@ if [[ -n "$MATCHES" ]]; then
   echo "@breatic/collab must NOT query project_members or build a" >&2
   echo "raw :session: redis key. Session + role resolution live in" >&2
   echo "@breatic/core — call getSession / projectAuthService.loadProjectRole" >&2
-  echo "so collab + server can never drift on auth. See ADR 二次调整" >&2
-  echo "鉴权统一 + packages/collab/src/auth.ts." >&2
+  echo "so collab + server can never drift on auth. See the ADR for the" >&2
+  echo "domain-extraction follow-up (auth unification) + packages/collab/src/auth.ts." >&2
   exit 1
 fi
 

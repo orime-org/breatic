@@ -10,21 +10,28 @@
 # Hardcoded CJK in TS / TSX / CSS source — whether in a string literal OR
 # a comment — is a regression and this guard fails the PR on it.
 #
-# YAML config is scanned too (CLAUDE.md 禁止清单 #13 "YAML 中文"):
+# YAML config is scanned too (CLAUDE.md prohibition #13, "no CJK in YAML"):
 # config/*.yaml, docker-compose.yml, the workspace file and the GitHub
 # workflow yaml are operational artifacts developers read and run, so
 # their comments and values must be English just like source. The
 # generated pnpm-lock.yaml is excluded (machine-authored, not edited).
 #
+# Shell guard scripts are scanned too (scripts/*.sh): they are code that
+# developers read and run, so their comments and echo strings must be
+# English. The sole exception is THIS file — a CJK detector necessarily
+# embeds the CJK range characters in its matcher (CJK_REGEX below), so it
+# cannot scan itself; its prose is kept English by review.
+#
 # Three categories are LEGITIMATELY non-English and are exempt:
 #   1. i18n locale catalogs (`locales/*.json`) — product translations.
-#      Not scanned (this guard only looks at .ts / .tsx / .css / .yaml /
-#      .yml).
+#      Not scanned (this guard looks at .ts / .tsx / .css / .yaml / .yml
+#      and scripts/*.sh).
 #   2. Test fixtures (`*.test.*`, `*.spec.*`, `__tests__/`) — Unicode /
 #      locale-switching test logic legitimately uses CJK. Excluded below.
 #   3. Deliberate product-data strings — e.g. the language switcher shows
-#      each language in its own native script (简体中文 / 日本語), which by
-#      design is never localized. These go in the ALLOWLIST below.
+#      each language in its own native script (Simplified Chinese,
+#      Japanese, ...), which by design is never localized. These go in the
+#      ALLOWLIST below.
 #
 # Implementation notes (this guard used to be silently broken):
 #   - The file list is built with `find`, NOT grep's --include/--exclude.
@@ -63,15 +70,16 @@ done
 #   U+FF00-FFEF  Halfwidth and Fullwidth Forms
 # NOTE: the literal range characters below are unavoidable (the regex has
 # to span the blocks) and bash 3.2 on macOS lacks `$'\uXXXX'`, so they are
-# written as raw UTF-8. This .sh file is not itself scanned by the guard.
+# written as raw UTF-8. This is exactly why this file excludes itself from
+# the scripts/*.sh scan (it necessarily contains CJK in CJK_REGEX).
 CJK_REGEX='[぀-ヿ一-鿿가-힣＀-￯]'
 
 # Allowlist — production files permitted to carry non-English by deliberate
 # design (category 3 above). Keep this short and justify every entry in the
 # PR that adds it.
 #   - LangSwitcher.tsx: the language picker renders each language in its own
-#     native script (简体中文 / 日本語 / 繁體中文); these are constant product
-#     data, never localized. See memory feedback_language_picker_native_names.
+#     native script (Simplified Chinese, Japanese, Traditional Chinese);
+#     these are constant product data, never localized.
 ALLOWLIST_REGEX='packages/web/src/pages/project/chrome/top-bar/LangSwitcher\.tsx'
 
 # Build the scan list with find (portable across BSD + GNU; avoids the
@@ -92,8 +100,8 @@ FILES=$(find packages \
   -not -name '*.spec.tsx' \
   2>/dev/null || true)
 
-# YAML config (禁#13): runtime config (config/**), the workspace +
-# compose files, and the GitHub workflow yaml. pnpm-lock.yaml is
+# YAML config (prohibition #13): runtime config (config/**), the workspace
+# + compose files, and the GitHub workflow yaml. pnpm-lock.yaml is
 # generated (machine-authored) and excluded.
 YAML_FILES=$(find config .github docker-compose.yml pnpm-workspace.yaml \
   -type f \( -name '*.yaml' -o -name '*.yml' \) \
@@ -101,8 +109,16 @@ YAML_FILES=$(find config .github docker-compose.yml pnpm-workspace.yaml \
   -not -name 'pnpm-lock.yaml' \
   2>/dev/null || true)
 
+# Shell guard scripts (scripts/*.sh): code developers read and run, so
+# their comments and echo strings must be English. lint-no-cjk.sh excludes
+# itself — a CJK detector necessarily embeds CJK in its matcher (see above).
+SH_FILES=$(find scripts \
+  -type f -name '*.sh' \
+  -not -name 'lint-no-cjk.sh' \
+  2>/dev/null || true)
+
 MATCHES=$(
-  printf '%s\n%s\n' "$FILES" "$YAML_FILES" \
+  printf '%s\n%s\n%s\n' "$FILES" "$YAML_FILES" "$SH_FILES" \
     | grep -vE '^$' \
     | grep -vE "$ALLOWLIST_REGEX" \
     | tr '\n' '\0' \
@@ -111,17 +127,17 @@ MATCHES=$(
 )
 
 if [[ -n "$MATCHES" ]]; then
-  echo "lint:no-cjk — found non-English characters in production source or YAML config:" >&2
+  echo "lint:no-cjk — found non-English characters in production source, YAML config or shell scripts:" >&2
   echo "" >&2
   echo "$MATCHES" >&2
   echo "" >&2
-  echo "breatic is a global open-source project: code, comments AND YAML" >&2
-  echo "config (禁#13) must be written in English. User-facing strings must" >&2
-  echo "live in locales/*.json and route through t(). If a match is a" >&2
-  echo "deliberate product-data string (e.g. a language name shown in its" >&2
-  echo "native script), add the file to the ALLOWLIST in" >&2
+  echo "breatic is a global open-source project: code, comments, YAML" >&2
+  echo "config and shell scripts (prohibition #13) must be in English." >&2
+  echo "User-facing strings must live in locales/*.json and route through" >&2
+  echo "t(). If a match is a deliberate product-data string (e.g. a language" >&2
+  echo "name shown in its native script), add the file to the ALLOWLIST in" >&2
   echo "scripts/lint-no-cjk.sh with a justification." >&2
   exit 1
 fi
 
-echo "lint:no-cjk — clean (no non-English characters in production source or YAML config)"
+echo "lint:no-cjk — clean (no non-English characters in production source, YAML config or shell scripts)"

@@ -2,7 +2,7 @@
 # lint-no-relative-import — forbid relative ('./' or '../') import
 # specifiers in non-test source across every package.
 #
-# Rationale (CLAUDE.md 禁止清单, 2026-05-29): the repo enforces a
+# Rationale (CLAUDE.md prohibition list, 2026-05-29): the repo enforces a
 # uniform path-alias import style. Every intra-package reference goes
 # through an alias, never a relative path:
 #
@@ -113,7 +113,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 禁止清单, non-test source must import via a path" >&2
+  echo "Per CLAUDE.md prohibition list, non-test source must import via a path" >&2
   echo "alias, never a relative './' or '../' path. Use the package's" >&2
   echo "alias: @shared/* (shared), @core/* (core), @domain/* (domain)," >&2
   echo "@collab/* (collab), @worker/* (worker), @server/* (server), @web/* (web)." >&2
@@ -121,3 +121,4 @@ if [[ -n "$MATCHES" ]]; then
 fi
 
 echo "lint:no-relative-import — clean (no relative imports in non-test source)"
+

@@ -2,7 +2,7 @@
 # lint-schema-timestamps — every Drizzle pgTable must carry created_at
 # and deleted_at, with a small justified allowlist for deleted_at.
 #
-# Rationale (CLAUDE.md 软删除 + created_at mandates + CI maximal-
+# Rationale (CLAUDE.md soft-delete + created_at mandates + CI maximal-
 # strictness guard suite, inner ADR 2026-06-01):
 #   - created_at (REQUIRED on every table, no exemption): every PG table
 #     must have `created_at timestamptz DEFAULT now() NOT NULL` — via the
@@ -14,8 +14,8 @@
 # DELETED_AT ALLOWLIST (each exemption justified, NOT a back door):
 #   - payments              append-only financial record (Stripe). A
 #                           payment is never soft-deleted — accounting /
-#                           audit integrity. CLAUDE.md "append-only 历史/
-#                           事件表只用 created_at" carve-out.
+#                           audit integrity. CLAUDE.md "append-only history/
+#                           event tables use created_at only" carve-out.
 #   - credit_transactions   append-only credit ledger (immutable
 #                           accounting). Same carve-out.
 #   - credit_balances       1:1 with users (PK = user_id); its soft-delete

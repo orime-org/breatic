@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-no-hardcoded-secrets — block hardcoded secrets in source.
 #
-# Rationale (CLAUDE.md prohibition list #4 "硬编码密钥" + security mandate +
+# Rationale (CLAUDE.md prohibition list #4 "hardcoded secrets" + security mandate +
 # CI maximal-strictness guard suite, inner ADR 2026-06-01): API keys,
 # tokens, passwords and credentialed connection strings must come from the
 # environment (env Proxy / getConfig), never be committed in source. The
