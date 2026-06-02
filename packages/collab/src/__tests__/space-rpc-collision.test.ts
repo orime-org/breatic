@@ -15,12 +15,23 @@
  *     returns CONFLICT and the first entry is unchanged.
  *   - INVARIANT 3: any sequence of create-then-delete-then-restore
  *     on a single id ends with the original entry restored intact.
+ *
+ * The canvas-row soft-delete / restore route through the shared core
+ * `yjsDocumentsRepo`; it is mocked to no-ops here so the Yjs-mutation
+ * invariants are exercised without a real PG (and so importing the
+ * handler doesn't pull the real core barrel into vitest's ESM resolver).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
-import type postgres from "postgres";
+
+vi.mock("@breatic/core", () => ({
+  yjsDocumentsRepo: {
+    softDeleteByName: vi.fn(),
+    restoreByName: vi.fn(),
+  },
+}));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";
 
@@ -39,10 +50,6 @@ function makeHocuspocus(): Hocuspocus {
   } as unknown as Hocuspocus;
 }
 
-function makeSql(): ReturnType<typeof postgres> {
-  return vi.fn(async () => []) as unknown as ReturnType<typeof postgres>;
-}
-
 beforeEach(() => {
   fakeDoc = new Y.Doc();
 });
@@ -59,7 +66,7 @@ describe("space:create collision property", () => {
         fc.uniqueArray(spaceIdArb, { minLength: 1, maxLength: 20 }),
         async (ids) => {
           fakeDoc = new Y.Doc();
-          const ctx = { hocuspocus: makeHocuspocus(), sql: makeSql() };
+          const ctx = { hocuspocus: makeHocuspocus() };
           for (const id of ids) {
             const r = await handleSpaceRpc(
               ctx,
@@ -90,7 +97,7 @@ describe("space:create collision property", () => {
         fc.string({ minLength: 1, maxLength: 20 }),
         async (id, name1, name2) => {
           fakeDoc = new Y.Doc();
-          const ctx = { hocuspocus: makeHocuspocus(), sql: makeSql() };
+          const ctx = { hocuspocus: makeHocuspocus() };
           const r1 = await handleSpaceRpc(
             ctx,
             PID,
@@ -132,7 +139,7 @@ describe("space:create collision property", () => {
         fc.string({ minLength: 1, maxLength: 40 }),
         async (id, name) => {
           fakeDoc = new Y.Doc();
-          const ctx = { hocuspocus: makeHocuspocus(), sql: makeSql() };
+          const ctx = { hocuspocus: makeHocuspocus() };
 
           await handleSpaceRpc(
             ctx,

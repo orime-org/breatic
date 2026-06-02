@@ -18,22 +18,21 @@ vi.mock("@server/modules/project/project.repo.js", () => ({
 vi.mock("@server/modules/studio/studio.service.js", () => ({
   ensurePersonalStudio: vi.fn(),
 }));
-vi.mock("@server/modules/yjs-doc/yjs-doc.repo.js", () => ({
-  insertInitialState: vi.fn(),
-}));
 // userRepo moved back to @server in PR4 (domain extraction) — mock it on
 // its own server-local path, not the core barrel.
 vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
 }));
-// db + encodeInitialMetaState stay in @breatic/core; project.service
-// imports them from the barrel, so mock them there (partial — spread the
-// real barrel, override the two).
+// db + encodeInitialMetaState + yjsDocumentsRepo all live in
+// @breatic/core (yjs_documents is shared infra, single repo home in
+// core); project.service imports them from the barrel, so mock them
+// there (partial — spread the real barrel, override the three).
 vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {
   const actual = await importActual();
   return {
     ...actual,
     encodeInitialMetaState: vi.fn(() => Buffer.from("stub-meta-state")),
+    yjsDocumentsRepo: { insertInitialState: vi.fn() },
     db: {
       // Pass-through transaction — runs the callback immediately with a
       // stub tx handle. The repo mocks ignore it, so no real DB needed.
@@ -46,8 +45,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as yjsDocRepo from "@server/modules/yjs-doc/yjs-doc.repo.js";
-import { encodeInitialMetaState } from "@breatic/core";
+import { encodeInitialMetaState, yjsDocumentsRepo } from "@breatic/core";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { create } from "@server/modules/project/project.service.js";
 
@@ -83,13 +81,13 @@ describe("project.service.create — Q2 first-space-name invariant", () => {
     expect(arg?.name).not.toBe("Untitled");
   });
 
-  it("propagates the encoded meta state to yjs-doc.repo", async () => {
+  it("propagates the encoded meta state to the core yjs_documents repo", async () => {
     await create("u-1", "Another Project");
 
-    expect(yjsDocRepo.insertInitialState).toHaveBeenCalledTimes(1);
+    expect(yjsDocumentsRepo.insertInitialState).toHaveBeenCalledTimes(1);
     // Sanity-check the doc name reaches insertInitialState — guards
     // against accidentally calling it with project.id instead.
-    const args = vi.mocked(yjsDocRepo.insertInitialState).mock.calls[0];
+    const args = vi.mocked(yjsDocumentsRepo.insertInitialState).mock.calls[0];
     expect(args?.[1]).toContain("p-1");
   });
 

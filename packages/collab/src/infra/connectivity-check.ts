@@ -10,7 +10,7 @@
  */
 
 import {
-  createPgClient,
+  checkPgReachable,
   createRedisClient,
   InfraNotReadyError,
 } from "@breatic/core";
@@ -27,20 +27,13 @@ export async function checkCollabInfraReady(
   redisUrl: string,
   streamRedisUrl: string,
 ): Promise<void> {
-  // PostgreSQL: confirm server accepts queries
-  // Connectivity check is single-query fail-fast at boot; override
-  // pool size to 1 and shorten `connect_timeout` so a down PG
-  // surfaces in 5s instead of waiting for the factory default.
-  const sql = createPgClient(databaseUrl, {
-    name: "collab-connectivity-check",
-    max: 1,
-    connect_timeout: 5,
-  });
+  // PostgreSQL: fail-fast reachability probe on a throwaway short-
+  // connect-timeout client. core owns the postgres.js driver + the
+  // probe client's lifecycle (createPgClient → SELECT 1 → end), so
+  // collab takes no direct `postgres` dependency.
   try {
-    await sql`SELECT 1`;
-    await sql.end();
+    await checkPgReachable(databaseUrl, { connectTimeout: 5 });
   } catch (err) {
-    await sql.end().catch(() => {});
     throw new InfraNotReadyError(
       "PostgreSQL",
       `Check DATABASE_URL=${databaseUrl} or run: docker compose up -d postgres`,

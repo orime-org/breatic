@@ -13,7 +13,7 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis, rawPg } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis, pingDb } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -98,10 +98,8 @@ const health = startHealthServer({
   checks: [
     {
       name: "postgres",
-      check: async () => {
-        const rows = await rawPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
-        return rows[0]?.ok === 1;
-      },
+      // Single SELECT-1 liveness helper, shared across all services.
+      check: () => pingDb(),
     },
     {
       name: "redis_general",

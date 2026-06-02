@@ -13,7 +13,7 @@
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
-import { createRedisClient, createPgClient } from "@breatic/core";
+import { createRedisClient } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import * as Y from "yjs";
 import {
@@ -35,7 +35,6 @@ const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
-  databaseUrl: string;
   /** General Redis (DB 0) — session verification in auth hook. */
   redisUrl: string;
   /** Stream Redis (DB 2) — Hocuspocus cross-instance pub/sub. */
@@ -63,20 +62,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authRedis = createRedisClient(infra.redisUrl, {
     name: "collab-auth",
   });
-  // Shared PG pool for space-rpc handlers (soft-delete / restore the
-  // canvas-{spaceId} `yjs_documents` row). Auth and persistence each
-  // own their own pool today — consolidating is a follow-up cleanup.
-  // Uses core `createPgClient` so `idle_timeout` / `max_lifetime` /
-  // `application_name` stay aligned with the server-side default.
-  const sharedSql = createPgClient(infra.databaseUrl, {
-    name: "collab-shared",
-    max: 5,
-  });
 
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extensions: any[] = [
-    createPersistenceExtension(infra.databaseUrl),
+    createPersistenceExtension(),
     new RedisExtension({
       // Hocuspocus extension-redis supports an explicit `createClient`
       // factory; when present it bypasses the bare `new RedisClient(
@@ -116,7 +106,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // ownership. See packages/collab/src/auth.ts.
     onAuthenticate: createAuthHook({
       redis: authRedis,
-      databaseUrl: infra.databaseUrl,
     }),
 
     // Extensions
@@ -260,7 +249,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
 
       const response = await handleSpaceRpc(
-        { hocuspocus: wsServer.hocuspocus, sql: sharedSql },
+        { hocuspocus: wsServer.hocuspocus },
         parsed.projectId,
         { userId: callerId, role: callerRole },
         req,

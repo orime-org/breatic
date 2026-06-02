@@ -28,14 +28,15 @@
  * be identical across every backend service. collab used to hand-roll
  * its own copies (raw `redis.get` for the session, raw SQL for the
  * role), which drifted from the server's path; both now call the one
- * shared kernel. The only SQL collab still issues here is the Yjs
- * space-existence read against its own `yjs_documents` table (a
- * collab-private concern, not shared auth).
+ * shared kernel. The Yjs space-existence read also routes through core
+ * (`yjsDocumentsRepo.fetchDocData`, the single home for `yjs_documents`
+ * SQL) over the shared `db` singleton — collab issues no raw SQL of its
+ * own.
  */
 
 import type Redis from "ioredis";
 import type { IncomingHttpHeaders } from "node:http";
-import { createPgClient, getSession, projectAuthService, SESSION_COOKIE_NAME } from "@breatic/core";
+import { getSession, projectAuthService, SESSION_COOKIE_NAME, yjsDocumentsRepo } from "@breatic/core";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -92,14 +93,14 @@ export interface AuthContext {
 /**
  * Options required to build the auth hook.
  *
- * The Postgres connection is used ONLY for the `yjs_documents`
- * space-existence read (`loadProjectSpaceIds`); session + role
- * resolution route through core (`getSession` / `loadProjectRole`)
- * and need no collab-owned pool.
+ * Only Redis is needed: the session lookup uses it (through core's
+ * shared session store), while the role lookup and the `yjs_documents`
+ * space-existence read route through core (`loadProjectRole` /
+ * `yjsDocumentsRepo`) over the shared `db` singleton — no collab-owned
+ * Postgres pool.
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
-  databaseUrl: string;
 }
 
 /**
@@ -121,28 +122,21 @@ export interface CreateAuthHookOptions {
  * the empty-set path is a defensive fallback rather than a real
  * expected state).
  *
- * This is collab-private `yjs_documents` access. Consolidating every
- * collab `yjs_documents` query into one repo is the collab internal
- * reorg (a separate PR); for now it stays here behind the auth pool.
- * @param sql - Postgres client used to read the collab-private `yjs_documents` table.
+ * The `yjs_documents` read goes through the shared core repo — the
+ * single home for that table's SQL — over the process-wide `db`
+ * singleton, so collab keeps no private pool of its own.
  * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
  * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when the meta row is missing.
  */
 async function loadProjectSpaceIds(
-  sql: ReturnType<typeof createPgClient>,
   projectId: string,
 ): Promise<Set<string>> {
   const docName = projectMetaDocName(projectId);
-  const rows = await sql<{ data: Buffer }[]>`
-    SELECT data
-    FROM yjs_documents
-    WHERE name = ${docName} AND deleted_at IS NULL
-    LIMIT 1
-  `;
-  if (rows.length === 0 || !rows[0]?.data) return new Set();
+  const data = await yjsDocumentsRepo.fetchDocData(docName);
+  if (!data) return new Set();
 
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, new Uint8Array(rows[0].data));
+  Y.applyUpdate(doc, new Uint8Array(data));
   const spaces = doc.getMap("spaces");
   return new Set(spaces.keys());
 }
@@ -156,18 +150,11 @@ async function loadProjectSpaceIds(
  * consumers.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
- * @param root0.databaseUrl - Postgres connection string for the collab-private `yjs_documents` space-existence read.
  * @returns The Hocuspocus `onAuthenticate` handler that resolves and returns the authenticated user + read-only flag, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
-  databaseUrl,
 }: CreateAuthHookOptions) {
-  const sql = createPgClient(databaseUrl, {
-    name: "collab-auth",
-    max: 5,
-  });
-
   return async ({
     documentName,
     requestHeaders,
@@ -258,7 +245,7 @@ export function createAuthHook({
       // meta.spaces; PG row stays for recovery but new connections cannot
       // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
       if (parsed.kind !== "meta") {
-        const ids = await loadProjectSpaceIds(sql, parsed.projectId);
+        const ids = await loadProjectSpaceIds(parsed.projectId);
         if (!ids.has(parsed.spaceId)) {
           logger.warn(
             {

@@ -26,6 +26,8 @@
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
     "lint:no-library-process-exit": "bash scripts/lint-no-library-process-exit.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
+    "lint:no-yjs-documents-sql-outside-repo": "bash scripts/lint-no-yjs-documents-sql-outside-repo.sh",
+    "lint:no-postgres-outside-core": "bash scripts/lint-no-postgres-outside-core.sh",
     "lint:no-param-as-string": "bash scripts/lint-no-param-as-string.sh",
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "lint:no-sync-in-request-path": "bash scripts/lint-no-sync-in-request-path.sh",

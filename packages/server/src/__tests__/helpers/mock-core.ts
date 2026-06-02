@@ -292,12 +292,6 @@ export const mocks = {
       name: "Personal Studio",
     }),
   },
-  // members:changed pub/sub still lives here (the only control-plane
-  // event the API still publishes — Space lifecycle moved to collab
-  // stateless RPC per ADR 2026-05-23-yjs-collab-only-write-authz).
-  yjsDocRepo: {
-    softDeleteByName: vi.fn().mockResolvedValue(true),
-  },
 };
 
 // Alias the auth service's user-read pass-throughs to the userRepo spies
@@ -446,6 +440,5 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     roleUpgradeRequestService: mocks.roleUpgradeRequestService,
     shareInviteMail: mocks.shareInviteMail,
     studioService: mocks.studioService,
-    yjsDocRepo: mocks.yjsDocRepo,
   };
 };

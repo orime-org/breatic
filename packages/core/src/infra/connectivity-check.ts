@@ -12,8 +12,7 @@
  * `tsx packages/server/src/index.ts` directly).
  */
 
-import { sql } from "drizzle-orm";
-import { db } from "@core/db/client.js";
+import { pingDb } from "@core/db/client.js";
 import { getRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/env.js";
 import { InfraNotReadyError } from "@core/infra/errors.js";
@@ -25,9 +24,10 @@ import { InfraNotReadyError } from "@core/infra/errors.js";
  *   and calls `process.exit(1)`.
  */
 export async function checkInfraReady(): Promise<void> {
-  // PostgreSQL: run a trivial query to confirm the server accepts connections
+  // PostgreSQL: SELECT 1 round-trip confirms the server accepts queries
+  // (the shared liveness helper — same probe the /healthz endpoint uses).
   try {
-    await db.execute(sql`SELECT 1`);
+    await pingDb();
   } catch (err) {
     throw new InfraNotReadyError(
       "PostgreSQL",

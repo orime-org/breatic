@@ -2,13 +2,18 @@
  * Server `/healthz` integration test.
  *
  * Health moved from hono `GET /api/health` (port 3000, removed in
- * this PR `feat/2026-05-28-server-healthz-unify`) to an independent
- * http server `GET /healthz` on port 3001, matching worker (9101)
- * and collab (1235) shape. Source of truth contract test lives in
- * `packages/core/src/infra/__tests__/health-server.test.ts` — this
- * file just asserts that the server entry's check wiring (PG +
- * Redis singletons) returns the expected discriminant when fed mock
- * implementations.
+ * `feat/2026-05-28-server-healthz-unify`) to an independent http server
+ * `GET /healthz` on port 3001, matching worker (9101) and collab (1235).
+ * Source of truth contract test lives in
+ * `packages/core/src/infra/__tests__/health-server.test.ts`; this file
+ * just asserts the server entry's check wiring (PG + Redis singletons)
+ * returns the expected discriminant when fed mock implementations.
+ *
+ * The Postgres probe delegates to core's single `pingDb()` liveness
+ * helper (shared by server / worker / collab + the boot connectivity
+ * check) — the SELECT-1 logic itself is unit-tested in
+ * `packages/core/src/db/client.ping.test.ts`; here we only pin that the
+ * postgres check forwards to it.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -22,15 +27,12 @@ type Check = {
 };
 
 const buildServerChecks = (
-  pg: { rawPg: <T>(q: TemplateStringsArray) => Promise<T> },
+  pingDb: () => Promise<boolean>,
   redis: { ping: () => Promise<string> },
 ): Check[] => [
   {
     name: "postgres",
-    check: async () => {
-      const rows = await pg.rawPg<Array<{ ok: number }>>`SELECT 1 AS ok`;
-      return rows[0]?.ok === 1;
-    },
+    check: () => pingDb(),
   },
   {
     name: "redis_general",
@@ -39,34 +41,26 @@ const buildServerChecks = (
 ];
 
 describe("server healthz check wiring", () => {
-  it("postgres check returns true when SELECT 1 yields ok=1", async () => {
-    const rawPg = vi.fn(() => Promise.resolve([{ ok: 1 }]));
+  it("postgres check forwards pingDb's true result", async () => {
+    const pingDb = vi.fn(() => Promise.resolve(true));
     const ping = vi.fn(() => Promise.resolve("PONG"));
-    const [pgCheck, redisCheck] = buildServerChecks(
-      { rawPg: rawPg as never },
-      { ping },
-    );
+    const [pgCheck, redisCheck] = buildServerChecks(pingDb, { ping });
     await expect(pgCheck!.check()).resolves.toBe(true);
     await expect(redisCheck!.check()).resolves.toBe(true);
+    expect(pingDb).toHaveBeenCalledTimes(1);
   });
 
-  it("postgres check returns false when SELECT 1 yields wrong shape", async () => {
-    const rawPg = vi.fn(() => Promise.resolve([{ ok: 0 }]));
+  it("postgres check forwards pingDb's false result", async () => {
+    const pingDb = vi.fn(() => Promise.resolve(false));
     const ping = vi.fn(() => Promise.resolve("PONG"));
-    const [pgCheck] = buildServerChecks(
-      { rawPg: rawPg as never },
-      { ping },
-    );
+    const [pgCheck] = buildServerChecks(pingDb, { ping });
     await expect(pgCheck!.check()).resolves.toBe(false);
   });
 
   it("redis check returns false when ping yields non-PONG", async () => {
-    const rawPg = vi.fn(() => Promise.resolve([{ ok: 1 }]));
+    const pingDb = vi.fn(() => Promise.resolve(true));
     const ping = vi.fn(() => Promise.resolve("ERROR"));
-    const [, redisCheck] = buildServerChecks(
-      { rawPg: rawPg as never },
-      { ping },
-    );
+    const [, redisCheck] = buildServerChecks(pingDb, { ping });
     await expect(redisCheck!.check()).resolves.toBe(false);
   });
 });

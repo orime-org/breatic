@@ -18,10 +18,12 @@
 #     means a hand-rolled session lookup. collab must call core
 #     `getSession` (which owns the `{env}:session:{token}` key).
 #
-# collab's remaining raw SQL is against its own `yjs_documents` table
-# (persistence + space-existence) — that is collab-private and NOT
-# covered here; consolidating it into one repo is the collab internal
-# reorg (a separate PR).
+# collab no longer issues any raw SQL: its `yjs_documents` access (the
+# persistence store/fetch + space-existence read + space-rpc
+# soft-delete/restore) routes through the core `yjsDocumentsRepo` (the
+# single repo home) after the 2026-06-02 DB-adapter unification — see
+# lint-no-yjs-documents-sql-outside-repo and lint-no-raw-sql-outside-repo
+# (which now scans collab too).
 #
 # Runs in CI and as `pnpm lint:no-collab-auth-table-sql`. Non-zero exit
 # blocks the PR.
