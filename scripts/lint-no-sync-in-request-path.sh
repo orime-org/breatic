@@ -3,7 +3,8 @@
 # fs / child_process calls in backend code, EXCEPT documented boot-time
 # loaders.
 #
-# Rationale (CLAUDE.md 禁止清单 #10 "同步阻塞事件循环" + CI maximal-
+# Rationale (CLAUDE.md prohibition list #10 "synchronous blocking of the
+# event loop" + CI maximal-
 # strictness guard suite, inner ADR 2026-06-01): Node runs request
 # handling on a single event loop. A synchronous fs/exec call
 # (readFileSync, execSync, …) blocks that loop — every concurrent
@@ -36,7 +37,7 @@
 # call is flagged. It does NOT prove the request path is sync-free (a
 # sync call hidden behind a per-request helper in a non-allowlisted file
 # WOULD be caught, but a per-request call inside an allowlisted loader
-# would not) — 禁#10 still needs human review for hot-path sync I/O.
+# would not) — prohibition #10 still needs human review for hot-path sync I/O.
 #
 # Runs in CI (.github/workflows/ci.yml) and as
 # `pnpm lint:no-sync-in-request-path`. Non-zero exit blocks merge.
@@ -114,7 +115,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 禁止清单 #10, synchronous fs/child_process calls" >&2
+  echo "Per CLAUDE.md prohibition list #10, synchronous fs/child_process calls" >&2
   echo "block the event loop and are forbidden in request-handling code." >&2
   echo "Use the async form (await fs.promises.*). If this is a genuine" >&2
   echo "boot-time/first-use loader, add its path to the ALLOWLIST in" >&2

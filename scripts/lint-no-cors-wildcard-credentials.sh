@@ -2,7 +2,7 @@
 # lint-no-cors-wildcard-credentials — forbid a CORS config that pairs a
 # wildcard origin ('*' / ['*']) with credentials: true.
 #
-# Rationale (CLAUDE.md 禁止清单 #5 + CI maximal-strictness guard suite,
+# Rationale (CLAUDE.md prohibition list #5 + CI maximal-strictness guard suite,
 # inner ADR 2026-06-01): `Access-Control-Allow-Origin: *` together with
 # `Access-Control-Allow-Credentials: true` is a critical security
 # misconfiguration. The browser will refuse the combination, but more
@@ -76,7 +76,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 禁止清单 #5, a CORS config must NOT pair a wildcard" >&2
+  echo "Per CLAUDE.md prohibition list #5, a CORS config must NOT pair a wildcard" >&2
   echo "origin (\"*\" / [\"*\"]) with credentials: true — it would accept" >&2
   echo "credentialed cross-origin requests from any origin. Use a specific" >&2
   echo "origin whitelist (breatic reads env ALLOWED_ORIGINS)." >&2

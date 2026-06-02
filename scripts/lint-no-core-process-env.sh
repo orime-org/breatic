@@ -2,7 +2,7 @@
 # lint-no-core-process-env — forbid `process.env` access in
 # @breatic/core, @breatic/shared and @breatic/domain production source.
 #
-# Rationale (CLAUDE.md "core / shared 不读环境变量" mandate,
+# Rationale (CLAUDE.md "core / shared must not read env vars" mandate,
 # 2026-05-30): reading environment variables is configuration
 # ACQUISITION, which belongs to the application layer (server /
 # worker / collab entries = the composition root). Library packages
@@ -94,7 +94,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 'core / shared 不读环境变量' mandate, library" >&2
+  echo "Per CLAUDE.md 'core / shared must not read env vars' mandate, library" >&2
   echo "code must NOT read process.env. The application entry reads" >&2
   echo "process.env once and injects via initCore(rawEnv); library" >&2
   echo "code reads the injected config through the env Proxy /" >&2
@@ -103,3 +103,4 @@ if [[ -n "$MATCHES" ]]; then
 fi
 
 echo "lint:no-core-process-env — clean (no process.env in @breatic/core, @breatic/shared or @breatic/domain)"
+

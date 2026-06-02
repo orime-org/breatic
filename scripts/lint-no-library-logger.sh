@@ -2,7 +2,7 @@
 # lint-no-library-logger — forbid `logger.*` and `console.*` calls in
 # @breatic/core, @breatic/shared and @breatic/domain production source.
 #
-# Rationale (CLAUDE.md "服务器端工业级标准" mandate, 2026-05-27):
+# Rationale (CLAUDE.md "server-side industrial-grade standards" mandate, 2026-05-27):
 # Library packages don't decide what to log — only the application
 # layer (server / collab / worker entries) has the full context
 # (userId / requestId / projectId etc.) needed to log usefully and
@@ -125,7 +125,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "Per CLAUDE.md 'core 和 shared 不写任何日志' mandate, library" >&2
+  echo "Per CLAUDE.md 'core and shared must not log' mandate, library" >&2
   echo "code must either throw or return a sentinel — never call" >&2
   echo "logger.{info,warn,error,debug,fatal,trace} or console.*. Move" >&2
   echo "audit logs to the application boundary (server route handler," >&2

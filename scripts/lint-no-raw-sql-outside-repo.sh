@@ -2,16 +2,17 @@
 # lint-no-raw-sql-outside-repo — forbid raw database access outside
 # repository files in @breatic/core, @breatic/domain and @breatic/server.
 #
-# PR4 (二次调整) note: the credit / task / node-history repos moved to
-# @breatic/domain, so domain/src is scanned too — "一张表一个 repo 家"
+# PR4 (the domain-extraction follow-up) note: the credit / task /
+# node-history repos moved to @breatic/domain, so domain/src is scanned
+# too — "one table, one repo home"
 # now spans all three backend packages. Combined with the package
 # boundary guards (only @breatic/domain defines the credit/task/
 # node-history repos), this is the table-ownership enforcement: those
 # tables' SQL can only live in their domain repo.
 #
-# Rationale (2026-05-31 ADR "二次调整" 第二层 CI 守卫): a table's data
-# access (its SQL) must live in exactly one repo module — "一张表一个
-# repo 家". The auth-unification drift happened precisely because the
+# Rationale (2026-05-31 ADR "the domain-extraction follow-up", second-layer
+# CI guard): a table's data access (its SQL) must live in exactly one repo
+# module — "one table, one repo home". The auth-unification drift happened precisely because the
 # project-role query existed in two places (server projectAuth.service
 # + a hand-rolled raw-SQL copy in collab). This guard keeps every
 # raw query in a `*.repo.ts` file so the SQL for a table can never
@@ -114,7 +115,7 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   echo "Raw SQL (sql\`...\`) and Drizzle query builders (db.select /" >&2
   echo ".insert / .update / .delete) belong in a *.repo.ts file — one" >&2
-  echo "table, one repo home (一张表一个 repo 家). Move the query into" >&2
+  echo "table, one repo home. Move the query into" >&2
   echo "the owning repo and call it from here. (db.transaction for" >&2
   echo "service-level orchestration is allowed; it passes tx into repos.)" >&2
   exit 1
