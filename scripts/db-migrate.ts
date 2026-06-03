@@ -54,16 +54,25 @@ if (existsSync(envPath)) {
 // ── Run migration ───────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { initCore, runMigrations } = await import("../packages/core/dist/index.js");
+  const { initCore, runMigrations, runYjsMigrations } = await import(
+    "../packages/core/dist/index.js"
+  );
   // Core reads no env directly (PR #168 env injection) — this migration
   // entry is a composition root, so it must inject the loaded environment
   // via initCore() before any core config (db client) is touched.
   initCore(process.env);
   // eslint-disable-next-line no-console
-  console.log("Running database migrations...");
+  console.log("Running business database migrations...");
   const { migrationsFolder } = await runMigrations();
   // eslint-disable-next-line no-console
-  console.log(`✓ Migrations completed (folder: ${migrationsFolder})`);
+  console.log(`✓ Business migrations completed (folder: ${migrationsFolder})`);
+  // The Yjs document store is a SEPARATE database (YJS_DATABASE_URL) with
+  // its own independent migration ledger — migrate it too.
+  // eslint-disable-next-line no-console
+  console.log("Running yjs database migrations...");
+  const { migrationsFolder: yjsFolder } = await runYjsMigrations();
+  // eslint-disable-next-line no-console
+  console.log(`✓ Yjs migrations completed (folder: ${yjsFolder})`);
 }
 
 main().catch((err: unknown) => {

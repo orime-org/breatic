@@ -34,7 +34,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
-import { yjsDocuments } from "@core/db/schema.js";
+import { yjsDocuments } from "@core/db/yjs-schema.js";
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.

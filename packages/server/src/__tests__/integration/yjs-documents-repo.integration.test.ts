@@ -42,7 +42,7 @@ import { eq, like, or } from "drizzle-orm";
 
 import {
   initCore,
-  schema,
+  yjsDocuments,
   createTestDb,
   yjsDocumentsRepo,
   db as coreDb,
@@ -72,11 +72,11 @@ let db: ReturnType<typeof createTestDb>["db"];
 /** Delete only this suite's rows so it can't collide with other files. */
 async function cleanup(): Promise<void> {
   await db
-    .delete(schema.yjsDocuments)
+    .delete(yjsDocuments)
     .where(
       or(
-        like(schema.yjsDocuments.name, `project-${TEST_PID}/%`),
-        like(schema.yjsDocuments.name, `project-${TEST_DUP_PID}/%`),
+        like(yjsDocuments.name, `project-${TEST_PID}/%`),
+        like(yjsDocuments.name, `project-${TEST_DUP_PID}/%`),
       ),
     );
 }
@@ -85,8 +85,8 @@ async function cleanup(): Promise<void> {
 async function rawRow(name: string) {
   const rows = await db
     .select()
-    .from(schema.yjsDocuments)
-    .where(eq(schema.yjsDocuments.name, name))
+    .from(yjsDocuments)
+    .where(eq(yjsDocuments.name, name))
     .limit(1);
   return rows[0] ?? null;
 }

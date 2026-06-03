@@ -20,10 +20,13 @@
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
-export { runMigrations } from "@core/db/migrate.js";
+export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
 export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
+// Yjs document store schema (separate database — see `yjsDb`). Exported
+// so the collab-side repo can import the table definition from core.
+export { yjsDocuments } from "@core/db/yjs-schema.js";
 export { encodeInitialMetaState } from "@core/db/yjs-bootstrap.js";
 // `yjs_documents` is shared infra (collab persistence/auth/space-rpc +
 // server project create/delete/duplicate); its single repo home lives

@@ -19,7 +19,6 @@ import {
   integer,
   timestamp,
   jsonb,
-  customType,
   uniqueIndex,
   index,
   primaryKey,
@@ -616,33 +615,13 @@ export const skillInstalls = pgTable(
   ],
 );
 
-// ── Custom Types ─────────────────────────────────────────────────────
-
-const bytea = customType<{ data: Buffer }>({
-  dataType() {
-    return "bytea";
-  },
-});
-
 // ── 17. Yjs Documents ────────────────────────────────────────────────
-
-export const yjsDocuments = pgTable("yjs_documents", {
-  name: text("name").primaryKey(),
-  data: bytea("data").notNull(),
-  // `createdAt` aligns with the project-wide rule: every PG table has
-  // a createdAt timestamp (see CLAUDE.md "key conventions"). For existing rows
-  // backfilled from `updated_at` - the earliest update is the create
-  // time (Hocuspocus's persistence extension upserts on store).
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  // Soft-delete support - aligns with the project-wide "soft delete only"
-  // rule (CLAUDE.md). Set by deleteProject() cascade when the owning
-  // project is deleted. Collab's persistence layer filters this out on
-  // fetch so deleted docs are invisible even if a stale client reconnects.
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+//
+// MOVED: the `yjs_documents` table now lives in its own database +
+// schema file `@core/db/yjs-schema.ts` (see `yjsDb` in client.ts). It is
+// migrated by the independent `migrations-yjs/` set, not the business
+// migrations here. The business DB drops its abandoned copy (migration
+// 0022). The query repository lives in `@breatic/collab`.
 
 // ── 18. Share Links ──────────────────────────────────────────────────
 //

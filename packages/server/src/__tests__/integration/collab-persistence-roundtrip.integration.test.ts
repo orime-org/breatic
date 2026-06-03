@@ -38,7 +38,7 @@ import { eq } from "drizzle-orm";
 
 import {
   initCore,
-  schema,
+  yjsDocuments,
   createTestDb,
   yjsDocumentsRepo,
 } from "@breatic/core";
@@ -99,7 +99,7 @@ async function writeAndPersist(mutate: (doc: Y.Doc) => void): Promise<void> {
 beforeAll(async () => {
   const DATABASE_URL = inject("DATABASE_URL");
   ({ db, client: pgClient } = createTestDb(DATABASE_URL));
-  await db.delete(schema.yjsDocuments).where(eq(schema.yjsDocuments.name, DOC));
+  await db.delete(yjsDocuments).where(eq(yjsDocuments.name, DOC));
 
   // Real Hocuspocus with the REAL unified persistence extension. Small
   // debounce + unloadImmediately so store() fires promptly on disconnect.
@@ -116,7 +116,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await wsServer.destroy();
-  await db.delete(schema.yjsDocuments).where(eq(schema.yjsDocuments.name, DOC));
+  await db.delete(yjsDocuments).where(eq(yjsDocuments.name, DOC));
   await pgClient.end();
 });
 
