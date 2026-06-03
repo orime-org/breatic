@@ -219,3 +219,108 @@ export async function pingDb(client: Sql = rawPg): Promise<boolean> {
   const rows = await client<Array<{ ok: number }>>`SELECT 1 AS ok`;
   return rows[0]?.ok === 1;
 }
+
+// ── yjs database (separate Postgres DB for the Yjs binary store) ──────
+//
+// A SECOND lazy pool, identical in shape to the business `db`/`rawPg`
+// above but bound to `env.YJS_DATABASE_URL`. It goes through the SAME
+// `createPgClient` factory, so it inherits the same production-grade
+// connection-lifecycle defaults — the `lint:no-postgres-outside-core`
+// guard stays satisfied (no second `from "postgres"` import). The Yjs
+// document store lives in its own database (a separate transaction /
+// failure domain); early-stage it may be a second db on the same
+// instance, at scale a separate instance — URL-only change.
+
+/** Lazily-built postgres.js pool for the yjs DB. Mirrors {@link _pgClient}. */
+let _yjsPgClient: Sql | null = null;
+
+/**
+ * Build (once) and return the process-wide yjs-DB postgres.js pool.
+ * @returns the lazily-initialised yjs-DB connection pool
+ */
+function getYjsPgClient(): Sql {
+  if (_yjsPgClient === null) {
+    _yjsPgClient = createPgClient(env.YJS_DATABASE_URL, {
+      name: "core-yjs-db",
+      max: env.YJS_DB_POOL_SIZE,
+    });
+  }
+  return _yjsPgClient;
+}
+
+/** Lazily-built Drizzle instance over {@link getYjsPgClient}. */
+let _yjsDb: PostgresJsDatabase<Record<string, never>> | null = null;
+
+/**
+ * Build (once) and return the Drizzle ORM instance for the yjs DB.
+ * @returns the lazily-initialised Drizzle ORM instance over the yjs pool
+ */
+function getYjsDb(): PostgresJsDatabase<Record<string, never>> {
+  if (_yjsDb === null) {
+    _yjsDb = drizzle(getYjsPgClient());
+  }
+  return _yjsDb;
+}
+
+/**
+ * Drizzle ORM instance connected to the yjs PostgreSQL database.
+ *
+ * A Proxy over the lazily-built {@link getYjsDb} instance, identical in
+ * mechanics to {@link db} but resolving against the yjs pool. The yjs
+ * document repo (in `@collab`) queries through this so its SQL runs
+ * against the yjs DB, not the business DB.
+ */
+export const yjsDb: PostgresJsDatabase<Record<string, never>> = new Proxy(
+  {} as PostgresJsDatabase<Record<string, never>>,
+  {
+    get(_target, prop) {
+      const real = getYjsDb() as unknown as Record<string | symbol, unknown>;
+      const value = real[prop];
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(real)
+        : value;
+    },
+  },
+);
+
+/**
+ * Transaction handle type for the yjs DB, inferred from
+ * {@link yjsDb.transaction}'s callback parameter. The yjs-DB repo uses
+ * this for yjs-DB-local transactions; it is a DISTINCT type from
+ * {@link DbTx} (a business-DB tx) — the two DBs cannot share a tx.
+ */
+export type YjsDbTx = Parameters<Parameters<typeof yjsDb.transaction>[0]>[0];
+
+/**
+ * Close the yjs database connection pool.
+ *
+ * Call during graceful shutdown. No-op if the yjs pool was never built.
+ */
+export async function closeYjsDb(): Promise<void> {
+  if (_yjsPgClient !== null) {
+    await _yjsPgClient.end();
+  }
+}
+
+/**
+ * Raw postgres.js client for the yjs DB (e.g. health checks). A Proxy
+ * over the lazily-built {@link getYjsPgClient} pool, mirroring
+ * {@link rawPg}. Pass to {@link pingDb} for the yjs-DB liveness probe.
+ */
+export const yjsRawPg: Sql = new Proxy(
+  function yjsRawPgTarget() {
+    /* never invoked - apply trap forwards to the real pool */
+  } as unknown as Sql,
+  {
+    apply(_target, _thisArg, args) {
+      return (getYjsPgClient() as unknown as (...a: unknown[]) => unknown)(...args);
+    },
+    get(_target, prop) {
+      const real = getYjsPgClient() as unknown as Record<string | symbol, unknown>;
+      const value = real[prop];
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(real)
+        : value;
+    },
+  },
+);

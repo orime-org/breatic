@@ -20,7 +20,7 @@
  */
 
 import type { Redis } from "ioredis";
-import { pingDb } from "@core/db/client.js";
+import { pingDb, yjsRawPg } from "@core/db/client.js";
 import { pingRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/env.js";
 import { InfraNotReadyError } from "@core/infra/errors.js";
@@ -82,6 +82,22 @@ export async function checkInfraReady(
     throw new InfraNotReadyError(
       "PostgreSQL",
       `Check DATABASE_URL=${env.DATABASE_URL} or run: docker compose up -d postgres`,
+      err,
+    );
+  }
+
+  // yjs PostgreSQL: the separate Yjs binary-store DB. Probed with its
+  // own pool so a down / missing yjs DB fails boot fast (every backend
+  // service touches it — server/worker via lifecycle ops, collab via
+  // persistence).
+  try {
+    if (!(await withBootTimeout(pingDb(yjsRawPg), "yjs PostgreSQL"))) {
+      throw new Error("yjs PostgreSQL SELECT 1 returned an unexpected result");
+    }
+  } catch (err) {
+    throw new InfraNotReadyError(
+      "yjs PostgreSQL",
+      `Check YJS_DATABASE_URL=${env.YJS_DATABASE_URL} or run: docker compose up -d postgres`,
       err,
     );
   }

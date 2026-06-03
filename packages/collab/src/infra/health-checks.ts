@@ -31,6 +31,8 @@ export interface CollabHealthProbes {
   pingRedisStream: () => Promise<boolean>;
   /** Resolves true when Postgres answers a trivial round-trip query. */
   pingPostgres: () => Promise<boolean>;
+  /** Resolves true when the separate yjs-store Postgres answers a round-trip. */
+  pingYjsPostgres: () => Promise<boolean>;
   /** True while the Hocuspocus WS http server's listen socket is open. */
   isHocuspocusListening: () => boolean;
 }
@@ -44,6 +46,7 @@ export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck
   return [
     { name: "redis_stream", check: probes.pingRedisStream },
     { name: "postgres", check: probes.pingPostgres },
+    { name: "postgres_yjs", check: probes.pingYjsPostgres },
     { name: "hocuspocus_listening", check: async () => probes.isHocuspocusListening() },
   ];
 }

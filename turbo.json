@@ -3,6 +3,7 @@
   "globalPassThroughEnv": [
     "SESSION_SECRET_KEY",
     "DATABASE_URL",
+    "YJS_DATABASE_URL",
     "REDIS_URL",
     "REDIS_QUEUE_URL",
     "REDIS_STREAM_URL",
