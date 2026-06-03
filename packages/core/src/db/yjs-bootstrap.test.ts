@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * yjs-bootstrap unit tests — verify the binary update produced for a
  * project's initial meta doc decodes back to the expected spaces map.

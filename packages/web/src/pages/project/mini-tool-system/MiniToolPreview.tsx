@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { Modality } from '@web/spaces/canvas/types/node';
 

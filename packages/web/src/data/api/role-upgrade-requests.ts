@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { apiPatch, apiPost } from '@web/data/api/request';
 import type { Notification } from '@web/data/api/notifications';
 

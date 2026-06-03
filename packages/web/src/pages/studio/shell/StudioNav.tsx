@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import type * as React from 'react';
 import { Home, FolderOpen, Users, Settings as SettingsIcon } from 'lucide-react';
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * E2E smoke — the real collab persistence extension round-trips a Yjs
  * doc through Postgres via the unified core `yjsDocumentsRepo`.

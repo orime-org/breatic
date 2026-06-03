@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * `AdjustValue` is the shared parameter shape for every image/video
  * adjust mini-tool (client UI panel, client pre-migration ffmpeg.wasm

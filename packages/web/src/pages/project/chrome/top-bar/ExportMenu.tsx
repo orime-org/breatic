@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { Download, FileImage, FileJson, FileText } from 'lucide-react';
 import type * as React from 'react';
 

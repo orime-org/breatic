@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Session cookie helpers — centralized so the whole server writes,
  * reads, and clears the session cookie through one set of options.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { sseStream } from '@web/data/stream/sse';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 import { apiGet } from '@web/data/api/request';

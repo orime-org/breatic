@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * SSRF-safe `fetch` wrapper used by the agent `web_fetch` tool.
  *

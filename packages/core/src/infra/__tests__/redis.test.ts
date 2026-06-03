@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Invariant tests for the `createRedisClient` factory in
  * `packages/core/src/infra/redis.ts`.

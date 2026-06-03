@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import type { ProjectRole } from '@web/stores';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type { Pagination } from '@web/data/api/types';

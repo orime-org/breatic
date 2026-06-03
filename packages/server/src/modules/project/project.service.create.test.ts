@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * project.service.create unit test — locks the invariant that the
  * first Space created alongside a new Project takes the Project's

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Integration test — the core `yjs_documents` repo against a real
  * Postgres (testcontainer).

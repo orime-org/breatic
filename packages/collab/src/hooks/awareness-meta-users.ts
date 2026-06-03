@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * `onAwarenessUpdate` handler — projects each client's Yjs awareness
  * state into `meta.users[userId]` (persistent Y.Map) so other peers

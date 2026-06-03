@@ -36,6 +36,7 @@ pnpm test / typecheck / lint
 # 代码风格
 
 - **函数定义格式规范(MANDATORY)**:命名函数单元(函数声明 / 类方法 / 类 / 变量赋值的箭头·函数表达式)必须有 TSDoc 文档注释 + 显式返回类型 + `@throws {ErrorType}` 异常类型;类型信息归签名(显式)、注释禁写类型,唯异常类型签名表达不了归注释。**不分导出 / 私有**(规则只有 0/1);内联匿名回调 + 测试豁免。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
+- **文件头版权声明(MANDATORY)**:每个首方 TypeScript 源文件(`packages/*/src/**/*.{ts,tsx}`,含测试)顶部必须有 SPDX 双行头(`// Copyright (c) 2026 Orime, Inc.` + `// SPDX-License-Identifier: LicenseRef-BOSL-1.0`);shadcn vendor(`web` 的 `components/ui/`)豁免(第三方 IP,不挂 Orime 版权)。CI `lint:no-missing-license-header` 强制;一次性补全走 `scripts/add-license-headers.sh`(幂等)。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
 - TypeScript strict,禁止 `any`(用 `unknown`),禁止 `var`/`require`
 - ESLint + eslint-plugin-jsdoc 强制(`recommended-typescript-error` + require-jsdoc 全量 + explicit-function-return-type)
 - 前端命名规范见 [docs/ARCHITECTURE.md#naming-conventions](./docs/ARCHITECTURE.md#naming-conventions)

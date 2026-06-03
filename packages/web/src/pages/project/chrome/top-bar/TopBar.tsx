@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { ArrowLeft, Plus, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';

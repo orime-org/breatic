@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { sseStream } from '@web/data/stream/sse';
 
 export interface TextStreamEvent {

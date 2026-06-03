@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import type { CanvasNode, Modality } from '@web/spaces/canvas/types/node';
 import { getMiniTool } from '@web/pages/project/mini-tool-system/catalog';
 

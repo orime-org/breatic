@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Unit tests for {@link pingRedis} — the single Redis PING liveness
  * helper shared by every backend service's /healthz probe and the boot

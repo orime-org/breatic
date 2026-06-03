@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Credit-balance critical-path invariants — `creditRepo` balance access
  * against a real Postgres (PR3, migration 0020).

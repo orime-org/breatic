@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Inpaint stroke + mask types — shared across the canvas, controls, and
  * export. Strokes are normalized to image-pixel coordinates so the mask

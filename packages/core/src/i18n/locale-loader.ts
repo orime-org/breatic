@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Node-only i18n adapter for the back-end services (server / worker /
  * collab). Lives in `@breatic/core` — the node-side shared library all

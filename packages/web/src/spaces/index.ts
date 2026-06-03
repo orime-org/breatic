@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import type { ComponentType } from 'react';
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';

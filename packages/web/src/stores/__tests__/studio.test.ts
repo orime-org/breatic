@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStudioStore } from '@web/stores/studio';
 

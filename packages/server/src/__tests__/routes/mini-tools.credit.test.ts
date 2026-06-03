@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Mini-tools credit pre-check regression test (BUG-015) +
  * target_node_id forwarding + validation tests (Phase 2 forward-fix A.4).

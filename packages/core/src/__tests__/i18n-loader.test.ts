@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * i18n loader tests — node-side adapter (`@breatic/core` loadLocales)
  * integrated with the shared engine (`@breatic/shared` t()).
