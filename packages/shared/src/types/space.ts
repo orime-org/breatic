@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Space — Yjs-resident sub-region of a project (v10 §5.3.1).
  *

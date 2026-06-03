@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * API request schemas — re-exported from `@breatic/shared`.
  *

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Memory service — orchestrates the three-layer memory system.
  *

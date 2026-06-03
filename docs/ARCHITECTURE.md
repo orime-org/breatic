@@ -431,3 +431,18 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 | `/** @param {string} name */` | 类型重复进注释 | `/** @param name - ... */` |
 | `/** @throws on error */` | 异常类型没结构化 | `/** @throws {AppError} ... */` |
 | 只给导出函数加文档、私有 helper 裸奔 | 按可见性切同类(违反 0/1 原则) | 私有 helper 一样补文档 |
+
+### 文件头:版权 + 许可声明
+
+每个**首方 TypeScript 源文件**(`packages/*/src/**/*.{ts,tsx}`,含测试)顶部必须有两行 SPDX 文件头:
+
+```ts
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+```
+
+`LicenseRef-BOSL-1.0` = Breatic Open Source License 1.0(改良版 Apache 2.0,见仓库根 `LICENSE`);`LicenseRef-` 前缀是 SPDX 对自定义许可的标准写法。
+
+- **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
+- **CI 强制**:`lint:no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx`,排除 vendor + `dist` + `node_modules`;新文件缺头即 fail)。
+- **一次性补全**:`scripts/add-license-headers.sh`(幂等——已有头的文件跳过,可随时重跑)。

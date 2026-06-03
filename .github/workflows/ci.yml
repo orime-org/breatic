@@ -200,6 +200,14 @@ jobs:
         # locked to core. See scripts/lint-no-ioredis-outside-core.sh.
         run: pnpm lint:no-ioredis-outside-core
 
+      - name: Lint no-missing-license-header (every src ts/tsx carries the SPDX header)
+        # Enforce the file-header mandate (CLAUDE.md code style + ARCHITECTURE.md):
+        # every first-party packages/*/src .ts/.tsx file must start with the
+        # Copyright + SPDX-License-Identifier: LicenseRef-BOSL-1.0 header.
+        # shadcn vendor (components/ui) is exempt - third-party IP.
+        # See scripts/lint-no-missing-license-header.sh.
+        run: pnpm lint:no-missing-license-header
+
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
         # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL

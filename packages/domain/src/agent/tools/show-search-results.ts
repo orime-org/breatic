@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * show-search-results tool — interaction tool for surfacing search /
  * lookup results to the user as thumbnails the user can drop into

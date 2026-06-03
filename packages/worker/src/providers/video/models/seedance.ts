@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Seedance model family -- ByteDance video generation (2.0, 1.5, 1.0 Lite).
  *

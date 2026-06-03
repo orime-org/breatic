@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * On-disconnect cleanup for mini-tool state (ADR
  * `breatic-inner/decisions/2026-05-11-mini-tool-state-machine.md` §D4).

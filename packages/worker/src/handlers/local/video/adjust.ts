@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Video adjust handler — FFmpeg `-vf` chain built from the shared
  * `AdjustValue` via `buildAdjustVideoFilter`.

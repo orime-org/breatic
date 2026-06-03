@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import * as React from 'react';
 
 import { ProjectGrid } from '@web/pages/studio/grid/ProjectGrid';

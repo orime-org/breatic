@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Conversation attachment service — business logic for per-conversation
  * attachment pool used as reference material in Agent chat.

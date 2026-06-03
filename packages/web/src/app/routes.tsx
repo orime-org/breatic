@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';

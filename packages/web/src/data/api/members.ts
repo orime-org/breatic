@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 export type MemberRole = 'owner' | 'edit' | 'view';

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
 /** Roles an invite link can grant — every role except owner. */

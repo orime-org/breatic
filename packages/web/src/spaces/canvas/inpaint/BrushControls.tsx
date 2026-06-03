@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { Eraser, Paintbrush, Undo2 } from 'lucide-react';
 import type * as React from 'react';
 

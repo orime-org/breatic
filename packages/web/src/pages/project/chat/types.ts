@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Chat panel message model — mirrored from the Agent message contract.
  * Lives next to the panel components so the UI layer has a stable type

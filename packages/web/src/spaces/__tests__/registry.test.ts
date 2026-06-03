@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { describe, it, expect } from 'vitest';
 import { SPACE_TYPES, SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import * as Y from 'yjs';
 import { projectMetaDocName, canvasSpaceDocName } from '@breatic/shared';
 

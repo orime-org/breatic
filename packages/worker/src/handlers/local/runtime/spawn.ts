@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 /**
  * Child-process spawner for CLI-based local handlers (FFmpeg,
  * ImageMagick, etc.). Handlers that use Node.js libraries (e.g. Sharp)

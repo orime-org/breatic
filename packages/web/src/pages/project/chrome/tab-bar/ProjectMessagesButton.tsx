@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
 import { AlertTriangle, History, RotateCcw, Trash2 } from 'lucide-react';
 import { useState, type JSX } from 'react';
 
