@@ -55,6 +55,19 @@ export const coreConfigSchema = z.object({
   DATABASE_URL: z.string().url(),
   DB_POOL_SIZE: z.coerce.number().int().positive().default(10),
 
+  // ── yjs Database (separate Postgres DB for the Yjs binary store) ──
+  // The Yjs document store lives in its OWN database, a separate
+  // transaction / failure domain from the business DB (it cannot share
+  // a transaction with `projects` etc.). Early-stage this may be a
+  // second database on the SAME Postgres instance (different db name);
+  // at scale, point `YJS_DATABASE_URL` at a separate instance — just
+  // change the URL, no code change (same pattern as REDIS_*_URL).
+  YJS_DATABASE_URL: z
+    .string()
+    .url()
+    .default("postgres://breatic:breatic@localhost:5432/breatic_yjs"),
+  YJS_DB_POOL_SIZE: z.coerce.number().int().positive().default(10),
+
   // ── Redis ─────────────────────────────────────────
   REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
   REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
@@ -182,6 +195,24 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       throw new Error(
         "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
         "(non-empty, non-whitespace). Refusing to start.",
+      );
+    }
+  }
+
+  // The yjs binary store must be a DIFFERENT database than the business
+  // DB — they are separate transaction / failure domains by design (the
+  // whole point of the split, and a shared __drizzle_migrations ledger
+  // would corrupt if they collided). In dev they may share a Postgres
+  // instance (different db name); outside dev a same-database misconfig
+  // would silently collapse the split, so fail fast at init.
+  if (config.ENV !== "dev") {
+    const main = new URL(config.DATABASE_URL);
+    const yjs = new URL(config.YJS_DATABASE_URL);
+    if (main.host === yjs.host && main.pathname === yjs.pathname) {
+      throw new Error(
+        "FATAL: YJS_DATABASE_URL must point at a DIFFERENT database than " +
+        "DATABASE_URL (same host + database collapses the two-DB split). " +
+        "Refusing to start.",
       );
     }
   }

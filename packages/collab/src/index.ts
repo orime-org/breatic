@@ -19,6 +19,7 @@ import {
   getStreamRedis,
   pingDb,
   pingRedis,
+  yjsRawPg,
   checkInfraReady,
   startHealthServer,
   InfraNotReadyError,
@@ -152,6 +153,8 @@ async function main(): Promise<void> {
       // over the process-wide `db` singleton (same pool collab uses for
       // persistence + auth — no dedicated probe pool).
       pingPostgres: () => pingDb(),
+      // Liveness for the separate Yjs-store Postgres DB.
+      pingYjsPostgres: () => pingDb(yjsRawPg),
       // `.listening` flips false the instant the listen socket closes
       // (graceful shutdown or crash) - a dead hocuspocus with a live
       // healthz is the worst possible state for the LB.

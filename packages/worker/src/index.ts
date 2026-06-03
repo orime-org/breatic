@@ -22,6 +22,7 @@ import {
   getStreamRedis,
   pingDb,
   pingRedis,
+  yjsRawPg,
   startHealthServer,
 } from "@breatic/core";
 
@@ -100,6 +101,11 @@ export function startWorker(): void {
         name: "postgres",
         // Single SELECT-1 liveness helper, shared across all services.
         check: () => pingDb(),
+      },
+      {
+        name: "postgres_yjs",
+        // Liveness for the separate Yjs-store Postgres DB.
+        check: () => pingDb(yjsRawPg),
       },
     ],
   });

@@ -18,7 +18,8 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
-export type { DbTx } from "@core/db/client.js";
+export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
+export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations } from "@core/db/migrate.js";
 export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";

@@ -25,6 +25,7 @@ function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthPr
   return {
     pingRedisStream: vi.fn(async () => true),
     pingPostgres: vi.fn(async () => true),
+    pingYjsPostgres: vi.fn(async () => true),
     isHocuspocusListening: vi.fn(() => true),
     ...overrides,
   };
@@ -36,13 +37,21 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("postgres");
   });
 
-  it("probes exactly the three critical dependencies (redis stream + postgres + ws socket)", () => {
+  it("probes exactly the four critical dependencies (redis stream + both PG + ws socket)", () => {
     const checks = buildCollabHealthChecks(makeProbes());
     expect(checks.map((c) => c.name).sort()).toEqual([
       "hocuspocus_listening",
       "postgres",
+      "postgres_yjs",
       "redis_stream",
     ]);
+  });
+
+  it("the postgres_yjs check is wired to the pingYjsPostgres probe (separate yjs DB)", async () => {
+    const probes = makeProbes({ pingYjsPostgres: vi.fn(async () => false) });
+    const yjs = buildCollabHealthChecks(probes).find((c) => c.name === "postgres_yjs")!;
+    expect(await yjs.check()).toBe(false);
+    expect(probes.pingYjsPostgres).toHaveBeenCalledOnce();
   });
 
   it("the postgres check is wired to the pingPostgres probe (reports its result)", async () => {

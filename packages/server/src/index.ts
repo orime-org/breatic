@@ -16,7 +16,7 @@ import { env } from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
@@ -109,6 +109,11 @@ const health = startHealthServer({
       name: "postgres",
       // Single SELECT-1 liveness helper, shared across all services.
       check: () => pingDb(),
+    },
+    {
+      name: "postgres_yjs",
+      // Liveness for the separate Yjs-store Postgres DB.
+      check: () => pingDb(yjsRawPg),
     },
     {
       name: "redis_general",

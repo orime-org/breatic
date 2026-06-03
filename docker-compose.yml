@@ -23,6 +23,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Create the second database (breatic_yjs) on first init. The
+      # postgres image runs *.sql in this dir once, when the data volume
+      # is empty. For an EXISTING volume, create it manually:
+      #   docker compose exec postgres psql -U breatic -c "CREATE DATABASE breatic_yjs;"
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U breatic"]
       interval: 5s
