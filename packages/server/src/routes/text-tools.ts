@@ -9,7 +9,7 @@
  * sees a typewriter effect and can abort mid-stream.
  */
 
-import { randomUUID } from "node:crypto";
+import { newId } from "@breatic/shared";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
@@ -47,7 +47,7 @@ textTools.post(
     // to a server-generated UUID - each retry then becomes a separate
     // logical charge, which is acceptable since text tools re-generate
     // content on every call.
-    const idempotencyKey = c.req.header("Idempotency-Key") ?? randomUUID();
+    const idempotencyKey = c.req.header("Idempotency-Key") ?? newId();
 
     // Set SSE headers
     c.header("Content-Type", "text/event-stream");
