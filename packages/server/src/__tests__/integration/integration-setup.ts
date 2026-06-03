@@ -28,6 +28,7 @@ import { inject } from "vitest";
 declare module "vitest" {
   export interface ProvidedContext {
     DATABASE_URL: string;
+    YJS_DATABASE_URL: string;
     REDIS_URL: string;
     REDIS_QUEUE_URL: string;
     REDIS_STREAM_URL: string;
@@ -37,6 +38,7 @@ declare module "vitest" {
 const urls = inject("DATABASE_URL")
   ? {
       DATABASE_URL: inject("DATABASE_URL"),
+      YJS_DATABASE_URL: inject("YJS_DATABASE_URL"),
       REDIS_URL: inject("REDIS_URL"),
       REDIS_QUEUE_URL: inject("REDIS_QUEUE_URL"),
       REDIS_STREAM_URL: inject("REDIS_STREAM_URL"),
@@ -45,6 +47,7 @@ const urls = inject("DATABASE_URL")
 
 if (urls) {
   process.env.DATABASE_URL = urls.DATABASE_URL;
+  process.env.YJS_DATABASE_URL = urls.YJS_DATABASE_URL;
   process.env.REDIS_URL = urls.REDIS_URL;
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;

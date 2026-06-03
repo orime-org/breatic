@@ -42,12 +42,18 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   ]);
 
   const pgUrl = pgContainer.getConnectionUri();
+  // The Yjs document store is a SEPARATE database — a second DB in the
+  // same container (mirrors the "same instance early" dev topology).
+  const yjsUrlObj = new URL(pgUrl);
+  yjsUrlObj.pathname = "/breatic_yjs_test";
+  const yjsUrl = yjsUrlObj.toString();
   const redisHost = redisContainer.getHost();
   const redisPort = redisContainer.getMappedPort(6379);
   const redisBase = `redis://${redisHost}:${redisPort}`;
 
   const urls = {
     DATABASE_URL: pgUrl,
+    YJS_DATABASE_URL: yjsUrl,
     REDIS_URL: `${redisBase}/0`,
     REDIS_QUEUE_URL: `${redisBase}/1`,
     REDIS_STREAM_URL: `${redisBase}/2`,
@@ -56,6 +62,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // Inject into THIS process's env so any synchronous module imports
   // within globalSetup itself (e.g. postgres/drizzle for migrations) can find them.
   process.env.DATABASE_URL = urls.DATABASE_URL;
+  process.env.YJS_DATABASE_URL = urls.YJS_DATABASE_URL;
   process.env.REDIS_URL = urls.REDIS_URL;
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
@@ -72,15 +79,30 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // migration through core keeps drizzle-orm a core-only dependency
   // (CLAUDE.md "@core 内容归属").
   console.log("[integration] Running migrations...");
-  const { migrateDatabase } = await import("@breatic/core");
+  const { migrateDatabase, migrateYjsDatabase, createTestDb } = await import(
+    "@breatic/core"
+  );
   await migrateDatabase(pgUrl);
+
+  // Create + migrate the separate yjs test database in the same container.
+  // CREATE DATABASE can't run inside a transaction; postgres-js sends the
+  // single `unsafe` statement outside one. Connect via the business DB.
+  const { client: bootstrapClient } = createTestDb(pgUrl, 1);
+  try {
+    await bootstrapClient.unsafe("CREATE DATABASE breatic_yjs_test");
+  } finally {
+    await bootstrapClient.end();
+  }
+  await migrateYjsDatabase(yjsUrl);
 
   console.log("[integration] Containers ready, migrations applied.");
   console.log(`[integration] PG: ${pgUrl}`);
+  console.log(`[integration] yjs PG: ${yjsUrl}`);
   console.log(`[integration] Redis base: ${redisBase}`);
 
   // Forward URLs to test worker processes via inject() in integration-setup.ts
   provide("DATABASE_URL", urls.DATABASE_URL);
+  provide("YJS_DATABASE_URL", urls.YJS_DATABASE_URL);
   provide("REDIS_URL", urls.REDIS_URL);
   provide("REDIS_QUEUE_URL", urls.REDIS_QUEUE_URL);
   provide("REDIS_STREAM_URL", urls.REDIS_STREAM_URL);
@@ -90,8 +112,8 @@ export async function teardown(): Promise<void> {
   console.log("[integration] Stopping containers...");
   // Importing @breatic/core in setup() created the env-bound singleton pool
   // as a module side effect; close it before tearing down the container.
-  const { closeDb } = await import("@breatic/core");
-  await closeDb();
+  const { closeDb, closeYjsDb } = await import("@breatic/core");
+  await Promise.allSettled([closeDb(), closeYjsDb()]);
   await Promise.allSettled([
     pgContainer?.stop(),
     redisContainer?.stop(),
