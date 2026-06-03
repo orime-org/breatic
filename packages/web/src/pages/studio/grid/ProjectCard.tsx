@@ -16,6 +16,13 @@ interface ProjectCardProps {
    * per-row role. Personal-studio v1 → owner everywhere.
    */
   role: ProjectRole;
+  /**
+   * TEMP (yjs-cutover backend verification): duplicate this project.
+   * Renders a small corner button. The Studio page is a placeholder; the
+   * real duplicate UX is designed when Studio is built properly.
+   * @param id - the project to duplicate
+   */
+  onDuplicate?: (id: string) => void;
 }
 
 const ROLE_LABEL: Record<ProjectRole, string> = {
@@ -32,37 +39,57 @@ const ROLE_LABEL: Record<ProjectRole, string> = {
  * @param root0 - component props
  * @param root0.project - the project summary to render in the tile
  * @param root0.role - the caller's role on this project, shown as a badge
+ * @param root0.onDuplicate - TEMP duplicate handler (corner button)
  * @returns a clickable project tile linking to the project page.
  */
-export function ProjectCard({ project, role }: ProjectCardProps): React.JSX.Element {
+export function ProjectCard({
+  project,
+  role,
+  onDuplicate,
+}: ProjectCardProps): React.JSX.Element {
+  // Wrapper is a div (not the Link) so the temp Duplicate button is a
+  // SIBLING of the Link, never nested inside an <a> (button-in-anchor is
+  // invalid HTML and the browser would reparse it — see
+  // [[feedback_html_validity_check]]).
   return (
-    <Link
-      to={`/project/${project.id}`}
-      className='group flex flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground transition-colors hover:border-neutral-300'
-      aria-label={`Open project ${project.name}`}
-    >
-      <div className='aspect-video w-full bg-muted'>
-        {project.thumbnailUrl ? (
-          <img
-            src={project.thumbnailUrl}
-            alt=''
-            className='h-full w-full object-cover'
-            loading='lazy'
-          />
-        ) : null}
-      </div>
-      <div className='flex items-start justify-between gap-2 p-3'>
-        <div className='min-w-0'>
-          <div className='truncate text-sm font-medium'>{project.name}</div>
-          <div className='mt-1 text-xs text-muted-foreground'>
-            {formatRelative(project.updatedAt)}
-          </div>
+    <div className='group relative flex flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground transition-colors hover:border-neutral-300'>
+      <Link
+        to={`/project/${project.id}`}
+        className='flex flex-col'
+        aria-label={`Open project ${project.name}`}
+      >
+        <div className='aspect-video w-full bg-muted'>
+          {project.thumbnailUrl ? (
+            <img
+              src={project.thumbnailUrl}
+              alt=''
+              className='h-full w-full object-cover'
+              loading='lazy'
+            />
+          ) : null}
         </div>
-        <Badge variant='outline' className='shrink-0'>
-          {ROLE_LABEL[role]}
-        </Badge>
-      </div>
-    </Link>
+        <div className='flex items-start justify-between gap-2 p-3'>
+          <div className='min-w-0'>
+            <div className='truncate text-sm font-medium'>{project.name}</div>
+            <div className='mt-1 text-xs text-muted-foreground'>
+              {formatRelative(project.updatedAt)}
+            </div>
+          </div>
+          <Badge variant='outline' className='shrink-0'>
+            {ROLE_LABEL[role]}
+          </Badge>
+        </div>
+      </Link>
+      {onDuplicate ? (
+        <button
+          type='button'
+          onClick={() => onDuplicate(project.id)}
+          className='absolute right-2 top-2 rounded-chrome border border-border bg-background/90 px-2 py-1 text-xs font-medium opacity-0 shadow-sm transition-opacity hover:bg-background focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+        >
+          Duplicate
+        </button>
+      ) : null}
+    </div>
   );
 }
 

@@ -63,6 +63,24 @@ export function ProjectGrid(): React.JSX.Element {
     },
   });
 
+  // TEMP (yjs-cutover backend verification): duplicate a project. The
+  // Studio page is a placeholder — this corner button just exercises the
+  // server duplicate route + the outbox→collab yjs copy so the backend is
+  // verifiable end-to-end. The real duplicate UX is designed when Studio
+  // is built properly. Hardcoded English toasts are intentional for this
+  // throwaway control.
+  const duplicateMutation = useMutation({
+    mutationFn: (id: string) => projectsApi.duplicate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
+      toast.success('Project duplicated');
+    },
+    onError: (err) => {
+      const reason = err instanceof Error ? err.message : 'unknown';
+      toast.error(`Duplicate failed: ${reason}`);
+    },
+  });
+
   const visible = React.useMemo(() => {
     const all: ProjectSummary[] = projectsQuery.data ?? [];
     const q = search.trim().toLowerCase();
@@ -102,8 +120,13 @@ export function ProjectGrid(): React.JSX.Element {
         {visible.map((p) => (
           // Personal-studio v1 → every project is owner. When the list
           // endpoint returns per-row role we'll pass `p.role` instead.
-          // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a ProjectCard component prop, not a DOM ARIA role
-          <ProjectCard key={p.id} project={p} role='owner' />
+          <ProjectCard
+            key={p.id}
+            project={p}
+            // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a ProjectCard component prop, not a DOM ARIA role
+            role='owner'
+            onDuplicate={(id) => duplicateMutation.mutate(id)}
+          />
         ))}
       </div>
 
