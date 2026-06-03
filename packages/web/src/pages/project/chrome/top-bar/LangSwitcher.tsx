@@ -36,7 +36,7 @@ import { useTranslation } from '@web/i18n/use-translation';
  * re-renders when the locale changes through any code path) and
  * `getLocale()` to read the current value.
  */
-type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja';
+type LangSlug = 'en' | 'zhCN' | 'zhTW' | 'ja' | 'ko';
 
 /**
  * Each entry uses its **own** native name + glyph — the popover must
@@ -54,10 +54,11 @@ const LANGS: Array<{
   glyph: string;
   nativeName: string;
 }> = [
-  { code: 'zh-CN', slug: 'zhCN', glyph: '中', nativeName: '简体中文' },
   { code: 'en', slug: 'en', glyph: 'EN', nativeName: 'English' },
-  { code: 'ja', slug: 'ja', glyph: '日', nativeName: '日本語' },
+  { code: 'zh-CN', slug: 'zhCN', glyph: '中', nativeName: '简体中文' },
   { code: 'zh-TW', slug: 'zhTW', glyph: '繁', nativeName: '繁體中文' },
+  { code: 'ja', slug: 'ja', glyph: '日', nativeName: '日本語' },
+  { code: 'ko', slug: 'ko', glyph: '한', nativeName: '한국어' },
 ];
 
 /**
@@ -66,7 +67,11 @@ const LANGS: Array<{
  * @returns the matching language entry, or the English entry when none matches.
  */
 function langFor(code: Locale): (typeof LANGS)[number] {
-  return LANGS.find((l) => l.code === code) ?? LANGS[1];
+  return (
+    LANGS.find((l) => l.code === code) ??
+    LANGS.find((l) => l.code === 'en') ??
+    LANGS[0]
+  );
 }
 
 /**
