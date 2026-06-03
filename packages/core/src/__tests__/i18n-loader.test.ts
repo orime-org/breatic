@@ -34,12 +34,13 @@ describe("i18n loader", () => {
   });
 
   describe("locale discovery", () => {
-    it("should discover 4 locales", () => {
+    it("should discover 5 locales", () => {
       const locales = getAvailableLocales();
       expect(locales).toContain("en");
       expect(locales).toContain("zh-CN");
       expect(locales).toContain("zh-TW");
       expect(locales).toContain("ja");
+      expect(locales).toContain("ko");
     });
 
     it("should default to en", () => {
@@ -102,7 +103,7 @@ describe("i18n loader", () => {
       expect(getLocale()).toBe("en");
       // After reset, t() will reload locales lazily
       loadLocales(resolve(import.meta.dirname, "../../../../locales"));
-      expect(getAvailableLocales().length).toBe(4);
+      expect(getAvailableLocales().length).toBe(5);
     });
   });
 
@@ -114,11 +115,11 @@ describe("i18n loader", () => {
     // `loadLocales()` with no arg loaded zero locales and t() fell
     // back to raw keys. The default now anchors on MONOREPO_ROOT.
     // This asserts the no-arg call (what server boot uses) works.
-    it("loadLocales() with no argument discovers all 4 locales", () => {
+    it("loadLocales() with no argument discovers all 5 locales", () => {
       resetLocales();
       loadLocales();
       expect(getAvailableLocales().sort()).toEqual(
-        ["en", "ja", "zh-CN", "zh-TW"].sort(),
+        ["en", "ja", "ko", "zh-CN", "zh-TW"].sort(),
       );
       // And a real key resolves (not the raw key fallback).
       expect(t("server.auth.invalid_credentials")).not.toBe(

@@ -28,7 +28,7 @@ import type { MiddlewareHandler } from "hono";
 import { runWithLocale } from "@breatic/core";
 
 /** Locales for which the server has translation files in `locales/`. */
-const SUPPORTED: ReadonlyArray<string> = ["en", "zh-CN", "zh-TW", "ja"];
+const SUPPORTED: ReadonlyArray<string> = ["en", "zh-CN", "zh-TW", "ja", "ko"];
 const DEFAULT_LOCALE = "en";
 
 /**
