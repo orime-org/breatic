@@ -2,7 +2,8 @@
  * Zustand store barrel — single import surface for all stores.
  *
  * Each store is a single file in this directory. Stores do NOT import each
- * other (rule from frontend-architecture.md); cross-store composition is
+ * other (rule from docs/ARCHITECTURE.md, Frontend → Layered architecture);
+ * cross-store composition is
  * done in hooks via `useFooStore` + `useBarStore` calls, or via Effect
  * synchronization at the component level.
  *

@@ -1,6 +1,6 @@
 # @breatic/core — 包边界(MANDATORY)
 
-> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/architecture.md](../../docs/architecture.md)。
+> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
 **后端共享内核**(仅后端共用,可用 node API)。**不是所有业务的默认堆放处** —— 只装真·跨服务共享的东西。

@@ -1,6 +1,6 @@
 # @collab — 包边界(MANDATORY)
 
-> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/architecture.md](../../docs/architecture.md)。
+> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
 **Hocuspocus 独立进程**:Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点。只它认识 Hocuspocus。
@@ -23,4 +23,4 @@
 入口注入后经 core 读;collab 配置走 `config.ts`。本包逻辑不直接读 `process.env`。
 
 ## 关键路径
-Yjs 协作 = 关键路径,必 100% TDD;hook 顺序坑(`onConnect` 在 `onAuthenticate` 前 fire,`context.user` 未就绪)等已知陷阱见 [docs/architecture.md](../../docs/architecture.md);改 collab 源码无 hot-reload,必手动重启。
+Yjs 协作 = 关键路径,必 100% TDD;hook 顺序坑(`onConnect` 在 `onAuthenticate` 前 fire,`context.user` 未就绪)等已知陷阱见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md);改 collab 源码无 hot-reload,必手动重启。

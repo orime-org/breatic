@@ -13,7 +13,7 @@ import drizzle from "eslint-plugin-drizzle";
 // in the comment as `@throws {ErrorType}`. yields/next-type stay off (the
 // Generator<Y,R,N> signature carries them, same as returns). Together with
 // explicit-function-return-type, this realizes the function-definition format
-// spec (docs/coding-standards.md): type info → signature; exception type →
+// spec (docs/ARCHITECTURE.md → Coding standards): type info → signature; exception type →
 // comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
 const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
 
@@ -82,7 +82,7 @@ export default tseslint.config(
     },
   },
   {
-    // Function-definition format spec (docs/coding-standards.md; CLAUDE.md
+    // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards; CLAUDE.md
     // 禁#11 + 代码风格). Every named function unit — function declaration,
     // class method, class, variable-assigned arrow / function expression —
     // must carry a TSDoc block AND an explicit return type. No public-only

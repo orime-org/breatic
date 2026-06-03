@@ -10,7 +10,7 @@
  * domain may only import `@breatic/core` + `@breatic/shared`, never any
  * application package (`@server` / `@worker` / `@collab` / `@web`), and
  * collab never depends on domain. Both directions are enforced by CI
- * guards. See the root CLAUDE.md + docs/architecture.md for the
+ * guards. See the root CLAUDE.md + docs/ARCHITECTURE.md for the
  * package-placement decision tree and the three-layer boundary.
  */
 

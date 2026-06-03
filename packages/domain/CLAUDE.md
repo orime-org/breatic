@@ -1,6 +1,6 @@
 # @breatic/domain — 包边界(MANDATORY)
 
-> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/architecture.md](../../docs/architecture.md)。
+> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
 **server + worker 共享的业务内核**(AIGC 业务大脑)。装两个服务都要用、但 **collab 永不触碰**的共享业务。

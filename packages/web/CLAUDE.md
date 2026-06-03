@@ -1,12 +1,12 @@
 # @web — 包边界(MANDATORY)
 
-> 项目级三层边界见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,前端细节(7 层 layered / 节点模型 / 命名 / token 桥接)见 [docs/frontend.md](../../docs/frontend.md)。
+> 项目级三层边界见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,前端细节(7 层 layered / 节点模型 / 命名 / token 桥接)见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend)。
 
 ## 角色
 **React 前端 app**(`@breatic/web`)。不是 node 进程,**浏览器里跑**。
 
 ## 分层(包内)
-7 层 layered 单向依赖:`app → pages → spaces → features → stores → domain → data → ui`(详见 frontend.md)。
+7 层 layered 单向依赖:`app → pages → spaces → features → stores → domain → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。
 
 ## 可 import 谁
 - ✅ `@breatic/shared`(**唯一**能用的 workspace 包,因为它浏览器安全)+ 外部 npm

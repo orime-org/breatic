@@ -15,7 +15,7 @@ import jsdoc from 'eslint-plugin-jsdoc';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Function-definition format spec (docs/coding-standards.md). web has its own
+// Function-definition format spec (docs/ARCHITECTURE.md → Coding standards). web has its own
 // ESLint 9 config, so the same jsdoc rule set declared in the root
 // eslint.config.mjs is repeated here. recommended-typescript-error: param/
 // return types come from the TS signature (no-types on), not the comment.
@@ -170,7 +170,7 @@ export default [
     },
   },
   {
-    // Function-definition format spec (docs/coding-standards.md). Same rule
+    // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards). Same rule
     // set as the root eslint.config.mjs jsdoc block: every named function unit
     // needs a TSDoc block + explicit return type; type info lives in the
     // signature; only the exception type goes in `@throws {ErrorType}`.
