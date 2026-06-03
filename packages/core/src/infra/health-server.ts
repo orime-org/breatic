@@ -18,8 +18,10 @@
  *   Per-check `ms` field shows latency so dashboards can graph
  *   trends (a slowly-drifting connection often shows up as
  *   creeping check latency before it outright fails).
- * - Any other path → 404 (keep the surface tiny on purpose; no
- *   metrics endpoint here - that's a separate concern).
+ * - `GET /metrics` → 200 Prometheus text when an `onMetrics` hook is
+ *   supplied; the application owns the registry and this library just
+ *   serves the rendered string, so core stays dependency-free.
+ * - Any other path → 404 (keep the surface tiny on purpose).
  *
  * The server runs on an isolated port so the main WS / queue port
  * isn't impacted by probe traffic, and so per-port failure
@@ -74,6 +76,14 @@ export interface HealthServerOptions {
    * provide this hook).
    */
   onEvent?: (event: HealthServerEvent) => void;
+  /**
+   * Optional `GET /metrics` handler. When supplied, the health server
+   * also serves Prometheus exposition text at `/metrics` on the same
+   * ops port. The library stays dependency-free: the application owns
+   * the metrics registry and passes a function that renders it.
+   * @returns the Prometheus text-format payload for one scrape
+   */
+  onMetrics?: () => Promise<string>;
 }
 
 /** Result of a single dependency probe. */
@@ -136,9 +146,23 @@ export function startHealthServer(opts: HealthServerOptions): {
   server: Server;
   stop: () => Promise<void>;
 } {
-  const { port, serviceName, checks, onEvent } = opts;
+  const { port, serviceName, checks, onEvent, onMetrics } = opts;
 
   const server = createServer((req, res) => {
+    if (req.url === "/metrics" && onMetrics) {
+      onMetrics()
+        .then((body) => {
+          res.statusCode = 200;
+          res.setHeader("content-type", "text/plain; version=0.0.4");
+          res.end(body);
+        })
+        .catch((err) => {
+          onEvent?.({ type: "handler_unexpected_error", serviceName, err });
+          res.statusCode = 500;
+          res.end();
+        });
+      return;
+    }
     if (req.url !== "/healthz") {
       res.statusCode = 404;
       res.end();

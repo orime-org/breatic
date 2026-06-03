@@ -99,4 +99,23 @@ describe("Auth rate limiting", () => {
 
     expect(res.status).toBe(429);
   });
+
+  it("logs a structured rate_limit_hit warn when a request is limited", async () => {
+    checkRateLimitMock.mockResolvedValue(false);
+    const core = (await import("@breatic/core")) as Record<string, unknown>;
+    const warn = (core.logger as { warn: ReturnType<typeof vi.fn> }).warn;
+    warn.mockClear();
+
+    const app = createApp();
+    await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "test@test.com", password: "password123" }),
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "login" }),
+      "rate_limit_hit",
+    );
+  });
 });

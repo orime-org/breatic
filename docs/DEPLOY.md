@@ -495,7 +495,7 @@ Why a dedicated port instead of reusing the main service port:
 - naming consistent across all three services (`主+1` convention)
 - aligns with how docker / k8s liveness probes are conventionally wired (separate port → separate readiness signal)
 
-Observability beyond binary health checks (Prometheus `/metrics` scrape + Grafana dashboards) is tracked in `docs/ROADMAP.md` and deferred to the backend monitoring sprint.
+Beyond binary health, the **api** health port (3001) also serves `GET /metrics` — a minimal Prometheus surface: `http_requests_total` (by method + status), `db_up` (a SELECT-1 gauge; postgres.js exposes no live pool stats), and prom-client default process metrics. It is wired via the health server's optional `onMetrics` hook, so it stays container-internal exactly like `/healthz` (scrape via `docker exec breatic-api-1 wget -q -O - http://localhost:3001/metrics`). Worker / collab `/metrics` + Grafana dashboards remain tracked in `docs/ROADMAP.md`.
 
 ---
 

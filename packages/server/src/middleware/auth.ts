@@ -12,6 +12,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@server/modules";
+import { logger } from "@breatic/core";
 import { creditRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
@@ -39,11 +40,13 @@ export const requireAuth: MiddlewareHandler<{
 }> = async (c, next) => {
   const token = readSessionCookie(c);
   if (!token) {
+    logger.warn({ reason: "no_token", path: c.req.path }, "auth_rejected");
     return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
   }
 
   const user = await authService.getUserByToken(token);
   if (!user) {
+    logger.warn({ reason: "session_expired", path: c.req.path }, "auth_rejected");
     return c.json({ error: { code: 401, message: t("server.auth.token_expired") } }, 401);
   }
 
