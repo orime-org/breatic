@@ -165,169 +165,128 @@ pnpm test / typecheck / lint
 
 ## Frontend
 
-`packages/web/` — the breatic React app served to the browser. (Backend
-architecture is the [Backend](#backend) part above.)
+`packages/web/` — breatic 的 React 前端 app,跑在浏览器里(后端架构见上面的 [Backend](#backend) 部分)。
 
-> **Industrial-grade mandate vs. detail.** The *constraints* `web` must
-> satisfy — TS strict / zero `any`, the `app → pages → spaces → features →
-> stores → domain → data → ui` single-direction layering, critical-path &
-> invariant tests, a11y, i18n (ICU), strict design tokens — are stated as a
-> mandate in [CLAUDE.md](../CLAUDE.md) "前端工业级标准". This Frontend part holds
-> the *implementation detail* of those constraints (naming, the node model,
-> token bridging, the shadcn vendor boundary, and the specific traps). When a
-> rule must be enforced it belongs in CLAUDE.md; how it is done belongs here.
+> **约束 vs. 细节**:`web` 要满足的约束(TS strict / 零 `any`、`app → pages → spaces → features → stores → domain → data → ui` 单向分层、关键路径 + invariant 测试、a11y、i18n〔ICU〕、设计 token 严格)是 [CLAUDE.md](../CLAUDE.md)「前端工业级标准」里的 mandate;本部分写这些约束**怎么落地**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各类 trap)。
 
 ### Status
 
-v14 greenfield rewrite landed on `main` 2026-05-19 (PR #103). Visual
-alignment to the design-baseline mocks is ongoing on the long-lived
-branch `feat/web-visual-alignment`.
+v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baseline mock 的视觉调整在长期分支 `feat/web-visual-alignment` 上进行中。
 
 ### Tech stack (frontend)
 
-| Layer | Tech |
+| 层 | 技术 |
 |---|---|
-| Framework | React 19 + TypeScript 5.6 |
-| Build | Vite 5 |
-| UI primitives | shadcn/ui (Radix + Tailwind) |
-| Styling | Tailwind CSS 3.4 + CSS variables (light / dark via `data-theme`) |
-| State | Zustand 5 + immer (zundo for undo-capable stores) |
-| Collab | Yjs 13 + @hocuspocus/provider 3 (sync-first, no offline) |
-| Canvas | @xyflow/react 12 |
-| Rich-text editor | TipTap 3 |
-| Audio / Video | WaveSurfer.js / video.js |
+| 框架 | React 19 + TypeScript 5.6 |
+| 构建 | Vite 5 |
+| UI 原语 | shadcn/ui(Radix + Tailwind) |
+| 样式 | Tailwind CSS 3.4 + CSS 变量(浅色 / 深色经 `data-theme` 切换) |
+| 状态 | Zustand 5 + immer(需要撤销的 store 用 zundo) |
+| 协作 | Yjs 13 + @hocuspocus/provider 3(同步优先,无离线模式) |
+| 画布 | @xyflow/react 12 |
+| 富文本编辑器 | TipTap 3 |
+| 音频 / 视频 | WaveSurfer.js / video.js |
 | 3D | Three.js + @react-three/fiber |
-| Data fetching | Axios + @microsoft/fetch-event-source (SSE) + React Query |
-| i18n | `intl-messageformat` (ICU) via shared `t()` + `useTranslation` hook (en / zh-CN / zh-TW / ja) |
-| Routing | React Router 7 |
-| Test | Vitest + Playwright + @testing-library + fast-check |
-| Monitoring | Sentry |
+| 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
+| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja) |
+| 路由 | React Router 7 |
+| 测试 | Vitest + Playwright + @testing-library + fast-check |
+| 监控 | Sentry |
 
 ### Run (web only)
 
+全量起服务(api / worker / collab / web,web 跑在 :8000)见 [Backend 的 Run](#run);只跑 web 用:
+
 ```bash
-# from monorepo root
-pnpm dev           # starts api / worker / collab / web (web on :8000)
-pnpm -F @breatic/web dev          # web only
+pnpm -F @breatic/web dev          # 只起 web
 pnpm -F @breatic/web test         # vitest
-pnpm -F @breatic/web test:smoke   # Playwright e2e
-pnpm -F @breatic/web build        # vite build → dist/breatic/
+pnpm -F @breatic/web test:smoke   # Playwright 端到端
+pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
 ```
 
 ### Layered architecture
 
-Dependencies flow strictly downward; lower layers never import upper ones:
+依赖严格向下流动,下层永不 import 上层:
 
 ```
-app/        Vite entry · Router · Providers · ErrorBoundary
-pages/      Route pages + page-scoped sub-modules (chrome / chat / members / tweaks)
-spaces/     Canvas / Document / Timeline body implementations (open enum)
-features/   True cross-page modules (auth / error-boundary / preferences)
-stores/     Zustand stores (one file per store, no cross-imports)
-domain/     Pure business logic (state machines, permissions, hooks)
-data/       I/O boundary (api / yjs / stream / storage)
-ui/         Cross-feature business atoms (Avatar, StatusBadge, etc.)
-components/ui/  shadcn primitives (vendor; ESLint-ignored)
-theme/      tokens.css + shadcn-bridge.css + tailwind extensions
-i18n/       locale-bootstrap + useTranslation hook (engine in @breatic/shared/i18n)
-lib/        utils (cn, format, env, analytics)
+app/        Vite 入口 · 路由 · Provider 编排 · ErrorBoundary
+pages/      路由页 + 页面专属子模块(chrome / chat / members / tweaks)
+spaces/     Canvas / Document / Timeline 内容实现(open enum)
+features/   真·跨页模块(auth / error-boundary / preferences)
+stores/     Zustand store(一文件一 store,互不 import)
+domain/     纯业务逻辑(状态机 / 权限 / hook)
+data/       I/O 边界(api / yjs / stream / storage)
+ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
+components/ui/  shadcn 原语(vendor;ESLint 忽略)
+theme/      tokens.css(单一 token 源)+ tailwind 扩展
+i18n/       locale-bootstrap + useTranslation hook(引擎在 @breatic/shared/i18n)
+lib/        工具(cn / format / env / analytics)
 ```
 
 ### Key conventions
 
-- **shadcn 100%** — every primitive in `components/ui/` is shadcn/ui (Radix
-  underneath). No Headless UI, no MUI.
-- **Single token source** — all design tokens (neutral / status / brand /
-  shadcn alias / chrome UI scale) live in `src/theme/tokens.css`. shadcn
-  primitives consume the standard aliases directly; no separate bridge
-  file. Stone-warm neutral 11-step + 5 status palettes (each bg/fg/border)
-  + radius split (chrome fixed 6px + content sm/md/lg/xl) + brand reserved
-  for logo only (`--brand-logo-primary`).
-- **Yjs single source of truth** — canvas node data and space metadata flow
-  through Yjs (`data/yjs/`). The frontend owns node create / delete /
-  position; the backend only updates `data` fields.
-- **ChatPanel is per-user, not Yjs-bound** — agent conversations stream via
-  SSE, scoped to the viewer; chat content never enters Yjs.
-- **Hover pattern standard** — Tailwind `hover:bg-<token>/<2-digit>` alpha
-  modifiers (e.g. `hover:bg-accent/40`, `hover:bg-primary/90`) are banned
-  in `packages/web/src/`. Use either a solid token swap
-  (`hover:bg-accent`, `hover:bg-muted`) for transparent-default rows /
-  outline / ghost buttons, or `transition-opacity hover:opacity-90` for
-  solid CTA buttons. Enforced by `pnpm lint:hover` (CI hard-fail) +
-  shadcn primitive defaults in `components/ui/`. Rationale: alpha hovers
-  blend with the underlying surface so contrast depends on context;
-  solid swaps + opacity-90 match the chrome-baseline mock and are
-  visually consistent across surfaces.
-- **Unified type nodes (2026-05-19)** — one node per modality:
-  `text` / `image` / `audio` / `video` / `3d` / `web` (6 content types)
-  plus `annotation` (standalone collaboration sticky). No asset/generator
-  split. `@`-references are edge relations + snapshot copies, NOT a node
-  type. Generation lives in the node toolbar's left zone (edits the
-  current node); mini-tools live in the right zone (create a new sibling
-  node + primary edge).
+- **shadcn 100%** — `components/ui/` 里每个原语都是 shadcn/ui(底层 Radix)。不用 Headless UI,不用 MUI。
+- **单一 token 源** — 所有设计 token(neutral / status / brand / shadcn 别名 / chrome UI 尺度)都在 `src/theme/tokens.css`。shadcn 原语直接消费标准别名,**没有独立 bridge 文件**。stone-warm neutral 11 级 + 5 套 status palette(各含 bg/fg/border)+ radius 拆分(chrome 固定 6px + content sm/md/lg/xl)+ brand 仅保留给 logo(`--brand-logo-primary`)。
+- **Yjs 单一真相源** — 画布节点数据 + space 元数据走 Yjs(`data/yjs/`)。节点归属(前端独占 create / delete / position、后端只改 `data` 字段)见 [Canvas collaboration](#canvas-collaboration)。
+- **ChatPanel 是 per-user、不绑 Yjs** — agent 对话走 SSE 流、只属当前查看者;聊天内容永不进 Yjs。
+- **Hover 规范** — `packages/web/src/` 里**禁用** Tailwind 的 `hover:bg-<token>/<两位数>` 透明度修饰(如 `hover:bg-accent/40`、`hover:bg-primary/90`)。透明默认的行 / outline / ghost 按钮用实色 token 切换(`hover:bg-accent`、`hover:bg-muted`),实色 CTA 按钮用 `transition-opacity hover:opacity-90`。由 `pnpm lint:hover`(CI 硬失败)+ `components/ui/` 里 shadcn 原语默认值强制。理由:透明 hover 会跟底层 surface 混色、对比度随上下文变;实色切换 + opacity-90 跟 chrome-baseline mock 一致、跨 surface 视觉统一。
+- **统一类型节点(2026-05-19)** — 每种模态一个节点:`text` / `image` / `audio` / `video` / `3d` / `web`(6 种内容类型)外加 `annotation`(独立的协作便签)。不再分 asset / generator。`@` 引用是边关系 + 快照副本,**不是**一种节点类型。生成功能在节点 toolbar 左区(改当前节点);mini-tool 在右区(建一个新兄弟节点 + primary edge)。
 
 ### Naming conventions
 
-| File type | Naming | Example |
+| 文件类型 | 命名 | 例 |
 |---|---|---|
-| React component `.tsx` | `PascalCase` (= export name) | `Button.tsx` `ProjectMembersPanel.tsx` |
-| React hook `.ts/.tsx` | `useFooBar` (= export name) | `useProjectSpaces.ts` `useCanvasActions.ts` |
-| Other `.ts` (util / data / config / store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
-| Test | Same as subject + `.test` | `useProjectSpaces.test.ts` |
-| Directory | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
+| React 组件 `.tsx` | `PascalCase`(= 导出名) | `Button.tsx` `ProjectMembersPanel.tsx` |
+| React hook `.ts/.tsx` | `useFooBar`(= 导出名) | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| 其他 `.ts`(util / data / config / store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| 测试 | 跟被测对象同名 + `.test` | `useProjectSpaces.test.ts` |
+| 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
 
 ### Routing
 
 - `/` → `/studio`
-- `/studio` — project list / new project
-- `/project/:projectId` — project page (Agent column + Space outlet)
-- `/project/:projectId/space/:spaceId?` — explicit space selection
-- `/login`, `/reset-password`
+- `/studio` — 项目列表 / 新建项目
+- `/project/:projectId` — 项目页(Agent 列 + Space outlet)
+- `/project/:projectId/space/:spaceId?` — 显式选 space
+- `/login`、`/reset-password`
 
 ### Source layout
 
 ```
 packages/web/
-├── public/                  # static assets served as-is
+├── public/                  # 原样提供的静态资源
 ├── src/
-│   ├── app/                 # entry + providers + error boundaries
-│   ├── pages/               # route pages + page-scoped sub-modules
+│   ├── app/                 # 入口 + provider + error boundary
+│   ├── pages/               # 路由页 + 页面专属子模块
 │   ├── spaces/              # Canvas / Document / Timeline
-│   ├── features/            # cross-page features
-│   ├── stores/              # Zustand stores (one file per store)
-│   ├── domain/              # pure business logic
+│   ├── features/            # 跨页 feature
+│   ├── stores/              # Zustand store(一文件一 store)
+│   ├── domain/              # 纯业务逻辑
 │   ├── data/                # api / yjs / stream / storage
-│   ├── ui/                  # business atoms
-│   ├── components/ui/       # shadcn primitives (vendor)
-│   ├── theme/               # tokens.css (single token source)
-│   ├── i18n/                # locale-bootstrap + useTranslation (engine in @breatic/shared/i18n)
-│   ├── lib/                 # utils (cn, etc.)
-│   ├── styles/              # global css overrides
+│   ├── ui/                  # 业务原子
+│   ├── components/ui/       # shadcn 原语(vendor)
+│   ├── theme/               # tokens.css(单一 token 源)
+│   ├── i18n/                # locale-bootstrap + useTranslation(引擎在 @breatic/shared/i18n)
+│   ├── lib/                 # 工具(cn 等)
+│   ├── styles/              # 全局 css 覆盖
 │   ├── App.tsx · index.tsx · index.css · index.html
-├── tests/                   # Playwright e2e
-├── components.json          # shadcn config
+├── tests/                   # Playwright 端到端
+├── components.json          # shadcn 配置
 ├── tailwind.config.ts · vite.config.ts · tsconfig.json · postcss.config.js
 └── package.json
 ```
 
 ### Environment variables
 
-All `VITE_*` variables load from the monorepo root `.env`. The frontend
-talks to backend via relative URLs (`/api/*`, `/ws`, `/uploads/*`); a single
-reverse proxy (nginx in production, Vite dev proxy in dev) routes them to
-the api / collab containers. The built bundle has no host baked in.
+所有 `VITE_*` 变量从 monorepo 根 `.env` 读。前端经相对 URL(`/api/*`、`/ws`、`/uploads/*`)跟后端通信;一个反向代理(生产用 nginx、dev 用 Vite dev proxy)把它们路由到 api / collab 容器。构建产物里不写死任何 host。
 
-| Variable | Purpose |
+| 变量 | 用途 |
 |---|---|
-| `VITE_APP_VERSION` | App version string |
-| `GOOGLE_CLIENT_ID` | Google OAuth (optional; injected as `__GOOGLE_CLIENT_ID__`) |
-| `VITE_SENTRY_DSN` | Sentry DSN (optional) |
+| `VITE_APP_VERSION` | app 版本号字符串 |
+| `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
+| `VITE_SENTRY_DSN` | Sentry DSN(可选) |
 
-Authentication is cookie-based — the backend sets an httpOnly
-`breatic_session` cookie on login / register / OAuth; the frontend
-does not read or persist any token in JS. See the [Configuration
-files](#configuration-files) section (backend) for `COOKIE_DOMAIN` +
-`EMAIL_BACKEND` (server-side env vars).
+鉴权基于 cookie — 后端在登录 / 注册 / OAuth 时种一个 httpOnly 的 `breatic_session` cookie;前端不在 JS 里读或存任何 token。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 
 ## Coding standards (function definition format)
 
