@@ -48,6 +48,7 @@ export function startLifecycleRelay(): LifecycleRelay {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  /** One drain pass: forward every unsent row, then re-arm the timer. */
   async function tick(): Promise<void> {
     if (stopped) return;
     try {
