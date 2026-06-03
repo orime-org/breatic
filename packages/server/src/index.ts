@@ -16,6 +16,7 @@ import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
+import { renderMetrics } from "@server/infra/metrics.js";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 
@@ -77,6 +78,7 @@ const server = serve(
 const health = startHealthServer({
   port: HEALTH_PORT,
   serviceName: "server",
+  onMetrics: renderMetrics,
   onEvent: (event) => {
     if (event.type === "listening") {
       logger.info(

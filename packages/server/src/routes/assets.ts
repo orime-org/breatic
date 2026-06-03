@@ -67,6 +67,7 @@ const presignRateLimit: MiddlewareHandler = async (c, next) => {
   const redis = getRedis();
   const allowed = await checkRateLimit(redis, `presign:${key}`, 30, 60);
   if (!allowed) {
+    logger.warn({ action: "presign", key }, "rate_limit_hit");
     return c.json({ error: { code: 429, message: t("server.error.rate_limited") } }, 429);
   }
   await next();

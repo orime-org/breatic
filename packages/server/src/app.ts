@@ -13,6 +13,7 @@ import { env, MONOREPO_ROOT } from "@breatic/core";
 import { corsMiddleware } from "@server/middleware/cors.js";
 import { localeMiddleware } from "@server/middleware/i18n.js";
 import { loggerMiddleware } from "@server/middleware/logger.js";
+import { metricsMiddleware } from "@server/infra/metrics.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
 import { authRoute } from "@server/routes/auth.js";
 import { chatRoute } from "@server/routes/chat.js";
@@ -52,6 +53,7 @@ export function createApp(): Hono {
   // caller's language.
   app.use("*", localeMiddleware);
   app.use("*", loggerMiddleware);
+  app.use("*", metricsMiddleware);
   app.onError(errorHandler);
 
   // ── Routes ────────────────────────────────────

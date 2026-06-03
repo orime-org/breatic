@@ -35,6 +35,16 @@ export const errorHandler: ErrorHandler = (err, c) => {
   }
 
   if (err instanceof AppError) {
+    // Auth-class client errors (401 Unauthorized / 403 Forbidden) are
+    // security-relevant rejections — surface them as structured warns
+    // per the "security monitoring" mandate. Other AppErrors (404 /
+    // 409 / validation) are normal business outcomes, not logged here.
+    if (err.statusCode === 401 || err.statusCode === 403) {
+      logger.warn(
+        { status: err.statusCode, name: err.name, path: c.req.path },
+        "auth_rejected",
+      );
+    }
     return c.json(
       { error: { code: err.statusCode, message: err.message } },
       err.statusCode as 400,

@@ -11,8 +11,9 @@
  *   collab drift investigation specifically needs)
  * - per-check timeout (`CHECK_TIMEOUT_MS = 2000`) catches stuck
  *   probes so a hung dependency doesn't pile up handler queues
- * - unknown path → 404 (keeps the surface area tiny;
- *   no /metrics on this server by design)
+ * - unknown path → 404 (keeps the surface area tiny)
+ * - `/metrics` → 200 Prometheus text only when an `onMetrics` hook is
+ *   supplied; without the hook it is just another 404 path
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -142,7 +143,7 @@ describe("startHealthServer", () => {
     await stop();
   });
 
-  it("returns 404 for unknown paths (keeps surface area minimal)", async () => {
+  it("returns 404 for /metrics when no onMetrics hook is supplied", async () => {
     const { server, stop } = startHealthServer({
       port: pickPort(),
       serviceName: "test",
@@ -152,6 +153,24 @@ describe("startHealthServer", () => {
     const port = (server.address() as AddressInfo).port;
     const res = await fetch(`http://127.0.0.1:${port}/metrics`);
     expect(res.status).toBe(404);
+    await stop();
+  });
+
+  it("serves /metrics as 200 text when an onMetrics hook is supplied", async () => {
+    const { server, stop } = startHealthServer({
+      port: pickPort(),
+      serviceName: "test",
+      checks: [{ name: "pg", check: async () => true }],
+      onMetrics: async () => "http_requests_total 1\ndb_up 1\n",
+    });
+    await new Promise((r) => server.once("listening", r));
+    const port = (server.address() as AddressInfo).port;
+    const res = await fetch(`http://127.0.0.1:${port}/metrics`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/plain/);
+    const text = await res.text();
+    expect(text).toContain("http_requests_total 1");
+    expect(text).toContain("db_up 1");
     await stop();
   });
 });

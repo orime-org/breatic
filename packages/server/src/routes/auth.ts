@@ -41,6 +41,7 @@ function rateLimit(opts: { prefix: string; max: number; windowSeconds: number })
     const redis = getRedis();
     const allowed = await checkRateLimit(redis, `${opts.prefix}:${ip}`, opts.max, opts.windowSeconds);
     if (!allowed) {
+      logger.warn({ action: opts.prefix, ip }, "rate_limit_hit");
       return c.json(
         { error: { code: 429, message: t("server.error.rate_limited") } },
         429,
