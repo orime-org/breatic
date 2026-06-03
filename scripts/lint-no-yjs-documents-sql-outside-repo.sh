@@ -19,8 +19,10 @@
 #     — the `\b` after `yjsDocuments` fails against the trailing `Repo`.
 #
 # ALLOWED (the single home + the definition):
-#   - packages/core/src/db/yjs-documents.repo.ts  (every query)
-#   - packages/core/src/db/schema.ts              (the pgTable definition)
+#   - packages/collab/src/services/yjs-documents.repo.ts  (every query —
+#     after the two-DB cutover collab is the sole runtime owner)
+#   - packages/core/src/db/yjs-schema.ts                  (the pgTable
+#     definition; the driver/pool/migrations stay in core)
 #
 # EXEMPT: tests (*.test.ts / *.integration.test.ts / __tests__) stage /
 # assert against the table freely; migrations are *.sql (not scanned).
@@ -61,8 +63,8 @@ CANDIDATES=$(find "${SCAN_DIRS[@]}" \
   -not -path '*/dist/*' \
   -not -name '*.test.ts' \
   -not -name '*.spec.ts' \
-  -not -path 'packages/core/src/db/yjs-documents.repo.ts' \
-  -not -path 'packages/core/src/db/schema.ts' \
+  -not -path 'packages/collab/src/services/yjs-documents.repo.ts' \
+  -not -path 'packages/core/src/db/yjs-schema.ts' \
   2>/dev/null || true)
 
 MATCHES=""
@@ -101,12 +103,12 @@ if [[ -n "$MATCHES" ]]; then
   echo "" >&2
   printf '%s' "$MATCHES" >&2
   echo "" >&2
-  echo "yjs_documents is a SHARED table with ONE repo home:" >&2
-  echo "  packages/core/src/db/yjs-documents.repo.ts" >&2
+  echo "yjs_documents has ONE repo home (collab owns the yjs store):" >&2
+  echo "  packages/collab/src/services/yjs-documents.repo.ts" >&2
   echo "Every read/write goes through yjsDocumentsRepo.* (call it from" >&2
   echo "your service / hook / route). Do not query the table — by raw" >&2
   echo "name or Drizzle symbol — anywhere else. (The schema definition in" >&2
-  echo "core/db/schema.ts is the only other allowed reference.)" >&2
+  echo "core/db/yjs-schema.ts is the only other allowed reference.)" >&2
   exit 1
 fi
 
