@@ -18,7 +18,8 @@
 
 import { eq, and, isNull, desc } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db, yjsDocumentsRepo } from "@breatic/core";
+import { db } from "@breatic/core";
+import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import {
   projects,
   studios,
@@ -249,10 +250,17 @@ export async function duplicateProject(
       addedBy: null,
     });
 
-    // yjs_documents is shared infra; its SQL lives in the single core
-    // repo. Copy every doc of the source project, rewriting the
-    // `project-{sourceId}/` name prefix to the new id, in this tx.
-    await yjsDocumentsRepo.duplicateByProjectPrefix(tx, sourceId, newProject.id);
+    // The Yjs document store is a SEPARATE database now, so the doc copy
+    // can't ride this business tx. Enqueue a lifecycle command in the
+    // same tx (atomic with the new project row); the relay forwards it
+    // to collab, which copies `project-{sourceId}/*` → `project-{newId}/*`
+    // in the yjs DB.
+    await insertOutboxEvent(tx, {
+      type: "project:duplicated",
+      sourceId,
+      newId: newProject.id,
+      ts: Date.now(),
+    });
 
     return toEntity(newProject);
   });
@@ -334,10 +342,19 @@ export async function deleteProject(id: string): Promise<void> {
         ),
       );
 
-    // yjs_documents is shared infra; its SQL lives in the single core
-    // repo. Soft-delete meta + every Space doc of this project in the
-    // same transaction.
-    await yjsDocumentsRepo.softDeleteByProjectPrefix(tx, id);
+    // The Yjs document store is a SEPARATE database now, so its cascade
+    // can't ride this business tx. Enqueue a lifecycle command in the
+    // same tx (atomic with the project soft-delete); the relay forwards
+    // it to collab, which soft-deletes `project-{id}/*` in the yjs DB +
+    // kicks live connections. The data-leak invariant does NOT depend on
+    // this async step: collab's auth hook reads the BUSINESS db, so the
+    // moment this tx commits, `loadProjectRole` returns null and refuses
+    // every new WebSocket — before any yjs read.
+    await insertOutboxEvent(tx, {
+      type: "project:deleted",
+      projectId: id,
+      ts: now.getTime(),
+    });
 
     await tx
       .update(projects)

@@ -36,6 +36,18 @@ export function taskEventsStreamKey(): string {
 }
 
 /**
+ * Build the Redis stream key for project-lifecycle commands (delete /
+ * duplicate) forwarded from the transactional outbox to collab.
+ *
+ * Kept here as the single source of truth so the server-side relay
+ * (publisher) and the collab consumer never drift on the key.
+ * @returns the environment-scoped `project-lifecycle` stream key
+ */
+export function lifecycleStreamKey(): string {
+  return `${env.ENV}:stream:project-lifecycle`;
+}
+
+/**
  * JSON replacer that preserves `undefined` values as the sentinel string
  * `"__undefined__"`. Standard `JSON.stringify` silently drops `undefined`
  * values, which would strip `handlingBy: undefined` from

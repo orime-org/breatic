@@ -23,11 +23,11 @@ const { fetchDocDataMock, upsertDocDataMock } = vi.hoisted(() => ({
   upsertDocDataMock: vi.fn(),
 }));
 
-vi.mock("@breatic/core", () => ({
-  yjsDocumentsRepo: {
-    fetchDocData: fetchDocDataMock,
-    upsertDocData: upsertDocDataMock,
-  },
+// The yjs-store repo moved to collab; persistence imports it locally.
+// Mock the local repo (so its core `yjsDb` dependency never loads).
+vi.mock("@collab/services/yjs-documents.repo.js", () => ({
+  fetchDocData: fetchDocDataMock,
+  upsertDocData: upsertDocDataMock,
 }));
 
 import { fetchDoc, storeDoc } from "../services/persistence.js";

@@ -48,6 +48,9 @@ export type {
   SpaceType,
   Space,
   MembersChangedEvent,
+  ProjectDeletedLifecycleEvent,
+  ProjectDuplicatedLifecycleEvent,
+  ProjectLifecycleEvent,
 } from "@shared/types/index.js";
 
 export {

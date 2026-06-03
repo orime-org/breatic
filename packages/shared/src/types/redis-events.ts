@@ -48,6 +48,38 @@ export interface MembersChangedEvent {
   ts: number;
 }
 
+// ── Project lifecycle (transactional outbox → durable stream) ───────
+//
+// Yjs document store lives in a SEPARATE Postgres database from the
+// business tables, so a project delete / duplicate can no longer
+// cascade to `yjs_documents` inside the business transaction. Instead
+// the server writes one of these commands to a transactional outbox in
+// the same business tx; a relay forwards it to a durable Redis Stream;
+// collab consumes it and performs the yjs-DB side idempotently. (Create
+// is NOT on this stream — collab lazy-seeds the meta doc on first load.)
+
+/** Cascade-soft-delete a deleted project's Yjs documents. */
+export interface ProjectDeletedLifecycleEvent {
+  type: "project:deleted";
+  projectId: string;
+  /** Epoch ms — when the business delete committed. */
+  ts: number;
+}
+
+/** Copy a source project's Yjs documents into a freshly duplicated one. */
+export interface ProjectDuplicatedLifecycleEvent {
+  type: "project:duplicated";
+  sourceId: string;
+  newId: string;
+  /** Epoch ms — when the business duplicate committed. */
+  ts: number;
+}
+
+/** Discriminated union of every project-lifecycle command on the stream. */
+export type ProjectLifecycleEvent =
+  | ProjectDeletedLifecycleEvent
+  | ProjectDuplicatedLifecycleEvent;
+
 // ── Channel names (single source of truth) ──────────────────────────
 
 /**

@@ -75,4 +75,9 @@ export {
   membersChangedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
 } from "@shared/types/redis-events.js";
-export type { MembersChangedEvent } from "@shared/types/redis-events.js";
+export type {
+  MembersChangedEvent,
+  ProjectDeletedLifecycleEvent,
+  ProjectDuplicatedLifecycleEvent,
+  ProjectLifecycleEvent,
+} from "@shared/types/redis-events.js";

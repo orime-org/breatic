@@ -14,7 +14,7 @@
  */
 
 import { Database } from "@hocuspocus/extension-database";
-import { yjsDocumentsRepo } from "@breatic/core";
+import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 /**
  * Load a document's latest binary state (Hocuspocus `fetch`).
