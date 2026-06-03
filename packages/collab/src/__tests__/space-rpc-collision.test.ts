@@ -29,11 +29,10 @@ import * as fc from "fast-check";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 
-vi.mock("@breatic/core", () => ({
-  yjsDocumentsRepo: {
-    softDeleteByName: vi.fn(),
-    restoreByName: vi.fn(),
-  },
+// The yjs-store repo moved to collab; space-rpc imports it locally.
+vi.mock("@collab/services/yjs-documents.repo.js", () => ({
+  softDeleteByName: vi.fn(),
+  restoreByName: vi.fn(),
 }));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";

@@ -16,14 +16,12 @@
  * owner row in one transaction.
  */
 
-import { randomUUID } from "node:crypto";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { projectAuthService, yjsDocumentsRepo } from "@breatic/core";
+import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { db } from "@breatic/core";
-import { encodeInitialMetaState } from "@breatic/core";
-import { t, projectMetaDocName } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
 import type { ProjectEntity, ProjectRole } from "@breatic/shared";
@@ -60,27 +58,24 @@ export async function assertAccess(
 }
 
 /**
- * Create a new project owned by the caller, seeded with one default
- * Canvas Space so the frontend never observes an empty `meta.spaces`.
+ * Create a new project owned by the caller.
  *
  * Atomically writes, in a single transaction:
  *   1. `projects` row (in caller's personal studio)
  *   2. `project_members` row (`role='owner'`)
- *   3. `yjs_documents` row for `project-{id}/meta` containing one
- *      Space entry of kind `canvas`
  *
- * If any step fails the whole transaction rolls back — the project
- * never appears half-formed. This eliminates the pre-v10 frontend
- * bootstrap effect that POSTed `/spaces` after first page load.
- *
- * Per v10 spec there are three Space kinds (canvas, document,
- * timeline); only canvas is implemented end-to-end today, so the
- * default seed is hardcoded `'canvas'`. Adding a `kind` parameter
- * is additive when document/timeline come online.
+ * The default Canvas Space is NOT seeded here any more: the Yjs
+ * document store moved to a separate database that can't share this
+ * business transaction. Instead collab lazy-seeds the `project-{id}/meta`
+ * doc with one default Space on its first load (deterministic Space id
+ * derived from the project id, so concurrent first-loads converge), and
+ * the awareness hook backfills the creator's real name/avatar when they
+ * first connect. The "project exists ⇒ ≥1 Space" invariant the frontend
+ * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param name - Project name
  * @param description - Optional description
- * @returns The newly created project entity (seeded with one default canvas Space)
+ * @returns The newly created project entity
  */
 export async function create(
   userId: string,
@@ -93,53 +88,9 @@ export async function create(
     user?.username ?? null,
   );
 
-  return db.transaction(async (tx) => {
-    const project = await projectRepo.createProject(
-      tx,
-      studio.id,
-      userId,
-      name,
-      description,
-    );
-
-    const spaceId = randomUUID();
-    // The first Space inherits the Project name. NewProjectDialog
-    // only collects one text field (the Project name), so users
-    // expect the seeded canvas tab to read what they just typed —
-    // not a placeholder. Tab-level rename ships via the inline
-    // dblclick edit (`SpaceTab.tsx`) once they're inside.
-    //
-    // Q11 v2 — `actor` stores the creating user's userId. The
-    // frontend looks up `meta.users[actor].name` at render time so
-    // any later username rename propagates retroactively. Same
-    // convention as collab/space-rpc.handleCreate.
-    // Creator's display name follows the same fallback chain as
-    // `collab/auth.ts::loadProjectRole` (`username ?? email`) so the
-    // seeded `meta.users[creator]` matches what the runtime
-    // awareness write would have produced — keeps share-link peers
-    // opening a fresh project from rendering the creator's UUID
-    // before the creator first connects.
-    const creatorName = user?.username ?? user?.email ?? userId;
-    const creatorAvatarUrl = user?.avatarUrl ?? null;
-    const initialState = encodeInitialMetaState({
-      spaceId,
-      kind: "canvas",
-      name: project.name,
-      createdBy: userId,
-      actor: userId,
-      creatorName,
-      creatorAvatarUrl,
-      ts: Date.now(),
-    });
-
-    await yjsDocumentsRepo.insertInitialState(
-      tx,
-      projectMetaDocName(project.id),
-      initialState,
-    );
-
-    return project;
-  });
+  return db.transaction(async (tx) =>
+    projectRepo.createProject(tx, studio.id, userId, name, description),
+  );
 }
 
 /**

@@ -80,3 +80,26 @@ export async function migrateDatabase(url: string): Promise<{ migrationsFolder: 
     await client.end();
   }
 }
+
+/**
+ * Run the SEPARATE yjs-store migrations against an arbitrary URL.
+ *
+ * Yjs analogue of {@link migrateDatabase}: points at the independent
+ * `migrations-yjs/` set so integration tests can spin a yjs testcontainer
+ * DB (the Yjs document store is a separate database — see `yjsDb`).
+ * @param url - Postgres connection URL of the yjs database to migrate
+ * @returns The resolved yjs migrations folder path
+ * @throws {Error} if any migration fails
+ */
+export async function migrateYjsDatabase(
+  url: string,
+): Promise<{ migrationsFolder: string }> {
+  const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations-yjs");
+  const client = createPgClient(url, { name: "core-yjs-integration-migrate", max: 1 });
+  try {
+    await migrate(drizzle(client), { migrationsFolder });
+    return { migrationsFolder };
+  } finally {
+    await client.end();
+  }
+}

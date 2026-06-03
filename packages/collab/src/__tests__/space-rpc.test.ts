@@ -29,11 +29,10 @@ const { softDeleteByNameMock, restoreByNameMock } = vi.hoisted(() => ({
   restoreByNameMock: vi.fn(),
 }));
 
-vi.mock("@breatic/core", () => ({
-  yjsDocumentsRepo: {
-    softDeleteByName: softDeleteByNameMock,
-    restoreByName: restoreByNameMock,
-  },
+// The yjs-store repo moved to collab; space-rpc imports it locally.
+vi.mock("@collab/services/yjs-documents.repo.js", () => ({
+  softDeleteByName: softDeleteByNameMock,
+  restoreByName: restoreByNameMock,
 }));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";

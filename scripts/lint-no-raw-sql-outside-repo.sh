@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # lint-no-raw-sql-outside-repo — forbid raw database access outside
 # repository files in @breatic/core, @breatic/domain, @breatic/server
-# and @breatic/collab (collab holds no repos — it is scanned to keep it
-# raw-SQL-free after the 2026-06-02 DB-adapter unification).
+# and @breatic/collab (which after the 2026-06-03 yjs two-DB cutover
+# hosts the yjs_documents repo — scanned to keep any raw SQL in *.repo.ts).
 #
 # PR4 (the domain-extraction follow-up) note: the credit / task /
 # node-history repos moved to @breatic/domain, so domain/src is scanned
@@ -36,13 +36,14 @@
 # queries freely. `connectivity-check.ts` is also exempt — its
 # `sql`SELECT 1`` is a liveness ping (no table), not table data access.
 #
-# collab IS scanned: after the 2026-06-02 DB-adapter unification it
-# holds no raw SQL at all — persistence / auth / space-rpc route their
-# `yjs_documents` access through the core `yjsDocumentsRepo` (the single
-# repo home), and the boot connectivity check uses core
-# `checkPgReachable`. The companion guard
-# lint-no-yjs-documents-sql-outside-repo locks that shared table to its
-# one repo; lint-no-postgres-outside-core keeps the driver out of collab.
+# collab IS scanned: after the 2026-06-03 yjs two-DB cutover it HOSTS
+# the `yjs_documents` repo (collab is the store's sole runtime owner).
+# Its raw SQL lives in services/yjs-documents.repo.ts (auto-exempt as a
+# *.repo.ts); persistence / auth / space-rpc / the lifecycle consumer
+# route their access through that local repo, and the repo binds core's
+# `yjsDb` (not the bare driver). The companion guard
+# lint-no-yjs-documents-sql-outside-repo locks that table to its one
+# repo; lint-no-postgres-outside-core keeps the driver out of collab.
 #
 # Runs in CI and as `pnpm lint:no-raw-sql-outside-repo`. Non-zero exit
 # blocks the PR.
@@ -126,4 +127,4 @@ if [[ -n "$MATCHES" ]]; then
   exit 1
 fi
 
-echo "lint:no-raw-sql-outside-repo — clean (core + server + domain keep raw SQL in *.repo.ts; collab has none)"
+echo "lint:no-raw-sql-outside-repo — clean (core + server + domain + collab keep raw SQL in *.repo.ts)"

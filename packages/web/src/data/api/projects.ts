@@ -40,6 +40,9 @@ export const projectsApi = {
   create(body: { name: string; templateId?: string }) {
     return apiPost<ProjectDetail>('/projects', body);
   },
+  duplicate(id: string) {
+    return apiPost<ProjectDetail>(`/projects/${id}/duplicate`, {});
+  },
   rename(id: string, name: string) {
     return apiPatch<ProjectDetail>(`/projects/${id}`, { name });
   },

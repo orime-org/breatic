@@ -18,16 +18,20 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { fetchDocDataMock, upsertDocDataMock } = vi.hoisted(() => ({
-  fetchDocDataMock: vi.fn(),
-  upsertDocDataMock: vi.fn(),
-}));
+const { fetchDocDataMock, upsertDocDataMock, seedInitialStateMock } = vi.hoisted(
+  () => ({
+    fetchDocDataMock: vi.fn(),
+    upsertDocDataMock: vi.fn(),
+    seedInitialStateMock: vi.fn(),
+  }),
+);
 
-vi.mock("@breatic/core", () => ({
-  yjsDocumentsRepo: {
-    fetchDocData: fetchDocDataMock,
-    upsertDocData: upsertDocDataMock,
-  },
+// The yjs-store repo moved to collab; persistence imports it locally.
+// Mock the local repo (so its core `yjsDb` dependency never loads).
+vi.mock("@collab/services/yjs-documents.repo.js", () => ({
+  fetchDocData: fetchDocDataMock,
+  upsertDocData: upsertDocDataMock,
+  seedInitialState: seedInitialStateMock,
 }));
 
 import { fetchDoc, storeDoc } from "../services/persistence.js";
@@ -36,6 +40,7 @@ describe("collab persistence delegation", () => {
   beforeEach(() => {
     fetchDocDataMock.mockReset();
     upsertDocDataMock.mockReset();
+    seedInitialStateMock.mockReset();
   });
 
   it("fetchDoc returns the repo's stored bytes for the document name", async () => {
@@ -48,9 +53,27 @@ describe("collab persistence delegation", () => {
     expect(out).toBe(bytes);
   });
 
-  it("fetchDoc returns null when the repo has no live (non-soft-deleted) row", async () => {
+  it("fetchDoc returns null for a CANVAS doc with no live row (only meta is lazy-seeded)", async () => {
     fetchDocDataMock.mockResolvedValue(null);
-    expect(await fetchDoc({ documentName: "project-p/meta" })).toBeNull();
+    expect(await fetchDoc({ documentName: "project-p/canvas-s" })).toBeNull();
+    // A canvas doc must never be lazy-seeded.
+    expect(seedInitialStateMock).not.toHaveBeenCalled();
+  });
+
+  it("fetchDoc lazy-seeds a default Space for a fresh META doc with no row", async () => {
+    fetchDocDataMock.mockResolvedValue(null);
+    seedInitialStateMock.mockResolvedValue(true); // won the insert race
+
+    const out = await fetchDoc({ documentName: "project-p/meta" });
+
+    // Seeded bytes returned (non-empty initial meta state), and the seed
+    // targeted the same meta doc name.
+    expect(out).not.toBeNull();
+    expect(out!.length).toBeGreaterThan(0);
+    expect(seedInitialStateMock).toHaveBeenCalledWith(
+      "project-p/meta",
+      expect.any(Uint8Array),
+    );
   });
 
   it("storeDoc upserts the document state through the repo", async () => {

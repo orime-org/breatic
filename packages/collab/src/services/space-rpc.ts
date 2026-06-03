@@ -32,7 +32,7 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 
-import { yjsDocumentsRepo } from "@breatic/core";
+import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   canvasSpaceDocName,
   projectMetaDocName,

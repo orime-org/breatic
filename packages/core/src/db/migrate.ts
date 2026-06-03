@@ -14,7 +14,7 @@
 
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
-import { db } from "@core/db/client.js";
+import { db, yjsDb } from "@core/db/client.js";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -32,5 +32,23 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 export async function runMigrations(): Promise<{ migrationsFolder: string }> {
   const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
   await migrate(db, { migrationsFolder });
+  return { migrationsFolder };
+}
+
+/**
+ * Run all pending migrations for the SEPARATE Yjs document store database
+ * (`yjsDb` / `YJS_DATABASE_URL`).
+ *
+ * Uses its own migrations folder + independent `__drizzle_migrations`
+ * ledger so it can never collide with the business migration journal.
+ * Same no-logging library mandate as {@link runMigrations}; the CLI
+ * caller emits its own output.
+ * @returns The resolved yjs migrations folder path, for the CLI caller's
+ *   human-readable output.
+ * @throws {Error} if any migration fails (prevents service from starting)
+ */
+export async function runYjsMigrations(): Promise<{ migrationsFolder: string }> {
+  const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations-yjs");
+  await migrate(yjsDb, { migrationsFolder });
   return { migrationsFolder };
 }

@@ -23,6 +23,12 @@
 #                           join in credit.repo.ts (getBalance /
 #                           deductBalance / addBalance). An own deleted_at
 #                           would be a redundant second source of truth.
+#   - project_lifecycle_outbox  internal transactional-outbox COMMAND
+#                           QUEUE (not a business entity): rows are
+#                           appended in a business tx, the relay marks
+#                           sent_at, and they're retained as an audit
+#                           trail — never user-facing, never deleted.
+#                           Same append-only carve-out.
 # created_at has NO allowlist — every table must have it.
 #
 # Implementation: parse each `export const <name> = pgTable(` block and
@@ -51,6 +57,7 @@ VIOLATIONS=$(
         allow["payments"] = 1
         allow["creditTransactions"] = 1
         allow["creditBalances"] = 1
+        allow["projectLifecycleOutbox"] = 1
       }
       function evaluate() {
         if (curname == "") return

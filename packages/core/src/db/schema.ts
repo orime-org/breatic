@@ -19,7 +19,6 @@ import {
   integer,
   timestamp,
   jsonb,
-  customType,
   uniqueIndex,
   index,
   primaryKey,
@@ -616,33 +615,51 @@ export const skillInstalls = pgTable(
   ],
 );
 
-// ── Custom Types ─────────────────────────────────────────────────────
-
-const bytea = customType<{ data: Buffer }>({
-  dataType() {
-    return "bytea";
-  },
-});
-
 // ── 17. Yjs Documents ────────────────────────────────────────────────
+//
+// MOVED: the `yjs_documents` table now lives in its own database +
+// schema file `@core/db/yjs-schema.ts` (see `yjsDb` in client.ts). It is
+// migrated by the independent `migrations-yjs/` set, not the business
+// migrations here. The business DB drops its abandoned copy (migration
+// 0022). The query repository lives in `@breatic/collab`.
 
-export const yjsDocuments = pgTable("yjs_documents", {
-  name: text("name").primaryKey(),
-  data: bytea("data").notNull(),
-  // `createdAt` aligns with the project-wide rule: every PG table has
-  // a createdAt timestamp (see CLAUDE.md "key conventions"). For existing rows
-  // backfilled from `updated_at` - the earliest update is the create
-  // time (Hocuspocus's persistence extension upserts on store).
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  // Soft-delete support - aligns with the project-wide "soft delete only"
-  // rule (CLAUDE.md). Set by deleteProject() cascade when the owning
-  // project is deleted. Collab's persistence layer filters this out on
-  // fetch so deleted docs are invisible even if a stale client reconnects.
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+// ── 17.1 Project Lifecycle Outbox ────────────────────────────────────
+//
+// Transactional outbox bridging the business DB to the separate yjs DB.
+// Since the two databases cannot share a transaction, a project delete /
+// duplicate writes one command row HERE inside the same business tx (so
+// the command's existence is atomic with the business write). A relay
+// loop forwards unsent rows to the `project-lifecycle` Redis Stream;
+// collab consumes them and performs the yjs-DB side idempotently. Rows
+// are retained (sent_at stamped) as an audit trail, never deleted —
+// hence no deleted_at (this is an internal command queue, not a business
+// entity); append + mark-sent only.
+export const projectLifecycleOutbox = pgTable(
+  "project_lifecycle_outbox",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Discriminator: "project:deleted" | "project:duplicated"
+    // (see @breatic/shared ProjectLifecycleEvent).
+    kind: text("kind").notNull(),
+    // Full ProjectLifecycleEvent payload (projectId / sourceId+newId / ts).
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // NULL until the relay has forwarded the row to the stream.
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    // Relay attempt counter (incremented on each forward attempt).
+    attempts: integer("attempts").notNull().default(0),
+  },
+  (table) => [
+    // Rows are retained after send, so the relay's "unsent" scan must
+    // stay cheap as the table grows — a partial index over just the
+    // unsent rows keeps it index-only.
+    index("project_lifecycle_outbox_unsent_idx")
+      .on(table.createdAt)
+      .where(sql`${table.sentAt} IS NULL`),
+  ],
+);
 
 // ── 18. Share Links ──────────────────────────────────────────────────
 //

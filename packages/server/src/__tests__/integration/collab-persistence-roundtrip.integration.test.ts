@@ -2,73 +2,55 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * E2E smoke — the real collab persistence extension round-trips a Yjs
- * doc through Postgres via the unified core `yjsDocumentsRepo`.
+ * E2E smoke — the real collab persistence extension + lazy-seed round-trip
+ * a Yjs doc through the SEPARATE yjs Postgres, via a real Hocuspocus.
  *
- * Yjs collaboration is a critical path; this PR re-pointed collab's
- * persistence from a hand-rolled postgres.js pool to the shared core
- * repo. canvas-native-e2e boots Hocuspocus with NO persistence
- * extension (in-memory docs), so it can't cover this. Here we boot a
- * real Hocuspocus Server WITH `createPersistenceExtension()` and prove
- * the full path against a real testcontainer PG:
+ * Yjs collaboration is a critical path. canvas-native-e2e boots Hocuspocus
+ * with NO persistence (in-memory docs), so it can't cover this. Here we
+ * boot a real Hocuspocus Server WITH `createPersistenceExtension()` and
+ * prove the full path against the real `breatic_yjs_test` database:
  *
- *   write through Hocuspocus → store() → yjsDocumentsRepo.upsertDocData
- *     → yjs_documents row;  reload → fetch() → yjsDocumentsRepo.fetchDocData
- *     → the state comes back;  soft-delete the row → reload sees nothing
- *     (the deleted_at filter is load-bearing — a stale client can't
- *     recover a deleted doc).
+ *   - INVARIANT 1 (project exists ⇒ ≥1 Space): opening a FRESH
+ *     `project-{id}/meta` doc (no row — create no longer eager-seeds)
+ *     triggers the lazy-seed via fetchDoc, so the loaded doc already
+ *     carries one default canvas Space;
+ *   - persistence round-trip: a write through Hocuspocus → store() →
+ *     repo → yjs_documents row; reload → fetch() → the state comes back;
+ *   - soft-delete → reload sees nothing (the deleted_at filter is
+ *     load-bearing — a stale client can't recover a deleted doc).
  *
- * NOTE: process.env is set by integration-setup.ts; initCore(process.env)
- * runs before any real-core access. The persistence extension imports
- * the real core barrel — fine under this config's otel→CJS alias.
+ * The persistence extension imports the real core barrel — fine under
+ * this config's otel→CJS alias (the `ai` SDK moved to @breatic/domain).
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  inject,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { eq } from "drizzle-orm";
 
-import {
-  initCore,
-  schema,
-  createTestDb,
-  yjsDocumentsRepo,
-} from "@breatic/core";
+import { initCore, yjsDocuments, createTestDb } from "@breatic/core";
+import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
 import { createPersistenceExtension } from "@breatic/collab/src/services/persistence.js";
 
 initCore(process.env);
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-    REDIS_URL: string;
-    REDIS_QUEUE_URL: string;
-    REDIS_STREAM_URL: string;
-  }
-}
-
-const DOC = "project-dddddddd-dddd-4ddd-8ddd-dddddddddddd/canvas-eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const PID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const META = `project-${PID}/meta`;
+const CANVAS = `project-${PID}/canvas-eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let wsServer: any; // @hocuspocus/server Server — `any` to dodge dup-type issues
 let hocuspocus: Hocuspocus;
 let pgClient: ReturnType<typeof createTestDb>["client"];
-let db: ReturnType<typeof createTestDb>["db"];
+let yjsTestDb: ReturnType<typeof createTestDb>["db"];
 
 /**
  * Poll until `check` is true or the timeout elapses (store() is async,
  * firing after the doc unloads on the last disconnect).
- * @param check - Predicate polled every 50ms.
- * @param timeoutMs - Max wait before throwing.
- * @param label - Error label when the condition is never met.
+ * @param check - Predicate polled every 50ms
+ * @param timeoutMs - Max wait before throwing
+ * @param label - Error label when the condition is never met
  */
 async function waitFor(
   check: () => Promise<boolean>,
@@ -86,10 +68,14 @@ async function waitFor(
 /**
  * Open a doc, run `mutate` in a Yjs transaction, then disconnect so
  * Hocuspocus unloads the doc and persists it via store().
- * @param mutate - Mutation applied inside the doc transaction.
+ * @param docName - Doc to open
+ * @param mutate - Mutation applied inside the doc transaction
  */
-async function writeAndPersist(mutate: (doc: Y.Doc) => void): Promise<void> {
-  const conn = await hocuspocus.openDirectConnection(DOC, {
+async function writeAndPersist(
+  docName: string,
+  mutate: (doc: Y.Doc) => void,
+): Promise<void> {
+  const conn = await hocuspocus.openDirectConnection(docName, {
     context: { user: { id: "system" }, source: "test" },
   });
   await conn.transact(mutate);
@@ -97,12 +83,10 @@ async function writeAndPersist(mutate: (doc: Y.Doc) => void): Promise<void> {
 }
 
 beforeAll(async () => {
-  const DATABASE_URL = inject("DATABASE_URL");
-  ({ db, client: pgClient } = createTestDb(DATABASE_URL));
-  await db.delete(schema.yjsDocuments).where(eq(schema.yjsDocuments.name, DOC));
+  ({ db: yjsTestDb, client: pgClient } = createTestDb(inject("YJS_DATABASE_URL")));
+  await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, META));
+  await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, CANVAS));
 
-  // Real Hocuspocus with the REAL unified persistence extension. Small
-  // debounce + unloadImmediately so store() fires promptly on disconnect.
   wsServer = new Server({
     port: 0,
     quiet: true,
@@ -116,26 +100,41 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await wsServer.destroy();
-  await db.delete(schema.yjsDocuments).where(eq(schema.yjsDocuments.name, DOC));
+  await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, META));
+  await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, CANVAS));
   await pgClient.end();
 });
 
-describe("collab persistence round-trip (real Hocuspocus + real PG)", () => {
-  it("persists a written doc to yjs_documents and reloads it after unload", async () => {
-    await writeAndPersist((doc) => {
+describe("collab persistence + lazy-seed round-trip (real Hocuspocus + real yjs PG)", () => {
+  it("lazy-seeds a default Space when a fresh project's meta doc is first loaded (invariant 1)", async () => {
+    // No row exists for META — opening it must lazy-seed one Space.
+    const conn = await hocuspocus.openDirectConnection(META, {
+      context: { user: { id: "system" }, source: "test" },
+    });
+    try {
+      await conn.transact((doc) => {
+        const spaces = doc.getMap("spaces");
+        // The frontend's invariant: a freshly-opened project already has
+        // at least one Space, so it never renders an empty canvas.
+        expect(spaces.size).toBeGreaterThanOrEqual(1);
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  });
+
+  it("persists a written canvas doc to the yjs DB and reloads it after unload", async () => {
+    await writeAndPersist(CANVAS, (doc) => {
       doc.getMap("nodes").set("n1", "hello");
     });
 
-    // store() lands a row in PG via the core repo.
     await waitFor(
-      async () => (await yjsDocumentsRepo.fetchDocData(DOC)) !== null,
+      async () => (await yjsRepo.fetchDocData(CANVAS)) !== null,
       5000,
-      "doc persisted to PG",
+      "doc persisted to yjs PG",
     );
 
-    // Reload into a fresh Y.Doc from the persisted bytes — proves fetch()
-    // reads back through the repo.
-    const bytes = await yjsDocumentsRepo.fetchDocData(DOC);
+    const bytes = await yjsRepo.fetchDocData(CANVAS);
     expect(bytes).not.toBeNull();
     const reloaded = new Y.Doc();
     Y.applyUpdate(reloaded, new Uint8Array(bytes!));
@@ -143,18 +142,16 @@ describe("collab persistence round-trip (real Hocuspocus + real PG)", () => {
   });
 
   it("a soft-deleted doc reads back as absent (deleted_at filter)", async () => {
-    await writeAndPersist((doc) => {
+    await writeAndPersist(CANVAS, (doc) => {
       doc.getMap("nodes").set("n2", "world");
     });
     await waitFor(
-      async () => (await yjsDocumentsRepo.fetchDocData(DOC)) !== null,
+      async () => (await yjsRepo.fetchDocData(CANVAS)) !== null,
       5000,
       "doc persisted before soft-delete",
     );
 
-    const changed = await yjsDocumentsRepo.softDeleteByName(DOC);
-    expect(changed).toBe(true);
-    // The persistence fetch path filters soft-deleted rows.
-    expect(await yjsDocumentsRepo.fetchDocData(DOC)).toBeNull();
+    expect(await yjsRepo.softDeleteByName(CANVAS)).toBe(true);
+    expect(await yjsRepo.fetchDocData(CANVAS)).toBeNull();
   });
 });

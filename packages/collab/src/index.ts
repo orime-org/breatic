@@ -28,6 +28,7 @@ import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createLogger } from "@collab/infra/logger.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
+import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startMembersSync } from "@collab/services/members-sync.js";
 import { getCollabConfig } from "@collab/config.js";
 
@@ -84,6 +85,15 @@ async function main(): Promise<void> {
   // Start task result listener (Worker → Yjs)
   // streamRedisUrl: consume Redis Streams (DB 2)
   const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, ENV_PREFIX);
+
+  // Start project-lifecycle listener (API outbox relay → yjs-DB cascade).
+  // Same Streams Redis (DB 2) as the task stream; consumes delete /
+  // duplicate commands and performs the yjs-DB side + connection kick.
+  const stopLifecycle = startLifecycleListener(
+    hocuspocus,
+    REDIS_STREAM_URL,
+    ENV_PREFIX,
+  );
 
   // Start members-sync subscriber (API → kick + broadcastStateless +
   // meta-doc Space CRUD apply). Same Redis instance as the task
@@ -175,6 +185,7 @@ async function main(): Promise<void> {
     await stopMembersSync();
     await controlRedis.quit();
     await stopListener();
+    await stopLifecycle();
     await server.destroy();
     logger.info("Shutdown complete");
     process.exit(0);

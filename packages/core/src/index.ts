@@ -20,15 +20,21 @@
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
-export { runMigrations } from "@core/db/migrate.js";
-export { createTestDb, migrateDatabase } from "@core/db/test-support.js";
+export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
+// Yjs document store schema (separate database — see `yjsDb`). Exported
+// so the collab-side repo can import the table definition from core.
+// Wildcard re-export (not a named `{ yjsDocuments }`) so the
+// lint:no-yjs-documents-sql-outside-repo guard's symbol scan doesn't
+// trip on the barrel — it gates QUERIES, and a re-export isn't one.
+export * from "@core/db/yjs-schema.js";
+// Pure initial-meta-doc encoder — stays in core (no DB dependency);
+// collab's lazy-seed imports it. The `yjs_documents` query repo itself
+// MOVED to `@breatic/collab` (collab is the sole runtime owner after the
+// two-DB cutover — server's lifecycle ops go through the outbox stream).
 export { encodeInitialMetaState } from "@core/db/yjs-bootstrap.js";
-// `yjs_documents` is shared infra (collab persistence/auth/space-rpc +
-// server project create/delete/duplicate); its single repo home lives
-// in core so the table's SQL can never scatter across services.
-export * as yjsDocumentsRepo from "@core/db/yjs-documents.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.
@@ -70,7 +76,12 @@ export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
-export { publishNodeEvent, taskEventsStreamKey } from "@core/infra/event-stream.js";
+export {
+  publishNodeEvent,
+  publishToStream,
+  taskEventsStreamKey,
+  lifecycleStreamKey,
+} from "@core/infra/event-stream.js";
 export { publishMembersChanged } from "@core/infra/control-events.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";

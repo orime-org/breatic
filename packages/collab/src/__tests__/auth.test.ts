@@ -73,8 +73,13 @@ vi.mock("../infra/logger.js", () => ({
 vi.mock("@breatic/core", () => ({
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
-  yjsDocumentsRepo: { fetchDocData: fetchDocDataMock },
   SESSION_COOKIE_NAME: "breatic_session",
+}));
+// The yjs-store repo moved to collab; the auth hook now imports it
+// locally. Mock the local repo (so its core `yjsDb` dependency never
+// loads under test).
+vi.mock("@collab/services/yjs-documents.repo.js", () => ({
+  fetchDocData: fetchDocDataMock,
 }));
 
 import { createAuthHook } from "../hooks/auth.js";

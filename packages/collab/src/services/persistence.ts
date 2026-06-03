@@ -14,7 +14,8 @@
  */
 
 import { Database } from "@hocuspocus/extension-database";
-import { yjsDocumentsRepo } from "@breatic/core";
+import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
+import { lazySeedMeta } from "@collab/services/lazy-seed.js";
 
 /**
  * Load a document's latest binary state (Hocuspocus `fetch`).
@@ -22,16 +23,24 @@ import { yjsDocumentsRepo } from "@breatic/core";
  * Soft-deleted rows read as absent (the repo filters `deleted_at`), so
  * a stale client reconnecting after its project was deleted cannot
  * recover the old content.
+ *
+ * Lazy-seed: a fresh project's `project-{id}/meta` doc has no row (create
+ * no longer eager-seeds since the yjs store is a separate DB). On a null
+ * meta fetch we seed one default canvas Space and return its bytes, so
+ * the frontend never observes an empty project. Canvas docs are NOT
+ * seeded (they start empty until first used).
  * @param args - Hocuspocus fetch payload.
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
- * @returns The stored Yjs update bytes, or null when no live row exists.
+ * @returns The stored (or freshly lazy-seeded) Yjs bytes, or null.
  */
 export async function fetchDoc({
   documentName,
 }: {
   documentName: string;
 }): Promise<Uint8Array | null> {
-  return yjsDocumentsRepo.fetchDocData(documentName);
+  const existing = await yjsDocumentsRepo.fetchDocData(documentName);
+  if (existing) return existing;
+  return lazySeedMeta(documentName);
 }
 
 /**

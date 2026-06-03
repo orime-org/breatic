@@ -22,6 +22,7 @@ import { startHealthServer } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
+import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;
@@ -74,6 +75,12 @@ const server = serve(
     logger.info(`Server running on http://localhost:${info.port}`);
   },
 );
+
+// Transactional-outbox relay: forwards project delete / duplicate
+// commands from the business DB to collab via the durable lifecycle
+// Redis Stream (the yjs store is a separate DB, so these can't cascade
+// inside the business transaction any more).
+const lifecycleRelay = startLifecycleRelay();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -134,6 +141,7 @@ async function shutdown(signal: string): Promise<void> {
   // instance while it drains in-flight HTTP requests; failing health
   // early is the explicit signal to the LB "rotate me out".
   await health.stop();
+  lifecycleRelay.stop();
   server.close();
   await Promise.allSettled([closeDb(), closeRedis(), closeQueues()]);
 

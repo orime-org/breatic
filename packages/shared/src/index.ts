@@ -48,6 +48,9 @@ export type {
   SpaceType,
   Space,
   MembersChangedEvent,
+  ProjectDeletedLifecycleEvent,
+  ProjectDuplicatedLifecycleEvent,
+  ProjectLifecycleEvent,
 } from "@shared/types/index.js";
 
 export {
@@ -147,3 +150,5 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
+
+export { newId, deriveId } from "@shared/ids.js";
