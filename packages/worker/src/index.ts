@@ -16,6 +16,7 @@ import {
   logger,
   getRedis,
   getQueueRedis,
+  getStreamRedis,
   pingDb,
   pingRedis,
   startHealthServer,
@@ -139,7 +140,11 @@ export function startWorker(): void {
 // Fail-fast: verify PG + Redis are reachable before consuming jobs.
 // `checkInfraReady` throws InfraNotReadyError per the "process lifecycle (forbidden in the library layer)" mandate - application entry catches, logs, exits.
 try {
-  await checkInfraReady();
+  await checkInfraReady({
+    general: getRedis(),
+    queue: getQueueRedis(),
+    stream: getStreamRedis(),
+  });
 } catch (err) {
   if (err instanceof InfraNotReadyError) {
     logger.error(

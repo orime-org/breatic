@@ -28,7 +28,11 @@ const HEALTH_PORT = env.SERVER_HEALTH_PORT;
 // "process lifecycle (forbidden in the library layer)" mandate - application entry catches,
 // logs with full application context, and exits with code 1.
 try {
-  await checkInfraReady();
+  await checkInfraReady({
+    general: getRedis(),
+    queue: getQueueRedis(),
+    stream: getStreamRedis(),
+  });
 } catch (err) {
   if (err instanceof InfraNotReadyError) {
     logger.error(
