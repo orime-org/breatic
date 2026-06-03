@@ -18,12 +18,14 @@ import en from '../../../../../locales/en.json';
 import zhCN from '../../../../../locales/zh-CN.json';
 import zhTW from '../../../../../locales/zh-TW.json';
 import ja from '../../../../../locales/ja.json';
+import ko from '../../../../../locales/ko.json';
 
 function bootstrap() {
   setLocaleMessages('en', en as Record<string, unknown>);
   setLocaleMessages('zh-CN', zhCN as Record<string, unknown>);
   setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
   setLocaleMessages('ja', ja as Record<string, unknown>);
+  setLocaleMessages('ko', ko as Record<string, unknown>);
   setLocale('en');
 }
 
@@ -49,6 +51,8 @@ describe('web i18n integration', () => {
       expect(t('canvas.emptyState.title')).toBe('キャンバスは空です');
       setLocale('zh-TW');
       expect(t('canvas.emptyState.title')).toBe('畫布是空的');
+      setLocale('ko');
+      expect(t('canvas.emptyState.title')).toBe('캔버스가 비어 있습니다');
     });
   });
 

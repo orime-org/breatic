@@ -29,13 +29,14 @@ import {
 } from '@breatic/shared';
 
 // Vite resolves these via the `@locales` alias to repo-root locales/*.json.
-// All four locales bundle into the initial JS chunk (~few KB each).
+// All five locales bundle into the initial JS chunk (~few KB each).
 import en from '@locales/en.json';
 import zhCN from '@locales/zh-CN.json';
 import zhTW from '@locales/zh-TW.json';
 import ja from '@locales/ja.json';
+import ko from '@locales/ko.json';
 
-const SUPPORTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'ja'];
+const SUPPORTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
 const FALLBACK_LOCALE: Locale = 'en';
 const STORAGE_KEY = 'breatic.locale';
 
@@ -49,6 +50,7 @@ export function bootstrapLocale(): void {
   setLocaleMessages('zh-CN', zhCN as Record<string, unknown>);
   setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
   setLocaleMessages('ja', ja as Record<string, unknown>);
+  setLocaleMessages('ko', ko as Record<string, unknown>);
 
   // 2. Resolve the initial active locale.
   const initial = resolveInitialLocale();
