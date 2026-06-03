@@ -12,8 +12,11 @@ import "@collab/bootstrap-config.js";
 import {
   env,
   createRedisClient,
+  getRedis,
+  getStreamRedis,
   pingDb,
   pingRedis,
+  checkInfraReady,
   startHealthServer,
   InfraNotReadyError,
 } from "@breatic/core";
@@ -23,17 +26,14 @@ import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startMembersSync } from "@collab/services/members-sync.js";
 import { getCollabConfig } from "@collab/config.js";
-import { checkCollabInfraReady } from "@collab/infra/connectivity-check.js";
 
 const logger = createLogger("main");
 
 // All from the validated config (injected by bootstrap-config's
-// initCore). DATABASE_URL is required; REDIS_* / ENV / health port
-// carry schema defaults. The connectivity check + core factories
-// still take these as explicit args - collab just sources them from
-// the one validated config instead of re-reading raw process.env.
-const DATABASE_URL = env.DATABASE_URL;
-const REDIS_URL = env.REDIS_URL;
+// initCore). REDIS_STREAM_URL / ENV / health port carry schema
+// defaults; collab sources them from the one validated config instead
+// of re-reading raw process.env. (The boot connectivity check now uses
+// the core Redis singletons directly, so it needs no URL args.)
 const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
 const ENV_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
@@ -44,11 +44,16 @@ const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
  */
 async function main(): Promise<void> {
   // Fail-fast: verify PG + Redis are reachable before starting the
-  // server. `checkCollabInfraReady` throws InfraNotReadyError per
-  // the "process lifecycle (forbidden in the library layer)" mandate - application entry
-  // catches, logs with full application context, and exits with code 1.
+  // server. `checkInfraReady` (the unified core check) throws
+  // InfraNotReadyError per the "process lifecycle (forbidden in the
+  // library layer)" mandate - application entry catches, logs with full
+  // application context, and exits with code 1. Collab probes the
+  // general (session, DB0) + stream (DB2) Redis singletons it uses.
   try {
-    await checkCollabInfraReady(DATABASE_URL, REDIS_URL, REDIS_STREAM_URL);
+    await checkInfraReady({
+      general: getRedis(),
+      stream: getStreamRedis(),
+    });
   } catch (err) {
     if (err instanceof InfraNotReadyError) {
       logger.error(

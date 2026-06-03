@@ -11,14 +11,13 @@
  */
 
 /**
- * Thrown by `checkInfraReady` (and its collab sibling
- * `checkCollabInfraReady`) when a startup dependency probe
+ * Thrown by `checkInfraReady` when a startup dependency probe
  * fails. The application entry's top-level catch is expected to
  * log `{ component, hint, cause }` with full application context
  * and then `process.exit(1)`.
  *
  * - `component` - short stable tag like `"PostgreSQL"` /
- *   `"Redis"` / `"Redis (stream DB)"`. Used as the log `component`
+ *   `"Redis (general)"` / `"Redis (queue)"` / `"Redis (stream)"`. Used as the log `component`
  *   field so dashboards can split startup failures by dependency
  *   without grepping the message string.
  * - `hint` - human-readable recovery instruction, e.g.
