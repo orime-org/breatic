@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { nanoid } from 'nanoid';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import type { SpaceRpcResponse } from '@breatic/shared';
+import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
@@ -284,7 +283,7 @@ export default function ProjectPage(): React.JSX.Element {
   );
 
   /**
-   * Create a Space - client-side nanoid id (ADR B1.1) + `space:create`
+   * Create a Space - client-side uuid id (ADR B1.1) + `space:create`
    * RPC. The collab process applies the write under the system user;
    * the effect above auto-opens the new tab and dismisses the overlay
    * when the doc broadcast lands.
@@ -296,7 +295,7 @@ export default function ProjectPage(): React.JSX.Element {
     name: string,
   ): Promise<void> => {
     setSpaceOpInProgress('creating');
-    const spaceId = nanoid();
+    const spaceId = newId();
     // Pin the pending id BEFORE the RPC await - Yjs sync from collab
     // can race ahead of the RPC ack (collab broadcasts the meta-doc
     // mutation as soon as space-rpc transact runs, which often beats

@@ -19,7 +19,8 @@ import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { join, extname } from "node:path";
-import { randomBytes } from "node:crypto";
+
+import { newId } from "@breatic/shared";
 
 /**
  * Download a URL into a job temp dir. Returns the downloaded path.
@@ -44,7 +45,7 @@ export async function downloadToTempDir(
   }
 
   const suffix = options.suffix ?? deriveSuffixFromUrl(url);
-  const filename = `${randomBytes(6).toString("hex")}${suffix}`;
+  const filename = `${newId()}${suffix}`;
   const path = join(tempDir, `in-${filename}`);
 
   const nodeStream = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);

@@ -10,7 +10,8 @@
  * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
  */
 
-import { randomUUID } from "node:crypto";
+import { newId } from "@breatic/shared";
+
 import { env } from "@core/config/env.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
@@ -111,7 +112,7 @@ export function storageKey(opts: {
   ext: string;
 }): string {
   const date = new Date().toISOString().slice(0, 10);
-  const filename = `${Date.now()}_${randomUUID()}${opts.ext}`;
+  const filename = `${Date.now()}_${newId()}${opts.ext}`;
   if (opts.userId) {
     const project = opts.projectId || "default";
     return `${opts.userId}/${project}/${opts.taskType}/${date}/${filename}`;

@@ -17,7 +17,7 @@
  *   Response  { id, ok: true,  result? }             - collab → client (success)
  *             { id, ok: false, error: { code, message } }   (failure)
  *
- *   - `id` is a caller-generated correlation id (nanoid). The collab
+ *   - `id` is a caller-generated correlation id (uuid v4). The collab
  *     reply echoes it back so concurrent in-flight RPCs can be
  *     demultiplexed by the client.
  *   - `type` namespace is `space:*` and `messages:*`; further methods
@@ -39,8 +39,8 @@ import { SpaceTypeSchema } from "@shared/types/space.js";
 
 /**
  * Caller-generated correlation id. We accept any non-empty string up
- * to a sane upper bound; nanoid v5 default is 21 chars so 64 is
- * generous without enabling abuse.
+ * to a sane upper bound; a uuid is 36 chars so 64 is generous
+ * without enabling abuse.
  */
 const RpcIdSchema = z.string().min(1).max(64);
 
@@ -61,8 +61,8 @@ export type SpaceRpcErrorCode = z.infer<typeof SpaceRpcErrorCodeSchema>;
 
 /**
  * Create a new Space. Caller generates the spaceId client-side
- * (nanoid) per ADR B1.1 - collab uses `set-if-not-exists` semantics
- * so a nanoid collision is reported as `CONFLICT` and the client
+ * (uuid v4) per ADR B1.1 - collab uses `set-if-not-exists` semantics
+ * so a collision is reported as `CONFLICT` and the client
  * retries with a fresh id.
  */
 // Space name length cap shared across create + rename (and the web

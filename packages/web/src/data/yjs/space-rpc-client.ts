@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { nanoid } from 'nanoid';
 import {
+  newId,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
   SpaceRpcResponseSchema,
@@ -51,7 +51,7 @@ export async function sendSpaceRpc(
   request: Omit<SpaceRpcRequest, 'id'>,
   opts: SendSpaceRpcOptions = {},
 ): Promise<SpaceRpcResponse> {
-  const id = opts.idGen?.() ?? nanoid();
+  const id = opts.idGen?.() ?? newId();
   const timeoutMs = opts.timeoutMs ?? 10000;
 
   return new Promise<SpaceRpcResponse>((resolve, reject) => {
