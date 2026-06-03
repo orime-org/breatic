@@ -33,7 +33,7 @@
 - **关键路径 6 类**(CLAUDE.md):支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作 —— 改动碰到必跑对应 E2E
 - **核心用户流**:注册 → 登录 → 建 project → canvas 节点 create → mini-tool apply → 分享 / 邀请
 - **工具**:web Playwright(`pnpm --filter @breatic/web test:smoke`)/ chrome-devtools MCP(交互式驱动)/ Yjs 协作类场景需两个会话验证多端 sync
-- **视觉改动**:必真浏览器 verify(看实际渲染,不靠文字描述),小批 ship + ground truth 对照(详见 [frontend.md](./frontend.md))
+- **视觉改动**:必真浏览器 verify(看实际渲染,不靠文字描述),小批 ship + ground truth 对照(详见 [ARCHITECTURE.md#frontend](./ARCHITECTURE.md#frontend))
 
 ## 4. 边界
 

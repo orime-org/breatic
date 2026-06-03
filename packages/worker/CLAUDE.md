@@ -1,6 +1,6 @@
 # @worker — 包边界(MANDATORY)
 
-> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/architecture.md](../../docs/architecture.md)。
+> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
 **BullMQ 壳**:把队列任务翻译成 provider / core 调用。只它认识 BullMQ。

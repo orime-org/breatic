@@ -17,9 +17,9 @@
 
 # 项目简介
 
-面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,6 包 + 3 服务。
+面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,7 包 + 3 服务。
 
-**架构详见 [docs/architecture.md](./docs/architecture.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 三层记忆 / SubAgent / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/frontend.md](./docs/frontend.md)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
+**架构详见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 三层记忆 / SubAgent / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
 
 # 开发命令
 
@@ -35,16 +35,16 @@ pnpm test / typecheck / lint
 
 # 代码风格
 
-- **函数定义格式规范(MANDATORY)**:命名函数单元(函数声明 / 类方法 / 类 / 变量赋值的箭头·函数表达式)必须有 TSDoc 文档注释 + 显式返回类型 + `@throws {ErrorType}` 异常类型;类型信息归签名(显式)、注释禁写类型,唯异常类型签名表达不了归注释。**不分导出 / 私有**(规则只有 0/1);内联匿名回调 + 测试豁免。详见 [docs/coding-standards.md](./docs/coding-standards.md)
+- **函数定义格式规范(MANDATORY)**:命名函数单元(函数声明 / 类方法 / 类 / 变量赋值的箭头·函数表达式)必须有 TSDoc 文档注释 + 显式返回类型 + `@throws {ErrorType}` 异常类型;类型信息归签名(显式)、注释禁写类型,唯异常类型签名表达不了归注释。**不分导出 / 私有**(规则只有 0/1);内联匿名回调 + 测试豁免。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
 - TypeScript strict,禁止 `any`(用 `unknown`),禁止 `var`/`require`
 - ESLint + eslint-plugin-jsdoc 强制(`recommended-typescript-error` + require-jsdoc 全量 + explicit-function-return-type)
-- 前端命名规范见 [docs/frontend.md#naming-conventions](./docs/frontend.md#naming-conventions)
-- 前端 layered 架构以 `app → pages → spaces → features → stores → domain → data → ui` 单向依赖(详见 [docs/frontend.md#layered-architecture](./docs/frontend.md#layered-architecture))
+- 前端命名规范见 [docs/ARCHITECTURE.md#naming-conventions](./docs/ARCHITECTURE.md#naming-conventions)
+- 前端 layered 架构以 `app → pages → spaces → features → stores → domain → data → ui` 单向依赖(详见 [docs/ARCHITECTURE.md#layered-architecture](./docs/ARCHITECTURE.md#layered-architecture))
 
 # 关键规范
 
 - **`@shared` vs `@core` 内容归属(MANDATORY)**:`@breatic/shared` = **web + 后端共用**的东西,**必须浏览器安全**(零 `node:*` / `fs` / `async_hooks` 等依赖,`sideEffects: false`);`@breatic/core` = **仅后端共用**(可用 node API)。判定题:**web 用得到吗?用得到 → `shared`;用不到 → `core`**。后端专用的东西(doc-name 构造、node i18n 适配器等)放 `core`,不许塞进 `shared`。`shared` 单入口(`tsup src/index.ts` 全 bundle),不开多 subpath 入口——多入口会把内部别名 `@shared/*` 泄漏进 dist 解析不了
-- **后端两个维度:包归属 + 包内分层(MANDATORY)**:**① 包归属(看「谁用」,决定进哪个包)** —— `@breatic/core` = 全后端(含 collab)共享内核(基础设施 / DB schema / 跨服务事件 / 统一鉴权);`@breatic/domain` = 只 server+worker 共享、collab 永不碰的 AIGC 业务(积分花 / 任务 / 节点历史 / agent / model-catalog / canvas-lock);**只一个服务用 → 那个服务**(如 `server/src/modules/`)。判定题:collab 用 且 ≥1 其他后端也用(鉴权 / 会话 / 角色 / 成员事件)· 或 基础设施 / 共享 DB schema / 跨服务事件 → core;只 server+worker 用 → domain;只一个服务用 → 那个服务。**core / domain 都不是业务的默认堆放处**。依赖图 `shared ← core ← {domain, collab};domain ← server / worker`。**② 包内分层(看「翻译还是写业务」,决定进哪一层)** —— 路由层(server route / worker handler / collab hook)只把协议翻译成业务调用、**不写领域业务**(禁止清单 #1);领域 service 层写业务逻辑、**不 import 协议框架**(禁止清单 #2)。**两维度正交不冲突**(例「只 server 用的业务」= 包归属在 server + 写在 server 的 service 层而非 route 层)。**一张表一个 repo 家**:一张表的数据访问(repo)只在一个模块,service 调 repo、不写 SQL。跨服务通信:同步要答案 → 函数调用(类型安全);异步 / 跨进程 / 扇出 → Redis 事件(数据契约在 core/shared)。CI 强制(`lint:dependency-cruiser` 声明式规则):`library-no-app-import`(core / shared / domain 出现 import `@server` / `@worker` / `@collab` / `@web` 即 fail)+ `collab-no-domain-import`(collab import `@breatic/domain` 即 fail)。每个包根有独立 `CLAUDE.md` 写该包的角色 + 可 import 谁 + 暴露啥 + 怎么拿配置。细节见 [docs/architecture.md](./docs/architecture.md)
+- **后端两个维度:包归属 + 包内分层(MANDATORY)**:**① 包归属(看「谁用」,决定进哪个包)** —— `@breatic/core` = 全后端(含 collab)共享内核(基础设施 / DB schema / 跨服务事件 / 统一鉴权);`@breatic/domain` = 只 server+worker 共享、collab 永不碰的 AIGC 业务(积分花 / 任务 / 节点历史 / agent / model-catalog / canvas-lock);**只一个服务用 → 那个服务**(如 `server/src/modules/`)。判定题:collab 用 且 ≥1 其他后端也用(鉴权 / 会话 / 角色 / 成员事件)· 或 基础设施 / 共享 DB schema / 跨服务事件 → core;只 server+worker 用 → domain;只一个服务用 → 那个服务。**core / domain 都不是业务的默认堆放处**。依赖图 `shared ← core ← {domain, collab};domain ← server / worker`。**② 包内分层(看「翻译还是写业务」,决定进哪一层)** —— 路由层(server route / worker handler / collab hook)只把协议翻译成业务调用、**不写领域业务**(禁止清单 #1);领域 service 层写业务逻辑、**不 import 协议框架**(禁止清单 #2)。**两维度正交不冲突**(例「只 server 用的业务」= 包归属在 server + 写在 server 的 service 层而非 route 层)。**一张表一个 repo 家**:一张表的数据访问(repo)只在一个模块,service 调 repo、不写 SQL。跨服务通信:同步要答案 → 函数调用(类型安全);异步 / 跨进程 / 扇出 → Redis 事件(数据契约在 core/shared)。CI 强制(`lint:dependency-cruiser` 声明式规则):`library-no-app-import`(core / shared / domain 出现 import `@server` / `@worker` / `@collab` / `@web` 即 fail)+ `collab-no-domain-import`(collab import `@breatic/domain` 即 fail)。每个包根有独立 `CLAUDE.md` 写该包的角色 + 可 import 谁 + 暴露啥 + 怎么拿配置。细节见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - **环境变量注入(MANDATORY)**:`@breatic/core` / `@breatic/shared` / `@breatic/domain` **不读 `process.env`、不 load `.env`**(配置 ACQUISITION 是 application 决策,同 logger / `process.exit()` 的 library 边界原则)。**application entry(server / worker / collab = composition root)**启动时第一件事 `dotenv` + `initCore(process.env)` 一次,core 的 **zod schema** 校验后存住;library 经 **`env` Proxy / `getConfig()` / `getRawEnvVar()`** 读注入的配置,源码零 `process.env`。**db / Redis / LLM provider / logger 全延迟单例**(模块 import 时不读 env,首次用时才建,确保 `@breatic/core` barrel 在 `initCore` 前可安全 import)。3 个 healthz 端口(`SERVER_HEALTH_PORT` 3001 / `WORKER_HEALTH_PORT` 9101 / `COLLAB_HEALTH_PORT` 1235)统一进 core schema,从 `env.*` 读;`PATH` / `HOME` **不入 schema**(自动继承宿主,agent 脚本沙箱经 `getRawEnvVar` 取)。`lint:no-core-process-env` CI 强制(`src/` 出现任何 `process.env` 即 fail;`process.cwd()` 不算)。entry 读 env 是 composition root 的本职,不算违规
 - **软删除(MANDATORY)**:所有表用 `deleted_at` 标记,FK `restrict`,list 默认过滤 `deleted_at IS NULL`。**禁止硬删除**(GDPR 删号走单独流程)
 - **`created_at`(MANDATORY)**:所有 PG 表必须有 `created_at timestamp with time zone DEFAULT now() NOT NULL`。业务实体表用 `timestamps` helper(`created_at` + `updated_at` 一对);append-only 历史 / 事件表只用 `created_at`。Drizzle schema 审查时强制
@@ -73,9 +73,9 @@ pnpm test / typecheck / lint
 
 写一行 `try { ... } catch (e) {}` 之前先问:**生产环境 3am 出问题,oncall 能从日志倒推到根因吗?** 答不能就停手,补 log + 监控再写
 
-- **前端工业级标准(MANDATORY)**:`web` 同样按生产级实现,跟后端一个门槛,**禁止** "原型先这样后续再补"。整体约束:TS strict 零 `any` · layered 单向依赖(`app → pages → spaces → features → stores → domain → data → ui`)· 关键路径 / invariant(StrictMode-safe resource hook、Yjs 协作、optimistic update race 等)100% test · a11y(语义 HTML / focus-visible / 键盘可达)· i18n(ICU,4 locale,禁硬编码文案)· 设计 token 严格(禁 raw brand / 静态 palette,走语义 token)· 视觉改动必有 ground truth + 小批 ship + 真浏览器 verify。**细节实现规范见 [docs/frontend.md](./docs/frontend.md)**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各 trap)
+- **前端工业级标准(MANDATORY)**:`web` 同样按生产级实现,跟后端一个门槛,**禁止** "原型先这样后续再补"。整体约束:TS strict 零 `any` · layered 单向依赖(`app → pages → spaces → features → stores → domain → data → ui`)· 关键路径 / invariant(StrictMode-safe resource hook、Yjs 协作、optimistic update race 等)100% test · a11y(语义 HTML / focus-visible / 键盘可达)· i18n(ICU,4 locale,禁硬编码文案)· 设计 token 严格(禁 raw brand / 静态 palette,走语义 token)· 视觉改动必有 ground truth + 小批 ship + 真浏览器 verify。**细节实现规范见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各 trap)
 
-- **CLAUDE.md ↔ 细节文档边界(MANDATORY)**:**CLAUDE.md 写 mandate(整体约束 + 红线 + 判定题),不写实现细节**;细节落 [docs/architecture.md](./docs/architecture.md)(后端 / 跨服务 / 数据流)和 [docs/frontend.md](./docs/frontend.md)(前端实现)。判定题:**这是"必须遵守的约束"还是"怎么做的细节"?** 约束 → CLAUDE.md;细节 → architecture.md / frontend.md。CLAUDE.md 提到某机制时只给一句 mandate + 指向细节文档的链接,不复制细节(细节会 drift,两处维护必失同步)
+- **CLAUDE.md ↔ 细节文档边界(MANDATORY)**:**CLAUDE.md 写 mandate(整体约束 + 红线 + 判定题),不写实现细节**;细节落 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)(Backend 后端 / 跨服务 / 数据流 · Frontend 前端实现 · Coding standards 函数定义规范,三部分合一)。判定题:**这是"必须遵守的约束"还是"怎么做的细节"?** 约束 → CLAUDE.md;细节 → ARCHITECTURE.md。CLAUDE.md 提到某机制时只给一句 mandate + 指向细节文档的链接,不复制细节(细节会 drift,两处维护必失同步)
 
 # 禁止清单
 
@@ -91,7 +91,7 @@ pnpm test / typecheck / lint
 | 8 | 裸 catch |
 | 9 | `any` 类型 |
 | 10 | 同步阻塞事件循环 |
-| 11 | 命名函数缺 TSDoc / 显式返回类型(详见 [coding-standards.md](./docs/coding-standards.md))|
+| 11 | 命名函数缺 TSDoc / 显式返回类型(详见 [coding-standards](./docs/ARCHITECTURE.md#coding-standards-function-definition-format))|
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |

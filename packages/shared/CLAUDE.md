@@ -1,6 +1,6 @@
 # @breatic/shared — 包边界(MANDATORY)
 
-> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/architecture.md](../../docs/architecture.md)。
+> 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
 **web + 后端共用**的纯协议层:zod schema · 类型 · 常量 · 跨服务事件契约的数据格式。
