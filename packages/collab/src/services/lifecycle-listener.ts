@@ -92,10 +92,12 @@ function kickAllFromProject(
  * A thrown error (transient DB failure) is propagated so the stream
  * consumer leaves the cursor un-advanced and retries; the idempotent
  * repo guards make a redelivery a safe no-op.
+ *
+ * Exported for unit testing the dispatch + kick without a live stream.
  * @param hocuspocus - Running Hocuspocus server for the connection kick
  * @param event - The lifecycle command read off the stream
  */
-async function handleEvent(
+export async function handleLifecycleEvent(
   hocuspocus: Hocuspocus,
   event: ProjectLifecycleEvent,
 ): Promise<void> {
@@ -144,7 +146,7 @@ export function startLifecycleListener(
     streamKey,
     lastIdKey,
     parse: (raw) => JSON.parse(raw) as ProjectLifecycleEvent,
-    handle: (event) => handleEvent(hocuspocus, event),
+    handle: (event) => handleLifecycleEvent(hocuspocus, event),
   });
 
   return async () => {
