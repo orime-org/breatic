@@ -188,7 +188,7 @@ v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baselin
 | 音频 / 视频 | WaveSurfer.js / video.js |
 | 3D | Three.js + @react-three/fiber |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
-| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja) |
+| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko) |
 | 路由 | React Router 7 |
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry |
