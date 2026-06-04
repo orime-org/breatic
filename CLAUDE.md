@@ -74,7 +74,7 @@ pnpm test / typecheck / lint
 
 写一行 `try { ... } catch (e) {}` 之前先问:**生产环境 3am 出问题,oncall 能从日志倒推到根因吗?** 答不能就停手,补 log + 监控再写
 
-- **前端工业级标准(MANDATORY)**:`web` 同样按生产级实现,跟后端一个门槛,**禁止** "原型先这样后续再补"。整体约束:TS strict 零 `any` · layered 单向依赖(`app → pages → spaces → features → stores → domain → data → ui`)· 关键路径 / invariant(StrictMode-safe resource hook、Yjs 协作、optimistic update race 等)100% test · a11y(语义 HTML / focus-visible / 键盘可达)· i18n(ICU,4 locale,禁硬编码文案)· 设计 token 严格(禁 raw brand / 静态 palette,走语义 token)· 视觉改动必有 ground truth + 小批 ship + 真浏览器 verify。**细节实现规范见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各 trap)
+- **前端工业级标准(MANDATORY)**:`web` 同样按生产级实现,跟后端一个门槛,**禁止** "原型先这样后续再补"。整体约束:TS strict 零 `any` · layered 单向依赖(`app → pages → spaces → features → stores → domain → data → ui`)· 关键路径 / invariant(StrictMode-safe resource hook、Yjs 协作、optimistic update race 等)100% test · a11y(语义 HTML / focus-visible / 键盘可达)· i18n(ICU,5 locale,禁硬编码文案)· 设计 token 严格(禁 raw brand / 静态 palette,走语义 token)· 视觉改动必有 ground truth + 小批 ship + 真浏览器 verify。**细节实现规范见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各 trap)
 
 - **CLAUDE.md ↔ 细节文档边界(MANDATORY)**:**CLAUDE.md 写 mandate(整体约束 + 红线 + 判定题),不写实现细节**;细节落 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)(Backend 后端 / 跨服务 / 数据流 · Frontend 前端实现 · Coding standards 函数定义规范,三部分合一)。判定题:**这是"必须遵守的约束"还是"怎么做的细节"?** 约束 → CLAUDE.md;细节 → ARCHITECTURE.md。CLAUDE.md 提到某机制时只给一句 mandate + 指向细节文档的链接,不复制细节(细节会 drift,两处维护必失同步)
 
