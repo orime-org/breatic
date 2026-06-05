@@ -62,7 +62,7 @@ export const STUB_RECENT_PROJECTS: readonly RecentItem[] = [
   },
 ];
 
-/** STUB — recent asset groups (collections) across all studios. */
+/** STUB — recent collections (collections) across all studios. */
 export const STUB_RECENT_COLLECTIONS: readonly RecentItem[] = [
   {
     id: '8f2a1c40-1001-4a10-9c01-000000000011',

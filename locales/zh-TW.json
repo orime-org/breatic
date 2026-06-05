@@ -1187,7 +1187,7 @@
       "nodes": "節點庫 — 4 類生成節點",
       "upload": "上傳素材(多檔案混合)",
       "comment": "在畫布加註解",
-      "assetGroup": "資產組 — 跨專案共享素材(敬請期待)",
+      "collection": "資產集 — 跨專案共享素材(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
     },
@@ -1330,9 +1330,9 @@
   "studio": {
     "recent": {
       "projectsTitle": "最近參與的專案",
-      "collectionsTitle": "最近的素材組",
+      "collectionsTitle": "最近的資產集",
       "emptyProjects": "還沒有最近的專案。",
-      "emptyCollections": "還沒有最近的素材組。",
+      "emptyCollections": "還沒有最近的資產集。",
       "role": {
         "owner": "擁有者",
         "editor": "編輯者",

@@ -35,7 +35,7 @@ describe('LeftFloatingMenu', () => {
     expect(screen.getByTestId('tool-nodes')).toBeInTheDocument();
     expect(screen.getByTestId('tool-upload')).toBeInTheDocument();
     expect(screen.getByTestId('tool-comment')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-asset-group')).toBeInTheDocument();
+    expect(screen.getByTestId('tool-collection')).toBeInTheDocument();
     expect(screen.getByTestId('tool-help')).toBeInTheDocument();
     expect(screen.getByTestId('tool-feedback')).toBeInTheDocument();
   });
@@ -67,7 +67,7 @@ describe('LeftFloatingMenu', () => {
     // Pure action buttons must never enter a pressed or pinned state —
     // not via aria-pressed (we removed the prop entirely) and not via
     // any active background class.
-    for (const id of ['upload', 'comment', 'asset-group', 'help', 'feedback']) {
+    for (const id of ['upload', 'comment', 'collection', 'help', 'feedback']) {
       const btn = screen.getByTestId(`tool-${id}`);
       expect(btn.hasAttribute('aria-pressed')).toBe(false);
       expect(btn.className).not.toContain('bg-foreground');

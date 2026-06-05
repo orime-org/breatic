@@ -19,7 +19,7 @@ import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
  *
  * Data is currently stubbed (frontend-on-stub, slice 2): Phase 2 wires the
  * real `GET /studio/recent`. The studio container (5 tabs at `/studio/{slug}`,
- * with real project / asset-group / member / credits / settings views) lands
+ * with real project / collection / member / credits / settings views) lands
  * in a later slice.
  * @returns the studio top bar above the recent landing.
  */

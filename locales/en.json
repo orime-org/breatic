@@ -1187,7 +1187,7 @@
       "nodes": "Node library — 4 generative node types",
       "upload": "Upload assets (mixed files)",
       "comment": "Annotate on canvas",
-      "assetGroup": "Asset group — share across projects (coming soon)",
+      "collection": "Collection — share across projects (coming soon)",
       "help": "Help (coming soon)",
       "feedback": "Feedback / Support (coming soon)"
     },
@@ -1330,9 +1330,9 @@
   "studio": {
     "recent": {
       "projectsTitle": "Recent projects",
-      "collectionsTitle": "Recent asset groups",
+      "collectionsTitle": "Recent collections",
       "emptyProjects": "No recent projects yet.",
-      "emptyCollections": "No recent asset groups yet.",
+      "emptyCollections": "No recent collections yet.",
       "role": {
         "owner": "Owner",
         "editor": "Editor",

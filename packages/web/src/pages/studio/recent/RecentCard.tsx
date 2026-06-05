@@ -22,7 +22,7 @@ interface RecentCardProps {
 }
 
 /**
- * Recent item tile — a single project / asset-group card on the cross-studio
+ * Recent item tile — a single project / collection card on the cross-studio
  * "Recent" landing. Links to `/project/{slug}-{uuid}` or
  * `/collection/{slug}-{uuid}` (URL design §5.7). Because the landing spans
  * studios, the footer carries a brand-tinted source-studio chip (spec §1.2 —
