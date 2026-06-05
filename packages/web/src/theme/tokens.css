@@ -61,7 +61,9 @@ html[data-theme='light'] {
   --neutral-950: #0c0a09;
 
   /* Brand raw values · logo SVG only (ADR 13 / ADR 14 amended).
-     ANY chrome use of `--brand-*` triggers brand-guard CI. */
+     Raw `--brand-*` outside the whitelist fails `pnpm lint:no-brand-usage`
+     (now enforced — chrome-baseline §F10 monochrome rule). Whitelist: this
+     file, `--brand-logo-primary`, and `pages/studio/**`. */
   --brand-50: hsl(8, 58%, 97%);
   --brand-100: hsl(8, 58%, 92%);
   --brand-200: hsl(8, 58%, 82%);
@@ -73,6 +75,16 @@ html[data-theme='light'] {
   --brand-800: hsl(8, 48%, 23%);
   --brand-900: hsl(8, 43%, 15%);
   --brand-logo-primary: var(--brand-500);
+
+  /* Studio brand exemption · the ONLY non-logo brand semantic tokens.
+     Usable only in pages/studio/** (chrome-baseline §F10 sole exemption);
+     project chrome / canvas stay neutral. Hyphenated names are deliberate so
+     the brand-guard `var(--brand-` pattern still catches misuse outside studio.
+     ADR (breatic-inner-design): design/decisions/2026-06-05-studio-brand-exemption.md
+     Values mirror inner design/tokens.css + mock line 20/34. */
+  --brand-accent: var(--brand-500); /* border / accent text / solid bg / active underline */
+  --brand-fg: #ffffff;              /* foreground text on a solid --brand-accent */
+  --brand-tint: hsl(8, 58%, 96%);   /* subtle brand bg: chip / badge / icon bg / hover */
 
   /* Space scale · 8pt grid (chrome v4.0) — discrete project scale,
      NOT Tailwind 4's --spacing single multiplier. Consumed inline
@@ -269,6 +281,12 @@ html[data-theme='dark'] {
   --neutral-800: #f5f5f4;
   --neutral-900: #fafaf9;
   --neutral-950: #ffffff;
+
+  /* Studio brand exemption · dark (ADR 2026-06-05-studio-brand-exemption).
+     accent lightens one step (brand-400) for readability; tint goes deep-muted. */
+  --brand-accent: var(--brand-400);
+  --brand-tint: hsl(8, 40%, 18%);
+  /* --brand-fg stays #fff (white still readable on the brand-400 solid bg) */
 
   /* Popover elevated surface (one step lighter than background) */
   --color-popover: var(--neutral-50);
