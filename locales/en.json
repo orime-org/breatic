@@ -1320,7 +1320,30 @@
       "reload": "Reload"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
   "studio": {
+    "recent": {
+      "projectsTitle": "Recent projects",
+      "collectionsTitle": "Recent asset groups",
+      "emptyProjects": "No recent projects yet.",
+      "emptyCollections": "No recent asset groups yet.",
+      "role": {
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
+      }
+    },
+    "topBar": {
+      "home": "Studio home",
+      "recent": "Recent",
+      "search": "Search"
+    },
     "createProject": {
       "failed": "Failed to create project: {reason}"
     }

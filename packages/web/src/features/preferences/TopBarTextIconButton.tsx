@@ -15,8 +15,10 @@ interface TopBarTextIconButtonProps
 }
 
 /**
- * `.tb-btn` analog — shared button atom for TopBar group A (text-icon
- * popover triggers: Tweaks / Members / Lang / Theme).
+ * `.tb-btn` analog — shared text-icon popover-trigger button atom used by
+ * the language / theme switchers in BOTH the project and studio top bars
+ * (so the two chromes render the switchers identically — same look, same
+ * behavior). Lives in `features/preferences` because both pages consume it.
  *
  * Mock spec (chrome-baseline § TopBar v4.0):
  *   - height 32px (`--btn-chrome`)

@@ -25,6 +25,11 @@ function makeRouter(initialPath: string) {
     [
       { path: '/', element: <Navigate to='/studio' replace /> },
       {
+        // `/studio` IS the cross-studio "Recent" view itself — no
+        // `/studio/recent` URL (URL design §5.7, B correction): Recent
+        // is per-user and account-bound, so it has no shareable URL of
+        // its own; only `/studio/{slug}` points all viewers at the same
+        // content.
         path: '/studio',
         element: (
           <ProtectedRoute>
@@ -79,7 +84,7 @@ describe('routes', () => {
     });
   });
 
-  it('/studio renders StudioPage', async () => {
+  it('/studio renders StudioPage directly (recent landing top bar, B correction)', async () => {
     render(
       <QueryClientProvider>
         <TooltipProvider>
@@ -87,9 +92,7 @@ describe('routes', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    expect(
-      await screen.findByRole('heading', { name: 'Projects', level: 1 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('banner')).toBeInTheDocument();
   });
 
   it('/project/:id resolves the project page (TopBar mounts)', async () => {

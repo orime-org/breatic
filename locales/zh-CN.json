@@ -1320,7 +1320,30 @@
       "reload": "刷新"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    }
+  },
   "studio": {
+    "recent": {
+      "projectsTitle": "最近参与的项目",
+      "collectionsTitle": "最近的资产组",
+      "emptyProjects": "还没有最近的项目。",
+      "emptyCollections": "还没有最近的资产组。",
+      "role": {
+        "owner": "所有者",
+        "editor": "编辑者",
+        "viewer": "查看者"
+      }
+    },
+    "topBar": {
+      "home": "Studio 主页",
+      "recent": "最近",
+      "search": "搜索"
+    },
     "createProject": {
       "failed": "创建项目失败:{reason}"
     }

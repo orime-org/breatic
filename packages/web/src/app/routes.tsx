@@ -19,7 +19,7 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * Top-level route table.
  *
  * `/`                      → redirect to /studio
- * `/studio`                → StudioPage (project list + nav)            [AUTH]
+ * `/studio`                → StudioPage (cross-studio "Recent" landing) [AUTH]
  * `/project/:projectId`    → ProjectPage (canvas + chat)                [AUTH]
  *
  * `[AUTH]` routes are wrapped in `<ProtectedRoute>` which gates render
@@ -48,6 +48,12 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
 const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
   {
+    // `/studio` IS the cross-studio "Recent" view itself (URL design §5.7,
+    // B correction) — there is no `/studio/recent` URL. Recent is per-user
+    // and account-bound: sharing `/studio` shows each viewer their own
+    // recent, so it has no shareable URL of its own. Only `/studio/{slug}`
+    // (the studio container, landing in a later slice) points all viewers
+    // at the same content.
     path: '/studio',
     element: (
       <ProtectedRoute>
