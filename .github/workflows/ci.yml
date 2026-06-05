@@ -111,6 +111,15 @@ jobs:
         # only. Fast grep; hard-fails the PR on violation.
         run: pnpm lint:hover
 
+      - name: Lint no raw brand usage (monochrome chrome rule)
+        # Enforce chrome-baseline §F10 Monochrome Chrome Rule: ban raw brand
+        # tokens (bg/text/border/ring-brand-N, var(--brand-...)) in
+        # packages/web/src outside the whitelist (theme/tokens.css,
+        # --brand-logo-primary, pages/studio/**). Studio is the sole exemption
+        # via --brand-accent / --brand-fg / --brand-tint. Authorizing ADR:
+        # breatic-inner-design design/decisions/2026-06-05-studio-brand-exemption.md
+        run: pnpm lint:no-brand-usage
+
       - name: Lint no-CJK in production source + YAML config
         # Enforce inner DD 2026-05-22-breatic-i18n-migration-rev-3 +
         # CLAUDE.md prohibition list #13 "no CJK in YAML" (CI maximal-strictness
