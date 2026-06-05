@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-/** Whether a recent item is a project or an asset group (collection). */
+/** Whether a recent item is a project or an collection (collection). */
 export type RecentItemKind = 'project' | 'collection';
 
 /** The caller's role on a recent item (studio redesign role names). */
 export type RecentItemRole = 'owner' | 'editor' | 'viewer';
 
 /**
- * A project or asset group the user recently opened, aggregated across all
+ * A project or collection the user recently opened, aggregated across all
  * studios for the cross-studio "Recent" landing (`/studio`). Because the
  * landing spans studios, each item carries its source studio so the card
  * can label provenance (spec §2.1).

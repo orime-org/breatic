@@ -1187,7 +1187,7 @@
       "nodes": "节点库 — 4 类生成节点",
       "upload": "上传素材(多文件混合)",
       "comment": "在画布加批注",
-      "assetGroup": "资产组 — 跨项目共享素材(敬请期待)",
+      "collection": "资产集 — 跨项目共享素材(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
     },
@@ -1330,9 +1330,9 @@
   "studio": {
     "recent": {
       "projectsTitle": "最近参与的项目",
-      "collectionsTitle": "最近的资产组",
+      "collectionsTitle": "最近的资产集",
       "emptyProjects": "还没有最近的项目。",
-      "emptyCollections": "还没有最近的资产组。",
+      "emptyCollections": "还没有最近的资产集。",
       "role": {
         "owner": "所有者",
         "editor": "编辑者",

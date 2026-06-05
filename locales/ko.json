@@ -1187,7 +1187,7 @@
       "nodes": "노드 라이브러리 — 4가지 생성 노드 유형",
       "upload": "에셋 업로드 (혼합 파일)",
       "comment": "캔버스에 주석 달기",
-      "assetGroup": "에셋 그룹 — 프로젝트 간 공유 (출시 예정)",
+      "collection": "컬렉션 — 프로젝트 간 공유 (출시 예정)",
       "help": "도움말 (출시 예정)",
       "feedback": "피드백 / 지원 (출시 예정)"
     },
@@ -1330,9 +1330,9 @@
   "studio": {
     "recent": {
       "projectsTitle": "최근 프로젝트",
-      "collectionsTitle": "최근 에셋 그룹",
+      "collectionsTitle": "최근 컬렉션",
       "emptyProjects": "아직 최근 프로젝트가 없습니다.",
-      "emptyCollections": "아직 최근 에셋 그룹이 없습니다.",
+      "emptyCollections": "아직 최근 컬렉션이 없습니다.",
       "role": {
         "owner": "소유자",
         "editor": "편집자",

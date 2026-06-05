@@ -534,7 +534,7 @@ export default function ProjectPage(): React.JSX.Element {
                     //   nodes        - open node-library popover
                     //   upload       - open file picker (presigned URL upload)
                     //   comment      - enter annotation mode
-                    //   asset-group  - placeholder (M1+)
+                    //   collection  - placeholder (M1+)
                     //   help         - placeholder (M1+)
                     //   feedback     - placeholder (M1+)
                     // Buttons never store a "selected" state - they fire and forget.

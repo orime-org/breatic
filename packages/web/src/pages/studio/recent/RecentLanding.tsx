@@ -14,12 +14,12 @@ interface RecentLandingProps {
 
 /**
  * "Recent" landing — the login-default, cross-studio home (`/studio`,
- * spec §2.1). Two sections (recent projects + recent asset groups), each a
+ * spec §2.1). Two sections (recent projects + recent collections), each a
  * 3-column card grid, centered at max 1080px. No credits chip here (credits
  * live only in a studio's Credits tab).
  * @param root0 - component props
  * @param root0.projects - recent projects across all studios (newest first)
- * @param root0.collections - recent asset groups across all studios
+ * @param root0.collections - recent collections across all studios
  * @returns the two-section recent landing.
  */
 export function RecentLanding({

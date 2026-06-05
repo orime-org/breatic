@@ -20,7 +20,7 @@ export type LeftMenuTool =
   | 'nodes'
   | 'upload'
   | 'comment'
-  | 'asset-group'
+  | 'collection'
   | 'help'
   | 'feedback';
 
@@ -28,7 +28,7 @@ type MenuLabelKey =
   | 'menu.item.nodes'
   | 'menu.item.upload'
   | 'menu.item.comment'
-  | 'menu.item.assetGroup'
+  | 'menu.item.collection'
   | 'menu.item.help'
   | 'menu.item.feedback';
 
@@ -57,7 +57,7 @@ interface MenuItem {
  *     - comment (annotate, message-circle) — pure action
  *   Divider
  *   Lower zone — placeholders (M1+, muted color, toast on click):
- *     - asset-group (asset group, folders)
+ *     - collection (collection, folders)
  *     - help (help, help-circle)
  *     - feedback (feedback, headphones)
  */
@@ -69,9 +69,9 @@ const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
 
 const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
   {
-    id: 'asset-group',
+    id: 'collection',
     icon: Folders,
-    labelKey: 'menu.item.assetGroup',
+    labelKey: 'menu.item.collection',
     placeholder: true,
   },
   {
