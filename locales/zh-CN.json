@@ -1320,6 +1320,13 @@
       "reload": "刷新"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    }
+  },
   "studio": {
     "recent": {
       "projectsTitle": "最近参与的项目",
@@ -1335,9 +1342,7 @@
     "topBar": {
       "home": "Studio 主页",
       "recent": "最近",
-      "search": "搜索",
-      "language": "语言",
-      "theme": "主题"
+      "search": "搜索"
     },
     "createProject": {
       "failed": "创建项目失败:{reason}"

@@ -1320,6 +1320,13 @@
       "reload": "Reload"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
   "studio": {
     "recent": {
       "projectsTitle": "Recent projects",
@@ -1335,9 +1342,7 @@
     "topBar": {
       "home": "Studio home",
       "recent": "Recent",
-      "search": "Search",
-      "language": "Language",
-      "theme": "Theme"
+      "search": "Search"
     },
     "createProject": {
       "failed": "Failed to create project: {reason}"

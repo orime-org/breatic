@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ThemeToggle } from '@web/pages/project/chrome/top-bar/ThemeToggle';
+import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { usePreferencesStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 

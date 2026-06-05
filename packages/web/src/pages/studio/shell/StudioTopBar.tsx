@@ -3,45 +3,24 @@
 
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, Clock, Globe, Moon, Search } from 'lucide-react';
+import { ChevronDown, Clock, Search } from 'lucide-react';
 
+import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
+import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
-
-interface ToolButtonProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-}
-
-/**
- * A neutral 32x32 chrome icon button for the top-bar tool cluster (search /
- * language / theme). Stays monochrome per F10 — only the logo + switcher use
- * brand color; the search / language / theme tool icons stay neutral
- * (spec 1.2 brand whitelist).
- * @param root0 - component props
- * @param root0.icon - the lucide icon component to render
- * @param root0.label - accessible label (also the tooltip text)
- * @returns the icon button.
- */
-function ToolButton({ icon: Icon, label }: ToolButtonProps): React.JSX.Element {
-  return (
-    <button
-      type='button'
-      aria-label={label}
-      title={label}
-      className='flex h-8 w-8 items-center justify-center rounded-chrome text-neutral-600 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-    >
-      <Icon className='h-[18px] w-[18px]' />
-    </button>
-  );
-}
+import { StudioChromeIconButton } from '@web/pages/studio/shell/StudioChromeIconButton';
 
 /**
  * Studio top bar — the app chrome shown above every studio screen (spec §2.1
  * TopBar, 48px). Left: brand logo + a studio switcher (slice 2 shows the
  * static "Recent" entry; interactive switching lands with the studio
- * container in a later slice). Right: search / language / theme tool icons +
- * the user avatar. Brand color is used only on the logo + switcher
- * recent-icon (spec §1.2 studio brand exemption); tools stay neutral.
+ * container in a later slice). Right: search + the language / theme
+ * switchers + the user avatar. Brand color is used only on the logo +
+ * switcher recent-icon (spec §1.2 studio brand exemption); the tool icons
+ * stay neutral. The language / theme switchers are the SAME shared
+ * `features/preferences` components the project top bar uses — identical
+ * look and behavior (user 2026-06-05: align studio's lang/theme buttons
+ * with project, appearance included, not just the logic).
  * @returns the studio top bar header.
  */
 export function StudioTopBar(): React.JSX.Element {
@@ -53,7 +32,7 @@ export function StudioTopBar(): React.JSX.Element {
     >
       <div className='flex items-center gap-2'>
         <Link
-          to='/studio/recent'
+          to='/studio'
           aria-label={t('studio.topBar.home')}
           className='flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand-accent)] text-sm font-semibold text-[var(--brand-fg)]'
         >
@@ -71,9 +50,9 @@ export function StudioTopBar(): React.JSX.Element {
         </button>
       </div>
       <div className='flex items-center gap-1'>
-        <ToolButton icon={Search} label={t('studio.topBar.search')} />
-        <ToolButton icon={Globe} label={t('studio.topBar.language')} />
-        <ToolButton icon={Moon} label={t('studio.topBar.theme')} />
+        <StudioChromeIconButton icon={Search} label={t('studio.topBar.search')} />
+        <LangSwitcher />
+        <ThemeToggle />
         <div
           className='ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-neutral-200 text-xs font-medium text-neutral-700'
           aria-hidden='true'

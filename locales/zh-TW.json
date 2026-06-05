@@ -1320,6 +1320,13 @@
       "reload": "重新整理"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "淺色",
+      "dark": "深色",
+      "system": "跟隨系統"
+    }
+  },
   "studio": {
     "recent": {
       "projectsTitle": "最近參與的專案",
@@ -1335,9 +1342,7 @@
     "topBar": {
       "home": "Studio 首頁",
       "recent": "最近",
-      "search": "搜尋",
-      "language": "語言",
-      "theme": "主題"
+      "search": "搜尋"
     },
     "createProject": {
       "failed": "建立專案失敗:{reason}"

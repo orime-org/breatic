@@ -24,9 +24,13 @@ function makeRouter(initialPath: string) {
   return createMemoryRouter(
     [
       { path: '/', element: <Navigate to='/studio' replace /> },
-      { path: '/studio', element: <Navigate to='/studio/recent' replace /> },
       {
-        path: '/studio/recent',
+        // `/studio` IS the cross-studio "Recent" view itself — no
+        // `/studio/recent` URL (URL design §5.7, B correction): Recent
+        // is per-user and account-bound, so it has no shareable URL of
+        // its own; only `/studio/{slug}` points all viewers at the same
+        // content.
+        path: '/studio',
         element: (
           <ProtectedRoute>
             <StudioPage />
@@ -80,11 +84,11 @@ describe('routes', () => {
     });
   });
 
-  it('/studio/recent renders StudioPage (recent landing top bar)', async () => {
+  it('/studio renders StudioPage directly (recent landing top bar, B correction)', async () => {
     render(
       <QueryClientProvider>
         <TooltipProvider>
-          <RouterProvider router={makeRouter('/studio/recent')} />
+          <RouterProvider router={makeRouter('/studio')} />
         </TooltipProvider>
       </QueryClientProvider>,
     );

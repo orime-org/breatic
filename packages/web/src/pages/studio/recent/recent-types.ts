@@ -9,8 +9,8 @@ export type RecentItemRole = 'owner' | 'editor' | 'viewer';
 
 /**
  * A project or asset group the user recently opened, aggregated across all
- * studios for the cross-studio "Recent" landing (`/studio/recent`). Because
- * the landing spans studios, each item carries its source studio so the card
+ * studios for the cross-studio "Recent" landing (`/studio`). Because the
+ * landing spans studios, each item carries its source studio so the card
  * can label provenance (spec §2.1).
  */
 export interface RecentItem {

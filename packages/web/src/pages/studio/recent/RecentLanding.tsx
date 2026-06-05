@@ -13,7 +13,7 @@ interface RecentLandingProps {
 }
 
 /**
- * "Recent" landing — the login-default, cross-studio home (`/studio/recent`,
+ * "Recent" landing — the login-default, cross-studio home (`/studio`,
  * spec §2.1). Two sections (recent projects + recent asset groups), each a
  * 3-column card grid, centered at max 1080px. No credits chip here (credits
  * live only in a studio's Credits tab).

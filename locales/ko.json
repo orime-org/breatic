@@ -1320,6 +1320,13 @@
       "reload": "새로고침"
     }
   },
+  "preferences": {
+    "themeMode": {
+      "light": "라이트",
+      "dark": "다크",
+      "system": "시스템"
+    }
+  },
   "studio": {
     "recent": {
       "projectsTitle": "최근 프로젝트",
@@ -1335,9 +1342,7 @@
     "topBar": {
       "home": "Studio 홈",
       "recent": "최근",
-      "search": "검색",
-      "language": "언어",
-      "theme": "테마"
+      "search": "검색"
     },
     "createProject": {
       "failed": "프로젝트 생성에 실패했습니다: {reason}"

@@ -22,10 +22,21 @@ describe('StudioTopBar', () => {
     expect(screen.getByRole('banner')).toBeInTheDocument();
   });
 
-  it('renders the three tool buttons (search / language / theme)', () => {
+  it('wires the same shared language + theme switchers as the project top bar', () => {
     setup();
-    // logo links home; switcher + 3 tool buttons are <button>s.
-    expect(screen.getAllByRole('button').length).toBeGreaterThanOrEqual(3);
+    // Studio renders the shared `features/preferences` switchers (identical
+    // look + behavior to project), not bespoke studio-only buttons — so the
+    // project testids are present here too.
+    expect(screen.getByTestId('lang-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
+  });
+
+  it('keeps the search tool button alongside the switchers', () => {
+    setup();
+    // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
+    expect(
+      screen.getByRole('button', { name: 'Search' }),
+    ).toBeInTheDocument();
   });
 
   it('has no a11y violations', async () => {

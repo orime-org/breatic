@@ -77,10 +77,12 @@ CJK_REGEX='[぀-ヿ一-鿿가-힣＀-￯]'
 # Allowlist — production files permitted to carry non-English by deliberate
 # design (category 3 above). Keep this short and justify every entry in the
 # PR that adds it.
-#   - LangSwitcher.tsx: the language picker renders each language in its own
-#     native script (Simplified Chinese, Japanese, Traditional Chinese);
-#     these are constant product data, never localized.
-ALLOWLIST_REGEX='packages/web/src/pages/project/chrome/top-bar/LangSwitcher\.tsx'
+#   - features/preferences/supported-langs.ts: the shared locale list (used
+#     by both the project and studio language switchers) renders each
+#     language in its own native script (Simplified Chinese, Japanese,
+#     Traditional Chinese, Korean); these are constant product data, never
+#     localized.
+ALLOWLIST_REGEX='packages/web/src/features/preferences/supported-langs\.ts'
 
 # Build the scan list with find (portable across BSD + GNU; avoids the
 # grep --include/--exclude ordering trap). Production TS / TSX / CSS only,
