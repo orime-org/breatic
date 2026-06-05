@@ -69,7 +69,7 @@ export function ProjectCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-chrome bg-background/80 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100'
+          className='absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-chrome bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100'
         >
           <MoreHorizontal className='h-4 w-4' />
         </button>

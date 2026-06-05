@@ -56,7 +56,7 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
       </section>
 
       {canGovern ? (
-        <section className='flex flex-col gap-3 rounded-content-md border border-destructive/40 p-4'>
+        <section className='flex flex-col gap-3 rounded-content-md border border-destructive p-4'>
           <h3 className='text-sm font-semibold text-destructive'>
             {t('studio.container.settings.dangerTitle')}
           </h3>
@@ -69,7 +69,7 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
             </button>
             <button
               type='button'
-              className='rounded-chrome border border-destructive px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10'
+              className='rounded-chrome border border-destructive px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-status-error-bg'
             >
               {t('studio.container.settings.delete')}
             </button>
