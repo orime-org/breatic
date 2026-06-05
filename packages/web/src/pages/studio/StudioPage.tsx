@@ -1,27 +1,36 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import * as React from 'react';
+import type * as React from 'react';
 
-import { ProjectGrid } from '@web/pages/studio/grid/ProjectGrid';
-import { SettingsPanel } from '@web/pages/studio/settings/SettingsPanel';
-import { StudioShell } from '@web/pages/studio/shell/StudioShell';
-import type { StudioSection } from '@web/pages/studio/shell/StudioNav';
+import { RecentLanding } from '@web/pages/studio/recent/RecentLanding';
+import {
+  STUB_RECENT_COLLECTIONS,
+  STUB_RECENT_PROJECTS,
+} from '@web/pages/studio/recent/recent-stub';
+import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
 /**
- * Studio page entry — wraps `StudioShell` (left nav) around the active
- * section body. V1 only Home (projects) and Settings are reachable; Assets
- * and Team are nav-only placeholders.
+ * Studio page (`/studio/recent`) — the cross-studio "Recent" landing
+ * (spec §2.1), the login-default screen. Renders the app top bar over the
+ * two-section recent grid.
  *
- * Section state is local to the page. Persistence (last-active section per
- * user) lands in a later PR when preferences are wired to localStorage.
- * @returns the studio shell wrapping the active section body (projects or settings).
+ * Data is currently stubbed (frontend-on-stub, slice 2): Phase 2 wires the
+ * real `GET /studio/recent`. The studio container (5 tabs at `/studio/{slug}`,
+ * with real project / asset-group / member / credits / settings views) lands
+ * in a later slice.
+ * @returns the studio top bar above the recent landing.
  */
 export default function StudioPage(): React.JSX.Element {
-  const [section, setSection] = React.useState<StudioSection>('home');
   return (
-    <StudioShell active={section} onChangeSection={setSection}>
-      {section === 'settings' ? <SettingsPanel /> : <ProjectGrid />}
-    </StudioShell>
+    <div className='flex h-screen flex-col bg-background text-foreground'>
+      <StudioTopBar />
+      <main className='flex-1 overflow-auto'>
+        <RecentLanding
+          projects={[...STUB_RECENT_PROJECTS]}
+          collections={[...STUB_RECENT_COLLECTIONS]}
+        />
+      </main>
+    </div>
   );
 }

@@ -47,8 +47,12 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  */
 const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
+  // `/studio` is the app entry; it defaults to the cross-studio "Recent"
+  // landing (URL design §5.7 — `/studio` → `/studio/recent`). The studio
+  // container (`/studio/{slug}`) lands in a later slice.
+  { path: '/studio', element: <Navigate to='/studio/recent' replace /> },
   {
-    path: '/studio',
+    path: '/studio/recent',
     element: (
       <ProtectedRoute>
         <StudioPage />

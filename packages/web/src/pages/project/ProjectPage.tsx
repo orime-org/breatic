@@ -134,12 +134,13 @@ export default function ProjectPage(): React.JSX.Element {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      // Studio's ProjectGrid keys its list query on `['projects', 'list']`
-      // (see `pages/studio/grid/ProjectGrid.tsx`). Without this second
-      // invalidation, hitting Back → Studio after a rename would show
-      // the cached old name until the user manually refreshed - the
-      // Q5 bug. Invalidating both keys keeps the in-project header
-      // and the Studio list in sync on the next focus / refetch.
+      // The studio project list keys its query on `['projects', 'list']`.
+      // Without this second invalidation, hitting Back → Studio after a
+      // rename would show the cached old name until manual refresh (the Q5
+      // bug). Invalidating both keys keeps the in-project header and the
+      // studio list in sync. (The studio list UI is being rebuilt in the
+      // studio redesign — previously `ProjectGrid`; the studio-container
+      // slice re-wires it on this same query key.)
       queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
     },
   });

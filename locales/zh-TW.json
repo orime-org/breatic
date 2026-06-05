@@ -1321,6 +1321,24 @@
     }
   },
   "studio": {
+    "recent": {
+      "projectsTitle": "最近參與的專案",
+      "collectionsTitle": "最近的素材組",
+      "emptyProjects": "還沒有最近的專案。",
+      "emptyCollections": "還沒有最近的素材組。",
+      "role": {
+        "owner": "擁有者",
+        "editor": "編輯者",
+        "viewer": "檢視者"
+      }
+    },
+    "topBar": {
+      "home": "Studio 首頁",
+      "recent": "最近",
+      "search": "搜尋",
+      "language": "語言",
+      "theme": "主題"
+    },
     "createProject": {
       "failed": "建立專案失敗:{reason}"
     }

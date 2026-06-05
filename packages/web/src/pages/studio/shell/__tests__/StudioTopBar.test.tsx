@@ -5,33 +5,27 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import StudioPage from '@web/pages/studio/StudioPage';
-import {
-  STUB_RECENT_COLLECTIONS,
-  STUB_RECENT_PROJECTS,
-} from '@web/pages/studio/recent/recent-stub';
+import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup() {
   return render(
     <MemoryRouter>
-      <StudioPage />
+      <StudioTopBar />
     </MemoryRouter>,
   );
 }
 
-describe('StudioPage (recent landing)', () => {
-  it('renders the top-bar banner', () => {
+describe('StudioTopBar', () => {
+  it('renders a banner landmark', () => {
     setup();
     expect(screen.getByRole('banner')).toBeInTheDocument();
   });
 
-  it('renders a card link for every stub recent item', () => {
+  it('renders the three tool buttons (search / language / theme)', () => {
     setup();
-    // Card links + the logo home link; assert at least one per recent item.
-    expect(screen.getAllByRole('link').length).toBeGreaterThanOrEqual(
-      STUB_RECENT_PROJECTS.length + STUB_RECENT_COLLECTIONS.length,
-    );
+    // logo links home; switcher + 3 tool buttons are <button>s.
+    expect(screen.getAllByRole('button').length).toBeGreaterThanOrEqual(3);
   });
 
   it('has no a11y violations', async () => {

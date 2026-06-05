@@ -28,9 +28,8 @@ import { cn } from '@web/lib/utils';
  * visible at a time (independent of modal/non-modal).
  *
  * Earlier (PR #135 prior) Dialog defaulted to `modal=false` + no
- * overlay by mis-applying the Sheet rule. Reverted because all three
- * dialog consumers (NewProjectDialog / NewSpaceDialog / MembersModal)
- * need modal semantics.
+ * overlay by mis-applying the Sheet rule. Reverted because the modal
+ * dialog consumers (NewSpaceDialog / MembersModal) need modal semantics.
  */
 const Dialog = (
   props: React.ComponentProps<typeof DialogPrimitive.Root>,

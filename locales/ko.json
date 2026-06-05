@@ -1321,6 +1321,24 @@
     }
   },
   "studio": {
+    "recent": {
+      "projectsTitle": "최근 프로젝트",
+      "collectionsTitle": "최근 에셋 그룹",
+      "emptyProjects": "아직 최근 프로젝트가 없습니다.",
+      "emptyCollections": "아직 최근 에셋 그룹이 없습니다.",
+      "role": {
+        "owner": "소유자",
+        "editor": "편집자",
+        "viewer": "뷰어"
+      }
+    },
+    "topBar": {
+      "home": "Studio 홈",
+      "recent": "최근",
+      "search": "검색",
+      "language": "언어",
+      "theme": "테마"
+    },
     "createProject": {
       "failed": "프로젝트 생성에 실패했습니다: {reason}"
     }

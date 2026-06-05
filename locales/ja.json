@@ -1321,6 +1321,24 @@
     }
   },
   "studio": {
+    "recent": {
+      "projectsTitle": "最近のプロジェクト",
+      "collectionsTitle": "最近のアセットグループ",
+      "emptyProjects": "最近のプロジェクトはまだありません。",
+      "emptyCollections": "最近のアセットグループはまだありません。",
+      "role": {
+        "owner": "オーナー",
+        "editor": "編集者",
+        "viewer": "閲覧者"
+      }
+    },
+    "topBar": {
+      "home": "Studio ホーム",
+      "recent": "最近",
+      "search": "検索",
+      "language": "言語",
+      "theme": "テーマ"
+    },
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
     }

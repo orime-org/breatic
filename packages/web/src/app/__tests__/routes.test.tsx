@@ -24,8 +24,9 @@ function makeRouter(initialPath: string) {
   return createMemoryRouter(
     [
       { path: '/', element: <Navigate to='/studio' replace /> },
+      { path: '/studio', element: <Navigate to='/studio/recent' replace /> },
       {
-        path: '/studio',
+        path: '/studio/recent',
         element: (
           <ProtectedRoute>
             <StudioPage />
@@ -79,17 +80,15 @@ describe('routes', () => {
     });
   });
 
-  it('/studio renders StudioPage', async () => {
+  it('/studio/recent renders StudioPage (recent landing top bar)', async () => {
     render(
       <QueryClientProvider>
         <TooltipProvider>
-          <RouterProvider router={makeRouter('/studio')} />
+          <RouterProvider router={makeRouter('/studio/recent')} />
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    expect(
-      await screen.findByRole('heading', { name: 'Projects', level: 1 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('banner')).toBeInTheDocument();
   });
 
   it('/project/:id resolves the project page (TopBar mounts)', async () => {
