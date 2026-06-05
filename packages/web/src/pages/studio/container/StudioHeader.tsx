@@ -27,21 +27,21 @@ export function StudioHeader({
   const initial = studio.name.slice(0, 1).toUpperCase();
   const isTeam = studio.type === 'team';
   return (
-    <div className='flex h-10 shrink-0 items-center gap-3 border-b border-border px-4'>
+    <div className='flex shrink-0 items-center gap-3 px-6 pt-4'>
       <span
         aria-hidden='true'
-        className='flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand-tint)] text-xs font-semibold text-[var(--brand-accent)]'
+        className='flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--brand-tint)] text-sm font-semibold text-[var(--brand-accent)]'
       >
         {initial}
       </span>
-      <span className='text-sm font-semibold'>{studio.name}</span>
-      <span className='rounded-full bg-[var(--brand-tint)] px-2 py-0.5 text-xs font-medium text-[var(--brand-accent)]'>
+      <span className='text-lg font-bold'>{studio.name}</span>
+      <span className='rounded-full bg-[var(--brand-tint)] px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-[var(--brand-accent)]'>
         {isTeam
           ? t('studio.container.header.teamTag')
           : t('studio.container.header.personalTag')}
       </span>
       <span className='ml-auto flex items-center gap-1.5 text-xs text-muted-foreground'>
-        <span>{studio.slug}</span>
+        <span className='font-mono'>{studio.slug}</span>
         {isTeam && studio.memberCount != null ? (
           <>
             <span aria-hidden='true'>·</span>
