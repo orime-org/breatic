@@ -29,7 +29,7 @@ export function StudioTabBar({
   const t = useTranslation();
   const tabs = visibleStudioTabs(studioType);
   return (
-    <TabsList className='w-full justify-start gap-1 border-b border-border px-4'>
+    <TabsList className='w-full justify-start gap-1 border-b border-border px-6'>
       {tabs.map((tab) => (
         <TabsTrigger
           key={tab.key}

@@ -44,11 +44,11 @@ export default function StudioContainerPage(): React.JSX.Element {
       <Tabs
         value={tab}
         onValueChange={(value) => setTab(value as StudioTabKey)}
-        className='flex min-h-0 flex-1 flex-col'
+        className='mx-auto flex w-full min-h-0 max-w-[1080px] flex-1 flex-col'
       >
         <StudioHeader studio={view.studio} />
         <StudioTabBar studioType={view.studio.type} />
-        <div className='min-h-0 flex-1 overflow-auto p-4'>
+        <div className='min-h-0 flex-1 overflow-auto px-6 py-5'>
           <TabsContent value='projects'>
             <ProjectsTab projects={view.projects} studioRole={role} />
           </TabsContent>
