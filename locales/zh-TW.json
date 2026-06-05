@@ -1346,6 +1346,127 @@
     },
     "createProject": {
       "failed": "建立專案失敗:{reason}"
+    },
+    "container": {
+      "tabs": {
+        "projects": "專案",
+        "collections": "資產集",
+        "members": "成員",
+        "credits": "點數",
+        "settings": "設定"
+      },
+      "header": {
+        "personalTag": "個人",
+        "teamTag": "團隊",
+        "memberCount": "{count} 位成員"
+      },
+      "switcher": {
+        "recent": "最近",
+        "myStudios": "我的 Studio",
+        "collaboration": "協作",
+        "guestProjects": "{count} 個參與的專案",
+        "newStudio": "新增 Studio",
+        "guideRecent": "最近 = 跨 studio 的近期專案。",
+        "guideEnter": "點某個 studio 進入它的容器。",
+        "guideTools": "工具在右上角。"
+      },
+      "badge": {
+        "visibilityStudio": "studio 內可見",
+        "visibilityPrivate": "私有",
+        "roleOwner": "擁有者",
+        "roleEditor": "編輯者",
+        "roleViewer": "檢視者",
+        "typePersonal": "個人",
+        "typeTeam": "團隊",
+        "lotPaid": "永久 · 可退",
+        "lotGift": "贈送 · 會過期",
+        "lotExpiring": "{days} 天後過期 ⚠",
+        "kindImage": "圖片",
+        "kindVideo": "影片",
+        "kindAudio": "音訊"
+      },
+      "card": {
+        "assetCount": "{count} 個素材",
+        "fromStudio": "來自 {studio}",
+        "more": "更多操作"
+      },
+      "projects": {
+        "title": "專案",
+        "new": "新增專案",
+        "empty": "還沒有專案 —— 新增一個開始吧。"
+      },
+      "collections": {
+        "title": "資產集",
+        "new": "新增資產集",
+        "empty": "還沒有資產集 —— 新增一個開始吧。"
+      },
+      "credits": {
+        "balance": "錢包餘額",
+        "hint": "扣費先扣快過期的贈送、付費的留到最後。",
+        "paidTitle": "儲值點數",
+        "giftTitle": "贈送點數",
+        "remaining": "剩餘 {amount}",
+        "refund": "申請退款",
+        "orderTitle": "扣費順序",
+        "orderStep1": "最快過期贈送",
+        "orderStep2": "其它贈送",
+        "orderStep3": "永久儲值",
+        "activityTitle": "最近流水",
+        "colType": "類型",
+        "colSource": "來源",
+        "colAmount": "金額",
+        "colTime": "時間",
+        "topup": "儲值",
+        "ledgerType": {
+          "topup": "儲值",
+          "grant": "贈送",
+          "spend": "消費",
+          "expiry": "過期",
+          "refund": "退款"
+        }
+      },
+      "members": {
+        "invite": "邀請成員",
+        "colName": "名稱",
+        "colEmail": "電子郵件",
+        "colRole": "角色",
+        "colJoined": "加入時間",
+        "roleAdmin": "管理員",
+        "roleMember": "成員",
+        "remove": "移除"
+      },
+      "settings": {
+        "basicTitle": "基本資訊",
+        "name": "名稱",
+        "slug": "Slug",
+        "description": "簡介",
+        "avatar": "頭像",
+        "dangerTitle": "危險操作",
+        "transfer": "轉讓 Studio",
+        "delete": "刪除 Studio"
+      },
+      "dialog": {
+        "newProjectTitle": "新增專案",
+        "newCollectionTitle": "新增資產集",
+        "newStudioTitle": "新增 Studio",
+        "nameLabel": "名稱",
+        "namePlaceholder": "我的專案",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "my-project",
+        "descriptionLabel": "簡介(選填)",
+        "typeLabel": "類型",
+        "typePersonal": "個人",
+        "typeTeam": "團隊",
+        "create": "建立",
+        "cancel": "取消",
+        "slugFormat": "只能用小寫字母、數字和連字號。",
+        "slugLength": "需 {min}–{max} 個字元。",
+        "slugTaken": "該 studio slug 已被占用。",
+        "slugReserved": "該 slug 是保留字。"
+      },
+      "empty": {
+        "newCard": "+ 新增"
+      }
     }
   },
   "chrome": {

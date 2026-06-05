@@ -18,12 +18,15 @@ import type {
   StudioSummary,
 } from '@web/pages/studio/recent/recent-types';
 
-/** STUB — studios shown in the top-bar switcher. */
+/** STUB — studios shown in the top-bar switcher (personal + teams). */
 export const STUB_STUDIOS: readonly StudioSummary[] = [
   { id: 's-personal', slug: 'alex', name: 'Alex', type: 'personal', memberCount: null },
   { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 6 },
   { id: 's-nova', slug: 'nova-lab', name: 'Nova Lab', type: 'team', memberCount: 3 },
 ];
+
+/** STUB — how many guest (shared-with-me) projects the viewer has (switcher count). */
+export const STUB_GUEST_PROJECT_COUNT = 2;
 
 /** STUB — recent projects across all studios (newest-opened first). */
 export const STUB_RECENT_PROJECTS: readonly RecentItem[] = [

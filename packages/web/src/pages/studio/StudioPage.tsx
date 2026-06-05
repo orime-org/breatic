@@ -5,8 +5,10 @@ import type * as React from 'react';
 
 import { RecentLanding } from '@web/pages/studio/recent/RecentLanding';
 import {
+  STUB_GUEST_PROJECT_COUNT,
   STUB_RECENT_COLLECTIONS,
   STUB_RECENT_PROJECTS,
+  STUB_STUDIOS,
 } from '@web/pages/studio/recent/recent-stub';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
@@ -26,7 +28,11 @@ import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 export default function StudioPage(): React.JSX.Element {
   return (
     <div className='flex h-screen flex-col bg-background text-foreground'>
-      <StudioTopBar />
+      <StudioTopBar
+        studios={STUB_STUDIOS}
+        activeSlug={null}
+        guestProjectCount={STUB_GUEST_PROJECT_COUNT}
+      />
       <main className='flex-1 overflow-auto'>
         <RecentLanding
           projects={[...STUB_RECENT_PROJECTS]}
