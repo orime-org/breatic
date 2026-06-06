@@ -27,7 +27,7 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  *   2. We pop `<RecoveryCodeDialog>` to force the user to copy /
  *      download / acknowledge the one-time recovery code.
  *   3. Continue redirects to the onboarding slug page
- *      (`/onboarding/slug`), step two, where the user picks a slug and
+ *      (`/choose-handle`), step two, where the user picks a slug and
  *      the server creates their personal studio. The personal-studio
  *      gate in `ProtectedRoute` enforces this — a half-finished sign-up
  *      cannot reach the app proper.
@@ -105,7 +105,7 @@ export default function RegisterPage(): React.JSX.Element {
    */
   function handleContinue(): void {
     setRecoveryCode(null);
-    navigate('/onboarding/slug', { replace: true });
+    navigate('/choose-handle', { replace: true });
   }
 
   // Once registration succeeds we have a recovery code to reveal —

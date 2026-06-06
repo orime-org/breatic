@@ -38,7 +38,7 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * (per `[[feedback_space_type_vs_route]]` user decision). The active
  * Space tab + open-tab list live in Yjs `meta.perUser[userId]` and
  * sync per-user across machines automatically — no URL state needed.
- * `/onboarding/slug`        → SlugSetupPage (step two of registration —  [AUTH,
+ * `/choose-handle`          → SlugSetupPage (step two of registration —  [AUTH,
  *                            pick a slug → personal studio). Authenticated  no studio
  *                            but exempt from the personal-studio gate.      gate]
  * `/login` `/reset-password` → auth flows (public, no guard)
@@ -117,7 +117,7 @@ const baseRoutes: RouteObject[] = [
     // is the one authenticated page exempt from the personal-studio gate,
     // since the user lands here precisely because they have no studio yet.
     // Gating it would redirect it to itself forever.
-    path: '/onboarding/slug',
+    path: '/choose-handle',
     element: (
       <ProtectedRoute requirePersonalStudio={false}>
         <SlugSetupPage />

@@ -20,8 +20,8 @@ interface ProtectedRouteProps {
   requirePersonalStudio?: boolean;
 }
 
-/** Onboarding route the personal-studio gate redirects unfinished accounts to. */
-const ONBOARDING_SLUG_PATH = '/onboarding/slug';
+/** Route the personal-studio gate redirects unfinished accounts to (pick a handle). */
+const CHOOSE_HANDLE_PATH = '/choose-handle';
 
 /**
  * ProtectedRoute — gates a route on `useCurrentUserStore.user` being
@@ -77,7 +77,7 @@ export default function ProtectedRoute({
   }
 
   if (requirePersonalStudio && user.personalStudio === null) {
-    return <Navigate to={ONBOARDING_SLUG_PATH} replace />;
+    return <Navigate to={CHOOSE_HANDLE_PATH} replace />;
   }
 
   return <>{children}</>;
