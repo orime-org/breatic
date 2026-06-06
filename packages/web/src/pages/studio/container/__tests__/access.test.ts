@@ -89,3 +89,41 @@ describe('studio access — effectiveItemRole', () => {
     expect(effectiveItemRole('editor')).toBe('editor');
   });
 });
+
+// Decision A: the studio shell is public, so a guest (`null` studio role — a
+// non-member viewing) can reach the tabs. A guest sees only studio-visible
+// items and manages nothing. Exhaustive over (visibility × myRole).
+const GUEST_RENDER_MATRIX: ReadonlyArray<
+  [ItemVisibility, ItemRole | null, boolean]
+> = [
+  ['studio', 'owner', true],
+  ['studio', 'editor', true],
+  ['studio', 'viewer', true],
+  ['studio', null, true],
+  ['private', 'owner', true],
+  ['private', 'editor', true],
+  ['private', 'viewer', true],
+  ['private', null, false], // guest, private, no role → hidden
+];
+
+describe('studio access — guest (null studio role, decision A)', () => {
+  it.each(GUEST_RENDER_MATRIX)(
+    'guest / vis=%s / role=%s → render=%s',
+    (visibility, myRole, expected) => {
+      expect(canRenderItemCard(null, { visibility, myRole })).toBe(expected);
+    },
+  );
+
+  it('a guest sees a studio-visible item but never a private item they have no role on', () => {
+    expect(canRenderItemCard(null, { visibility: 'studio', myRole: null })).toBe(
+      true,
+    );
+    expect(
+      canRenderItemCard(null, { visibility: 'private', myRole: null }),
+    ).toBe(false);
+  });
+
+  it('a guest never gets governance controls', () => {
+    expect(canManageItem(null, false)).toBe(false);
+  });
+});

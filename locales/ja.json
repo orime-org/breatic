@@ -1361,6 +1361,10 @@
       "failed": "プロジェクトの作成に失敗:{reason}"
     },
     "container": {
+      "shell": {
+        "loading": "Studio を読み込み中…",
+        "loadError": "この Studio を読み込めませんでした。"
+      },
       "tabs": {
         "projects": "プロジェクト",
         "collections": "コレクション",

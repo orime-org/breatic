@@ -16,8 +16,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface ProjectCardProps {
   project: ContainerProject;
-  /** The viewer's studio role — gates the governance (`⋯`) menu (invariant 2). */
-  studioRole: StudioRole;
+  /** The viewer's studio role (`null` = guest) — gates the governance (`⋯`) menu (invariant 2). */
+  studioRole: StudioRole | null;
 }
 
 /**

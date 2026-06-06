@@ -16,8 +16,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface CollectionsTabProps {
   collections: readonly ContainerCollection[];
-  /** The viewer's studio role — drives the visibility filter (invariant 1). */
-  studioRole: StudioRole;
+  /** The viewer's studio role (`null` = guest) — drives the visibility filter (invariant 1). */
+  studioRole: StudioRole | null;
   /** Called when a collection is created via the dialog (stub no-op in slice 3). */
   onCreateCollection?: (values: NewItemValues) => void;
 }

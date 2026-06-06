@@ -175,7 +175,7 @@ const PERSONAL: StudioDetail = {
   slug: 'alex',
   name: 'Alex',
   type: 'personal',
-  memberCount: null,
+  memberCount: 1,
   myStudioRole: 'admin',
 };
 

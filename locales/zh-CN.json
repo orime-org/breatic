@@ -1361,6 +1361,10 @@
       "failed": "创建项目失败:{reason}"
     },
     "container": {
+      "shell": {
+        "loading": "正在加载 Studio…",
+        "loadError": "无法加载该 Studio。"
+      },
       "tabs": {
         "projects": "项目",
         "collections": "资产集",

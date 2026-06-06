@@ -26,13 +26,15 @@ export interface ItemAccess {
  * (spec §4 invariant 1). Studio-visible items are baseline-visible to every
  * studio member; private items render only for studio Admins or for members
  * who actually have a role on them (owner / invited). A plain Member never
- * sees a private item they are not part of.
- * @param studioRole the viewer's studio-level role.
+ * sees a private item they are not part of, and a guest (`null` studio role —
+ * a non-member viewing the public shell, decision A) sees only studio-visible
+ * items.
+ * @param studioRole the viewer's studio-level role, or `null` for a guest.
  * @param item the item's visibility + the viewer's role on it.
  * @returns whether the card should be rendered.
  */
 export function canRenderItemCard(
-  studioRole: StudioRole,
+  studioRole: StudioRole | null,
   item: ItemAccess,
 ): boolean {
   if (item.visibility === 'studio') {
@@ -44,13 +46,14 @@ export function canRenderItemCard(
 /**
  * Whether the viewer may run governance actions (delete / transfer / change
  * visibility) on an item (spec §4 invariant 2). Only the item Owner or a
- * studio Admin may; a non-owner Member never sees governance controls.
- * @param studioRole the viewer's studio-level role.
+ * studio Admin may; a non-owner Member and a guest (`null` studio role) never
+ * see governance controls.
+ * @param studioRole the viewer's studio-level role, or `null` for a guest.
  * @param isOwner whether the viewer owns the item.
  * @returns whether governance controls should be shown.
  */
 export function canManageItem(
-  studioRole: StudioRole,
+  studioRole: StudioRole | null,
   isOwner: boolean,
 ): boolean {
   return isOwner || studioRole === 'admin';

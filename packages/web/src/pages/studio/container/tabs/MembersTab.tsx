@@ -9,8 +9,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface MembersTabProps {
   members: readonly StudioMember[];
-  /** Invite / remove / role changes are Admin-only (DD §5.2). */
-  studioRole: StudioRole;
+  /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = guest. */
+  studioRole: StudioRole | null;
 }
 
 /**
@@ -35,7 +35,7 @@ export function MembersTab({
         <div>
           <button
             type='button'
-            className='rounded-chrome bg-[var(--brand-accent)] px-4 py-2 text-sm font-medium text-[var(--brand-fg)] transition-opacity hover:opacity-90'
+            className='rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
           >
             {t('studio.container.members.invite')}
           </button>

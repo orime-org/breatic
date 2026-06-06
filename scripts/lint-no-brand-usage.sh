@@ -3,19 +3,20 @@
 # in packages/web/src OUTSIDE the whitelist.
 #
 # Why: chrome-baseline §F10 "Monochrome Chrome Rule" — chrome defaults neutral
-# (black / grays / white); brand color is reserved for logo identity, status
-# indicators, and the Studio container ONLY. The Studio container
-# (packages/web/src/pages/studio/**) is the SOLE exemption and uses the
-# --brand-accent / --brand-fg / --brand-tint SEMANTIC tokens, never raw brand.
+# (black / grays / white); brand color is reserved for logo identity + status
+# indicators ONLY. The Studio chrome was a brand exemption, but the 2026-06-06
+# studio-visual-direction-neutral ADR reversed it — the studio is now neutral
+# (semantic neutral tokens), with only its logo (--brand-logo-primary) keeping
+# brand identity.
 # Authorizing ADR (breatic-inner-design):
-#   design/decisions/2026-06-05-studio-brand-exemption.md
+#   design/decisions/2026-06-06-studio-visual-direction-neutral.md
+#   (supersedes 2026-06-05-studio-brand-exemption.md)
 #
 # Banned (outside whitelist): bg/text/border/ring-brand-<N>, --color-brand-<a>,
 # and any var(--brand-...) reference (catches --brand-500, --brand-accent, etc.).
 #
 # Whitelist (filtered out — allowed to use brand):
 #   - packages/web/src/theme/tokens.css   token definitions
-#   - packages/web/src/pages/studio/**    ADR-sanctioned studio exemption
 #   - --brand-logo-primary                logo identity alias (§F10 logo)
 #   - per-line escape: a line containing "brand-guard: allow"
 #
@@ -50,7 +51,6 @@ RAW=$(grep -Ern --include='*.ts' --include='*.tsx' --include='*.css' "$PATTERN" 
 MATCHES=$(printf '%s\n' "$RAW" \
   | grep -v '^[[:space:]]*$' \
   | grep -v "$WEB_SRC/theme/tokens.css:" \
-  | grep -v "$WEB_SRC/pages/studio/" \
   | grep -v 'brand-logo-primary' \
   | grep -v 'brand-guard: allow' \
   || true)
@@ -64,9 +64,8 @@ echo "lint-no-brand-usage: ❌ FAIL — raw brand token used outside whitelist:"
 echo "" >&2
 echo "$MATCHES" >&2
 echo "" >&2
-echo "Rule: chrome-baseline §F10 Monochrome Chrome Rule — chrome / canvas stay neutral." >&2
-echo "Studio (packages/web/src/pages/studio/**) is the sole exemption: use the semantic" >&2
-echo "tokens --brand-accent / --brand-fg / --brand-tint (not raw brand)." >&2
-echo "ADR (breatic-inner-design): design/decisions/2026-06-05-studio-brand-exemption.md" >&2
+echo "Rule: chrome-baseline §F10 Monochrome Chrome Rule — chrome / canvas / studio stay neutral." >&2
+echo "Only the logo (--brand-logo-primary) + status colors keep brand identity." >&2
+echo "ADR (breatic-inner-design): design/decisions/2026-06-06-studio-visual-direction-neutral.md" >&2
 echo "Escape one line intentionally: append a 'brand-guard: allow' comment." >&2
 exit 1

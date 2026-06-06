@@ -34,7 +34,7 @@ export function StudioTabBar({
         <TabsTrigger
           key={tab.key}
           value={tab.key}
-          className='-mb-px border-b-2 border-transparent px-3 py-2.5 text-muted-foreground hover:text-foreground data-[state=active]:border-[var(--brand-accent)] data-[state=active]:text-foreground'
+          className='-mb-px border-b-2 border-transparent px-3 py-2.5 text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground'
         >
           {t(tab.labelKey)}
         </TabsTrigger>

@@ -11,8 +11,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface CreditsTabProps {
   wallet: CreditWallet;
-  /** The viewer's studio role — Members cannot top up or refund (DD §3.6). */
-  studioRole: StudioRole;
+  /** The viewer's studio role — Members / guests (`null`) cannot top up or refund (DD §3.6). */
+  studioRole: StudioRole | null;
   /** Epoch ms for gift-expiry math; injected so tests are deterministic. */
   now?: number;
 }
@@ -59,7 +59,7 @@ export function CreditsTab({
         <div>
           <button
             type='button'
-            className='rounded-chrome bg-[var(--brand-accent)] px-4 py-2 text-sm font-medium text-[var(--brand-fg)] transition-opacity hover:opacity-90'
+            className='rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
           >
             {t('studio.container.credits.topup')}
           </button>

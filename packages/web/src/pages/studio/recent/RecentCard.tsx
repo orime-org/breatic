@@ -25,8 +25,9 @@ interface RecentCardProps {
  * Recent item tile — a single project / collection card on the cross-studio
  * "Recent" landing. Links to `/project/{slug}-{uuid}` or
  * `/collection/{slug}-{uuid}` (URL design §5.7). Because the landing spans
- * studios, the footer carries a brand-tinted source-studio chip (spec §1.2 —
- * studio is the sole brand-color exemption). Role badge stays neutral.
+ * studios, the footer carries a neutral source-studio chip showing where the
+ * item lives (the studio chrome is neutral — 2026-06-06 visual ADR). Role
+ * badge stays neutral.
  * @param root0 - component props
  * @param root0.item - the recent item to render
  * @returns a clickable tile linking to the item.
@@ -53,12 +54,12 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
       <div className='flex flex-col gap-2 p-3'>
         <div className='truncate text-sm font-medium'>{item.name}</div>
         <div className='flex items-center justify-between gap-2'>
-          <span className='inline-flex min-w-0 items-center gap-1 rounded-full bg-[var(--brand-tint)] px-2 py-0.5 text-xs'>
+          <span className='inline-flex min-w-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs'>
             <span
-              className='h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-accent)]'
+              className='h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground'
               aria-hidden='true'
             />
-            <span className='truncate text-[var(--brand-accent)]'>
+            <span className='truncate text-muted-foreground'>
               {item.studioName}
             </span>
           </span>

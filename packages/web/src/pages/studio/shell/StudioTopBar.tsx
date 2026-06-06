@@ -77,7 +77,7 @@ export function StudioTopBar({
         <Link
           to='/studio'
           aria-label={t('studio.topBar.home')}
-          className='flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand-accent)] text-sm font-semibold text-[var(--brand-fg)]'
+          className='flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand-logo-primary)] text-sm font-semibold text-[var(--brand-fg)]'
         >
           b
         </Link>
@@ -88,7 +88,7 @@ export function StudioTopBar({
               aria-label={t('studio.container.switcher.myStudios')}
               className='flex items-center gap-1.5 rounded-chrome px-2 py-1 text-sm font-medium transition-colors hover:bg-muted'
             >
-              <span className='flex h-5 w-5 items-center justify-center rounded-md bg-[var(--brand-tint)] text-[var(--brand-accent)]'>
+              <span className='flex h-5 w-5 items-center justify-center rounded-md bg-muted text-muted-foreground'>
                 {current ? (
                   <span className='text-[0.65rem] font-semibold'>
                     {current.name.slice(0, 1).toUpperCase()}
