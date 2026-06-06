@@ -13,7 +13,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     expect(screen.getByText('New project')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
+    expect(screen.getByLabelText('Handle')).toBeInTheDocument();
   });
 
   it('blocks submit and shows an error for a malformed slug', async () => {
@@ -23,7 +23,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'My Project');
-    await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
+    await user.type(screen.getByLabelText('Handle'), 'Bad_Slug');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByText(/Lowercase letters/)).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Moodboard');
-    await user.type(screen.getByLabelText('Slug'), 'mood-board');
+    await user.type(screen.getByLabelText('Handle'), 'mood-board');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Moodboard',
@@ -68,19 +68,19 @@ describe('NewStudioDialog (spec §3.12 + §5.7 globally-unique slug)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Studio');
-    await user.type(screen.getByLabelText('Slug'), 'studio');
+    await user.type(screen.getByLabelText('Handle'), 'studio');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).not.toHaveBeenCalled();
-    expect(screen.getByText(/reserved/)).toBeInTheDocument();
+    expect(screen.getByText(/in use/)).toBeInTheDocument();
   });
 
   it('rejects an already-taken studio slug', async () => {
     const user = userEvent.setup();
     render(<NewStudioDialog open onOpenChange={() => {}} takenSlugs={taken} />);
     await user.type(screen.getByLabelText('Name'), 'Acme');
-    await user.type(screen.getByLabelText('Slug'), 'acme-studio');
+    await user.type(screen.getByLabelText('Handle'), 'acme-studio');
     await user.click(screen.getByRole('button', { name: 'Create' }));
-    expect(screen.getByText(/taken/)).toBeInTheDocument();
+    expect(screen.getByText(/in use/)).toBeInTheDocument();
   });
 
   it('creates with the chosen type on a valid unique slug', async () => {
@@ -96,7 +96,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 globally-unique slug)', () => {
     );
     await user.type(screen.getByLabelText('Name'), 'Nova');
     await user.click(screen.getByLabelText('Team'));
-    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.type(screen.getByLabelText('Handle'), 'nova-lab');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Nova',

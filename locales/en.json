@@ -31,7 +31,7 @@
       "verify_email_sent": "Verification email sent. Check your inbox."
     },
     "studio": {
-      "slug_taken": "That handle is already taken. Please choose another."
+      "slug_taken": "That handle is already in use. Please choose another."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -1451,7 +1451,7 @@
       "settings": {
         "basicTitle": "Basic info",
         "name": "Name",
-        "slug": "Slug",
+        "slug": "Handle",
         "description": "Description",
         "avatar": "Avatar",
         "dangerTitle": "Danger zone",
@@ -1464,7 +1464,7 @@
         "newStudioTitle": "New studio",
         "nameLabel": "Name",
         "namePlaceholder": "My project",
-        "slugLabel": "Slug",
+        "slugLabel": "Handle",
         "slugPlaceholder": "my-project",
         "descriptionLabel": "Description (optional)",
         "typeLabel": "Type",
@@ -1474,8 +1474,8 @@
         "cancel": "Cancel",
         "slugFormat": "Lowercase letters, numbers and hyphens only.",
         "slugLength": "Must be {min}–{max} characters.",
-        "slugTaken": "That studio slug is taken.",
-        "slugReserved": "That slug is reserved."
+        "slugTaken": "That handle is already in use.",
+        "slugReserved": "That handle is already in use."
       },
       "empty": {
         "newCard": "+ New"

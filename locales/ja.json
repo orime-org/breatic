@@ -1451,7 +1451,7 @@
       "settings": {
         "basicTitle": "基本情報",
         "name": "名前",
-        "slug": "スラッグ",
+        "slug": "ハンドル",
         "description": "説明",
         "avatar": "アバター",
         "dangerTitle": "危険な操作",
@@ -1464,7 +1464,7 @@
         "newStudioTitle": "Studio を新規作成",
         "nameLabel": "名前",
         "namePlaceholder": "マイプロジェクト",
-        "slugLabel": "スラッグ",
+        "slugLabel": "ハンドル",
         "slugPlaceholder": "my-project",
         "descriptionLabel": "説明(任意)",
         "typeLabel": "種類",
@@ -1474,8 +1474,8 @@
         "cancel": "キャンセル",
         "slugFormat": "小文字・数字・ハイフンのみ使用できます。",
         "slugLength": "{min}–{max} 文字で入力してください。",
-        "slugTaken": "その studio スラッグは使用されています。",
-        "slugReserved": "そのスラッグは予約語です。"
+        "slugTaken": "そのハンドルは既に使用されています。",
+        "slugReserved": "そのハンドルは既に使用されています。"
       },
       "empty": {
         "newCard": "+ 新規"

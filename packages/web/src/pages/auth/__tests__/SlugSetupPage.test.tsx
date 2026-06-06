@@ -102,7 +102,7 @@ describe('SlugSetupPage', () => {
     await user.type(screen.getByLabelText('Handle'), 'settings');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(authApi.setupStudio).not.toHaveBeenCalled();
-    expect(screen.getByText('That slug is reserved.')).toBeInTheDocument();
+    expect(screen.getByText('That handle is already in use.')).toBeInTheDocument();
   });
 
   it('on success calls setup-studio, stores the personal studio, and navigates to /studio', async () => {
@@ -137,7 +137,7 @@ describe('SlugSetupPage', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() =>
-      expect(screen.getByText('That studio slug is taken.')).toBeInTheDocument(),
+      expect(screen.getByText('That handle is already in use.')).toBeInTheDocument(),
     );
     expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
     // The user's onboarding state is unchanged — still gated.

@@ -31,7 +31,7 @@
       "verify_email_sent": "驗證郵件已寄送,請查收。"
     },
     "studio": {
-      "slug_taken": "該網址標識已被占用,請換一個。"
+      "slug_taken": "該網址標識已被使用,請換一個。"
     },
     "payment": {
       "checkout_created": "支付工作階段已建立",
@@ -1451,7 +1451,7 @@
       "settings": {
         "basicTitle": "基本資訊",
         "name": "名稱",
-        "slug": "Slug",
+        "slug": "網址標識",
         "description": "簡介",
         "avatar": "頭像",
         "dangerTitle": "危險操作",
@@ -1464,7 +1464,7 @@
         "newStudioTitle": "新增 Studio",
         "nameLabel": "名稱",
         "namePlaceholder": "我的專案",
-        "slugLabel": "Slug",
+        "slugLabel": "網址標識",
         "slugPlaceholder": "my-project",
         "descriptionLabel": "簡介(選填)",
         "typeLabel": "類型",
@@ -1474,8 +1474,8 @@
         "cancel": "取消",
         "slugFormat": "只能用小寫字母、數字和連字號。",
         "slugLength": "需 {min}–{max} 個字元。",
-        "slugTaken": "該 studio slug 已被占用。",
-        "slugReserved": "該 slug 是保留字。"
+        "slugTaken": "該網址標識已被使用。",
+        "slugReserved": "該網址標識已被使用。"
       },
       "empty": {
         "newCard": "+ 新增"
