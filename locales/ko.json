@@ -317,7 +317,7 @@
       "subtitle": "계정 설정을 마치려면 한 단계만 더 남았습니다.",
       "slugLabel": "핸들",
       "slugPlaceholder": "your-handle",
-      "helper": "이것은 웹 사용자 이름입니다. 홈은 /studio/{slug}에 위치합니다. 소문자, 숫자, 하이픈만 사용할 수 있으며 고유해야 하고 나중에 변경할 수 없습니다.",
+      "helper": "홈은 /studio/{slug}에 위치합니다. 소문자, 숫자, 하이픈만 사용할 수 있으며 고유해야 합니다.",
       "submit": "계속",
       "submitting": "설정 중...",
       "failed": "스튜디오를 설정할 수 없습니다. 다시 시도해 주세요."

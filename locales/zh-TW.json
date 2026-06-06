@@ -31,7 +31,7 @@
       "verify_email_sent": "驗證郵件已寄送,請查收。"
     },
     "studio": {
-      "slug_taken": "該使用者名稱已被占用,請換一個。"
+      "slug_taken": "該網址標識已被占用,請換一個。"
     },
     "payment": {
       "checkout_created": "支付工作階段已建立",
@@ -313,11 +313,11 @@
       "failed": "註冊失敗,請重試。"
     },
     "onboarding": {
-      "title": "選擇你的網址使用者名稱",
+      "title": "選擇你的網址標識",
       "subtitle": "再完成一步即可設定好你的帳號。",
-      "slugLabel": "網址使用者名稱",
+      "slugLabel": "網址標識",
       "slugPlaceholder": "your-handle",
-      "helper": "這是你的網址使用者名稱 —— 你的首頁將位於 /studio/{slug}。只能使用小寫字母、數字和連字號;必須唯一,且之後無法修改。",
+      "helper": "你的首頁將位於 /studio/{slug}。只能使用小寫字母、數字和連字號;必須唯一。",
       "submit": "繼續",
       "submitting": "設定中...",
       "failed": "無法設定你的工作室,請重試。"

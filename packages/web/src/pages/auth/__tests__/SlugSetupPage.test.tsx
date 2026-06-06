@@ -59,9 +59,9 @@ describe('SlugSetupPage', () => {
   it('renders the slug form with the helper text and submit', () => {
     setup();
     expect(screen.getByLabelText('Handle')).toBeInTheDocument();
-    // Helper explains this is the web username / handle.
+    // Helper explains where the handle lives (the homepage URL).
     expect(
-      screen.getByText(/This is your web username/i),
+      screen.getByText(/Your home will live at/i),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
   });
