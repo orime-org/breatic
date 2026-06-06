@@ -171,6 +171,47 @@ export const projectMembers = pgTable(
   ],
 );
 
+// ── 4b. Studio Members ───────────────────────────────────────────────
+//
+// Studio-level membership + role (Admin / Member). The admin role lives
+// HERE (not on the studios row) so a team studio can have members beyond
+// its creator. One active admin per studio is enforced by a partial
+// unique index in the migration. `addedBy` is null for the creator's own
+// admin row (no inviter). All FKs are `onDelete: restrict` — the project
+// is soft-delete only (rows never physically vanish, so a reference can
+// never dangle; hard delete goes through a dedicated GDPR flow). See
+// CLAUDE.md 软删除.
+
+export const studioMembers = pgTable(
+  "studio_members",
+  {
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    role: varchar("role", { length: 16 }).notNull(),
+    /** Null for the creator's admin row (no inviter); inviter's id otherwise. */
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.studioId, table.userId] }),
+    index("studio_members_user_id_idx").on(table.userId),
+    index("studio_members_studio_id_idx").on(table.studioId, table.deletedAt),
+    // One active admin per studio is enforced by a partial unique index
+    // (`studio_members_one_admin_per_studio`) in the migration — Drizzle's
+    // table builder does not emit partial unique indexes.
+  ],
+);
+
 // ── 5. Conversations ─────────────────────────────────────────────────
 
 /** Shape of a single message stored inline in the JSONB array. */

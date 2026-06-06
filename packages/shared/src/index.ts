@@ -45,6 +45,8 @@ export type {
   ProjectRole,
   ProjectMember,
   Studio,
+  StudioRole,
+  StudioMember,
   SpaceType,
   Space,
   MembersChangedEvent,

@@ -24,3 +24,28 @@ export interface Studio {
   updatedAt: Date;
   deletedAt: Date | null;
 }
+
+/**
+ * Studio-level roles. Two role layers exist: studio Admin/Member (this
+ * type) and project Owner/Editor/Viewer (`ProjectRole` in role.ts).
+ *
+ * One active admin per studio (enforced by a partial unique index on
+ * `studio_members`); the creator is the admin. `member` is a plain
+ * studio member.
+ */
+export type StudioRole = "admin" | "member";
+
+/**
+ * One row of the `studio_members` table — who has what studio-level role.
+ *
+ * `addedBy` is `null` for the creator's own admin row (no inviter); it
+ * holds the inviter's user id for invited members.
+ */
+export interface StudioMember {
+  studioId: string;
+  userId: string;
+  role: StudioRole;
+  addedBy: string | null;
+  addedAt: Date;
+  deletedAt: Date | null;
+}
