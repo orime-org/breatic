@@ -100,8 +100,15 @@ vi.mock("@server/modules/auth/user.repo.js", () => ({
   markRecoveryCodeUsed: vi.fn(),
 }));
 
+// register no longer creates a personal studio (that is the explicit
+// setup-studio step). The studio.service mock is still declared so a
+// regression that re-introduces an eager studio call surfaces (the spy
+// must stay un-called).
+const mockCreatePersonalStudio = vi.fn();
 vi.mock("@server/modules/studio/studio.service.js", () => ({
-  ensurePersonalStudio: vi.fn(),
+  createPersonalStudio: mockCreatePersonalStudio,
+  getPersonalStudio: vi.fn(),
+  getPersonalStudioNamesByUserIds: vi.fn(),
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -117,9 +124,9 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
   it("register() produces bcrypt hash with cost-12 prefix", async () => {
     mockGetUserByEmail.mockResolvedValue(null);
     let capturedHash: string | undefined;
-    mockCreateUser.mockImplementation(async (data: { hashedPassword?: string; email: string; username: string }) => {
+    mockCreateUser.mockImplementation(async (data: { hashedPassword?: string; email: string }) => {
       capturedHash = data.hashedPassword;
-      return { id: "u-new", email: data.email, username: data.username, avatarUrl: null };
+      return { id: "u-new", email: data.email, avatarUrl: null };
     });
 
     const { register } = await import("./auth.service.js");
@@ -129,46 +136,43 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     expect(capturedHash).toMatch(/^\$2[abxy]\$12\$/);
   });
 
-  it("Q10 invariant: register(email, password, name) writes users.username = name (not email prefix)", async () => {
-    // RegisterPage already collects a `name` field (auth.nameRequired
-    // validation, autoComplete='name'). The server previously stripped
-    // it via the registerSchema = z.object({email, password}) zod
-    // shape, falling back to `email.split("@")[0]` — so a user typing
-    // "Justin" at sign-up landed in PG as username="justin@…prefix".
-    // This invariant locks the full passthrough so any future regression
-    // (schema reset / route destructure drop / service-arg removal)
-    // trips the test before merge.
+  it("register() takes ONLY email + password — no display name (it moved to the personal studio)", async () => {
+    // Email-registration rewrite (2026-06-06): `users` is a pure auth
+    // table. The display name + URL handle live on the personal studio,
+    // created in the explicit second step (setup-studio). createUser must
+    // be called with email + hashedPassword only — never a `username`. A
+    // regression that re-adds the name arg trips this assertion.
     mockGetUserByEmail.mockResolvedValue(null);
-    let capturedUsername: string | undefined;
-    mockCreateUser.mockImplementation(async (data: { username: string; email: string; hashedPassword?: string }) => {
-      capturedUsername = data.username;
-      return { id: "u-justin", email: data.email, username: data.username, avatarUrl: null };
+    let captured: Record<string, unknown> | undefined;
+    mockCreateUser.mockImplementation(async (data: Record<string, unknown>) => {
+      captured = data;
+      return { id: "u-new", email: data.email, avatarUrl: null };
     });
 
     const { register } = await import("./auth.service.js");
-    await register("justin@example.com", "validPassword123", "Justin");
+    await register("noname@example.com", "validPassword123");
 
-    expect(capturedUsername).toBe("Justin");
-    // Defensive: lock out the legacy email-prefix fallback so a revert
-    // is loud, not silent.
-    expect(capturedUsername).not.toBe("justin");
+    expect(captured).toBeDefined();
+    expect(Object.keys(captured!).sort()).toEqual(["email", "hashedPassword"]);
+    expect(captured).not.toHaveProperty("username");
   });
 
-  it("Q10 invariant: register(email, password) without name still falls back to email prefix (back-compat)", async () => {
-    // Old clients that have not yet redeployed continue to call
-    // register without a name. The service must keep working
-    // (back-compat) and just use the legacy fallback.
+  it("register() does NOT create a personal studio — that is the explicit setup-studio step", async () => {
+    // Onboarding step 1 creates only the account; the personal studio is
+    // created later when the user picks a slug. A regression that eagerly
+    // creates a studio at register time trips this (the spy must stay
+    // un-called).
     mockGetUserByEmail.mockResolvedValue(null);
-    let capturedUsername: string | undefined;
-    mockCreateUser.mockImplementation(async (data: { username: string; email: string }) => {
-      capturedUsername = data.username;
-      return { id: "u-old", email: data.email, username: data.username, avatarUrl: null };
+    mockCreateUser.mockResolvedValue({
+      id: "u-new",
+      email: "new@example.com",
+      avatarUrl: null,
     });
 
     const { register } = await import("./auth.service.js");
-    await register("nameless@example.com", "validPassword123");
+    await register("new@example.com", "validPassword123");
 
-    expect(capturedUsername).toBe("nameless");
+    expect(mockCreatePersonalStudio).not.toHaveBeenCalled();
   });
 
   it("register() returns recoveryCode (XXXX-XXXX-XXXX-XXXX) + setRecoveryCode stores cost-12 bcrypt hash", async () => {
@@ -176,7 +180,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     mockCreateUser.mockResolvedValue({
       id: "u-new",
       email: "new@example.com",
-      username: "new",
       avatarUrl: null,
     });
 
@@ -200,7 +203,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     mockCreateUser.mockResolvedValue({
       id: "u-new",
       email: "new@example.com",
-      username: "new",
       avatarUrl: null,
     });
 
@@ -250,7 +252,6 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
     mockGetUserByEmail.mockResolvedValue({
       id: "u-1",
       email: "real@example.com",
-      username: "user",
       avatarUrl: null,
     });
 

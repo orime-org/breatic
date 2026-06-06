@@ -284,16 +284,21 @@ export const mocks = {
     reason: "backend_disabled",
   } as { status: "skipped"; reason: "backend_disabled" }),
   studioService: {
-    ensurePersonalStudio: vi.fn().mockResolvedValue({
+    createPersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
-      ownerUserId: "user-1",
-      name: "Personal Studio",
+      createdByUserId: "user-1",
+      slug: "personal-studio",
+      type: "personal",
+      name: "personal-studio",
     }),
     getPersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
-      ownerUserId: "user-1",
+      createdByUserId: "user-1",
+      slug: "personal-studio",
+      type: "personal",
       name: "Personal Studio",
     }),
+    getPersonalStudioNamesByUserIds: vi.fn().mockResolvedValue(new Map()),
   },
 };
 

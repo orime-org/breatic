@@ -19,7 +19,6 @@
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { db } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
@@ -76,21 +75,43 @@ export async function assertAccess(
  * @param name - Project name
  * @param description - Optional description
  * @returns The newly created project entity
+ * @throws {NotFoundError} if the user has no personal studio yet (they
+ *   have not completed the slug-setup onboarding step — a user without a
+ *   studio cannot own a project)
  */
 export async function create(
   userId: string,
   name: string,
   description?: string,
 ): Promise<ProjectEntity> {
-  const user = await userRepo.getUserById(userId);
-  const studio = await studioService.ensurePersonalStudio(
-    userId,
-    user?.username ?? null,
-  );
+  const studio = await requirePersonalStudio(userId);
 
   return db.transaction(async (tx) =>
     projectRepo.createProject(tx, studio.id, userId, name, description),
   );
+}
+
+/**
+ * Resolve the caller's personal studio, throwing if they have not yet
+ * completed onboarding.
+ *
+ * Personal studios are created explicitly in the slug-setup step, no
+ * longer auto-created on demand. Project routes are reachable only after
+ * the frontend onboarding gate, so a missing studio here means a direct
+ * API call by a half-onboarded account — surface it as 404 (same
+ * existence-hiding convention as `assertAccess`).
+ * @param userId - Authenticated user UUID
+ * @returns The user's personal studio
+ * @throws {NotFoundError} if the user has no personal studio
+ */
+async function requirePersonalStudio(
+  userId: string,
+): Promise<{ id: string }> {
+  const studio = await studioService.getPersonalStudio(userId);
+  if (!studio) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return studio;
 }
 
 /**
@@ -122,17 +143,15 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  * @param limit - Page size
  * @param offset - Pagination offset
  * @returns The user's project entities in their personal studio
+ * @throws {NotFoundError} if the user has no personal studio yet
+ *   (onboarding incomplete)
  */
 export async function list(
   userId: string,
   limit?: number,
   offset?: number,
 ): Promise<ProjectEntity[]> {
-  const user = await userRepo.getUserById(userId);
-  const studio = await studioService.ensurePersonalStudio(
-    userId,
-    user?.username ?? null,
-  );
+  const studio = await requirePersonalStudio(userId);
   return projectRepo.listProjectsByStudio(studio.id, limit, offset);
 }
 

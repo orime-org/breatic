@@ -27,14 +27,30 @@ describe('useCurrentUserStore', () => {
     expect('setToken' in s).toBe(false);
   });
 
-  it('setUser + setRole populate fields', () => {
-    useCurrentUserStore
-      .getState()
-      .setUser({ id: 'u1', name: 'Alice', email: 'a@b.com' });
+  it('setUser + setRole populate fields (incl. personalStudio)', () => {
+    useCurrentUserStore.getState().setUser({
+      id: 'u1',
+      name: 'Alice',
+      email: 'a@b.com',
+      personalStudio: { name: 'Alice', slug: 'alice' },
+    });
     useCurrentUserStore.getState().setRole('owner');
     const s = useCurrentUserStore.getState();
     expect(s.user?.id).toBe('u1');
+    expect(s.user?.personalStudio).toEqual({ name: 'Alice', slug: 'alice' });
     expect(s.role).toBe('owner');
+  });
+
+  it('setUser stores a null personalStudio (the onboarding-incomplete state)', () => {
+    // The two-step registration gap: account exists, slug not yet
+    // picked. ProtectedRoute reads this null as the onboarding gate.
+    useCurrentUserStore.getState().setUser({
+      id: 'u2',
+      name: 'bob',
+      email: 'bob@b.com',
+      personalStudio: null,
+    });
+    expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
   });
 
   it('setBootstrapped flips the flag without touching user/role', () => {
@@ -49,9 +65,12 @@ describe('useCurrentUserStore', () => {
   });
 
   it('clear resets user/role but keeps bootstrapped=true (logout is not a re-boot)', () => {
-    useCurrentUserStore
-      .getState()
-      .setUser({ id: 'u', name: 'x', email: 'x@y' });
+    useCurrentUserStore.getState().setUser({
+      id: 'u',
+      name: 'x',
+      email: 'x@y',
+      personalStudio: { name: 'x', slug: 'xhandle' },
+    });
     useCurrentUserStore.getState().setRole('owner');
     useCurrentUserStore.getState().setBootstrapped(true);
     useCurrentUserStore.getState().clear();

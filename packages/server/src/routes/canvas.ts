@@ -120,9 +120,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       );
       throw new ConflictLockedError({
         holdingBy: holderTask?.userId ?? null,
-        // UserEntity exposes `username` (nullable) — fall back through email
-        // → generic label so the toast always has *something* to show.
-        holdingByName: holder?.username ?? holder?.email ?? "someone",
+        // Display names live on the personal studio / live awareness roster
+        // now, not on `users` — fall back to the holder's email (or a
+        // generic label) so the toast always has *something* to show; the
+        // client refines via the in-canvas roster (email-registration
+        // rewrite, 2026-06-06).
+        holdingByName: holder?.email ?? "someone",
         taskId: holderTaskId,
         startedAt: holderTask?.startedAt?.getTime() ?? Date.now(),
         // Conservative default; refined per-model in a follow-up PR.
@@ -141,9 +144,10 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
           state: "handling",
           handlingBy: {
             userId: user.id,
-            // Username is nullable on UserEntity; fall back to email so the
-            // collaborator-avatar tooltip always renders something.
-            username: user.username ?? user.email,
+            // No display-name snapshot — collaborators render "who is
+            // handling" from the live `meta.users[userId]` awareness
+            // roster, which updates on rename (email-registration
+            // rewrite, 2026-06-06).
             // Worker-driven path — this endpoint dispatches BullMQ jobs.
             // Collab `onDisconnect` leaves backend-driven handling nodes
             // alone; Worker owns the terminal state transition.

@@ -86,10 +86,10 @@ async function insertUser(tag: string): Promise<string> {
   return row!.id;
 }
 
-async function insertStudio(ownerUserId: string, tag: string): Promise<string> {
+async function insertStudio(createdByUserId: string, tag: string): Promise<string> {
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO studios (owner_user_id, name)
-    VALUES (${ownerUserId}, ${`studio-${tag}`})
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${createdByUserId}, ${`ru-studio-${tag}-${seq++}`}, 'personal', ${`studio-${tag}`})
     RETURNING id
   `;
   return row!.id;

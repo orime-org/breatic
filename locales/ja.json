@@ -30,6 +30,9 @@
       "email_verified": "メールアドレスを確認しました。",
       "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。"
     },
+    "studio": {
+      "slug_taken": "そのハンドルはすでに使用されています。別のものを選んでください。"
+    },
     "payment": {
       "checkout_created": "決済セッションが作成されました",
       "credits_granted": "{amount} クレジットがチャージされました",
@@ -308,6 +311,16 @@
       "signIn": "サインイン",
       "passwordHint": "8 文字以上にしてください。",
       "failed": "登録に失敗しました。もう一度お試しください。"
+    },
+    "onboarding": {
+      "title": "ハンドルを選択",
+      "subtitle": "アカウント設定を完了するまであと 1 ステップです。",
+      "slugLabel": "ハンドル",
+      "slugPlaceholder": "your-handle",
+      "helper": "ホームは /studio/{slug} になります。小文字の英字・数字・ハイフンが使え、一意である必要があります。",
+      "submit": "続行",
+      "submitting": "設定中...",
+      "failed": "スタジオを設定できませんでした。もう一度お試しください。"
     },
     "recovery": {
       "title": "リカバリーコードを保存してください",
@@ -1438,7 +1451,7 @@
       "settings": {
         "basicTitle": "基本情報",
         "name": "名前",
-        "slug": "スラッグ",
+        "slug": "ハンドル",
         "description": "説明",
         "avatar": "アバター",
         "dangerTitle": "危険な操作",
@@ -1451,7 +1464,7 @@
         "newStudioTitle": "Studio を新規作成",
         "nameLabel": "名前",
         "namePlaceholder": "マイプロジェクト",
-        "slugLabel": "スラッグ",
+        "slugLabel": "ハンドル",
         "slugPlaceholder": "my-project",
         "descriptionLabel": "説明(任意)",
         "typeLabel": "種類",
@@ -1461,8 +1474,8 @@
         "cancel": "キャンセル",
         "slugFormat": "小文字・数字・ハイフンのみ使用できます。",
         "slugLength": "{min}–{max} 文字で入力してください。",
-        "slugTaken": "その studio スラッグは使用されています。",
-        "slugReserved": "そのスラッグは予約語です。"
+        "slugTaken": "そのハンドルは既に使用されています。",
+        "slugReserved": "そのハンドルは既に使用されています。"
       },
       "empty": {
         "newCard": "+ 新規"

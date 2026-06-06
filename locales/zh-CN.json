@@ -33,6 +33,9 @@
       "email_verified": "邮箱已验证。",
       "verify_email_sent": "验证邮件已发送,请查收。"
     },
+    "studio": {
+      "slug_taken": "该网址标识已被使用,请换一个。"
+    },
     "payment": {
       "checkout_created": "支付会话已创建",
       "credits_granted": "已充值 {amount} 积分",
@@ -308,6 +311,16 @@
       "signIn": "登录",
       "passwordHint": "至少 8 个字符。",
       "failed": "注册失败,请重试。"
+    },
+    "onboarding": {
+      "title": "选择你的网址标识",
+      "subtitle": "再完成一步即可设置好你的账号。",
+      "slugLabel": "网址标识",
+      "slugPlaceholder": "your-handle",
+      "helper": "你的主页将位于 /studio/{slug}。只能使用小写字母、数字和连字符;必须唯一。",
+      "submit": "继续",
+      "submitting": "设置中...",
+      "failed": "无法设置你的工作室,请重试。"
     },
     "recovery": {
       "title": "保存你的恢复码",
@@ -1438,7 +1451,7 @@
       "settings": {
         "basicTitle": "基本信息",
         "name": "名称",
-        "slug": "Slug",
+        "slug": "网址标识",
         "description": "简介",
         "avatar": "头像",
         "dangerTitle": "危险操作",
@@ -1451,7 +1464,7 @@
         "newStudioTitle": "新建 Studio",
         "nameLabel": "名称",
         "namePlaceholder": "我的项目",
-        "slugLabel": "Slug",
+        "slugLabel": "网址标识",
         "slugPlaceholder": "my-project",
         "descriptionLabel": "简介(可选)",
         "typeLabel": "类型",
@@ -1461,8 +1474,8 @@
         "cancel": "取消",
         "slugFormat": "只能用小写字母、数字和连字符。",
         "slugLength": "需 {min}–{max} 个字符。",
-        "slugTaken": "该 studio slug 已被占用。",
-        "slugReserved": "该 slug 是保留字。"
+        "slugTaken": "该网址标识已被使用。",
+        "slugReserved": "该网址标识已被使用。"
       },
       "empty": {
         "newCard": "+ 新建"

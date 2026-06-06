@@ -21,6 +21,10 @@
 export * as creditService from "@domain/credit/credit.service.js";
 export * as creditRepo from "@domain/credit/credit.repo.js";
 
+// ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
+export * as studioAuthService from "@domain/auth/studioAuth.service.js";
+export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
+
 // ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";

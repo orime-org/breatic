@@ -20,10 +20,7 @@ vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
 }));
 vi.mock("@server/modules/studio/studio.service.js", () => ({
-  ensurePersonalStudio: vi.fn(),
-}));
-vi.mock("@server/modules/auth/user.repo.js", () => ({
-  getUserById: vi.fn(),
+  getPersonalStudio: vi.fn(),
 }));
 vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {
   const actual = await importActual();
@@ -41,17 +38,12 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { create } from "@server/modules/project/project.service.js";
 
 describe("project.service.create", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(userRepo.getUserById).mockResolvedValue({
-      id: "u-1",
-      username: "alice",
-    } as never);
-    vi.mocked(studioService.ensurePersonalStudio).mockResolvedValue({
+    vi.mocked(studioService.getPersonalStudio).mockResolvedValue({
       id: "studio-1",
     } as never);
     vi.mocked(projectRepo.createProject).mockResolvedValue({
@@ -63,7 +55,7 @@ describe("project.service.create", () => {
   it("creates the project + owner row in the caller's personal studio and returns it", async () => {
     const result = await create("u-1", "My Cyberpunk Idea", "a description");
 
-    expect(studioService.ensurePersonalStudio).toHaveBeenCalledWith("u-1", "alice");
+    expect(studioService.getPersonalStudio).toHaveBeenCalledWith("u-1");
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
     // Args: (tx, studioId, creatorUserId, name, description).
     const args = vi.mocked(projectRepo.createProject).mock.calls[0];
@@ -83,5 +75,18 @@ describe("project.service.create", () => {
     expect(vi.mocked(core.db.transaction)).toHaveBeenCalledTimes(1);
     const txArg = vi.mocked(projectRepo.createProject).mock.calls[0]?.[0];
     expect(txArg).toEqual({ TX: true });
+  });
+
+  it("throws (no auto-create) when the caller has no personal studio — onboarding incomplete", async () => {
+    // Personal studios are no longer auto-created on demand (they are the
+    // explicit slug-setup step). A half-onboarded account that reaches
+    // project creation directly must be rejected, not silently given a
+    // studio.
+    vi.mocked(studioService.getPersonalStudio).mockResolvedValueOnce(null);
+
+    await expect(create("u-1", "No Studio Project")).rejects.toMatchObject({
+      name: "NotFoundError",
+    });
+    expect(projectRepo.createProject).not.toHaveBeenCalled();
   });
 });

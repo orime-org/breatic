@@ -21,7 +21,6 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
   return {
     id: row.id,
     email: row.email,
-    username: row.username,
     avatarUrl: row.avatarUrl,
     emailVerified: row.emailVerified,
     googleId: row.googleId,
@@ -111,14 +110,12 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.email - Email address (unique per active user)
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
- * @param data.username - Optional display name
  * @returns The created UserEntity
  */
 export async function createUser(data: {
   email: string;
   hashedPassword?: string;
   googleId?: string;
-  username?: string;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -126,7 +123,6 @@ export async function createUser(data: {
       email: data.email,
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
-      username: data.username,
     })
     .returning();
   return toEntity(rows[0]!);
@@ -135,12 +131,12 @@ export async function createUser(data: {
 /**
  * Update user profile fields.
  * @param userId - User UUID to update
- * @param data - Partial set of profile fields to overwrite (username / avatarUrl / emailVerified / googleId)
+ * @param data - Partial set of profile fields to overwrite (avatarUrl / emailVerified / googleId)
  * @returns The updated user entity, or null if no row matched
  */
 export async function updateUser(
   userId: string,
-  data: Partial<Pick<typeof users.$inferInsert, "username" | "avatarUrl" | "emailVerified" | "googleId">>,
+  data: Partial<Pick<typeof users.$inferInsert, "avatarUrl" | "emailVerified" | "googleId">>,
 ): Promise<UserEntity | null> {
   const rows = await db
     .update(users)

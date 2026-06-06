@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Studio repository — V1 personal studio data access.
+ * Studio repository — `studios` table data access.
  *
- * Every user has exactly one personal studio (V1 invariant, enforced
- * by `studios_owner_user_id_idx` partial unique index). The repo
- * exposes lookup-by-owner and idempotent create.
+ * A studio is `personal` (one per user, created at the slug-setup
+ * onboarding step) or `team`. The slug (URL handle) is globally unique and
+ * chosen by the user. "One personal studio per user" is enforced by the
+ * `studios_owner_personal_idx` partial unique index; a taken handle by
+ * `studios_slug_idx`.
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 import { db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { studios } from "@breatic/core";
-import type { Studio } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+import type { Studio, StudioType } from "@breatic/shared";
 
 /**
  * Map a Drizzle studio row to the shared `Studio` domain entity.
@@ -23,7 +25,9 @@ import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 function toEntity(row: typeof studios.$inferSelect): Studio {
   return {
     id: row.id,
-    ownerUserId: row.ownerUserId,
+    createdByUserId: row.createdByUserId,
+    slug: row.slug,
+    type: row.type as StudioType,
     name: row.name,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -32,45 +36,78 @@ function toEntity(row: typeof studios.$inferSelect): Studio {
 }
 
 /**
- * Look up a user's active personal studio.
- * @param ownerUserId - User UUID
- * @returns The studio entity, or `null` if none exists
+ * Look up a user's active **personal** studio (one per user).
+ * @param createdByUserId - User UUID
+ * @returns The personal studio entity, or `null` if none exists
  */
-export async function getByOwnerUserId(
-  ownerUserId: string,
+export async function getPersonalByCreator(
+  createdByUserId: string,
 ): Promise<Studio | null> {
   const rows = await db
     .select()
     .from(studios)
-    .where(and(eq(studios.ownerUserId, ownerUserId), isNull(studios.deletedAt)))
+    .where(
+      and(
+        eq(studios.createdByUserId, createdByUserId),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    )
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
 /**
- * Insert a new personal studio for the given owner.
+ * Insert a personal studio (slug = name = the chosen handle).
  *
- * Caller must ensure no active studio exists for the user (the partial
- * unique index will reject duplicates). Use {@link getByOwnerUserId}
- * first if you need an idempotent ensure flow.
- *
- * Accepts an optional Drizzle transaction so register flows can
- * create the user + studio + (later) project_members owner row in
- * one atomic operation.
- * @param ownerUserId - User UUID
- * @param name - Display name (e.g. `"{username}'s Studio"`)
+ * Caller must ensure no active personal studio exists for the user (the
+ * `studios_owner_personal_idx` partial unique index rejects duplicates;
+ * `studios_slug_idx` rejects a taken handle). Accepts an optional Drizzle
+ * transaction so setup-studio can create the studio + the creator's admin
+ * member row in one atomic operation.
+ * @param createdByUserId - The creator's user UUID
+ * @param slug - The user's URL handle; also the studio's slug
+ * @param name - Display name (initially the slug)
  * @param tx - Optional transaction handle
  * @returns The freshly created studio entity
  */
 export async function createPersonalStudio(
-  ownerUserId: string,
+  createdByUserId: string,
+  slug: string,
   name: string,
   tx?: DbTx,
 ): Promise<Studio> {
   const runner = tx ?? db;
   const rows = await runner
     .insert(studios)
-    .values({ ownerUserId, name })
+    .values({ createdByUserId, slug, name, type: "personal" })
     .returning();
   return toEntity(rows[0]!);
+}
+
+/**
+ * Batch-resolve each user's active personal studio `name`.
+ *
+ * Backs display-name lookup for `/users` batch + invite `inviterName`
+ * (the name moved off `users` to the personal studio). Users with no
+ * active personal studio are absent from the map; callers fall back to
+ * the email local-part.
+ * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @returns Map of `userId → personal studio name`
+ */
+export async function getPersonalNamesByCreators(
+  createdByUserIds: string[],
+): Promise<Map<string, string>> {
+  if (createdByUserIds.length === 0) return new Map();
+  const rows = await db
+    .select({ createdByUserId: studios.createdByUserId, name: studios.name })
+    .from(studios)
+    .where(
+      and(
+        inArray(studios.createdByUserId, createdByUserIds),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    );
+  return new Map(rows.map((r) => [r.createdByUserId, r.name]));
 }

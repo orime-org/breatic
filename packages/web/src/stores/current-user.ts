@@ -4,6 +4,8 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import type { PersonalStudio } from '@web/data/api/auth';
+
 /**
  * Current user store — auth identity + role + boot/loading flags.
  *
@@ -26,9 +28,17 @@ export type UserRole = 'owner' | 'edit' | 'view' | null;
 
 export interface CurrentUser {
   id: string;
+  /** Display name, derived via `deriveDisplayName` (personal-studio name → email fallback). */
   name: string;
   email: string;
   avatarUrl?: string;
+  /**
+   * The user's personal studio (`{ name, slug }`), or `null` when the
+   * account has not yet completed onboarding (the slug step that
+   * creates it). `ProtectedRoute` reads this null as the onboarding
+   * gate — a non-null personal studio is required to enter the app.
+   */
+  personalStudio: PersonalStudio | null;
 }
 
 interface CurrentUserState {

@@ -98,7 +98,6 @@ describe("POST /auth/resend-verification-email", () => {
     mocks.userRepo.getUserById.mockResolvedValue({
       id: "user-1",
       email: "u@x.com",
-      username: "u",
     });
     mocks.authService.resendVerificationEmail.mockResolvedValue({
       mailResult: { status: "skipped", reason: "backend_disabled" },
