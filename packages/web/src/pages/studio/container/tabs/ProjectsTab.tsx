@@ -16,8 +16,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface ProjectsTabProps {
   projects: readonly ContainerProject[];
-  /** The viewer's studio role — drives the visibility filter (invariant 1). */
-  studioRole: StudioRole;
+  /** The viewer's studio role (`null` = guest) — drives the visibility filter (invariant 1). */
+  studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;
 }

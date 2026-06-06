@@ -1361,6 +1361,10 @@
       "failed": "프로젝트 생성에 실패했습니다: {reason}"
     },
     "container": {
+      "shell": {
+        "loading": "Studio 불러오는 중…",
+        "loadError": "이 Studio를 불러오지 못했습니다."
+      },
       "tabs": {
         "projects": "프로젝트",
         "collections": "컬렉션",

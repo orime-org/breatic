@@ -67,3 +67,30 @@ export interface StudioMember {
   addedAt: Date;
   deletedAt: Date | null;
 }
+
+/**
+ * Studio summary — the minimal shape for switcher lists and cards, returned
+ * by `GET /studios` (the current user's studios) and embedded in
+ * `StudioDetail`. `memberCount` is the active member count (a personal
+ * studio always has 1: its creator/admin). Whether to surface the count is
+ * a frontend concern (personal studios hide it).
+ */
+export interface StudioSummary {
+  id: string;
+  slug: string;
+  name: string;
+  type: StudioType;
+  memberCount: number;
+}
+
+/**
+ * Studio detail — one studio's public-facing shell, returned by
+ * `GET /studio/:slug`. The shell is visible to any authenticated user (a
+ * studio's `/studio/{slug}` page is its front door, like a profile page);
+ * `myStudioRole` tells the viewer their relationship to it: `admin` /
+ * `member`, or `null` when they are not a member (a guest). Private content
+ * inside the studio's tabs is gated by this role (later slices).
+ */
+export interface StudioDetail extends StudioSummary {
+  myStudioRole: StudioRole | null;
+}

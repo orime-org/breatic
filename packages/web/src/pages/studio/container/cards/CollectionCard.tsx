@@ -20,8 +20,8 @@ import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface CollectionCardProps {
   collection: ContainerCollection;
-  /** The viewer's studio role — gates the governance (`⋯`) menu (invariant 2). */
-  studioRole: StudioRole;
+  /** The viewer's studio role (`null` = guest) — gates the governance (`⋯`) menu (invariant 2). */
+  studioRole: StudioRole | null;
 }
 
 /** Four preview cells for the collection's 4-grid thumbnail (spec §3.4). */

@@ -16,12 +16,13 @@ import type {
   StudioType,
 } from '@web/pages/studio/shared/studio-types';
 
-// All badges carry TEXT (not color alone) for a11y (spec §3.5). Neutral badges
-// use the mode-aware `secondary` token, never raw `neutral-*` (which is
-// mode-blind). Brand-tint is allowed here (studio exemption §1.2); roles must
-// stay neutral (§F10 / §3.5 — brand-tint only for the type pill + kind tag).
-const BRAND_TINT =
-  'border-transparent bg-[var(--brand-tint)] text-[var(--brand-accent)]';
+// All badges carry TEXT (not color alone) for a11y (spec §3.5). Badges use the
+// mode-aware `secondary` / `muted` tokens, never raw `neutral-*` (which is
+// mode-blind). The studio chrome is neutral (visual ADR 2026-06-06 — studio no
+// longer brand-exempt): the type pill + collection-kind tag read as a neutral
+// tint, not brand.
+const NEUTRAL_TINT =
+  'border-transparent bg-muted text-muted-foreground';
 
 /**
  * Project / collection visibility badge (spec §3.5): studio-visible (neutral)
@@ -81,7 +82,7 @@ export function RoleBadge({
 }
 
 /**
- * Studio type pill (spec §3.5) — brand-tint (personal / team).
+ * Studio type pill (spec §3.5) — neutral tint (personal / team).
  * @param props the studio type.
  * @param props.type the studio type.
  * @returns the type pill.
@@ -94,14 +95,14 @@ export function StudioTypePill({
   const t = useTranslation();
   const key = type === 'team' ? 'typeTeam' : 'typePersonal';
   return (
-    <Badge className={`rounded-full ${BRAND_TINT}`}>
+    <Badge className={`rounded-full ${NEUTRAL_TINT}`}>
       {t(`studio.container.badge.${key}`)}
     </Badge>
   );
 }
 
 /**
- * Collection media-kind tag (spec §3.4) — brand-tint (image / video / audio).
+ * Collection media-kind tag (spec §3.4) — neutral tint (image / video / audio).
  * @param props the collection kind.
  * @param props.kind the dialog / collection kind.
  * @returns the kind tag.
@@ -115,7 +116,7 @@ export function CollectionKindTag({
   const key =
     kind === 'image' ? 'kindImage' : kind === 'video' ? 'kindVideo' : 'kindAudio';
   return (
-    <Badge className={BRAND_TINT}>{t(`studio.container.badge.${key}`)}</Badge>
+    <Badge className={NEUTRAL_TINT}>{t(`studio.container.badge.${key}`)}</Badge>
   );
 }
 

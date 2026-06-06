@@ -62,7 +62,7 @@ export function StudioSwitcherPanel({
   const ordered = personalFirst(studios);
   const rowBase =
     'flex items-center gap-2.5 rounded-content-md px-3 py-2 text-sm transition-colors';
-  const activeRow = 'bg-[var(--brand-tint)] text-[var(--brand-accent)]';
+  const activeRow = 'bg-muted text-foreground';
   const idleRow = 'text-foreground hover:bg-muted';
   return (
     <div className='grid w-[640px] max-w-[88vw] grid-cols-[300px_1fr] gap-4'>
@@ -73,7 +73,7 @@ export function StudioSwitcherPanel({
           aria-current={activeSlug === null ? 'page' : undefined}
           className={`${rowBase} ${activeSlug === null ? activeRow : idleRow}`}
         >
-          <span className='flex h-6 w-6 items-center justify-center rounded-md bg-[var(--brand-tint)] text-[var(--brand-accent)]'>
+          <span className='flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground'>
             <Clock className='h-3.5 w-3.5' />
           </span>
           {t('studio.container.switcher.recent')}
@@ -92,7 +92,7 @@ export function StudioSwitcherPanel({
             aria-current={studio.slug === activeSlug ? 'page' : undefined}
             className={`${rowBase} ${studio.slug === activeSlug ? activeRow : idleRow}`}
           >
-            <span className='flex h-6 w-6 items-center justify-center rounded-md bg-[var(--brand-tint)] text-[0.65rem] font-semibold text-[var(--brand-accent)]'>
+            <span className='flex h-6 w-6 items-center justify-center rounded-md bg-muted text-[0.65rem] font-semibold text-muted-foreground'>
               {studio.name.slice(0, 1).toUpperCase()}
             </span>
             <span className='flex-1 truncate'>{studio.name}</span>
@@ -120,7 +120,7 @@ export function StudioSwitcherPanel({
         <button
           type='button'
           onClick={onNewStudio}
-          className={`${rowBase} text-[var(--brand-accent)] hover:bg-muted`}
+          className={`${rowBase} text-foreground hover:bg-muted`}
         >
           <span className='flex h-6 w-6 items-center justify-center'>
             <Plus className='h-4 w-4' />

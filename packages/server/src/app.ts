@@ -31,6 +31,7 @@ import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
+import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import {
   projectInviteLinksRoute,
   consumeInviteLinkRoute,
@@ -86,6 +87,8 @@ export function createApp(): Hono {
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
   app.route("/api/v1/users", usersRoute);
+  app.route("/api/v1/studios", studiosRoute);
+  app.route("/api/v1/studio", studioRoute);
   app.route("/api/v1/skills", skillsRoute);
   app.route("/api/v1/tasks", tasksRoute);
   app.route("/api/v1/payment", paymentRoute);

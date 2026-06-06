@@ -48,6 +48,8 @@ export type {
   StudioType,
   StudioRole,
   StudioMember,
+  StudioSummary,
+  StudioDetail,
   PersonalStudioRef,
   SpaceType,
   Space,

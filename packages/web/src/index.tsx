@@ -5,6 +5,13 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import App from '@web/App';
+// Self-host Inter (the --font-sans primary) so the UI no longer depends on the
+// viewer having Inter installed locally. Weights mirror tokens.css usage.
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 

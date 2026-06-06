@@ -159,7 +159,7 @@ const STUB_PERSONAL_STUDIO: StudioContainerView = {
     slug: 'alex',
     name: 'Alex',
     type: 'personal',
-    memberCount: null,
+    memberCount: 1,
     myStudioRole: 'admin',
   },
   projects: [

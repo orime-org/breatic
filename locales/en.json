@@ -1361,6 +1361,10 @@
       "failed": "Failed to create project: {reason}"
     },
     "container": {
+      "shell": {
+        "loading": "Loading studio…",
+        "loadError": "We couldn't load this studio."
+      },
       "tabs": {
         "projects": "Projects",
         "collections": "Collections",

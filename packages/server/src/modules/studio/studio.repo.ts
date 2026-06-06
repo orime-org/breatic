@@ -11,10 +11,10 @@
  * `studios_slug_idx`.
  */
 
-import { and, eq, isNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studios } from "@breatic/core";
+import { studios, studioMembers } from "@breatic/core";
 import type { Studio, StudioType } from "@breatic/shared";
 
 /**
@@ -110,4 +110,75 @@ export async function getPersonalNamesByCreators(
       ),
     );
   return new Map(rows.map((r) => [r.createdByUserId, r.name]));
+}
+
+/**
+ * Look up an active studio (personal or team) by its URL handle.
+ *
+ * Backs the container shell (`GET /studio/:slug`). The slug is globally
+ * unique among active studios (`studios_slug_idx`), so at most one row
+ * matches.
+ * @param slug - The studio's globally-unique slug
+ * @returns The studio entity, or `null` if no active studio has that slug
+ */
+export async function getBySlug(slug: string): Promise<Studio | null> {
+  const rows = await db
+    .select()
+    .from(studios)
+    .where(and(eq(studios.slug, slug), isNull(studios.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * List every active studio the user is an active member of, oldest first.
+ *
+ * Joins `studio_members` → `studios`, hiding soft-deleted memberships and
+ * soft-deleted studios. Ordered by `created_at` ascending; the
+ * personal-first sort the switcher needs is applied by the service layer.
+ * @param userId - The user UUID whose memberships to resolve
+ * @returns The user's studios (personal + team), oldest first
+ */
+export async function listByUser(userId: string): Promise<Studio[]> {
+  const rows = await db
+    .select({ studio: studios })
+    .from(studioMembers)
+    .innerJoin(studios, eq(studios.id, studioMembers.studioId))
+    .where(
+      and(
+        eq(studioMembers.userId, userId),
+        isNull(studioMembers.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .orderBy(studios.createdAt);
+  return rows.map((r) => toEntity(r.studio));
+}
+
+/**
+ * Count active members per studio in one grouped query (avoids N+1).
+ *
+ * Backs `memberCount` for the container shell + switcher. A studio with no
+ * active members is simply absent from the map (callers default to 0).
+ * @param studioIds - Studio UUIDs to count (empty input → empty map)
+ * @returns Map of `studioId → active member count`
+ */
+export async function countMembersByStudioIds(
+  studioIds: string[],
+): Promise<Map<string, number>> {
+  if (studioIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      studioId: studioMembers.studioId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(studioMembers)
+    .where(
+      and(
+        inArray(studioMembers.studioId, studioIds),
+        isNull(studioMembers.deletedAt),
+      ),
+    )
+    .groupBy(studioMembers.studioId);
+  return new Map(rows.map((r) => [r.studioId, r.count]));
 }

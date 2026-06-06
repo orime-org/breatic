@@ -174,7 +174,7 @@ export function NewItemDialog({
             </Button>
             <Button
               type='submit'
-              className='bg-[var(--brand-accent)] text-[var(--brand-fg)] hover:opacity-90'
+              className='bg-primary text-primary-foreground hover:opacity-90'
             >
               {t('studio.container.dialog.create')}
             </Button>

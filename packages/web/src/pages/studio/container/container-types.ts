@@ -12,14 +12,13 @@ import type {
   ItemRole,
   ItemVisibility,
   StudioRole,
-  StudioSummary,
+  StudioDetail,
 } from '@web/pages/studio/shared/studio-types';
 
-/** The studio currently open in the container — the switcher summary plus the viewer's role. */
-export interface StudioDetail extends StudioSummary {
-  /** The viewer's studio role; governs members / settings / credits actions (DD §5.2). */
-  myStudioRole: StudioRole;
-}
+// `StudioDetail` is the shared API contract (`GET /studio/:slug`): the studio
+// shell + the viewer's role (`myStudioRole`, `null` = guest). Re-exported so
+// the header / settings tab keep importing it from the container module.
+export type { StudioDetail };
 
 /** A project card in the studio container's Projects tab (spec §3.3). */
 export interface ContainerProject {

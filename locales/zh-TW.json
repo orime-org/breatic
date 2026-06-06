@@ -1361,6 +1361,10 @@
       "failed": "建立專案失敗:{reason}"
     },
     "container": {
+      "shell": {
+        "loading": "正在載入 Studio…",
+        "loadError": "無法載入該 Studio。"
+      },
       "tabs": {
         "projects": "專案",
         "collections": "資產集",

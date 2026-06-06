@@ -12,6 +12,7 @@
     "@excalidraw/excalidraw": "^0.18.0",
     "@floating-ui/dom": "^1.6.0",
     "@floating-ui/react": "^0.27.19",
+    "@fontsource/inter": "^5.2.8",
     "@headlessui/react": "^2.2.9",
     "@hocuspocus/provider": "^3.4.4",
     "@hookform/resolvers": "^5.2.2",
