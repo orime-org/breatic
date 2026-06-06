@@ -1346,6 +1346,127 @@
     },
     "createProject": {
       "failed": "Failed to create project: {reason}"
+    },
+    "container": {
+      "tabs": {
+        "projects": "Projects",
+        "collections": "Collections",
+        "members": "Members",
+        "credits": "Credits",
+        "settings": "Settings"
+      },
+      "header": {
+        "personalTag": "Personal",
+        "teamTag": "Team",
+        "memberCount": "{count} members"
+      },
+      "switcher": {
+        "recent": "Recent",
+        "myStudios": "My Studios",
+        "collaboration": "Collaboration",
+        "guestProjects": "{count} shared projects",
+        "newStudio": "New Studio",
+        "guideRecent": "Recent spans your latest work across studios.",
+        "guideEnter": "Pick a studio to open its container.",
+        "guideTools": "Tools live in the top-right corner."
+      },
+      "badge": {
+        "visibilityStudio": "Studio-visible",
+        "visibilityPrivate": "Private",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
+        "typePersonal": "Personal",
+        "typeTeam": "Team",
+        "lotPaid": "Permanent · refundable",
+        "lotGift": "Gift · expires",
+        "lotExpiring": "Expires in {days} days ⚠",
+        "kindImage": "Image",
+        "kindVideo": "Video",
+        "kindAudio": "Audio"
+      },
+      "card": {
+        "assetCount": "{count} assets",
+        "fromStudio": "From {studio}",
+        "more": "More actions"
+      },
+      "projects": {
+        "title": "Projects",
+        "new": "New project",
+        "empty": "No projects yet — create one to get started."
+      },
+      "collections": {
+        "title": "Collections",
+        "new": "New collection",
+        "empty": "No collections yet — create one to get started."
+      },
+      "credits": {
+        "balance": "Wallet balance",
+        "hint": "Spends draw from expiring gift credits first, paid credits last.",
+        "paidTitle": "Paid credits",
+        "giftTitle": "Gift credits",
+        "remaining": "{amount} remaining",
+        "refund": "Request refund",
+        "orderTitle": "Spend order",
+        "orderStep1": "Soonest-expiring gift",
+        "orderStep2": "Other gift",
+        "orderStep3": "Paid (permanent)",
+        "activityTitle": "Recent activity",
+        "colType": "Type",
+        "colSource": "Source",
+        "colAmount": "Amount",
+        "colTime": "Time",
+        "topup": "Add credits",
+        "ledgerType": {
+          "topup": "Top-up",
+          "grant": "Grant",
+          "spend": "Spend",
+          "expiry": "Expiry",
+          "refund": "Refund"
+        }
+      },
+      "members": {
+        "invite": "Invite member",
+        "colName": "Name",
+        "colEmail": "Email",
+        "colRole": "Role",
+        "colJoined": "Joined",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
+        "remove": "Remove"
+      },
+      "settings": {
+        "basicTitle": "Basic info",
+        "name": "Name",
+        "slug": "Slug",
+        "description": "Description",
+        "avatar": "Avatar",
+        "dangerTitle": "Danger zone",
+        "transfer": "Transfer studio",
+        "delete": "Delete studio"
+      },
+      "dialog": {
+        "newProjectTitle": "New project",
+        "newCollectionTitle": "New collection",
+        "newStudioTitle": "New studio",
+        "nameLabel": "Name",
+        "namePlaceholder": "My project",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "my-project",
+        "descriptionLabel": "Description (optional)",
+        "typeLabel": "Type",
+        "typePersonal": "Personal",
+        "typeTeam": "Team",
+        "create": "Create",
+        "cancel": "Cancel",
+        "slugFormat": "Lowercase letters, numbers and hyphens only.",
+        "slugLength": "Must be {min}–{max} characters.",
+        "slugTaken": "That studio slug is taken.",
+        "slugReserved": "That slug is reserved."
+      },
+      "empty": {
+        "newCard": "+ New"
+      }
     }
   },
   "chrome": {

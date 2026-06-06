@@ -1346,6 +1346,127 @@
     },
     "createProject": {
       "failed": "创建项目失败:{reason}"
+    },
+    "container": {
+      "tabs": {
+        "projects": "项目",
+        "collections": "资产集",
+        "members": "成员",
+        "credits": "积分",
+        "settings": "设置"
+      },
+      "header": {
+        "personalTag": "个人",
+        "teamTag": "团队",
+        "memberCount": "{count} 名成员"
+      },
+      "switcher": {
+        "recent": "最近",
+        "myStudios": "我的 Studio",
+        "collaboration": "协作",
+        "guestProjects": "{count} 个参与的项目",
+        "newStudio": "新建 Studio",
+        "guideRecent": "最近 = 跨 studio 的近期项目。",
+        "guideEnter": "点某个 studio 进入它的容器。",
+        "guideTools": "工具在右上角。"
+      },
+      "badge": {
+        "visibilityStudio": "studio 内可见",
+        "visibilityPrivate": "私有",
+        "roleOwner": "所有者",
+        "roleEditor": "编辑者",
+        "roleViewer": "查看者",
+        "typePersonal": "个人",
+        "typeTeam": "团队",
+        "lotPaid": "永久 · 可退",
+        "lotGift": "赠送 · 会过期",
+        "lotExpiring": "{days} 天后过期 ⚠",
+        "kindImage": "图片",
+        "kindVideo": "视频",
+        "kindAudio": "音频"
+      },
+      "card": {
+        "assetCount": "{count} 个素材",
+        "fromStudio": "来自 {studio}",
+        "more": "更多操作"
+      },
+      "projects": {
+        "title": "项目",
+        "new": "新建项目",
+        "empty": "还没有项目 —— 新建一个开始吧。"
+      },
+      "collections": {
+        "title": "资产集",
+        "new": "新建资产集",
+        "empty": "还没有资产集 —— 新建一个开始吧。"
+      },
+      "credits": {
+        "balance": "钱包余额",
+        "hint": "扣费先扣快过期的赠送、付费的留到最后。",
+        "paidTitle": "充值积分",
+        "giftTitle": "赠送积分",
+        "remaining": "剩余 {amount}",
+        "refund": "申请退款",
+        "orderTitle": "扣费顺序",
+        "orderStep1": "最快过期赠送",
+        "orderStep2": "其它赠送",
+        "orderStep3": "永久充值",
+        "activityTitle": "最近流水",
+        "colType": "类型",
+        "colSource": "来源",
+        "colAmount": "金额",
+        "colTime": "时间",
+        "topup": "充值",
+        "ledgerType": {
+          "topup": "充值",
+          "grant": "赠送",
+          "spend": "消费",
+          "expiry": "过期",
+          "refund": "退款"
+        }
+      },
+      "members": {
+        "invite": "邀请成员",
+        "colName": "名称",
+        "colEmail": "邮箱",
+        "colRole": "角色",
+        "colJoined": "加入时间",
+        "roleAdmin": "管理员",
+        "roleMember": "成员",
+        "remove": "移除"
+      },
+      "settings": {
+        "basicTitle": "基本信息",
+        "name": "名称",
+        "slug": "Slug",
+        "description": "简介",
+        "avatar": "头像",
+        "dangerTitle": "危险操作",
+        "transfer": "转让 Studio",
+        "delete": "删除 Studio"
+      },
+      "dialog": {
+        "newProjectTitle": "新建项目",
+        "newCollectionTitle": "新建资产集",
+        "newStudioTitle": "新建 Studio",
+        "nameLabel": "名称",
+        "namePlaceholder": "我的项目",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "my-project",
+        "descriptionLabel": "简介(可选)",
+        "typeLabel": "类型",
+        "typePersonal": "个人",
+        "typeTeam": "团队",
+        "create": "创建",
+        "cancel": "取消",
+        "slugFormat": "只能用小写字母、数字和连字符。",
+        "slugLength": "需 {min}–{max} 个字符。",
+        "slugTaken": "该 studio slug 已被占用。",
+        "slugReserved": "该 slug 是保留字。"
+      },
+      "empty": {
+        "newCard": "+ 新建"
+      }
     }
   },
   "chrome": {

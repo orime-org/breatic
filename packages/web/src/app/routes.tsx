@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import StudioPage from '@web/pages/studio/StudioPage';
+import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
 import NoAccessPage from '@web/pages/project/access/NoAccessPage';
 import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
@@ -20,6 +21,7 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  *
  * `/`                      → redirect to /studio
  * `/studio`                → StudioPage (cross-studio "Recent" landing) [AUTH]
+ * `/studio/:slug`          → StudioContainerPage (per-studio 5-tab)     [AUTH]
  * `/project/:projectId`    → ProjectPage (canvas + chat)                [AUTH]
  *
  * `[AUTH]` routes are wrapped in `<ProtectedRoute>` which gates render
@@ -52,12 +54,24 @@ const baseRoutes: RouteObject[] = [
     // B correction) — there is no `/studio/recent` URL. Recent is per-user
     // and account-bound: sharing `/studio` shows each viewer their own
     // recent, so it has no shareable URL of its own. Only `/studio/{slug}`
-    // (the studio container, landing in a later slice) points all viewers
-    // at the same content.
+    // (the studio container) points all viewers at the same content.
     path: '/studio',
     element: (
       <ProtectedRoute>
         <StudioPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // `/studio/{slug}` — a specific studio's container (spec §2.2): a 5-tab
+    // workspace (projects / collections / members / credits / settings; 4 for
+    // personal studios). The slug is the globally-unique studio locator (no
+    // id; URL design §5.7). Tab data is stubbed in slice 3; Phase 2 wires the
+    // real per-studio APIs.
+    path: '/studio/:slug',
+    element: (
+      <ProtectedRoute>
+        <StudioContainerPage />
       </ProtectedRoute>
     ),
   },

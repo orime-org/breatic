@@ -30,13 +30,9 @@ export interface RecentItem {
   myRole: RecentItemRole;
 }
 
-/** A studio shown in the top-bar switcher. */
-export interface StudioSummary {
-  id: string;
-  /** Globally-unique studio slug (URL design: studio slug is the locator). */
-  slug: string;
-  name: string;
-  type: 'personal' | 'team';
-  /** Member count for team studios; `null` for personal (single-member). */
-  memberCount: number | null;
-}
+/**
+ * A studio shown in the top-bar switcher — re-exported from the canonical
+ * studio-domain types so recent + container + the switcher share one
+ * definition (avoids a duplicate `StudioSummary` shape).
+ */
+export type { StudioSummary } from '@web/pages/studio/shared/studio-types';

@@ -1346,6 +1346,127 @@
     },
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
+    },
+    "container": {
+      "tabs": {
+        "projects": "プロジェクト",
+        "collections": "コレクション",
+        "members": "メンバー",
+        "credits": "クレジット",
+        "settings": "設定"
+      },
+      "header": {
+        "personalTag": "個人",
+        "teamTag": "チーム",
+        "memberCount": "メンバー {count} 人"
+      },
+      "switcher": {
+        "recent": "最近",
+        "myStudios": "マイ Studio",
+        "collaboration": "コラボ",
+        "guestProjects": "参加中のプロジェクト {count} 件",
+        "newStudio": "Studio を新規作成",
+        "guideRecent": "最近 = studio をまたいだ直近のプロジェクト。",
+        "guideEnter": "studio を選んでコンテナを開きます。",
+        "guideTools": "ツールは右上にあります。"
+      },
+      "badge": {
+        "visibilityStudio": "studio 内に表示",
+        "visibilityPrivate": "非公開",
+        "roleOwner": "オーナー",
+        "roleEditor": "編集者",
+        "roleViewer": "閲覧者",
+        "typePersonal": "個人",
+        "typeTeam": "チーム",
+        "lotPaid": "無期限 · 返金可",
+        "lotGift": "ギフト · 期限あり",
+        "lotExpiring": "{days} 日後に期限切れ ⚠",
+        "kindImage": "画像",
+        "kindVideo": "動画",
+        "kindAudio": "音声"
+      },
+      "card": {
+        "assetCount": "アセット {count} 個",
+        "fromStudio": "{studio} より",
+        "more": "その他の操作"
+      },
+      "projects": {
+        "title": "プロジェクト",
+        "new": "プロジェクトを新規作成",
+        "empty": "プロジェクトはまだありません —— 作成して始めましょう。"
+      },
+      "collections": {
+        "title": "コレクション",
+        "new": "コレクションを新規作成",
+        "empty": "コレクションはまだありません —— 作成して始めましょう。"
+      },
+      "credits": {
+        "balance": "ウォレット残高",
+        "hint": "消費は期限切れ間近のギフトから、有料分は最後に使います。",
+        "paidTitle": "有料クレジット",
+        "giftTitle": "ギフトクレジット",
+        "remaining": "残り {amount}",
+        "refund": "返金を申請",
+        "orderTitle": "消費順序",
+        "orderStep1": "期限が最も近いギフト",
+        "orderStep2": "その他のギフト",
+        "orderStep3": "有料(無期限)",
+        "activityTitle": "最近の履歴",
+        "colType": "種別",
+        "colSource": "ソース",
+        "colAmount": "金額",
+        "colTime": "日時",
+        "topup": "チャージ",
+        "ledgerType": {
+          "topup": "チャージ",
+          "grant": "付与",
+          "spend": "消費",
+          "expiry": "失効",
+          "refund": "返金"
+        }
+      },
+      "members": {
+        "invite": "メンバーを招待",
+        "colName": "名前",
+        "colEmail": "メール",
+        "colRole": "ロール",
+        "colJoined": "参加日",
+        "roleAdmin": "管理者",
+        "roleMember": "メンバー",
+        "remove": "削除"
+      },
+      "settings": {
+        "basicTitle": "基本情報",
+        "name": "名前",
+        "slug": "スラッグ",
+        "description": "説明",
+        "avatar": "アバター",
+        "dangerTitle": "危険な操作",
+        "transfer": "Studio を譲渡",
+        "delete": "Studio を削除"
+      },
+      "dialog": {
+        "newProjectTitle": "プロジェクトを新規作成",
+        "newCollectionTitle": "コレクションを新規作成",
+        "newStudioTitle": "Studio を新規作成",
+        "nameLabel": "名前",
+        "namePlaceholder": "マイプロジェクト",
+        "slugLabel": "スラッグ",
+        "slugPlaceholder": "my-project",
+        "descriptionLabel": "説明(任意)",
+        "typeLabel": "種類",
+        "typePersonal": "個人",
+        "typeTeam": "チーム",
+        "create": "作成",
+        "cancel": "キャンセル",
+        "slugFormat": "小文字・数字・ハイフンのみ使用できます。",
+        "slugLength": "{min}–{max} 文字で入力してください。",
+        "slugTaken": "その studio スラッグは使用されています。",
+        "slugReserved": "そのスラッグは予約語です。"
+      },
+      "empty": {
+        "newCard": "+ 新規"
+      }
     }
   },
   "chrome": {

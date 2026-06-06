@@ -1346,6 +1346,127 @@
     },
     "createProject": {
       "failed": "프로젝트 생성에 실패했습니다: {reason}"
+    },
+    "container": {
+      "tabs": {
+        "projects": "프로젝트",
+        "collections": "컬렉션",
+        "members": "멤버",
+        "credits": "크레딧",
+        "settings": "설정"
+      },
+      "header": {
+        "personalTag": "개인",
+        "teamTag": "팀",
+        "memberCount": "멤버 {count}명"
+      },
+      "switcher": {
+        "recent": "최근",
+        "myStudios": "내 Studio",
+        "collaboration": "협업",
+        "guestProjects": "참여 중인 프로젝트 {count}개",
+        "newStudio": "새 Studio",
+        "guideRecent": "최근 = studio 전체의 최근 프로젝트.",
+        "guideEnter": "studio를 선택해 컨테이너를 엽니다.",
+        "guideTools": "도구는 오른쪽 위에 있습니다."
+      },
+      "badge": {
+        "visibilityStudio": "studio 내 공개",
+        "visibilityPrivate": "비공개",
+        "roleOwner": "소유자",
+        "roleEditor": "편집자",
+        "roleViewer": "뷰어",
+        "typePersonal": "개인",
+        "typeTeam": "팀",
+        "lotPaid": "영구 · 환불 가능",
+        "lotGift": "증정 · 만료됨",
+        "lotExpiring": "{days}일 후 만료 ⚠",
+        "kindImage": "이미지",
+        "kindVideo": "동영상",
+        "kindAudio": "오디오"
+      },
+      "card": {
+        "assetCount": "에셋 {count}개",
+        "fromStudio": "{studio}에서",
+        "more": "더보기"
+      },
+      "projects": {
+        "title": "프로젝트",
+        "new": "새 프로젝트",
+        "empty": "아직 프로젝트가 없습니다 —— 새로 만들어 시작하세요."
+      },
+      "collections": {
+        "title": "컬렉션",
+        "new": "새 컬렉션",
+        "empty": "아직 컬렉션이 없습니다 —— 새로 만들어 시작하세요."
+      },
+      "credits": {
+        "balance": "지갑 잔액",
+        "hint": "차감은 만료 임박 증정분부터, 유료분은 마지막에 사용합니다.",
+        "paidTitle": "유료 크레딧",
+        "giftTitle": "증정 크레딧",
+        "remaining": "{amount} 남음",
+        "refund": "환불 요청",
+        "orderTitle": "차감 순서",
+        "orderStep1": "만료 임박 증정",
+        "orderStep2": "기타 증정",
+        "orderStep3": "유료(영구)",
+        "activityTitle": "최근 내역",
+        "colType": "유형",
+        "colSource": "출처",
+        "colAmount": "금액",
+        "colTime": "시간",
+        "topup": "충전",
+        "ledgerType": {
+          "topup": "충전",
+          "grant": "지급",
+          "spend": "사용",
+          "expiry": "만료",
+          "refund": "환불"
+        }
+      },
+      "members": {
+        "invite": "멤버 초대",
+        "colName": "이름",
+        "colEmail": "이메일",
+        "colRole": "역할",
+        "colJoined": "가입일",
+        "roleAdmin": "관리자",
+        "roleMember": "멤버",
+        "remove": "삭제"
+      },
+      "settings": {
+        "basicTitle": "기본 정보",
+        "name": "이름",
+        "slug": "슬러그",
+        "description": "설명",
+        "avatar": "아바타",
+        "dangerTitle": "위험 영역",
+        "transfer": "Studio 양도",
+        "delete": "Studio 삭제"
+      },
+      "dialog": {
+        "newProjectTitle": "새 프로젝트",
+        "newCollectionTitle": "새 컬렉션",
+        "newStudioTitle": "새 Studio",
+        "nameLabel": "이름",
+        "namePlaceholder": "내 프로젝트",
+        "slugLabel": "슬러그",
+        "slugPlaceholder": "my-project",
+        "descriptionLabel": "설명(선택)",
+        "typeLabel": "유형",
+        "typePersonal": "개인",
+        "typeTeam": "팀",
+        "create": "만들기",
+        "cancel": "취소",
+        "slugFormat": "소문자, 숫자, 하이픈만 사용할 수 있습니다.",
+        "slugLength": "{min}–{max}자여야 합니다.",
+        "slugTaken": "해당 studio 슬러그는 사용 중입니다.",
+        "slugReserved": "해당 슬러그는 예약어입니다."
+      },
+      "empty": {
+        "newCard": "+ 새로 만들기"
+      }
     }
   },
   "chrome": {
