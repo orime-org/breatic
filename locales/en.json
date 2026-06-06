@@ -30,6 +30,9 @@
       "email_verified": "Email verified.",
       "verify_email_sent": "Verification email sent. Check your inbox."
     },
+    "studio": {
+      "slug_taken": "That handle is already taken. Please choose another."
+    },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
     },
@@ -308,6 +311,16 @@
       "signIn": "Sign in",
       "passwordHint": "At least 8 characters.",
       "failed": "Registration failed. Please try again."
+    },
+    "onboarding": {
+      "title": "Pick your handle",
+      "subtitle": "One more step to finish setting up your account.",
+      "slugLabel": "Handle",
+      "slugPlaceholder": "your-handle",
+      "helper": "This is your web username — your home will live at /studio/{slug}. Lowercase letters, numbers and hyphens; it must be unique and can't be changed later.",
+      "submit": "Continue",
+      "submitting": "Setting up...",
+      "failed": "Could not set up your studio. Please try again."
     },
     "recovery": {
       "title": "Save your recovery code",

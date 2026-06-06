@@ -29,10 +29,15 @@ export type NodeState = 'idle' | 'handling';
  *   - `backend`  — a Worker is running the op (POST → BullMQ → provider).
  *     Worker has its own retry / dead-letter machinery; Collab leaves
  *     these nodes untouched on user disconnect.
+ *
+ * No display-name snapshot here (email-registration rewrite, 2026-06-06):
+ * "who is handling" is rendered by looking up `meta.users[userId].name` in
+ * the live Yjs awareness roster, which updates automatically when a user
+ * renames themselves. Freezing a name onto the node would drift the moment
+ * the user changed their display name.
  */
 export interface HandlingActor {
   userId: string;
-  username: string;
   /** Who owns the handling → idle/error transition. See type-doc above. */
   type: 'frontend' | 'backend';
 }

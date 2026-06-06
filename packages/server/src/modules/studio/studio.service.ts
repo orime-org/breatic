@@ -2,59 +2,121 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Studio service — V1 personal studio lifecycle.
+ * Studio service — personal studio lifecycle.
  *
- * Every user has exactly one personal studio. The service exposes an
- * idempotent `ensurePersonalStudio` used by the auth-register flow
- * and the dev-user bootstrap to guarantee invariant.
+ * Every user gets exactly one personal studio, created in the second
+ * registration step (`POST /auth/setup-studio`): the user picks a slug,
+ * and the studio is written with `slug = name = the chosen slug`,
+ * `type = 'personal'`. The studio row + the creator's `admin`
+ * `studio_members` row are written atomically (mirrors project + owner).
+ *
+ * A user's display name lives on their personal studio's `name` (the
+ * `users` table no longer carries a `username` — email-registration
+ * rewrite, 2026-06-06).
+ *
+ * Stays in `@server` for slice 1; the move to `@breatic/domain` (so the
+ * worker can use it for billing_source) is deferred — just-in-time, when
+ * a second consumer actually needs it.
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { db } from "@breatic/core";
+import { ConflictError } from "@breatic/core";
+import { studioMembersRepo } from "@breatic/domain";
+import { t } from "@breatic/shared";
 import type { Studio } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
- * Default display name for a personal studio.
+ * Detect a PostgreSQL unique-violation error (SQLSTATE 23505), walking the
+ * `.cause` chain.
  *
- * Mirrors Figma's "Drafts" model — a per-user implicit workspace
- * that acts as the FK target for the user's projects until team
- * studios ship.
- * @param username - Display name to personalize the studio name, or null for the generic fallback.
- * @returns A name like `"{username}'s Studio"`, or `"Personal Studio"` when no username is given.
+ * Used to map a slug collision (lost the pre-check race) or a
+ * second-personal-studio attempt to a typed `ConflictError` instead of a
+ * raw 500. Inside a `db.transaction`, drizzle 0.45 wraps the driver error
+ * in a `DrizzleQueryError` and hangs the original postgres error (carrying
+ * `code: '23505'`) on `.cause` — so a flat `err.code` check is not enough;
+ * we walk the cause chain.
+ * @param err - Caught error of unknown shape
+ * @returns True if any error in the cause chain carries the `23505` SQLSTATE code
  */
-function defaultStudioName(username: string | null): string {
-  return username ? `${username}'s Studio` : "Personal Studio";
+function isUniqueViolation(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let depth = 0; cur != null && depth < 5; depth++) {
+    if (
+      typeof cur === "object" &&
+      "code" in cur &&
+      (cur as { code: unknown }).code === "23505"
+    ) {
+      return true;
+    }
+    cur = typeof cur === "object" && "cause" in cur
+      ? (cur as { cause: unknown }).cause
+      : null;
+  }
+  return false;
 }
 
 /**
- * Ensure the user has a personal studio, creating one if missing.
+ * Create the user's personal studio with the slug they chose at
+ * onboarding, plus the creator's admin `studio_members` row, atomically.
  *
- * Idempotent: safe to call from register, login, or any code path
- * that needs to dereference `projects.studio_id` for the user.
- * @param userId - User UUID
- * @param username - Optional display name; falls back to "Personal
- *   Studio" if null
- * @param tx - Optional transaction handle (used by register flows)
- * @returns The user's active personal studio
+ * `slug = name = slug` and `type = 'personal'`. The slug's format must
+ * already be validated by the caller (route layer via `setupStudioSchema`)
+ * and uniqueness pre-checked; this method still wraps the insert so a
+ * concurrent duplicate slug (lost the pre-check race) surfaces as a typed
+ * `ConflictError` instead of a raw 500. Both the global-unique slug index
+ * (`studios_slug_idx`) and the one-personal-per-user index
+ * (`studios_owner_personal_idx`) back the conflict.
+ * @param userId - The authenticated user's UUID (becomes the studio creator + admin)
+ * @param slug - The validated, lowercased URL handle the user chose
+ * @returns The freshly created personal studio
+ * @throws {ConflictError} if the slug is already taken, or the user
+ *   already has a personal studio (unique-index violation)
  */
-export async function ensurePersonalStudio(
+export async function createPersonalStudio(
   userId: string,
-  username: string | null,
-  tx?: DbTx,
+  slug: string,
 ): Promise<Studio> {
-  const existing = await studioRepo.getByOwnerUserId(userId);
-  if (existing) return existing;
-  return studioRepo.createPersonalStudio(userId, defaultStudioName(username), tx);
+  try {
+    return await db.transaction(async (tx) => {
+      const studio = await studioRepo.createPersonalStudio(userId, slug, slug, tx);
+      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
+      return studio;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.studio.slug_taken"));
+    }
+    throw err;
+  }
 }
 
 /**
- * Look up a user's personal studio without auto-creating.
+ * Look up a user's personal studio without creating one.
  *
- * Use when callers want to surface "no studio" as an error (e.g.
- * project creation expecting register hook to have run).
+ * Returns `null` when the user has registered but not yet completed the
+ * slug-setup step. Callers that require a studio to exist (project
+ * creation, the `/auth/me` onboarding gate) treat `null` as "needs
+ * onboarding".
  * @param userId - User UUID
- * @returns The user's studio, or `null` if none exists
+ * @returns The user's personal studio, or `null` if none exists
  */
 export async function getPersonalStudio(userId: string): Promise<Studio | null> {
-  return studioRepo.getByOwnerUserId(userId);
+  return studioRepo.getPersonalByCreator(userId);
+}
+
+/**
+ * Resolve the display `name` of each user's personal studio in one query.
+ *
+ * Backs the display-name source for `/users` batch lookup and invite
+ * `inviterName` now that the name no longer lives on `users`. Users
+ * without a personal studio (mid-onboarding) are simply absent from the
+ * returned map; callers fall back to the email local-part.
+ * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
+ * @returns Map of `userId → personal studio name` (missing for users with no studio)
+ */
+export async function getPersonalStudioNamesByUserIds(
+  userIds: string[],
+): Promise<Map<string, string>> {
+  return studioRepo.getPersonalNamesByCreators(userIds);
 }

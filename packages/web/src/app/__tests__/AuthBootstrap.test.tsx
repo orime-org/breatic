@@ -36,18 +36,16 @@ describe('AuthBootstrap', () => {
     vi.clearAllMocks();
   });
 
-  it('200 OK populates user + flips bootstrapped=true (username present)', async () => {
-    // Server `/auth/me` returns the canonical `UserEntity` shape —
-    // display name lives on `username` (nullable), NOT `name`.
-    // AuthBootstrap is expected to project it into
-    // `useCurrentUserStore.user.name` via `deriveDisplayName`, which
-    // prefers username when set. Earlier mocks used `name: 'Alice'`
-    // and the source code read `u.name`, both wrong, producing
-    // green-but-meaningless tests while runtime `name` was undefined.
+  it('200 OK populates user + personalStudio + flips bootstrapped=true', async () => {
+    // Server `/auth/me` returns the user with `personalStudio: { name,
+    // slug } | null`. AuthBootstrap projects the studio name into
+    // `useCurrentUserStore.user.name` via `deriveDisplayName` (which
+    // prefers the personal-studio name) and mirrors the raw
+    // `personalStudio` so ProtectedRoute's onboarding gate can read it.
     vi.mocked(authApi.me).mockResolvedValueOnce({
       id: 'u1',
       email: 'a@b.com',
-      username: 'Alice',
+      personalStudio: { name: 'Alice', slug: 'alice' },
       credits: 100,
     });
     render(
@@ -62,17 +60,19 @@ describe('AuthBootstrap', () => {
     expect(s.user?.id).toBe('u1');
     expect(s.user?.name).toBe('Alice');
     expect(s.user?.email).toBe('a@b.com');
+    expect(s.user?.personalStudio).toEqual({ name: 'Alice', slug: 'alice' });
   });
 
-  it('200 OK with null username falls back to email local-part', async () => {
-    // Legacy accounts (Google OAuth before username collection
-    // landed, Q11 pre-fix users) can have `username = null` in PG.
-    // Without a fallback, `currentUser.name` would be empty string
-    // and the bell sheet would render the raw UUID as actor.
+  it('200 OK with null personalStudio falls back to email local-part and stays gated', async () => {
+    // The half-finished registration case: the account exists but the
+    // slug step hasn't run, so `personalStudio` is null. The display
+    // name falls back to the email local-part, and the null studio is
+    // mirrored so ProtectedRoute bounces the user to onboarding rather
+    // than rendering the raw UUID as an actor.
     vi.mocked(authApi.me).mockResolvedValueOnce({
       id: 'u2',
       email: 'songxiuxing@gmail.com',
-      username: null,
+      personalStudio: null,
       credits: 0,
     });
     render(
@@ -83,7 +83,9 @@ describe('AuthBootstrap', () => {
     await waitFor(() =>
       expect(useCurrentUserStore.getState().bootstrapped).toBe(true),
     );
-    expect(useCurrentUserStore.getState().user?.name).toBe('songxiuxing');
+    const s = useCurrentUserStore.getState();
+    expect(s.user?.name).toBe('songxiuxing');
+    expect(s.user?.personalStudio).toBeNull();
   });
 
   it('401 keeps user=null + flips bootstrapped=true (ProtectedRoute handles bounce)', async () => {

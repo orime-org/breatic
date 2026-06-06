@@ -96,11 +96,12 @@ async function insertUser(): Promise<string> {
   return rows[0]!.id;
 }
 
-/** Insert a fresh studio owned by the given user (V1 one-per-owner). */
-async function insertStudio(ownerUserId: string): Promise<string> {
+let studioSeq = 0;
+/** Insert a fresh personal studio created by the given user. */
+async function insertStudio(createdByUserId: string): Promise<string> {
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO studios (owner_user_id, name)
-    VALUES (${ownerUserId}, 'Test Studio')
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${createdByUserId}, ${`test-studio-${studioSeq++}`}, 'personal', 'Test Studio')
     RETURNING id
   `;
   return rows[0]!.id;

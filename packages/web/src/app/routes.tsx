@@ -11,6 +11,7 @@ import NoAccessPage from '@web/pages/project/access/NoAccessPage';
 import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
 import LoginPage from '@web/pages/auth/LoginPage';
 import RegisterPage from '@web/pages/auth/RegisterPage';
+import SlugSetupPage from '@web/pages/auth/SlugSetupPage';
 import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
 import VerifyEmailPage from '@web/pages/auth/VerifyEmailPage';
@@ -37,6 +38,9 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * (per `[[feedback_space_type_vs_route]]` user decision). The active
  * Space tab + open-tab list live in Yjs `meta.perUser[userId]` and
  * sync per-user across machines automatically — no URL state needed.
+ * `/onboarding/slug`        → SlugSetupPage (step two of registration —  [AUTH,
+ *                            pick a slug → personal studio). Authenticated  no studio
+ *                            but exempt from the personal-studio gate.      gate]
  * `/login` `/reset-password` → auth flows (public, no guard)
  * `/dev/*`                 → dev-only routes, only mounted when
  *                            `import.meta.env.DEV` is true. Used for token
@@ -103,6 +107,20 @@ const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <InviteConsumePage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // Onboarding step two — pick a slug → server creates the personal
+    // studio. Wrapped in ProtectedRoute (the user must be signed in to
+    // create their studio) but with `requirePersonalStudio={false}`: this
+    // is the one authenticated page exempt from the personal-studio gate,
+    // since the user lands here precisely because they have no studio yet.
+    // Gating it would redirect it to itself forever.
+    path: '/onboarding/slug',
+    element: (
+      <ProtectedRoute requirePersonalStudio={false}>
+        <SlugSetupPage />
       </ProtectedRoute>
     ),
   },

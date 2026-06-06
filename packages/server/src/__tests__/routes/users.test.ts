@@ -42,11 +42,17 @@ beforeEach(() => {
 });
 
 describe("GET /api/v1/users", () => {
-  it("returns batched display fields stripped of sensitive data", async () => {
+  it("returns batched display fields — name resolved from the personal studio, sensitive fields stripped", async () => {
     mocks.userRepo.getUsersByIds.mockResolvedValue([
-      { id: "u1", email: "a@x.com", username: "alice", avatarUrl: "https://cdn/a.png", emailVerified: true, googleId: "g-1" },
-      { id: "u2", email: "b@x.com", username: null, avatarUrl: null, emailVerified: false, googleId: null },
+      { id: "u1", email: "a@x.com", avatarUrl: "https://cdn/a.png", emailVerified: true, googleId: "g-1" },
+      { id: "u2", email: "b@x.com", avatarUrl: null, emailVerified: false, googleId: null },
     ]);
+    // The display name now comes from each user's personal studio `name`,
+    // batch-resolved by the studio service. u2 is mid-onboarding (no studio)
+    // → name is null.
+    mocks.studioService.getPersonalStudioNamesByUserIds.mockResolvedValue(
+      new Map([["u1", "alice"]]),
+    );
 
     const app = createApp();
     const res = await app.request("/api/v1/users?ids=u1,u2", { headers: AUTH });
@@ -59,6 +65,13 @@ describe("GET /api/v1/users", () => {
       email: "a@x.com",
       username: "alice",
       avatar_url: "https://cdn/a.png",
+    });
+    // u2 has no personal studio yet → username falls back to null.
+    expect(body.data[1]).toEqual({
+      id: "u2",
+      email: "b@x.com",
+      username: null,
+      avatar_url: null,
     });
     expect(body.data[0]).not.toHaveProperty("credits");
     expect(body.data[0]).not.toHaveProperty("emailVerified");

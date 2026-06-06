@@ -30,6 +30,9 @@
       "email_verified": "이메일이 확인되었습니다.",
       "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요."
     },
+    "studio": {
+      "slug_taken": "이미 사용 중인 핸들입니다. 다른 것을 선택하세요."
+    },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
     },
@@ -308,6 +311,16 @@
       "signIn": "로그인",
       "passwordHint": "8자 이상이어야 합니다.",
       "failed": "회원가입에 실패했습니다. 다시 시도해 주세요."
+    },
+    "onboarding": {
+      "title": "핸들 선택",
+      "subtitle": "계정 설정을 마치려면 한 단계만 더 남았습니다.",
+      "slugLabel": "핸들",
+      "slugPlaceholder": "your-handle",
+      "helper": "이것은 웹 사용자 이름입니다. 홈은 /studio/{slug}에 위치합니다. 소문자, 숫자, 하이픈만 사용할 수 있으며 고유해야 하고 나중에 변경할 수 없습니다.",
+      "submit": "계속",
+      "submitting": "설정 중...",
+      "failed": "스튜디오를 설정할 수 없습니다. 다시 시도해 주세요."
     },
     "recovery": {
       "title": "복구 코드를 저장하세요",

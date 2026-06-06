@@ -45,7 +45,10 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     email: varchar("email", { length: 255 }).notNull(),
-    username: varchar("username", { length: 100 }),
+    // No business-identity columns here — a user's display name + URL
+    // handle both live on their personal studio (studios.name /
+    // studios.slug). `users` is the pure auth/account table (email
+    // registration rewrite, 2026-06-06).
     avatarUrl: text("avatar_url"),
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
@@ -81,20 +84,34 @@ export const studios = pgTable(
   "studios",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    ownerUserId: uuid("owner_user_id")
+    createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // The studio's URL handle. Globally unique across personal + team
+    // (they share the /studio/{slug} namespace). For a personal studio the
+    // slug is chosen at registration (2nd onboarding step); for a team
+    // studio it is entered at creation. Slug-format validation is
+    // application-level.
+    slug: varchar("slug", { length: 40 }).notNull(),
+    // 'personal' (one per user, auto-created at registration) | 'team'.
+    type: varchar("type", { length: 16 }).notNull(),
+    // Display name (editable). Initially equals the slug; for a personal
+    // studio this is the user's display name (edited via studio settings).
     name: varchar("name", { length: 255 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
-    // One personal studio per active user (V1 invariant). Partial unique
-    // index lets a previously-soft-deleted studio coexist with a fresh
-    // one if we ever recreate; not relevant for V1 but principled.
-    uniqueIndex("studios_owner_user_id_idx")
-      .on(table.ownerUserId)
+    // Global-unique slug — personal + team studios share the /studio/{slug}
+    // URL namespace. Partial unique lets a soft-deleted slug be reused.
+    uniqueIndex("studios_slug_idx")
+      .on(table.slug)
       .where(sql`${table.deletedAt} IS NULL`),
+    // One personal studio per user (renamed from studios_owner_user_id_idx,
+    // now scoped to type='personal' so a user may also own team studios).
+    uniqueIndex("studios_owner_personal_idx")
+      .on(table.createdByUserId)
+      .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -180,7 +197,7 @@ export const projectMembers = pgTable(
 // admin row (no inviter). All FKs are `onDelete: restrict` — the project
 // is soft-delete only (rows never physically vanish, so a reference can
 // never dangle; hard delete goes through a dedicated GDPR flow). See
-// CLAUDE.md 软删除.
+// the "soft delete" rule in CLAUDE.md.
 
 export const studioMembers = pgTable(
   "studio_members",

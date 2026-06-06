@@ -77,7 +77,15 @@ describe('routes', () => {
     // `/auth/me` once on mount; here we short-circuit by seeding the
     // store directly so the route renders past the loading shell.
     useCurrentUserStore.setState({
-      user: { id: 'test-user', name: 'Tester', email: 't@t.com' },
+      // A fully-onboarded user (non-null personalStudio) so the
+      // protected routes render past both the auth gate AND the
+      // personal-studio onboarding gate.
+      user: {
+        id: 'test-user',
+        name: 'Tester',
+        email: 't@t.com',
+        personalStudio: { name: 'Tester', slug: 'tester' },
+      },
       role: null,
       loading: false,
       bootstrapped: true,

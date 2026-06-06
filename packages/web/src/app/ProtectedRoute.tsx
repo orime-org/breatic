@@ -9,7 +9,19 @@ import { useCurrentUserStore } from '@web/stores';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  /**
+   * Whether the route additionally requires a completed personal studio
+   * (`user.personalStudio !== null`). Defaults to `true`. The onboarding
+   * slug page sets this to `false` to exempt itself from the personal-
+   * studio gate — otherwise it would redirect to itself in an infinite
+   * loop (the user has no personal studio precisely because they are on
+   * the page that creates it).
+   */
+  requirePersonalStudio?: boolean;
 }
+
+/** Onboarding route the personal-studio gate redirects unfinished accounts to. */
+const ONBOARDING_SLUG_PATH = '/onboarding/slug';
 
 /**
  * ProtectedRoute — gates a route on `useCurrentUserStore.user` being
@@ -27,18 +39,30 @@ interface ProtectedRouteProps {
  *     state so the login page can return the user there after a
  *     successful sign-in.
  *
- *   - `bootstrapped && user` — authenticated. Render children.
+ *   - `bootstrapped && user && personalStudio === null` — authenticated
+ *     but onboarding is incomplete (the account exists, but the slug
+ *     step that creates the personal studio has not run). Bounce to the
+ *     onboarding slug page. This is the single gate that catches both
+ *     a half-finished email registration and (in future) a fresh OAuth
+ *     account, no matter which protected URL they land on. Skipped when
+ *     `requirePersonalStudio` is `false` (the onboarding page itself).
+ *
+ *   - `bootstrapped && user && personalStudio !== null` — fully
+ *     onboarded. Render children.
  *
  * Use at the route-table level (`routes.tsx`), wrapping any page that
  * depends on `useCurrentUserStore.user` being non-null — Studio,
  * Project, and any future authenticated surfaces.
  * @param root0 - The component props.
  * @param root0.children - The protected page to render once the user is authenticated.
+ * @param root0.requirePersonalStudio - Whether to also require a completed personal studio (default `true`).
  * @returns A loading shell while bootstrapping, a redirect to `/login` when
- *   unauthenticated, or the `children` page when authenticated.
+ *   unauthenticated, a redirect to onboarding when the personal studio is
+ *   missing, or the `children` page when fully onboarded.
  */
 export default function ProtectedRoute({
   children,
+  requirePersonalStudio = true,
 }: ProtectedRouteProps): React.ReactElement {
   const user = useCurrentUserStore((s) => s.user);
   const bootstrapped = useCurrentUserStore((s) => s.bootstrapped);
@@ -50,6 +74,10 @@ export default function ProtectedRoute({
 
   if (!user) {
     return <Navigate to='/login' replace state={{ from: location.pathname }} />;
+  }
+
+  if (requirePersonalStudio && user.personalStudio === null) {
+    return <Navigate to={ONBOARDING_SLUG_PATH} replace />;
   }
 
   return <>{children}</>;

@@ -45,8 +45,10 @@ export type {
   ProjectRole,
   ProjectMember,
   Studio,
+  StudioType,
   StudioRole,
   StudioMember,
+  PersonalStudioRef,
   SpaceType,
   Space,
   MembersChangedEvent,
@@ -97,6 +99,8 @@ export type {
 // ── API Schemas ─────────────────────────────────────────────────────
 export {
   registerSchema,
+  setupStudioSchema,
+  SLUG_REGEX,
   loginSchema,
   chatMessageSchema,
   chatAttachedChipSchema,
@@ -111,6 +115,7 @@ export {
 
 export type {
   RegisterInput,
+  SetupStudioInput,
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,

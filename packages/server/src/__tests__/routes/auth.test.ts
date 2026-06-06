@@ -119,6 +119,53 @@ describe("Auth routes", () => {
     });
   });
 
+  describe("POST /auth/setup-studio", () => {
+    it("creates the personal studio for the slug and returns { personalStudio: { name, slug } }", async () => {
+      mocks.studioService.createPersonalStudio.mockResolvedValue({
+        id: "studio-9", name: "my-handle", slug: "my-handle",
+        createdByUserId: "user-1", type: "personal",
+      });
+
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/setup-studio", {
+        method: "POST",
+        headers: { ...SESSION_COOKIE, ...JSON_HEADERS },
+        body: JSON.stringify({ slug: "my-handle" }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json() as {
+        data: { personalStudio: { name: string; slug: string } };
+      };
+      expect(body.data.personalStudio).toEqual({ name: "my-handle", slug: "my-handle" });
+      expect(mocks.studioService.createPersonalStudio).toHaveBeenCalledWith(
+        "user-1",
+        "my-handle",
+      );
+    });
+
+    it("rejects an unauthenticated caller with 401 (setup-studio is gated)", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/setup-studio", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ slug: "my-handle" }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a malformed slug with 400 (uppercase / too short — schema guard)", async () => {
+      const app = createApp();
+      const bad = await app.request("/api/v1/auth/setup-studio", {
+        method: "POST",
+        headers: { ...SESSION_COOKIE, ...JSON_HEADERS },
+        body: JSON.stringify({ slug: "AB" }),
+      });
+      expect(bad.status).toBe(400);
+      expect(mocks.studioService.createPersonalStudio).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /auth/login", () => {
     it("logs in and emits Set-Cookie, body has no token", async () => {
       mocks.authService.loginEmail.mockResolvedValue({
@@ -174,9 +221,12 @@ describe("Auth routes", () => {
   });
 
   describe("GET /auth/me", () => {
-    it("returns current user when session cookie is valid", async () => {
+    it("returns current user + personalStudio { name, slug } when the user has a studio", async () => {
       mocks.userRepo.getUserById.mockResolvedValue({
-        id: "user-1", email: "u@x.com", username: "User",
+        id: "user-1", email: "u@x.com",
+      });
+      mocks.studioService.getPersonalStudio.mockResolvedValue({
+        id: "studio-1", name: "Alice", slug: "alice",
       });
 
       const app = createApp();
@@ -185,8 +235,30 @@ describe("Auth routes", () => {
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json() as { data: { id: string } };
+      const body = await res.json() as {
+        data: { id: string; personalStudio: { name: string; slug: string } | null };
+      };
       expect(body.data.id).toBe("user-1");
+      // The onboarding-gate data: a completed account exposes its studio.
+      expect(body.data.personalStudio).toEqual({ name: "Alice", slug: "alice" });
+    });
+
+    it("returns personalStudio: null for a user who has not finished onboarding (gate signal)", async () => {
+      // Invariant #4/#7: a registered-but-no-slug user must surface
+      // personalStudio==null so the frontend gate routes them to setup.
+      mocks.userRepo.getUserById.mockResolvedValue({
+        id: "user-1", email: "u@x.com",
+      });
+      mocks.studioService.getPersonalStudio.mockResolvedValue(null);
+
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/me", {
+        headers: SESSION_COOKIE,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as { data: { personalStudio: unknown } };
+      expect(body.data.personalStudio).toBeNull();
     });
 
     it("rejects without the session cookie", async () => {

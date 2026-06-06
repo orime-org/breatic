@@ -87,7 +87,11 @@ export default function LoginPage(): React.JSX.Element {
       setUser({
         id: user.id,
         email: user.email,
-        name: deriveDisplayName(user),
+        name: deriveDisplayName({
+          personalStudioName: user.personalStudio?.name ?? null,
+          email: user.email,
+        }),
+        personalStudio: user.personalStudio,
       });
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {

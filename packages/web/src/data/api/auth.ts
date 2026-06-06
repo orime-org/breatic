@@ -4,40 +4,59 @@
 import { apiGet, apiPost } from '@web/data/api/request';
 
 /**
+ * The user's personal studio identity, as returned on every
+ * `/auth/*` response. `users` is a pure authentication table with no
+ * identity columns — a user's display name + web handle live on their
+ * personal studio (`/studio/{slug}` is their home page).
+ *
+ * `null` means the account exists but has NOT yet completed the
+ * onboarding step that picks a slug and creates the personal studio
+ * (the second step of the two-step registration flow). The frontend
+ * uses this null as the onboarding gate signal in `ProtectedRoute`.
+ */
+export interface PersonalStudio {
+  /** Display name (free-form, initially equal to the slug). */
+  name: string;
+  /** Globally-unique web handle — `/studio/{slug}` is the user's home. */
+  slug: string;
+}
+
+/**
  * Server `/auth/*` response user shape — mirrors shared
- * `UserEntity` (packages/shared/src/types/entities.ts). The display
- * name lives on `username` (nullable in PG), NOT `name`. Earlier
- * versions of this type declared `name: string` which silently
- * mis-mapped the server payload, making `currentUser.name` undefined
- * everywhere and breaking awareness → `meta.users` → bell sheet
- * actor rendering (rows fell back to raw UUID). Always go through
- * `deriveDisplayName` below when projecting into UI state so a null
- * username gets a graceful email-local-part fallback.
+ * `UserEntity` (packages/shared/src/types/entities.ts). `users` no
+ * longer carries any identity field (the `username` column was
+ * removed); the display name + web handle live on the user's
+ * `personalStudio`, which is `null` until onboarding picks a slug.
+ * Always go through `deriveDisplayName` below when projecting into UI
+ * state so a null personal studio gets a graceful email-local-part
+ * fallback.
  */
 export interface AuthUser {
   id: string;
   email: string;
-  username: string | null;
+  personalStudio: PersonalStudio | null;
   credits: number;
 }
 
 /**
- * Resolve a non-empty display name for an `AuthUser`. Prefers the
- * stored `username`, otherwise falls back to the local-part of the
- * email (`'justin@example.com'` → `'justin'`). Used by
- * AuthBootstrap / LoginPage / RegisterPage when populating
+ * Resolve a non-empty display name from a user's personal-studio name
+ * and email. Prefers the personal-studio name, otherwise falls back to
+ * the local-part of the email (`'justin@example.com'` → `'justin'`).
+ * Used by AuthBootstrap / LoginPage / RegisterPage when populating
  * `useCurrentUserStore.user.name` — single source of truth so the
  * three callsites can't drift.
- * @param u - The authenticated user projection to derive a name from.
- * @param u.username - Stored display name; may be null when never set.
+ * @param u - The display-name inputs to derive from.
+ * @param u.personalStudioName - The personal studio's display name; `null` before onboarding.
  * @param u.email - Email address, used for the local-part fallback.
- * @returns A non-empty display name: the username, else the email local-part, else the full email.
+ * @returns A non-empty display name: the personal-studio name, else the email local-part, else the full email.
  */
 export function deriveDisplayName(u: {
-  username: string | null;
+  personalStudioName: string | null;
   email: string;
 }): string {
-  if (u.username && u.username.trim().length > 0) return u.username;
+  if (u.personalStudioName && u.personalStudioName.trim().length > 0) {
+    return u.personalStudioName;
+  }
   const localPart = u.email.split('@')[0];
   return localPart && localPart.length > 0 ? localPart : u.email;
 }
@@ -59,14 +78,27 @@ interface LoginResponse {
   user: AuthUser;
 }
 
+/**
+ * `POST /auth/setup-studio` response — the personal studio created by
+ * the onboarding slug step. Returned so the caller can populate the
+ * current-user store's `personalStudio` (lifting the onboarding gate)
+ * without a follow-up `/auth/me` round-trip.
+ */
+interface SetupStudioResponse {
+  personalStudio: PersonalStudio;
+}
+
 interface ResetWithRecoveryCodeResponse {
   /** A fresh recovery code that replaces the consumed one — must be saved. */
   newRecoveryCode: string;
 }
 
 export const authApi = {
-  register(body: { email: string; password: string; name: string }) {
+  register(body: { email: string; password: string }) {
     return apiPost<RegisterResponse>('/auth/register', body);
+  },
+  setupStudio(body: { slug: string }) {
+    return apiPost<SetupStudioResponse>('/auth/setup-studio', body);
   },
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);

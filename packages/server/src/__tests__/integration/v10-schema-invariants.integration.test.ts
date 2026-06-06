@@ -7,9 +7,10 @@
  * Asserts the two PG-level invariants that no application code can
  * substitute for:
  *
- *   1. `studios_owner_user_id_idx`
+ *   1. `studios_owner_personal_idx`
  *      Each user has at most one active personal studio. Inserting a
- *      second active row for the same `owner_user_id` is rejected.
+ *      second active `type='personal'` row for the same
+ *      `created_by_user_id` is rejected.
  *
  *   2. `project_members_one_owner_per_project`
  *      Each project has at most one active row with `role='owner'`.
@@ -54,10 +55,15 @@ async function insertUser(email: string): Promise<string> {
   return row!.id;
 }
 
-async function insertStudio(ownerUserId: string, name: string): Promise<string> {
+let studioSlugSeq = 0;
+async function insertStudio(createdByUserId: string, name: string): Promise<string> {
+  // slug is globally unique (studios_slug_idx) — give each seed studio a
+  // distinct slug so these tests exercise ONLY the personal-per-user
+  // index, never a slug collision.
+  const slug = `v10-studio-${studioSlugSeq++}`;
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO studios (owner_user_id, name)
-    VALUES (${ownerUserId}, ${name})
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${createdByUserId}, ${slug}, 'personal', ${name})
     RETURNING id
   `;
   return row!.id;
@@ -76,7 +82,7 @@ async function insertProject(
   return row!.id;
 }
 
-describe("studios_owner_user_id_idx — one active studio per user", () => {
+describe("studios_owner_personal_idx — one active personal studio per user", () => {
   it("first insert succeeds; second active insert is rejected", async () => {
     const userId = await insertUser(`u-${(await uuid()).slice(0, 8)}@x.com`);
 
@@ -87,7 +93,7 @@ describe("studios_owner_user_id_idx — one active studio per user", () => {
       await insertStudio(userId, "second");
     } catch (err) {
       rejected = true;
-      expect(String(err)).toMatch(/studios_owner_user_id_idx|duplicate key/);
+      expect(String(err)).toMatch(/studios_owner_personal_idx|duplicate key/);
     }
     expect(rejected).toBe(true);
   });

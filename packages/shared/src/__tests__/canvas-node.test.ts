@@ -67,27 +67,26 @@ describe("HandlingActor", () => {
   it("accepts a valid HandlingActor shape with frontend driver", () => {
     const actor: HandlingActor = {
       userId: "user-1",
-      username: "alice",
       type: "frontend",
     };
     expect(actor.userId).toBe("user-1");
-    expect(actor.username).toBe("alice");
     expect(actor.type).toBe("frontend");
   });
 
   it("accepts a valid HandlingActor shape with backend driver", () => {
     const actor: HandlingActor = {
       userId: "user-2",
-      username: "bob",
       type: "backend",
     };
     expect(actor.type).toBe("backend");
   });
 
-  it("type field narrows to the 'frontend' | 'backend' union", () => {
+  it("carries no display-name snapshot — only userId + driver type", () => {
+    // Email-registration rewrite (2026-06-06): the name is rendered from
+    // the live `meta.users[userId]` awareness roster, never frozen onto
+    // the node. A revert that re-adds `username` trips this type assertion.
     expectTypeOf<HandlingActor>().toEqualTypeOf<{
       userId: string;
-      username: string;
       type: "frontend" | "backend";
     }>();
   });
@@ -193,7 +192,7 @@ describe("CanvasNodeFields", () => {
         locked: false,
         operationLocks: [],
         state: "handling",
-        handlingBy: { userId: "u1", username: "alice", type: "backend" },
+        handlingBy: { userId: "u1", type: "backend" },
         attachments: [],
         prompt: "a painting of a sunset",
         outputType: "image",
@@ -203,7 +202,8 @@ describe("CanvasNodeFields", () => {
       },
     };
     expect(node.data.state).toBe("handling");
-    expect(node.data.handlingBy?.username).toBe("alice");
+    expect(node.data.handlingBy?.userId).toBe("u1");
+    expect(node.data.handlingBy?.type).toBe("backend");
     expect(node.data.model).toBe("flux-dev");
   });
 
@@ -267,7 +267,6 @@ describe("CanvasNodeFields", () => {
         state: "handling",
         handlingBy: {
           userId: "user-2",
-          username: "bob",
           type: "frontend",
         },
         attachments: [],
@@ -319,7 +318,7 @@ describe("NodeStateUpdateEvent", () => {
       nodeId: "node-1",
       update: {
         state: "handling",
-        handlingBy: { userId: "u1", username: "alice", type: "backend" },
+        handlingBy: { userId: "u1", type: "backend" },
       },
     };
     expect(event.type).toBe("node-state-update");

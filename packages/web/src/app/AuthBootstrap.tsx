@@ -43,7 +43,15 @@ export default function AuthBootstrap({
       .me()
       .then((u) => {
         if (cancelled) return;
-        setUser({ id: u.id, name: deriveDisplayName(u), email: u.email });
+        setUser({
+          id: u.id,
+          name: deriveDisplayName({
+            personalStudioName: u.personalStudio?.name ?? null,
+            email: u.email,
+          }),
+          email: u.email,
+          personalStudio: u.personalStudio,
+        });
       })
       .catch(() => {
         // 401 (no/expired session cookie) or network error — leave

@@ -30,6 +30,9 @@
       "email_verified": "メールアドレスを確認しました。",
       "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。"
     },
+    "studio": {
+      "slug_taken": "そのハンドルはすでに使用されています。別のものを選んでください。"
+    },
     "payment": {
       "checkout_created": "決済セッションが作成されました",
       "credits_granted": "{amount} クレジットがチャージされました",
@@ -308,6 +311,16 @@
       "signIn": "サインイン",
       "passwordHint": "8 文字以上にしてください。",
       "failed": "登録に失敗しました。もう一度お試しください。"
+    },
+    "onboarding": {
+      "title": "ハンドルを選択",
+      "subtitle": "アカウント設定を完了するまであと 1 ステップです。",
+      "slugLabel": "ハンドル",
+      "slugPlaceholder": "your-handle",
+      "helper": "これはあなたのウェブ ユーザー名です。ホームは /studio/{slug} になります。小文字の英字・数字・ハイフンが使え、一意である必要があり、後で変更できません。",
+      "submit": "続行",
+      "submitting": "設定中...",
+      "failed": "スタジオを設定できませんでした。もう一度お試しください。"
     },
     "recovery": {
       "title": "リカバリーコードを保存してください",

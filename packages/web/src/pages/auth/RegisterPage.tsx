@@ -17,14 +17,20 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
 import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
 
 /**
- * Email + password registration.
+ * Email + password registration — step one of the two-step sign-up.
  *
- * Two-step flow:
- *   1. Submit registers + the server sets the session cookie. Response
- *      body returns `{ user, recoveryCode }`.
+ * Flow:
+ *   1. Submit registers (email + password only; no display name) + the
+ *      server sets the session cookie. Response body returns
+ *      `{ user, recoveryCode }`. At this point the account exists but
+ *      has NO personal studio yet (`personalStudio === null`).
  *   2. We pop `<RecoveryCodeDialog>` to force the user to copy /
- *      download / acknowledge the one-time recovery code before
- *      proceeding. Continue redirects to `/studio`.
+ *      download / acknowledge the one-time recovery code.
+ *   3. Continue redirects to the onboarding slug page
+ *      (`/onboarding/slug`), step two, where the user picks a slug and
+ *      the server creates their personal studio. The personal-studio
+ *      gate in `ProtectedRoute` enforces this — a half-finished sign-up
+ *      cannot reach the app proper.
  *
  * The recovery code is the ONLY recovery path on SMTP-less self-host
  * installs (`EMAIL_BACKEND=disabled`). The server only stores its
@@ -39,11 +45,9 @@ export default function RegisterPage(): React.JSX.Element {
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [name, setName] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [recoveryCode, setRecoveryCode] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<{
-    name?: string;
     email?: string;
     password?: string;
   }>({});
@@ -59,9 +63,7 @@ export default function RegisterPage(): React.JSX.Element {
     if (submitting) return;
     setFormError(null);
     const trimmedEmail = email.trim();
-    const trimmedName = name.trim();
     const nextErrors: typeof errors = {};
-    if (!trimmedName) nextErrors.name = t('auth.nameRequired');
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       nextErrors.email = t('auth.invalidEmail');
     }
@@ -74,12 +76,18 @@ export default function RegisterPage(): React.JSX.Element {
       const { user, recoveryCode: code } = await authApi.register({
         email: trimmedEmail,
         password,
-        name: trimmedName,
       });
+      // Step one creates the account with no personal studio yet — the
+      // store mirrors that null so the onboarding gate is consistent
+      // even before the recovery dialog is dismissed.
       setUser({
         id: user.id,
         email: user.email,
-        name: deriveDisplayName(user),
+        name: deriveDisplayName({
+          personalStudioName: user.personalStudio?.name ?? null,
+          email: user.email,
+        }),
+        personalStudio: user.personalStudio,
       });
       setRecoveryCode(code);
     } catch (err) {
@@ -92,12 +100,12 @@ export default function RegisterPage(): React.JSX.Element {
   }
 
   /**
-   * Dismiss the recovery-code dialog and navigate to the studio after the
-   * user has acknowledged saving their code.
+   * Dismiss the recovery-code dialog and navigate to the onboarding slug
+   * page (step two) after the user has acknowledged saving their code.
    */
   function handleContinue(): void {
     setRecoveryCode(null);
-    navigate('/studio', { replace: true });
+    navigate('/onboarding/slug', { replace: true });
   }
 
   // Once registration succeeds we have a recovery code to reveal —
@@ -129,26 +137,6 @@ export default function RegisterPage(): React.JSX.Element {
         }
       >
         <form onSubmit={handleSubmit} noValidate className='flex flex-col gap-3'>
-          <div className='flex flex-col gap-1'>
-            <Label htmlFor='register-name'>{t('auth.name')}</Label>
-            <Input
-              id='register-name'
-              type='text'
-              autoComplete='name'
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (errors.name) setErrors((p) => ({ ...p, name: undefined }));
-              }}
-              disabled={submitting}
-              aria-invalid={!!errors.name || undefined}
-              aria-describedby={errors.name ? 'register-name-error' : undefined}
-            />
-            {errors.name ? (
-              <FieldError id='register-name-error'>{errors.name}</FieldError>
-            ) : null}
-          </div>
-
           <div className='flex flex-col gap-1'>
             <Label htmlFor='register-email'>{t('auth.email')}</Label>
             <Input

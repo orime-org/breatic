@@ -38,7 +38,7 @@ export type {
 export { ROLE_RANK } from "@shared/types/role.js";
 export type { ProjectRole, ProjectMember } from "@shared/types/role.js";
 
-export type { Studio, StudioRole, StudioMember } from "@shared/types/studio.js";
+export type { Studio, StudioType, StudioRole, StudioMember, PersonalStudioRef } from "@shared/types/studio.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";

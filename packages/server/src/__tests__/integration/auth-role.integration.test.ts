@@ -95,10 +95,11 @@ async function insertUser(email: string): Promise<string> {
   return row!.id;
 }
 
-async function insertStudio(ownerUserId: string, name: string): Promise<string> {
+let authRoleStudioSeq = 0;
+async function insertStudio(createdByUserId: string, name: string): Promise<string> {
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO studios (owner_user_id, name)
-    VALUES (${ownerUserId}, ${name})
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${createdByUserId}, ${`ar-studio-${authRoleStudioSeq++}`}, 'personal', ${name})
     RETURNING id
   `;
   return row!.id;

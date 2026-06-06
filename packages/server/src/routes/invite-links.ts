@@ -34,6 +34,7 @@ import {
   shareInviteMail,
   projectService,
   authService,
+  studioService,
 } from "@server/modules";
 import { logger } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
@@ -229,15 +230,19 @@ async function dispatchInviteeMail(
   link: { token: string; role: string; kind: "email" | "link"; boundEmail: string | null },
   inviteeEmail: string,
 ): Promise<void> {
-  const [inviter, project] = await Promise.all([
+  const [inviter, project, studioNames] = await Promise.all([
     authService.getUserById(inviterUserId),
     projectService.get(projectId, inviterUserId).catch(() => null),
+    studioService.getPersonalStudioNamesByUserIds([inviterUserId]),
   ]);
   if (!inviter) return;
   const origin = originFrom(c, "http://localhost:8000");
   const mailOpts = shareInviteMail.buildShareInviteMail({
     inviteeEmail,
-    inviterName: inviter.username ?? inviter.email,
+    // Display name lives on the inviter's personal studio now (the name
+    // moved off `users`); fall back to the email if onboarding is
+    // incomplete (email-registration rewrite, 2026-06-06).
+    inviterName: studioNames.get(inviterUserId) ?? inviter.email,
     projectName: project?.name ?? "the project",
     inviteLink: `${origin}/invite/${link.token}`,
     role: link.role,

@@ -18,13 +18,33 @@ import { z } from "zod";
 export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  // Display name collected by RegisterPage as a required field. The
-  // server stores it on `users.username`; absence falls back to the
-  // email local-part (`email.split("@")[0]`) for back-compat with
-  // older clients that still POST a 2-field body.
-  name: z.string().trim().min(1).max(100).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
+
+/**
+ * Slug-format rule for a studio URL handle (the `/studio/{slug}` segment).
+ *
+ * Lowercase ASCII; must start with a letter; hyphen-separated alnum
+ * segments only (no leading/trailing/double hyphen). Length 6–39 so it
+ * fits the `studios.slug varchar(40)` column with margin. Shared so the
+ * frontend slug-setup input validates identically to the server.
+ */
+export const SLUG_REGEX = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
+/**
+ * `POST /auth/setup-studio` body — the second registration step. The
+ * authenticated (but studio-less) user picks the slug for their personal
+ * studio; the server validates the format here and re-checks uniqueness
+ * against `studios.slug` before creating the studio.
+ */
+export const setupStudioSchema = z.object({
+  slug: z
+    .string()
+    .min(6)
+    .max(39)
+    .regex(SLUG_REGEX, "slug_invalid_format"),
+});
+export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
 export const loginSchema = z.object({
   email: z.string().email(),

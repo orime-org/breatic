@@ -13,11 +13,11 @@ import { zValidator } from "@hono/zod-validator";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, loginSchema } from "@server/routes/schemas.js";
+import { registerSchema, loginSchema, setupStudioSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService } from "@server/modules";
+import { authService, studioService } from "@server/modules";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { checkRateLimit, getRedis } from "@breatic/core";
@@ -76,7 +76,12 @@ function getGoogleClient(): OAuth2Client {
 }
 
 /**
- * `POST /auth/register` - create a new user account.
+ * `POST /auth/register` - create a new user account (step 1 of 2).
+ *
+ * Creates the account only — NO personal studio. The user picks their
+ * slug in the second step (`POST /auth/setup-studio`); until then
+ * `/auth/me` reports `personalStudio: null` and the frontend gate forces
+ * the slug-setup page (email-registration rewrite, 2026-06-06).
  *
  * Returns a one-time `recoveryCode` (XXXX-XXXX-XXXX-XXXX format) the
  * frontend MUST display to the user with a "save this now" modal -
@@ -92,8 +97,8 @@ function getGoogleClient(): OAuth2Client {
  * @throws {AppError} `409` if email is already registered
  */
 auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
-  const { email, password, name } = c.req.valid("json");
-  const { user, recoveryCode } = await authService.register(email, password, name);
+  const { email, password } = c.req.valid("json");
+  const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
   // Audit log moved here from auth.service.ts per CLAUDE.md
@@ -102,6 +107,29 @@ auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3
   logger.info({ userId: user.id, email }, "user_registered");
   logger.info({ userId: user.id, method: "email" }, "user_logged_in");
   return c.json({ data: { user, recoveryCode } }, 201);
+});
+
+/**
+ * `POST /auth/setup-studio` - create the user's personal studio (step 2).
+ *
+ * The authenticated-but-studio-less user picks their slug. The slug
+ * format is validated by `setupStudioSchema` (lowercase handle, 6–39
+ * chars); the service re-checks uniqueness against `studios.slug` and
+ * creates `studios` (slug = name = chosen slug, type='personal') + the
+ * creator's admin `studio_members` row atomically. A concurrent
+ * duplicate slug that loses the pre-check race is caught by the
+ * `studios_slug_idx` unique index → `ConflictError` → 409 (never 500).
+ * @param c - Hono context with validated `setupStudioSchema` body + authed user
+ * @returns `201` with `{ personalStudio: { name, slug } }`
+ * @throws {AppError} `409` if the slug is already taken (or the user
+ *   already has a personal studio)
+ */
+auth.post("/setup-studio", requireAuth, zValidator("json", setupStudioSchema), async (c) => {
+  const user = c.get("user");
+  const { slug } = c.req.valid("json");
+  const studio = await studioService.createPersonalStudio(user.id, slug);
+  logger.info({ userId: user.id, studioId: studio.id, slug }, "personal_studio_created");
+  return c.json({ data: { personalStudio: { name: studio.name, slug: studio.slug } } }, 201);
 });
 
 /**
@@ -208,13 +236,22 @@ auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 })
 });
 
 /**
- * `GET /auth/me` - get the current authenticated user.
+ * `GET /auth/me` - get the current authenticated user + onboarding state.
+ *
+ * `personalStudio` is the onboarding-gate data source: `null` means the
+ * user registered (step 1) but has not yet picked a slug (step 2), so the
+ * frontend gate routes them to the slug-setup page. Once set it carries
+ * the studio `name` (the user's display name) + `slug` (their URL handle).
  * @param c - Hono context with authenticated user
- * @returns `200` with `{ data: UserEntity }`
+ * @returns `200` with `{ data: { ...user, personalStudio: { name, slug } | null } }`
  */
 auth.get("/me", requireAuth, async (c) => {
   const user = c.get("user");
-  return c.json({ data: user });
+  const studio = await studioService.getPersonalStudio(user.id);
+  const personalStudio = studio
+    ? { name: studio.name, slug: studio.slug }
+    : null;
+  return c.json({ data: { ...user, personalStudio } });
 });
 
 auth.post("/logout", requireAuth, async (c) => {

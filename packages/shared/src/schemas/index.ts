@@ -4,6 +4,8 @@
 /** Shared Zod schemas for API request validation. */
 export {
   registerSchema,
+  setupStudioSchema,
+  SLUG_REGEX,
   loginSchema,
   googleAuthSchema,
   chatMessageSchema,
@@ -19,6 +21,7 @@ export {
 
 export type {
   RegisterInput,
+  SetupStudioInput,
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,

@@ -13,7 +13,6 @@ import bcrypt from "bcryptjs";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { creditRepo } from "@breatic/domain";
-import * as studioService from "@server/modules/studio/studio.service.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
@@ -38,16 +37,21 @@ import type { UserEntity } from "@breatic/shared";
 const BCRYPT_ROUNDS = 12;
 
 /**
- * Register a new user with email and password.
+ * Register a new user with email and password (step 1 of 2).
  *
- * Generates a one-time recovery code (GitHub backup-codes pattern) so
- * the user can reset their password without an SMTP backend
- * (self-host friendly). The plaintext code is returned exactly once
- * - callers MUST display it to the user with a "save this now" UX;
- * only the bcrypt hash is persisted server-side.
+ * Creates the pure account row (no display name, no personal studio) +
+ * the credit balance row + a one-time recovery code. The personal studio
+ * — which carries the user's display name + URL handle — is created in
+ * the SECOND step (`setup-studio`) once the user picks a slug. Until then
+ * `/auth/me` reports `personalStudio: null` and the frontend gate forces
+ * the slug-setup page (email-registration rewrite, 2026-06-06).
+ *
+ * The recovery code (GitHub backup-codes pattern) lets the user reset
+ * their password without an SMTP backend (self-host friendly). The
+ * plaintext code is returned exactly once — callers MUST display it with
+ * a "save this now" UX; only the bcrypt hash is persisted server-side.
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
- * @param name - Optional display name; falls back to the email local-part
  * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
@@ -55,7 +59,6 @@ const BCRYPT_ROUNDS = 12;
 export async function register(
   email: string,
   password: string,
-  name?: string,
 ): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
@@ -63,29 +66,22 @@ export async function register(
   }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  // Prefer the user-provided display name; fall back to the email
-  // local-part for back-compat with old clients that POST without a
-  // `name` field. RegisterPage validates `auth.nameRequired` so new
-  // sign-ups always take the first branch.
-  const username = name?.trim() || (email.split("@")[0] as string);
-  const user = await userRepo.createUser({ email, hashedPassword, username });
+  const user = await userRepo.createUser({ email, hashedPassword });
   await creditRepo.createBalanceRow(user.id);
 
   // Generate + store recovery code. Done after createUser so we have
-  // a user.id to attach to. Failures here bubble up before studio
-  // setup - the user row will still exist (no transaction wrap) but
-  // recovery_code_hash will be NULL; the user can request a fresh
-  // code via reset-with-recovery-code → resend flow.
+  // a user.id to attach to. Failures here bubble up; the user row will
+  // still exist (no transaction wrap) but recovery_code_hash will be
+  // NULL — the user can request a fresh code via the
+  // reset-with-recovery-code → resend flow.
   const recoveryCode = generateRecoveryCode();
   const recoveryCodeHash = await hashRecoveryCode(recoveryCode);
   await userRepo.setRecoveryCode(user.id, recoveryCodeHash);
 
-  // Personal studio is the FK target for the user's projects (v10
-  // §6). Idempotent - also called from project.service.create as
-  // belt-and-suspenders if the register hook ever races.
-  await studioService.ensurePersonalStudio(user.id, user.username);
-  // Per CLAUDE.md "core and shared must not log" - caller logs the
-  // `user_registered` audit line after this resolves.
+  // NO personal studio here — that is the user's explicit second step
+  // (setup-studio), where they choose their slug. Per CLAUDE.md
+  // "core and shared must not log", the caller logs the `user_registered`
+  // audit line after this resolves.
   return { user, recoveryCode };
 }
 
@@ -126,10 +122,16 @@ export async function loginEmail(
  * Log in or register a user via Google OAuth.
  *
  * If a user with the given Google ID exists, logs them in. Otherwise,
- * links to an existing email account or creates a new user.
+ * links to an existing email account or creates a new account (no
+ * personal studio — like email step 1). When OAuth gets a real UI, the
+ * new user will hit the same "no personal studio → pick a slug" gate as
+ * email sign-ups (email-registration rewrite, 2026-06-06). Today the
+ * Google button is a coming-soon placeholder; this path only stays
+ * compile-clean + consistent.
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
- * @param name - Display name from Google (optional)
+ * @param name - Display name from Google (currently unused — display name
+ *   lives on the personal studio, created in the slug-setup step)
  * @param avatar - Avatar URL from Google (optional)
  * @returns The user and a session token
  */
@@ -139,6 +141,7 @@ export async function loginOrCreateGoogle(
   name?: string,
   avatar?: string,
 ): Promise<{ user: UserEntity; token: string }> {
+  void name; // reserved for the future OAuth onboarding UI (slug-setup step)
   let user = await userRepo.getUserByGoogleId(googleId);
 
   if (!user) {
@@ -148,17 +151,14 @@ export async function loginOrCreateGoogle(
       user =
         (await userRepo.updateUser(user.id, { googleId })) ?? user;
     } else {
-      user = await userRepo.createUser({ email, googleId, username: name || email.split("@")[0] });
+      user = await userRepo.createUser({ email, googleId });
       await creditRepo.createBalanceRow(user.id);
     }
   }
-  // Ensure personal studio exists for both newly-created and linked
-  // accounts. Idempotent - also called from project.service.create.
-  await studioService.ensurePersonalStudio(user.id, user.username);
 
-  // Sync the latest nickname + avatar on every Google sign-in
+  // Sync the latest avatar + verified flag on every Google sign-in. No
+  // personal studio is created here — the slug-setup gate handles that.
   const updates: Parameters<typeof userRepo.updateUser>[1] = { emailVerified: true };
-  if (name && !user.username) updates.username = name;
   if (avatar) updates.avatarUrl = avatar;
   user = (await userRepo.updateUser(user.id, updates)) ?? user;
 

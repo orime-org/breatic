@@ -30,7 +30,7 @@ members.use(requireAuth);
  *
  * Any current member (including view) can list. Returns the role
  * relation rows; the frontend joins with `useUsers` for display
- * fields (avatar / username / email).
+ * fields (avatar / display name / email).
  * @returns `200` with `{ data: ProjectMember[] }`
  */
 members.get("/", requireRole("view"), async (c) => {
