@@ -89,7 +89,7 @@ export function CollectionCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-2 top-2 z-10 flex h-[22px] w-[22px] items-center justify-center rounded-content-sm bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
+          className='absolute right-2 top-2 z-10 flex h-[22px] w-[22px] items-center justify-center rounded-content-sm bg-black/45 text-white opacity-0 transition-opacity hover:bg-black focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
         >
           <MoreHorizontal className='h-3.5 w-3.5' />
         </button>
