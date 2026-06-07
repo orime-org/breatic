@@ -35,15 +35,15 @@ export default function StudioLayout(): React.JSX.Element {
   const [createOpen, setCreateOpen] = React.useState(false);
 
   return (
-    <div className='flex h-screen bg-background text-foreground'>
-      <StudioRail
-        studios={studios}
-        activeSlug={slug ?? null}
-        onCreateProject={() => setCreateOpen(true)}
-      />
-      <div className='flex min-w-0 flex-1 flex-col'>
-        <StudioTopBar />
-        <main className='min-h-0 flex-1 overflow-hidden'>
+    <div className='flex h-screen flex-col bg-background text-foreground'>
+      <StudioTopBar />
+      <div className='flex min-h-0 flex-1'>
+        <StudioRail
+          studios={studios}
+          activeSlug={slug ?? null}
+          onCreateProject={() => setCreateOpen(true)}
+        />
+        <main className='min-w-0 flex-1 overflow-hidden'>
           <Outlet />
         </main>
       </div>
