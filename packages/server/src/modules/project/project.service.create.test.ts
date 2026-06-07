@@ -77,27 +77,29 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
       "My Cyberpunk Idea",
       "my-cyberpunk-idea",
       "studio",
+      "canvas",
       "a description",
     );
 
     // Authorized against the TARGET studio's current role, not the personal one.
     expect(mockLoadStudioRole).toHaveBeenCalledWith("u-1", "studio-9");
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
-    // Args: (tx, studioId, creatorUserId, name, slug, visibility, description).
+    // Args: (tx, studioId, creatorUserId, name, slug, visibility, spaceType, description).
     const args = vi.mocked(projectRepo.createProject).mock.calls[0];
     expect(args?.[1]).toBe("studio-9"); // lands in the chosen studio
     expect(args?.[2]).toBe("u-1");
     expect(args?.[3]).toBe("My Cyberpunk Idea");
     expect(args?.[4]).toBe("my-cyberpunk-idea");
     expect(args?.[5]).toBe("studio");
-    expect(args?.[6]).toBe("a description");
+    expect(args?.[6]).toBe("canvas"); // spaceType threaded to the repo
+    expect(args?.[7]).toBe("a description");
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
   });
 
   it("allows a creator to create (admin + creator may spend studio credits)", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("creator");
 
-    await create("u-1", "studio-9", "P", "p", "studio");
+    await create("u-1", "studio-9", "P", "p", "studio", "canvas");
 
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
   });
@@ -106,7 +108,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
     mockLoadStudioRole.mockResolvedValueOnce("member");
 
     await expect(
-      create("u-1", "studio-9", "P", "p", "studio"),
+      create("u-1", "studio-9", "P", "p", "studio", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
     expect(projectRepo.createProject).not.toHaveBeenCalled();
   });
@@ -115,7 +117,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
     mockLoadStudioRole.mockResolvedValueOnce(null);
 
     await expect(
-      create("u-1", "studio-9", "P", "p", "studio"),
+      create("u-1", "studio-9", "P", "p", "studio", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
     expect(projectRepo.createProject).not.toHaveBeenCalled();
   });
@@ -124,7 +126,14 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
     mockLoadStudioRole.mockResolvedValueOnce("admin");
     const core = await import("@breatic/core");
 
-    await create("u-1", "studio-9", "Another Project", "another-project", "studio");
+    await create(
+      "u-1",
+      "studio-9",
+      "Another Project",
+      "another-project",
+      "studio",
+      "canvas",
+    );
 
     // createProject runs inside db.transaction — the project row + owner row
     // must commit together (a project without an owner row is unreadable).

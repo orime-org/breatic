@@ -29,6 +29,7 @@ import type {
   ProjectRole,
   ProjectSummary,
   ProjectVisibility,
+  SpaceType,
 } from "@breatic/shared";
 
 /**
@@ -72,7 +73,8 @@ export async function assertAccess(
  * The default Canvas Space is NOT seeded here any more: the Yjs
  * document store moved to a separate database that can't share this
  * business transaction. Instead collab lazy-seeds the `project-{id}/meta`
- * doc with one default Space on its first load (deterministic Space id
+ * doc AND the first Space's content doc together on its first load,
+ * using the `initial_space_type` stored here (deterministic Space id
  * derived from the project id, so concurrent first-loads converge), and
  * the awareness hook backfills the creator's real name/avatar when they
  * first connect. The "project exists ⇒ ≥1 Space" invariant the frontend
@@ -83,6 +85,8 @@ export async function assertAccess(
  *   app-side, NOT unique)
  * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
  *   members only)
+ * @param spaceType - Initial Space type seeded on first open (canvas
+ *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
  * @returns The newly created project entity
  * @throws {NotFoundError} if the user has no personal studio yet (they
@@ -95,12 +99,22 @@ export async function create(
   name: string,
   slug: string,
   visibility: ProjectVisibility,
+  spaceType: SpaceType,
   description?: string,
 ): Promise<ProjectEntity> {
   await requireStudioCreateAccess(userId, studioId);
 
   return db.transaction(async (tx) =>
-    projectRepo.createProject(tx, studioId, userId, name, slug, visibility, description),
+    projectRepo.createProject(
+      tx,
+      studioId,
+      userId,
+      name,
+      slug,
+      visibility,
+      spaceType,
+      description,
+    ),
   );
 }
 
