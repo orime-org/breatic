@@ -145,6 +145,14 @@ export const projects = pgTable(
     // 'studio' = visible to every studio member (open baseline); 'private'
     // = only users with an explicit project_members row (slice 2 §2.3).
     visibility: varchar("visibility", { length: 16 }).default("studio").notNull(),
+    // Initial Space type seeded on first open (B.2). varchar with NO check
+    // constraint — same pattern as studio_members.role, so adding 3d/plan
+    // later is a zero-migration change. Canvas is the only editable type
+    // today; document/timeline are stored + seeded but disabled in the
+    // create picker until their editors ship.
+    initialSpaceType: varchar("initial_space_type", { length: 16 })
+      .default("canvas")
+      .notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
