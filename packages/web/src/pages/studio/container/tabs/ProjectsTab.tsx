@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { canRenderItemCard } from '@web/pages/studio/container/access';
-import { NewItemCard } from '@web/pages/studio/container/cards/NewItemCard';
+import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import {
@@ -27,11 +27,12 @@ interface ProjectsTabProps {
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
 
 /**
- * The Projects tab (spec §3.3 / §3.13): a card grid of the studio's projects,
+ * The Projects tab (spec §3.3 / §3.13): a toolbar (title + count + sort/view
+ * placeholders + create button) over a card grid of the studio's projects,
  * filtered by the viewer's access (spec §4 invariant 1 — Members never see
- * private projects they are not part of), with a trailing "new project" card
- * that opens the create dialog. When there are no visible projects, only the
- * new-project card is shown.
+ * private projects they are not part of). When there are no visible projects,
+ * the toolbar stays and an empty-state line shows below it (the create button
+ * in the toolbar is the entry point — mock定稿 dropped the in-grid新建卡).
  * @param props the projects, the viewer's studio role and the create callback.
  * @param props.projects the studio's projects.
  * @param props.studioRole the viewer's studio role.
@@ -52,21 +53,18 @@ export function ProjectsTab({
   const visible = projects.filter((project) =>
     canRenderItemCard(studioRole, project),
   );
-  const newCard = canCreate ? (
-    <NewItemCard
-      label={t('studio.container.projects.new')}
-      onClick={() => setDialogOpen(true)}
-    />
-  ) : null;
   return (
     <>
+      <ContainerToolbar
+        title={t('studio.container.tabs.projects')}
+        count={visible.length}
+        createLabel={t('studio.container.projects.new')}
+        onCreate={canCreate ? () => setDialogOpen(true) : undefined}
+      />
       {visible.length === 0 ? (
-        <div>
-          <p className='mb-4 text-sm text-muted-foreground'>
-            {t('studio.container.projects.empty')}
-          </p>
-          {newCard ? <div className={GRID}>{newCard}</div> : null}
-        </div>
+        <p className='text-sm text-muted-foreground'>
+          {t('studio.container.projects.empty')}
+        </p>
       ) : (
         <div className={GRID}>
           {visible.map((project) => (
@@ -76,7 +74,6 @@ export function ProjectsTab({
               studioRole={studioRole}
             />
           ))}
-          {newCard}
         </div>
       )}
       {canCreate ? (

@@ -1,14 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import { CollectionCard } from '@web/pages/studio/container/cards/CollectionCard';
-import { NewItemCard } from '@web/pages/studio/container/cards/NewItemCard';
 import type {
   ContainerCollection,
   ContainerProject,
@@ -109,12 +107,3 @@ describe('CollectionCard (spec §3.4)', () => {
   });
 });
 
-describe('NewItemCard (spec §3.13)', () => {
-  it('renders the label and fires onClick', async () => {
-    const onClick = vi.fn();
-    const user = userEvent.setup();
-    render(<NewItemCard label='New project' onClick={onClick} />);
-    await user.click(screen.getByRole('button', { name: /New project/ }));
-    expect(onClick).toHaveBeenCalledOnce();
-  });
-});
