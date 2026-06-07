@@ -65,6 +65,50 @@ export interface EncodeInitialMetaStateArgs {
   ts: number;
 }
 
+/** Fields needed to construct one Space entry in a meta doc's `spaces` map. */
+export interface SpaceEntryInit {
+  spaceId: string;
+  type: SpaceKind;
+  name: string;
+  /**
+   * Position in the tab bar — `0` for the bootstrap first Space,
+   * `spaces.size` for a later one.
+   */
+  order: number;
+  /** Milliseconds since epoch. */
+  createdAt: number;
+  /** Creator's userId (UUID). */
+  createdBy: string;
+}
+
+/**
+ * Insert one Space entry into a meta doc's `spaces` Y.Map.
+ *
+ * This is the SINGLE source of truth for a Space's field shape: both the
+ * bootstrap seed ({@link encodeInitialMetaState}, the first Space) and
+ * collab's live `space:create` RPC handler (`space-rpc.handleCreate`,
+ * every later Space) call it, so the first Space and every subsequent
+ * Space are built identically — one construction logic, not two
+ * divergent ones. The caller owns the surrounding `Y.Doc` / transaction
+ * context; this helper only mutates the passed `spaces` map.
+ * @param spaces - The meta doc's `spaces` Y.Map (keyed by spaceId).
+ * @param init - The Space's id / type / name / order / timestamp / creator.
+ */
+export function writeSpaceEntry(
+  spaces: Y.Map<unknown>,
+  init: SpaceEntryInit,
+): void {
+  const entry = new Y.Map<unknown>();
+  entry.set("id", init.spaceId);
+  entry.set("type", init.type);
+  entry.set("name", init.name);
+  entry.set("order", init.order);
+  entry.set("locked", false);
+  entry.set("createdAt", init.createdAt);
+  entry.set("createdBy", init.createdBy);
+  spaces.set(init.spaceId, entry);
+}
+
 /**
  * Encode an initial Yjs update for `project-{pid}/meta` containing
  * exactly one Space entry.
@@ -106,15 +150,14 @@ export function encodeInitialMetaState(
   doc.clientID = 1;
 
   const spaces = doc.getMap("spaces");
-  const entry = new Y.Map<unknown>();
-  entry.set("id", spaceId);
-  entry.set("type", kind);
-  entry.set("name", name);
-  entry.set("order", 0);
-  entry.set("locked", false);
-  entry.set("createdAt", ts);
-  entry.set("createdBy", createdBy);
-  spaces.set(spaceId, entry);
+  writeSpaceEntry(spaces, {
+    spaceId,
+    type: kind,
+    name,
+    order: 0,
+    createdAt: ts,
+    createdBy,
+  });
 
   // Q11 v2.1 — bootstrap path seeds the first `projectMessages` entry
   // consistent with `collab/space-rpc.handleCreate`. Field convention:

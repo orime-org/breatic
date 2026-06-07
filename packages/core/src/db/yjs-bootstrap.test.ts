@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { encodeInitialMetaState } from "./yjs-bootstrap.js";
+import { encodeInitialMetaState, writeSpaceEntry } from "./yjs-bootstrap.js";
 
 describe("encodeInitialMetaState", () => {
   it("produces a binary that loads into spaces[spaceId] = entry", () => {
@@ -133,5 +133,67 @@ describe("encodeInitialMetaState", () => {
       const entry = doc.getMap("spaces").get(base.spaceId) as Y.Map<unknown>;
       expect(entry.get("type")).toBe(kind);
     }
+  });
+});
+
+describe("writeSpaceEntry (shared Space-entry construction)", () => {
+  it("inserts one Space entry carrying the canonical field shape", () => {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    writeSpaceEntry(spaces, {
+      spaceId: "s-1",
+      type: "document",
+      name: "Doc",
+      order: 2,
+      createdAt: 123,
+      createdBy: "u-1",
+    });
+    expect(spaces.size).toBe(1);
+    const e = spaces.get("s-1") as Y.Map<unknown>;
+    expect(e.get("id")).toBe("s-1");
+    expect(e.get("type")).toBe("document");
+    expect(e.get("name")).toBe("Doc");
+    expect(e.get("order")).toBe(2);
+    expect(e.get("locked")).toBe(false);
+    expect(e.get("createdAt")).toBe(123);
+    expect(e.get("createdBy")).toBe("u-1");
+  });
+
+  it("builds the FIRST Space (bootstrap seed) with the same field shape as a later Space", () => {
+    // The "one logic" invariant: encodeInitialMetaState's first Space and
+    // any later Space (collab space:create) are constructed by the SAME
+    // writeSpaceEntry, so their field keys must be identical.
+    const seededDoc = new Y.Doc();
+    Y.applyUpdate(
+      seededDoc,
+      encodeInitialMetaState({
+        spaceId: "s-first",
+        kind: "canvas",
+        name: "Canvas",
+        createdBy: "u",
+        actor: "u",
+        creatorName: "U",
+        creatorAvatarUrl: null,
+        ts: 1,
+      }),
+    );
+    const seededKeys = Object.keys(
+      (seededDoc.getMap("spaces").get("s-first") as Y.Map<unknown>).toJSON(),
+    ).sort();
+
+    const laterDoc = new Y.Doc();
+    writeSpaceEntry(laterDoc.getMap("spaces"), {
+      spaceId: "s-later",
+      type: "canvas",
+      name: "Canvas 2",
+      order: 1,
+      createdAt: 2,
+      createdBy: "u2",
+    });
+    const laterKeys = Object.keys(
+      (laterDoc.getMap("spaces").get("s-later") as Y.Map<unknown>).toJSON(),
+    ).sort();
+
+    expect(seededKeys).toEqual(laterKeys);
   });
 });
