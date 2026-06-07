@@ -42,8 +42,22 @@ const PERSONAL: StudioDetail = {
   myStudioRole: 'admin',
 };
 const STUDIOS: readonly StudioSummary[] = [
-  { id: 's-alex', slug: 'alex', name: 'Alex', type: 'personal', memberCount: 1 },
-  { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 4 },
+  {
+    id: 's-alex',
+    slug: 'alex',
+    name: 'Alex',
+    type: 'personal',
+    memberCount: 1,
+    myStudioRole: 'admin',
+  },
+  {
+    id: 's-acme',
+    slug: 'acme-studio',
+    name: 'Acme Studio',
+    type: 'team',
+    memberCount: 4,
+    myStudioRole: 'member',
+  },
 ];
 const PROJECTS: readonly ProjectSummary[] = [
   {

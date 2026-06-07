@@ -193,6 +193,7 @@ export async function listUserStudios(
     name: s.name,
     type: s.type,
     memberCount: counts.get(s.id) ?? 0,
+    myStudioRole: s.myStudioRole,
   }));
   return summaries.sort((a, b) =>
     a.type === b.type ? 0 : a.type === "personal" ? -1 : 1,

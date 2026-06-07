@@ -10,9 +10,30 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 // Deliberately NOT personal-first, to prove the panel hoists personal itself.
 const STUDIOS: readonly StudioSummary[] = [
-  { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 4 },
-  { id: 's-alex', slug: 'alex', name: 'Alex', type: 'personal', memberCount: 1 },
-  { id: 's-nova', slug: 'nova-lab', name: 'Nova Lab', type: 'team', memberCount: 3 },
+  {
+    id: 's-acme',
+    slug: 'acme-studio',
+    name: 'Acme Studio',
+    type: 'team',
+    memberCount: 4,
+    myStudioRole: 'member',
+  },
+  {
+    id: 's-alex',
+    slug: 'alex',
+    name: 'Alex',
+    type: 'personal',
+    memberCount: 1,
+    myStudioRole: 'admin',
+  },
+  {
+    id: 's-nova',
+    slug: 'nova-lab',
+    name: 'Nova Lab',
+    type: 'team',
+    memberCount: 3,
+    myStudioRole: 'member',
+  },
 ];
 
 function setup(activeSlug: string | null, guestProjectCount = 2) {

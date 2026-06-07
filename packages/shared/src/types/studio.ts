@@ -44,14 +44,23 @@ export interface Studio {
 }
 
 /**
- * Studio-level roles. Two role layers exist: studio Admin/Member (this
- * type) and project Owner/Editor/Viewer (`ProjectRole` in role.ts).
+ * Studio-level roles (3-role model, 2026-06-07). Two role layers exist:
+ * studio Admin/Creator/Member (this type) and project Owner/Editor/Viewer
+ * (`ProjectRole` in role.ts).
  *
- * One active admin per studio (enforced by a partial unique index on
- * `studio_members`); the creator is the admin. `member` is a plain
- * studio member.
+ * - `admin`: the studio owner (transferable; one active admin per studio,
+ *   enforced by a partial unique index on `studio_members`). Creates
+ *   projects/collections + publishes works.
+ * - `creator`: a member granted create rights — creates projects/collections,
+ *   cannot publish works.
+ * - `member`: a plain member — neither creates nor publishes.
+ *
+ * `studio_members.role` is `varchar(16)` with no DB check, so the value set is
+ * enforced here (no migration to add `creator`). Today only personal studios
+ * exist (single admin); `creator`/`member` become reachable when team studios
+ * + their assignment flow land (a later slice).
  */
-export type StudioRole = "admin" | "member";
+export type StudioRole = "admin" | "creator" | "member";
 
 /**
  * One row of the `studio_members` table — who has what studio-level role.
@@ -81,16 +90,23 @@ export interface StudioSummary {
   name: string;
   type: StudioType;
   memberCount: number;
+  /**
+   * The viewing user's CURRENT role in this studio (`studio_members.role`),
+   * or `null` when they are not a member (a guest viewing the front door).
+   * Transfer-safe — reflects the current admin, NOT the immutable
+   * `createdByUserId`. Drives the rail's 我的 (`admin`) vs 我加入的
+   * (`creator`/`member`) split, and the create gate (`admin`/`creator`). For
+   * `GET /studios` (the viewer's own memberships) it is always non-null.
+   */
+  myStudioRole: StudioRole | null;
 }
 
 /**
  * Studio detail — one studio's public-facing shell, returned by
- * `GET /studio/:slug`. The shell is visible to any authenticated user (a
- * studio's `/studio/{slug}` page is its front door, like a profile page);
- * `myStudioRole` tells the viewer their relationship to it: `admin` /
- * `member`, or `null` when they are not a member (a guest). Private content
- * inside the studio's tabs is gated by this role (later slices).
+ * `GET /studio/:slug`. Structurally identical to `StudioSummary`; the
+ * difference is semantic — the front door is visible to any authenticated
+ * user (a studio's `/studio/{slug}` page is its front door, like a profile
+ * page), so `myStudioRole` is `null` for a guest (non-member). Private
+ * content inside the studio's tabs is gated by this role (later slices).
  */
-export interface StudioDetail extends StudioSummary {
-  myStudioRole: StudioRole | null;
-}
+export type StudioDetail = StudioSummary;

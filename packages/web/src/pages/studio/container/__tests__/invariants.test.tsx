@@ -32,7 +32,14 @@ const TEAM_DETAIL: StudioDetail = {
 beforeEach(() => {
   vi.mocked(studiosApi.get).mockResolvedValue(TEAM_DETAIL);
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([
-    { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 4 },
+    {
+      id: 's-acme',
+      slug: 'acme-studio',
+      name: 'Acme Studio',
+      type: 'team',
+      memberCount: 4,
+      myStudioRole: 'member',
+    },
   ]);
 });
 
