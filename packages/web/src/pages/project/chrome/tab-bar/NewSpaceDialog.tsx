@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Clock, FileText, Palette } from 'lucide-react';
 import * as React from 'react';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
@@ -25,7 +24,8 @@ import {
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
-import { SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
+import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
+import { type SpaceType } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface NewSpaceDialogProps {
@@ -47,65 +47,17 @@ interface NewSpaceDialogProps {
   onCreate: (type: SpaceType, name: string) => Promise<void> | void;
 }
 
-interface TypeCardMeta {
-  type: SpaceType;
-  icon: typeof Palette;
-  titleKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline';
-  subtitleKey:
-    | 'spaces.kind.canvasSub'
-    | 'spaces.kind.documentSub'
-    | 'spaces.kind.timelineSub';
-  /**
-   * V1 only ships `canvas`; document + timeline are visually present
-   * but disabled with a "not available" label per decision D (2026-05-21).
-   */
-  available: boolean;
-}
-
-const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
-  {
-    type: 'canvas',
-    icon: Palette,
-    titleKey: 'spaces.kind.canvas',
-    subtitleKey: 'spaces.kind.canvasSub',
-    available: true,
-  },
-  {
-    type: 'document',
-    icon: FileText,
-    titleKey: 'spaces.kind.document',
-    subtitleKey: 'spaces.kind.documentSub',
-    available: false,
-  },
-  {
-    type: 'timeline',
-    icon: Clock,
-    titleKey: 'spaces.kind.timeline',
-    subtitleKey: 'spaces.kind.timelineSub',
-    available: false,
-  },
-];
-
 /**
- * New-space dialog — picks a Space type via a 3-card segmented control
- * (canvas / document / timeline), accepts a name, then delegates the
- * actual create call to the page (which sends `space:create` RPC over
- * the live meta-doc Hocuspocus connection + waits for the broadcast
- * back).
+ * New-space dialog — picks a Space type via the shared `SpaceKindPicker`
+ * 3-card segmented control (canvas / document / timeline), accepts a name,
+ * then delegates the actual create call to the page (which sends
+ * `space:create` RPC over the live meta-doc Hocuspocus connection + waits
+ * for the broadcast back).
  *
- * Per decision D (2026-05-21): all three cards are visible so the
- * product roadmap is legible, but document + timeline are disabled
- * with "not available" until those Space types ship. Only canvas is
- * selectable.
- *
- * Mock alignment: mirrors the chrome-baseline mock `.type-segmented`
- * — flex row of 3 cards, active card uses brand border on
- * the mock but per ADR 14 brand-guard we use `border-foreground +
- * bg-accent` instead (neutral CTA).
- *
- * The `SPACE_TYPE_LIST` registry is consulted to surface only types
- * the runtime actually knows about (forward-compat safety against the
- * registry pruning a type the dialog still lists).
+ * The type picker is the shared `SpaceKindPicker` widget so this dialog and
+ * the studio-page new-project dialog stay visually identical without
+ * duplicating the card markup. Only canvas is selectable today (decision D,
+ * 2026-05-21); the picker owns that rule.
  * @param root0 - Component props.
  * @param root0.trigger - Element that opens the dialog (wired through Radix `asChild`).
  * @param root0.tooltip - Optional tooltip shown on hover/focus of the trigger button.
@@ -122,12 +74,6 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
   // The full-screen LoadingOverlay (owned by ProjectPage) is the user-
   // facing pending affordance, and callRpc raises the failure toast.
   const [error, setError] = React.useState<string | null>(null);
-
-  const registry = React.useMemo(
-    () => new Set(SPACE_TYPE_LIST.map((s) => s.type)),
-    [],
-  );
-  const cards = TYPE_CARDS.filter((c) => registry.has(c.type));
 
   /**
    * Clears the name input, resets the type to canvas, and drops any error.
@@ -208,59 +154,11 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
           <DialogDescription>{t('spaces.create.description')}</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <div className='flex flex-col gap-2'>
-            <Label>{t('spaces.create.typeLabel')}</Label>
-            <div
-              className='flex gap-2'
-              role='radiogroup'
-              aria-label={t('spaces.create.typeAria')}
-              data-testid='new-space-type-segmented'
-            >
-              {cards.map((card) => {
-                const Icon = card.icon;
-                const selected = type === card.type;
-                return (
-                  <button
-                    key={card.type}
-                    type='button'
-                    role='radio'
-                    aria-checked={selected}
-                    aria-disabled={!card.available}
-                    disabled={!card.available}
-                    onClick={() => card.available && setType(card.type)}
-                    data-testid={`new-space-type-${card.type}`}
-                    className={cn(
-                      'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
-                      selected
-                        ? 'border-active-border bg-accent text-foreground'
-                        : 'border-border bg-transparent text-foreground',
-                      card.available
-                        ? 'hover:bg-muted'
-                        : 'cursor-not-allowed opacity-50',
-                    )}
-                  >
-                    <Icon
-                      className={cn(
-                        'h-7 w-7',
-                        selected ? 'text-foreground' : 'text-muted-foreground',
-                      )}
-                    />
-                    <span className='text-[13px] font-medium'>
-                      {t(card.titleKey)}
-                    </span>
-                    <span className='text-[11px] text-muted-foreground'>
-                      {t(card.subtitleKey)}
-                    </span>
-                    {!card.available ? (
-                      <span className='rounded-[4px] bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground'>
-                        {t('spaces.create.notAvailable')}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <SpaceKindPicker
+            value={type}
+            onChange={setType}
+            idPrefix='new-space-type'
+          />
           <div className='flex flex-col gap-2'>
             <div className='flex items-baseline justify-between gap-3'>
               <Label htmlFor='new-space-name'>
