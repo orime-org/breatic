@@ -215,3 +215,26 @@ export function encodeInitialMetaState(
 
   return Y.encodeStateAsUpdate(doc);
 }
+
+/**
+ * Encode the initial state for a fresh Space's CONTENT doc (e.g.
+ * `project-{pid}/canvas-{sid}`, `…/document-{sid}`, `…/timeline-{sid}`).
+ *
+ * A new Space starts EMPTY — a blank canvas / document / timeline — so
+ * the initial content is an empty `Y.Doc`. Seeding it makes the
+ * content-doc ROW exist the moment the Space becomes visible in `meta`
+ * (the invariant `lazySeedMeta` + the `space:create` RPC uphold), while
+ * each type's editor builds its own structure (canvas `nodes`/`edges`,
+ * document XmlFragment, …) on first bind. The state is independent of
+ * the Space TYPE — only the doc NAME carries the type (shared
+ * `spaceContentDocName`), so one encoder serves every kind.
+ *
+ * `seedInitialState` converges concurrent first-seeds by doc NAME (`ON
+ * CONFLICT DO NOTHING`), so the bytes need not be deterministic; an
+ * empty doc is trivially identical across calls regardless.
+ * @returns The encoded empty-content Yjs update, ready to persist as a
+ *   Space content doc's initial state.
+ */
+export function encodeInitialSpaceContentState(): Uint8Array {
+  return Y.encodeStateAsUpdate(new Y.Doc());
+}

@@ -15,7 +15,11 @@
 
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { encodeInitialMetaState, writeSpaceEntry } from "./yjs-bootstrap.js";
+import {
+  encodeInitialMetaState,
+  encodeInitialSpaceContentState,
+  writeSpaceEntry,
+} from "./yjs-bootstrap.js";
 
 describe("encodeInitialMetaState", () => {
   it("produces a binary that loads into spaces[spaceId] = entry", () => {
@@ -195,5 +199,26 @@ describe("writeSpaceEntry (shared Space-entry construction)", () => {
     ).sort();
 
     expect(seededKeys).toEqual(laterKeys);
+  });
+});
+
+describe("encodeInitialSpaceContentState (blank Space content doc seed)", () => {
+  it("encodes an EMPTY Yjs doc (a blank Space — editor builds structure on bind)", () => {
+    const update = encodeInitialSpaceContentState();
+    expect(update).toBeInstanceOf(Uint8Array);
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, update);
+    // No top-level shared types: the canvas/document/timeline editor
+    // creates its own structure (nodes/edges, XmlFragment, …) on first
+    // bind. The seed only makes the content-doc row EXIST.
+    expect(doc.share.size).toBe(0);
+  });
+
+  it("is type-independent — the doc NAME carries the type, the content is the same empty doc", () => {
+    // Two calls produce equivalent empty content regardless of which
+    // Space type they back; only spaceContentDocName differs by type.
+    const a = encodeInitialSpaceContentState();
+    const b = encodeInitialSpaceContentState();
+    expect(a).toEqual(b);
   });
 });

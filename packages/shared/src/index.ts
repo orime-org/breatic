@@ -149,6 +149,7 @@ export {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
 } from "@shared/yjs-doc-names.js";

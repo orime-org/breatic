@@ -74,6 +74,36 @@ export function timelineSpaceDocName(projectId: string, spaceId: string): string
 }
 
 /**
+ * Build a Space's CONTENT doc name from its type — the single home for
+ * "space type → content doc name".
+ *
+ * `lazySeedMeta` (the first Space) and the `space:create` RPC (every
+ * later Space) seed each Space's content doc through this, so a Space's
+ * content document name is always derived from its type, never hardcoded
+ * to canvas. Adding a future kind is a one-line switch arm here (the
+ * per-kind builders already exist above). The `kind` excludes `meta`
+ * because the meta doc is project-scoped, not space-scoped.
+ * @param projectId - Project UUID
+ * @param spaceId - Space UUID
+ * @param kind - The Space's type (canvas / document / timeline)
+ * @returns `"project-{projectId}/{kind}-{spaceId}"`
+ */
+export function spaceContentDocName(
+  projectId: string,
+  spaceId: string,
+  kind: Exclude<DocKind, "meta">,
+): string {
+  switch (kind) {
+    case "canvas":
+      return canvasSpaceDocName(projectId, spaceId);
+    case "document":
+      return documentSpaceDocName(projectId, spaceId);
+    case "timeline":
+      return timelineSpaceDocName(projectId, spaceId);
+  }
+}
+
+/**
  * Parse a doc name into its constituent ids and kind.
  *
  * Recognizes only the four shapes built by the helpers above. Returns

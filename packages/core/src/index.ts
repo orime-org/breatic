@@ -34,7 +34,11 @@ export * from "@core/db/yjs-schema.js";
 // collab's lazy-seed imports it. The `yjs_documents` query repo itself
 // MOVED to `@breatic/collab` (collab is the sole runtime owner after the
 // two-DB cutover — server's lifecycle ops go through the outbox stream).
-export { encodeInitialMetaState, writeSpaceEntry } from "@core/db/yjs-bootstrap.js";
+export {
+  encodeInitialMetaState,
+  encodeInitialSpaceContentState,
+  writeSpaceEntry,
+} from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
