@@ -158,9 +158,12 @@ export async function softDeleteByProjectPrefix(
  * Driven by the lifecycle stream consumer on a `project:duplicated`
  * command. Conflict handling is asymmetric so the result is correct even
  * if a client raced in and lazy-seeded the new project's meta first:
- *   - canvas (non-meta) docs use `DO NOTHING` — lazy-seed never creates
- *     canvas rows, so a conflict here is only a redelivery; skipping it
- *     is the idempotent no-op.
+ *   - canvas (non-meta) docs use `DO NOTHING`. lazy-seed now DOES create
+ *     the first Space's content-doc row, but under the deterministic
+ *     `deriveId(newId)` spaceId — never a SOURCE spaceId the copy carries
+ *     over — so a conflict here is still only a redelivery; skipping it is
+ *     the idempotent no-op. (A racing lazy-seed leaves a harmless orphaned
+ *     content doc the meta `DO UPDATE` below never references.)
  *   - the meta doc uses `DO UPDATE` — it MUST win over a lazy-seeded
  *     default meta so the duplicate reflects the SOURCE's Spaces, not a
  *     fresh default one. The consumer kicks the new project's live

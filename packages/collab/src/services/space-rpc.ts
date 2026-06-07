@@ -32,10 +32,11 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 
-import { writeSpaceEntry } from "@breatic/core";
+import { encodeInitialSpaceContentState, writeSpaceEntry } from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   canvasSpaceDocName,
+  spaceContentDocName,
   projectMetaDocName,
   type ProjectRole,
   type SpaceRpcRequest,
@@ -246,6 +247,14 @@ async function handleCreate(
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot create Space`);
   }
   const { spaceId, type, name } = req.payload;
+  // Seed the new Space's content doc BEFORE making it visible in meta — a
+  // Space must never be visible before its content doc exists (the same
+  // invariant lazy-seed + duplicate uphold). Idempotent (ON CONFLICT DO
+  // NOTHING); the doc name follows the Space type.
+  await yjsDocumentsRepo.seedInitialState(
+    spaceContentDocName(projectId, spaceId, type),
+    encodeInitialSpaceContentState(),
+  );
   const docName = projectMetaDocName(projectId);
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },

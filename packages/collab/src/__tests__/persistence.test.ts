@@ -12,19 +12,23 @@
  * upsert — is covered by the core repo's integration test against a
  * real Postgres.
  *
- * `@breatic/core` is mocked wholesale so the real barrel (and its
- * `ai`/otel transitive deps) stays out of vitest's ESM resolver.
+ * `@breatic/core` is partially mocked: the real encoders stay (they need
+ * no DB), only the `loadInitialSpaceType` read lazy-seed uses is stubbed.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { fetchDocDataMock, upsertDocDataMock, seedInitialStateMock } = vi.hoisted(
-  () => ({
-    fetchDocDataMock: vi.fn(),
-    upsertDocDataMock: vi.fn(),
-    seedInitialStateMock: vi.fn(),
-  }),
-);
+const {
+  fetchDocDataMock,
+  upsertDocDataMock,
+  seedInitialStateMock,
+  loadInitialSpaceTypeMock,
+} = vi.hoisted(() => ({
+  fetchDocDataMock: vi.fn(),
+  upsertDocDataMock: vi.fn(),
+  seedInitialStateMock: vi.fn(),
+  loadInitialSpaceTypeMock: vi.fn(),
+}));
 
 // The yjs-store repo moved to collab; persistence imports it locally.
 // Mock the local repo (so its core `yjsDb` dependency never loads).
@@ -34,6 +38,16 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   seedInitialState: seedInitialStateMock,
 }));
 
+// Partial mock: keep core's real encoders, stub only the DB read
+// lazySeedMeta uses for the chosen Space type.
+vi.mock(
+  "@breatic/core",
+  async (importActual: () => Promise<Record<string, unknown>>) => ({
+    ...(await importActual()),
+    loadInitialSpaceType: loadInitialSpaceTypeMock,
+  }),
+);
+
 import { fetchDoc, storeDoc } from "../services/persistence.js";
 
 describe("collab persistence delegation", () => {
@@ -41,6 +55,8 @@ describe("collab persistence delegation", () => {
     fetchDocDataMock.mockReset();
     upsertDocDataMock.mockReset();
     seedInitialStateMock.mockReset();
+    loadInitialSpaceTypeMock.mockReset();
+    loadInitialSpaceTypeMock.mockResolvedValue("canvas");
   });
 
   it("fetchDoc returns the repo's stored bytes for the document name", async () => {

@@ -33,6 +33,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   softDeleteByName: vi.fn(),
   restoreByName: vi.fn(),
+  seedInitialState: vi.fn(),
 }));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";
