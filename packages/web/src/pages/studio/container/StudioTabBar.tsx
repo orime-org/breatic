@@ -15,7 +15,7 @@ interface StudioTabBarProps {
   /** Decides whether the team-only Members tab shows (spec §2.2). */
   studioType: StudioType;
   /**
-   * Per-tab item counts shown as a muted chip after the label (mock定稿:
+   * Per-tab item counts shown as a muted chip after the label (locked mock:
    * projects / collections / members carry a count; credits / settings do
    * not). A tab whose key is absent renders no chip.
    */

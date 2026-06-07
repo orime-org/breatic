@@ -22,7 +22,7 @@ interface ProjectsTabProps {
   onCreateProject?: (values: NewItemValues) => void;
 }
 
-// Auto-fill grid (mock定稿): cards are ~236px wide, so the row packs up to
+// Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
 // ~5 columns at the 1320px container width and reflows down on narrow screens.
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
 
@@ -32,7 +32,7 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
  * filtered by the viewer's access (spec §4 invariant 1 — Members never see
  * private projects they are not part of). When there are no visible projects,
  * the toolbar stays and an empty-state line shows below it (the create button
- * in the toolbar is the entry point — mock定稿 dropped the in-grid新建卡).
+ * in the toolbar is the entry point — locked mock dropped the in-grid card).
  * @param props the projects, the viewer's studio role and the create callback.
  * @param props.projects the studio's projects.
  * @param props.studioRole the viewer's studio role.

@@ -66,7 +66,7 @@ export function CollectionCard({
           </span>
         </div>
         <div className='p-2.5'>
-          {/* Title row (mock定稿): name + asset count on one line. */}
+          {/* Title row (locked mock): name + asset count on one line. */}
           <div className='flex items-center gap-2'>
             <p className='min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground'>
               {collection.name}
@@ -78,7 +78,7 @@ export function CollectionCard({
             </span>
           </div>
           <div className='mt-2 flex items-center gap-2'>
-            {/* Time slot留位 — see ProjectCard; role badge stays right. */}
+            {/* Time slot placeholder — see ProjectCard; role badge stays right. */}
             <span className='ml-auto inline-flex'>
               <RoleBadge itemRole={effectiveItemRole(collection.myRole)} />
             </span>

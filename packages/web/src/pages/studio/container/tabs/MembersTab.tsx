@@ -62,7 +62,7 @@ export function MembersTab({
             const admin = member.studioRole === 'admin';
             return (
               <tr key={member.id} className='border-t border-border'>
-                {/* Member: avatar + name over email (mock定稿 .mrow .who). */}
+                {/* Member: avatar + name over email (locked mock .mrow .who). */}
                 <td className='py-2.5'>
                   <span className='flex items-center gap-3'>
                     <span

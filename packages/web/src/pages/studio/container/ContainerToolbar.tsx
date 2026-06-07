@@ -27,9 +27,9 @@ interface ContainerToolbarProps {
 }
 
 /**
- * The Projects / Collections tab toolbar (mock定稿 `.toolbar`): a title + count
+ * The Projects / Collections tab toolbar (locked mock `.toolbar`): a title + count
  * chip on the left, then the sort control, the grid/list view toggle, and the
- * create button on the right. Per the B-scope visual片, **sort + view toggle
+ * create button on the right. Per the B-scope visual slice, **sort + view toggle
  * are disabled placeholders** (those features ship later) — they convey the
  * layout without being wired; only the create button is live. The create CTA
  * uses the shared `bg-primary` token, which is `--neutral-900` (black in light

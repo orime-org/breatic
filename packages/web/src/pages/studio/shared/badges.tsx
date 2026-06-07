@@ -21,7 +21,7 @@ const NEUTRAL_TINT =
   'border-transparent bg-muted text-muted-foreground';
 
 // The card visibility overlay sits on the thumbnail image, so it is
-// deliberately mode-independent (dark scrim + white text) — like the mock定稿
+// deliberately mode-independent (dark scrim + white text) — like the locked mock
 // `.vbadge`. Black/white here are NOT theme tokens (an image overlay must read
 // the same in light + dark mode), so this is not a token violation.
 const VISIBILITY_OVERLAY =
@@ -29,7 +29,7 @@ const VISIBILITY_OVERLAY =
 
 /**
  * Project / collection visibility badge (spec §3.5) — a dark overlay pill that
- * sits on the card thumbnail's top-left (mock定稿 `.vbadge`): studio-visible,
+ * sits on the card thumbnail's top-left (locked mock `.vbadge`): studio-visible,
  * or private with a lock icon. The card positions it absolutely.
  * @param props the item visibility.
  * @param props.visibility the item visibility.

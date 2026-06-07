@@ -22,7 +22,7 @@ interface CollectionsTabProps {
   onCreateCollection?: (values: NewItemValues) => void;
 }
 
-// Auto-fill grid (mock定稿): cards are ~236px wide, so the row packs up to
+// Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
 // ~5 columns at the 1320px container width and reflows down on narrow screens.
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
 
@@ -30,8 +30,8 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
  * The Collections tab (spec §3.4 / §3.13): a toolbar (title + count + sort/view
  * placeholders + create button) over a card grid of the studio's collections
  * (project-peer asset sets), filtered by the viewer's access (spec §4 invariant
- * 1). The toolbar's create button is the entry point (mock定稿 dropped the
- * in-grid新建卡); an empty studio shows an empty-state line below the toolbar.
+ * 1). The toolbar's create button is the entry point (locked mock dropped the
+ * in-grid card); an empty studio shows an empty-state line below the toolbar.
  * Like projects, create is gated to members (a guest cannot create).
  * @param props the collections, the viewer's studio role and the create callback.
  * @param props.collections the studio's collections.

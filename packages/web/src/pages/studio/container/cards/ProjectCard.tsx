@@ -63,8 +63,9 @@ export function ProjectCard({
             {project.name}
           </p>
           <div className='mt-2 flex items-center gap-2'>
-            {/* Time slot留位 — fills when a per-user last-opened field lands
-                (mock toolbar = 排序最近打开); role badge stays right-aligned. */}
+            {/* Time slot placeholder — fills when a per-user last-opened field
+                lands (mock toolbar sorts by recently opened); role badge stays
+                right-aligned. */}
             <span className='ml-auto inline-flex'>
               <RoleBadge itemRole={effectiveItemRole(project.myRole)} />
             </span>
