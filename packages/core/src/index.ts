@@ -35,11 +35,13 @@ export * from "@core/db/yjs-schema.js";
 // MOVED to `@breatic/collab` (collab is the sole runtime owner after the
 // two-DB cutover — server's lifecycle ops go through the outbox stream).
 export {
+  defaultSpaceName,
   encodeInitialMetaState,
   encodeInitialSpaceContentState,
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
+export { loadInitialSpaceType } from "@core/db/project-seed.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.

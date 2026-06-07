@@ -16,6 +16,7 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import {
+  defaultSpaceName,
   encodeInitialMetaState,
   encodeInitialSpaceContentState,
   writeSpaceEntry,
@@ -220,5 +221,13 @@ describe("encodeInitialSpaceContentState (blank Space content doc seed)", () => 
     const a = encodeInitialSpaceContentState();
     const b = encodeInitialSpaceContentState();
     expect(a).toEqual(b);
+  });
+});
+
+describe("defaultSpaceName", () => {
+  it("maps each Space kind to its default English name", () => {
+    expect(defaultSpaceName("canvas")).toBe("Canvas");
+    expect(defaultSpaceName("document")).toBe("Document");
+    expect(defaultSpaceName("timeline")).toBe("Timeline");
   });
 });

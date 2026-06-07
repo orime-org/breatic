@@ -238,3 +238,22 @@ export function encodeInitialMetaState(
 export function encodeInitialSpaceContentState(): Uint8Array {
   return Y.encodeStateAsUpdate(new Y.Doc());
 }
+
+/**
+ * Default display name for a freshly-seeded Space of a given kind.
+ *
+ * The seed runs in collab with no i18n context, so it uses the kind's
+ * English label; the creating user renames the Space afterwards.
+ * @param kind - The Space type being seeded
+ * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"`)
+ */
+export function defaultSpaceName(kind: SpaceKind): string {
+  switch (kind) {
+    case "canvas":
+      return "Canvas";
+    case "document":
+      return "Document";
+    case "timeline":
+      return "Timeline";
+  }
+}
