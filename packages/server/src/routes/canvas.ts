@@ -70,7 +70,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // any logged-in user who knows a victim project UUID can enqueue
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
-  await projectService.assertAccess(projectId, user.id, "edit");
+  await projectService.assertAccess(projectId, user.id, "editor");
 
   const task = await taskService.create(
     user.id,
@@ -205,7 +205,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   const body = c.req.valid("json");
 
   // Cross-tenant guard — see /canvas/tasks rationale.
-  await projectService.assertAccess(body.project_id, user.id, "edit");
+  await projectService.assertAccess(body.project_id, user.id, "editor");
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -286,7 +286,7 @@ canvas.get(
     // error messages. Without this check any logged-in user could
     // enumerate a victim project's history by guessing UUIDs.
     // History is a read; view-or-above is enough.
-    await projectService.assertAccess(project_id, user.id, "view");
+    await projectService.assertAccess(project_id, user.id, "viewer");
 
     const result = await nodeHistoryService.listByNode(project_id, nodeId, {
       limit,

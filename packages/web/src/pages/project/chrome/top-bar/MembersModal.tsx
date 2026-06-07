@@ -37,18 +37,18 @@ interface MembersModalProps {
 
 const STUB_MEMBERS: ReadonlyArray<Member> = [
   { id: 'me', userId: 'u-me', name: 'Songxiu Lei', email: 'sx@example.com', role: 'owner' },
-  { id: 'yj', userId: 'u-yj', name: 'Yuki Jia', email: 'yj@example.com', role: 'edit' },
-  { id: 'dm', userId: 'u-dm', name: 'Diana Marquez', email: 'dm@example.com', role: 'edit' },
-  { id: 'rt', userId: 'u-rt', name: 'Ryo Tanaka', email: 'rt@example.com', role: 'view' },
-  { id: 'pl', userId: 'u-pl', name: 'Priya Lokesh', email: 'pl@example.com', role: 'view' },
+  { id: 'yj', userId: 'u-yj', name: 'Yuki Jia', email: 'yj@example.com', role: 'editor' },
+  { id: 'dm', userId: 'u-dm', name: 'Diana Marquez', email: 'dm@example.com', role: 'editor' },
+  { id: 'rt', userId: 'u-rt', name: 'Ryo Tanaka', email: 'rt@example.com', role: 'viewer' },
+  { id: 'pl', userId: 'u-pl', name: 'Priya Lokesh', email: 'pl@example.com', role: 'viewer' },
 ];
 
 const ROLE_OPTIONS: ReadonlyArray<{
   value: Exclude<MemberRole, 'owner'>;
   labelKey: 'role.editor' | 'role.viewer';
 }> = [
-  { value: 'edit', labelKey: 'role.editor' },
-  { value: 'view', labelKey: 'role.viewer' },
+  { value: 'editor', labelKey: 'role.editor' },
+  { value: 'viewer', labelKey: 'role.viewer' },
 ];
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -110,7 +110,7 @@ export function MembersModal({
     setInviteError(null);
     setInviteSubmitting(true);
     try {
-      await membersApi.invite(projectId, { email: trimmed, role: 'view' });
+      await membersApi.invite(projectId, { email: trimmed, role: 'viewer' });
       toast.success(t('members.modal.inviteSent'));
       setInvite('');
     } catch {
@@ -286,7 +286,7 @@ function ModalMemberRow({
       </div>
       {member.role === 'owner' || isMe ? (
         <span className='shrink-0 text-[13px] font-medium text-foreground'>
-          {member.role === 'owner' ? t('role.owner') : t('role.' + (member.role === 'edit' ? 'editor' : 'viewer'))}
+          {member.role === 'owner' ? t('role.owner') : t('role.' + (member.role === 'editor' ? 'editor' : 'viewer'))}
         </span>
       ) : (
         <Select

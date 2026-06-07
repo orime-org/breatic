@@ -28,14 +28,14 @@ import type { ProjectEntity, ProjectRole } from "@breatic/shared";
 /**
  * Throw if the user does not have at least `minRole` on the project.
  *
- * Defaults to `'view'` — callers that need stronger checks pass
- * `'edit'` or `'owner'` explicitly. Routes with `requireRole`
+ * Defaults to `'viewer'` — callers that need stronger checks pass
+ * `'editor'` or `'owner'` explicitly. Routes with `requireRole`
  * middleware do not need this redundantly, but inner services
  * (conversation.service, BullMQ task path) call it as defense in
  * depth.
  * @param projectId - Project UUID from untrusted client input
  * @param userId - Authenticated user UUID
- * @param minRole - Minimum role required (defaults to `'view'`)
+ * @param minRole - Minimum role required (defaults to `'viewer'`)
  * @throws {NotFoundError} if the project does not exist or the
  *   caller has no membership (we collapse 404 and 403-no-membership
  *   into 404 to avoid leaking project existence to outsiders)
@@ -45,7 +45,7 @@ import type { ProjectEntity, ProjectRole } from "@breatic/shared";
 export async function assertAccess(
   projectId: string,
   userId: string,
-  minRole: ProjectRole = "view",
+  minRole: ProjectRole = "viewer",
 ): Promise<void> {
   const role = await projectAuthService.loadProjectRole(userId, projectId);
   if (role === null) {
@@ -126,7 +126,7 @@ async function requirePersonalStudio(
  * @throws {NotFoundError} on missing project / no membership
  */
 export async function get(projectId: string, userId: string): Promise<ProjectEntity> {
-  await assertAccess(projectId, userId, "view");
+  await assertAccess(projectId, userId, "viewer");
   const project = await projectRepo.getProjectById(projectId);
   if (!project) throw new NotFoundError(t("server.error.not_found"));
   return project;
@@ -158,13 +158,13 @@ export async function list(
 /**
  * Update mutable project metadata.
  *
- * Requires at least `edit` on the project — name / description /
+ * Requires at least `editor` on the project — name / description /
  * thumbnail are content edits, not just admin operations. The
- * `requireRole('edit')` middleware on the PUT route enforces the
+ * `requireRole('editor')` middleware on the PUT route enforces the
  * same; this service-side check is defense in depth for non-route
  * callers.
  * @param projectId - Project UUID to update
- * @param userId - Authenticated user UUID; must have at least `edit` access
+ * @param userId - Authenticated user UUID; must have at least `editor` access
  * @param patch - Fields to update
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
@@ -172,7 +172,7 @@ export async function list(
  * @returns The updated project entity
  * @throws {NotFoundError} if the project doesn't exist or the
  *   caller has no membership
- * @throws {ForbiddenError} if the caller is below `edit`
+ * @throws {ForbiddenError} if the caller is below `editor`
  */
 export async function update(
   projectId: string,
@@ -183,7 +183,7 @@ export async function update(
     thumbnailUrl?: string | null;
   },
 ): Promise<ProjectEntity> {
-  await assertAccess(projectId, userId, "edit");
+  await assertAccess(projectId, userId, "editor");
   const updated = await projectRepo.updateProjectMeta(projectId, patch);
   if (!updated) throw new NotFoundError(t("server.error.not_found"));
   return updated;
@@ -205,7 +205,7 @@ export async function duplicate(
   sourceId: string,
   userId: string,
 ): Promise<ProjectEntity> {
-  await assertAccess(sourceId, userId, "view");
+  await assertAccess(sourceId, userId, "viewer");
   const copy = await projectRepo.duplicateProject(userId, sourceId);
   if (!copy) throw new NotFoundError(t("server.error.not_found"));
   return copy;

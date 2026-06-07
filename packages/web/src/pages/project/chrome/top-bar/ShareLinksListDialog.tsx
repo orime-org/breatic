@@ -263,9 +263,9 @@ function LinkRow({
 function RoleBadge({ role }: { role: string }): React.JSX.Element {
   const t = useTranslation();
   const label =
-    role === 'edit'
+    role === 'editor'
       ? t('share.role.edit')
-      : role === 'view'
+      : role === 'viewer'
         ? t('share.role.view')
         : role;
   return (

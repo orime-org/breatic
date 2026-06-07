@@ -47,7 +47,7 @@ export interface ShareInviteMailInput {
   projectName: string;
   /** Full invite URL (e.g. https://breatic.ai/invite/<token>). */
   inviteLink: string;
-  /** Role the invitee will be granted on accept ('edit' or 'view'). */
+  /** Role the invitee will be granted on accept ('editor' or 'viewer'). */
   role: string;
 }
 

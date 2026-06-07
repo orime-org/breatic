@@ -36,7 +36,7 @@ export type { NotificationEntity };
 export interface RoleUpgradeRequestPayload {
   requesterUserId: string;
   projectName: string;
-  requestedRole: "edit"; // currently only edit upgrade is supported
+  requestedRole: "editor"; // currently only editor upgrade is supported
   message: string | null;
 }
 
@@ -48,7 +48,7 @@ export interface RoleUpgradeRequestPayload {
  */
 export interface RoleUpgradeDecisionPayload {
   projectName: string;
-  newRole?: "edit";
+  newRole?: "editor";
   reason?: string | null;
 }
 
@@ -60,7 +60,7 @@ export interface RoleUpgradeDecisionPayload {
 export interface MemberJoinedPayload {
   newMemberUserId: string;
   projectName: string;
-  role: "edit" | "view";
+  role: "editor" | "viewer";
 }
 
 // ── Constructors ────────────────────────────────────────────────────

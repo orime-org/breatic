@@ -79,7 +79,7 @@ const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
  */
 membershipScoped.get(
   "/:id",
-  requireRoleOnParam("id", "view"),
+  requireRoleOnParam("id", "viewer"),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");
@@ -118,13 +118,13 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (DD orime-org/
  * breatic-inner-design#152 D1; aligns with `members.patch` precedent).
- * Requires `edit` (renaming etc. is content editing, not an admin-only
+ * Requires `editor` (renaming etc. is content editing, not an admin-only
  * operation). v10 §7.2.1.
  * @returns `200` with `{ data: ProjectEntity }`
  */
 membershipScoped.patch(
   "/:id",
-  requireRoleOnParam("id", "edit"),
+  requireRoleOnParam("id", "editor"),
   zValidator("json", projectUpdateSchema),
   async (c) => {
     const user = c.get("user");
@@ -142,14 +142,14 @@ membershipScoped.patch(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Requires `view`: anyone who can read the source can fork it. The
+ * Requires `viewer`: anyone who can read the source can fork it. The
  * duplicate is owned by the caller (new owner row in
  * `project_members`).
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
 membershipScoped.post(
   "/:id/duplicate",
-  requireRoleOnParam("id", "view"),
+  requireRoleOnParam("id", "viewer"),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");

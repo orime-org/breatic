@@ -270,7 +270,7 @@ export function createAuthHook({
       return {
         user: { id: userId, role },
         connection: {
-          readOnly: role === "view",
+          readOnly: role === "viewer",
         },
       };
     } catch (err) {

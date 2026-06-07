@@ -28,12 +28,12 @@ members.use(requireAuth);
 /**
  * `GET /api/v1/projects/:pid/members` — list active members.
  *
- * Any current member (including view) can list. Returns the role
+ * Any current member (including viewer) can list. Returns the role
  * relation rows; the frontend joins with `useUsers` for display
  * fields (avatar / display name / email).
  * @returns `200` with `{ data: ProjectMember[] }`
  */
-members.get("/", requireRole("view"), async (c) => {
+members.get("/", requireRole("viewer"), async (c) => {
   const projectId = c.get("projectId");
   const list = await projectMembersService.list(projectId);
   return c.json({ data: list });
@@ -43,7 +43,7 @@ const inviteBodySchema = z.object({
   user_id: z.string().uuid(),
   // Owner cannot be invited directly — owner promotion is the
   // transfer-owner endpoint, deferred to V2.
-  role: z.enum(["view", "edit"]),
+  role: z.enum(["viewer", "editor"]),
 });
 
 /**
@@ -72,7 +72,7 @@ members.post(
 );
 
 const patchBodySchema = z.object({
-  role: z.enum(["view", "edit"]),
+  role: z.enum(["viewer", "editor"]),
 });
 
 /**

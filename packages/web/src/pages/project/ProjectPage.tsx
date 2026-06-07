@@ -110,7 +110,7 @@ export default function ProjectPage(): React.JSX.Element {
   // floating menu per 2026-05-28 spec § 6.2 (every editing affordance
   // is rendered but disabled with a tooltip; the upgrade entry lives
   // on the top-bar RoleTag).
-  const isViewer = role === 'view';
+  const isViewer = role === 'viewer';
   const credits = 0;
 
   const renameMutation = useMutation({

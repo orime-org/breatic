@@ -21,8 +21,8 @@ import type { ProjectRole } from '@web/stores';
 
 const ROLE_LABEL: Record<ProjectRole, string> = {
   owner: 'OWNER',
-  edit: 'EDITOR',
-  view: 'VIEWER',
+  editor: 'EDITOR',
+  viewer: 'VIEWER',
 };
 
 interface RoleTagProps {
@@ -33,8 +33,8 @@ interface RoleTagProps {
 /**
  * Top-bar role chip.
  *
- * - `owner` / `edit` → read-only neutral pill (cursor default).
- * - `view` → clickable; opens a Popover with a request-edit-access
+ * - `owner` / `editor` → read-only neutral pill (cursor default).
+ * - `viewer` → clickable; opens a Popover with a request-edit-access
  *   form. Submitting POSTs `/api/v1/projects/:pid/role-upgrade-requests`
  *   which lands a notification in the owner's BellMenu.
  *
@@ -49,7 +49,7 @@ interface RoleTagProps {
  * @returns a read-only role chip for owners/editors, or a clickable request-edit-access chip for viewers.
  */
 export function RoleTag({ role, projectId }: RoleTagProps): React.JSX.Element {
-  if (role !== 'view') {
+  if (role !== 'viewer') {
     return <ReadOnlyRoleTag role={role} />;
   }
   return <ClickableViewerRoleTag projectId={projectId} />;
@@ -117,7 +117,7 @@ function ClickableViewerRoleTag({
           className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-muted text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{ padding: '2px var(--space-3)' }}
         >
-          <span>{ROLE_LABEL.view}</span>
+          <span>{ROLE_LABEL.viewer}</span>
           <ArrowUp className='h-3 w-3' aria-hidden='true' />
         </button>
       </PopoverTrigger>

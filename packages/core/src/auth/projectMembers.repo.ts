@@ -164,7 +164,7 @@ export async function insertOwner(
  * through transfer-owner, which is V1-deferred).
  * @param projectId - Project UUID
  * @param userId - User UUID being invited
- * @param role - 'edit' | 'view'
+ * @param role - 'editor' | 'viewer'
  * @param addedBy - Inviter's user UUID
  * @param tx - Optional drizzle transaction handle (caller passes when
  *   the upsert must be atomic with other mutations in the same tx)
@@ -204,7 +204,7 @@ export async function upsertMember(
  * if no active row matched.
  * @param projectId - Project UUID
  * @param userId - Target user UUID
- * @param role - New role ('edit' | 'view')
+ * @param role - New role ('editor' | 'viewer')
  * @param tx - Optional drizzle transaction handle so the role bump can join
  *   the caller's atomic decision (e.g. role-upgrade approve)
  * @returns `true` if a row was updated

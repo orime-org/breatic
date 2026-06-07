@@ -56,7 +56,7 @@ describe("createRoleUpgradeRequest", () => {
       payload: {
         requesterUserId: REQUESTER,
         projectName: "Demo",
-        requestedRole: "edit",
+        requestedRole: "editor",
         message: "please",
       },
     });
@@ -67,7 +67,7 @@ describe("createRoleUpgradeRequest", () => {
     expect(args?.projectId).toBe(PID);
     expect(args?.payload).toMatchObject({
       requesterUserId: REQUESTER,
-      requestedRole: "edit",
+      requestedRole: "editor",
     });
   });
 });
@@ -88,7 +88,7 @@ describe("createRoleUpgradeApproved / Rejected", () => {
     await notificationService.createRoleUpgradeApproved({
       requesterUserId: REQUESTER,
       projectId: PID,
-      payload: { projectName: "Demo", newRole: "edit" },
+      payload: { projectName: "Demo", newRole: "editor" },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
     expect(args?.userId).toBe(REQUESTER);
@@ -138,7 +138,7 @@ describe("createMemberJoined", () => {
       payload: {
         newMemberUserId: newMember,
         projectName: "Demo",
-        role: "view",
+        role: "viewer",
       },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];

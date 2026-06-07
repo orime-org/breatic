@@ -129,7 +129,7 @@ describe("request", () => {
         projectId: PID,
         payload: expect.objectContaining({
           requesterUserId: VIEWER,
-          requestedRole: "edit",
+          requestedRole: "editor",
           message: "Need to edit",
         }),
       }),
@@ -155,7 +155,7 @@ describe("approve", () => {
     expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(
       PID,
       VIEWER,
-      "edit",
+      "editor",
       expect.anything(),
     );
     expect(

@@ -148,7 +148,7 @@ export const projects = pgTable(
 // ── 4. Project Members ───────────────────────────────────────────────
 //
 // Three roles: `owner` (unique per project, partial unique index) /
-// `edit` / `view`. The owner row is written in the same transaction as
+// `editor` / `viewer`. The owner row is written in the same transaction as
 // the project insert - `addedBy` is null for that row (creator has no
 // inviter). `transfer-owner` is intentionally not implemented in V1
 // (v10 spec §7.2.5) - the partial unique index would have to be dance-
@@ -751,7 +751,7 @@ export const shareLinks = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     token: varchar("token", { length: 64 }).notNull().unique(),
-    role: varchar("role", { length: 16 }).default("view").notNull(),
+    role: varchar("role", { length: 16 }).default("viewer").notNull(),
     /**
      * Link mode discriminator. 'email' = single-use bound invite,
      * 'link' = multi-use shareable URL. The DB enforces this together

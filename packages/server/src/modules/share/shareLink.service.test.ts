@@ -76,7 +76,7 @@ function fakeLink(overrides: Partial<{
     projectId: overrides.projectId ?? PID,
     createdByUserId: OWNER,
     token: overrides.token ?? TOKEN,
-    role: overrides.role ?? "view",
+    role: overrides.role ?? "viewer",
     kind,
     boundEmail,
     consumedAt: overrides.consumedAt ?? null,
@@ -135,7 +135,7 @@ describe("createLink", () => {
       createLink({
         projectId: PID,
         createdByUserId: OWNER,
-        role: "view",
+        role: "viewer",
         kind: "email",
       }),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -147,7 +147,7 @@ describe("createLink", () => {
       createLink({
         projectId: PID,
         createdByUserId: OWNER,
-        role: "view",
+        role: "viewer",
         kind: "link",
         boundEmail: BOUND_EMAIL,
       }),
@@ -155,28 +155,28 @@ describe("createLink", () => {
     expect(shareLinkRepo.create).not.toHaveBeenCalled();
   });
 
-  it("creates a kind='link' (multi-use, no boundEmail, no expiry) with role=view", async () => {
+  it("creates a kind='link' (multi-use, no boundEmail, no expiry) with role=viewer", async () => {
     vi.mocked(shareLinkRepo.create).mockResolvedValueOnce(
       fakeLink({ kind: "link", boundEmail: null, expiresAt: null }),
     );
     const out = await createLink({
       projectId: PID,
       createdByUserId: OWNER,
-      role: "view",
+      role: "viewer",
       kind: "link",
     });
     expect(out.kind).toBe("link");
     expect(out.boundEmail).toBeNull();
     expect(out.expiresAt).toBeNull();
     const args = vi.mocked(shareLinkRepo.create).mock.calls[0]?.[0];
-    expect(args?.role).toBe("view");
+    expect(args?.role).toBe("viewer");
     expect(args?.kind).toBe("link");
     expect(args?.boundEmail).toBeNull();
     expect(args?.expiresAt).toBeNull();
     expect(args?.token).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  it("creates a kind='email' link (single-use, boundEmail set) with role=edit + 7-day expiry", async () => {
+  it("creates a kind='email' link (single-use, boundEmail set) with role=editor + 7-day expiry", async () => {
     vi.mocked(shareLinkRepo.create).mockImplementationOnce(async (input) =>
       fakeLink({
         kind: input.kind,
@@ -189,13 +189,13 @@ describe("createLink", () => {
     const out = await createLink({
       projectId: PID,
       createdByUserId: OWNER,
-      role: "edit",
+      role: "editor",
       kind: "email",
       boundEmail: BOUND_EMAIL,
     });
     expect(out.kind).toBe("email");
     expect(out.boundEmail).toBe(BOUND_EMAIL);
-    expect(out.role).toBe("edit");
+    expect(out.role).toBe("editor");
     // 7-day TTL: ~604_800_000 ms in the future (slack ± 1 minute).
     expect(out.expiresAt).not.toBeNull();
     const delta = out.expiresAt!.getTime() - before;
@@ -211,7 +211,7 @@ describe("createLink", () => {
       createLink({
         projectId: PID,
         createdByUserId: OWNER,
-        role: "view",
+        role: "viewer",
         kind: "link",
       }),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -327,11 +327,11 @@ describe("listByProject", () => {
 // project_members. The properties below lock the email-invite vs
 // Generate invariants under arbitrary input.
 
-describe("createLink — property: only 'view'/'edit' grantable via share link", () => {
-  it("rejects any role string that isn't 'view' or 'edit' with ValidationError", async () => {
+describe("createLink — property: only 'viewer'/'editor' grantable via share link", () => {
+  it("rejects any role string that isn't 'viewer' or 'editor' with ValidationError", async () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (role) => {
-        if (role === "view" || role === "edit") return;
+        if (role === "viewer" || role === "editor") return;
         await expect(
           createLink({
             projectId: PID,

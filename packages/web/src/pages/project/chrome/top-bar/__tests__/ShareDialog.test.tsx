@@ -73,7 +73,7 @@ describe('ShareDialog — invite by email flow', () => {
   it('sends a valid email + role=view (default) to the API', async () => {
     const user = userEvent.setup();
     vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'view' }),
+      data: makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'viewer' }),
     });
     setup();
     await user.type(
@@ -86,7 +86,7 @@ describe('ShareDialog — invite by email flow', () => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
         kind: 'email',
         invitee_email: 'new@example.com',
-        role: 'view',
+        role: 'viewer',
       });
     });
     expect(toast.success).toHaveBeenCalled();
@@ -131,7 +131,7 @@ describe('ShareDialog — Generate link flow', () => {
     await waitFor(() => {
       expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
         kind: 'link',
-        role: 'view',
+        role: 'viewer',
       });
     });
   });
@@ -208,7 +208,7 @@ function makeFakeLink(o: FakeLinkOverrides = {}) {
     projectId: PID,
     createdByUserId: 'u-owner',
     token: o.token ?? 'token-mock',
-    role: o.role ?? 'view',
+    role: o.role ?? 'viewer',
     kind,
     boundEmail,
     consumedAt: null,

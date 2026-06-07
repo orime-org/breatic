@@ -53,10 +53,10 @@ export type GrantableRole = Exclude<ProjectRole, "owner">;
  * Type guard: narrow an arbitrary role string to a grantable role
  * (`owner` is never grantable via a share link).
  * @param role - Role string to check
- * @returns True if `role` is 'edit' or 'view'
+ * @returns True if `role` is 'editor' or 'viewer'
  */
 function isGrantableRole(role: string): role is GrantableRole {
-  return role === "edit" || role === "view";
+  return role === "editor" || role === "viewer";
 }
 
 /**
@@ -98,11 +98,11 @@ const EMAIL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * @param input - Share link creation parameters
  * @param input.projectId - Project the link grants access to
  * @param input.createdByUserId - User creating the link
- * @param input.role - Role granted on consume ('edit' or 'view')
+ * @param input.role - Role granted on consume ('editor' or 'viewer')
  * @param input.kind - Link mode ('email' single-use, or 'link' multi-use)
  * @param input.boundEmail - Recipient email; required for 'email', must be absent for 'link'
  * @returns The created share link (with the server-generated token)
- * @throws {ValidationError} if `role` is not 'edit' / 'view',
+ * @throws {ValidationError} if `role` is not 'editor' / 'viewer',
  *   or if `kind` and `boundEmail` are mismatched
  * @throws {ConflictError} if the token randomly collides
  *   (astronomically rare; caller should retry once)

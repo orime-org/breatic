@@ -87,7 +87,7 @@ function toEntity(row: typeof shareLinks.$inferSelect): ShareLink {
  * @param input.projectId - Project the link grants access to
  * @param input.createdByUserId - User who created the link
  * @param input.token - Pre-generated unique token (base64url)
- * @param input.role - Role granted on consume ('edit' or 'view')
+ * @param input.role - Role granted on consume ('editor' or 'viewer')
  * @param input.kind - Link mode ('email' single-use, or 'link' multi-use)
  * @param input.boundEmail - Recipient email; non-null iff `kind === 'email'`
  * @param input.expiresAt - Expiry timestamp; null for non-expiring 'link' kind

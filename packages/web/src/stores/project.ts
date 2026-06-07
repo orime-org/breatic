@@ -12,7 +12,7 @@ import { immer } from 'zustand/middleware/immer';
  * this store mirrors the "viewer-scoped" bits that React renders against
  * (role, settings flags), updated from Yjs subscriptions in a hook layer.
  */
-export type ProjectRole = 'owner' | 'edit' | 'view';
+export type ProjectRole = 'owner' | 'editor' | 'viewer';
 
 export interface ActiveProjectMeta {
   id: string;

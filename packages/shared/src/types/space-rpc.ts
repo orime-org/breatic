@@ -25,9 +25,9 @@
  *
  * Authz at collab (per ADR §B2.5 permissions matrix):
  *
- *   - `space:create`        - caller role ≥ edit
- *   - `space:delete`        - caller role ≥ edit
- *   - `space:lock` / unlock - caller role ≥ edit
+ *   - `space:create`        - caller role ≥ editor
+ *   - `space:delete`        - caller role ≥ editor
+ *   - `space:lock` / unlock - caller role ≥ editor
  *   - `space:restore`       - caller role = owner
  *   - `messages:clear`      - caller role = owner
  */
@@ -78,7 +78,7 @@ export const SpaceCreatePayloadSchema = z.object({
 export type SpaceCreatePayload = z.infer<typeof SpaceCreatePayloadSchema>;
 
 /**
- * Rename an existing Space's name. Caller role ≥ edit. Refuses with
+ * Rename an existing Space's name. Caller role ≥ editor. Refuses with
  * `FORBIDDEN` if the Space is locked (per design - locked Spaces
  * cannot have their metadata mutated until unlocked).
  */

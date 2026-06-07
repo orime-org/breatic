@@ -6,7 +6,7 @@
  *
  * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  *
- *   - create / delete / lock / unlock / rename - caller role ≥ edit
+ *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore / messages:clear                  - caller role = owner
  *
  * Each handler:
@@ -95,7 +95,7 @@ function err(
 }
 
 /** Role rank - higher is more privileged. */
-const ROLE_RANK: Record<ProjectRole, number> = { view: 1, edit: 2, owner: 3 };
+const ROLE_RANK: Record<ProjectRole, number> = { viewer: 1, editor: 2, owner: 3 };
 
 /**
  * Test whether a caller's role meets a minimum privilege threshold.
@@ -227,7 +227,7 @@ async function restoreCanvasRow(
 // ── Handlers ────────────────────────────────────────────────────────
 
 /**
- * Create a new Space entry in `meta.spaces`. Caller role ≥ edit.
+ * Create a new Space entry in `meta.spaces`. Caller role ≥ editor.
  * Returns `CONFLICT` if the spaceId already exists.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is added to.
@@ -241,7 +241,7 @@ async function handleCreate(
   caller: SpaceRpcCaller,
   req: Extract<SpaceRpcRequest, { type: "space:create" }>,
 ): Promise<SpaceRpcResponse> {
-  if (!requireAtLeast(caller.role, "edit")) {
+  if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot create Space`);
   }
   const { spaceId, type, name } = req.payload;
@@ -285,7 +285,7 @@ async function handleCreate(
 /**
  * Delete a Space: remove its `meta.spaces` entry, push a
  * `space-deleted` audit message (with snapshot for Restore), then
- * soft-delete its canvas PG row. Caller role ≥ edit.
+ * soft-delete its canvas PG row. Caller role ≥ editor.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is removed from.
  * @param caller - Authenticated caller's userId + role, gating the operation.
@@ -298,7 +298,7 @@ async function handleDelete(
   caller: SpaceRpcCaller,
   req: Extract<SpaceRpcRequest, { type: "space:delete" }>,
 ): Promise<SpaceRpcResponse> {
-  if (!requireAtLeast(caller.role, "edit")) {
+  if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot delete Space`);
   }
   const { spaceId } = req.payload;
@@ -343,7 +343,7 @@ async function handleDelete(
 
 /**
  * Lock or unlock a Space (set its `locked` flag) and push the matching
- * `space-locked` / `space-unlocked` audit message. Caller role ≥ edit.
+ * `space-locked` / `space-unlocked` audit message. Caller role ≥ editor.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc holds the target Space.
  * @param caller - Authenticated caller's userId + role, gating the operation.
@@ -356,7 +356,7 @@ async function handleLock(
   caller: SpaceRpcCaller,
   req: Extract<SpaceRpcRequest, { type: "space:lock" }>,
 ): Promise<SpaceRpcResponse> {
-  if (!requireAtLeast(caller.role, "edit")) {
+  if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot lock Space`);
   }
   const { spaceId, locked } = req.payload;
@@ -391,7 +391,7 @@ async function handleLock(
 }
 
 /**
- * Rename an existing Space's `name`. Caller role ≥ edit. Refuses
+ * Rename an existing Space's `name`. Caller role ≥ editor. Refuses
  * with `FORBIDDEN` if the Space is currently locked - locked Spaces
  * must be unlocked before any metadata mutation.
  * @param ctx - Collab context providing the Hocuspocus server.
@@ -406,7 +406,7 @@ async function handleRename(
   caller: SpaceRpcCaller,
   req: Extract<SpaceRpcRequest, { type: "space:rename" }>,
 ): Promise<SpaceRpcResponse> {
-  if (!requireAtLeast(caller.role, "edit")) {
+  if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot rename Space`);
   }
   const { spaceId, name } = req.payload;

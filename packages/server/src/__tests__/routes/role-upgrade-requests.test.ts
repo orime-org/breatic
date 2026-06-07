@@ -41,7 +41,7 @@ const NID = "33333333-3333-4333-8333-333333333333";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.projectAuthService.loadProjectRole.mockResolvedValue("view");
+  mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
   // The POST route resolves the owner through the service (prohibition
   // #1 — routes call services, not repos), so drive the service mock.
   mocks.projectMembersService.getOwner.mockResolvedValue("u-owner");
@@ -77,8 +77,8 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
     );
   });
 
-  it("returns 403 when caller is editor (not view)", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("edit");
+  it("returns 403 when caller is editor (not viewer)", async () => {
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/role-upgrade-requests`,

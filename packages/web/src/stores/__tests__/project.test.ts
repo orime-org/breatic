@@ -30,7 +30,7 @@ describe('useProjectStore', () => {
     useProjectStore.getState().setActive({
       id: 'p1',
       name: 'X',
-      role: 'edit',
+      role: 'editor',
       settings: { a: 1 },
     });
     useProjectStore.getState().patchSettings({ b: 2 });
@@ -43,7 +43,7 @@ describe('useProjectStore', () => {
     useProjectStore.getState().setActive({
       id: 'p1',
       name: 'X',
-      role: 'view',
+      role: 'viewer',
       settings: {},
     });
     useProjectStore.getState().clear();

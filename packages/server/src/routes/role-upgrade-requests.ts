@@ -6,7 +6,7 @@
  *
  * Two mount points:
  *   - `/api/v1/projects/:pid/role-upgrade-requests`
- *       POST    — viewer submits a request (caller must be 'view' on
+ *       POST    — viewer submits a request (caller must be 'viewer' on
  *                 the project; service inserts a notification in
  *                 the owner's inbox).
  *   - `/api/v1/role-upgrade-requests/:notificationId/decision`
@@ -56,18 +56,18 @@ const requestBodySchema = z.object({
  * `POST /api/v1/projects/:pid/role-upgrade-requests` — viewer asks
  * owner for editor access.
  *
- * Gate: caller must currently be `view` on the project. `edit` and
+ * Gate: caller must currently be `viewer` on the project. `editor` and
  * `owner` callers get 403 (they don't need to upgrade — editors are
  * already at the highest non-owner role).
  */
 projectRoleUpgradeRequests.post(
   "/",
-  requireRole("view"),
+  requireRole("viewer"),
   zValidator("json", requestBodySchema),
   async (c) => {
     const user = c.get("user");
     const role = c.get("role");
-    if (role !== "view") {
+    if (role !== "viewer") {
       throw new ForbiddenError("only viewers can request a role upgrade");
     }
     const projectId = getProjectId(c);

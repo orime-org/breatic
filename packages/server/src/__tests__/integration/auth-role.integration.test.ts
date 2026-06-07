@@ -121,7 +121,7 @@ async function insertProject(
 async function insertMember(
   projectId: string,
   userId: string,
-  role: "owner" | "edit" | "view",
+  role: "owner" | "editor" | "viewer",
   addedBy: string | null,
 ): Promise<void> {
   await sql`
@@ -147,12 +147,12 @@ describe("getRole — auth critical-path invariants (real Postgres)", () => {
     expect(await projectMembersRepo.getRole(projectId, ownerId)).toBe("owner");
 
     const editor = await insertUser("editor-active@example.com");
-    await insertMember(projectId, editor, "edit", ownerId);
-    expect(await projectMembersRepo.getRole(projectId, editor)).toBe("edit");
+    await insertMember(projectId, editor, "editor", ownerId);
+    expect(await projectMembersRepo.getRole(projectId, editor)).toBe("editor");
 
     const viewer = await insertUser("viewer-active@example.com");
-    await insertMember(projectId, viewer, "view", ownerId);
-    expect(await projectMembersRepo.getRole(projectId, viewer)).toBe("view");
+    await insertMember(projectId, viewer, "viewer", ownerId);
+    expect(await projectMembersRepo.getRole(projectId, viewer)).toBe("viewer");
   });
 
   it("returns null for a non-member of an active project (no existence leak)", async () => {
@@ -177,8 +177,8 @@ describe("getRole — auth critical-path invariants (real Postgres)", () => {
   it("returns null when the member row itself is soft-deleted (removed member)", async () => {
     const { projectId, ownerId } = await seedProject("removed-member");
     const removed = await insertUser("removed@example.com");
-    await insertMember(projectId, removed, "edit", ownerId);
-    expect(await projectMembersRepo.getRole(projectId, removed)).toBe("edit");
+    await insertMember(projectId, removed, "editor", ownerId);
+    expect(await projectMembersRepo.getRole(projectId, removed)).toBe("editor");
 
     await sql`
       UPDATE project_members SET deleted_at = NOW()

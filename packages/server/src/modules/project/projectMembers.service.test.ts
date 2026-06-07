@@ -59,7 +59,7 @@ beforeEach(() => {
 describe("invite", () => {
   it("rejects inviting an existing owner with Conflict", async () => {
     vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
-    await expect(invite(PID, "u-owner", "edit", "u-owner")).rejects.toBeInstanceOf(
+    await expect(invite(PID, "u-owner", "editor", "u-owner")).rejects.toBeInstanceOf(
       ConflictError,
     );
     expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
@@ -67,40 +67,40 @@ describe("invite", () => {
 
   it("upserts a new member when target is not the owner", async () => {
     vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
-    await invite(PID, "u-target", "edit", "u-inviter");
-    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "edit", "u-inviter");
+    await invite(PID, "u-target", "editor", "u-inviter");
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "editor", "u-inviter");
   });
 
   it("revives a previously-removed member (repo upsert handles deletedAt clear)", async () => {
     vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null); // soft-deleted = no active role
-    await invite(PID, "u-target", "view", "u-inviter");
-    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "view", "u-inviter");
+    await invite(PID, "u-target", "viewer", "u-inviter");
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "viewer", "u-inviter");
   });
 });
 
 describe("changeRole", () => {
   it("throws NotFound when target has no active membership", async () => {
     vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
-    await expect(changeRole(PID, "u-target", "edit")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(changeRole(PID, "u-target", "editor")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rejects PATCH'ing the owner's role with Conflict", async () => {
     vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
-    await expect(changeRole(PID, "u-owner", "edit")).rejects.toBeInstanceOf(ConflictError);
+    await expect(changeRole(PID, "u-owner", "editor")).rejects.toBeInstanceOf(ConflictError);
     expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
   });
 
-  it("updates an edit member to view", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+  it("updates an editor member to viewer", async () => {
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
     vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
-    await changeRole(PID, "u-target", "view");
-    expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(PID, "u-target", "view");
+    await changeRole(PID, "u-target", "viewer");
+    expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(PID, "u-target", "viewer");
   });
 
   it("translates a stale row (updateRole returns false) into NotFound", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
     vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(false);
-    await expect(changeRole(PID, "u-target", "view")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(changeRole(PID, "u-target", "viewer")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
 
@@ -117,7 +117,7 @@ describe("remove", () => {
   });
 
   it("soft-deletes a non-owner member", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
     vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
     await remove(PID, "u-target");
     expect(projectMembersRepo.softDelete).toHaveBeenCalledWith(PID, "u-target");

@@ -16,7 +16,7 @@
  *
  * The middleware reads `:pid` from the route param. Routes that use
  * a different param name (e.g. `:id` on the legacy `projects.ts`
- * routes) should re-mount with `requireRoleOnParam('id', 'edit')`.
+ * routes) should re-mount with `requireRoleOnParam('id', 'editor')`.
  */
 
 import type { Context, MiddlewareHandler } from "hono";

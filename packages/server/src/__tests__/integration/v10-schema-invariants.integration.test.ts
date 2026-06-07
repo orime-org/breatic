@@ -142,8 +142,8 @@ describe("project_members_one_owner_per_project", () => {
     await sql`
       INSERT INTO project_members (project_id, user_id, role, added_by)
       VALUES (${projectId}, ${owner}, 'owner', NULL),
-             (${projectId}, ${m1},    'edit',  ${owner}),
-             (${projectId}, ${m2},    'view',  ${owner})
+             (${projectId}, ${m1},    'editor',  ${owner}),
+             (${projectId}, ${m2},    'viewer',  ${owner})
     `;
 
     const rows = await sql<{ count: string }[]>`

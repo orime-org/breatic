@@ -111,7 +111,7 @@ async function insertProject(
 async function insertMember(
   projectId: string,
   userId: string,
-  role: "owner" | "edit" | "view",
+  role: "owner" | "editor" | "viewer",
   addedBy: string | null,
 ): Promise<void> {
   await sql`
@@ -130,7 +130,7 @@ async function insertRoleUpgradeRequest(
     VALUES (
       ${ownerId},
       'access.role_upgrade_request',
-      ${sql.json({ requesterUserId: requesterId, projectName: "Demo", requestedRole: "edit" })},
+      ${sql.json({ requesterUserId: requesterId, projectName: "Demo", requestedRole: "editor" })},
       ${projectId}
     )
     RETURNING id
@@ -145,14 +145,14 @@ interface Seeded {
   requestId: string;
 }
 
-/** Owner + a `view` member + a pending role-upgrade request notification. */
+/** Owner + a `viewer` member + a pending role-upgrade request notification. */
 async function seedRequest(tag: string): Promise<Seeded> {
   const ownerId = await insertUser(`owner-${tag}`);
   const requesterId = await insertUser(`viewer-${tag}`);
   const studioId = await insertStudio(ownerId, tag);
   const projectId = await insertProject(studioId, ownerId, tag);
   await insertMember(projectId, ownerId, "owner", null);
-  await insertMember(projectId, requesterId, "view", ownerId);
+  await insertMember(projectId, requesterId, "viewer", ownerId);
   const requestId = await insertRoleUpgradeRequest(ownerId, requesterId, projectId);
   return { ownerId, requesterId, projectId, requestId };
 }
@@ -203,8 +203,8 @@ describe("role-upgrade decision is once-only under concurrency", () => {
     expect(rejected).toBe(1);
     // The requester must receive EXACTLY ONE approved notification, not two.
     expect(await countByType(requesterId, "access.role_upgrade_approved")).toBe(1);
-    // The member is bumped to edit (once).
-    expect(await memberRole(projectId, requesterId)).toBe("edit");
+    // The member is bumped to editor (once).
+    expect(await memberRole(projectId, requesterId)).toBe("editor");
   });
 
   it("concurrent approve + reject lands exactly one outcome, never both", async () => {
@@ -235,9 +235,9 @@ describe("role-upgrade decision is once-only under concurrency", () => {
     // The member role must agree with the single winning decision.
     const role = await memberRole(projectId, requesterId);
     if (approved === 1) {
-      expect(role).toBe("edit");
+      expect(role).toBe("editor");
     } else {
-      expect(role).toBe("view");
+      expect(role).toBe("viewer");
     }
   });
 });

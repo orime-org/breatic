@@ -108,7 +108,7 @@ describe('BellMenu — 4 notification types render', () => {
         fakeNotification(N2, 'access.member_joined', {
           projectName: 'Q1 Sprint',
           newMemberUserId: 'u-newcomer',
-          role: 'edit',
+          role: 'editor',
         }),
       ],
     });
@@ -223,7 +223,7 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
         fakeNotification(N2, 'access.member_joined', {
           projectName: 'Demo',
           newMemberUserId: 'u-x',
-          role: 'view',
+          role: 'viewer',
         }),
       ],
     });

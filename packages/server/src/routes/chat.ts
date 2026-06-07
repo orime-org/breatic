@@ -83,7 +83,7 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   if (body.project_id) {
     // Chat is a creative-write action (v10 §7.2.1) — view-only
     // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "edit");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
   }
 
   const conversation = await conversationService.getOrCreate(
@@ -156,7 +156,7 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   if (body.project_id) {
     // Chat is a creative-write action (v10 §7.2.1) — view-only
     // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "edit");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
   }
 
   const conversation = await conversationService.getOrCreate(

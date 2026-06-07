@@ -27,7 +27,7 @@
  * Allowed on the meta doc:
  *
  *   - `meta.projectMeta` (name / description) — write power is gated
- *     by Hocuspocus role-level readOnly (view = readOnly).
+ *     by Hocuspocus role-level readOnly (viewer = readOnly).
  *   - `meta.perUser[<own userId>]` — the client's own UI state.
  *
  * Other docs (`project-{pid}/canvas-{spaceId}` etc.) are not gated

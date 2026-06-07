@@ -218,7 +218,7 @@ export interface ProjectEntity {
  *
  * Shape that the frontend consumes — joins ProjectEntity with the
  * caller's role on this project. The frontend uses `myRole` to gate
- * UI (e.g. hide chat for view, hide member-management for non-owner).
+ * UI (e.g. hide chat for viewer, hide member-management for non-owner).
  */
 export interface ProjectDetail {
   id: string;
