@@ -32,8 +32,9 @@ interface ContainerToolbarProps {
  * create button on the right. Per the B-scope visual片, **sort + view toggle
  * are disabled placeholders** (those features ship later) — they convey the
  * layout without being wired; only the create button is live. The create CTA
- * uses the neutral `bg-foreground` button (mock `.btn` = neutral-900, not
- * brand).
+ * uses the shared `bg-primary` token, which is `--neutral-900` (black in light
+ * / white in dark — tokens.css), matching the mock `.btn` neutral button and
+ * every other studio CTA.
  * @param root0 - Component props.
  * @param root0.title - the section title (localized tab name).
  * @param root0.count - the item count.
@@ -85,7 +86,7 @@ export function ContainerToolbar({
         <button
           type='button'
           onClick={onCreate}
-          className='inline-flex h-[30px] items-center gap-1.5 rounded-content-md bg-foreground px-3 text-xs font-semibold text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='inline-flex h-[30px] items-center gap-1.5 rounded-content-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {createLabel}
