@@ -1471,6 +1471,8 @@
         "namePlaceholder": "我的项目",
         "slugLabel": "网址标识",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "项目地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
+        "slugHelperCollection": "资产集地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
         "descriptionLabel": "简介(可选)",
         "typeLabel": "类型",
         "typePersonal": "个人",

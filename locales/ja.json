@@ -1471,6 +1471,8 @@
         "namePlaceholder": "マイプロジェクト",
         "slugLabel": "ハンドル",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "プロジェクトのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
+        "slugHelperCollection": "コレクションのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
         "descriptionLabel": "説明(任意)",
         "typeLabel": "種類",
         "typePersonal": "個人",

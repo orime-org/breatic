@@ -72,13 +72,23 @@ export default function StudioContainerPage(): React.JSX.Element {
     enabled: slug !== '',
   });
   const createProject = useMutation({
-    mutationFn: (values: NewItemValues) =>
-      projectsApi.create({
+    mutationFn: (values: NewItemValues) => {
+      // `create` always targets the studio whose container this is. The
+      // GitHub-owner-style studio selector (picking a *different* studio) is
+      // a later slice (§7); until then the studioId is the current studio.
+      const studioId = studioQuery.data?.id;
+      if (studioId === undefined) {
+        return Promise.reject(new Error('studio not loaded'));
+      }
+      return projectsApi.create({
+        studioId,
         name: values.name,
         slug: values.slug,
         visibility: values.visibility,
+        spaceType: values.spaceType ?? 'canvas',
         description: values.description || undefined,
-      }),
+      });
+    },
     onSuccess: () => {
       // The new project lands in the caller's studio; refetch so its card
       // appears. The owner row is written with the project, so opening it

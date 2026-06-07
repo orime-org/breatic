@@ -1471,6 +1471,8 @@
         "namePlaceholder": "我的專案",
         "slugLabel": "網址標識",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "專案網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
+        "slugHelperCollection": "資產集網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
         "descriptionLabel": "簡介(選填)",
         "typeLabel": "類型",
         "typePersonal": "個人",

@@ -23,6 +23,8 @@ import {
   type SlugError,
 } from '@web/pages/studio/container/dialogs/slug-util';
 import type { ItemVisibility } from '@web/pages/studio/shared/studio-types';
+import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
+import { type SpaceType } from '@web/spaces';
 
 /** The values entered into a new-project / new-collection dialog. */
 export interface NewItemValues {
@@ -31,6 +33,13 @@ export interface NewItemValues {
   description: string;
   /** `studio` = visible to every studio member (open baseline) | `private`. */
   visibility: ItemVisibility;
+  /**
+   * The first space's type, seeded on create (project only — collections have
+   * no spaces). Omitted for `kind='collection'`. Canvas is the only editable
+   * type today; document/timeline are plumbed end-to-end but disabled in the
+   * picker (B.2).
+   */
+  spaceType?: SpaceType;
 }
 
 interface NewItemDialogProps {
@@ -65,6 +74,7 @@ export function NewItemDialog({
   const [slug, setSlug] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [visibility, setVisibility] = React.useState<ItemVisibility>('studio');
+  const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
   const [submitted, setSubmitted] = React.useState(false);
 
@@ -76,6 +86,7 @@ export function NewItemDialog({
     setSlug('');
     setDescription('');
     setVisibility('studio');
+    setSpaceType('canvas');
     setSlugError(null);
     setSubmitted(false);
   };
@@ -119,6 +130,9 @@ export function NewItemDialog({
       slug,
       description: description.trim(),
       visibility,
+      // A space type only applies to a project's first space; collections
+      // have no spaces, so it is omitted for them.
+      ...(kind === 'project' ? { spaceType } : {}),
     });
     handleOpenChange(false);
   };
@@ -127,6 +141,10 @@ export function NewItemDialog({
     kind === 'project'
       ? t('studio.container.dialog.newProjectTitle')
       : t('studio.container.dialog.newCollectionTitle');
+  const slugHelper =
+    kind === 'project'
+      ? t('studio.container.dialog.slugHelperProject')
+      : t('studio.container.dialog.slugHelperCollection');
   const nameId = `new-${kind}-name`;
   const slugId = `new-${kind}-slug`;
   const descId = `new-${kind}-desc`;
@@ -154,6 +172,13 @@ export function NewItemDialog({
                 required
               />
             </div>
+            {kind === 'project' ? (
+              <SpaceKindPicker
+                value={spaceType}
+                onChange={setSpaceType}
+                idPrefix={`new-${kind}-type`}
+              />
+            ) : null}
             <SlugField
               id={slugId}
               label={t('studio.container.dialog.slugLabel')}
@@ -162,6 +187,7 @@ export function NewItemDialog({
               onChange={handleSlugChange}
               error={slugError}
               bounds={ITEM_SLUG_BOUNDS}
+              helper={slugHelper}
             />
             <fieldset className='flex flex-col gap-1.5'>
               <legend className='text-sm font-medium'>

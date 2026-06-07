@@ -1471,6 +1471,8 @@
         "namePlaceholder": "My project",
         "slugLabel": "Handle",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "Part of the project's web address. Use lowercase letters, numbers and hyphens (-) only.",
+        "slugHelperCollection": "Part of the collection's web address. Use lowercase letters, numbers and hyphens (-) only.",
         "descriptionLabel": "Description (optional)",
         "typeLabel": "Type",
         "typePersonal": "Personal",
