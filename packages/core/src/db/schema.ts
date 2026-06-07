@@ -139,6 +139,12 @@ export const projects = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     thumbnailUrl: text("thumbnail_url"),
+    // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
+    // unique (same-name projects disambiguate by uuid; URL design §5.7).
+    slug: varchar("slug", { length: 120 }).notNull(),
+    // 'studio' = visible to every studio member (open baseline); 'private'
+    // = only users with an explicit project_members row (slice 2 §2.3).
+    visibility: varchar("visibility", { length: 16 }).default("studio").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

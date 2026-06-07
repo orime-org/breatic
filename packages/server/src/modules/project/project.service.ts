@@ -23,7 +23,7 @@ import { db } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
-import type { ProjectEntity, ProjectRole } from "@breatic/shared";
+import type { ProjectEntity, ProjectRole, ProjectVisibility } from "@breatic/shared";
 
 /**
  * Throw if the user does not have at least `minRole` on the project.
@@ -82,12 +82,14 @@ export async function assertAccess(
 export async function create(
   userId: string,
   name: string,
+  slug: string,
+  visibility: ProjectVisibility,
   description?: string,
 ): Promise<ProjectEntity> {
   const studio = await requirePersonalStudio(userId);
 
   return db.transaction(async (tx) =>
-    projectRepo.createProject(tx, studio.id, userId, name, description),
+    projectRepo.createProject(tx, studio.id, userId, name, slug, visibility, description),
   );
 }
 

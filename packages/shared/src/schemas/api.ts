@@ -187,7 +187,13 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
 // ── Projects ─────────────────────────────────────────────────────────
 
 export const projectCreateSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
+  slug: z
+    .string()
+    .min(6)
+    .max(50)
+    .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, "slug must be lowercase letters/digits with single hyphens"),
+  visibility: z.enum(["studio", "private"]).default("studio"),
   description: z.string().optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;

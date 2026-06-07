@@ -190,6 +190,12 @@ export interface NotificationEntity {
   updatedAt: Date;
 }
 
+/**
+ * Project visibility (slice 2). 'studio' = open baseline, visible to every
+ * studio member; 'private' = only users with an explicit project_members row.
+ */
+export type ProjectVisibility = "studio" | "private";
+
 /** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;
@@ -208,6 +214,10 @@ export interface ProjectEntity {
   name: string;
   description: string | null;
   thumbnailUrl: string | null;
+  /** URL slug for /project/{slug}-{uuid}; format-validated, not unique. */
+  slug: string;
+  /** 'studio' (open baseline) | 'private' (explicit members only). */
+  visibility: ProjectVisibility;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

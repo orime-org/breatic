@@ -47,7 +47,7 @@ describe("Projects routes", () => {
       const res = await app.request("/api/v1/projects", {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ name: "My Project" }),
+        body: JSON.stringify({ name: "My Project", slug: "my-project" }),
       });
 
       expect(res.status).toBe(201);

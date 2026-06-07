@@ -42,8 +42,8 @@ projects.use(requireAuth);
  */
 projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const user = c.get("user");
-  const { name, description } = c.req.valid("json");
-  const project = await projectService.create(user.id, name, description);
+  const { name, slug, visibility, description } = c.req.valid("json");
+  const project = await projectService.create(user.id, name, slug, visibility, description);
   return c.json({ data: project }, 201);
 });
 

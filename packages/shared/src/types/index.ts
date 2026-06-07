@@ -14,6 +14,7 @@ export type {
   CreditTransactionEntity,
   NotificationEntity,
   ProjectEntity,
+  ProjectVisibility,
   ProjectDetail,
   MemoryContext,
   SkillMeta,

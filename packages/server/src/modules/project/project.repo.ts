@@ -31,7 +31,7 @@ import {
   tasks,
 } from "@breatic/core";
 import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
-import type { ProjectEntity } from "@breatic/shared";
+import type { ProjectEntity, ProjectVisibility } from "@breatic/shared";
 
 /**
  * Map a raw `projects` table row to a `ProjectEntity` domain object.
@@ -46,6 +46,8 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
     name: row.name,
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
+    slug: row.slug,
+    visibility: row.visibility as ProjectVisibility,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -128,6 +130,8 @@ export async function createProject(
   studioId: string,
   creatorUserId: string,
   name: string,
+  slug: string,
+  visibility: ProjectVisibility,
   description?: string,
 ): Promise<ProjectEntity> {
   const inserted = await tx
@@ -136,6 +140,8 @@ export async function createProject(
       studioId,
       createdByUserId: creatorUserId,
       name,
+      slug,
+      visibility,
       description,
     })
     .returning();
@@ -237,6 +243,8 @@ export async function duplicateProject(
         studioId: source.studioId,
         createdByUserId: creatorUserId,
         name: `${source.name} (copy)`,
+        slug: `${source.slug}-copy`.slice(0, 120),
+        visibility: source.visibility,
         description: source.description,
         thumbnailUrl: source.thumbnailUrl,
       })

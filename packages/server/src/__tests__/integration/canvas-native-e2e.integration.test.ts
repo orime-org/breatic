@@ -318,6 +318,7 @@ beforeAll(async () => {
     studioId: FIXTURE_STUDIO_ID,
     createdByUserId: FIXTURE_USER_ID,
     name: "Integration Test Project",
+    slug: "integration-test-project",
   }).onConflictDoNothing();
 
   await db.insert(schema.projectMembers).values({
