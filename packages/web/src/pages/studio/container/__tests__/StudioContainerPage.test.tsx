@@ -124,7 +124,9 @@ describe('StudioContainerPage', () => {
 
   it('defaults to the Projects tab panel', async () => {
     setup('acme-studio');
-    expect(await screen.findByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    // The tab's accessible name now includes its count chip ("Projects 1"),
+    // so match by substring.
+    expect(await screen.findByRole('tab', { name: /Projects/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );

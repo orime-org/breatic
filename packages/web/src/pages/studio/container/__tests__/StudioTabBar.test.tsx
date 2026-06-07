@@ -8,11 +8,14 @@ import { Tabs } from '@web/components/ui/tabs';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import type { StudioType } from '@web/pages/studio/shared/studio-types';
 
-function setup(studioType: StudioType) {
+function setup(
+  studioType: StudioType,
+  counts?: Partial<Record<'projects' | 'collections' | 'members', number>>,
+) {
   // Tabs Root provides the Radix tablist context StudioTabBar renders into.
   return render(
     <Tabs value='projects'>
-      <StudioTabBar studioType={studioType} />
+      <StudioTabBar studioType={studioType} counts={counts} />
     </Tabs>,
   );
 }
@@ -49,5 +52,25 @@ describe('StudioTabBar', () => {
       'aria-selected',
       'false',
     );
+  });
+
+  it('shows a count chip on projects / collections / members when counts are given', () => {
+    setup('team', { projects: 6, collections: 2, members: 4 });
+    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
+    expect(screen.getByRole('tab', { name: /Collections/ })).toHaveTextContent(
+      '2',
+    );
+    expect(screen.getByRole('tab', { name: /Members/ })).toHaveTextContent('4');
+    // Credits / Settings never carry a count (mock定稿).
+    expect(screen.getByRole('tab', { name: 'Credits' })).toBeInTheDocument();
+  });
+
+  it('omits the count chip for a tab whose count is absent', () => {
+    setup('team', { projects: 6 });
+    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
+    // Collections count not provided → exact label, no trailing number.
+    expect(
+      screen.getByRole('tab', { name: 'Collections' }),
+    ).toBeInTheDocument();
   });
 });
