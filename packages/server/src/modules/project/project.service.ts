@@ -195,31 +195,8 @@ export async function loadForViewer(
 }
 
 /**
- * List projects in the caller's personal studio (V1).
- *
- * V1 personal-Studio mode: every user has exactly one studio.
- * "Projects shared with me but owned by others" is a Studio-phase
- * feature (see spec §16 ★ "shared-projects entry on /studio"); not exposed
- * here in V1.
- * @param userId - Authenticated user UUID (owner of the personal studio)
- * @param limit - Page size
- * @param offset - Pagination offset
- * @returns The user's project entities in their personal studio
- * @throws {NotFoundError} if the user has no personal studio yet
- *   (onboarding incomplete)
- */
-export async function list(
-  userId: string,
-  limit?: number,
-  offset?: number,
-): Promise<ProjectEntity[]> {
-  const studio = await requirePersonalStudio(userId);
-  return projectRepo.listProjectsByStudio(studio.id, limit, offset);
-}
-
-/**
  * List the projects of a studio a viewer may see, for the studio container's
- * "projects" tab (slice 2 — replaces the personal-Studio {@link list}).
+ * "projects" tab (slice 2 — replaces the old personal-Studio project list).
  *
  * Resolves the viewer's studio role and applies open-baseline visibility:
  *   - non-member → `[]` (the guest shell shows no projects, IA #267);

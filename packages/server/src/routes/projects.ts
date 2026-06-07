@@ -17,7 +17,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { projectCreateSchema, paginationSchema } from "@server/routes/schemas.js";
+import { projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
@@ -45,21 +45,6 @@ projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const { name, slug, visibility, description } = c.req.valid("json");
   const project = await projectService.create(user.id, name, slug, visibility, description);
   return c.json({ data: project }, 201);
-});
-
-/**
- * `GET /projects` — list the caller's personal-studio projects.
- *
- * V1 personal-Studio mode: every user has one studio. Projects shared
- * with the caller but owned by someone else (Studio-phase feature)
- * are not exposed here yet — see spec §16 ★ "shared-projects entry on /studio".
- * @returns `200` with `{ data: ProjectEntity[] }`
- */
-projects.get("/", zValidator("query", paginationSchema), async (c) => {
-  const user = c.get("user");
-  const { limit, offset } = c.req.valid("query");
-  const list = await projectService.list(user.id, limit, offset);
-  return c.json({ data: list });
 });
 
 /**

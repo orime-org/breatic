@@ -67,22 +67,6 @@ describe("Projects routes", () => {
     });
   });
 
-  describe("GET /projects — list", () => {
-    it("returns paginated project list", async () => {
-      mocks.projectService.list.mockResolvedValue([
-        { id: "proj-1", name: "A" },
-        { id: "proj-2", name: "B" },
-      ]);
-
-      const app = createApp();
-      const res = await app.request("/api/v1/projects", { headers: AUTH });
-
-      expect(res.status).toBe(200);
-      const body = await res.json() as { data: unknown[] };
-      expect(body.data).toHaveLength(2);
-    });
-  });
-
   describe("DELETE /projects/:id — soft delete", () => {
     it("soft-deletes and returns 200", async () => {
       mocks.projectService.deleteProject.mockResolvedValue(undefined);

@@ -74,32 +74,6 @@ export async function getProjectById(id: string): Promise<ProjectEntity | null> 
 }
 
 /**
- * List projects in a studio (excludes soft-deleted).
- *
- * V1 personal-Studio mode: every user has exactly one studio, so
- * "list my projects" maps to "list projects in my studio". The route
- * layer resolves the user's studio id before calling this.
- * @param studioId - Studio UUID
- * @param limit - Page size (capped at 100)
- * @param offset - Pagination offset
- * @returns The studio's project entities ordered by most recently updated
- */
-export async function listProjectsByStudio(
-  studioId: string,
-  limit = 20,
-  offset = 0,
-): Promise<ProjectEntity[]> {
-  const rows = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)))
-    .orderBy(desc(projects.updatedAt))
-    .limit(Math.min(limit, 100))
-    .offset(offset);
-  return rows.map(toEntity);
-}
-
-/**
  * List a studio's projects visible to a viewer, each tagged with the
  * viewer's role (slice 2 — the studio container's "projects" tab).
  *
