@@ -6,30 +6,34 @@ import { Lock } from 'lucide-react';
 
 import { Badge } from '@web/components/ui/badge';
 import { useTranslation } from '@web/i18n/use-translation';
-import type {
-  CollectionKind,
-  CreditLotSource,
-} from '@web/pages/studio/container/container-types';
+import type { CreditLotSource } from '@web/pages/studio/container/container-types';
 import type {
   ItemRole,
   ItemVisibility,
   StudioType,
 } from '@web/pages/studio/shared/studio-types';
 
-// All badges carry TEXT (not color alone) for a11y (spec §3.5). Badges use the
-// mode-aware `secondary` / `muted` tokens, never raw `neutral-*` (which is
+// All badges carry TEXT (not color alone) for a11y (spec §3.5). Body badges use
+// the mode-aware `secondary` / `muted` tokens, never raw `neutral-*` (which is
 // mode-blind). The studio chrome is neutral (visual ADR 2026-06-06 — studio no
-// longer brand-exempt): the type pill + collection-kind tag read as a neutral
-// tint, not brand.
+// longer brand-exempt): the type pill reads as a neutral tint, not brand.
 const NEUTRAL_TINT =
   'border-transparent bg-muted text-muted-foreground';
 
+// The card visibility overlay sits on the thumbnail image, so it is
+// deliberately mode-independent (dark scrim + white text) — like the mock定稿
+// `.vbadge`. Black/white here are NOT theme tokens (an image overlay must read
+// the same in light + dark mode), so this is not a token violation.
+const VISIBILITY_OVERLAY =
+  'inline-flex items-center gap-1 rounded-content-sm bg-black/45 px-1.5 text-[11px] font-semibold leading-5 text-white';
+
 /**
- * Project / collection visibility badge (spec §3.5): studio-visible (neutral)
- * or private (neutral + lock icon). Always neutral — never brand.
+ * Project / collection visibility badge (spec §3.5) — a dark overlay pill that
+ * sits on the card thumbnail's top-left (mock定稿 `.vbadge`): studio-visible,
+ * or private with a lock icon. The card positions it absolutely.
  * @param props the item visibility.
  * @param props.visibility the item visibility.
- * @returns the visibility badge.
+ * @returns the visibility overlay badge.
  */
 export function VisibilityBadge({
   visibility,
@@ -39,16 +43,16 @@ export function VisibilityBadge({
   const t = useTranslation();
   if (visibility === 'private') {
     return (
-      <Badge variant='secondary' className='gap-1'>
+      <span className={VISIBILITY_OVERLAY}>
         <Lock className='h-3 w-3' aria-hidden='true' />
         {t('studio.container.badge.visibilityPrivate')}
-      </Badge>
+      </span>
     );
   }
   return (
-    <Badge variant='secondary'>
+    <span className={VISIBILITY_OVERLAY}>
       {t('studio.container.badge.visibilityStudio')}
-    </Badge>
+    </span>
   );
 }
 
@@ -98,25 +102,6 @@ export function StudioTypePill({
     <Badge className={`rounded-full ${NEUTRAL_TINT}`}>
       {t(`studio.container.badge.${key}`)}
     </Badge>
-  );
-}
-
-/**
- * Collection media-kind tag (spec §3.4) — neutral tint (image / video / audio).
- * @param props the collection kind.
- * @param props.kind the dialog / collection kind.
- * @returns the kind tag.
- */
-export function CollectionKindTag({
-  kind,
-}: {
-  kind: CollectionKind;
-}): React.JSX.Element {
-  const t = useTranslation();
-  const key =
-    kind === 'image' ? 'kindImage' : kind === 'video' ? 'kindVideo' : 'kindAudio';
-  return (
-    <Badge className={NEUTRAL_TINT}>{t(`studio.container.badge.${key}`)}</Badge>
   );
 }
 

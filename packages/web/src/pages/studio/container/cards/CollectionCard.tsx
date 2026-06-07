@@ -11,11 +11,7 @@ import {
   effectiveItemRole,
 } from '@web/pages/studio/container/access';
 import type { ContainerCollection } from '@web/pages/studio/container/container-types';
-import {
-  CollectionKindTag,
-  RoleBadge,
-  VisibilityBadge,
-} from '@web/pages/studio/shared/badges';
+import { RoleBadge, VisibilityBadge } from '@web/pages/studio/shared/badges';
 import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface CollectionCardProps {
@@ -45,12 +41,12 @@ export function CollectionCard({
   const t = useTranslation();
   const canManage = canManageItem(studioRole, collection.isOwner);
   return (
-    <div className='group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-neutral-300'>
+    <div className='group relative overflow-hidden rounded-lg border border-border bg-card transition-[box-shadow,border-color] hover:border-neutral-300 hover:shadow-md'>
       <Link
         to={`/collection/${collection.slug}-${collection.id}`}
         className='flex flex-col'
       >
-        <div className='grid aspect-[16/10] grid-cols-2 grid-rows-2 gap-0.5 bg-border'>
+        <div className='relative grid aspect-[16/9] grid-cols-2 grid-rows-2 gap-0.5 bg-border'>
           {PREVIEW_CELLS.map((cell) => {
             const thumb = collection.previewThumbnails[cell];
             return (
@@ -65,20 +61,27 @@ export function CollectionCard({
               </div>
             );
           })}
-        </div>
-        <div className='p-3'>
-          <p className='truncate text-sm font-semibold text-foreground'>
-            {collection.name}
-          </p>
-          <p className='mt-0.5 text-xs text-muted-foreground'>
-            {t('studio.container.card.assetCount', {
-              count: collection.assetCount,
-            })}
-          </p>
-          <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-            <CollectionKindTag kind={collection.kind} />
+          <span className='absolute left-2 top-2 z-[1]'>
             <VisibilityBadge visibility={collection.visibility} />
-            <RoleBadge itemRole={effectiveItemRole(collection.myRole)} />
+          </span>
+        </div>
+        <div className='p-2.5'>
+          {/* Title row (mock定稿): name + asset count on one line. */}
+          <div className='flex items-center gap-2'>
+            <p className='min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground'>
+              {collection.name}
+            </p>
+            <span className='whitespace-nowrap text-xs text-muted-foreground'>
+              {t('studio.container.card.assetCount', {
+                count: collection.assetCount,
+              })}
+            </span>
+          </div>
+          <div className='mt-2 flex items-center gap-2'>
+            {/* Time slot留位 — see ProjectCard; role badge stays right. */}
+            <span className='ml-auto inline-flex'>
+              <RoleBadge itemRole={effectiveItemRole(collection.myRole)} />
+            </span>
           </div>
         </div>
       </Link>
@@ -86,9 +89,9 @@ export function CollectionCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-chrome bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100'
+          className='absolute right-2 top-2 z-10 flex h-[22px] w-[22px] items-center justify-center rounded-content-sm bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
         >
-          <MoreHorizontal className='h-4 w-4' />
+          <MoreHorizontal className='h-3.5 w-3.5' />
         </button>
       ) : null}
     </div>

@@ -90,7 +90,7 @@ const MOODBOARD: ContainerCollection = {
 };
 
 describe('CollectionCard (spec §3.4)', () => {
-  it('renders name, asset count, kind tag and links to /collection/{slug}-{uuid}', () => {
+  it('renders name + asset count (no kind tag, per定稿) and links to /collection/{slug}-{uuid}', () => {
     render(
       <MemoryRouter>
         <CollectionCard collection={MOODBOARD} studioRole='member' />
@@ -98,7 +98,10 @@ describe('CollectionCard (spec §3.4)', () => {
     );
     expect(screen.getByText('Moodboard')).toBeInTheDocument();
     expect(screen.getByText(/24 assets/)).toBeInTheDocument();
-    expect(screen.getByText('Image')).toBeInTheDocument();
+    // The media-kind tag was dropped from the card in the locked mock
+    // (2026-06-06 iteration — title row is just name + asset count).
+    expect(screen.queryByText('Image')).toBeNull();
+    expect(screen.getByText('Studio-visible')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
       'href',
       '/collection/moodboard-c1',
