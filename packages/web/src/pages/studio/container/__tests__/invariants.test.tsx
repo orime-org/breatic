@@ -59,10 +59,11 @@ describe('studio container — invariant 5 (StrictMode-safe)', () => {
       </StrictMode>,
     );
     // If a component duplicated DOM under the double render, the tab count
-    // would multiply; exactly 5 tabs (once the shell query resolves) proves
+    // would multiply; exactly 6 tabs (once the shell query resolves) proves
     // render idempotence. The top bar moved to the layout route, so the
-    // standalone container no longer renders a banner.
-    expect(await screen.findAllByRole('tab')).toHaveLength(5);
+    // standalone container no longer renders a banner. 6 tabs = team studio
+    // with Works added at the 3rd position (spec §6.1).
+    expect(await screen.findAllByRole('tab')).toHaveLength(6);
   });
 });
 

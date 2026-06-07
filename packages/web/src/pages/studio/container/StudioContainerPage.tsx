@@ -14,6 +14,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { getStubStudioView } from '@web/pages/studio/container/container-stub';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import type { NewItemValues } from '@web/pages/studio/container/dialogs/NewItemDialog';
+import { NonMemberView } from '@web/pages/studio/container/NonMemberView';
 import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
@@ -22,6 +23,7 @@ import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
+import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
 
 /**
  * Map a backend `ProjectSummary` (the studio-projects API contract) onto the
@@ -44,18 +46,21 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
 }
 
 /**
- * Studio container page (`/studio/{slug}`, spec §2.2) — the per-studio
- * workspace: the app top bar (switcher showing the current studio) over the
- * studio header and a 5-tab body (projects / collections / members / credits /
- * settings; 4 for personal studios).
+ * Studio container page (`/studio/{slug}`, spec §6) — the per-studio
+ * workspace. The rail + top bar live in the layout route; this page renders
+ * the studio header + center area, forking on the viewer's role:
+ * - **member** (`myStudioRole !== null`): a 6-tab body (projects / collections
+ *   / works / members / credits / settings; 5 for personal studios, which drop
+ *   the team-only Members tab). Works sits at the 3rd position (spec §6.1).
+ * - **non-member** (`myStudioRole === null`, decision A: 200 + null): the
+ *   header + `NonMemberView` (a "Works" empty state), with NO tabs — no studio
+ *   data is rendered, so private content cannot leak (spec §6.3).
  *
- * Slice 1 wires the **shell** to real APIs: the studio header
- * (`GET /studio/:slug`, with the viewer's role — `null` = guest, decision A)
- * and the switcher list (`GET /studios`). The tab **contents** stay on stub
- * until their own slices (projects=2 / members=3 / credits=4 / collections=5)
- * build their backends. A missing slug renders the error state (the service
- * returns 404); React Query dedupes the queries so StrictMode's double mount
- * fetches once.
+ * The studio header comes from the real API (`GET /studio/:slug`, with the
+ * viewer's role); projects come from `GET /studio/:slug/projects` (slice 2).
+ * The other tab **contents** stay on stub until their own slices build their
+ * backends. A missing slug renders the error state (the service returns 404);
+ * React Query dedupes the queries so StrictMode's double mount fetches once.
  * @returns the studio container page.
  */
 export default function StudioContainerPage(): React.JSX.Element {
@@ -130,6 +135,15 @@ export default function StudioContainerPage(): React.JSX.Element {
         >
           {t('studio.container.shell.loadError')}
         </div>
+      ) : view.studio.myStudioRole === null ? (
+        // Non-member (decision A: public façade, 200 + null role) — header +
+        // works empty state, NO tabs (spec §6.3). No studio data is rendered.
+        <div className='mx-auto flex w-full min-h-0 max-w-[1320px] flex-1 flex-col'>
+          <StudioHeader studio={view.studio} />
+          <div className='min-h-0 flex-1 overflow-auto'>
+            <NonMemberView />
+          </div>
+        </div>
       ) : (
         <Tabs
           value={tab}
@@ -158,6 +172,9 @@ export default function StudioContainerPage(): React.JSX.Element {
                 collections={view.collections}
                 studioRole={view.studio.myStudioRole}
               />
+            </TabsContent>
+            <TabsContent value='works'>
+              <WorksTab />
             </TabsContent>
             {view.studio.type === 'team' ? (
               <TabsContent value='members'>

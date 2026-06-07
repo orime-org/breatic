@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "專案",
         "collections": "資產集",
+        "works": "作品",
         "members": "成員",
         "credits": "點數",
         "settings": "設定"
+      },
+      "works": {
+        "empty": "還沒有作品",
+        "emptyHint": "專案發布後會出現在這裡。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "此 Studio 尚無發布作品"
       },
       "header": {
         "personalTag": "個人",

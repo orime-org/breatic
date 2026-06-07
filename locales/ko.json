@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "프로젝트",
         "collections": "컬렉션",
+        "works": "작품",
         "members": "멤버",
         "credits": "크레딧",
         "settings": "설정"
+      },
+      "works": {
+        "empty": "아직 작품이 없습니다",
+        "emptyHint": "프로젝트를 게시하면 여기에 표시됩니다."
+      },
+      "nonMember": {
+        "worksTitle": "작품",
+        "empty": "이 Studio에 게시된 작품이 없습니다."
       },
       "header": {
         "personalTag": "개인",

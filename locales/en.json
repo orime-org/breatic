@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "Projects",
         "collections": "Collections",
+        "works": "Works",
         "members": "Members",
         "credits": "Credits",
         "settings": "Settings"
+      },
+      "works": {
+        "empty": "No works yet",
+        "emptyHint": "Works appear here once a project is published."
+      },
+      "nonMember": {
+        "worksTitle": "Works",
+        "empty": "This studio has no published works."
       },
       "header": {
         "personalTag": "Personal",

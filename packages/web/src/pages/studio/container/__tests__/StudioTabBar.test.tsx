@@ -21,25 +21,34 @@ function setup(
 }
 
 describe('StudioTabBar', () => {
-  it('renders all 5 tabs for a team studio, in spec order', () => {
+  it('renders all 6 tabs for a team studio, in spec order', () => {
     setup('team');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(5);
+    expect(tabs).toHaveLength(6);
     // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
+    // Works sits at the 3rd position (spec §6.1), not the end.
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Projects',
       'Collections',
+      'Works',
       'Members',
       'Credits',
       'Settings',
     ]);
   });
 
-  it('drops the Members tab for a personal studio (4 tabs)', () => {
+  it('drops the Members tab for a personal studio (5 tabs, Works kept)', () => {
     setup('personal');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Projects',
+      'Collections',
+      'Works',
+      'Credits',
+      'Settings',
+    ]);
   });
 
   it('marks the active tab with aria-selected', () => {

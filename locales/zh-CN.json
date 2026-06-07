@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "项目",
         "collections": "资产集",
+        "works": "作品",
         "members": "成员",
         "credits": "积分",
         "settings": "设置"
+      },
+      "works": {
+        "empty": "还没有作品",
+        "emptyHint": "项目发布后会出现在这里。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "该 Studio 暂无作品发布"
       },
       "header": {
         "personalTag": "个人",

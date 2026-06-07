@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "プロジェクト",
         "collections": "コレクション",
+        "works": "作品",
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定"
+      },
+      "works": {
+        "empty": "まだ作品がありません",
+        "emptyHint": "プロジェクトを公開するとここに表示されます。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "この Studio には公開された作品がありません。"
       },
       "header": {
         "personalTag": "個人",
