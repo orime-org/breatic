@@ -249,7 +249,7 @@ lib/        工具(cn / format / env / analytics)
 - `/studio/:slug` — studio 容器(StudioContainerPage,5 tab:项目 / 资产集 / 成员 / 积分 / 设置;个人 studio 4 tab,无成员)。项目 tab 走 `GET /studio/:slug/projects`(开放基线可见性过滤,slice 2)
 - `/project/:projectId` — 项目页(Agent 列 + Space outlet;Space 是 Project 内的 type / 模板,**不是**路由段)
 - `/project/:projectId/access` — 无权限落地页(NoAccessPage)
-- `/choose-handle` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门)
+- `/choose-slug` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门;显示文案仍叫「网址标识 / Handle」,只 URL 路径改名)
 - `/login`、`/register`、`/forgot-password`、`/reset-password`、`/verify-email`、`/invite/:token` — auth + 邀请流程
 
 ### Source layout

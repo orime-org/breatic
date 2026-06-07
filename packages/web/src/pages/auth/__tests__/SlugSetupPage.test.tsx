@@ -33,9 +33,9 @@ vi.mock('@web/data/api/auth', async () => {
  */
 function setup(strict = false) {
   const tree = (
-    <MemoryRouter initialEntries={['/choose-handle']}>
+    <MemoryRouter initialEntries={['/choose-slug']}>
       <Routes>
-        <Route path='/choose-handle' element={<SlugSetupPage />} />
+        <Route path='/choose-slug' element={<SlugSetupPage />} />
         <Route path='/studio' element={<div data-testid='studio-page' />} />
       </Routes>
     </MemoryRouter>

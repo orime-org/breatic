@@ -21,7 +21,7 @@ interface ProtectedRouteProps {
 }
 
 /** Route the personal-studio gate redirects unfinished accounts to (pick a handle). */
-const CHOOSE_HANDLE_PATH = '/choose-handle';
+const CHOOSE_SLUG_PATH = '/choose-slug';
 
 /**
  * ProtectedRoute — gates a route on `useCurrentUserStore.user` being
@@ -77,7 +77,7 @@ export default function ProtectedRoute({
   }
 
   if (requirePersonalStudio && user.personalStudio === null) {
-    return <Navigate to={CHOOSE_HANDLE_PATH} replace />;
+    return <Navigate to={CHOOSE_SLUG_PATH} replace />;
   }
 
   return <>{children}</>;
