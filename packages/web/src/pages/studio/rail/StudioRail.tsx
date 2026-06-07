@@ -22,8 +22,9 @@ interface StudioRailProps {
 /**
  * The persistent studio rail (spec §4) — the always-on left navigation that
  * replaces the top-bar switcher popover. Five segments: create actions (①②),
- * Recent (③), and the viewer's studios split by CURRENT role into 我的 (④ =
- * `admin`) and 我加入的 (⑤ = `creator`/`member`) via `splitStudios` (spec §0.2,
+ * Recent (③), and the viewer's studios split by CURRENT role into "My
+ * studios" (④ = `admin`) and "Joined studios" (⑤ = `creator`/`member`) via
+ * `splitStudios` (spec §0.2,
  * transfer-safe). The rail lists ONLY the viewer's own studios (the server's
  * `GET /studios` filters to active memberships — a stranger's studio never
  * appears here, invariant #1).

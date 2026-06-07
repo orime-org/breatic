@@ -94,8 +94,9 @@ export interface StudioSummary {
    * The viewing user's CURRENT role in this studio (`studio_members.role`),
    * or `null` when they are not a member (a guest viewing the front door).
    * Transfer-safe — reflects the current admin, NOT the immutable
-   * `createdByUserId`. Drives the rail's 我的 (`admin`) vs 我加入的
-   * (`creator`/`member`) split, and the create gate (`admin`/`creator`). For
+   * `createdByUserId`. Drives the rail's "My studios" (`admin`) vs "Joined
+   * studios" (`creator`/`member`) split, and the create gate
+   * (`admin`/`creator`). For
    * `GET /studios` (the viewer's own memberships) it is always non-null.
    */
   myStudioRole: StudioRole | null;

@@ -9,7 +9,7 @@ import { useRailCollapse } from '@web/pages/studio/rail/use-rail-collapse';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 interface RailStudioGroupProps {
-  /** Section label (resolved i18n) — e.g. 我的 studio / 我加入的 studio. */
+  /** Section label (resolved i18n) — e.g. "My studios" / "Joined studios". */
   title: string;
   /** Studios in this group (already split by role via `splitStudios`). */
   studios: readonly StudioSummary[];

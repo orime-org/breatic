@@ -59,7 +59,8 @@ const baseRoutes: RouteObject[] = [
     // `StudioLayout` and persist across `/studio` ↔ `/studio/{slug}`; the child
     // renders in the layout's <Outlet/>, so switching studio swaps only the
     // center content and the rail keeps its mount / selection / collapse state
-    // (invariant #3 —切 studio 不丢状态). Wrapped in ProtectedRoute.
+    // (invariant #3 — switching studio keeps the rail state). Wrapped in
+    // ProtectedRoute.
     path: '/studio',
     element: (
       <ProtectedRoute>
