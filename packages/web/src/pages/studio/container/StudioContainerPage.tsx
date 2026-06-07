@@ -3,17 +3,19 @@
 
 import * as React from 'react';
 import { useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 
 import type { ProjectSummary } from '@breatic/shared';
 import { Tabs, TabsContent } from '@web/components/ui/tabs';
-import { projectsApi } from '@web/data/api/projects';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { getStubStudioView } from '@web/pages/studio/container/container-stub';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
-import type { NewItemValues } from '@web/pages/studio/container/dialogs/NewItemDialog';
+import {
+  creatableStudios,
+  defaultCreateStudioId,
+} from '@web/pages/studio/container/dialogs/studio-create';
+import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { NonMemberView } from '@web/pages/studio/container/NonMemberView';
 import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
@@ -66,7 +68,6 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
 export default function StudioContainerPage(): React.JSX.Element {
   const { slug = '' } = useParams();
   const t = useTranslation();
-  const queryClient = useQueryClient();
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
     queryFn: () => studiosApi.get(slug),
@@ -76,39 +77,15 @@ export default function StudioContainerPage(): React.JSX.Element {
     queryFn: () => studiosApi.listProjects(slug),
     enabled: slug !== '',
   });
-  const createProject = useMutation({
-    mutationFn: (values: NewItemValues) => {
-      // `create` always targets the studio whose container this is. The
-      // GitHub-owner-style studio selector (picking a *different* studio) is
-      // a later slice (§7); until then the studioId is the current studio.
-      const studioId = studioQuery.data?.id;
-      if (studioId === undefined) {
-        return Promise.reject(new Error('studio not loaded'));
-      }
-      return projectsApi.create({
-        studioId,
-        name: values.name,
-        slug: values.slug,
-        visibility: values.visibility,
-        spaceType: values.spaceType ?? 'canvas',
-        description: values.description || undefined,
-      });
-    },
-    onSuccess: () => {
-      // The new project lands in the caller's studio; refetch so its card
-      // appears. The owner row is written with the project, so opening it
-      // never needs the open-baseline materialize path.
-      void queryClient.invalidateQueries({
-        queryKey: ['studio', slug, 'projects'],
-      });
-    },
-    onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : '';
-      toast.error(t('studio.container.projects.createError'), {
-        description: message || undefined,
-      });
-    },
+  // The viewer's studios feed the create-project selector (spec §7.1). This is
+  // the same query the layout route runs (same key) — React Query dedupes it,
+  // so the container adds no extra request.
+  const studiosQuery = useQuery({
+    queryKey: ['studios', 'user'],
+    queryFn: () => studiosApi.listUserStudios(),
   });
+  const studios = studiosQuery.data ?? [];
+  const createProject = useCreateProject(studios);
   const [tab, setTab] = React.useState<StudioTabKey>('projects');
 
   const studio = studioQuery.data;
@@ -118,6 +95,10 @@ export default function StudioContainerPage(): React.JSX.Element {
     toContainerProject,
   );
   const view = studio ? { ...getStubStudioView(slug), studio } : null;
+  // The selector lists the studios the viewer may create in; the default is the
+  // current studio when the viewer is its admin, else the personal studio (§7.1).
+  const creatable = creatableStudios(studios);
+  const defaultStudioId = defaultCreateStudioId(studios, studio);
 
   return (
     <div className='flex h-full flex-col'>
@@ -164,7 +145,9 @@ export default function StudioContainerPage(): React.JSX.Element {
               <ProjectsTab
                 projects={projects}
                 studioRole={view.studio.myStudioRole}
-                onCreateProject={(values) => createProject.mutate(values)}
+                onCreateProject={createProject}
+                creatableStudios={creatable}
+                defaultStudioId={defaultStudioId}
               />
             </TabsContent>
             <TabsContent value='collections'>

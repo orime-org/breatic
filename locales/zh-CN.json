@@ -1476,6 +1476,7 @@
         "newProjectTitle": "新建项目",
         "newCollectionTitle": "新建资产集",
         "newStudioTitle": "新建 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "名称",
         "namePlaceholder": "我的项目",
         "slugLabel": "网址标识",

@@ -1476,6 +1476,7 @@
         "newProjectTitle": "New project",
         "newCollectionTitle": "New collection",
         "newStudioTitle": "New studio",
+        "studioLabel": "Studio",
         "nameLabel": "Name",
         "namePlaceholder": "My project",
         "slugLabel": "Handle",

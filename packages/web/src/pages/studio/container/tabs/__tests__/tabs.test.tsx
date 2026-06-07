@@ -64,17 +64,32 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     expect(screen.getByText('Hidden Project')).toBeInTheDocument();
   });
 
-  it('offers the create card to a Member but never to a guest (null role)', () => {
-    const member = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='member' />,
+  it('offers create to an admin/creator, never to a member or guest (spec §7.1)', () => {
+    const admin = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
     ).toBeInTheDocument();
+    admin.unmount();
+
+    const creator = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='creator' />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'New project' }),
+    ).toBeInTheDocument();
+    creator.unmount();
+
+    // A plain member cannot create — studio credits are shared, so creating is
+    // limited to admin/creator (spec §0.2 / §8.2).
+    const member = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='member' />,
+    );
+    expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
     member.unmount();
 
-    // A guest viewing the public shell sees the studio-visible project but no
-    // create entry (create always targets the caller's own studio).
+    // A guest viewing the public shell never sees the create entry.
     withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });

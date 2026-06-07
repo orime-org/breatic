@@ -1476,6 +1476,7 @@
         "newProjectTitle": "プロジェクトを新規作成",
         "newCollectionTitle": "コレクションを新規作成",
         "newStudioTitle": "Studio を新規作成",
+        "studioLabel": "Studio",
         "nameLabel": "名前",
         "namePlaceholder": "マイプロジェクト",
         "slugLabel": "ハンドル",

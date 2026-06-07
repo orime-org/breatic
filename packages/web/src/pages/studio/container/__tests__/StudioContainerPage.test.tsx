@@ -66,7 +66,9 @@ const STUDIOS: readonly StudioSummary[] = [
     name: 'Acme Studio',
     type: 'team',
     memberCount: 4,
-    myStudioRole: 'member',
+    // Admin of acme (consistent with the studio detail above) so the create
+    // selector defaults to the current studio (spec §7.1) → studioId = s-acme.
+    myStudioRole: 'admin',
   },
 ];
 const PROJECTS: readonly ProjectSummary[] = [

@@ -1476,6 +1476,7 @@
         "newProjectTitle": "新增專案",
         "newCollectionTitle": "新增資產集",
         "newStudioTitle": "新增 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "名稱",
         "namePlaceholder": "我的專案",
         "slugLabel": "網址標識",

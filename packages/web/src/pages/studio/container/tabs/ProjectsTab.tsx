@@ -12,7 +12,11 @@ import {
   NewItemDialog,
   type NewItemValues,
 } from '@web/pages/studio/container/dialogs/NewItemDialog';
-import type { StudioRole } from '@web/pages/studio/shared/studio-types';
+import { canCreateInStudio } from '@web/pages/studio/container/access';
+import type {
+  StudioRole,
+  StudioSummary,
+} from '@web/pages/studio/shared/studio-types';
 
 interface ProjectsTabProps {
   projects: readonly ContainerProject[];
@@ -20,6 +24,10 @@ interface ProjectsTabProps {
   studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;
+  /** The studios the viewer may create in — rendered as the dialog's selector (spec §7.1). */
+  creatableStudios?: readonly StudioSummary[];
+  /** The studio pre-selected when the create dialog opens. */
+  defaultStudioId?: string;
 }
 
 // Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
@@ -37,19 +45,24 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
  * @param props.projects the studio's projects.
  * @param props.studioRole the viewer's studio role.
  * @param props.onCreateProject called when a project is created via the dialog.
+ * @param props.creatableStudios the studios the viewer may create in (selector).
+ * @param props.defaultStudioId the studio pre-selected when the dialog opens.
  * @returns the Projects tab content.
  */
 export function ProjectsTab({
   projects,
   studioRole,
   onCreateProject,
+  creatableStudios,
+  defaultStudioId,
 }: ProjectsTabProps): React.JSX.Element {
   const t = useTranslation();
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  // Only studio members create projects. A guest (`null` studio role) viewing
-  // the public shell never sees the create entry — `create` always targets the
-  // caller's own studio, so offering it on someone else's studio would misfire.
-  const canCreate = studioRole !== null;
+  // Only an admin/creator of THIS studio sees the create entry (spec §7.1):
+  // studio credits are shared, so a plain member must not be able to spend them
+  // by creating. A guest (`null`) never sees it either. The dialog's selector
+  // can still target a different studio the viewer may create in.
+  const canCreate = canCreateInStudio(studioRole);
   const visible = projects.filter((project) =>
     canRenderItemCard(studioRole, project),
   );
@@ -82,6 +95,8 @@ export function ProjectsTab({
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onCreate={onCreateProject}
+          studios={creatableStudios}
+          defaultStudioId={defaultStudioId}
         />
       ) : null}
     </>

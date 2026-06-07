@@ -18,6 +18,10 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import {
+  StudioSelectField,
+  type StudioOption,
+} from '@web/pages/studio/container/dialogs/StudioSelectField';
+import {
   ITEM_SLUG_BOUNDS,
   validateItemSlug,
   type SlugError,
@@ -40,6 +44,12 @@ export interface NewItemValues {
    * picker (B.2).
    */
   spaceType?: SpaceType;
+  /**
+   * The studio the project is created in (project only, chosen via the
+   * selector). Omitted for collections and when no selector is rendered (no
+   * `studios` passed — e.g. the standalone a11y test).
+   */
+  studioId?: string;
 }
 
 interface NewItemDialogProps {
@@ -48,6 +58,14 @@ interface NewItemDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Called with the entered values on a valid submit (stub in slice 3). */
   onCreate?: (values: NewItemValues) => void;
+  /**
+   * The studios the viewer may create in (project kind only; spec §7.1). When
+   * given and non-empty, the dialog renders the studio selector. Omitted for
+   * collections and in tests that only check the form shell.
+   */
+  studios?: readonly StudioOption[];
+  /** The studio pre-selected when the dialog opens (`defaultCreateStudioId`). */
+  defaultStudioId?: string;
 }
 
 /**
@@ -61,6 +79,8 @@ interface NewItemDialogProps {
  * @param props.open whether the dialog is open.
  * @param props.onOpenChange called when the open state should change.
  * @param props.onCreate called with the entered values on a valid submit.
+ * @param props.studios the studios the viewer may create in (project kind).
+ * @param props.defaultStudioId the studio pre-selected when the dialog opens.
  * @returns the create dialog.
  */
 export function NewItemDialog({
@@ -68,6 +88,8 @@ export function NewItemDialog({
   open,
   onOpenChange,
   onCreate,
+  studios,
+  defaultStudioId,
 }: NewItemDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [name, setName] = React.useState('');
@@ -75,8 +97,20 @@ export function NewItemDialog({
   const [description, setDescription] = React.useState('');
   const [visibility, setVisibility] = React.useState<ItemVisibility>('studio');
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
+  const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  const showStudioSelect =
+    kind === 'project' && studios !== undefined && studios.length > 0;
+
+  // Pre-select the default studio each time the dialog opens (the studios list
+  // and its default load asynchronously in the parent, so reading the prop once
+  // at mount is not enough).
+  React.useEffect(() => {
+    if (open) {
+      setStudioId(defaultStudioId ?? '');
+    }
+  }, [open, defaultStudioId]);
 
   /**
    * Clear all form fields back to their initial empty state.
@@ -87,6 +121,7 @@ export function NewItemDialog({
     setDescription('');
     setVisibility('studio');
     setSpaceType('canvas');
+    setStudioId(defaultStudioId ?? '');
     setSlugError(null);
     setSubmitted(false);
   };
@@ -130,9 +165,11 @@ export function NewItemDialog({
       slug,
       description: description.trim(),
       visibility,
-      // A space type only applies to a project's first space; collections
-      // have no spaces, so it is omitted for them.
-      ...(kind === 'project' ? { spaceType } : {}),
+      // A space type + target studio only apply to a project; collections have
+      // neither spaces nor a studio selector, so both are omitted for them.
+      ...(kind === 'project'
+        ? { spaceType, ...(studioId !== '' ? { studioId } : {}) }
+        : {}),
     });
     handleOpenChange(false);
   };
@@ -160,6 +197,15 @@ export function NewItemDialog({
         </DialogHeader>
         <form onSubmit={submit}>
           <DialogBody className='flex flex-col gap-4'>
+            {showStudioSelect ? (
+              <StudioSelectField
+                studios={studios}
+                value={studioId}
+                onChange={setStudioId}
+                label={t('studio.container.dialog.studioLabel')}
+                id={`new-${kind}-studio`}
+              />
+            ) : null}
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={nameId}>
                 {t('studio.container.dialog.nameLabel')}

@@ -7,6 +7,11 @@ import { useQuery } from '@tanstack/react-query';
 
 import { studiosApi } from '@web/data/api/studios';
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
+import {
+  creatableStudios,
+  defaultCreateStudioId,
+} from '@web/pages/studio/container/dialogs/studio-create';
+import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
@@ -21,8 +26,10 @@ import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
  * The rail's studio list comes from `GET /studios` (the viewer's active
  * memberships; React Query dedupes against the container's identical query).
  * The active slug comes from the matched child route param (`null` on Recent).
- * The create-project entry opens the dialog; its studio selector + the real
- * create wiring land in a later slice (§7).
+ * The create-project entry opens the dialog with its studio selector (spec §7);
+ * as a global entry it defaults to the personal studio, and on submit the
+ * shared `useCreateProject` flow creates the project and navigates to the
+ * target studio so the new card appears.
  * @returns the studio layout shell (rail + top bar over the routed content).
  */
 export default function StudioLayout(): React.JSX.Element {
@@ -33,6 +40,11 @@ export default function StudioLayout(): React.JSX.Element {
   });
   const studios = studiosQuery.data ?? [];
   const [createOpen, setCreateOpen] = React.useState(false);
+  const createProject = useCreateProject(studios);
+  // The rail's create-project is a GLOBAL entry (not inside a studio), so the
+  // selector defaults to the personal studio (the viewer is always its admin).
+  const creatable = creatableStudios(studios);
+  const defaultStudioId = defaultCreateStudioId(studios);
 
   return (
     <div className='flex h-screen flex-col bg-background text-foreground'>
@@ -51,6 +63,9 @@ export default function StudioLayout(): React.JSX.Element {
         kind='project'
         open={createOpen}
         onOpenChange={setCreateOpen}
+        onCreate={createProject}
+        studios={creatable}
+        defaultStudioId={defaultStudioId}
       />
     </div>
   );

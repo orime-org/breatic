@@ -1476,6 +1476,7 @@
         "newProjectTitle": "새 프로젝트",
         "newCollectionTitle": "새 컬렉션",
         "newStudioTitle": "새 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "이름",
         "namePlaceholder": "내 프로젝트",
         "slugLabel": "핸들",
