@@ -67,7 +67,7 @@ export async function assertAccess(
  * Create a new project owned by the caller.
  *
  * Atomically writes, in a single transaction:
- *   1. `projects` row (in caller's personal studio)
+ *   1. `projects` row (in studio `studioId`)
  *   2. `project_members` row (`role='owner'`)
  *
  * The default Canvas Space is NOT seeded here any more: the Yjs
@@ -80,6 +80,8 @@ export async function assertAccess(
  * first connect. The "project exists ⇒ ≥1 Space" invariant the frontend
  * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
+ * @param studioId - Studio the project is created in (the gate checks the
+ *   caller's role on it — only an `admin` or `creator` may create)
  * @param name - Project name
  * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
  *   app-side, NOT unique)
@@ -89,9 +91,9 @@ export async function assertAccess(
  *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
  * @returns The newly created project entity
- * @throws {NotFoundError} if the user has no personal studio yet (they
- *   have not completed the slug-setup onboarding step — a user without a
- *   studio cannot own a project)
+ * @throws {ForbiddenError} if the caller is not an `admin` or `creator`
+ *   of `studioId` (studio credits are shared, so a plain member may not
+ *   spend them by creating a project)
  */
 export async function create(
   userId: string,
