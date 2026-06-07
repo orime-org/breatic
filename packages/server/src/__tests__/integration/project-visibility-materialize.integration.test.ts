@@ -90,7 +90,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertStudioMember(
   studioId: string,
   userId: string,
-  role: "admin" | "member",
+  role: "admin" | "creator" | "member",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -149,6 +149,83 @@ async function ownerCount(projectId: string): Promise<number> {
   `;
   return rows[0]!.n;
 }
+
+/** Read the persisted initial_space_type for a project (B.2). */
+async function storedSpaceType(projectId: string): Promise<string> {
+  const rows = await sql<{ t: string }[]>`
+    SELECT initial_space_type AS t FROM projects WHERE id = ${projectId}
+  `;
+  return rows[0]!.t;
+}
+
+describe("projectService.create — studio admin/creator gate (critical path 鉴权 + §0.2)", () => {
+  it("admin creates in the target studio: project lands there + one owner row for the caller", async () => {
+    const admin = await insertUser();
+    const studioId = await insertStudio(admin);
+    await insertStudioMember(studioId, admin, "admin");
+
+    const project = await projectService.create(
+      admin,
+      studioId,
+      "Admin Project",
+      "admin-gate-project",
+      "studio",
+      "canvas",
+    );
+
+    expect(project.studioId).toBe(studioId);
+    expect(project.createdByUserId).toBe(admin);
+    expect(await ownerCount(project.id)).toBe(1);
+    expect(await activeMemberCount(project.id, admin)).toBe(1);
+    expect(await storedSpaceType(project.id)).toBe("canvas");
+  });
+
+  it("a creator may create (admin + creator can spend shared studio credits)", async () => {
+    const admin = await insertUser();
+    const creator = await insertUser();
+    const studioId = await insertStudio(admin);
+    await insertStudioMember(studioId, admin, "admin");
+    await insertStudioMember(studioId, creator, "creator");
+
+    const project = await projectService.create(
+      creator,
+      studioId,
+      "Creator Project",
+      "creator-gate-project",
+      "studio",
+      "document",
+    );
+
+    expect(project.studioId).toBe(studioId);
+    expect(project.createdByUserId).toBe(creator);
+    // A non-default type persists end-to-end (B.2 plumbing — even though
+    // document is disabled in the picker, the column stores any SpaceType).
+    expect(await storedSpaceType(project.id)).toBe("document");
+  });
+
+  it("a plain member is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {
+    const admin = await insertUser();
+    const member = await insertUser();
+    const studioId = await insertStudio(admin);
+    await insertStudioMember(studioId, admin, "admin");
+    await insertStudioMember(studioId, member, "member");
+
+    await expect(
+      projectService.create(member, studioId, "Member Project", "member-gate-project", "studio", "canvas"),
+    ).rejects.toMatchObject({ name: "ForbiddenError" });
+  });
+
+  it("a non-member (no studio_members row) is rejected (ForbiddenError)", async () => {
+    const admin = await insertUser();
+    const stranger = await insertUser();
+    const studioId = await insertStudio(admin);
+    await insertStudioMember(studioId, admin, "admin");
+
+    await expect(
+      projectService.create(stranger, studioId, "Stranger Project", "stranger-gate-project", "studio", "canvas"),
+    ).rejects.toMatchObject({ name: "ForbiddenError" });
+  });
+});
 
 describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
   it("member sees studio-visible + own-role private; NOT others' private; admin sees all", async () => {

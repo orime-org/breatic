@@ -36,6 +36,7 @@ import type {
   ProjectRole,
   ProjectSummary,
   ProjectVisibility,
+  SpaceType,
 } from "@breatic/shared";
 
 /**
@@ -184,6 +185,8 @@ type Tx = PgTransaction<any, any, any>;
  *   app-side, NOT unique)
  * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
  *   members only)
+ * @param spaceType - Initial Space type stored on the row; collab seeds
+ *   the first Space's content doc of this type on first load
  * @param description - Optional description
  * @returns The freshly created project entity
  */
@@ -194,6 +197,7 @@ export async function createProject(
   name: string,
   slug: string,
   visibility: ProjectVisibility,
+  spaceType: SpaceType,
   description?: string,
 ): Promise<ProjectEntity> {
   const inserted = await tx
@@ -204,6 +208,7 @@ export async function createProject(
       name,
       slug,
       visibility,
+      initialSpaceType: spaceType,
       description,
     })
     .returning();

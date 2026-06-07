@@ -29,7 +29,7 @@ function setup() {
       <Routes>
         <Route path='/register' element={<RegisterPage />} />
         <Route
-          path='/choose-handle'
+          path='/choose-slug'
           element={<div data-testid='onboarding-page' />}
         />
         <Route path='/studio' element={<div data-testid='studio-page' />} />
@@ -82,7 +82,7 @@ describe('RegisterPage (two-step entry)', () => {
   // INVARIANT (design §5.1): after acknowledging the recovery code, the
   // user is sent to step two (the onboarding slug page), NOT straight to
   // /studio — a half-finished sign-up must complete onboarding first.
-  it('continue from the recovery dialog navigates to /choose-handle (not /studio)', async () => {
+  it('continue from the recovery dialog navigates to /choose-slug (not /studio)', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce({
       user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0 },
       recoveryCode: 'AAAA-BBBB-CCCC-DDDD',

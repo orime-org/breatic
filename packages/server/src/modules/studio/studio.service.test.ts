@@ -208,8 +208,10 @@ describe("getStudioDetail", () => {
 });
 
 describe("listUserStudios", () => {
-  it("maps the user's studios to summaries with memberCount", async () => {
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([STUDIO]);
+  it("maps the user's studios to summaries with memberCount + myStudioRole", async () => {
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...STUDIO, myStudioRole: "admin" },
+    ]);
     vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
       new Map([["studio-1", 1]]),
     );
@@ -223,12 +225,16 @@ describe("listUserStudios", () => {
         name: "alice-handle",
         type: "personal",
         memberCount: 1,
+        myStudioRole: "admin",
       },
     ]);
   });
 
   it("returns the personal studio first even when the repo lists a team studio earlier", async () => {
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([TEAM_STUDIO, STUDIO]);
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...TEAM_STUDIO, myStudioRole: "member" },
+      { ...STUDIO, myStudioRole: "admin" },
+    ]);
     vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
       new Map([
         ["studio-team", 4],
@@ -239,6 +245,27 @@ describe("listUserStudios", () => {
     const result = await listUserStudios("user-1");
 
     expect(result.map((s) => s.id)).toEqual(["studio-1", "studio-team"]);
+  });
+
+  it("carries each studio's myStudioRole through for the rail ④⑤ split", async () => {
+    // user-1 is admin of their personal STUDIO and only a member of TEAM_STUDIO
+    // — the rail splits 我的 (admin) vs 我加入的 (creator/member) on this role.
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...STUDIO, myStudioRole: "admin" },
+      { ...TEAM_STUDIO, myStudioRole: "member" },
+    ]);
+    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
+      new Map([
+        ["studio-1", 1],
+        ["studio-team", 4],
+      ]),
+    );
+
+    const result = await listUserStudios("user-1");
+    const roleById = new Map(result.map((s) => [s.id, s.myStudioRole]));
+
+    expect(roleById.get("studio-1")).toBe("admin");
+    expect(roleById.get("studio-team")).toBe("member");
   });
 
   it("returns [] (no count query) when the user belongs to no studios", async () => {

@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  canCreateInStudio,
   canManageItem,
   canRenderItemCard,
   effectiveItemRole,
@@ -125,5 +126,17 @@ describe('studio access — guest (null studio role, decision A)', () => {
 
   it('a guest never gets governance controls', () => {
     expect(canManageItem(null, false)).toBe(false);
+  });
+});
+
+describe('studio access — canCreateInStudio (spec §0.2/§8.2 create gate)', () => {
+  const MATRIX: ReadonlyArray<[StudioRole | null, boolean]> = [
+    ['admin', true],
+    ['creator', true],
+    ['member', false],
+    [null, false],
+  ];
+  it.each(MATRIX)('role=%s → canCreate=%s', (role, expected) => {
+    expect(canCreateInStudio(role)).toBe(expected);
   });
 });

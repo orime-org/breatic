@@ -22,6 +22,7 @@ import {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
   type ParsedDocName,
@@ -151,5 +152,31 @@ describe("isProjectScopedDocName", () => {
     expect(isProjectScopedDocName("not-a-project-doc")).toBe(false);
     expect(isProjectScopedDocName("")).toBe(false);
     expect(isProjectScopedDocName(`project-${PID}`)).toBe(false);
+  });
+});
+
+// ── spaceContentDocName (space type → content doc name) ──────────────
+
+describe("spaceContentDocName", () => {
+  it("maps each space type to its per-kind content doc name", () => {
+    expect(spaceContentDocName(PID, SID, "canvas")).toBe(
+      canvasSpaceDocName(PID, SID),
+    );
+    expect(spaceContentDocName(PID, SID, "document")).toBe(
+      documentSpaceDocName(PID, SID),
+    );
+    expect(spaceContentDocName(PID, SID, "timeline")).toBe(
+      timelineSpaceDocName(PID, SID),
+    );
+  });
+
+  it("round-trips through parseDocName with the matching kind + spaceId", () => {
+    for (const kind of ["canvas", "document", "timeline"] as const) {
+      expect(parseDocName(spaceContentDocName(PID, SID, kind))).toEqual({
+        projectId: PID,
+        kind,
+        spaceId: SID,
+      });
+    }
   });
 });

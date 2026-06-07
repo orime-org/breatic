@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "プロジェクト",
         "collections": "コレクション",
+        "works": "作品",
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定"
+      },
+      "works": {
+        "empty": "まだ作品がありません",
+        "emptyHint": "プロジェクトを公開するとここに表示されます。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "この Studio には公開された作品がありません。"
       },
       "header": {
         "personalTag": "個人",
@@ -1467,10 +1476,13 @@
         "newProjectTitle": "プロジェクトを新規作成",
         "newCollectionTitle": "コレクションを新規作成",
         "newStudioTitle": "Studio を新規作成",
+        "studioLabel": "Studio",
         "nameLabel": "名前",
         "namePlaceholder": "マイプロジェクト",
         "slugLabel": "ハンドル",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "プロジェクトのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
+        "slugHelperCollection": "コレクションのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
         "descriptionLabel": "説明(任意)",
         "typeLabel": "種類",
         "typePersonal": "個人",
@@ -1488,6 +1500,17 @@
       "empty": {
         "newCard": "+ 新規"
       }
+    },
+    "rail": {
+      "navLabel": "Studio ナビゲーション",
+      "createProject": "プロジェクトを新規作成",
+      "createCollection": "コレクションを新規作成",
+      "createStudio": "Studio を新規作成",
+      "comingSoon": "近日公開",
+      "recent": "最近",
+      "myStudios": "マイ Studio",
+      "joinedStudios": "参加中の Studio",
+      "joinedEmpty": "まだ Studio に参加していません"
     }
   },
   "chrome": {

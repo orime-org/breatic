@@ -31,7 +31,7 @@ function renderAt(
         />
         <Route path='/login' element={<div data-testid='login-page' />} />
         <Route
-          path='/choose-handle'
+          path='/choose-slug'
           element={<div data-testid='onboarding-page' />}
         />
       </Routes>
@@ -91,7 +91,7 @@ describe('ProtectedRoute', () => {
   // to the onboarding slug page — NOT rendered the protected page. This
   // is the gate that catches a half-finished email registration on any
   // protected URL.
-  it('bootstrapped + user + personalStudio=null bounces to /choose-handle (not the protected page)', () => {
+  it('bootstrapped + user + personalStudio=null bounces to /choose-slug (not the protected page)', () => {
     useCurrentUserStore.setState({
       user: { id: 'u1', name: 'a', email: 'a@b.com', personalStudio: null },
       role: null,

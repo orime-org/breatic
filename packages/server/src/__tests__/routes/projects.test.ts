@@ -47,12 +47,21 @@ describe("Projects routes", () => {
       const res = await app.request("/api/v1/projects", {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ name: "My Project", slug: "my-project" }),
+        body: JSON.stringify({
+          studioId: "11111111-1111-4111-8111-111111111111",
+          name: "My Project",
+          slug: "my-project",
+        }),
       });
 
       expect(res.status).toBe(201);
       const body = await res.json() as { data: { id: string } };
       expect(body.data.id).toBe("proj-1");
+      // The route extracts studioId from the body and passes it to create as
+      // the 2nd arg — the create gate authorizes the caller's role on it.
+      expect(mocks.projectService.create.mock.calls[0]?.[1]).toBe(
+        "11111111-1111-4111-8111-111111111111",
+      );
     });
 
     it("rejects missing name with 400", async () => {

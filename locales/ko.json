@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "프로젝트",
         "collections": "컬렉션",
+        "works": "작품",
         "members": "멤버",
         "credits": "크레딧",
         "settings": "설정"
+      },
+      "works": {
+        "empty": "아직 작품이 없습니다",
+        "emptyHint": "프로젝트를 게시하면 여기에 표시됩니다."
+      },
+      "nonMember": {
+        "worksTitle": "작품",
+        "empty": "이 Studio에 게시된 작품이 없습니다."
       },
       "header": {
         "personalTag": "개인",
@@ -1467,10 +1476,13 @@
         "newProjectTitle": "새 프로젝트",
         "newCollectionTitle": "새 컬렉션",
         "newStudioTitle": "새 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "이름",
         "namePlaceholder": "내 프로젝트",
         "slugLabel": "핸들",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "프로젝트 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
+        "slugHelperCollection": "컬렉션 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
         "descriptionLabel": "설명(선택)",
         "typeLabel": "유형",
         "typePersonal": "개인",
@@ -1488,6 +1500,17 @@
       "empty": {
         "newCard": "+ 새로 만들기"
       }
+    },
+    "rail": {
+      "navLabel": "Studio 탐색",
+      "createProject": "새 프로젝트",
+      "createCollection": "새 컬렉션",
+      "createStudio": "새 Studio",
+      "comingSoon": "곧 출시",
+      "recent": "최근",
+      "myStudios": "내 Studio",
+      "joinedStudios": "참여 중인 Studio",
+      "joinedEmpty": "아직 참여한 Studio가 없습니다"
     }
   },
   "chrome": {

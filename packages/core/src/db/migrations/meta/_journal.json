@@ -190,6 +190,13 @@
       "when": 1780700100000,
       "tag": "0026_projects_slug_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780700200000,
+      "tag": "0027_projects_initial_space_type",
+      "breakpoints": true
     }
   ]
 }

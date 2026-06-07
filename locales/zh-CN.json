@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "项目",
         "collections": "资产集",
+        "works": "作品",
         "members": "成员",
         "credits": "积分",
         "settings": "设置"
+      },
+      "works": {
+        "empty": "还没有作品",
+        "emptyHint": "项目发布后会出现在这里。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "该 Studio 暂无作品发布"
       },
       "header": {
         "personalTag": "个人",
@@ -1467,10 +1476,13 @@
         "newProjectTitle": "新建项目",
         "newCollectionTitle": "新建资产集",
         "newStudioTitle": "新建 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "名称",
         "namePlaceholder": "我的项目",
         "slugLabel": "网址标识",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "项目地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
+        "slugHelperCollection": "资产集地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
         "descriptionLabel": "简介(可选)",
         "typeLabel": "类型",
         "typePersonal": "个人",
@@ -1488,6 +1500,17 @@
       "empty": {
         "newCard": "+ 新建"
       }
+    },
+    "rail": {
+      "navLabel": "Studio 导航",
+      "createProject": "新建项目",
+      "createCollection": "新建资产集",
+      "createStudio": "新建 Studio",
+      "comingSoon": "即将推出",
+      "recent": "最近",
+      "myStudios": "我的 Studio",
+      "joinedStudios": "我加入的 Studio",
+      "joinedEmpty": "还没加入任何 Studio"
     }
   },
   "chrome": {

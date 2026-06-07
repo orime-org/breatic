@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
+import { MoreHorizontal } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
@@ -43,57 +44,71 @@ export function MembersTab({
       ) : null}
       <table className='w-full text-left text-sm'>
         <thead className='text-xs text-muted-foreground'>
-          <tr>
-            <th className='py-1 font-medium'>
+          <tr className='border-b border-border'>
+            <th className='pb-2 font-medium'>
               {t('studio.container.members.colName')}
             </th>
-            <th className='py-1 font-medium'>
-              {t('studio.container.members.colEmail')}
-            </th>
-            <th className='py-1 font-medium'>
-              {t('studio.container.members.colRole')}
-            </th>
-            <th className='py-1 font-medium'>
+            <th className='pb-2 font-medium'>
               {t('studio.container.members.colJoined')}
             </th>
-            {isAdmin ? <th className='py-1' /> : null}
+            <th className='pb-2 font-medium'>
+              {t('studio.container.members.colRole')}
+            </th>
+            {isAdmin ? <th className='pb-2' /> : null}
           </tr>
         </thead>
         <tbody>
-          {members.map((member) => (
-            <tr key={member.id} className='border-t border-border'>
-              <td className='py-2'>
-                <span className='flex items-center gap-2'>
-                  <span
-                    aria-hidden='true'
-                    className='flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground'
-                  >
-                    {member.name.slice(0, 1).toUpperCase()}
+          {members.map((member) => {
+            const admin = member.studioRole === 'admin';
+            return (
+              <tr key={member.id} className='border-t border-border'>
+                {/* Member: avatar + name over email (locked mock .mrow .who). */}
+                <td className='py-2.5'>
+                  <span className='flex items-center gap-3'>
+                    <span
+                      aria-hidden='true'
+                      className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[13px] font-semibold text-muted-foreground'
+                    >
+                      {member.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className='flex min-w-0 flex-col'>
+                      <span className='truncate font-semibold text-foreground'>
+                        {member.name}
+                      </span>
+                      <span className='truncate text-xs text-muted-foreground'>
+                        {member.email}
+                      </span>
+                    </span>
                   </span>
-                  {member.name}
-                </span>
-              </td>
-              <td className='py-2 text-muted-foreground'>{member.email}</td>
-              <td className='py-2'>
-                {member.studioRole === 'admin'
-                  ? t('studio.container.members.roleAdmin')
-                  : t('studio.container.members.roleMember')}
-              </td>
-              <td className='py-2 text-muted-foreground'>
-                {member.joinedAt.slice(0, 10)}
-              </td>
-              {isAdmin ? (
-                <td className='py-2 text-right'>
-                  <button
-                    type='button'
-                    className='text-xs text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-                  >
-                    {t('studio.container.members.remove')}
-                  </button>
                 </td>
-              ) : null}
-            </tr>
-          ))}
+                <td className='py-2.5 font-mono text-xs text-muted-foreground'>
+                  {member.joinedAt.slice(0, 10)}
+                </td>
+                <td className='py-2.5'>
+                  <span
+                    className={`inline-flex h-5 min-w-[64px] items-center justify-center rounded-content-sm border border-border bg-background px-2 text-[11px] font-semibold ${
+                      admin ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {admin
+                      ? t('studio.container.members.roleAdmin')
+                      : t('studio.container.members.roleMember')}
+                  </span>
+                </td>
+                {isAdmin ? (
+                  <td className='py-2.5 text-right'>
+                    <button
+                      type='button'
+                      aria-label={t('studio.container.members.remove')}
+                      className='inline-flex h-7 w-7 items-center justify-center rounded-content-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                    >
+                      <MoreHorizontal className='h-4 w-4' />
+                    </button>
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

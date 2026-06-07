@@ -24,18 +24,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 
-const { softDeleteByNameMock, restoreByNameMock } = vi.hoisted(() => ({
-  softDeleteByNameMock: vi.fn(),
-  restoreByNameMock: vi.fn(),
-}));
+const { softDeleteByNameMock, restoreByNameMock, seedInitialStateMock } =
+  vi.hoisted(() => ({
+    softDeleteByNameMock: vi.fn(),
+    restoreByNameMock: vi.fn(),
+    seedInitialStateMock: vi.fn(),
+  }));
 
 // The yjs-store repo moved to collab; space-rpc imports it locally.
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   softDeleteByName: softDeleteByNameMock,
   restoreByName: restoreByNameMock,
+  seedInitialState: seedInitialStateMock,
 }));
 
 import { handleSpaceRpc } from "../services/space-rpc.js";
+import { spaceContentDocName } from "@breatic/shared";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
@@ -67,6 +71,7 @@ beforeEach(() => {
   };
   softDeleteByNameMock.mockReset();
   restoreByNameMock.mockReset();
+  seedInitialStateMock.mockReset();
 });
 
 describe("handleSpaceRpc — role validation", () => {
@@ -146,6 +151,12 @@ describe("handleSpaceRpc — happy paths", () => {
     expect(res.ok).toBe(true);
     const spaces = fakeMetaDoc.doc.getMap("spaces");
     expect(spaces.has(SID)).toBe(true);
+    // The new Space's content doc is seeded (so it exists by the time the
+    // Space is visible in meta — same invariant lazy-seed upholds).
+    expect(seedInitialStateMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "canvas"),
+      expect.any(Uint8Array),
+    );
     const messages = fakeMetaDoc.doc.getArray("projectMessages");
     expect(messages.length).toBe(1);
     const m = messages.get(0) as Y.Map<unknown>;

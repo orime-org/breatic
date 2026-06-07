@@ -18,14 +18,22 @@ interface SlugFieldProps {
   error: SlugError;
   /** Length bounds, used to fill the length-error message. */
   bounds: { min: number; max: number };
+  /**
+   * Always-on explanatory line shown under the input (muted): what the slug
+   * is for (it appears in the URL, allowed characters). Optional so callers
+   * that don't need it stay unchanged; the error line, when present, renders
+   * below it.
+   */
+  helper?: string;
 }
 
 /**
  * The slug input used by the create dialogs (spec §3.12): a labeled text field
- * that surfaces the active validation error (format / length / reserved /
- * taken) as a destructive helper line wired via `aria-describedby`. The parent
- * owns the value and the error; this component only renders + reports changes.
- * @param props the field id, label, value, change handler, error and bounds.
+ * with an always-on muted helper line explaining the field, plus the active
+ * validation error (format / length / reserved / taken) as a destructive line
+ * — both wired via `aria-describedby`. The parent owns the value and the
+ * error; this component only renders + reports changes.
+ * @param props the field id, label, value, change handler, error, bounds and helper.
  * @param props.id the field id.
  * @param props.label the display label.
  * @param props.placeholder the input placeholder.
@@ -33,6 +41,7 @@ interface SlugFieldProps {
  * @param props.onChange the value change handler.
  * @param props.error the current validation error.
  * @param props.bounds the slug length bounds.
+ * @param props.helper the always-on explanatory line (optional).
  * @returns the slug field.
  */
 export function SlugField({
@@ -43,6 +52,7 @@ export function SlugField({
   onChange,
   error,
   bounds,
+  helper,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
   const message =
@@ -58,6 +68,10 @@ export function SlugField({
           : error === 'taken'
             ? t('studio.container.dialog.slugTaken')
             : null;
+  const describedBy =
+    [helper ? `${id}-helper` : null, message ? `${id}-error` : null]
+      .filter(Boolean)
+      .join(' ') || undefined;
   return (
     <div className='flex flex-col gap-1.5'>
       <Label htmlFor={id}>{label}</Label>
@@ -67,11 +81,20 @@ export function SlugField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         aria-invalid={error !== null}
-        aria-describedby={message ? `${id}-error` : undefined}
+        aria-describedby={describedBy}
         autoComplete='off'
         autoCapitalize='none'
         spellCheck={false}
       />
+      {helper ? (
+        <p
+          id={`${id}-helper`}
+          data-testid={`${id}-helper`}
+          className='text-xs text-muted-foreground'
+        >
+          {helper}
+        </p>
+      ) : null}
       {message ? (
         <p id={`${id}-error`} className='text-xs text-destructive'>
           {message}

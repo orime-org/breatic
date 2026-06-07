@@ -13,6 +13,8 @@
 
 import { z } from "zod";
 
+import { SpaceTypeSchema } from "@shared/types/space.js";
+
 // ── Auth ─────────────────────────────────────────────────────────────
 
 export const registerSchema = z.object({
@@ -187,6 +189,8 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
 // ── Projects ─────────────────────────────────────────────────────────
 
 export const projectCreateSchema = z.object({
+  /** The studio to create the project in — the create gate checks the caller's role on it (admin/creator). */
+  studioId: z.string().uuid(),
   name: z.string().min(1).max(255),
   slug: z
     .string()
@@ -194,6 +198,14 @@ export const projectCreateSchema = z.object({
     .max(50)
     .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, "slug must be lowercase letters/digits with single hyphens"),
   visibility: z.enum(["studio", "private"]).default("studio"),
+  /**
+   * Initial Space type seeded on first open. Canvas is the only editable
+   * type today; document/timeline are accepted + plumbed end-to-end
+   * (stored on the project, seeded by collab) but disabled in the picker
+   * until their editors ship — so picking them later needs zero backend
+   * change.
+   */
+  spaceType: SpaceTypeSchema.default("canvas"),
   description: z.string().optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;

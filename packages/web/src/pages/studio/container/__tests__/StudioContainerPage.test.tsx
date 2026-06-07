@@ -41,9 +41,35 @@ const PERSONAL: StudioDetail = {
   memberCount: 1,
   myStudioRole: 'admin',
 };
+// A studio the viewer is NOT a member of (decision A: 200 + null role). The
+// container renders the non-member view (no tabs) for this case (spec §6.3).
+const STRANGER: StudioDetail = {
+  id: 's-stranger',
+  slug: 'stranger-studio',
+  name: 'Stranger Studio',
+  type: 'team',
+  memberCount: 9,
+  myStudioRole: null,
+};
 const STUDIOS: readonly StudioSummary[] = [
-  { id: 's-alex', slug: 'alex', name: 'Alex', type: 'personal', memberCount: 1 },
-  { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 4 },
+  {
+    id: 's-alex',
+    slug: 'alex',
+    name: 'Alex',
+    type: 'personal',
+    memberCount: 1,
+    myStudioRole: 'admin',
+  },
+  {
+    id: 's-acme',
+    slug: 'acme-studio',
+    name: 'Acme Studio',
+    type: 'team',
+    memberCount: 4,
+    // Admin of acme (consistent with the studio detail above) so the create
+    // selector defaults to the current studio (spec §7.1) → studioId = s-acme.
+    myStudioRole: 'admin',
+  },
 ];
 const PROJECTS: readonly ProjectSummary[] = [
   {
@@ -61,9 +87,11 @@ const PROJECTS: readonly ProjectSummary[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(studiosApi.get).mockImplementation(async (slug: string) =>
-    slug === 'alex' ? PERSONAL : TEAM,
-  );
+  vi.mocked(studiosApi.get).mockImplementation(async (slug: string) => {
+    if (slug === 'alex') return PERSONAL;
+    if (slug === 'stranger-studio') return STRANGER;
+    return TEAM;
+  });
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([...STUDIOS]);
   vi.mocked(studiosApi.listProjects).mockResolvedValue([...PROJECTS]);
   vi.mocked(projectsApi.create).mockResolvedValue({
@@ -99,21 +127,22 @@ function setup(slug = 'acme-studio', strict = false) {
 }
 
 describe('StudioContainerPage', () => {
-  it('renders the top-bar banner, the studio header and a 5-tab tablist (shell from the real query)', async () => {
+  it('renders the studio header and a 6-tab tablist (shell from the real query)', async () => {
     setup('acme-studio');
-    expect(screen.getByRole('banner')).toBeInTheDocument();
-    // The studio name appears in the switcher trigger (GET /studios) and the
-    // shead (GET /studio/:slug) once both queries resolve.
-    expect(
-      (await screen.findAllByText('Acme Studio')).length,
-    ).toBeGreaterThanOrEqual(2);
+    // The top bar moved to the layout route, so the container renders the
+    // studio header (name + type badge) + the tab list, not a banner. The tab
+    // set is 6 for a team studio (projects / collections / works / members /
+    // credits / settings — Works added at the 3rd position, spec §6.1).
+    expect(await screen.findByText('Acme Studio')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    expect(screen.getAllByRole('tab')).toHaveLength(6);
   });
 
   it('defaults to the Projects tab panel', async () => {
     setup('acme-studio');
-    expect(await screen.findByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    // The tab's accessible name now includes its count chip ("Projects 1"),
+    // so match by substring.
+    expect(await screen.findByRole('tab', { name: /Projects/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -129,10 +158,13 @@ describe('StudioContainerPage', () => {
     );
   });
 
-  it('renders 4 tabs for a personal studio (no Members)', async () => {
+  it('renders 5 tabs for a personal studio (no Members, Works kept)', async () => {
     setup('alex');
-    expect(await screen.findAllByRole('tab')).toHaveLength(4);
+    // Works is non-team-only, so a personal studio keeps it: projects /
+    // collections / works / credits / settings (Members dropped).
+    expect(await screen.findAllByRole('tab')).toHaveLength(5);
     expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Works' })).toBeInTheDocument();
   });
 
   it('shows the error state when the studio cannot be loaded', async () => {
@@ -154,7 +186,7 @@ describe('StudioContainerPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('creates a project via the real API with the chosen visibility', async () => {
+  it('creates a project via the real API with the current studio id, chosen visibility and space type', async () => {
     const user = userEvent.setup();
     setup('acme-studio');
     await screen.findByText('Real Studio Project');
@@ -163,10 +195,15 @@ describe('StudioContainerPage', () => {
     await user.type(screen.getByLabelText('Handle'), 'fresh-proj');
     await user.click(screen.getByLabelText(/invite only/));
     await user.click(screen.getByRole('button', { name: 'Create' }));
+    // studioId is the current studio (s-acme), and the first space defaults to
+    // canvas (the only selectable type today). The studio selector that would
+    // let the user target a different studio is a later slice (§7).
     expect(vi.mocked(projectsApi.create)).toHaveBeenCalledWith({
+      studioId: 's-acme',
       name: 'Fresh',
       slug: 'fresh-proj',
       visibility: 'private',
+      spaceType: 'canvas',
       description: undefined,
     });
   });
@@ -175,5 +212,34 @@ describe('StudioContainerPage', () => {
     const { container } = setup('acme-studio');
     await screen.findByText('Team');
     await expectNoA11yViolations(container);
+  });
+
+  // ── fork by myStudioRole (spec §6, invariant 5) ──────────────────────────
+  it('renders the non-member view (no tabs) when myStudioRole is null', async () => {
+    setup('stranger-studio');
+    // The header still renders (the studio is a public façade, decision A),
+    // but a non-member sees the works empty state and NO tabs.
+    expect(await screen.findByText('Stranger Studio')).toBeInTheDocument();
+    expect(
+      screen.getByText('This studio has no published works.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
+
+  it('renders tabs (member view) when myStudioRole is non-null', async () => {
+    setup('acme-studio');
+    expect(await screen.findByRole('tablist')).toBeInTheDocument();
+    // No non-member empty state leaks into the member view.
+    expect(
+      screen.queryByText('This studio has no published works.'),
+    ).toBeNull();
+  });
+
+  it('shows the Works tab empty state when the Works tab is selected', async () => {
+    const user = userEvent.setup();
+    setup('acme-studio');
+    await user.click(await screen.findByRole('tab', { name: 'Works' }));
+    expect(screen.getByText('No works yet')).toBeInTheDocument();
   });
 });

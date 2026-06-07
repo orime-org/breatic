@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import {
-  CollectionKindTag,
   CreditLotBadge,
   RoleBadge,
   StudioTypePill,
@@ -34,11 +33,6 @@ describe('studio badges (spec §3.5)', () => {
     expect(screen.getByText('Team')).toBeInTheDocument();
     rerender(<StudioTypePill type='personal' />);
     expect(screen.getByText('Personal')).toBeInTheDocument();
-  });
-
-  it('collection kind tag labels the media kind', () => {
-    render(<CollectionKindTag kind='video' />);
-    expect(screen.getByText('Video')).toBeInTheDocument();
   });
 
   it('credit lot badge distinguishes paid, gift and expiring', () => {

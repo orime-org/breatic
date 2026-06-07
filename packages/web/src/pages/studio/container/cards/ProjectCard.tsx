@@ -39,12 +39,12 @@ export function ProjectCard({
   const t = useTranslation();
   const canManage = canManageItem(studioRole, project.isOwner);
   return (
-    <div className='group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-neutral-300'>
+    <div className='group relative overflow-hidden rounded-lg border border-border bg-card transition-[box-shadow,border-color] hover:border-neutral-300 hover:shadow-md'>
       <Link
         to={`/project/${project.slug}-${project.id}`}
         className='flex flex-col'
       >
-        <div className='flex aspect-[16/10] items-center justify-center bg-muted text-muted-foreground'>
+        <div className='relative flex aspect-[16/9] items-center justify-center bg-muted text-muted-foreground'>
           {project.thumbnailUrl ? (
             <img
               src={project.thumbnailUrl}
@@ -54,14 +54,21 @@ export function ProjectCard({
           ) : (
             <ImageIcon className='h-6 w-6' aria-hidden='true' />
           )}
+          <span className='absolute left-2 top-2 z-[1]'>
+            <VisibilityBadge visibility={project.visibility} />
+          </span>
         </div>
-        <div className='p-3'>
-          <p className='truncate text-sm font-semibold text-foreground'>
+        <div className='p-2.5'>
+          <p className='truncate text-[13px] font-semibold text-foreground'>
             {project.name}
           </p>
-          <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-            <VisibilityBadge visibility={project.visibility} />
-            <RoleBadge itemRole={effectiveItemRole(project.myRole)} />
+          <div className='mt-2 flex items-center gap-2'>
+            {/* Time slot placeholder — fills when a per-user last-opened field
+                lands (mock toolbar sorts by recently opened); role badge stays
+                right-aligned. */}
+            <span className='ml-auto inline-flex'>
+              <RoleBadge itemRole={effectiveItemRole(project.myRole)} />
+            </span>
           </div>
         </div>
       </Link>
@@ -69,9 +76,9 @@ export function ProjectCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-chrome bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100'
+          className='absolute right-2 top-2 z-10 flex h-[22px] w-[22px] items-center justify-center rounded-content-sm bg-black/45 text-white opacity-0 transition-opacity hover:bg-black focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
         >
-          <MoreHorizontal className='h-4 w-4' />
+          <MoreHorizontal className='h-3.5 w-3.5' />
         </button>
       ) : null}
     </div>

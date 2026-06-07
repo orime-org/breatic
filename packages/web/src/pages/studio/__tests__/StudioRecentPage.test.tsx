@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import StudioPage from '@web/pages/studio/StudioPage';
+import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
 import {
   STUB_RECENT_COLLECTIONS,
   STUB_RECENT_PROJECTS,
@@ -15,20 +15,16 @@ import { expectNoA11yViolations } from '@web/test-utils/a11y';
 function setup() {
   return render(
     <MemoryRouter>
-      <StudioPage />
+      <StudioRecentPage />
     </MemoryRouter>,
   );
 }
 
-describe('StudioPage (recent landing)', () => {
-  it('renders the top-bar banner', () => {
-    setup();
-    expect(screen.getByRole('banner')).toBeInTheDocument();
-  });
-
+describe('StudioRecentPage (cross-studio recent landing — rendered in the layout Outlet)', () => {
   it('renders a card link for every stub recent item', () => {
     setup();
-    // Card links + the logo home link; assert at least one per recent item.
+    // The top bar + its logo link now live in StudioLayout, so the page itself
+    // renders only the recent cards (one link per recent project / collection).
     expect(screen.getAllByRole('link').length).toBeGreaterThanOrEqual(
       STUB_RECENT_PROJECTS.length + STUB_RECENT_COLLECTIONS.length,
     );

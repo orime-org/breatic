@@ -6,7 +6,8 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import StudioPage from '@web/pages/studio/StudioPage';
+import StudioLayout from '@web/pages/studio/shell/StudioLayout';
+import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
 import LoginPage from '@web/pages/auth/LoginPage';
 import RegisterPage from '@web/pages/auth/RegisterPage';
@@ -25,17 +26,15 @@ function makeRouter(initialPath: string) {
     [
       { path: '/', element: <Navigate to='/studio' replace /> },
       {
-        // `/studio` IS the cross-studio "Recent" view itself — no
-        // `/studio/recent` URL (URL design §5.7, B correction): Recent
-        // is per-user and account-bound, so it has no shareable URL of
-        // its own; only `/studio/{slug}` points all viewers at the same
-        // content.
+        // The studio layout route — rail + top bar persist; `/studio` is the
+        // Recent index child (URL design §5.7, B correction).
         path: '/studio',
         element: (
           <ProtectedRoute>
-            <StudioPage />
+            <StudioLayout />
           </ProtectedRoute>
         ),
+        children: [{ index: true, element: <StudioRecentPage /> }],
       },
       {
         path: '/project/:projectId',
@@ -92,7 +91,7 @@ describe('routes', () => {
     });
   });
 
-  it('/studio renders StudioPage directly (recent landing top bar, B correction)', async () => {
+  it('/studio renders the layout + recent landing (top bar lives in the layout)', async () => {
     render(
       <QueryClientProvider>
         <TooltipProvider>

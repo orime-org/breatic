@@ -65,6 +65,50 @@ export interface EncodeInitialMetaStateArgs {
   ts: number;
 }
 
+/** Fields needed to construct one Space entry in a meta doc's `spaces` map. */
+export interface SpaceEntryInit {
+  spaceId: string;
+  type: SpaceKind;
+  name: string;
+  /**
+   * Position in the tab bar — `0` for the bootstrap first Space,
+   * `spaces.size` for a later one.
+   */
+  order: number;
+  /** Milliseconds since epoch. */
+  createdAt: number;
+  /** Creator's userId (UUID). */
+  createdBy: string;
+}
+
+/**
+ * Insert one Space entry into a meta doc's `spaces` Y.Map.
+ *
+ * This is the SINGLE source of truth for a Space's field shape: both the
+ * bootstrap seed ({@link encodeInitialMetaState}, the first Space) and
+ * collab's live `space:create` RPC handler (`space-rpc.handleCreate`,
+ * every later Space) call it, so the first Space and every subsequent
+ * Space are built identically — one construction logic, not two
+ * divergent ones. The caller owns the surrounding `Y.Doc` / transaction
+ * context; this helper only mutates the passed `spaces` map.
+ * @param spaces - The meta doc's `spaces` Y.Map (keyed by spaceId).
+ * @param init - The Space's id / type / name / order / timestamp / creator.
+ */
+export function writeSpaceEntry(
+  spaces: Y.Map<unknown>,
+  init: SpaceEntryInit,
+): void {
+  const entry = new Y.Map<unknown>();
+  entry.set("id", init.spaceId);
+  entry.set("type", init.type);
+  entry.set("name", init.name);
+  entry.set("order", init.order);
+  entry.set("locked", false);
+  entry.set("createdAt", init.createdAt);
+  entry.set("createdBy", init.createdBy);
+  spaces.set(init.spaceId, entry);
+}
+
 /**
  * Encode an initial Yjs update for `project-{pid}/meta` containing
  * exactly one Space entry.
@@ -106,15 +150,14 @@ export function encodeInitialMetaState(
   doc.clientID = 1;
 
   const spaces = doc.getMap("spaces");
-  const entry = new Y.Map<unknown>();
-  entry.set("id", spaceId);
-  entry.set("type", kind);
-  entry.set("name", name);
-  entry.set("order", 0);
-  entry.set("locked", false);
-  entry.set("createdAt", ts);
-  entry.set("createdBy", createdBy);
-  spaces.set(spaceId, entry);
+  writeSpaceEntry(spaces, {
+    spaceId,
+    type: kind,
+    name,
+    order: 0,
+    createdAt: ts,
+    createdBy,
+  });
 
   // Q11 v2.1 — bootstrap path seeds the first `projectMessages` entry
   // consistent with `collab/space-rpc.handleCreate`. Field convention:
@@ -171,4 +214,46 @@ export function encodeInitialMetaState(
   perUser.set(createdBy, creatorPerUser);
 
   return Y.encodeStateAsUpdate(doc);
+}
+
+/**
+ * Encode the initial state for a fresh Space's CONTENT doc (e.g.
+ * `project-{pid}/canvas-{sid}`, `…/document-{sid}`, `…/timeline-{sid}`).
+ *
+ * A new Space starts EMPTY — a blank canvas / document / timeline — so
+ * the initial content is an empty `Y.Doc`. Seeding it makes the
+ * content-doc ROW exist the moment the Space becomes visible in `meta`
+ * (the invariant `lazySeedMeta` + the `space:create` RPC uphold), while
+ * each type's editor builds its own structure (canvas `nodes`/`edges`,
+ * document XmlFragment, …) on first bind. The state is independent of
+ * the Space TYPE — only the doc NAME carries the type (shared
+ * `spaceContentDocName`), so one encoder serves every kind.
+ *
+ * `seedInitialState` converges concurrent first-seeds by doc NAME (`ON
+ * CONFLICT DO NOTHING`), so the bytes need not be deterministic; an
+ * empty doc is trivially identical across calls regardless.
+ * @returns The encoded empty-content Yjs update, ready to persist as a
+ *   Space content doc's initial state.
+ */
+export function encodeInitialSpaceContentState(): Uint8Array {
+  return Y.encodeStateAsUpdate(new Y.Doc());
+}
+
+/**
+ * Default display name for a freshly-seeded Space of a given kind.
+ *
+ * The seed runs in collab with no i18n context, so it uses the kind's
+ * English label; the creating user renames the Space afterwards.
+ * @param kind - The Space type being seeded
+ * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"`)
+ */
+export function defaultSpaceName(kind: SpaceKind): string {
+  switch (kind) {
+    case "canvas":
+      return "Canvas";
+    case "document":
+      return "Document";
+    case "timeline":
+      return "Timeline";
+  }
 }

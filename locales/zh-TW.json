@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "專案",
         "collections": "資產集",
+        "works": "作品",
         "members": "成員",
         "credits": "點數",
         "settings": "設定"
+      },
+      "works": {
+        "empty": "還沒有作品",
+        "emptyHint": "專案發布後會出現在這裡。"
+      },
+      "nonMember": {
+        "worksTitle": "作品",
+        "empty": "此 Studio 尚無發布作品"
       },
       "header": {
         "personalTag": "個人",
@@ -1467,10 +1476,13 @@
         "newProjectTitle": "新增專案",
         "newCollectionTitle": "新增資產集",
         "newStudioTitle": "新增 Studio",
+        "studioLabel": "Studio",
         "nameLabel": "名稱",
         "namePlaceholder": "我的專案",
         "slugLabel": "網址標識",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "專案網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
+        "slugHelperCollection": "資產集網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
         "descriptionLabel": "簡介(選填)",
         "typeLabel": "類型",
         "typePersonal": "個人",
@@ -1488,6 +1500,17 @@
       "empty": {
         "newCard": "+ 新增"
       }
+    },
+    "rail": {
+      "navLabel": "Studio 導覽",
+      "createProject": "新增專案",
+      "createCollection": "新增資產集",
+      "createStudio": "新增 Studio",
+      "comingSoon": "即將推出",
+      "recent": "最近",
+      "myStudios": "我的 Studio",
+      "joinedStudios": "我加入的 Studio",
+      "joinedEmpty": "還沒加入任何 Studio"
     }
   },
   "chrome": {

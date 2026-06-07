@@ -3,10 +3,11 @@
 
 import type { StudioType } from '@web/pages/studio/shared/studio-types';
 
-/** The five studio container tabs (spec §2.2). */
+/** The six studio container tabs (spec §6.1; Works added at the 3rd position). */
 export type StudioTabKey =
   | 'projects'
   | 'collections'
+  | 'works'
   | 'members'
   | 'credits'
   | 'settings';
@@ -20,10 +21,15 @@ export interface StudioTabDef {
   teamOnly: boolean;
 }
 
-/** All tabs in fixed spec order: projects → collections → members → credits → settings. */
+/**
+ * All tabs in fixed spec order (spec §6.1): projects → collections → works →
+ * members → credits → settings. Works sits at the 3rd position (not the end);
+ * it is non-team-only, so personal studios keep it.
+ */
 export const STUDIO_TABS: readonly StudioTabDef[] = [
   { key: 'projects', labelKey: 'studio.container.tabs.projects', teamOnly: false },
   { key: 'collections', labelKey: 'studio.container.tabs.collections', teamOnly: false },
+  { key: 'works', labelKey: 'studio.container.tabs.works', teamOnly: false },
   { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: true },
   { key: 'credits', labelKey: 'studio.container.tabs.credits', teamOnly: false },
   { key: 'settings', labelKey: 'studio.container.tabs.settings', teamOnly: false },
@@ -31,7 +37,7 @@ export const STUDIO_TABS: readonly StudioTabDef[] = [
 
 /**
  * The tabs visible for a given studio type — personal studios drop the
- * team-only Members tab (spec §2.2), leaving 4 tabs.
+ * team-only Members tab (spec §6.1), leaving 5 tabs (team studios show all 6).
  * @param studioType whether the studio is personal or team.
  * @returns the ordered list of visible tabs.
  */

@@ -5,8 +5,8 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { canRenderItemCard } from '@web/pages/studio/container/access';
+import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { CollectionCard } from '@web/pages/studio/container/cards/CollectionCard';
-import { NewItemCard } from '@web/pages/studio/container/cards/NewItemCard';
 import type { ContainerCollection } from '@web/pages/studio/container/container-types';
 import {
   NewItemDialog,
@@ -22,14 +22,17 @@ interface CollectionsTabProps {
   onCreateCollection?: (values: NewItemValues) => void;
 }
 
-const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
+// Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
+// ~5 columns at the 1320px container width and reflows down on narrow screens.
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
 
 /**
- * The Collections tab (spec §3.4 / §3.13): a card grid of the studio's
- * collections (project-peer asset sets), filtered by the viewer's access
- * (spec §4 invariant 1), with a trailing "new collection" card that opens the
- * create dialog. When there are no visible collections, only the
- * new-collection card is shown.
+ * The Collections tab (spec §3.4 / §3.13): a toolbar (title + count + sort/view
+ * placeholders + create button) over a card grid of the studio's collections
+ * (project-peer asset sets), filtered by the viewer's access (spec §4 invariant
+ * 1). The toolbar's create button is the entry point (locked mock dropped the
+ * in-grid card); an empty studio shows an empty-state line below the toolbar.
+ * Like projects, create is gated to members (a guest cannot create).
  * @param props the collections, the viewer's studio role and the create callback.
  * @param props.collections the studio's collections.
  * @param props.studioRole the viewer's studio role.
@@ -43,24 +46,22 @@ export function CollectionsTab({
 }: CollectionsTabProps): React.JSX.Element {
   const t = useTranslation();
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const canCreate = studioRole !== null;
   const visible = collections.filter((collection) =>
     canRenderItemCard(studioRole, collection),
   );
-  const newCard = (
-    <NewItemCard
-      label={t('studio.container.collections.new')}
-      onClick={() => setDialogOpen(true)}
-    />
-  );
   return (
     <>
+      <ContainerToolbar
+        title={t('studio.container.tabs.collections')}
+        count={visible.length}
+        createLabel={t('studio.container.collections.new')}
+        onCreate={canCreate ? () => setDialogOpen(true) : undefined}
+      />
       {visible.length === 0 ? (
-        <div>
-          <p className='mb-4 text-sm text-muted-foreground'>
-            {t('studio.container.collections.empty')}
-          </p>
-          <div className={GRID}>{newCard}</div>
-        </div>
+        <p className='text-sm text-muted-foreground'>
+          {t('studio.container.collections.empty')}
+        </p>
       ) : (
         <div className={GRID}>
           {visible.map((collection) => (
@@ -70,15 +71,16 @@ export function CollectionsTab({
               studioRole={studioRole}
             />
           ))}
-          {newCard}
         </div>
       )}
-      <NewItemDialog
-        kind='collection'
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onCreate={onCreateCollection}
-      />
+      {canCreate ? (
+        <NewItemDialog
+          kind='collection'
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onCreate={onCreateCollection}
+        />
+      ) : null}
     </>
   );
 }

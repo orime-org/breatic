@@ -15,7 +15,7 @@ import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studios, studioMembers } from "@breatic/core";
-import type { Studio, StudioType } from "@breatic/shared";
+import type { Studio, StudioRole, StudioType } from "@breatic/shared";
 
 /**
  * Map a Drizzle studio row to the shared `Studio` domain entity.
@@ -137,11 +137,13 @@ export async function getBySlug(slug: string): Promise<Studio | null> {
  * soft-deleted studios. Ordered by `created_at` ascending; the
  * personal-first sort the switcher needs is applied by the service layer.
  * @param userId - The user UUID whose memberships to resolve
- * @returns The user's studios (personal + team), oldest first
+ * @returns The user's studios + the viewer's current role in each, oldest first
  */
-export async function listByUser(userId: string): Promise<Studio[]> {
+export async function listByUser(
+  userId: string,
+): Promise<Array<Studio & { myStudioRole: StudioRole }>> {
   const rows = await db
-    .select({ studio: studios })
+    .select({ studio: studios, role: studioMembers.role })
     .from(studioMembers)
     .innerJoin(studios, eq(studios.id, studioMembers.studioId))
     .where(
@@ -152,7 +154,10 @@ export async function listByUser(userId: string): Promise<Studio[]> {
       ),
     )
     .orderBy(studios.createdAt);
-  return rows.map((r) => toEntity(r.studio));
+  return rows.map((r) => ({
+    ...toEntity(r.studio),
+    myStudioRole: r.role as StudioRole,
+  }));
 }
 
 /**

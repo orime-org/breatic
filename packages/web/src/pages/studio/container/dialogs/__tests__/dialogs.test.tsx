@@ -16,6 +16,25 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByLabelText('Handle')).toBeInTheDocument();
   });
 
+  it('shows the space-type picker for a project but not for a collection', () => {
+    const { unmount } = render(
+      <NewItemDialog kind='project' open onOpenChange={() => {}} />,
+    );
+    expect(
+      screen.getByRole('radio', { name: /Canvas/ }),
+    ).toBeInTheDocument();
+    unmount();
+    render(<NewItemDialog kind='collection' open onOpenChange={() => {}} />);
+    expect(
+      screen.queryByRole('radio', { name: /Canvas/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the always-on slug helper line', () => {
+    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
+    expect(screen.getByTestId('new-project-slug-helper')).toBeInTheDocument();
+  });
+
   it('blocks submit and shows an error for a malformed slug', async () => {
     const onCreate = vi.fn();
     const user = userEvent.setup();
@@ -68,6 +87,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       slug: 'secret-proj',
       description: '',
       visibility: 'private',
+      spaceType: 'canvas',
     });
   });
 });

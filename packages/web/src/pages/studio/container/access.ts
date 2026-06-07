@@ -60,6 +60,20 @@ export function canManageItem(
 }
 
 /**
+ * Whether the viewer may create projects in a studio (spec §0.2 / §8.2): only
+ * an `admin` or `creator` may — a plain `member` and a guest (`null` studio
+ * role) may not, because studio credits are shared and creating a project can
+ * spend them. Gates the create entry in the rail (§4.1) and the Projects tab
+ * (§7.1); the server re-checks the same rule on create (`requireStudioCreate
+ * Access`), so this is a UX gate, not the security boundary.
+ * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @returns whether the viewer may create in the studio.
+ */
+export function canCreateInStudio(studioRole: StudioRole | null): boolean {
+  return studioRole === 'admin' || studioRole === 'creator';
+}
+
+/**
  * The viewer's effective role on an item — their explicit role, or the studio
  * baseline viewer role when they only have baseline access (DD §5.3).
  * @param myRole the viewer's explicit role, or `null` for baseline access.

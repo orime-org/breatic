@@ -29,6 +29,7 @@ import type {
   ProjectRole,
   ProjectSummary,
   ProjectVisibility,
+  SpaceType,
 } from "@breatic/shared";
 
 /**
@@ -66,64 +67,79 @@ export async function assertAccess(
  * Create a new project owned by the caller.
  *
  * Atomically writes, in a single transaction:
- *   1. `projects` row (in caller's personal studio)
+ *   1. `projects` row (in studio `studioId`)
  *   2. `project_members` row (`role='owner'`)
  *
  * The default Canvas Space is NOT seeded here any more: the Yjs
  * document store moved to a separate database that can't share this
  * business transaction. Instead collab lazy-seeds the `project-{id}/meta`
- * doc with one default Space on its first load (deterministic Space id
+ * doc AND the first Space's content doc together on its first load,
+ * using the `initial_space_type` stored here (deterministic Space id
  * derived from the project id, so concurrent first-loads converge), and
  * the awareness hook backfills the creator's real name/avatar when they
  * first connect. The "project exists ⇒ ≥1 Space" invariant the frontend
  * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
+ * @param studioId - Studio the project is created in (the gate checks the
+ *   caller's role on it — only an `admin` or `creator` may create)
  * @param name - Project name
  * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
  *   app-side, NOT unique)
  * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
  *   members only)
+ * @param spaceType - Initial Space type seeded on first open (canvas
+ *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
  * @returns The newly created project entity
- * @throws {NotFoundError} if the user has no personal studio yet (they
- *   have not completed the slug-setup onboarding step — a user without a
- *   studio cannot own a project)
+ * @throws {ForbiddenError} if the caller is not an `admin` or `creator`
+ *   of `studioId` (studio credits are shared, so a plain member may not
+ *   spend them by creating a project)
  */
 export async function create(
   userId: string,
+  studioId: string,
   name: string,
   slug: string,
   visibility: ProjectVisibility,
+  spaceType: SpaceType,
   description?: string,
 ): Promise<ProjectEntity> {
-  const studio = await requirePersonalStudio(userId);
+  await requireStudioCreateAccess(userId, studioId);
 
   return db.transaction(async (tx) =>
-    projectRepo.createProject(tx, studio.id, userId, name, slug, visibility, description),
+    projectRepo.createProject(
+      tx,
+      studioId,
+      userId,
+      name,
+      slug,
+      visibility,
+      spaceType,
+      description,
+    ),
   );
 }
 
 /**
- * Resolve the caller's personal studio, throwing if they have not yet
- * completed onboarding.
+ * Authorize the caller to create a project in the target studio.
  *
- * Personal studios are created explicitly in the slug-setup step, no
- * longer auto-created on demand. Project routes are reachable only after
- * the frontend onboarding gate, so a missing studio here means a direct
- * API call by a half-onboarded account — surface it as 404 (same
- * existence-hiding convention as `assertAccess`).
+ * Only a studio `admin` or `creator` may create (3-role model, spec §0.2):
+ * a studio's credits are shared, so a plain `member` (or a non-member,
+ * role `null`) must not be able to spend them by creating projects. Today
+ * only personal studios exist (single admin), so only `admin` is exercised
+ * against real data; the `creator` branch activates with team studios.
  * @param userId - Authenticated user UUID
- * @returns The user's personal studio
- * @throws {NotFoundError} if the user has no personal studio
+ * @param studioId - The studio the project would be created in
+ * @throws {ForbiddenError} if the caller is not an admin/creator of the studio
  */
-async function requirePersonalStudio(
+async function requireStudioCreateAccess(
   userId: string,
-): Promise<{ id: string }> {
-  const studio = await studioService.getPersonalStudio(userId);
-  if (!studio) {
-    throw new NotFoundError(t("server.error.not_found"));
+  studioId: string,
+): Promise<void> {
+  const role = await studioAuthService.loadStudioRole(userId, studioId);
+  if (role !== "admin" && role !== "creator") {
+    throw new ForbiddenError(t("server.error.forbidden"));
   }
-  return studio;
 }
 
 /**

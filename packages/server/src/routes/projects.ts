@@ -33,17 +33,27 @@ const projects = new Hono<{ Variables: AuthVariables }>();
 projects.use(requireAuth);
 
 /**
- * `POST /projects` — create a new project owned by the caller.
+ * `POST /projects` — create a new project in the studio named by `studioId`.
  *
- * Resolves the caller's personal studio (creating it if missing) and
- * inserts the owner row in `project_members` inside the same
- * transaction as the projects insert.
+ * The service gate checks the caller's role on that studio (admin / creator)
+ * and inserts the owner row in `project_members` inside the same transaction
+ * as the projects insert. `spaceType` is stored on the project; collab seeds
+ * the first space of that type on first open (B.2).
  * @returns `201` with `{ data: ProjectEntity }`
  */
 projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const user = c.get("user");
-  const { name, slug, visibility, description } = c.req.valid("json");
-  const project = await projectService.create(user.id, name, slug, visibility, description);
+  const { studioId, name, slug, visibility, spaceType, description } =
+    c.req.valid("json");
+  const project = await projectService.create(
+    user.id,
+    studioId,
+    name,
+    slug,
+    visibility,
+    spaceType,
+    description,
+  );
   return c.json({ data: project }, 201);
 });
 

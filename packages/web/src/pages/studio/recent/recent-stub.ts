@@ -20,9 +20,30 @@ import type {
 
 /** STUB — studios shown in the top-bar switcher (personal + teams). */
 export const STUB_STUDIOS: readonly StudioSummary[] = [
-  { id: 's-personal', slug: 'alex', name: 'Alex', type: 'personal', memberCount: 1 },
-  { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 6 },
-  { id: 's-nova', slug: 'nova-lab', name: 'Nova Lab', type: 'team', memberCount: 3 },
+  {
+    id: 's-personal',
+    slug: 'alex',
+    name: 'Alex',
+    type: 'personal',
+    memberCount: 1,
+    myStudioRole: 'admin',
+  },
+  {
+    id: 's-acme',
+    slug: 'acme-studio',
+    name: 'Acme Studio',
+    type: 'team',
+    memberCount: 6,
+    myStudioRole: 'member',
+  },
+  {
+    id: 's-nova',
+    slug: 'nova-lab',
+    name: 'Nova Lab',
+    type: 'team',
+    memberCount: 3,
+    myStudioRole: 'member',
+  },
 ];
 
 /** STUB — how many guest (shared-with-me) projects the viewer has (switcher count). */

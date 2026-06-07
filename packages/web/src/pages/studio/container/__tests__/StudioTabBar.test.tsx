@@ -8,35 +8,47 @@ import { Tabs } from '@web/components/ui/tabs';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import type { StudioType } from '@web/pages/studio/shared/studio-types';
 
-function setup(studioType: StudioType) {
+function setup(
+  studioType: StudioType,
+  counts?: Partial<Record<'projects' | 'collections' | 'members', number>>,
+) {
   // Tabs Root provides the Radix tablist context StudioTabBar renders into.
   return render(
     <Tabs value='projects'>
-      <StudioTabBar studioType={studioType} />
+      <StudioTabBar studioType={studioType} counts={counts} />
     </Tabs>,
   );
 }
 
 describe('StudioTabBar', () => {
-  it('renders all 5 tabs for a team studio, in spec order', () => {
+  it('renders all 6 tabs for a team studio, in spec order', () => {
     setup('team');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(5);
+    expect(tabs).toHaveLength(6);
     // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
+    // Works sits at the 3rd position (spec §6.1), not the end.
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Projects',
       'Collections',
+      'Works',
       'Members',
       'Credits',
       'Settings',
     ]);
   });
 
-  it('drops the Members tab for a personal studio (4 tabs)', () => {
+  it('drops the Members tab for a personal studio (5 tabs, Works kept)', () => {
     setup('personal');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Projects',
+      'Collections',
+      'Works',
+      'Credits',
+      'Settings',
+    ]);
   });
 
   it('marks the active tab with aria-selected', () => {
@@ -49,5 +61,25 @@ describe('StudioTabBar', () => {
       'aria-selected',
       'false',
     );
+  });
+
+  it('shows a count chip on projects / collections / members when counts are given', () => {
+    setup('team', { projects: 6, collections: 2, members: 4 });
+    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
+    expect(screen.getByRole('tab', { name: /Collections/ })).toHaveTextContent(
+      '2',
+    );
+    expect(screen.getByRole('tab', { name: /Members/ })).toHaveTextContent('4');
+    // Credits / Settings never carry a count (mock定稿).
+    expect(screen.getByRole('tab', { name: 'Credits' })).toBeInTheDocument();
+  });
+
+  it('omits the count chip for a tab whose count is absent', () => {
+    setup('team', { projects: 6 });
+    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
+    // Collections count not provided → exact label, no trailing number.
+    expect(
+      screen.getByRole('tab', { name: 'Collections' }),
+    ).toBeInTheDocument();
   });
 });

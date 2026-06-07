@@ -5,11 +5,15 @@
  * Lazy-seed for a project's meta document.
  *
  * After the yjs two-DB cutover, project creation writes only the
- * business rows — it no longer eager-seeds the `project-{id}/meta` Yjs
- * doc (the yjs store is a separate database). Instead this seeds one
- * default canvas Space on the FIRST load of a meta doc that has no row
- * yet, preserving the "project exists ⇒ ≥1 Space" invariant the
- * frontend relies on, at read time rather than write time.
+ * business rows — it no longer eager-seeds any Yjs doc (the yjs store is
+ * a separate database). Instead, on the FIRST load of a meta doc that
+ * has no row yet, this seeds — together — the first Space's CONTENT doc
+ * AND the meta doc, using the `initial_space_type` chosen at create time
+ * (read from the project row). The content doc is seeded FIRST so a
+ * Space never becomes visible in meta before its content doc exists (the
+ * same invariant `duplicateByProjectPrefix` upholds). This preserves
+ * "project exists ⇒ meta + its first Space content doc exist" at read
+ * time rather than write time.
  *
  * Convergence: the default Space id is a deterministic id derived from
  * the project id (shared `deriveId`), so two collab instances that both
@@ -21,24 +25,28 @@
  * Fidelity (accepted degradation, per design): collab has no user repo,
  * so the seeded Space is attributed to a `system` placeholder; the
  * awareness hook backfills the real creator's name/avatar into
- * `meta.users` when they first connect. The default Space is named
- * generically ("Canvas") — the create path used to name it after the
- * project, which collab can't see here without a business read.
+ * `meta.users` when they first connect. The Space is named by its type
+ * (`defaultSpaceName` — "Canvas" / "Document" / "Timeline"); the user
+ * renames it afterwards.
  */
 
-import { encodeInitialMetaState } from "@breatic/core";
-import { deriveId, parseDocName } from "@breatic/shared";
+import {
+  defaultSpaceName,
+  encodeInitialMetaState,
+  encodeInitialSpaceContentState,
+  loadInitialSpaceType,
+} from "@breatic/core";
+import { deriveId, parseDocName, spaceContentDocName } from "@breatic/shared";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
-/** Generic name for the lazily-seeded first canvas Space. */
-const DEFAULT_SPACE_NAME = "Canvas";
 /** Placeholder creator/actor — backfilled to the real user via awareness. */
 const SYSTEM_ACTOR = "system";
 
 /**
- * If `documentName` is a meta doc with no row yet, seed one default
- * canvas Space and return its bytes; otherwise return null (the caller's
- * fetch result stands).
+ * If `documentName` is a meta doc with no row yet, seed the project's
+ * first Space — its content doc AND the meta doc, using the Space type
+ * chosen at create time — and return the meta bytes; otherwise return
+ * null (the caller's fetch result stands).
  * @param documentName - Full Yjs doc name being loaded
  * @returns The seeded meta bytes, or null when no seed applies
  */
@@ -48,13 +56,26 @@ export async function lazySeedMeta(
   const parsed = parseDocName(documentName);
   if (!parsed || parsed.kind !== "meta") return null;
 
+  const { projectId } = parsed;
+  // The Space type chosen at create time (stored on the project row);
+  // defaults to canvas for a missing/legacy row.
+  const kind = await loadInitialSpaceType(projectId);
   // Deterministic Space id (shared `deriveId`) so concurrent first-loads
   // across collab instances converge to one Space (see header).
-  const spaceId = deriveId(parsed.projectId);
+  const spaceId = deriveId(projectId);
+
+  // Content doc FIRST, then meta — a Space must never be visible in meta
+  // before its content doc exists. Both are `ON CONFLICT DO NOTHING` +
+  // deterministically named, so concurrent first-loads converge.
+  await yjsDocumentsRepo.seedInitialState(
+    spaceContentDocName(projectId, spaceId, kind),
+    encodeInitialSpaceContentState(),
+  );
+
   const bytes = encodeInitialMetaState({
     spaceId,
-    kind: "canvas",
-    name: DEFAULT_SPACE_NAME,
+    kind,
+    name: defaultSpaceName(kind),
     createdBy: SYSTEM_ACTOR,
     actor: SYSTEM_ACTOR,
     creatorName: SYSTEM_ACTOR,

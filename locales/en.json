@@ -1368,9 +1368,18 @@
       "tabs": {
         "projects": "Projects",
         "collections": "Collections",
+        "works": "Works",
         "members": "Members",
         "credits": "Credits",
         "settings": "Settings"
+      },
+      "works": {
+        "empty": "No works yet",
+        "emptyHint": "Works appear here once a project is published."
+      },
+      "nonMember": {
+        "worksTitle": "Works",
+        "empty": "This studio has no published works."
       },
       "header": {
         "personalTag": "Personal",
@@ -1467,10 +1476,13 @@
         "newProjectTitle": "New project",
         "newCollectionTitle": "New collection",
         "newStudioTitle": "New studio",
+        "studioLabel": "Studio",
         "nameLabel": "Name",
         "namePlaceholder": "My project",
         "slugLabel": "Handle",
         "slugPlaceholder": "my-project",
+        "slugHelperProject": "Part of the project's web address. Use lowercase letters, numbers and hyphens (-) only.",
+        "slugHelperCollection": "Part of the collection's web address. Use lowercase letters, numbers and hyphens (-) only.",
         "descriptionLabel": "Description (optional)",
         "typeLabel": "Type",
         "typePersonal": "Personal",
@@ -1488,6 +1500,17 @@
       "empty": {
         "newCard": "+ New"
       }
+    },
+    "rail": {
+      "navLabel": "Studio navigation",
+      "createProject": "New project",
+      "createCollection": "New collection",
+      "createStudio": "New studio",
+      "comingSoon": "Coming soon",
+      "recent": "Recent",
+      "myStudios": "My studios",
+      "joinedStudios": "Joined studios",
+      "joinedEmpty": "You haven't joined any studio yet"
     }
   },
   "chrome": {

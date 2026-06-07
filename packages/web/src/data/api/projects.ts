@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { ProjectRole } from '@web/stores';
-import type { ProjectVisibility } from '@breatic/shared';
+import type { ProjectVisibility, SpaceType } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**
@@ -34,9 +34,13 @@ export const projectsApi = {
     return apiGet<ProjectDetail>(`/projects/${id}`);
   },
   create(body: {
+    /** The studio to create the project in (the create gate checks the caller's role on it). */
+    studioId: string;
     name: string;
     slug: string;
     visibility: ProjectVisibility;
+    /** The first space's type, seeded on first open (B.2). Defaults to canvas server-side. */
+    spaceType: SpaceType;
     description?: string;
   }) {
     return apiPost<ProjectDetail>('/projects', body);

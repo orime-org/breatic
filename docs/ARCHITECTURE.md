@@ -245,11 +245,12 @@ lib/        工具(cn / format / env / analytics)
 ### Routing
 
 - `/` → 重定向 `/studio`
-- `/studio` — 跨 studio「最近」落地页(StudioPage;per-user,无独立分享 URL,URL 设计 §5.7 B 修正:无 `/studio/recent`)
-- `/studio/:slug` — studio 容器(StudioContainerPage,5 tab:项目 / 资产集 / 成员 / 积分 / 设置;个人 studio 4 tab,无成员)。项目 tab 走 `GET /studio/:slug/projects`(开放基线可见性过滤,slice 2)
+- `/studio/*` — studio layout route(`StudioLayout`):常驻左 rail + 顶栏挂一次,子路由出 `<Outlet/>`,切 studio 不重挂 rail(chrome 改造片)
+  - `/studio`(index)— 跨 studio「最近」落地页(`StudioRecentPage`;per-user,无独立分享 URL,URL 设计 §5.7 B 修正:无 `/studio/recent`)
+  - `/studio/:slug` — studio 容器(`StudioContainerPage`),按 `myStudioRole` 分叉:**成员**(非 null)= 6 tab(项目 / 资产集 / 作品 / 成员 / 积分 / 设置;作品固定第 3 位、空壳;个人 studio 5 tab 无成员);**非成员**(null,decision A 公开门面 200+null)= 无 tab + 作品空态(`NonMemberView`,不下发私货)。项目 tab 走 `GET /studio/:slug/projects`(开放基线可见性过滤);建项目限 admin/creator(studio 积分共享)
 - `/project/:projectId` — 项目页(Agent 列 + Space outlet;Space 是 Project 内的 type / 模板,**不是**路由段)
 - `/project/:projectId/access` — 无权限落地页(NoAccessPage)
-- `/choose-handle` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门)
+- `/choose-slug` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门;显示文案仍叫「网址标识 / Handle」,只 URL 路径改名)
 - `/login`、`/register`、`/forgot-password`、`/reset-password`、`/verify-email`、`/invite/:token` — auth + 邀请流程
 
 ### Source layout
