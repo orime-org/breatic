@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -70,9 +71,13 @@ const SPACE_OP_TIMEOUT_MS = 10_000;
  */
 export default function ProjectPage(): React.JSX.Element {
   const t = useTranslation();
-  const { projectId = 'demo' } = useParams<{
+  const { projectId: routeParam = 'demo' } = useParams<{
     projectId: string;
   }>();
+  // The route is `/project/{slug}-{uuid}` (URL design §5.7); the slug is
+  // decorative and the backend keys on the bare uuid, so resolve it once here
+  // and use it for every API call + the Yjs document name downstream.
+  const projectId = projectUuidFromRouteParam(routeParam);
   const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
