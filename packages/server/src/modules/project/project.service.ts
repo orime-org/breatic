@@ -91,39 +91,39 @@ export async function assertAccess(
  */
 export async function create(
   userId: string,
+  studioId: string,
   name: string,
   slug: string,
   visibility: ProjectVisibility,
   description?: string,
 ): Promise<ProjectEntity> {
-  const studio = await requirePersonalStudio(userId);
+  await requireStudioCreateAccess(userId, studioId);
 
   return db.transaction(async (tx) =>
-    projectRepo.createProject(tx, studio.id, userId, name, slug, visibility, description),
+    projectRepo.createProject(tx, studioId, userId, name, slug, visibility, description),
   );
 }
 
 /**
- * Resolve the caller's personal studio, throwing if they have not yet
- * completed onboarding.
+ * Authorize the caller to create a project in the target studio.
  *
- * Personal studios are created explicitly in the slug-setup step, no
- * longer auto-created on demand. Project routes are reachable only after
- * the frontend onboarding gate, so a missing studio here means a direct
- * API call by a half-onboarded account — surface it as 404 (same
- * existence-hiding convention as `assertAccess`).
+ * Only a studio `admin` or `creator` may create (3-role model, spec §0.2):
+ * a studio's credits are shared, so a plain `member` (or a non-member,
+ * role `null`) must not be able to spend them by creating projects. Today
+ * only personal studios exist (single admin), so only `admin` is exercised
+ * against real data; the `creator` branch activates with team studios.
  * @param userId - Authenticated user UUID
- * @returns The user's personal studio
- * @throws {NotFoundError} if the user has no personal studio
+ * @param studioId - The studio the project would be created in
+ * @throws {ForbiddenError} if the caller is not an admin/creator of the studio
  */
-async function requirePersonalStudio(
+async function requireStudioCreateAccess(
   userId: string,
-): Promise<{ id: string }> {
-  const studio = await studioService.getPersonalStudio(userId);
-  if (!studio) {
-    throw new NotFoundError(t("server.error.not_found"));
+  studioId: string,
+): Promise<void> {
+  const role = await studioAuthService.loadStudioRole(userId, studioId);
+  if (role !== "admin" && role !== "creator") {
+    throw new ForbiddenError(t("server.error.forbidden"));
   }
-  return studio;
 }
 
 /**

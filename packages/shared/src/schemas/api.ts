@@ -187,6 +187,8 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
 // ── Projects ─────────────────────────────────────────────────────────
 
 export const projectCreateSchema = z.object({
+  /** The studio to create the project in — the create gate checks the caller's role on it (admin/creator). */
+  studioId: z.string().uuid(),
   name: z.string().min(1).max(255),
   slug: z
     .string()
