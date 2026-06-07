@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -33,6 +33,7 @@ import {
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import { useRenameProject } from '@web/pages/project/use-rename-project';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
@@ -81,7 +82,6 @@ export default function ProjectPage(): React.JSX.Element {
   const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
-  const queryClient = useQueryClient();
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
@@ -118,37 +118,10 @@ export default function ProjectPage(): React.JSX.Element {
   const isViewer = role === 'viewer';
   const credits = 0;
 
-  const renameMutation = useMutation({
-    mutationFn: (name: string) => projectsApi.rename(projectId, name),
-    onMutate: async (next: string) => {
-      await queryClient.cancelQueries({ queryKey: ['project', projectId] });
-      const previous = queryClient.getQueryData(['project', projectId]);
-      queryClient.setQueryData(
-        ['project', projectId],
-        (old: { name: string } | undefined) =>
-          old ? { ...old, name: next } : old,
-      );
-      return { previous };
-    },
-    onError: (err, _next, ctx) => {
-      if (ctx && 'previous' in ctx) {
-        queryClient.setQueryData(['project', projectId], ctx.previous);
-      }
-      const message = err instanceof Error ? err.message : 'Rename failed';
-      toast.error('Project rename failed', { description: message });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      // The studio project list keys its query on `['projects', 'list']`.
-      // Without this second invalidation, hitting Back → Studio after a
-      // rename would show the cached old name until manual refresh (the Q5
-      // bug). Invalidating both keys keeps the in-project header and the
-      // studio list in sync. (The studio list UI is being rebuilt in the
-      // studio redesign — previously `ProjectGrid`; the studio-container
-      // slice re-wires it on this same query key.)
-      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
-    },
-  });
+  // Rename mutation (optimistic header update + studio-list refresh). Extracted
+  // to `useRenameProject` so the cross-query invalidation (#1068) is unit-tested
+  // in isolation rather than buried in this heavy page component.
+  const renameMutation = useRenameProject(projectId);
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
