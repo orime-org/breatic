@@ -1488,6 +1488,17 @@
       "empty": {
         "newCard": "+ 새로 만들기"
       }
+    },
+    "rail": {
+      "navLabel": "Studio 탐색",
+      "createProject": "새 프로젝트",
+      "createCollection": "새 컬렉션",
+      "createStudio": "새 Studio",
+      "comingSoon": "곧 출시",
+      "recent": "최근",
+      "myStudios": "내 Studio",
+      "joinedStudios": "참여 중인 Studio",
+      "joinedEmpty": "아직 참여한 Studio가 없습니다"
     }
   },
   "chrome": {

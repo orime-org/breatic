@@ -1488,6 +1488,17 @@
       "empty": {
         "newCard": "+ 新建"
       }
+    },
+    "rail": {
+      "navLabel": "Studio 导航",
+      "createProject": "新建项目",
+      "createCollection": "新建资产集",
+      "createStudio": "新建 Studio",
+      "comingSoon": "即将推出",
+      "recent": "最近",
+      "myStudios": "我的 Studio",
+      "joinedStudios": "我加入的 Studio",
+      "joinedEmpty": "还没加入任何 Studio"
     }
   },
   "chrome": {

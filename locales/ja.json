@@ -1488,6 +1488,17 @@
       "empty": {
         "newCard": "+ 新規"
       }
+    },
+    "rail": {
+      "navLabel": "Studio ナビゲーション",
+      "createProject": "プロジェクトを新規作成",
+      "createCollection": "コレクションを新規作成",
+      "createStudio": "Studio を新規作成",
+      "comingSoon": "近日公開",
+      "recent": "最近",
+      "myStudios": "マイ Studio",
+      "joinedStudios": "参加中の Studio",
+      "joinedEmpty": "まだ Studio に参加していません"
     }
   },
   "chrome": {

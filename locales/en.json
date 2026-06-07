@@ -1488,6 +1488,17 @@
       "empty": {
         "newCard": "+ New"
       }
+    },
+    "rail": {
+      "navLabel": "Studio navigation",
+      "createProject": "New project",
+      "createCollection": "New collection",
+      "createStudio": "New studio",
+      "comingSoon": "Coming soon",
+      "recent": "Recent",
+      "myStudios": "My studios",
+      "joinedStudios": "Joined studios",
+      "joinedEmpty": "You haven't joined any studio yet"
     }
   },
   "chrome": {
