@@ -22,8 +22,6 @@ import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
-import { STUB_GUEST_PROJECT_COUNT } from '@web/pages/studio/recent/recent-stub';
-import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
 /**
  * Map a backend `ProjectSummary` (the studio-projects API contract) onto the
@@ -68,10 +66,6 @@ export default function StudioContainerPage(): React.JSX.Element {
     queryKey: ['studio', slug],
     queryFn: () => studiosApi.get(slug),
   });
-  const studiosQuery = useQuery({
-    queryKey: ['studios', 'user'],
-    queryFn: () => studiosApi.listUserStudios(),
-  });
   const projectsQuery = useQuery({
     queryKey: ['studio', slug, 'projects'],
     queryFn: () => studiosApi.listProjects(slug),
@@ -103,7 +97,6 @@ export default function StudioContainerPage(): React.JSX.Element {
   const [tab, setTab] = React.useState<StudioTabKey>('projects');
 
   const studio = studioQuery.data;
-  const studios = studiosQuery.data ?? [];
   // Projects come from the real API (slice 2); the other tab CONTENTS stay on
   // stub until their own slices.
   const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
@@ -112,13 +105,7 @@ export default function StudioContainerPage(): React.JSX.Element {
   const view = studio ? { ...getStubStudioView(slug), studio } : null;
 
   return (
-    <div className='flex h-screen flex-col bg-background text-foreground'>
-      <StudioTopBar
-        current={studio ? { name: studio.name } : undefined}
-        studios={studios}
-        activeSlug={slug}
-        guestProjectCount={STUB_GUEST_PROJECT_COUNT}
-      />
+    <div className='flex h-full flex-col'>
       {studioQuery.isPending ? (
         <div
           role='status'

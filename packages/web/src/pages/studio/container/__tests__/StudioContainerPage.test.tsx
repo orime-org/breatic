@@ -113,14 +113,11 @@ function setup(slug = 'acme-studio', strict = false) {
 }
 
 describe('StudioContainerPage', () => {
-  it('renders the top-bar banner, the studio header and a 5-tab tablist (shell from the real query)', async () => {
+  it('renders the studio header and a 5-tab tablist (shell from the real query)', async () => {
     setup('acme-studio');
-    expect(screen.getByRole('banner')).toBeInTheDocument();
-    // The studio name appears in the switcher trigger (GET /studios) and the
-    // shead (GET /studio/:slug) once both queries resolve.
-    expect(
-      (await screen.findAllByText('Acme Studio')).length,
-    ).toBeGreaterThanOrEqual(2);
+    // The top bar moved to the layout route, so the container renders the
+    // studio header (name + type badge) + the tab list, not a banner.
+    expect(await screen.findByText('Acme Studio')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(5);
   });

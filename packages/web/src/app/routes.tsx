@@ -4,7 +4,8 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import StudioPage from '@web/pages/studio/StudioPage';
+import StudioLayout from '@web/pages/studio/shell/StudioLayout';
+import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
 import NoAccessPage from '@web/pages/project/access/NoAccessPage';
@@ -54,30 +55,26 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
 const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
   {
-    // `/studio` IS the cross-studio "Recent" view itself (URL design §5.7,
-    // B correction) — there is no `/studio/recent` URL. Recent is per-user
-    // and account-bound: sharing `/studio` shows each viewer their own
-    // recent, so it has no shareable URL of its own. Only `/studio/{slug}`
-    // (the studio container) points all viewers at the same content.
+    // The studio layout route (spec §3.1) — the rail + top bar mount ONCE in
+    // `StudioLayout` and persist across `/studio` ↔ `/studio/{slug}`; the child
+    // renders in the layout's <Outlet/>, so switching studio swaps only the
+    // center content and the rail keeps its mount / selection / collapse state
+    // (invariant #3 —切 studio 不丢状态). Wrapped in ProtectedRoute.
     path: '/studio',
     element: (
       <ProtectedRoute>
-        <StudioPage />
+        <StudioLayout />
       </ProtectedRoute>
     ),
-  },
-  {
-    // `/studio/{slug}` — a specific studio's container (spec §2.2): a 5-tab
-    // workspace (projects / collections / members / credits / settings; 4 for
-    // personal studios). The slug is the globally-unique studio locator (no
-    // id; URL design §5.7). Tab data is stubbed in slice 3; Phase 2 wires the
-    // real per-studio APIs.
-    path: '/studio/:slug',
-    element: (
-      <ProtectedRoute>
-        <StudioContainerPage />
-      </ProtectedRoute>
-    ),
+    children: [
+      // `/studio` IS the cross-studio "Recent" view itself (URL design §5.7) —
+      // there is no `/studio/recent` URL; Recent is per-user / account-bound.
+      { index: true, element: <StudioRecentPage /> },
+      // `/studio/{slug}` — a specific studio's container (spec §6): member view
+      // (tabs) or non-member view, by `myStudioRole`. The slug is the globally-
+      // unique studio locator (no id; URL design §5.7).
+      { path: ':slug', element: <StudioContainerPage /> },
+    ],
   },
   {
     path: '/project/:projectId',

@@ -31,12 +31,14 @@ describe('StudioTopBar', () => {
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
   });
 
-  it('keeps the search tool button alongside the switchers', () => {
+  it('renders the brand (logo + Breatic) linking to /studio, with no switcher or search', () => {
     setup();
-    // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
-    expect(
-      screen.getByRole('button', { name: 'Search' }),
-    ).toBeInTheDocument();
+    // The studio switcher moved to the persistent rail and search is dropped
+    // this version, so the top bar is just brand + tools.
+    const home = screen.getByRole('link', { name: 'Studio home' });
+    expect(home).toHaveAttribute('href', '/studio');
+    expect(screen.getByText('Breatic')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
   });
 
   it('has no a11y violations', async () => {

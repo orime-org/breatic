@@ -10,8 +10,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
-import { StudioSwitcherPanel } from '@web/pages/studio/shell/StudioSwitcherPanel';
-import { STUB_STUDIOS } from '@web/pages/studio/recent/recent-stub';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import type { StudioDetail } from '@breatic/shared';
 
@@ -60,29 +58,16 @@ describe('studio container — invariant 5 (StrictMode-safe)', () => {
         </QueryClientProvider>
       </StrictMode>,
     );
-    // If a component duplicated DOM under the double render, these would
-    // multiply; exactly-one banner + 5 tabs (once the shell query resolves)
-    // proves render idempotence.
-    expect(screen.getByRole('banner')).toBeInTheDocument();
+    // If a component duplicated DOM under the double render, the tab count
+    // would multiply; exactly 5 tabs (once the shell query resolves) proves
+    // render idempotence. The top bar moved to the layout route, so the
+    // standalone container no longer renders a banner.
     expect(await screen.findAllByRole('tab')).toHaveLength(5);
   });
 });
 
 // ── invariant 6: a11y on the new interactive surfaces ──────────────────────
 describe('studio container — invariant 6 (a11y)', () => {
-  it('the switcher panel has no a11y violations', async () => {
-    const { container } = render(
-      <MemoryRouter>
-        <StudioSwitcherPanel
-          studios={STUB_STUDIOS}
-          activeSlug={null}
-          guestProjectCount={2}
-        />
-      </MemoryRouter>,
-    );
-    await expectNoA11yViolations(container);
-  });
-
   it('the create dialog has no a11y violations when open', async () => {
     const { baseElement } = render(
       <NewItemDialog kind='project' open onOpenChange={() => {}} />,
