@@ -62,44 +62,48 @@ projects.get("/", zValidator("query", paginationSchema), async (c) => {
   return c.json({ data: list });
 });
 
-// ── Membership-gated reads / writes ────────────────────────────────
+/**
+ * `GET /projects/:id` — read a project plus the caller's role (the
+ * project-open path).
+ *
+ * NOT behind `requireRoleOnParam`: this is the open-baseline entry point
+ * (slice 2). `projectService.loadForViewer` resolves access including the
+ * open-baseline grant (a studio member opening a studio-visible project is
+ * admitted as a viewer and a `project_members` row is materialized on this
+ * server path, before the client opens collab) and returns the effective
+ * `myRole`. No access (private with no row / not a studio member / missing)
+ * collapses to a `404`, never leaking project existence. v10 §7.2.6.
+ * @returns `200` with `{ data: ProjectDetail }`
+ */
+projects.get("/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const { project, myRole } = await projectService.loadForViewer(id, user.id);
+  const detail: ProjectDetail = {
+    id: project.id,
+    studioId: project.studioId,
+    createdByUserId: project.createdByUserId,
+    name: project.name,
+    description: project.description,
+    thumbnailUrl: project.thumbnailUrl,
+    myRole,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    deletedAt: project.deletedAt,
+  };
+  return c.json({ data: detail });
+});
+
+// ── Membership-gated writes ────────────────────────────────────────
 //
 // Every route below this point sits behind `requireRoleOnParam('id',
-// minRole)`. The middleware resolves the caller's role on `:id` and
-// stamps it on `c.var.role` for handlers that want to surface it
-// (e.g. `GET /:id` returns `myRole` to the frontend).
+// minRole)`. The middleware resolves the caller's role on `:id`, rejects
+// non-members / insufficient roles with 403, and stamps the role on
+// `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
+// it grants open-baseline access + materializes, which the role middleware
+// would block before the handler runs.)
 
 const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
-
-/**
- * `GET /projects/:id` — read a project plus the caller's role.
- *
- * Returns a `ProjectDetail` (entity + `myRole`) so the frontend can
- * gate UI without a second round-trip. v10 §7.2.6.
- */
-membershipScoped.get(
-  "/:id",
-  requireRoleOnParam("id", "viewer"),
-  async (c) => {
-    const user = c.get("user");
-    const id = c.req.param("id");
-    const project = await projectService.get(id, user.id);
-    const role = c.get("role");
-    const detail: ProjectDetail = {
-      id: project.id,
-      studioId: project.studioId,
-      createdByUserId: project.createdByUserId,
-      name: project.name,
-      description: project.description,
-      thumbnailUrl: project.thumbnailUrl,
-      myRole: role,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      deletedAt: project.deletedAt,
-    };
-    return c.json({ data: detail });
-  },
-);
 
 /** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z

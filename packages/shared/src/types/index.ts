@@ -16,6 +16,7 @@ export type {
   ProjectEntity,
   ProjectVisibility,
   ProjectDetail,
+  ProjectSummary,
   MemoryContext,
   SkillMeta,
 } from "@shared/types/entities.js";

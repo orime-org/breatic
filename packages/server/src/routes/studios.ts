@@ -5,8 +5,10 @@
  * Studio routes — the container shell (slice 1).
  *
  * Two endpoints, both authenticated:
- *   - `GET /api/v1/studios`        — the current user's studios (switcher).
- *   - `GET /api/v1/studio/:slug`   — one studio's public-facing shell.
+ *   - `GET /api/v1/studios`            — the current user's studios (switcher).
+ *   - `GET /api/v1/studio/:slug`       — one studio's public-facing shell.
+ *   - `GET /api/v1/studio/:slug/projects` — the studio's projects, filtered
+ *     to what the viewer may see (open-baseline visibility, slice 2).
  *
  * The shell is visible to any authenticated user (decision A — a studio's
  * `/studio/{slug}` page is its front door): a non-member gets a `200` with
@@ -20,7 +22,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { studioService } from "@server/modules";
+import { studioService, projectService } from "@server/modules";
 
 const studios = new Hono<{ Variables: AuthVariables }>();
 
@@ -51,6 +53,23 @@ studio.get("/:slug", async (c) => {
   const user = c.get("user");
   const slug = c.req.param("slug");
   const data = await studioService.getStudioDetail(slug, user.id);
+  return c.json({ data });
+});
+
+/**
+ * `GET /api/v1/studio/:slug/projects` — the studio's projects visible to the
+ * viewer (open-baseline visibility, slice 2).
+ *
+ * Server-side filtered (`projectService.listByStudioSlug`): a studio member
+ * sees studio-visible projects + their own private ones; an admin sees all;
+ * a non-member gets `[]` (the guest shell shows no projects). A slug with no
+ * active studio surfaces as `404`.
+ * @returns `200` with `{ data: ProjectSummary[] }`
+ */
+studio.get("/:slug/projects", async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  const data = await projectService.listByStudioSlug(slug, user.id);
   return c.json({ data });
 });
 

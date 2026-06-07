@@ -28,6 +28,7 @@ export type {
   ProjectEntity,
   ProjectVisibility,
   ProjectDetail,
+  ProjectSummary,
   MemoryContext,
   SkillMeta,
   NodeState,

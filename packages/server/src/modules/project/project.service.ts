@@ -17,13 +17,19 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { projectAuthService } from "@breatic/core";
+import { projectAuthService, projectMembersRepo } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import { studioAuthService } from "@breatic/domain";
 import { db } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
-import type { ProjectEntity, ProjectRole, ProjectVisibility } from "@breatic/shared";
+import type {
+  ProjectEntity,
+  ProjectRole,
+  ProjectSummary,
+  ProjectVisibility,
+} from "@breatic/shared";
 
 /**
  * Throw if the user does not have at least `minRole` on the project.
@@ -73,6 +79,10 @@ export async function assertAccess(
  * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param name - Project name
+ * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
+ *   app-side, NOT unique)
+ * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
+ *   members only)
  * @param description - Optional description
  * @returns The newly created project entity
  * @throws {NotFoundError} if the user has no personal studio yet (they
@@ -135,6 +145,56 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
 }
 
 /**
+ * Load a project for a user OPENING its page, applying open-baseline access
+ * (slice 2) and materializing a viewer row on first entry.
+ *
+ * This is the project-load path `GET /projects/:id` uses — deliberately
+ * distinct from {@link get}, which other callers (role-upgrade approval,
+ * invite-link resolution) use to fetch a project the caller ALREADY has a
+ * row on. Those must never materialize a membership as a side effect, so the
+ * baseline grant lives here, not in `get`.
+ *
+ * Access ladder:
+ *   1. The caller already has a `project_members` role → return it unchanged.
+ *   2. No row, but the project is `visibility = 'studio'` AND the caller is a
+ *      member of the project's studio → grant access, materialize a baseline
+ *      `viewer` row (on this server path, BEFORE the client opens collab, so
+ *      collab reads the persisted row), and return `myRole = 'viewer'`.
+ *   3. Otherwise (private with no row, not a studio member, or the project is
+ *      missing) → `NotFoundError`, collapsing all three so project existence
+ *      is never leaked.
+ * @param projectId - Project UUID being opened
+ * @param userId - Authenticated user UUID
+ * @returns The project entity plus the caller's effective role
+ * @throws {NotFoundError} when the caller has no access, or the project is
+ *   missing / soft-deleted
+ */
+export async function loadForViewer(
+  projectId: string,
+  userId: string,
+): Promise<{ project: ProjectEntity; myRole: ProjectRole }> {
+  const role = await projectAuthService.loadProjectRole(userId, projectId);
+  if (role !== null) {
+    const project = await projectRepo.getProjectById(projectId);
+    if (!project) throw new NotFoundError(t("server.error.not_found"));
+    return { project, myRole: role };
+  }
+
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+
+  if (project.visibility === "studio") {
+    const studioRole = await studioAuthService.loadStudioRole(userId, project.studioId);
+    if (studioRole !== null) {
+      await projectMembersRepo.materializeBaselineViewer(projectId, userId);
+      return { project, myRole: "viewer" };
+    }
+  }
+
+  throw new NotFoundError(t("server.error.not_found"));
+}
+
+/**
  * List projects in the caller's personal studio (V1).
  *
  * V1 personal-Studio mode: every user has exactly one studio.
@@ -155,6 +215,54 @@ export async function list(
 ): Promise<ProjectEntity[]> {
   const studio = await requirePersonalStudio(userId);
   return projectRepo.listProjectsByStudio(studio.id, limit, offset);
+}
+
+/**
+ * List the projects of a studio a viewer may see, for the studio container's
+ * "projects" tab (slice 2 — replaces the personal-Studio {@link list}).
+ *
+ * Resolves the viewer's studio role and applies open-baseline visibility:
+ *   - non-member → `[]` (the guest shell shows no projects, IA #267);
+ *   - member → studio-visible projects + the private ones they have a role on;
+ *   - admin → every project in the studio (governance).
+ *
+ * The visibility predicate runs in the repo's single SQL query; this layer
+ * only resolves the studio role and short-circuits non-members so the repo is
+ * never queried for someone with no business listing the studio's projects.
+ * @param studioId - Studio UUID whose projects to list
+ * @param viewerUserId - Authenticated user UUID
+ * @returns The visible project summaries (empty for non-members)
+ */
+export async function listByStudioForViewer(
+  studioId: string,
+  viewerUserId: string,
+): Promise<ProjectSummary[]> {
+  const studioRole = await studioAuthService.loadStudioRole(viewerUserId, studioId);
+  if (studioRole === null) return [];
+  return projectRepo.listProjectsByStudioForViewer(
+    studioId,
+    viewerUserId,
+    studioRole === "admin",
+  );
+}
+
+/**
+ * List a studio's visible projects by the studio's URL slug.
+ *
+ * Resolves the slug to a studio (404 if none), then delegates to
+ * {@link listByStudioForViewer}. Backs `GET /studio/:slug/projects`.
+ * @param slug - The studio's URL handle
+ * @param viewerUserId - Authenticated user UUID
+ * @returns The visible project summaries (empty for non-members)
+ * @throws {NotFoundError} when no active studio has that slug
+ */
+export async function listByStudioSlug(
+  slug: string,
+  viewerUserId: string,
+): Promise<ProjectSummary[]> {
+  const studio = await studioService.getStudioBySlug(slug);
+  if (!studio) throw new NotFoundError(t("server.error.not_found"));
+  return listByStudioForViewer(studio.id, viewerUserId);
 }
 
 /**

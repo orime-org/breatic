@@ -16,6 +16,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// project.service now imports @breatic/domain (studioAuthService for the
+// open-baseline load path), whose barrel pulls agent/llm → the `ai` SDK →
+// @opentelemetry/api, whose ESM build Node's native ESM rejects. This suite
+// never calls any ai function; the stub keeps that chain from loading.
+vi.mock("ai", () => ({
+  tool: (c: Record<string, unknown>) => c,
+  streamText: vi.fn(),
+  generateText: vi.fn(),
+  stepCountIs: vi.fn(),
+}));
+
 vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
 }));
