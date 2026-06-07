@@ -32,6 +32,7 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 
+import { writeSpaceEntry } from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   canvasSpaceDocName,
@@ -257,15 +258,14 @@ async function handleCreate(
         conflict = true;
         return;
       }
-      const entry = new Y.Map<unknown>();
-      entry.set("id", spaceId);
-      entry.set("type", type);
-      entry.set("name", name);
-      entry.set("order", spaces.size);
-      entry.set("locked", false);
-      entry.set("createdAt", Date.now());
-      entry.set("createdBy", caller.userId);
-      spaces.set(spaceId, entry);
+      writeSpaceEntry(spaces, {
+        spaceId,
+        type,
+        name,
+        order: spaces.size,
+        createdAt: Date.now(),
+        createdBy: caller.userId,
+      });
       pushProjectMessage(doc, {
         kind: "space-created",
         actor: caller.userId,
