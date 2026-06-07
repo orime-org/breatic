@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { ProjectRole } from '@web/stores';
+import type { ProjectVisibility } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type { Pagination } from '@web/data/api/types';
 
@@ -37,7 +38,12 @@ export const projectsApi = {
   get(id: string) {
     return apiGet<ProjectDetail>(`/projects/${id}`);
   },
-  create(body: { name: string; templateId?: string }) {
+  create(body: {
+    name: string;
+    slug: string;
+    visibility: ProjectVisibility;
+    description?: string;
+  }) {
     return apiPost<ProjectDetail>('/projects', body);
   },
   duplicate(id: string) {

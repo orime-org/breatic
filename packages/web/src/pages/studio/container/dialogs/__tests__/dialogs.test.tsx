@@ -29,7 +29,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByText(/Lowercase letters/)).toBeInTheDocument();
   });
 
-  it('reports valid values and closes on submit', async () => {
+  it('reports valid values (defaulting visibility to studio) and closes on submit', async () => {
     const onCreate = vi.fn();
     const onOpenChange = vi.fn();
     const user = userEvent.setup();
@@ -48,8 +48,27 @@ describe('NewItemDialog (spec §3.12)', () => {
       name: 'Moodboard',
       slug: 'mood-board',
       description: '',
+      visibility: 'studio',
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('reports visibility=private when the Private option is chosen', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
+    );
+    await user.type(screen.getByLabelText('Name'), 'Secret');
+    await user.type(screen.getByLabelText('Handle'), 'secret-proj');
+    await user.click(screen.getByLabelText(/invite only/));
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith({
+      name: 'Secret',
+      slug: 'secret-proj',
+      description: '',
+      visibility: 'private',
+    });
   });
 });
 

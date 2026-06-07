@@ -1410,7 +1410,8 @@
       "projects": {
         "title": "プロジェクト",
         "new": "プロジェクトを新規作成",
-        "empty": "プロジェクトはまだありません —— 作成して始めましょう。"
+        "empty": "プロジェクトはまだありません —— 作成して始めましょう。",
+        "createError": "プロジェクトを作成できませんでした"
       },
       "collections": {
         "title": "コレクション",
@@ -1479,7 +1480,10 @@
         "slugFormat": "小文字・数字・ハイフンのみ使用できます。",
         "slugLength": "{min}–{max} 文字で入力してください。",
         "slugTaken": "そのハンドルは既に使用されています。",
-        "slugReserved": "そのハンドルは既に使用されています。"
+        "slugReserved": "そのハンドルは既に使用されています。",
+        "visibilityLabel": "公開範囲",
+        "visibilityStudioOption": "studio 内に表示 — 全メンバー",
+        "visibilityPrivateOption": "非公開 — 招待のみ"
       },
       "empty": {
         "newCard": "+ 新規"

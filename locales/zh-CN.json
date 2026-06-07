@@ -1410,7 +1410,8 @@
       "projects": {
         "title": "项目",
         "new": "新建项目",
-        "empty": "还没有项目 —— 新建一个开始吧。"
+        "empty": "还没有项目 —— 新建一个开始吧。",
+        "createError": "创建项目失败"
       },
       "collections": {
         "title": "资产集",
@@ -1479,7 +1480,10 @@
         "slugFormat": "只能用小写字母、数字和连字符。",
         "slugLength": "需 {min}–{max} 个字符。",
         "slugTaken": "该网址标识已被使用。",
-        "slugReserved": "该网址标识已被使用。"
+        "slugReserved": "该网址标识已被使用。",
+        "visibilityLabel": "可见性",
+        "visibilityStudioOption": "studio 内可见 — 所有成员",
+        "visibilityPrivateOption": "私有 — 仅受邀"
       },
       "empty": {
         "newCard": "+ 新建"

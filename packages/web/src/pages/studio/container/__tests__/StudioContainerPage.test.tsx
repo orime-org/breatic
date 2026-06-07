@@ -10,12 +10,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
-import type { StudioDetail, StudioSummary } from '@breatic/shared';
+import type { ProjectSummary, StudioDetail, StudioSummary } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({
-  studiosApi: { get: vi.fn(), listUserStudios: vi.fn() },
+  studiosApi: {
+    get: vi.fn(),
+    listUserStudios: vi.fn(),
+    listProjects: vi.fn(),
+  },
+}));
+vi.mock('@web/data/api/projects', () => ({
+  projectsApi: { create: vi.fn() },
 }));
 import { studiosApi } from '@web/data/api/studios';
+import { projectsApi } from '@web/data/api/projects';
 
 const TEAM: StudioDetail = {
   id: 's-acme',
@@ -37,6 +45,19 @@ const STUDIOS: readonly StudioSummary[] = [
   { id: 's-alex', slug: 'alex', name: 'Alex', type: 'personal', memberCount: 1 },
   { id: 's-acme', slug: 'acme-studio', name: 'Acme Studio', type: 'team', memberCount: 4 },
 ];
+const PROJECTS: readonly ProjectSummary[] = [
+  {
+    id: 'p-real-1',
+    studioId: 's-acme',
+    name: 'Real Studio Project',
+    slug: 'real-studio-project',
+    visibility: 'studio',
+    thumbnailUrl: null,
+    myRole: 'owner',
+    createdAt: new Date('2026-06-07T00:00:00.000Z'),
+    updatedAt: new Date('2026-06-07T00:00:00.000Z'),
+  },
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,6 +65,19 @@ beforeEach(() => {
     slug === 'alex' ? PERSONAL : TEAM,
   );
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([...STUDIOS]);
+  vi.mocked(studiosApi.listProjects).mockResolvedValue([...PROJECTS]);
+  vi.mocked(projectsApi.create).mockResolvedValue({
+    id: 'p-new',
+    studioId: 's-acme',
+    createdByUserId: 'u-1',
+    name: 'Fresh',
+    description: null,
+    thumbnailUrl: null,
+    myRole: 'owner',
+    createdAt: '2026-06-07T00:00:00.000Z',
+    updatedAt: '2026-06-07T00:00:00.000Z',
+    deletedAt: null,
+  });
 });
 
 function setup(slug = 'acme-studio', strict = false) {
@@ -111,6 +145,30 @@ describe('StudioContainerPage', () => {
     setup('acme-studio', true);
     await screen.findByText('Team');
     expect(vi.mocked(studiosApi.get)).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the studio projects from the real API (slice 2)', async () => {
+    setup('acme-studio');
+    expect(
+      await screen.findByText('Real Studio Project'),
+    ).toBeInTheDocument();
+  });
+
+  it('creates a project via the real API with the chosen visibility', async () => {
+    const user = userEvent.setup();
+    setup('acme-studio');
+    await screen.findByText('Real Studio Project');
+    await user.click(screen.getByRole('button', { name: 'New project' }));
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.type(screen.getByLabelText('Handle'), 'fresh-proj');
+    await user.click(screen.getByLabelText(/invite only/));
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(vi.mocked(projectsApi.create)).toHaveBeenCalledWith({
+      name: 'Fresh',
+      slug: 'fresh-proj',
+      visibility: 'private',
+      description: undefined,
+    });
   });
 
   it('has no a11y violations', async () => {
