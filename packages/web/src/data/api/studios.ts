@@ -10,7 +10,11 @@
  */
 
 import { apiGet } from '@web/data/api/request';
-import type { StudioDetail, StudioSummary } from '@breatic/shared';
+import type {
+  ProjectSummary,
+  StudioDetail,
+  StudioSummary,
+} from '@breatic/shared';
 
 export const studiosApi = {
   /**
@@ -30,5 +34,17 @@ export const studiosApi = {
    */
   get(slug: string): Promise<StudioDetail> {
     return apiGet<StudioDetail>(`/studio/${slug}`);
+  },
+  /**
+   * `GET /api/v1/studio/:slug/projects` — the studio's projects the viewer may
+   * see (slice 2 open-baseline visibility, server-side filtered): a member
+   * sees studio-visible projects + their own-role private ones, an admin sees
+   * all, a guest gets an empty list. Each row carries the viewer's `myRole`
+   * (`null` for a studio-visible project not yet entered).
+   * @param slug the studio's URL handle.
+   * @returns the visible project summaries.
+   */
+  listProjects(slug: string): Promise<ProjectSummary[]> {
+    return apiGet<ProjectSummary[]>(`/studio/${slug}/projects`);
   },
 };

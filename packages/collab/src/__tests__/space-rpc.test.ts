@@ -70,11 +70,11 @@ beforeEach(() => {
 });
 
 describe("handleSpaceRpc — role validation", () => {
-  it("space:create refuses view role", async () => {
+  it("space:create refuses viewer role", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "viewer" },
       {
         id: "r1",
         type: "space:create",
@@ -85,21 +85,21 @@ describe("handleSpaceRpc — role validation", () => {
     if (!res.ok) expect(res.error.code).toBe("FORBIDDEN");
   });
 
-  it("space:delete refuses view role", async () => {
+  it("space:delete refuses viewer role", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "viewer" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
   });
 
-  it("space:lock refuses view role", async () => {
+  it("space:lock refuses viewer role", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u", role: "view" },
+      { userId: "u", role: "viewer" },
       {
         id: "r1",
         type: "space:lock",
@@ -109,22 +109,22 @@ describe("handleSpaceRpc — role validation", () => {
     expect(res.ok).toBe(false);
   });
 
-  it("space:restore refuses edit role (owner-only)", async () => {
+  it("space:restore refuses editor role (owner-only)", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u", role: "edit" },
+      { userId: "u", role: "editor" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("FORBIDDEN");
   });
 
-  it("messages:clear refuses edit role (owner-only)", async () => {
+  it("messages:clear refuses editor role (owner-only)", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u", role: "edit" },
+      { userId: "u", role: "editor" },
       { id: "r1", type: "messages:clear", payload: { all: true } },
     );
     expect(res.ok).toBe(false);
@@ -136,7 +136,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:create",
@@ -167,7 +167,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:create",
@@ -190,7 +190,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
@@ -217,7 +217,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: "missing" } },
     );
     expect(res.ok).toBe(false);
@@ -234,7 +234,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:lock",
@@ -258,7 +258,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:rename",
@@ -281,7 +281,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:rename",
@@ -303,7 +303,7 @@ describe("handleSpaceRpc — happy paths", () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
-      { userId: "u-1", role: "edit" },
+      { userId: "u-1", role: "editor" },
       {
         id: "r1",
         type: "space:rename",

@@ -24,7 +24,7 @@ import type { PersonalStudio } from '@web/data/api/auth';
  * page load would briefly flash the login page before the cookie
  * check returned.
  */
-export type UserRole = 'owner' | 'edit' | 'view' | null;
+export type UserRole = 'owner' | 'editor' | 'viewer' | null;
 
 export interface CurrentUser {
   id: string;

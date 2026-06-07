@@ -139,6 +139,12 @@ export const projects = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     thumbnailUrl: text("thumbnail_url"),
+    // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
+    // unique (same-name projects disambiguate by uuid; URL design §5.7).
+    slug: varchar("slug", { length: 120 }).notNull(),
+    // 'studio' = visible to every studio member (open baseline); 'private'
+    // = only users with an explicit project_members row (slice 2 §2.3).
+    visibility: varchar("visibility", { length: 16 }).default("studio").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -148,7 +154,7 @@ export const projects = pgTable(
 // ── 4. Project Members ───────────────────────────────────────────────
 //
 // Three roles: `owner` (unique per project, partial unique index) /
-// `edit` / `view`. The owner row is written in the same transaction as
+// `editor` / `viewer`. The owner row is written in the same transaction as
 // the project insert - `addedBy` is null for that row (creator has no
 // inviter). `transfer-owner` is intentionally not implemented in V1
 // (v10 spec §7.2.5) - the partial unique index would have to be dance-
@@ -751,7 +757,7 @@ export const shareLinks = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     token: varchar("token", { length: 64 }).notNull().unique(),
-    role: varchar("role", { length: 16 }).default("view").notNull(),
+    role: varchar("role", { length: 16 }).default("viewer").notNull(),
     /**
      * Link mode discriminator. 'email' = single-use bound invite,
      * 'link' = multi-use shareable URL. The DB enforces this together

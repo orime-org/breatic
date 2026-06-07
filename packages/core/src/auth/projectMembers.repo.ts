@@ -164,7 +164,7 @@ export async function insertOwner(
  * through transfer-owner, which is V1-deferred).
  * @param projectId - Project UUID
  * @param userId - User UUID being invited
- * @param role - 'edit' | 'view'
+ * @param role - 'editor' | 'viewer'
  * @param addedBy - Inviter's user UUID
  * @param tx - Optional drizzle transaction handle (caller passes when
  *   the upsert must be atomic with other mutations in the same tx)
@@ -197,6 +197,64 @@ export async function upsertMember(
 }
 
 /**
+ * Materialize an open-baseline viewer row on first project entry (slice 2).
+ *
+ * Called by `project.service.loadForViewer` the moment a studio member opens
+ * a studio-visible project they have no `project_members` row for yet. The
+ * write happens on the server's project-load path, BEFORE the client opens
+ * its collab WebSocket, so collab's `loadProjectRole` always reads an already
+ * persisted row — collab itself never materializes and never recomputes the
+ * studio role.
+ *
+ * Conflict semantics (`ON CONFLICT (project_id, user_id) DO UPDATE ... WHERE
+ * deleted_at IS NOT NULL`) cover three states of the existing row:
+ *   - no row        → INSERT an active `viewer` row.
+ *   - soft-deleted  → REVIVE it to an active `viewer` (a previously-removed
+ *     member who again qualifies for baseline access must regain an ACTIVE
+ *     row; a bare `DO NOTHING` would leave the row soft-deleted, so the
+ *     server would grant access while collab's `loadProjectRole` still read
+ *     `null` and refused the WebSocket — a split-brain "server grants /
+ *     collab rejects" state).
+ *   - active        → NO-OP (the `setWhere` predicate fails). This is the
+ *     concurrency tie-break (two racing first-entries → one INSERT wins, the
+ *     loser conflicts on the composite PK and no-ops) AND the guarantee that
+ *     an existing `editor` / `owner` is NEVER downgraded to `viewer`.
+ *
+ * Because `loadForViewer` only calls this when `loadProjectRole` already
+ * returned `null` (no active row), the active-row branch is only reachable
+ * via a race (a concurrent invite or a sibling tab) — and in every such race
+ * the existing active row wins.
+ * @param projectId - Project UUID being entered
+ * @param userId - The entering user's UUID (becomes a baseline viewer)
+ * @param tx - Optional drizzle transaction handle
+ */
+export async function materializeBaselineViewer(
+  projectId: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<void> {
+  const handle = tx ?? db;
+  await handle
+    .insert(projectMembers)
+    .values({
+      projectId,
+      userId,
+      role: "viewer",
+      addedBy: null,
+    })
+    .onConflictDoUpdate({
+      target: [projectMembers.projectId, projectMembers.userId],
+      set: {
+        role: "viewer",
+        addedBy: null,
+        addedAt: sql`now()`,
+        deletedAt: null,
+      },
+      setWhere: sql`${projectMembers.deletedAt} IS NOT NULL`,
+    });
+}
+
+/**
  * Update the role of an existing active member.
  *
  * Caller MUST verify the target is not already an owner (V1: owner
@@ -204,7 +262,7 @@ export async function upsertMember(
  * if no active row matched.
  * @param projectId - Project UUID
  * @param userId - Target user UUID
- * @param role - New role ('edit' | 'view')
+ * @param role - New role ('editor' | 'viewer')
  * @param tx - Optional drizzle transaction handle so the role bump can join
  *   the caller's atomic decision (e.g. role-upgrade approve)
  * @returns `true` if a row was updated

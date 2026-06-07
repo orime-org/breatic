@@ -34,11 +34,11 @@ beforeEach(() => {
 
 describe("loadProjectRole", () => {
   it("delegates to getRole with (projectId, userId) and returns the role", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("edit");
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
 
     const role = await loadProjectRole("u-member", "p-real");
 
-    expect(role).toBe("edit");
+    expect(role).toBe("editor");
     // Note the argument flip: loadProjectRole(userId, projectId) →
     // getRole(projectId, userId).
     expect(projectMembersRepo.getRole).toHaveBeenCalledWith("p-real", "u-member");

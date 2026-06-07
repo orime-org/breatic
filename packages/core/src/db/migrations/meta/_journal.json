@@ -176,6 +176,20 @@
       "when": 1780600000000,
       "tag": "0024_studio_username_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780700000000,
+      "tag": "0025_projectrole_editor_viewer",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780700100000,
+      "tag": "0026_projects_slug_visibility",
+      "breakpoints": true
     }
   ]
 }

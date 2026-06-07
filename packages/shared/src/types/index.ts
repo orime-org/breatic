@@ -14,7 +14,9 @@ export type {
   CreditTransactionEntity,
   NotificationEntity,
   ProjectEntity,
+  ProjectVisibility,
   ProjectDetail,
+  ProjectSummary,
   MemoryContext,
   SkillMeta,
 } from "@shared/types/entities.js";

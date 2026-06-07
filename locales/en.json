@@ -1410,7 +1410,8 @@
       "projects": {
         "title": "Projects",
         "new": "New project",
-        "empty": "No projects yet — create one to get started."
+        "empty": "No projects yet — create one to get started.",
+        "createError": "Couldn't create the project"
       },
       "collections": {
         "title": "Collections",
@@ -1479,7 +1480,10 @@
         "slugFormat": "Lowercase letters, numbers and hyphens only.",
         "slugLength": "Must be {min}–{max} characters.",
         "slugTaken": "That handle is already in use.",
-        "slugReserved": "That handle is already in use."
+        "slugReserved": "That handle is already in use.",
+        "visibilityLabel": "Visibility",
+        "visibilityStudioOption": "Studio — all members",
+        "visibilityPrivateOption": "Private — invite only"
       },
       "empty": {
         "newCard": "+ New"

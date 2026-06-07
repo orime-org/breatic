@@ -63,6 +63,21 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     expect(screen.getByText('Open Project')).toBeInTheDocument();
     expect(screen.getByText('Hidden Project')).toBeInTheDocument();
   });
+
+  it('offers the create card to a Member but never to a guest (null role)', () => {
+    const member = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='member' />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'New project' }),
+    ).toBeInTheDocument();
+    member.unmount();
+
+    // A guest viewing the public shell sees the studio-visible project but no
+    // create entry (create always targets the caller's own studio).
+    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
+    expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
+  });
 });
 
 // ── CreditsTab — invariant 4 (read cached total, team has no gift) ──────────

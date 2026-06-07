@@ -161,7 +161,7 @@ describe('ProjectMessagesButton', () => {
         messages={[M_DELETED]}
         usersById={USERS_BY_ID}
         spacesById={SPACES_BY_ID}
-        currentUserRole='edit'
+        currentUserRole='editor'
         onRestore={vi.fn()}
       />,
     );

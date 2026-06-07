@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { ProjectRole } from '@web/stores';
+import type { ProjectVisibility } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
-import type { Pagination } from '@web/data/api/types';
 
 /**
- * Project list row — mirrors backend `ProjectEntity` returned by
- * `GET /api/v1/projects` (server sends an array, no `{projects, meta}`
- * wrapper inside the envelope). `role` is not populated on the list
- * endpoint — personal-studio v1 means every project is owner; per-row
- * role lands when sharing UI ships.
+ * Shared base shape for a single project (the fields `ProjectDetail` extends).
+ * The studio container lists projects via the studio-scoped
+ * `GET /studio/:slug/projects` endpoint (shared `ProjectSummary`), not this
+ * type — this one only backs the single-project reads below.
  */
 export interface ProjectSummary {
   id: string;
@@ -31,13 +30,15 @@ export interface ProjectDetail extends ProjectSummary {
 }
 
 export const projectsApi = {
-  list(params: Pagination = {}) {
-    return apiGet<ProjectSummary[]>('/projects', { params });
-  },
   get(id: string) {
     return apiGet<ProjectDetail>(`/projects/${id}`);
   },
-  create(body: { name: string; templateId?: string }) {
+  create(body: {
+    name: string;
+    slug: string;
+    visibility: ProjectVisibility;
+    description?: string;
+  }) {
     return apiPost<ProjectDetail>('/projects', body);
   },
   duplicate(id: string) {

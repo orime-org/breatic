@@ -49,7 +49,7 @@ interface ShareDialogProps {
 }
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-type GrantableRole = 'view' | 'edit';
+type GrantableRole = 'viewer' | 'editor';
 
 /**
  * Builds the public invite URL for a link token, preferring the current origin.
@@ -98,11 +98,11 @@ export function ShareDialog({
   const setOpen = useUIStore((s) => s.setShareOpen);
 
   const [invite, setInvite] = React.useState('');
-  const [inviteRole, setInviteRole] = React.useState<GrantableRole>('view');
+  const [inviteRole, setInviteRole] = React.useState<GrantableRole>('viewer');
   const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
 
-  const [generateRole, setGenerateRole] = React.useState<GrantableRole>('view');
+  const [generateRole, setGenerateRole] = React.useState<GrantableRole>('viewer');
   const [generatedLink, setGeneratedLink] = React.useState<InviteLink | null>(
     null,
   );
@@ -390,8 +390,8 @@ function RoleSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value='view'>{t('share.role.view')}</SelectItem>
-        <SelectItem value='edit'>{t('share.role.edit')}</SelectItem>
+        <SelectItem value='viewer'>{t('share.role.view')}</SelectItem>
+        <SelectItem value='editor'>{t('share.role.edit')}</SelectItem>
       </SelectContent>
     </Select>
   );

@@ -22,12 +22,15 @@ import {
   validateItemSlug,
   type SlugError,
 } from '@web/pages/studio/container/dialogs/slug-util';
+import type { ItemVisibility } from '@web/pages/studio/shared/studio-types';
 
 /** The values entered into a new-project / new-collection dialog. */
 export interface NewItemValues {
   name: string;
   slug: string;
   description: string;
+  /** `studio` = visible to every studio member (open baseline) | `private`. */
+  visibility: ItemVisibility;
 }
 
 interface NewItemDialogProps {
@@ -61,6 +64,7 @@ export function NewItemDialog({
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [description, setDescription] = React.useState('');
+  const [visibility, setVisibility] = React.useState<ItemVisibility>('studio');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
   const [submitted, setSubmitted] = React.useState(false);
 
@@ -71,6 +75,7 @@ export function NewItemDialog({
     setName('');
     setSlug('');
     setDescription('');
+    setVisibility('studio');
     setSlugError(null);
     setSubmitted(false);
   };
@@ -109,7 +114,12 @@ export function NewItemDialog({
     if (name.trim() === '' || error !== null) {
       return;
     }
-    onCreate?.({ name: name.trim(), slug, description: description.trim() });
+    onCreate?.({
+      name: name.trim(),
+      slug,
+      description: description.trim(),
+      visibility,
+    });
     handleOpenChange(false);
   };
 
@@ -153,6 +163,33 @@ export function NewItemDialog({
               error={slugError}
               bounds={ITEM_SLUG_BOUNDS}
             />
+            <fieldset className='flex flex-col gap-1.5'>
+              <legend className='text-sm font-medium'>
+                {t('studio.container.dialog.visibilityLabel')}
+              </legend>
+              <div className='flex flex-col gap-1.5 text-sm'>
+                <label className='flex items-center gap-1.5'>
+                  <input
+                    type='radio'
+                    name={`new-${kind}-visibility`}
+                    value='studio'
+                    checked={visibility === 'studio'}
+                    onChange={() => setVisibility('studio')}
+                  />
+                  {t('studio.container.dialog.visibilityStudioOption')}
+                </label>
+                <label className='flex items-center gap-1.5'>
+                  <input
+                    type='radio'
+                    name={`new-${kind}-visibility`}
+                    value='private'
+                    checked={visibility === 'private'}
+                    onChange={() => setVisibility('private')}
+                  />
+                  {t('studio.container.dialog.visibilityPrivateOption')}
+                </label>
+              </div>
+            </fieldset>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={descId}>
                 {t('studio.container.dialog.descriptionLabel')}

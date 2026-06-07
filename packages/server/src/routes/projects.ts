@@ -17,7 +17,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { projectCreateSchema, paginationSchema } from "@server/routes/schemas.js";
+import { projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
@@ -42,64 +42,53 @@ projects.use(requireAuth);
  */
 projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const user = c.get("user");
-  const { name, description } = c.req.valid("json");
-  const project = await projectService.create(user.id, name, description);
+  const { name, slug, visibility, description } = c.req.valid("json");
+  const project = await projectService.create(user.id, name, slug, visibility, description);
   return c.json({ data: project }, 201);
 });
 
 /**
- * `GET /projects` — list the caller's personal-studio projects.
+ * `GET /projects/:id` — read a project plus the caller's role (the
+ * project-open path).
  *
- * V1 personal-Studio mode: every user has one studio. Projects shared
- * with the caller but owned by someone else (Studio-phase feature)
- * are not exposed here yet — see spec §16 ★ "shared-projects entry on /studio".
- * @returns `200` with `{ data: ProjectEntity[] }`
+ * NOT behind `requireRoleOnParam`: this is the open-baseline entry point
+ * (slice 2). `projectService.loadForViewer` resolves access including the
+ * open-baseline grant (a studio member opening a studio-visible project is
+ * admitted as a viewer and a `project_members` row is materialized on this
+ * server path, before the client opens collab) and returns the effective
+ * `myRole`. No access (private with no row / not a studio member / missing)
+ * collapses to a `404`, never leaking project existence. v10 §7.2.6.
+ * @returns `200` with `{ data: ProjectDetail }`
  */
-projects.get("/", zValidator("query", paginationSchema), async (c) => {
+projects.get("/:id", async (c) => {
   const user = c.get("user");
-  const { limit, offset } = c.req.valid("query");
-  const list = await projectService.list(user.id, limit, offset);
-  return c.json({ data: list });
+  const id = c.req.param("id");
+  const { project, myRole } = await projectService.loadForViewer(id, user.id);
+  const detail: ProjectDetail = {
+    id: project.id,
+    studioId: project.studioId,
+    createdByUserId: project.createdByUserId,
+    name: project.name,
+    description: project.description,
+    thumbnailUrl: project.thumbnailUrl,
+    myRole,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    deletedAt: project.deletedAt,
+  };
+  return c.json({ data: detail });
 });
 
-// ── Membership-gated reads / writes ────────────────────────────────
+// ── Membership-gated writes ────────────────────────────────────────
 //
 // Every route below this point sits behind `requireRoleOnParam('id',
-// minRole)`. The middleware resolves the caller's role on `:id` and
-// stamps it on `c.var.role` for handlers that want to surface it
-// (e.g. `GET /:id` returns `myRole` to the frontend).
+// minRole)`. The middleware resolves the caller's role on `:id`, rejects
+// non-members / insufficient roles with 403, and stamps the role on
+// `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
+// it grants open-baseline access + materializes, which the role middleware
+// would block before the handler runs.)
 
 const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
-
-/**
- * `GET /projects/:id` — read a project plus the caller's role.
- *
- * Returns a `ProjectDetail` (entity + `myRole`) so the frontend can
- * gate UI without a second round-trip. v10 §7.2.6.
- */
-membershipScoped.get(
-  "/:id",
-  requireRoleOnParam("id", "view"),
-  async (c) => {
-    const user = c.get("user");
-    const id = c.req.param("id");
-    const project = await projectService.get(id, user.id);
-    const role = c.get("role");
-    const detail: ProjectDetail = {
-      id: project.id,
-      studioId: project.studioId,
-      createdByUserId: project.createdByUserId,
-      name: project.name,
-      description: project.description,
-      thumbnailUrl: project.thumbnailUrl,
-      myRole: role,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      deletedAt: project.deletedAt,
-    };
-    return c.json({ data: detail });
-  },
-);
 
 /** Body schema for `PATCH /projects/:id` — any subset of the mutable fields. */
 const projectUpdateSchema = z
@@ -118,13 +107,13 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (DD orime-org/
  * breatic-inner-design#152 D1; aligns with `members.patch` precedent).
- * Requires `edit` (renaming etc. is content editing, not an admin-only
+ * Requires `editor` (renaming etc. is content editing, not an admin-only
  * operation). v10 §7.2.1.
  * @returns `200` with `{ data: ProjectEntity }`
  */
 membershipScoped.patch(
   "/:id",
-  requireRoleOnParam("id", "edit"),
+  requireRoleOnParam("id", "editor"),
   zValidator("json", projectUpdateSchema),
   async (c) => {
     const user = c.get("user");
@@ -142,14 +131,14 @@ membershipScoped.patch(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Requires `view`: anyone who can read the source can fork it. The
+ * Requires `viewer`: anyone who can read the source can fork it. The
  * duplicate is owned by the caller (new owner row in
  * `project_members`).
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
 membershipScoped.post(
   "/:id/duplicate",
-  requireRoleOnParam("id", "view"),
+  requireRoleOnParam("id", "viewer"),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");

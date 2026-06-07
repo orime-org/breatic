@@ -8,7 +8,7 @@
  *   - `request`: viewer creates a `role_upgrade_request` notification
  *     in the owner's inbox.
  *   - `approve`: owner decides → service updates `project_members.role`
- *     to 'edit' AND creates a `role_upgrade_approved` notification in
+ *     to 'editor' AND creates a `role_upgrade_approved` notification in
  *     the requester's inbox AND marks the original request as read.
  *   - `reject`: owner decides → service creates a
  *     `role_upgrade_rejected` notification in the requester's inbox
@@ -17,7 +17,7 @@
  * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 6.3.
  *
  * Authorization model (route layer enforces gates):
- *   - request: caller must be an active member of the project, role 'view'
+ *   - request: caller must be an active member of the project, role 'viewer'
  *   - approve / reject: caller must be the project owner
  *
  * Atomicity & once-only: approve / reject each run in a single db
@@ -63,7 +63,7 @@ export async function request(
     payload: {
       requesterUserId: input.requesterUserId,
       projectName: input.projectName,
-      requestedRole: "edit",
+      requestedRole: "editor",
       message: input.message ?? null,
     },
   });
@@ -105,7 +105,7 @@ export async function approve(input: DecisionInput): Promise<void> {
     const ok = await projectMembersRepo.updateRole(
       String(req.projectId),
       requesterUserId,
-      "edit",
+      "editor",
       tx,
     );
     if (!ok) {
@@ -116,7 +116,7 @@ export async function approve(input: DecisionInput): Promise<void> {
       projectId: String(req.projectId),
       payload: {
         projectName: input.projectName,
-        newRole: "edit",
+        newRole: "editor",
       },
       tx,
     });

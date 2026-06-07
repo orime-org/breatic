@@ -190,6 +190,12 @@ export interface NotificationEntity {
   updatedAt: Date;
 }
 
+/**
+ * Project visibility (slice 2). 'studio' = open baseline, visible to every
+ * studio member; 'private' = only users with an explicit project_members row.
+ */
+export type ProjectVisibility = "studio" | "private";
+
 /** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;
@@ -208,6 +214,10 @@ export interface ProjectEntity {
   name: string;
   description: string | null;
   thumbnailUrl: string | null;
+  /** URL slug for /project/{slug}-{uuid}; format-validated, not unique. */
+  slug: string;
+  /** 'studio' (open baseline) | 'private' (explicit members only). */
+  visibility: ProjectVisibility;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -218,7 +228,7 @@ export interface ProjectEntity {
  *
  * Shape that the frontend consumes — joins ProjectEntity with the
  * caller's role on this project. The frontend uses `myRole` to gate
- * UI (e.g. hide chat for view, hide member-management for non-owner).
+ * UI (e.g. hide chat for viewer, hide member-management for non-owner).
  */
 export interface ProjectDetail {
   id: string;
@@ -237,6 +247,36 @@ export interface ProjectDetail {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+/**
+ * Project list-row DTO returned by `GET /api/v1/studio/:slug/projects`
+ * (slice 2 — the studio container's "projects" tab).
+ *
+ * Visibility-filtered server-side (private projects the viewer has no role
+ * on are never returned, unless the viewer is a studio admin). `myRole` is
+ * nullable: a studio-visible project the viewer has not opened yet has no
+ * `project_members` row, so `myRole` is `null` until they enter (which
+ * materializes a viewer row — see `loadForViewer`). `isOwner` is NOT a
+ * separate field: it is `myRole === 'owner'`, derived by the frontend.
+ */
+export interface ProjectSummary {
+  id: string;
+  studioId: string;
+  name: string;
+  /** URL slug for /project/{slug}-{uuid}; format-validated, not unique. */
+  slug: string;
+  /** 'studio' (open baseline) | 'private' (explicit members only). */
+  visibility: ProjectVisibility;
+  thumbnailUrl: string | null;
+  /**
+   * The viewer's role on this project, or `null` when they have no
+   * `project_members` row yet (a studio-visible project not yet entered, or
+   * a studio admin viewing a project they are not a member of).
+   */
+  myRole: ProjectRole | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /** Three-layer memory context for LLM prompts. */

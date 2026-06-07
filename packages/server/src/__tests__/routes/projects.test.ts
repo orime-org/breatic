@@ -47,7 +47,7 @@ describe("Projects routes", () => {
       const res = await app.request("/api/v1/projects", {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ name: "My Project" }),
+        body: JSON.stringify({ name: "My Project", slug: "my-project" }),
       });
 
       expect(res.status).toBe(201);
@@ -64,22 +64,6 @@ describe("Projects routes", () => {
       });
 
       expect(res.status).toBe(400);
-    });
-  });
-
-  describe("GET /projects — list", () => {
-    it("returns paginated project list", async () => {
-      mocks.projectService.list.mockResolvedValue([
-        { id: "proj-1", name: "A" },
-        { id: "proj-2", name: "B" },
-      ]);
-
-      const app = createApp();
-      const res = await app.request("/api/v1/projects", { headers: AUTH });
-
-      expect(res.status).toBe(200);
-      const body = await res.json() as { data: unknown[] };
-      expect(body.data).toHaveLength(2);
     });
   });
 

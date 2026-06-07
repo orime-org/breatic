@@ -70,7 +70,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ kind: "link", role: "view" }),
+        body: JSON.stringify({ kind: "link", role: "viewer" }),
       },
     );
     expect(res.status).toBe(201);
@@ -105,7 +105,7 @@ describe("POST /projects/:pid/invite-links", () => {
         headers: AUTH,
         body: JSON.stringify({
           kind: "email",
-          role: "edit",
+          role: "editor",
           invitee_email: "new@example.com",
         }),
       },
@@ -114,7 +114,7 @@ describe("POST /projects/:pid/invite-links", () => {
     expect(mocks.shareLinkService.createLink).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: PID,
-        role: "edit",
+        role: "editor",
         kind: "email",
         boundEmail: "new@example.com",
       }),
@@ -123,7 +123,7 @@ describe("POST /projects/:pid/invite-links", () => {
       expect.objectContaining({
         inviteeEmail: "new@example.com",
         // role on the builder comes from the *created link* (mock
-        // returns role='view'), not the request body. Matches
+        // returns role='viewer'), not the request body. Matches
         // production: builder reads link.role to keep mail copy in
         // sync with what the link actually grants.
       }),
@@ -144,7 +144,7 @@ describe("POST /projects/:pid/invite-links", () => {
         headers: AUTH,
         body: JSON.stringify({
           kind: "email",
-          role: "view",
+          role: "viewer",
           invitee_email: "new@example.com",
         }),
       },
@@ -154,14 +154,14 @@ describe("POST /projects/:pid/invite-links", () => {
   });
 
   it("returns 403 when caller is not owner", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("edit");
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/invite-links`,
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ kind: "link", role: "view" }),
+        body: JSON.stringify({ kind: "link", role: "viewer" }),
       },
     );
     expect(res.status).toBe(403);
@@ -190,7 +190,7 @@ describe("POST /projects/:pid/invite-links", () => {
         headers: AUTH,
         body: JSON.stringify({
           kind: "email",
-          role: "view",
+          role: "viewer",
           invitee_email: "not-an-email",
         }),
       },
@@ -205,7 +205,7 @@ describe("POST /projects/:pid/invite-links", () => {
       {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({ kind: "email", role: "view" }),
+        body: JSON.stringify({ kind: "email", role: "viewer" }),
       },
     );
     expect(res.status).toBe(400);
@@ -221,7 +221,7 @@ describe("POST /projects/:pid/invite-links", () => {
         headers: AUTH,
         body: JSON.stringify({
           kind: "link",
-          role: "view",
+          role: "viewer",
           invitee_email: "stray@example.com",
         }),
       },
@@ -239,7 +239,7 @@ describe("GET /projects/:pid/invite-links", () => {
         projectId: PID,
         createdByUserId: "u-1",
         token: "abc",
-        role: "view",
+        role: "viewer",
         kind: "link",
         boundEmail: null,
         consumedAt: null,
@@ -260,7 +260,7 @@ describe("GET /projects/:pid/invite-links", () => {
   });
 
   it("returns 403 when caller is not owner", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("view");
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/invite-links`,
@@ -282,7 +282,7 @@ describe("DELETE /projects/:pid/invite-links/:linkId", () => {
   });
 
   it("returns 403 when caller is not owner", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("edit");
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/invite-links/${LID}`,

@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, or, desc } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
@@ -31,7 +31,12 @@ import {
   tasks,
 } from "@breatic/core";
 import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
-import type { ProjectEntity } from "@breatic/shared";
+import type {
+  ProjectEntity,
+  ProjectRole,
+  ProjectSummary,
+  ProjectVisibility,
+} from "@breatic/shared";
 
 /**
  * Map a raw `projects` table row to a `ProjectEntity` domain object.
@@ -46,6 +51,8 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
     name: row.name,
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
+    slug: row.slug,
+    visibility: row.visibility as ProjectVisibility,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -67,29 +74,82 @@ export async function getProjectById(id: string): Promise<ProjectEntity | null> 
 }
 
 /**
- * List projects in a studio (excludes soft-deleted).
+ * List a studio's projects visible to a viewer, each tagged with the
+ * viewer's role (slice 2 — the studio container's "projects" tab).
  *
- * V1 personal-Studio mode: every user has exactly one studio, so
- * "list my projects" maps to "list projects in my studio". The route
- * layer resolves the user's studio id before calling this.
- * @param studioId - Studio UUID
- * @param limit - Page size (capped at 100)
- * @param offset - Pagination offset
- * @returns The studio's project entities ordered by most recently updated
+ * Open-baseline visibility (design doc §2.3), enforced server-side so a
+ * private project is never shipped to a client that should not see it:
+ *   - a studio **admin** (`isStudioAdmin = true`) sees every active project
+ *     in the studio — including other members' private projects (governance,
+ *     GitHub-org model);
+ *   - a studio **member** sees every `visibility = 'studio'` project plus the
+ *     private projects they hold an active `project_members` role on.
+ *
+ * Non-members are handled one layer up (`project.service.listByStudioForViewer`
+ * short-circuits to `[]`), so this query is only reached for studio members.
+ *
+ * `myRole` comes from a LEFT JOIN on the viewer's ACTIVE membership row
+ * (`deleted_at IS NULL` lives in the JOIN's ON clause, not the WHERE, so a
+ * soft-deleted row simply yields no join → `myRole = null` rather than
+ * dropping the project). A studio-visible project the viewer has not entered
+ * yet has no row → `myRole = null` until they open it (which materializes a
+ * viewer row — see `materializeBaselineViewer`).
+ * @param studioId - Studio UUID whose projects to list
+ * @param viewerUserId - The viewing user's UUID (resolves `myRole`)
+ * @param isStudioAdmin - Whether the viewer is this studio's admin (sees all)
+ * @returns The visible project summaries ordered by most recently updated
  */
-export async function listProjectsByStudio(
+export async function listProjectsByStudioForViewer(
   studioId: string,
-  limit = 20,
-  offset = 0,
-): Promise<ProjectEntity[]> {
+  viewerUserId: string,
+  isStudioAdmin: boolean,
+): Promise<ProjectSummary[]> {
   const rows = await db
-    .select()
+    .select({
+      id: projects.id,
+      studioId: projects.studioId,
+      name: projects.name,
+      slug: projects.slug,
+      visibility: projects.visibility,
+      thumbnailUrl: projects.thumbnailUrl,
+      myRole: projectMembers.role,
+      createdAt: projects.createdAt,
+      updatedAt: projects.updatedAt,
+    })
     .from(projects)
-    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)))
-    .orderBy(desc(projects.updatedAt))
-    .limit(Math.min(limit, 100))
-    .offset(offset);
-  return rows.map(toEntity);
+    .leftJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.projectId, projects.id),
+        eq(projectMembers.userId, viewerUserId),
+        isNull(projectMembers.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        eq(projects.studioId, studioId),
+        isNull(projects.deletedAt),
+        isStudioAdmin
+          ? undefined
+          : or(
+              eq(projects.visibility, "studio"),
+              isNotNull(projectMembers.role),
+            ),
+      ),
+    )
+    .orderBy(desc(projects.updatedAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    studioId: row.studioId,
+    name: row.name,
+    slug: row.slug,
+    visibility: row.visibility as ProjectVisibility,
+    thumbnailUrl: row.thumbnailUrl,
+    myRole: (row.myRole as ProjectRole | null) ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }));
 }
 
 /**
@@ -120,6 +180,10 @@ type Tx = PgTransaction<any, any, any>;
  * @param studioId - Studio that the project belongs to
  * @param creatorUserId - User who created the project (becomes owner)
  * @param name - Project name
+ * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
+ *   app-side, NOT unique)
+ * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
+ *   members only)
  * @param description - Optional description
  * @returns The freshly created project entity
  */
@@ -128,6 +192,8 @@ export async function createProject(
   studioId: string,
   creatorUserId: string,
   name: string,
+  slug: string,
+  visibility: ProjectVisibility,
   description?: string,
 ): Promise<ProjectEntity> {
   const inserted = await tx
@@ -136,6 +202,8 @@ export async function createProject(
       studioId,
       createdByUserId: creatorUserId,
       name,
+      slug,
+      visibility,
       description,
     })
     .returning();
@@ -237,6 +305,8 @@ export async function duplicateProject(
         studioId: source.studioId,
         createdByUserId: creatorUserId,
         name: `${source.name} (copy)`,
+        slug: `${source.slug}-copy`.slice(0, 120),
+        visibility: source.visibility,
         description: source.description,
         thumbnailUrl: source.thumbnailUrl,
       })

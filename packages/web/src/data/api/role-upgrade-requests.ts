@@ -16,7 +16,7 @@ export interface DecideRoleUpgradeBody {
 export const roleUpgradeRequestsApi = {
   /**
    * Viewer asks owner for editor role. Server gates on
-   * `requireRole('view')` — editors / owners get 403 because they
+   * `requireRole('viewer')` — editors / owners get 403 because they
    * don't need to upgrade (editor is the highest non-owner role).
    *
    * Returns the freshly-created notification row that landed in the

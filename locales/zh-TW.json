@@ -1410,7 +1410,8 @@
       "projects": {
         "title": "專案",
         "new": "新增專案",
-        "empty": "還沒有專案 —— 新增一個開始吧。"
+        "empty": "還沒有專案 —— 新增一個開始吧。",
+        "createError": "建立專案失敗"
       },
       "collections": {
         "title": "資產集",
@@ -1479,7 +1480,10 @@
         "slugFormat": "只能用小寫字母、數字和連字號。",
         "slugLength": "需 {min}–{max} 個字元。",
         "slugTaken": "該網址標識已被使用。",
-        "slugReserved": "該網址標識已被使用。"
+        "slugReserved": "該網址標識已被使用。",
+        "visibilityLabel": "可見性",
+        "visibilityStudioOption": "studio 內可見 — 所有成員",
+        "visibilityPrivateOption": "私有 — 僅受邀"
       },
       "empty": {
         "newCard": "+ 新增"

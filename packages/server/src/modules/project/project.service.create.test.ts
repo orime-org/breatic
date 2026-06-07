@@ -16,6 +16,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// project.service now imports @breatic/domain (studioAuthService for the
+// open-baseline load path), whose barrel pulls agent/llm → the `ai` SDK →
+// @opentelemetry/api, whose ESM build Node's native ESM rejects. This suite
+// never calls any ai function; the stub keeps that chain from loading.
+vi.mock("ai", () => ({
+  tool: (c: Record<string, unknown>) => c,
+  streamText: vi.fn(),
+  generateText: vi.fn(),
+  stepCountIs: vi.fn(),
+}));
+
 vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
 }));
@@ -53,22 +64,30 @@ describe("project.service.create", () => {
   });
 
   it("creates the project + owner row in the caller's personal studio and returns it", async () => {
-    const result = await create("u-1", "My Cyberpunk Idea", "a description");
+    const result = await create(
+      "u-1",
+      "My Cyberpunk Idea",
+      "my-cyberpunk-idea",
+      "studio",
+      "a description",
+    );
 
     expect(studioService.getPersonalStudio).toHaveBeenCalledWith("u-1");
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
-    // Args: (tx, studioId, creatorUserId, name, description).
+    // Args: (tx, studioId, creatorUserId, name, slug, visibility, description).
     const args = vi.mocked(projectRepo.createProject).mock.calls[0];
     expect(args?.[1]).toBe("studio-1");
     expect(args?.[2]).toBe("u-1");
     expect(args?.[3]).toBe("My Cyberpunk Idea");
-    expect(args?.[4]).toBe("a description");
+    expect(args?.[4]).toBe("my-cyberpunk-idea");
+    expect(args?.[5]).toBe("studio");
+    expect(args?.[6]).toBe("a description");
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
   });
 
   it("wraps the create in a single business transaction (project + owner atomic)", async () => {
     const core = await import("@breatic/core");
-    await create("u-1", "Another Project");
+    await create("u-1", "Another Project", "another-project", "studio");
     // createProject runs inside db.transaction — the project row + owner
     // row must commit together (a project without an owner row is
     // unreadable, including by its creator).
@@ -84,7 +103,9 @@ describe("project.service.create", () => {
     // studio.
     vi.mocked(studioService.getPersonalStudio).mockResolvedValueOnce(null);
 
-    await expect(create("u-1", "No Studio Project")).rejects.toMatchObject({
+    await expect(
+      create("u-1", "No Studio Project", "no-studio-project", "studio"),
+    ).rejects.toMatchObject({
       name: "NotFoundError",
     });
     expect(projectRepo.createProject).not.toHaveBeenCalled();

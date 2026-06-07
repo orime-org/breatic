@@ -132,7 +132,7 @@ describe("SpaceRpcResponseSchema", () => {
     const r = SpaceRpcResponseSchema.parse({
       id: "r1",
       ok: false,
-      error: { code: "FORBIDDEN", message: "view role cannot create Space" },
+      error: { code: "FORBIDDEN", message: "viewer role cannot create Space" },
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe("FORBIDDEN");

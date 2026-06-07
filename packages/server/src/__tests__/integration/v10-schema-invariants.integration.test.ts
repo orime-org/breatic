@@ -75,8 +75,8 @@ async function insertProject(
   name: string,
 ): Promise<string> {
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name)
-    VALUES (${studioId}, ${creatorUserId}, ${name})
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${creatorUserId}, ${name}, ${name})
     RETURNING id
   `;
   return row!.id;
@@ -142,8 +142,8 @@ describe("project_members_one_owner_per_project", () => {
     await sql`
       INSERT INTO project_members (project_id, user_id, role, added_by)
       VALUES (${projectId}, ${owner}, 'owner', NULL),
-             (${projectId}, ${m1},    'edit',  ${owner}),
-             (${projectId}, ${m2},    'view',  ${owner})
+             (${projectId}, ${m1},    'editor',  ${owner}),
+             (${projectId}, ${m2},    'viewer',  ${owner})
     `;
 
     const rows = await sql<{ count: string }[]>`

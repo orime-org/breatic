@@ -43,15 +43,19 @@ export function ProjectsTab({
 }: ProjectsTabProps): React.JSX.Element {
   const t = useTranslation();
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  // Only studio members create projects. A guest (`null` studio role) viewing
+  // the public shell never sees the create entry — `create` always targets the
+  // caller's own studio, so offering it on someone else's studio would misfire.
+  const canCreate = studioRole !== null;
   const visible = projects.filter((project) =>
     canRenderItemCard(studioRole, project),
   );
-  const newCard = (
+  const newCard = canCreate ? (
     <NewItemCard
       label={t('studio.container.projects.new')}
       onClick={() => setDialogOpen(true)}
     />
-  );
+  ) : null;
   return (
     <>
       {visible.length === 0 ? (
@@ -59,7 +63,7 @@ export function ProjectsTab({
           <p className='mb-4 text-sm text-muted-foreground'>
             {t('studio.container.projects.empty')}
           </p>
-          <div className={GRID}>{newCard}</div>
+          {newCard ? <div className={GRID}>{newCard}</div> : null}
         </div>
       ) : (
         <div className={GRID}>
@@ -73,12 +77,14 @@ export function ProjectsTab({
           {newCard}
         </div>
       )}
-      <NewItemDialog
-        kind='project'
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onCreate={onCreateProject}
-      />
+      {canCreate ? (
+        <NewItemDialog
+          kind='project'
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onCreate={onCreateProject}
+        />
+      ) : null}
     </>
   );
 }

@@ -81,7 +81,7 @@ export async function getOrCreate(
   // Chat is a creative-write action — view-only members cannot
   // open chat sessions (v10 §7.2.1).
   if (projectId) {
-    await projectService.assertAccess(projectId, userId, "edit");
+    await projectService.assertAccess(projectId, userId, "editor");
   }
 
   const title = firstMessage.slice(0, 100);

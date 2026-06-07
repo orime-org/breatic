@@ -48,8 +48,8 @@ beforeEach(() => {
 });
 
 describe("GET /projects/:pid/members", () => {
-  it("returns 200 + member list when caller is at least view", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("view");
+  it("returns 200 + member list when caller is at least viewer", async () => {
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
     mocks.projectMembersService.list.mockResolvedValue([
       { projectId: PID, userId: "u1", role: "owner", addedBy: null, addedAt: new Date(), deletedAt: null },
     ]);
@@ -73,26 +73,26 @@ describe("GET /projects/:pid/members", () => {
 });
 
 describe("POST /projects/:pid/members — invite", () => {
-  it("owner can invite a new edit member; returns 201", async () => {
+  it("owner can invite a new editor member; returns 201", async () => {
     const app = createApp();
     const res = await app.request(`/api/v1/projects/${PID}/members`, {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ user_id: TARGET, role: "edit" }),
+      body: JSON.stringify({ user_id: TARGET, role: "editor" }),
     });
 
     expect(res.status).toBe(201);
-    expect(mocks.projectMembersService.invite).toHaveBeenCalledWith(PID, TARGET, "edit", "user-1");
+    expect(mocks.projectMembersService.invite).toHaveBeenCalledWith(PID, TARGET, "editor", "user-1");
   });
 
-  it("non-owner (edit) cannot invite — 403", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("edit");
+  it("non-owner (editor) cannot invite — 403", async () => {
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
 
     const app = createApp();
     const res = await app.request(`/api/v1/projects/${PID}/members`, {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ user_id: TARGET, role: "view" }),
+      body: JSON.stringify({ user_id: TARGET, role: "viewer" }),
     });
 
     expect(res.status).toBe(403);
@@ -115,7 +115,7 @@ describe("POST /projects/:pid/members — invite", () => {
     const res = await app.request(`/api/v1/projects/${PID}/members`, {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ user_id: "not-a-uuid", role: "view" }),
+      body: JSON.stringify({ user_id: "not-a-uuid", role: "viewer" }),
     });
 
     expect(res.status).toBe(400);
@@ -128,11 +128,11 @@ describe("PATCH /projects/:pid/members/:userId — change role", () => {
     const res = await app.request(`/api/v1/projects/${PID}/members/${TARGET}`, {
       method: "PATCH",
       headers: AUTH,
-      body: JSON.stringify({ role: "view" }),
+      body: JSON.stringify({ role: "viewer" }),
     });
 
     expect(res.status).toBe(200);
-    expect(mocks.projectMembersService.changeRole).toHaveBeenCalledWith(PID, TARGET, "view");
+    expect(mocks.projectMembersService.changeRole).toHaveBeenCalledWith(PID, TARGET, "viewer");
   });
 
   it("rejects role='owner' in patch body with 400", async () => {
@@ -147,13 +147,13 @@ describe("PATCH /projects/:pid/members/:userId — change role", () => {
   });
 
   it("non-owner cannot PATCH — 403", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("edit");
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
 
     const app = createApp();
     const res = await app.request(`/api/v1/projects/${PID}/members/${TARGET}`, {
       method: "PATCH",
       headers: AUTH,
-      body: JSON.stringify({ role: "view" }),
+      body: JSON.stringify({ role: "viewer" }),
     });
 
     expect(res.status).toBe(403);
@@ -173,7 +173,7 @@ describe("DELETE /projects/:pid/members/:userId — remove", () => {
   });
 
   it("non-owner cannot remove — 403", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("view");
+    mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
 
     const app = createApp();
     const res = await app.request(`/api/v1/projects/${PID}/members/${TARGET}`, {

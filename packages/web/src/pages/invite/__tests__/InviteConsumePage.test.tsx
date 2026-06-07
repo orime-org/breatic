@@ -156,7 +156,7 @@ function makeFakeLink(o: FakeLinkOverrides = {}): InviteLink {
     projectId: o.projectId ?? PID,
     createdByUserId: 'u-owner',
     token: o.token ?? TOKEN,
-    role: 'view',
+    role: 'viewer',
     kind: 'link',
     boundEmail: null,
     consumedAt: new Date().toISOString(),

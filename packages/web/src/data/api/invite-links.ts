@@ -4,7 +4,7 @@
 import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
 /** Roles an invite link can grant — every role except owner. */
-export type RequestableRole = 'view' | 'edit';
+export type RequestableRole = 'viewer' | 'editor';
 
 /** Discriminator for the two share-link modes — see § 3 of the spec. */
 export type InviteLinkKind = 'email' | 'link';

@@ -3,7 +3,7 @@
 
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
-export type MemberRole = 'owner' | 'edit' | 'view';
+export type MemberRole = 'owner' | 'editor' | 'viewer';
 
 export interface Member {
   id: string;

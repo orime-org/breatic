@@ -15,7 +15,7 @@
  *      `project-{pid}` and the pre-v6 `project-{pid}/canvas` /
  *      `/node/{id}` sub-paths
  *   4. A valid session for an active member is accepted, with the
- *      member's role echoed back; view → readOnly:true, others →
+ *      member's role echoed back; viewer → readOnly:true, others →
  *      readOnly:false
  *
  * Auth is cookie-based since 2026-05-26: the Hocuspocus client sends
@@ -247,7 +247,7 @@ describe("createAuthHook", () => {
 
   it("accepts an active editor on the meta doc; readOnly = false (no space-exists fetch needed)", async () => {
     getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("edit");
+    loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook();
 
     const ctx = await hook({
@@ -257,7 +257,7 @@ describe("createAuthHook", () => {
     });
 
     expect(ctx).toEqual({
-      user: { id: "user-1", role: "edit" },
+      user: { id: "user-1", role: "editor" },
       connection: { readOnly: false },
     });
     // The meta doc never triggers the space-exists read.
@@ -266,7 +266,7 @@ describe("createAuthHook", () => {
 
   it("accepts an active viewer; readOnly = true", async () => {
     getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("view");
+    loadProjectRoleMock.mockResolvedValue("viewer");
     fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
 
@@ -277,7 +277,7 @@ describe("createAuthHook", () => {
     });
 
     expect(ctx).toEqual({
-      user: { id: "user-1", role: "view" },
+      user: { id: "user-1", role: "viewer" },
       connection: { readOnly: true },
     });
   });
@@ -286,7 +286,7 @@ describe("createAuthHook", () => {
 
   it("rejects a canvas connection when the spaceId is not in meta.spaces (deleted Space)", async () => {
     getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("edit");
+    loadProjectRoleMock.mockResolvedValue("editor");
     // meta.spaces lists a different Space — the requested one has been
     // removed (soft-deleted; PG row may still hold the binary for owner
     // recovery, but the connection must be refused).

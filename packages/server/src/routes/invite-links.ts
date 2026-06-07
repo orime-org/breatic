@@ -58,13 +58,13 @@ import { logMailResult } from "@server/utils/log-mail.js";
 const bodySchemaCreate = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("email"),
-    role: z.enum(["view", "edit"]),
+    role: z.enum(["viewer", "editor"]),
     invitee_email: z.string().email(),
   }),
   z
     .object({
       kind: z.literal("link"),
-      role: z.enum(["view", "edit"]),
+      role: z.enum(["viewer", "editor"]),
       // Accept the property so we can explicitly reject it via the
       // refine below - otherwise zod silently strips unknown keys and
       // a kind='link' with a stray invitee_email would parse OK.

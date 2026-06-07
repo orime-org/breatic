@@ -23,12 +23,12 @@ describe("buildShareInviteMail", () => {
       inviterName: "Owner",
       projectName: "Q1",
       inviteLink: "https://breatic.ai/invite/abc",
-      role: "view",
+      role: "viewer",
     });
     expect(mail.to).toBe("new@example.com");
     expect(mail.subject).toContain("Owner");
     expect(mail.subject).toContain("Q1");
-    expect(mail.html).toContain("view");
+    expect(mail.html).toContain("viewer");
     expect(mail.html).toContain("https://breatic.ai/invite/abc");
   });
 
@@ -38,7 +38,7 @@ describe("buildShareInviteMail", () => {
       inviterName: "O",
       projectName: "P",
       inviteLink: "https://breatic.ai/invite/x",
-      role: "edit",
+      role: "editor",
     });
     expect(mail.html).toContain("single-use");
     expect(mail.html).toContain("7 days");
@@ -50,7 +50,7 @@ describe("buildShareInviteMail", () => {
       inviterName: "<b>boom</b>",
       projectName: "<script>",
       inviteLink: "https://breatic.ai/invite/x",
-      role: "view",
+      role: "viewer",
     });
     expect(mail.html).not.toContain("<b>boom</b>");
     expect(mail.html).not.toContain("<script>");

@@ -73,7 +73,7 @@ describe("space:create collision property", () => {
             const r = await handleSpaceRpc(
               ctx,
               PID,
-              { userId: "u", role: "edit" },
+              { userId: "u", role: "editor" },
               {
                 id: `req-${id}`,
                 type: "space:create",
@@ -103,7 +103,7 @@ describe("space:create collision property", () => {
           const r1 = await handleSpaceRpc(
             ctx,
             PID,
-            { userId: "u", role: "edit" },
+            { userId: "u", role: "editor" },
             {
               id: "r1",
               type: "space:create",
@@ -115,7 +115,7 @@ describe("space:create collision property", () => {
           const r2 = await handleSpaceRpc(
             ctx,
             PID,
-            { userId: "u", role: "edit" },
+            { userId: "u", role: "editor" },
             {
               id: "r2",
               type: "space:create",
@@ -146,7 +146,7 @@ describe("space:create collision property", () => {
           await handleSpaceRpc(
             ctx,
             PID,
-            { userId: "u", role: "edit" },
+            { userId: "u", role: "editor" },
             {
               id: "r1",
               type: "space:create",
@@ -156,7 +156,7 @@ describe("space:create collision property", () => {
           await handleSpaceRpc(
             ctx,
             PID,
-            { userId: "u", role: "edit" },
+            { userId: "u", role: "editor" },
             { id: "r2", type: "space:delete", payload: { spaceId: id } },
           );
           await handleSpaceRpc(
