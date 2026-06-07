@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CreditWallet } from '@web/pages/studio/container/container-types';
@@ -120,23 +120,32 @@ export function CreditsTab({
         ) : null}
       </div>
 
-      <div>
-        <h3 className='mb-2 text-sm font-semibold'>
+      {/* Spend order (mock定稿 .order): label + numbered circle steps. */}
+      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-elevated px-3 py-2.5'>
+        <span className='whitespace-nowrap border-r border-border pr-3 text-xs font-bold text-muted-foreground'>
           {t('studio.container.credits.orderTitle')}
-        </h3>
-        <ol className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
-          <li className='rounded-content-sm border border-border px-3 py-1.5'>
-            1. {t('studio.container.credits.orderStep1')}
-          </li>
-          <li aria-hidden='true'>→</li>
-          <li className='rounded-content-sm border border-border px-3 py-1.5'>
-            2. {t('studio.container.credits.orderStep2')}
-          </li>
-          <li aria-hidden='true'>→</li>
-          <li className='rounded-content-sm border border-border px-3 py-1.5'>
-            3. {t('studio.container.credits.orderStep3')}
-          </li>
-        </ol>
+        </span>
+        {[
+          t('studio.container.credits.orderStep1'),
+          t('studio.container.credits.orderStep2'),
+          t('studio.container.credits.orderStep3'),
+        ].map((label, index) => (
+          <React.Fragment key={label}>
+            {index > 0 ? (
+              <span aria-hidden='true' className='text-neutral-400'>
+                →
+              </span>
+            ) : null}
+            <span className='flex items-center gap-1.5'>
+              <span className='flex h-[18px] w-[18px] items-center justify-center rounded-full bg-muted text-[11px] font-bold text-foreground'>
+                {index + 1}
+              </span>
+              <span className='whitespace-nowrap text-xs font-semibold'>
+                {label}
+              </span>
+            </span>
+          </React.Fragment>
+        ))}
       </div>
 
       <div>
