@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { projectsApi } from '@web/data/api/projects';
 import type { ProjectDetail } from '@web/data/api/projects';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Whether a React Query key is a studio container projects-list key, i.e.
@@ -44,6 +45,7 @@ export function useRenameProject(
   projectId: string,
 ): UseMutationResult<ProjectDetail, Error, string, RenameContext> {
   const queryClient = useQueryClient();
+  const t = useTranslation();
   return useMutation({
     mutationFn: (name: string) => projectsApi.rename(projectId, name),
     onMutate: async (next: string) => {
@@ -60,8 +62,8 @@ export function useRenameProject(
       if (ctx && 'previous' in ctx) {
         queryClient.setQueryData(['project', projectId], ctx.previous);
       }
-      const message = err instanceof Error ? err.message : 'Rename failed';
-      toast.error('Project rename failed', { description: message });
+      const message = err instanceof Error ? err.message : '';
+      toast.error(t('project.header.renameFailed'), { description: message });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] });

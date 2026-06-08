@@ -9,7 +9,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('@web/data/api/projects', () => ({
   projectsApi: { rename: vi.fn() },
 }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 import { projectsApi } from '@web/data/api/projects';
+import { toast } from 'sonner';
+import { t } from '@breatic/shared';
 import {
   isStudioProjectsListKey,
   useRenameProject,
@@ -110,5 +113,43 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
         (client.getQueryData(['project', 'p1']) as { name: string }).name,
       ).toBe('New Name');
     });
+  });
+
+  it('shows an i18n toast (not a hardcoded English string) and rolls back on failure (#1091)', async () => {
+    vi.mocked(projectsApi.rename).mockRejectedValueOnce(new Error('boom'));
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(['project', 'p1'], { name: 'Old Name' });
+
+    const { result } = renderHook(() => useRenameProject('p1'), {
+      wrapper: makeWrapper(client),
+    });
+
+    act(() => {
+      result.current.mutate('New Name');
+    });
+
+    // onError fires: a toast is shown and the optimistic name is rolled back.
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+    });
+
+    // The toast title must go through the i18n engine — not the old hardcoded
+    // English literal 'Project rename failed' (#1091).
+    const [title, opts] = vi.mocked(toast.error).mock.calls[0];
+    expect(title).toBe(t('project.header.renameFailed'));
+    expect(title).not.toBe('Project rename failed');
+    // The error detail is surfaced as the toast description.
+    expect((opts as { description?: string } | undefined)?.description).toBe(
+      'boom',
+    );
+    // Optimistic update rolled back to the previous name.
+    expect(
+      (client.getQueryData(['project', 'p1']) as { name: string }).name,
+    ).toBe('Old Name');
   });
 });
