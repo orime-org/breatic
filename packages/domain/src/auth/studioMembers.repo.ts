@@ -20,7 +20,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembers, studios } from "@breatic/core";
+import { studioMembers, studios, users } from "@breatic/core";
 import type { StudioRole } from "@breatic/shared";
 
 /**
@@ -80,4 +80,60 @@ export async function insertAdmin(
     role: "admin",
     addedBy: null,
   });
+}
+
+/**
+ * List a studio's active members with display fields, for the Members tab.
+ *
+ * Backs `GET /studio/:slug/members`. Joins each member to `users` (email,
+ * avatar) and to that user's personal studio for the display `name` — the
+ * user's display name lives on their personal studio (there is no
+ * `users.username`). Soft-deleted members are excluded; ordered oldest-first
+ * (`addedAt`) so the admin/creator appears at the top.
+ * @param studioId - Studio UUID
+ * @returns Active members: userId, email, display name, avatar, role, joinedAt
+ */
+export async function listByStudio(
+  studioId: string,
+): Promise<
+  ReadonlyArray<{
+    userId: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+    role: StudioRole;
+    addedAt: Date;
+  }>
+> {
+  const rows = await db
+    .select({
+      userId: studioMembers.userId,
+      email: users.email,
+      name: studios.name,
+      avatarUrl: users.avatarUrl,
+      role: studioMembers.role,
+      addedAt: studioMembers.addedAt,
+    })
+    .from(studioMembers)
+    .innerJoin(users, eq(users.id, studioMembers.userId))
+    .leftJoin(
+      studios,
+      and(
+        eq(studios.createdByUserId, studioMembers.userId),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .where(
+      and(eq(studioMembers.studioId, studioId), isNull(studioMembers.deletedAt)),
+    )
+    .orderBy(studioMembers.addedAt);
+  return rows.map((r) => ({
+    userId: r.userId,
+    email: r.email,
+    name: r.name ?? r.email,
+    avatarUrl: r.avatarUrl,
+    role: r.role as StudioRole,
+    addedAt: r.addedAt,
+  }));
 }

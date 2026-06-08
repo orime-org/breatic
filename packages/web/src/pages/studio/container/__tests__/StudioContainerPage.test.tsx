@@ -158,12 +158,13 @@ describe('StudioContainerPage', () => {
     );
   });
 
-  it('renders 5 tabs for a personal studio (no Members, Works kept)', async () => {
+  it('renders all 6 tabs for a personal studio (Members read-only, A 方案)', async () => {
     setup('alex');
-    // Works is non-team-only, so a personal studio keeps it: projects /
-    // collections / works / credits / settings (Members dropped).
-    expect(await screen.findAllByRole('tab')).toHaveLength(5);
-    expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
+    // Personal studios now show all 6 tabs; the Members tab is read-only
+    // (A 方案 2026-06-08): projects / collections / works / members / credits /
+    // settings.
+    expect(await screen.findAllByRole('tab')).toHaveLength(6);
+    expect(screen.getByRole('tab', { name: /Members/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Works' })).toBeInTheDocument();
   });
 

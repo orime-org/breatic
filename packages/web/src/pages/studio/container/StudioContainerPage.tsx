@@ -11,7 +11,10 @@ import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import { getEmptyContainerView } from '@web/pages/studio/container/container-stub';
-import type { ContainerProject } from '@web/pages/studio/container/container-types';
+import type {
+  ContainerProject,
+  StudioMember,
+} from '@web/pages/studio/container/container-types';
 import {
   creatableStudios,
   defaultCreateStudioId,
@@ -78,6 +81,11 @@ export default function StudioContainerPage(): React.JSX.Element {
     queryFn: () => studiosApi.listProjects(slug),
     enabled: slug !== '',
   });
+  const membersQuery = useQuery({
+    queryKey: ['studio', slug, 'members'],
+    queryFn: () => studiosApi.listMembers(slug),
+    enabled: slug !== '',
+  });
   // The viewer's studios feed the create-project selector (spec §7.1). This is
   // the same query the layout route runs (same key) — React Query dedupes it,
   // so the container adds no extra request.
@@ -90,11 +98,19 @@ export default function StudioContainerPage(): React.JSX.Element {
   const [tab, setTab] = React.useState<StudioTabKey>('projects');
 
   const studio = studioQuery.data;
-  // Projects come from the real API (slice 2); the other tab CONTENTS stay
-  // EMPTY (not faked) until their own slices wire real APIs.
+  // Projects (slice 2) + members (slice 3) come from the real API; the other
+  // tab CONTENTS stay EMPTY (not faked) until their own slices wire real APIs.
   const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
     toContainerProject,
   );
+  const members: StudioMember[] = (membersQuery.data ?? []).map((m) => ({
+    id: m.userId,
+    name: m.name,
+    email: m.email,
+    avatarUrl: m.avatarUrl,
+    studioRole: m.role,
+    joinedAt: m.addedAt,
+  }));
   const view = studio ? { ...getEmptyContainerView(), studio } : null;
   // The selector lists the studios the viewer may create in; the default is the
   // current studio when the viewer is its admin, else the personal studio (§7.1).
@@ -138,7 +154,7 @@ export default function StudioContainerPage(): React.JSX.Element {
             counts={{
               projects: projects.length,
               collections: view.collections.length,
-              members: view.members.length,
+              members: members.length,
             }}
           />
           <div className='min-h-0 flex-1 overflow-auto'>
@@ -161,14 +177,13 @@ export default function StudioContainerPage(): React.JSX.Element {
               <TabsContent value='works'>
                 <WorksTab />
               </TabsContent>
-              {view.studio.type === 'team' ? (
-                <TabsContent value='members'>
-                  <MembersTab
-                    members={view.members}
-                    studioRole={view.studio.myStudioRole}
-                  />
-                </TabsContent>
-              ) : null}
+              <TabsContent value='members'>
+                <MembersTab
+                  members={members}
+                  studioRole={view.studio.myStudioRole}
+                  studioType={view.studio.type}
+                />
+              </TabsContent>
               <TabsContent value='credits'>
                 <CreditsTab
                   wallet={view.wallet}

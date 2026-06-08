@@ -220,3 +220,61 @@ describe("listUserStudios — switcher list, personal-first", () => {
     );
   });
 });
+
+describe("getStudioMembers — member roster (display name from personal studio)", () => {
+  it("lists active members with personal-studio display name, email, role + ISO joinedAt", async () => {
+    const owner = await insertUser();
+    const member = await insertUser();
+    // Each user's display name lives on their personal studio (no users.username).
+    const ownerPersonal = await insertStudio(owner, "personal");
+    await insertMemberRaw(ownerPersonal.id, owner, "admin");
+    const memberPersonal = await insertStudio(member, "personal");
+    await insertMemberRaw(memberPersonal.id, member, "admin");
+    const team = await insertStudio(owner, "team");
+    await insertMemberRaw(team.id, owner, "admin");
+    await insertMemberRaw(team.id, member, "member");
+
+    const members = await studioService.getStudioMembers(team.slug);
+    expect(members).toHaveLength(2);
+    const byRole = new Map(members.map((m) => [m.role, m]));
+    expect(byRole.get("admin")!.userId).toBe(owner);
+    expect(byRole.get("member")!.userId).toBe(member);
+    // Display name comes from each member's personal studio name.
+    expect(byRole.get("admin")!.name).toBe(`Studio ${ownerPersonal.slug}`);
+    expect(byRole.get("member")!.name).toBe(`Studio ${memberPersonal.slug}`);
+    // joinedAt is serialized to an ISO-8601 string.
+    expect(byRole.get("admin")!.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("excludes soft-deleted members", async () => {
+    const owner = await insertUser();
+    const member = await insertUser();
+    const team = await insertStudio(owner, "team");
+    await insertMemberRaw(team.id, owner, "admin");
+    await insertMemberRaw(team.id, member, "member");
+    expect(await studioService.getStudioMembers(team.slug)).toHaveLength(2);
+
+    await softDeleteMember(team.id, member);
+
+    const after = await studioService.getStudioMembers(team.slug);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.userId).toBe(owner);
+  });
+
+  it("returns exactly the creator (admin) for a personal studio", async () => {
+    const user = await insertUser();
+    const personal = await insertStudio(user, "personal");
+    await insertMemberRaw(personal.id, user, "admin");
+
+    const members = await studioService.getStudioMembers(personal.slug);
+    expect(members).toHaveLength(1);
+    expect(members[0]!.userId).toBe(user);
+    expect(members[0]!.role).toBe("admin");
+  });
+
+  it("throws NotFoundError for a slug with no active studio", async () => {
+    await expect(
+      studioService.getStudioMembers("no-such-members-slug"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});

@@ -73,4 +73,18 @@ studio.get("/:slug/projects", async (c) => {
   return c.json({ data });
 });
 
+/**
+ * `GET /api/v1/studio/:slug/members` — the studio's active members for the
+ * Members tab (display name / email / role / join date). Visible to any
+ * authenticated user (decision A); a non-member's tab never calls it. A
+ * personal studio returns exactly its owner.
+ * @returns `200` with `{ data: StudioMemberSummary[] }`; `404` when no active
+ *   studio has that slug (service throws `NotFoundError`)
+ */
+studio.get("/:slug/members", async (c) => {
+  const slug = c.req.param("slug");
+  const data = await studioService.getStudioMembers(slug);
+  return c.json({ data });
+});
+
 export { studios as studiosRoute, studio as studioRoute };

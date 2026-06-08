@@ -24,7 +24,12 @@ import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import type { Studio, StudioDetail, StudioSummary } from "@breatic/shared";
+import type {
+  Studio,
+  StudioDetail,
+  StudioMemberSummary,
+  StudioSummary,
+} from "@breatic/shared";
 
 /**
  * Detect a PostgreSQL unique-violation error (SQLSTATE 23505), walking the
@@ -198,4 +203,34 @@ export async function listUserStudios(
   return summaries.sort((a, b) =>
     a.type === b.type ? 0 : a.type === "personal" ? -1 : 1,
   );
+}
+
+/**
+ * List a studio's active members for the Members tab (display name / email /
+ * avatar / role / join date), resolved by slug.
+ *
+ * The studio-shell decision A applies — visible to any authenticated user, but
+ * only members' tabs call this (a non-member sees no Members tab). Each
+ * member's display `name` comes from their personal studio (the `users` table
+ * has no username). A personal studio returns exactly its admin (the creator).
+ * @param slug - The studio's URL handle
+ * @returns The active members, oldest-first (admin/creator at the top)
+ * @throws {NotFoundError} when no active studio has that slug
+ */
+export async function getStudioMembers(
+  slug: string,
+): Promise<StudioMemberSummary[]> {
+  const studio = await studioRepo.getBySlug(slug);
+  if (!studio) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const members = await studioMembersRepo.listByStudio(studio.id);
+  return members.map((m) => ({
+    userId: m.userId,
+    name: m.name,
+    email: m.email,
+    avatarUrl: m.avatarUrl,
+    role: m.role,
+    addedAt: m.addedAt.toISOString(),
+  }));
 }
