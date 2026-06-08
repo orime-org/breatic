@@ -320,7 +320,7 @@
       "helper": "Your home will live at /studio/{slug}. Lowercase letters, numbers and hyphens; it must be unique.",
       "submit": "Continue",
       "submitting": "Setting up...",
-      "failed": "Could not set up your studio. Please try again."
+      "failed": "Could not set up your Studio. Please try again."
     },
     "recovery": {
       "title": "Save your recovery code",
@@ -363,7 +363,7 @@
       "pleaseWait": "One moment please.",
       "successTitle": "Email verified",
       "successBody": "Your email is confirmed. You can now use everything breatic has to offer.",
-      "goToStudio": "Go to studio",
+      "goToStudio": "Go to Studio",
       "failedTitle": "Could not verify your email",
       "failedBody": "The link may have expired or already been used. Sign in and request a fresh verification email from your account settings.",
       "checkInboxTitle": "Check your inbox",
@@ -1351,20 +1351,25 @@
         "owner": "Owner",
         "editor": "Editor",
         "viewer": "Viewer"
-      }
+      },
+      "title": "Recent",
+      "subtitle": "Projects and collections you recently edited or joined — across all your Studios, newest first.",
+      "emptyTitle": "Nothing recent yet",
+      "emptyHint": "You haven't created or joined any project yet. Create your first project, or open a Studio to start — what you edit shows up here."
     },
     "topBar": {
       "home": "Studio home",
       "recent": "Recent",
-      "search": "Search"
+      "search": "Search",
+      "notifications": "Notifications"
     },
     "createProject": {
       "failed": "Failed to create project: {reason}"
     },
     "container": {
       "shell": {
-        "loading": "Loading studio…",
-        "loadError": "We couldn't load this studio."
+        "loading": "Loading Studio…",
+        "loadError": "We couldn't load this Studio."
       },
       "tabs": {
         "projects": "Projects",
@@ -1375,12 +1380,12 @@
         "settings": "Settings"
       },
       "works": {
-        "empty": "No works yet",
-        "emptyHint": "Works appear here once a project is published."
+        "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",
+        "emptyTitle": "No works yet"
       },
       "nonMember": {
         "worksTitle": "Works",
-        "empty": "This studio has no published works."
+        "empty": "This Studio has no published works."
       },
       "header": {
         "personalTag": "Personal",
@@ -1393,8 +1398,8 @@
         "collaboration": "Collaboration",
         "guestProjects": "{count} shared projects",
         "newStudio": "New Studio",
-        "guideRecent": "Recent spans your latest work across studios.",
-        "guideEnter": "Pick a studio to open its container.",
+        "guideRecent": "Recent spans your latest work across Studios.",
+        "guideEnter": "Pick a Studio to open its container.",
         "guideTools": "Tools live in the top-right corner."
       },
       "badge": {
@@ -1420,13 +1425,15 @@
       "projects": {
         "title": "Projects",
         "new": "New project",
-        "empty": "No projects yet — create one to get started.",
-        "createError": "Couldn't create the project"
+        "createError": "Couldn't create the project",
+        "emptyTitle": "No projects yet",
+        "emptyHint": "Projects are where you create on the infinite canvas. Create your first project to get started."
       },
       "collections": {
         "title": "Collections",
         "new": "New collection",
-        "empty": "No collections yet — create one to get started."
+        "emptyTitle": "No collections yet",
+        "emptyHint": "Collections are reusable sets of assets (images / video / audio) shared across projects. Once the backend ships, the collections you create will appear here."
       },
       "credits": {
         "balance": "Wallet balance",
@@ -1470,13 +1477,13 @@
         "description": "Description",
         "avatar": "Avatar",
         "dangerTitle": "Danger zone",
-        "transfer": "Transfer studio",
-        "delete": "Delete studio"
+        "transfer": "Transfer Studio",
+        "delete": "Delete Studio"
       },
       "dialog": {
         "newProjectTitle": "New project",
         "newCollectionTitle": "New collection",
-        "newStudioTitle": "New studio",
+        "newStudioTitle": "New Studio",
         "studioLabel": "Studio",
         "nameLabel": "Name",
         "namePlaceholder": "My project",
@@ -1500,19 +1507,23 @@
       },
       "empty": {
         "newCard": "+ New"
+      },
+      "toolbar": {
+        "sortLabel": "Sort",
+        "sortValue": "Recently opened"
       }
     },
     "rail": {
       "navLabel": "Studio navigation",
       "createProject": "New project",
       "createCollection": "New collection",
-      "createStudio": "New studio",
+      "createStudio": "New Studio",
       "comingSoon": "Coming soon",
       "recent": "Recent",
-      "myStudios": "My studios",
-      "joinedStudios": "Joined studios",
-      "myStudiosEmpty": "No studios yet",
-      "joinedEmpty": "You haven't joined any studio yet"
+      "myStudios": "My Studios",
+      "joinedStudios": "Joined Studios",
+      "myStudiosEmpty": "No Studios yet",
+      "joinedEmpty": "You haven't joined any Studio yet"
     }
   },
   "chrome": {

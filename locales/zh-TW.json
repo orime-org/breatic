@@ -1351,12 +1351,17 @@
         "owner": "擁有者",
         "editor": "編輯者",
         "viewer": "檢視者"
-      }
+      },
+      "title": "最近",
+      "subtitle": "你最近編輯、參與過的專案和資產集 —— 跨你所有的 Studio,按最近時間排序。",
+      "emptyTitle": "還沒有最近的內容",
+      "emptyHint": "你還沒有建立或參與任何專案。建立第一個專案,或進入一個 Studio 開始創作 —— 之後你最近編輯的內容會顯示在這裡。"
     },
     "topBar": {
       "home": "Studio 首頁",
       "recent": "最近",
-      "search": "搜尋"
+      "search": "搜尋",
+      "notifications": "通知"
     },
     "createProject": {
       "failed": "建立專案失敗:{reason}"
@@ -1375,8 +1380,8 @@
         "settings": "設定"
       },
       "works": {
-        "empty": "還沒有作品",
-        "emptyHint": "專案發布後會出現在這裡。"
+        "emptyHint": "作品是從專案發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",
+        "emptyTitle": "還沒有作品"
       },
       "nonMember": {
         "worksTitle": "作品",
@@ -1393,12 +1398,12 @@
         "collaboration": "協作",
         "guestProjects": "{count} 個參與的專案",
         "newStudio": "新增 Studio",
-        "guideRecent": "最近 = 跨 studio 的近期專案。",
-        "guideEnter": "點某個 studio 進入它的容器。",
+        "guideRecent": "最近 = 跨 Studio 的近期專案。",
+        "guideEnter": "點某個 Studio 進入它的容器。",
         "guideTools": "工具在右上角。"
       },
       "badge": {
-        "visibilityStudio": "studio 內可見",
+        "visibilityStudio": "Studio 內可見",
         "visibilityPrivate": "私有",
         "roleOwner": "擁有者",
         "roleEditor": "編輯者",
@@ -1420,13 +1425,15 @@
       "projects": {
         "title": "專案",
         "new": "新增專案",
-        "empty": "還沒有專案 —— 新增一個開始吧。",
-        "createError": "建立專案失敗"
+        "createError": "建立專案失敗",
+        "emptyTitle": "還沒有專案",
+        "emptyHint": "專案是你在無限畫布上創作的地方。建立第一個專案,開始你的創作。"
       },
       "collections": {
         "title": "資產集",
         "new": "新增資產集",
-        "empty": "還沒有資產集 —— 新增一個開始吧。"
+        "emptyTitle": "還沒有資產集",
+        "emptyHint": "資產集是跨專案複用的素材集合(圖 / 影片 / 音訊)。後端能力上線後,這裡會列出你建立的資產集。"
       },
       "credits": {
         "balance": "錢包餘額",
@@ -1495,11 +1502,15 @@
         "slugTaken": "該網址標識已被使用。",
         "slugReserved": "該網址標識已被使用。",
         "visibilityLabel": "可見性",
-        "visibilityStudioOption": "studio 內可見 — 所有成員",
+        "visibilityStudioOption": "Studio 內可見 — 所有成員",
         "visibilityPrivateOption": "私有 — 僅受邀"
       },
       "empty": {
         "newCard": "+ 新增"
+      },
+      "toolbar": {
+        "sortLabel": "排序",
+        "sortValue": "最近開啟"
       }
     },
     "rail": {

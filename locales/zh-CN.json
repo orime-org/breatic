@@ -1351,12 +1351,17 @@
         "owner": "所有者",
         "editor": "编辑者",
         "viewer": "查看者"
-      }
+      },
+      "title": "最近",
+      "subtitle": "你最近编辑、参与过的项目和资产集 —— 跨你所有的 Studio,按最近时间排序。",
+      "emptyTitle": "还没有最近的内容",
+      "emptyHint": "你还没有创建或参与任何项目。创建第一个项目,或进入一个 Studio 开始创作 —— 之后你最近编辑的内容会显示在这里。"
     },
     "topBar": {
       "home": "Studio 主页",
       "recent": "最近",
-      "search": "搜索"
+      "search": "搜索",
+      "notifications": "通知"
     },
     "createProject": {
       "failed": "创建项目失败:{reason}"
@@ -1375,8 +1380,8 @@
         "settings": "设置"
       },
       "works": {
-        "empty": "还没有作品",
-        "emptyHint": "项目发布后会出现在这里。"
+        "emptyHint": "作品是从项目发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",
+        "emptyTitle": "还没有作品"
       },
       "nonMember": {
         "worksTitle": "作品",
@@ -1393,12 +1398,12 @@
         "collaboration": "协作",
         "guestProjects": "{count} 个参与的项目",
         "newStudio": "新建 Studio",
-        "guideRecent": "最近 = 跨 studio 的近期项目。",
-        "guideEnter": "点某个 studio 进入它的容器。",
+        "guideRecent": "最近 = 跨 Studio 的近期项目。",
+        "guideEnter": "点某个 Studio 进入它的容器。",
         "guideTools": "工具在右上角。"
       },
       "badge": {
-        "visibilityStudio": "studio 内可见",
+        "visibilityStudio": "Studio 内可见",
         "visibilityPrivate": "私有",
         "roleOwner": "所有者",
         "roleEditor": "编辑者",
@@ -1420,13 +1425,15 @@
       "projects": {
         "title": "项目",
         "new": "新建项目",
-        "empty": "还没有项目 —— 新建一个开始吧。",
-        "createError": "创建项目失败"
+        "createError": "创建项目失败",
+        "emptyTitle": "还没有项目",
+        "emptyHint": "项目是你在无限画布上创作的地方。创建第一个项目,开始你的创作。"
       },
       "collections": {
         "title": "资产集",
         "new": "新建资产集",
-        "empty": "还没有资产集 —— 新建一个开始吧。"
+        "emptyTitle": "还没有资产集",
+        "emptyHint": "资产集是跨项目复用的素材集合(图 / 视频 / 音频)。后端能力上线后,这里会列出你创建的资产集。"
       },
       "credits": {
         "balance": "钱包余额",
@@ -1495,11 +1502,15 @@
         "slugTaken": "该网址标识已被使用。",
         "slugReserved": "该网址标识已被使用。",
         "visibilityLabel": "可见性",
-        "visibilityStudioOption": "studio 内可见 — 所有成员",
+        "visibilityStudioOption": "Studio 内可见 — 所有成员",
         "visibilityPrivateOption": "私有 — 仅受邀"
       },
       "empty": {
         "newCard": "+ 新建"
+      },
+      "toolbar": {
+        "sortLabel": "排序",
+        "sortValue": "最近打开"
       }
     },
     "rail": {
