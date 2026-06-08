@@ -67,4 +67,18 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     await userEvent.click(enabled!);
     expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
+
+  it('shows a distinct empty text for ④ My studios vs ⑤ Joined studios (#1090)', () => {
+    // Both groups are empty here; each must show ITS OWN empty text. The bug
+    // was ④ "My studios" reusing the ⑤ "joined" empty copy.
+    render(
+      <MemoryRouter>
+        <StudioRail studios={[]} activeSlug={null} onCreateProject={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('No studios yet')).toBeInTheDocument();
+    expect(
+      screen.getByText('You haven\'t joined any studio yet'),
+    ).toBeInTheDocument();
+  });
 });

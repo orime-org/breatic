@@ -64,7 +64,7 @@ export function StudioRail({
         title={t('studio.rail.myStudios')}
         studios={owned}
         activeSlug={activeSlug}
-        emptyText={t('studio.rail.joinedEmpty')}
+        emptyText={t('studio.rail.myStudiosEmpty')}
         collapseKey='rail.myStudios'
       />
 

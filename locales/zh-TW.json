@@ -1510,6 +1510,7 @@
       "recent": "最近",
       "myStudios": "我的 Studio",
       "joinedStudios": "我加入的 Studio",
+      "myStudiosEmpty": "還沒有 Studio",
       "joinedEmpty": "還沒加入任何 Studio"
     }
   },

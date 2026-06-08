@@ -1510,6 +1510,7 @@
       "recent": "最近",
       "myStudios": "マイ Studio",
       "joinedStudios": "参加中の Studio",
+      "myStudiosEmpty": "Studio がまだありません",
       "joinedEmpty": "まだ Studio に参加していません"
     }
   },

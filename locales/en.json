@@ -1510,6 +1510,7 @@
       "recent": "Recent",
       "myStudios": "My studios",
       "joinedStudios": "Joined studios",
+      "myStudiosEmpty": "No studios yet",
       "joinedEmpty": "You haven't joined any studio yet"
     }
   },
