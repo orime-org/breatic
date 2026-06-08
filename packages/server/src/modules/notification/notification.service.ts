@@ -188,10 +188,13 @@ export interface StudioMemberInvitedPayload {
 /**
  * Studio transfer-request payload — an admin asks the user to take over as
  * admin. Stored on the actionable `studio.transfer_request` notification
- * (confirm/cancel; expires after a TTL).
+ * (confirm/cancel; expires after a TTL). `studioId` rides along so the
+ * confirm step can swap roles without re-resolving the studio (the slug may
+ * have changed, but the id is stable).
  */
 export interface StudioTransferRequestPayload {
   fromUserId: string;
+  studioId: string;
   studioName: string;
 }
 
@@ -232,7 +235,7 @@ export async function createStudioMemberInvited(input: {
  * (slice 3) — actionable (confirm/cancel), expires after the given TTL.
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new admin who receives the request
- * @param input.payload - The initiating admin's user id and the studio name
+ * @param input.payload - The initiating admin's user id, studio id, and studio name
  * @param input.expiresAt - When the request times out (7 days from creation)
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `studio.transfer_request` notification

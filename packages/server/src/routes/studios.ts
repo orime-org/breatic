@@ -26,6 +26,7 @@ import { requireStudioRole } from "@server/middleware/studio-role.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
@@ -36,6 +37,11 @@ const inviteMemberSchema = z.object({
 /** Change-role body — creator ↔ member only. */
 const changeRoleSchema = z.object({
   role: z.enum(["creator", "member"]),
+});
+
+/** Transfer-admin body — the member proposed as the new studio admin. */
+const transferAdminSchema = z.object({
+  toUserId: z.string().uuid(),
 });
 
 const studios = new Hono<{ Variables: AuthVariables }>();
@@ -144,6 +150,23 @@ studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => 
   const body = changeRoleSchema.parse(await c.req.json());
   await studioMemberService.updateMemberRole(slug, targetUserId, body.role);
   return c.json({ data: { ok: true } });
+});
+
+/**
+ * `POST /api/v1/studio/:slug/transfer-admin` — the admin asks an existing
+ * member to take over as admin (step 1 of the two-step handshake). Admin-only;
+ * drops an actionable `studio.transfer_request` notification (confirm/cancel,
+ * 7-day TTL) in the recipient's inbox. No role change yet — that lands when the
+ * recipient confirms via the notification action endpoint.
+ * @returns `201` with `{ data: { ok: true } }`; `403` personal / not admin,
+ *   `404` recipient not a member, `422` recipient is the acting admin
+ */
+studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  const body = transferAdminSchema.parse(await c.req.json());
+  await studioTransferService.requestTransfer(slug, user.id, body.toUserId);
+  return c.json({ data: { ok: true } }, 201);
 });
 
 export { studios as studiosRoute, studio as studioRoute };
