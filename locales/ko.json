@@ -1510,6 +1510,7 @@
       "recent": "최근",
       "myStudios": "내 Studio",
       "joinedStudios": "참여 중인 Studio",
+      "myStudiosEmpty": "아직 Studio가 없습니다",
       "joinedEmpty": "아직 참여한 Studio가 없습니다"
     }
   },
