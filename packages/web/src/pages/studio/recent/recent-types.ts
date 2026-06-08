@@ -29,10 +29,3 @@ export interface RecentItem {
   studioName: string;
   myRole: RecentItemRole;
 }
-
-/**
- * A studio shown in the top-bar switcher — re-exported from the canonical
- * studio-domain types so recent + container + the switcher share one
- * definition (avoids a duplicate `StudioSummary` shape).
- */
-export type { StudioSummary } from '@web/pages/studio/shared/studio-types';

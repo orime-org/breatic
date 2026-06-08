@@ -15,6 +15,12 @@ import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
+/** Context the studio layout passes through `<Outlet>` to its child routes. */
+export interface StudioLayoutContext {
+  /** Opens the create-project dialog (used by the Recent empty-state CTA). */
+  onCreateProject: () => void;
+}
+
 /**
  * Studio layout (spec §3.1 — the layout route that makes the rail + top bar
  * persistent). It wraps both `/studio` (the Recent landing) and
@@ -56,7 +62,13 @@ export default function StudioLayout(): React.JSX.Element {
           onCreateProject={() => setCreateOpen(true)}
         />
         <main className='min-w-0 flex-1 overflow-hidden'>
-          <Outlet />
+          <Outlet
+            context={
+              {
+                onCreateProject: () => setCreateOpen(true),
+              } satisfies StudioLayoutContext
+            }
+          />
         </main>
       </div>
       <NewItemDialog

@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 
 import { Badge } from '@web/components/ui/badge';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatRelativeTime } from '@web/pages/studio/shared/format-relative-time';
 import type {
   RecentItem,
   RecentItemRole,
@@ -39,7 +40,7 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
     <Link
       to={href}
       aria-label={item.name}
-      className='group flex flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground transition-colors hover:border-neutral-300'
+      className='group flex flex-col overflow-hidden rounded-[6px] border border-border bg-card text-card-foreground transition-colors hover:border-[var(--neutral-300)]'
     >
       <div className='aspect-video w-full bg-muted'>
         {item.thumbnailUrl ? (
@@ -68,28 +69,9 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
           </Badge>
         </div>
         <div className='text-xs text-muted-foreground'>
-          {formatRelative(item.lastOpenedAt)}
+          {formatRelativeTime(item.lastOpenedAt, t)}
         </div>
       </div>
     </Link>
   );
-}
-
-/**
- * Format an ISO timestamp as a short relative string ("5m ago", "3h ago",
- * "2d ago"), falling back to a locale date beyond 30 days or for invalid input.
- * @param iso - the ISO-8601 timestamp to format
- * @returns the relative-time label, or the original string if not a valid date.
- */
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const diff = Date.now() - then;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < 30 * day) return `${Math.floor(diff / day)}d ago`;
-  return new Date(iso).toLocaleDateString();
 }
