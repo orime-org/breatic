@@ -180,7 +180,7 @@ consumeInviteLink.use(requireAuth);
 consumeInviteLink.post("/:token/consume", async (c) => {
   const token = c.req.param("token");
   const user = c.get("user");
-  const link = await shareLinkService.consumeLink(token, user.email);
+  const link = await shareLinkService.consumeLink(token, user.id, user.email);
 
   logger.info(
     {

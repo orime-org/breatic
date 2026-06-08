@@ -303,9 +303,12 @@ describe("POST /invite-links/:token/consume", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { id: string } };
     expect(body.data.id).toBe("sl-1");
+    // The route passes the caller's user id (consumer) + email so the
+    // service can enroll them as a project member.
     expect(mocks.shareLinkService.consumeLink).toHaveBeenCalledWith(
       "abc-token",
-      expect.any(String),
+      "user-1",
+      "u@x.com",
     );
   });
 

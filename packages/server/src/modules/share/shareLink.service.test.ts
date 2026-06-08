@@ -29,6 +29,37 @@ vi.mock("./shareLink.repo.js", () => ({
   softDelete: vi.fn(),
 }));
 
+vi.mock("@server/modules/project/project.repo.js", () => ({
+  getProjectById: vi.fn(async () => ({ id: "p-1", name: "Proj" })),
+}));
+
+vi.mock("@server/modules/notification/notification.service.js", () => ({
+  createMemberJoined: vi.fn(async () => ({ id: "n-1" })),
+}));
+
+// `db.transaction(cb)` runs `cb` with a fake tx handle so the unit
+// tests exercise the consume flow without a Postgres connection.
+// `projectMembersRepo` is mocked so the membership write / owner lookup
+// can be asserted in isolation (real-PG coverage lives in the
+// share-link-consume-membership integration suite).
+const fakeTx = { __tx: true } as const;
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    db: {
+      transaction: vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(fakeTx),
+      ),
+    },
+    projectMembersRepo: {
+      getRole: vi.fn(async () => null),
+      getOwner: vi.fn(async () => "u-owner"),
+      upsertMember: vi.fn(async () => undefined),
+    },
+  };
+});
+
 import * as shareLinkRepo from "./shareLink.repo.js";
 import {
   createLink,
@@ -42,12 +73,15 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
+  projectMembersRepo,
 } from "@breatic/core";
+import * as notificationService from "@server/modules/notification/notification.service.js";
 
 const PID = "p-1";
 const LID = "link-1";
 const TOKEN = "t-base64url";
 const OWNER = "u-owner";
+const CONSUMER = "u-consumer";
 const CALLER_EMAIL = "caller@example.com";
 const BOUND_EMAIL = "invited@example.com";
 
@@ -89,6 +123,11 @@ function fakeLink(overrides: Partial<{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Re-arm the default "caller is not yet a member" + owner-lookup mocks
+  // that clearAllMocks wiped (the factory's default impls are cleared).
+  vi.mocked(projectMembersRepo.getRole).mockResolvedValue(null);
+  vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
+  vi.mocked(projectMembersRepo.upsertMember).mockResolvedValue(undefined);
 });
 
 describe("generateToken", () => {
@@ -221,9 +260,9 @@ describe("createLink", () => {
 describe("consumeLink", () => {
   it("throws NotFound when the token doesn't match any active link", async () => {
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(null);
-    await expect(consumeLink(TOKEN, CALLER_EMAIL)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+    await expect(
+      consumeLink(TOKEN, CONSUMER, CALLER_EMAIL),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("throws Forbidden when the link is expired", async () => {
@@ -231,30 +270,33 @@ describe("consumeLink", () => {
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
       fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, expiresAt: past }),
     );
-    await expect(consumeLink(TOKEN, BOUND_EMAIL)).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    await expect(
+      consumeLink(TOKEN, CONSUMER, BOUND_EMAIL),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
   });
 
   it("throws Forbidden when bound email doesn't match caller email (kind='email')", async () => {
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
       fakeLink({ kind: "email", boundEmail: BOUND_EMAIL }),
     );
-    await expect(consumeLink(TOKEN, "other@example.com")).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    await expect(
+      consumeLink(TOKEN, CONSUMER, "other@example.com"),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
   });
 
   it("throws Forbidden when kind='email' link was already consumed", async () => {
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
       fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, consumedAt: new Date() }),
     );
-    await expect(consumeLink(TOKEN, BOUND_EMAIL)).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    await expect(
+      consumeLink(TOKEN, CONSUMER, BOUND_EMAIL),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
   });
 
   it("throws Forbidden when concurrent consume races (markConsumed returns false)", async () => {
@@ -262,40 +304,85 @@ describe("consumeLink", () => {
       fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, consumedAt: null }),
     );
     vi.mocked(shareLinkRepo.markConsumed).mockResolvedValueOnce(false);
-    await expect(consumeLink(TOKEN, BOUND_EMAIL)).rejects.toBeInstanceOf(
-      ForbiddenError,
+    await expect(
+      consumeLink(TOKEN, CONSUMER, BOUND_EMAIL),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // The race aborts the transaction before any membership write.
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+  });
+
+  it("consumes a kind='email' link: spends token + enrolls member + notifies owner", async () => {
+    vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
+      fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, role: "editor", consumedAt: null }),
+    );
+    vi.mocked(shareLinkRepo.markConsumed).mockResolvedValueOnce(true);
+    const out = await consumeLink(TOKEN, CONSUMER, BOUND_EMAIL);
+    expect(out.consumedAt).toBeInstanceOf(Date);
+    expect(shareLinkRepo.markConsumed).toHaveBeenCalledWith(LID, expect.anything());
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(
+      PID,
+      CONSUMER,
+      "editor",
+      OWNER, // link.createdByUserId
+      expect.anything(),
+    );
+    expect(notificationService.createMemberJoined).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: OWNER,
+        projectId: PID,
+        payload: expect.objectContaining({ newMemberUserId: CONSUMER, role: "editor" }),
+      }),
     );
   });
 
-  it("consumes a kind='email' link successfully + returns link with consumed_at populated", async () => {
+  it("kind='link' consume: enrolls member without touching consumed_at", async () => {
+    vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
+      fakeLink({ kind: "link", boundEmail: null, role: "viewer" }),
+    );
+    const out = await consumeLink(TOKEN, CONSUMER, CALLER_EMAIL);
+    expect(out.kind).toBe("link");
+    expect(out.boundEmail).toBeNull();
+    expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(
+      PID,
+      CONSUMER,
+      "viewer",
+      OWNER,
+      expect.anything(),
+    );
+  });
+
+  it("does NOT downgrade / re-notify when the caller is already a member", async () => {
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
+    vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
+      fakeLink({ kind: "link", boundEmail: null, role: "viewer" }),
+    );
+    const out = await consumeLink(TOKEN, CONSUMER, CALLER_EMAIL);
+    expect(out.kind).toBe("link");
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+    expect(notificationService.createMemberJoined).not.toHaveBeenCalled();
+  });
+
+  it("kind='email' already-member: still spends the token but does NOT re-enroll/notify", async () => {
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
       fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, consumedAt: null }),
     );
     vi.mocked(shareLinkRepo.markConsumed).mockResolvedValueOnce(true);
-    const out = await consumeLink(TOKEN, BOUND_EMAIL);
-    expect(out.consumedAt).toBeInstanceOf(Date);
-    expect(shareLinkRepo.markConsumed).toHaveBeenCalledWith(LID);
+    await consumeLink(TOKEN, CONSUMER, BOUND_EMAIL);
+    expect(shareLinkRepo.markConsumed).toHaveBeenCalledWith(LID, expect.anything());
+    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
+    expect(notificationService.createMemberJoined).not.toHaveBeenCalled();
   });
 
-  it("kind='link' consume succeeds + does NOT call markConsumed", async () => {
+  it("does NOT notify when the consumer IS the owner (owner clicking own link)", async () => {
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
+    vi.mocked(projectMembersRepo.getOwner).mockResolvedValueOnce(CONSUMER);
     vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
-      fakeLink({ kind: "link", boundEmail: null }),
+      fakeLink({ kind: "link", boundEmail: null, role: "viewer" }),
     );
-    const out = await consumeLink(TOKEN, CALLER_EMAIL);
-    expect(out.kind).toBe("link");
-    expect(out.boundEmail).toBeNull();
-    expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
-  });
-
-  it("kind='link' consume succeeds multiple times in a row (idempotent)", async () => {
-    vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValue(
-      fakeLink({ kind: "link", boundEmail: null }),
-    );
-    const first = await consumeLink(TOKEN, CALLER_EMAIL);
-    const second = await consumeLink(TOKEN, "another@example.com");
-    expect(first.kind).toBe("link");
-    expect(second.kind).toBe("link");
-    expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
+    await consumeLink(TOKEN, CONSUMER, CALLER_EMAIL);
+    expect(notificationService.createMemberJoined).not.toHaveBeenCalled();
   });
 });
 
@@ -356,11 +443,13 @@ describe("consumeLink — property: kind='link' is idempotent + never calls mark
           fakeLink({ kind: "link", boundEmail: null, consumedAt: null }),
         );
         for (let i = 0; i < n; i++) {
-          const out = await consumeLink(TOKEN, CALLER_EMAIL);
+          const out = await consumeLink(TOKEN, CONSUMER, CALLER_EMAIL);
           expect(out.kind).toBe("link");
         }
         expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
         vi.clearAllMocks();
+        vi.mocked(projectMembersRepo.getRole).mockResolvedValue(null);
+        vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
       }),
       { numRuns: 20 },
     );
@@ -383,7 +472,7 @@ describe("consumeLink — property: expired links never reach markConsumed regar
             }),
           );
           await expect(
-            consumeLink(TOKEN, isEmailKind ? BOUND_EMAIL : CALLER_EMAIL),
+            consumeLink(TOKEN, CONSUMER, isEmailKind ? BOUND_EMAIL : CALLER_EMAIL),
           ).rejects.toBeInstanceOf(ForbiddenError);
           expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
           vi.clearAllMocks();
@@ -402,9 +491,9 @@ describe("consumeLink — property: kind='email' link always rejects mismatched 
         vi.mocked(shareLinkRepo.findActiveByToken).mockResolvedValueOnce(
           fakeLink({ kind: "email", boundEmail: BOUND_EMAIL, consumedAt: null }),
         );
-        await expect(consumeLink(TOKEN, callerEmail)).rejects.toBeInstanceOf(
-          ForbiddenError,
-        );
+        await expect(
+          consumeLink(TOKEN, CONSUMER, callerEmail),
+        ).rejects.toBeInstanceOf(ForbiddenError);
         expect(shareLinkRepo.markConsumed).not.toHaveBeenCalled();
         vi.clearAllMocks();
       }),
