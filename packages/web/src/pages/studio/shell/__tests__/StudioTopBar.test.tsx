@@ -31,13 +31,17 @@ describe('StudioTopBar', () => {
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
   });
 
-  it('renders the brand (logo + Breatic) linking to /studio, with no switcher or search', () => {
+  it('renders the brand (real logo mark + Breatic) linking to /studio, with no switcher or search', () => {
     setup();
     // The studio switcher moved to the persistent rail and search is dropped
     // this version, so the top bar is just brand + tools.
     const home = screen.getByRole('link', { name: 'Studio home' });
     expect(home).toHaveAttribute('href', '/studio');
     expect(screen.getByText('Breatic')).toBeInTheDocument();
+    // The brand uses the shared REAL logo mark (the same `BrandMark` atom the
+    // project top bar renders), not the old "b" placeholder square.
+    expect(screen.getByTestId('top-bar-logo')).toBeInTheDocument();
+    expect(screen.queryByText('b')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
   });
 
