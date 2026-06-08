@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { Briefcase } from 'lucide-react';
 
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
@@ -26,6 +27,7 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §0.1)', () => {
           activeSlug='nova'
           emptyText='none yet'
           collapseKey='rail.test.my'
+          Icon={Briefcase}
         />
       </MemoryRouter>,
     );
@@ -48,6 +50,7 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §0.1)', () => {
           activeSlug={null}
           emptyText='还没加入任何 studio'
           collapseKey='rail.test.joined'
+          Icon={Briefcase}
         />
       </MemoryRouter>,
     );
@@ -66,6 +69,7 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §0.1)', () => {
           activeSlug={null}
           emptyText='none yet'
           collapseKey='rail.test.collapse'
+          Icon={Briefcase}
         />
       </MemoryRouter>,
     );

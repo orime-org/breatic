@@ -25,7 +25,7 @@ const NEUTRAL_TINT =
 // `.vbadge`. Black/white here are NOT theme tokens (an image overlay must read
 // the same in light + dark mode), so this is not a token violation.
 const VISIBILITY_OVERLAY =
-  'inline-flex items-center gap-1 rounded-content-sm bg-black/45 px-1.5 text-[11px] font-semibold leading-5 text-white';
+  'inline-flex items-center gap-1 rounded-[2px] bg-black/45 px-1.5 text-[11px] font-semibold leading-5 text-white';
 
 /**
  * Project / collection visibility badge (spec §3.5) — a dark overlay pill that
@@ -78,7 +78,9 @@ export function RoleBadge({
   return (
     <Badge
       variant='secondary'
-      className={itemRole === 'owner' ? 'text-foreground' : undefined}
+      className={
+        itemRole === 'owner' ? 'rounded-[2px] text-foreground' : 'rounded-[2px]'
+      }
     >
       {t(`studio.container.badge.${key}`)}
     </Badge>

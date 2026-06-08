@@ -5,6 +5,7 @@ import type * as React from 'react';
 
 import { TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { useTranslation } from '@web/i18n/use-translation';
+import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import {
   visibleStudioTabs,
   type StudioTabKey,
@@ -41,7 +42,9 @@ export function StudioTabBar({
   const t = useTranslation();
   const tabs = visibleStudioTabs(studioType);
   return (
-    <TabsList className='w-full justify-start gap-0.5 border-b border-border px-6'>
+    <TabsList
+      className={`${CENTER_COLUMN} mt-3.5 justify-start gap-0.5 border-b border-border`}
+    >
       {tabs.map((tab) => {
         const count = counts?.[tab.key];
         return (

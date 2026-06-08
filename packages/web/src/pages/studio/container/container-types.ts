@@ -29,10 +29,10 @@ export interface ContainerProject {
   name: string;
   thumbnailUrl: string | null;
   visibility: ItemVisibility;
-  /** The viewer's role on this project, or `null` for studio baseline-only access (DD §5.3). */
+  /** The viewer's role on this project, or `null` for studio baseline-only access (DD §5.3). Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
   myRole: ItemRole | null;
-  /** Whether the viewer is the project Owner (gates transfer / delete actions). */
-  isOwner: boolean;
+  /** ISO-8601 timestamp of the project's last modification (card "x ago" label). */
+  updatedAt: string;
 }
 
 /** The dominant media kind of a collection, shown as a tag (spec §3.4). */
@@ -50,9 +50,8 @@ export interface ContainerCollection {
   assetCount: number;
   kind: CollectionKind;
   visibility: ItemVisibility;
-  /** The viewer's role on this collection, or `null` for studio baseline-only access (DD §5.3). */
+  /** The viewer's role on this collection, or `null` for studio baseline-only access (DD §5.3). Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
   myRole: ItemRole | null;
-  isOwner: boolean;
 }
 
 /** A studio member in the Members tab (team studios only, spec §3.7). */

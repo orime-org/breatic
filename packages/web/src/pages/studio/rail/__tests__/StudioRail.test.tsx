@@ -76,9 +76,24 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         <StudioRail studios={[]} activeSlug={null} onCreateProject={vi.fn()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText('No studios yet')).toBeInTheDocument();
+    expect(screen.getByText('No Studios yet')).toBeInTheDocument();
     expect(
-      screen.getByText('You haven\'t joined any studio yet'),
+      screen.getByText('You haven\'t joined any Studio yet'),
     ).toBeInTheDocument();
+  });
+
+  it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {
+    render(
+      <MemoryRouter>
+        <StudioRail studios={[]} activeSlug={null} onCreateProject={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const recent = screen.getByText('Recent');
+    const createProject = screen.getByText('New project');
+    // Recent must precede the create actions in DOM order (rail置顶).
+    expect(
+      recent.compareDocumentPosition(createProject) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

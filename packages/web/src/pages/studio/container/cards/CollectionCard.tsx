@@ -39,9 +39,9 @@ export function CollectionCard({
   studioRole,
 }: CollectionCardProps): React.JSX.Element {
   const t = useTranslation();
-  const canManage = canManageItem(studioRole, collection.isOwner);
+  const canManage = canManageItem(studioRole, collection.myRole === 'owner');
   return (
-    <div className='group relative overflow-hidden rounded-lg border border-border bg-card transition-[box-shadow,border-color] hover:border-neutral-300 hover:shadow-md'>
+    <div className='group relative overflow-hidden rounded-[6px] border border-border bg-card transition-[box-shadow,border-color] hover:border-[var(--neutral-300)] hover:shadow-md'>
       <Link
         to={`/collection/${collection.slug}-${collection.id}`}
         className='flex flex-col'
@@ -61,7 +61,7 @@ export function CollectionCard({
               </div>
             );
           })}
-          <span className='absolute left-2 top-2 z-[1]'>
+          <span className='absolute left-[7px] top-[7px] z-[1]'>
             <VisibilityBadge visibility={collection.visibility} />
           </span>
         </div>
@@ -89,7 +89,7 @@ export function CollectionCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-2 top-2 z-10 flex h-[22px] w-[22px] items-center justify-center rounded-content-sm bg-black/45 text-white opacity-0 transition-opacity hover:bg-black focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
+          className='absolute right-[7px] top-[7px] z-10 flex h-[22px] w-[22px] items-center justify-center rounded-[2px] bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
         >
           <MoreHorizontal className='h-3.5 w-3.5' />
         </button>

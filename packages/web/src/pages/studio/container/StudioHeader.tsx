@@ -4,6 +4,7 @@
 import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
 interface StudioHeaderProps {
@@ -27,10 +28,10 @@ export function StudioHeader({
   const initial = studio.name.slice(0, 1).toUpperCase();
   const isTeam = studio.type === 'team';
   return (
-    <div className='flex shrink-0 items-center gap-3 px-6 pt-4'>
+    <div className={`${CENTER_COLUMN} flex shrink-0 items-center gap-3 pt-[22px]`}>
       <span
         aria-hidden='true'
-        className='flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-sm font-semibold text-muted-foreground'
+        className='flex h-10 w-10 items-center justify-center rounded-[6px] bg-[var(--neutral-200)] text-sm font-bold text-[var(--neutral-600)]'
       >
         {initial}
       </span>

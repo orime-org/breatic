@@ -7,6 +7,12 @@
 # alpha-modifier covers (the shadcn vendor default) blend with the
 # underlying surface and give weak / surface-dependent contrast.
 #
+# Exception — black / white: these are FIXED colors, not mode-aware tokens, so
+# an alpha on them ("hover:bg-black/70") can't blend unpredictably with a
+# surface token the way the ADR warns about — the overlay reads the same in
+# light + dark. Used for image-overlay controls (card-thumbnail menus). They are
+# filtered back out below; the ban targets semantic-TOKEN alphas only.
+#
 # Exit code:
 #   0 — no violations
 #   1 — at least one violation; prints file:line:matched-class
@@ -25,7 +31,9 @@ if [ ! -d "$WEB_SRC" ]; then
   exit 2
 fi
 
-MATCHES=$(grep -Ern --include='*.ts' --include='*.tsx' "$PATTERN" "$WEB_SRC" || true)
+MATCHES=$(grep -Ern --include='*.ts' --include='*.tsx' "$PATTERN" "$WEB_SRC" \
+  | grep -Ev 'hover:bg-(black|white)/[0-9]' \
+  || true)
 
 if [ -z "$MATCHES" ]; then
   echo "lint-hover-pattern: clean ✅ (no banned hover:bg-X/NN patterns in $WEB_SRC)"

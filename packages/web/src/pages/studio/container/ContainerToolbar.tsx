@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
-import {
-  ArrowDownUp,
-  ChevronDown,
-  LayoutGrid,
-  List,
-  Plus,
-} from 'lucide-react';
+import { ChevronDown, LayoutGrid, List, Plus } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -54,7 +48,10 @@ export function ContainerToolbar({
   // adds no new locale strings.
   const notAvailable = t('spaces.create.notAvailable');
   return (
-    <div className='mb-4 flex items-center gap-2 border-b border-border pb-3.5'>
+    <div
+      data-testid='container-toolbar'
+      className='mb-[18px] flex items-center gap-2'
+    >
       <h2 className='flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-foreground'>
         {title}
         <span className='rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground'>
@@ -66,13 +63,19 @@ export function ContainerToolbar({
         type='button'
         disabled
         aria-label={notAvailable}
-        className='inline-flex h-[30px] items-center gap-0.5 rounded-content-md border border-border px-2.5 text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50'
+        className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
       >
-        <ArrowDownUp className='h-3.5 w-3.5' aria-hidden='true' />
-        <ChevronDown className='h-3 w-3' aria-hidden='true' />
+        <span className='font-normal text-muted-foreground'>
+          {t('studio.container.toolbar.sortLabel')}
+        </span>
+        {t('studio.container.toolbar.sortValue')}
+        <ChevronDown
+          className='h-3 w-3 text-muted-foreground'
+          aria-hidden='true'
+        />
       </button>
       <div
-        className='inline-flex overflow-hidden rounded-content-md border border-border opacity-50'
+        className='inline-flex overflow-hidden rounded-[4px] border border-border opacity-50'
         aria-hidden='true'
       >
         <span className='flex h-[30px] w-[30px] items-center justify-center bg-muted text-foreground'>
@@ -86,7 +89,7 @@ export function ContainerToolbar({
         <button
           type='button'
           onClick={onCreate}
-          className='inline-flex h-[30px] items-center gap-1.5 rounded-content-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {createLabel}

@@ -1351,12 +1351,17 @@
         "owner": "オーナー",
         "editor": "編集者",
         "viewer": "閲覧者"
-      }
+      },
+      "title": "最近",
+      "subtitle": "最近編集・参加したプロジェクトとアセット集 —— すべての Studio を横断し、新しい順に表示。",
+      "emptyTitle": "最近のコンテンツはまだありません",
+      "emptyHint": "まだプロジェクトを作成・参加していません。最初のプロジェクトを作成するか、Studio を開いて始めましょう —— 編集した内容がここに表示されます。"
     },
     "topBar": {
       "home": "Studio ホーム",
       "recent": "最近",
-      "search": "検索"
+      "search": "検索",
+      "notifications": "通知"
     },
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
@@ -1375,8 +1380,8 @@
         "settings": "設定"
       },
       "works": {
-        "empty": "まだ作品がありません",
-        "emptyHint": "プロジェクトを公開するとここに表示されます。"
+        "emptyHint": "作品はプロジェクトから公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した作品がここに表示されます。",
+        "emptyTitle": "作品がまだありません"
       },
       "nonMember": {
         "worksTitle": "作品",
@@ -1393,12 +1398,12 @@
         "collaboration": "コラボ",
         "guestProjects": "参加中のプロジェクト {count} 件",
         "newStudio": "Studio を新規作成",
-        "guideRecent": "最近 = studio をまたいだ直近のプロジェクト。",
-        "guideEnter": "studio を選んでコンテナを開きます。",
+        "guideRecent": "最近 = Studio をまたいだ直近のプロジェクト。",
+        "guideEnter": "Studio を選んでコンテナを開きます。",
         "guideTools": "ツールは右上にあります。"
       },
       "badge": {
-        "visibilityStudio": "studio 内に表示",
+        "visibilityStudio": "Studio 内に表示",
         "visibilityPrivate": "非公開",
         "roleOwner": "オーナー",
         "roleEditor": "編集者",
@@ -1420,13 +1425,15 @@
       "projects": {
         "title": "プロジェクト",
         "new": "プロジェクトを新規作成",
-        "empty": "プロジェクトはまだありません —— 作成して始めましょう。",
-        "createError": "プロジェクトを作成できませんでした"
+        "createError": "プロジェクトを作成できませんでした",
+        "emptyTitle": "プロジェクトがまだありません",
+        "emptyHint": "プロジェクトは無限キャンバスで創作する場所です。最初のプロジェクトを作成して始めましょう。"
       },
       "collections": {
         "title": "コレクション",
         "new": "コレクションを新規作成",
-        "empty": "コレクションはまだありません —— 作成して始めましょう。"
+        "emptyTitle": "アセット集がまだありません",
+        "emptyHint": "アセット集はプロジェクト間で再利用する素材のまとまり(画像 / 動画 / 音声)です。バックエンド機能が公開されると、作成したアセット集がここに表示されます。"
       },
       "credits": {
         "balance": "ウォレット残高",
@@ -1495,11 +1502,15 @@
         "slugTaken": "そのハンドルは既に使用されています。",
         "slugReserved": "そのハンドルは既に使用されています。",
         "visibilityLabel": "公開範囲",
-        "visibilityStudioOption": "studio 内に表示 — 全メンバー",
+        "visibilityStudioOption": "Studio 内に表示 — 全メンバー",
         "visibilityPrivateOption": "非公開 — 招待のみ"
       },
       "empty": {
         "newCard": "+ 新規"
+      },
+      "toolbar": {
+        "sortLabel": "並び替え",
+        "sortValue": "最近開いた順"
       }
     },
     "rail": {
