@@ -1361,7 +1361,9 @@
       "home": "Studio 主页",
       "recent": "最近",
       "search": "搜索",
-      "notifications": "通知"
+      "notifications": "通知",
+      "account": "账号",
+      "signOut": "退出登录"
     },
     "createProject": {
       "failed": "创建项目失败:{reason}"
@@ -1458,7 +1460,8 @@
           "spend": "消费",
           "expiry": "过期",
           "refund": "退款"
-        }
+        },
+        "unit": "积分"
       },
       "members": {
         "invite": "邀请成员",
@@ -1468,7 +1471,8 @@
         "colJoined": "加入时间",
         "roleAdmin": "管理员",
         "roleMember": "成员",
-        "remove": "移除"
+        "remove": "移除",
+        "cannotInvitePersonal": "个人 studio 无法邀请成员 —— 只有你自己。"
       },
       "settings": {
         "basicTitle": "基本信息",
@@ -1478,7 +1482,8 @@
         "avatar": "头像",
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
-        "delete": "删除 Studio"
+        "delete": "删除 Studio",
+        "dangerHint": "转让会把所有项目、资产集与钱包整体过户;删除不可恢复。仅所有者可操作。"
       },
       "dialog": {
         "newProjectTitle": "新建项目",
@@ -1523,7 +1528,8 @@
       "myStudios": "我的 Studio",
       "joinedStudios": "我加入的 Studio",
       "myStudiosEmpty": "还没有 Studio",
-      "joinedEmpty": "还没加入任何 Studio"
+      "joinedEmpty": "还没加入任何 Studio",
+      "openNav": "打开导航"
     }
   },
   "chrome": {

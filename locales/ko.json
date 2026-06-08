@@ -1361,7 +1361,9 @@
       "home": "Studio 홈",
       "recent": "최근",
       "search": "검색",
-      "notifications": "알림"
+      "notifications": "알림",
+      "account": "계정",
+      "signOut": "로그아웃"
     },
     "createProject": {
       "failed": "프로젝트 생성에 실패했습니다: {reason}"
@@ -1458,7 +1460,8 @@
           "spend": "사용",
           "expiry": "만료",
           "refund": "환불"
-        }
+        },
+        "unit": "크레딧"
       },
       "members": {
         "invite": "멤버 초대",
@@ -1468,7 +1471,8 @@
         "colJoined": "가입일",
         "roleAdmin": "관리자",
         "roleMember": "멤버",
-        "remove": "삭제"
+        "remove": "삭제",
+        "cannotInvitePersonal": "개인 studio는 멤버를 초대할 수 없습니다 — 당신뿐입니다."
       },
       "settings": {
         "basicTitle": "기본 정보",
@@ -1478,7 +1482,8 @@
         "avatar": "아바타",
         "dangerTitle": "위험 영역",
         "transfer": "Studio 양도",
-        "delete": "Studio 삭제"
+        "delete": "Studio 삭제",
+        "dangerHint": "양도하면 모든 프로젝트, 에셋 모음, 지갑이 새 소유자에게 이전됩니다; 삭제는 되돌릴 수 없습니다. 소유자만 가능합니다."
       },
       "dialog": {
         "newProjectTitle": "새 프로젝트",
@@ -1523,7 +1528,8 @@
       "myStudios": "내 Studio",
       "joinedStudios": "참여 중인 Studio",
       "myStudiosEmpty": "아직 Studio가 없습니다",
-      "joinedEmpty": "아직 참여한 Studio가 없습니다"
+      "joinedEmpty": "아직 참여한 Studio가 없습니다",
+      "openNav": "탐색 열기"
     }
   },
   "chrome": {
