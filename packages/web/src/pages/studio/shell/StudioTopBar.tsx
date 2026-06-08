@@ -8,35 +8,48 @@ import { Bell } from 'lucide-react';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
+import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { StudioChromeIconButton } from '@web/pages/studio/shell/StudioChromeIconButton';
 import { BrandMark } from '@web/ui/BrandMark';
 
+interface StudioTopBarProps {
+  /**
+   * Optional leading slot rendered before the logo — the narrow-screen rail
+   * hamburger (`StudioRailDrawer`), which hides itself at `md` and up.
+   */
+  leading?: React.ReactNode;
+}
+
 /**
  * Studio top bar (spec §5) — the app chrome above every studio screen (40px,
- * matching the project top bar + the neutral mock),
- * shared by the Recent landing and the studio container via `StudioLayout`.
- * After the navigation rework the studio switcher moved OUT of the top bar and
- * into the persistent left rail, so the top bar is now identical on every
- * studio page and takes no props: left = logo + "Breatic"; right = language /
- * theme / notifications (placeholder) / avatar. Brand color is only on the logo
- * mark (chrome-baseline monochrome rule); the rest is neutral.
+ * matching the project top bar + the neutral mock), shared by the Recent
+ * landing and the studio container via `StudioLayout`. Left = optional
+ * `leading` slot (the narrow-screen rail hamburger) + logo + "Breatic"; right =
+ * language / theme / notifications (placeholder) / account avatar. Brand color
+ * is only on the logo mark (chrome-baseline monochrome rule); the rest is
+ * neutral.
+ * @param props the top bar props.
+ * @param props.leading optional leading slot before the logo (rail hamburger).
  * @returns the studio top bar header.
  */
-export function StudioTopBar(): React.JSX.Element {
+export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <header
       role='banner'
       className='flex h-10 shrink-0 items-center justify-between border-b border-border bg-background px-4'
     >
-      <Link
-        to='/studio'
-        aria-label={t('studio.topBar.home')}
-        className='flex items-center gap-[7px]'
-      >
-        <BrandMark size={24} />
-        <span className='text-sm font-semibold text-foreground'>Breatic</span>
-      </Link>
+      <div className='flex items-center gap-1'>
+        {leading}
+        <Link
+          to='/studio'
+          aria-label={t('studio.topBar.home')}
+          className='flex items-center gap-[7px]'
+        >
+          <BrandMark size={24} />
+          <span className='text-sm font-semibold text-foreground'>Breatic</span>
+        </Link>
+      </div>
       <div className='flex items-center gap-1'>
         <LangSwitcher />
         <ThemeToggle />
@@ -44,12 +57,7 @@ export function StudioTopBar(): React.JSX.Element {
           icon={Bell}
           label={t('studio.topBar.notifications')}
         />
-        <div
-          className='ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground'
-          aria-hidden='true'
-        >
-          A
-        </div>
+        <StudioAccountMenu />
       </div>
     </header>
   );
