@@ -67,7 +67,7 @@ export function MembersTab({
                   <span className='flex items-center gap-3'>
                     <span
                       aria-hidden='true'
-                      className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[13px] font-semibold text-muted-foreground'
+                      className='flex h-8 w-8 items-center justify-center rounded-full bg-[var(--neutral-200)] text-[13px] font-bold text-[var(--neutral-600)]'
                     >
                       {member.name.slice(0, 1).toUpperCase()}
                     </span>

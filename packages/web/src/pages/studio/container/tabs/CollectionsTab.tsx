@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Group } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { canRenderItemCard } from '@web/pages/studio/container/access';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { CollectionCard } from '@web/pages/studio/container/cards/CollectionCard';
+import { EmptyState } from '@web/pages/studio/shared/EmptyState';
 import type { ContainerCollection } from '@web/pages/studio/container/container-types';
 import {
   NewItemDialog,
@@ -22,9 +24,9 @@ interface CollectionsTabProps {
   onCreateCollection?: (values: NewItemValues) => void;
 }
 
-// Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
-// ~5 columns at the 1320px container width and reflows down on narrow screens.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
+// Auto-fill grid (neutral mock §grid): cards are min 190px wide, so the row
+// packs up to ~5 columns at the 1100px container width and reflows down.
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
 
 /**
  * The Collections tab (spec §3.4 / §3.13): a toolbar (title + count + sort/view
@@ -59,9 +61,11 @@ export function CollectionsTab({
         onCreate={canCreate ? () => setDialogOpen(true) : undefined}
       />
       {visible.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>
-          {t('studio.container.collections.empty')}
-        </p>
+        <EmptyState
+          icon={Group}
+          title={t('studio.container.collections.emptyTitle')}
+          hint={t('studio.container.collections.emptyHint')}
+        />
       ) : (
         <div className={GRID}>
           {visible.map((collection) => (

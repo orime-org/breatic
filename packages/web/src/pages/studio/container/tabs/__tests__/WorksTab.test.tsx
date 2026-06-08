@@ -13,10 +13,8 @@ describe('WorksTab (spec §6.2 — empty placeholder shell)', () => {
     expect(screen.getByText('No works yet')).toBeInTheDocument();
   });
 
-  it('renders the hint that works appear once a project is published', () => {
+  it('renders the hint explaining published works (no CTA — publishing not live yet)', () => {
     render(<WorksTab />);
-    expect(
-      screen.getByText('Works appear here once a project is published.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Once publishing ships/)).toBeInTheDocument();
   });
 });

@@ -18,7 +18,7 @@ describe('NonMemberView (spec §6.3 — non-member center: no tabs)', () => {
   it('renders the "no published works" empty state', () => {
     render(<NonMemberView />);
     expect(
-      screen.getByText('This studio has no published works.'),
+      screen.getByText('This Studio has no published works.'),
     ).toBeInTheDocument();
   });
 

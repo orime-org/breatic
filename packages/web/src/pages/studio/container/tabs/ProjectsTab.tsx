@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Folder } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { canRenderItemCard } from '@web/pages/studio/container/access';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
+import { EmptyState } from '@web/pages/studio/shared/EmptyState';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import {
   NewItemDialog,
@@ -30,9 +32,9 @@ interface ProjectsTabProps {
   defaultStudioId?: string;
 }
 
-// Auto-fill grid (locked mock): cards are ~236px wide, so the row packs up to
-// ~5 columns at the 1320px container width and reflows down on narrow screens.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(236px,1fr))] gap-3';
+// Auto-fill grid (neutral mock §grid): cards are min 190px wide, so the row
+// packs up to ~5 columns at the 1100px container width and reflows down.
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
 
 /**
  * The Projects tab (spec §3.3 / §3.13): a toolbar (title + count + sort/view
@@ -75,9 +77,11 @@ export function ProjectsTab({
         onCreate={canCreate ? () => setDialogOpen(true) : undefined}
       />
       {visible.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>
-          {t('studio.container.projects.empty')}
-        </p>
+        <EmptyState
+          icon={Folder}
+          title={t('studio.container.projects.emptyTitle')}
+          hint={t('studio.container.projects.emptyHint')}
+        />
       ) : (
         <div className={GRID}>
           {visible.map((project) => (
