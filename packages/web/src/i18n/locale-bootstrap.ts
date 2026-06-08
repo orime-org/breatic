@@ -36,9 +36,11 @@ import zhTW from '@locales/zh-TW.json';
 import ja from '@locales/ja.json';
 import ko from '@locales/ko.json';
 
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
+
 const SUPPORTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
 const FALLBACK_LOCALE: Locale = 'en';
-const STORAGE_KEY = 'breatic.locale';
+const STORAGE_KEY = STORAGE_KEYS.locale;
 
 /**
  * Initialize the i18n runtime. Must be called once at app startup,

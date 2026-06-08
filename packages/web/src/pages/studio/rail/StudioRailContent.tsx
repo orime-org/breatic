@@ -5,6 +5,7 @@ import type * as React from 'react';
 import { Briefcase, Users } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
@@ -64,7 +65,7 @@ export function StudioRailContent({
         studios={owned}
         activeSlug={activeSlug}
         emptyText={t('studio.rail.myStudiosEmpty')}
-        collapseKey='rail.myStudios'
+        collapseKey={STORAGE_KEYS.railMyStudios}
         Icon={Briefcase}
       />
 
@@ -75,7 +76,7 @@ export function StudioRailContent({
         studios={joined}
         activeSlug={activeSlug}
         emptyText={t('studio.rail.joinedEmpty')}
-        collapseKey='rail.joinedStudios'
+        collapseKey={STORAGE_KEYS.railJoinedStudios}
         Icon={Users}
       />
     </>

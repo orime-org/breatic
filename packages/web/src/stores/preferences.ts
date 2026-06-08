@@ -5,12 +5,14 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
+
 /**
  * User preferences store — theme only, persisted to localStorage.
  *
  * `language` lived here briefly but moved to `@breatic/shared` as
  * the single source of truth (2026-05-22, PR follow-up to #117). The
- * LangSwitcher now calls `changeLocale()` from `@/i18n/locale-bootstrap`
+ * LangSwitcher now calls `changeLocale()` from `@web/i18n/locale-bootstrap`
  * directly, which persists to `localStorage["breatic.locale"]` and
  * notifies the i18n engine in one shot. Keeping a Zustand mirror caused
  * silent drift (store changed but engine didn't, so `useTranslation`
@@ -47,7 +49,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         }),
     })),
     {
-      name: 'breatic.preferences',
+      name: STORAGE_KEYS.preferences,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ theme: s.theme }),
       version: 1,
