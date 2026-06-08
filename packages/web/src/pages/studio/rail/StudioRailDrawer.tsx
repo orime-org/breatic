@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Menu } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import {
   Sheet,
@@ -14,6 +14,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
+import { BrandMark } from '@web/ui/BrandMark';
 
 interface StudioRailDrawerProps {
   /** The viewer's own studios (from `GET /studios`), each with `myStudioRole`. */
@@ -69,6 +70,21 @@ export function StudioRailDrawer({
         data-testid='studio-rail-drawer'
       >
         <SheetTitle className='sr-only'>{t('studio.rail.navLabel')}</SheetTitle>
+        {/* Drawer header — brand on the left; the vendor Sheet close (X,
+            absolute right-3 top-3) lands in the pr-10 gap on the right, so it
+            gets its own row instead of overlapping the first rail item. */}
+        <div className='mb-1 flex h-9 shrink-0 items-center pl-1.5 pr-10'>
+          <Link
+            to='/studio'
+            aria-label={t('studio.topBar.home')}
+            className='flex items-center gap-[7px]'
+          >
+            <BrandMark size={24} />
+            <span className='text-sm font-semibold text-foreground'>
+              Breatic
+            </span>
+          </Link>
+        </div>
         <StudioRailContent
           studios={studios}
           activeSlug={activeSlug}

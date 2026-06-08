@@ -38,4 +38,14 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     // The same StudioRailContent (the Recent nav link) renders inside.
     expect(screen.getByText('Recent')).toBeInTheDocument();
   });
+
+  it('shows a Breatic brand header so the close button gets its own row', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    // The drawer header carries the brand; this gives the vendor Sheet close
+    // (X, absolute top-right) its own top row instead of overlapping the first
+    // rail item ("Recent").
+    expect(screen.getByText('Breatic')).toBeInTheDocument();
+  });
 });
