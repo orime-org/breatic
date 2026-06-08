@@ -173,14 +173,14 @@ export function NewStudioDialog({
           <DialogFooter>
             <Button
               type='button'
-              variant='ghost'
+              variant='outline'
               onClick={() => handleOpenChange(false)}
             >
               {t('studio.container.dialog.cancel')}
             </Button>
             <Button
               type='submit'
-              className='bg-primary text-primary-foreground hover:opacity-90'
+              disabled={name.trim() === '' || slugError !== null}
             >
               {t('studio.container.dialog.create')}
             </Button>
