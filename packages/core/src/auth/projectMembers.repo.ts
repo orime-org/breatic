@@ -14,7 +14,7 @@
  * partial unique index treats `deleted_at IS NOT NULL` rows as gone).
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects } from "@core/db/schema.js";
@@ -314,4 +314,109 @@ export async function softDelete(
     )
     .returning({ projectId: projectMembers.projectId });
   return rows.length > 0;
+}
+
+/**
+ * Soft-delete every active membership a user holds in one studio's projects —
+ * the access-revocation half of a studio kick (slice 3).
+ *
+ * Scoped by a subquery on `projects.studio_id` so only rows in THAT studio's
+ * active projects are cleared; the user's memberships in other studios are
+ * untouched. Soft-delete only (rows physically remain). Runs in the kick's
+ * transaction (the caller passes `tx`) so it is atomic with the
+ * `studio_members` soft-delete and the owner reassignment.
+ * @param studioId - Studio UUID whose project access is being revoked
+ * @param userId - The kicked member's user UUID
+ * @param tx - Optional drizzle transaction handle
+ * @returns the number of `project_members` rows soft-deleted
+ */
+export async function softDeleteAllInStudioForUser(
+  studioId: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<number> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(projectMembers)
+    .set({ deletedAt: sql`now()` })
+    .where(
+      and(
+        eq(projectMembers.userId, userId),
+        isNull(projectMembers.deletedAt),
+        inArray(
+          projectMembers.projectId,
+          handle
+            .select({ id: projects.id })
+            .from(projects)
+            .where(
+              and(eq(projects.studioId, studioId), isNull(projects.deletedAt)),
+            ),
+        ),
+      ),
+    )
+    .returning({ projectId: projectMembers.projectId });
+  return rows.length;
+}
+
+/**
+ * List the projects a user actively OWNS within one studio — read BEFORE the
+ * kick's soft-delete so the caller knows which projects to hand to the admin.
+ *
+ * Inner-joins `projects` to scope by `studio_id` and filters role='owner' +
+ * both rows active. Returns bare project ids (the caller reassigns each via
+ * `materializeOwner` in the same tx).
+ * @param studioId - Studio UUID
+ * @param userId - The kicked member's user UUID
+ * @param tx - Optional drizzle transaction handle
+ * @returns the ids of active projects the user owns in this studio
+ */
+export async function listOwnedProjectsInStudio(
+  studioId: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<string[]> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .where(
+      and(
+        eq(projectMembers.userId, userId),
+        eq(projectMembers.role, "owner"),
+        isNull(projectMembers.deletedAt),
+        eq(projects.studioId, studioId),
+        isNull(projects.deletedAt),
+      ),
+    );
+  return rows.map((r) => r.projectId);
+}
+
+/**
+ * Hand a project to the studio admin — insert, revive, or promote the admin
+ * to active owner. The owner-reassignment half of a studio kick (slice 3).
+ *
+ * ON CONFLICT (project_id, user_id) DO UPDATE with no `setWhere`: a missing
+ * row inserts an active owner; an existing row (active viewer/editor or
+ * soft-deleted) is promoted/revived to active owner. The caller MUST have
+ * already soft-deleted the kicked owner's row in the same tx — otherwise this
+ * second active owner hits the `project_members_one_owner_per_project` partial
+ * unique and throws.
+ * @param projectId - Project UUID being reassigned
+ * @param userId - The studio admin's user UUID (becomes the new owner)
+ * @param tx - Optional drizzle transaction handle
+ */
+export async function materializeOwner(
+  projectId: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<void> {
+  const handle = tx ?? db;
+  await handle
+    .insert(projectMembers)
+    .values({ projectId, userId, role: "owner", addedBy: null })
+    .onConflictDoUpdate({
+      target: [projectMembers.projectId, projectMembers.userId],
+      set: { role: "owner", addedBy: null, addedAt: sql`now()`, deletedAt: null },
+    });
 }
