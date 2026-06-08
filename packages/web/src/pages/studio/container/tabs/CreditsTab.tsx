@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CreditWallet } from '@web/pages/studio/container/container-types';
 import { expiringDays } from '@web/pages/studio/container/credit-util';
@@ -39,7 +40,7 @@ export function CreditsTab({
   const isAdmin = studioRole === 'admin';
   const hasGift = wallet.giftLots.length > 0;
   return (
-    <div className='flex max-w-3xl flex-col gap-6'>
+    <div className='mx-auto flex max-w-3xl flex-col gap-6'>
       {/* Wallet head (locked mock .creditshead): balance left, top-up right. */}
       <div className='flex items-start gap-4'>
         <div>
@@ -60,12 +61,9 @@ export function CreditsTab({
           </p>
         </div>
         {isAdmin ? (
-          <button
-            type='button'
-            className='ml-auto shrink-0 rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
-          >
+          <Button type='button' className='ml-auto shrink-0'>
             {t('studio.container.credits.topup')}
-          </button>
+          </Button>
         ) : null}
       </div>
 

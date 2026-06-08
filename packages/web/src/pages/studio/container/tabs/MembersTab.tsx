@@ -4,6 +4,7 @@
 import type * as React from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
 import type {
@@ -44,15 +45,12 @@ export function MembersTab({
   // single-member) and for non-admins.
   const canManage = studioRole === 'admin' && studioType === 'team';
   return (
-    <div className='flex max-w-3xl flex-col gap-4'>
+    <div className='mx-auto flex max-w-3xl flex-col gap-4'>
       {canManage ? (
         <div>
-          <button
-            type='button'
-            className='rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
-          >
+          <Button type='button'>
             {t('studio.container.members.invite')}
-          </button>
+          </Button>
         </div>
       ) : studioType === 'personal' ? (
         <p className='text-xs text-muted-foreground'>
@@ -61,7 +59,7 @@ export function MembersTab({
       ) : null}
       <table className='w-full text-left text-sm'>
         <thead className='text-xs text-muted-foreground'>
-          <tr className='border-b border-border'>
+          <tr>
             <th className='pb-2 font-medium'>
               {t('studio.container.members.colName')}
             </th>

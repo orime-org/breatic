@@ -61,7 +61,7 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
   const t = useTranslation();
   const canGovern = studio.myStudioRole === 'admin' && studio.type === 'team';
   return (
-    <div className='flex max-w-xl flex-col gap-8'>
+    <div className='mx-auto flex max-w-xl flex-col gap-8'>
       <section className='flex flex-col gap-4'>
         <h3 className='text-xs font-bold uppercase tracking-[0.04em] text-muted-foreground'>
           {t('studio.container.settings.basicTitle')}

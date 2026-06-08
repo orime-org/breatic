@@ -4,6 +4,7 @@
 import type * as React from 'react';
 import { ChevronDown, LayoutGrid, List, Plus } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface ContainerToolbarProps {
@@ -86,14 +87,14 @@ export function ContainerToolbar({
         </span>
       </div>
       {onCreate ? (
-        <button
+        <Button
           type='button'
           onClick={onCreate}
-          className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='h-[30px] gap-1.5 rounded-[4px] px-3 text-xs font-semibold'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {createLabel}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

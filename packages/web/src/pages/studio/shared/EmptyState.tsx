@@ -4,6 +4,8 @@
 import type * as React from 'react';
 import { Plus, type LucideIcon } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
+
 interface EmptyStateAction {
   /** Button label (resolved i18n). */
   label: string;
@@ -48,14 +50,14 @@ export function EmptyState({
       <p className='text-sm font-semibold text-foreground'>{title}</p>
       <p className='max-w-[320px] text-xs text-muted-foreground'>{hint}</p>
       {action ? (
-        <button
+        <Button
           type='button'
           onClick={action.onClick}
-          className='mt-1 inline-flex h-[30px] items-center gap-1.5 rounded-[4px] bg-primary px-3.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='mt-1 h-[30px] gap-1.5 rounded-[4px] px-3.5 text-xs font-semibold'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {action.label}
-        </button>
+        </Button>
       ) : null}
     </div>
   );
