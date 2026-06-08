@@ -174,6 +174,110 @@ export async function createMemberJoined(input: {
   );
 }
 
+/**
+ * Studio member-invited payload — an admin added the user to a studio.
+ * Stored on the `studio.member_invited` notification in the invitee's inbox
+ * (informational; the invite already took effect).
+ */
+export interface StudioMemberInvitedPayload {
+  studioName: string;
+  inviterName: string;
+  role: "creator" | "member";
+}
+
+/**
+ * Studio transfer-request payload — an admin asks the user to take over as
+ * admin. Stored on the actionable `studio.transfer_request` notification
+ * (confirm/cancel; expires after a TTL).
+ */
+export interface StudioTransferRequestPayload {
+  fromUserId: string;
+  studioName: string;
+}
+
+/**
+ * Studio transfer-approved payload — the recipient accepted; stored on the
+ * `studio.transfer_approved` notification in the OLD admin's inbox.
+ */
+export interface StudioTransferApprovedPayload {
+  studioName: string;
+}
+
+/**
+ * Notify a user they were added to a studio (slice 3) — informational, no
+ * action and no TTL (studio invites take effect immediately).
+ * @param input - Invitee inbox, payload, and optional transaction
+ * @param input.userId - The invitee who receives the notice in their inbox
+ * @param input.payload - Studio name, inviter name, and granted role
+ * @param input.tx - Optional transaction to bundle with the membership insert
+ * @returns The inserted `studio.member_invited` notification
+ */
+export async function createStudioMemberInvited(input: {
+  userId: string;
+  payload: StudioMemberInvitedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "studio.member_invited",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify a user that an admin wants to transfer studio admin to them
+ * (slice 3) — actionable (confirm/cancel), expires after the given TTL.
+ * @param input - Recipient inbox, payload, expiry, and optional transaction
+ * @param input.userId - The proposed new admin who receives the request
+ * @param input.payload - The initiating admin's user id and the studio name
+ * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.tx - Optional transaction to bundle with related writes
+ * @returns The inserted `studio.transfer_request` notification
+ */
+export async function createStudioTransferRequest(input: {
+  userId: string;
+  payload: StudioTransferRequestPayload;
+  expiresAt: Date;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "studio.transfer_request",
+      payload: input.payload as unknown as Record<string, unknown>,
+      expiresAt: input.expiresAt,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify the OLD admin that the transfer they initiated was accepted
+ * (slice 3).
+ * @param input - Old-admin inbox, payload, and optional transaction
+ * @param input.userId - The former admin who receives the confirmation
+ * @param input.payload - The studio name
+ * @param input.tx - Optional transaction to bundle with the role swap
+ * @returns The inserted `studio.transfer_approved` notification
+ */
+export async function createStudioTransferApproved(input: {
+  userId: string;
+  payload: StudioTransferApprovedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "studio.transfer_approved",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 // ── Read APIs ───────────────────────────────────────────────────────
 
 /**
