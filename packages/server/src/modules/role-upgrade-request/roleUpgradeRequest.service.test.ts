@@ -102,6 +102,7 @@ function fakeRequest(overrides: Partial<{
     payload: overrides.payload ?? { requesterUserId: VIEWER },
     projectId: overrides.projectId === undefined ? PID : overrides.projectId,
     readAt: overrides.readAt ?? null,
+    expiresAt: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

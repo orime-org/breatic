@@ -821,6 +821,9 @@ export const notifications = pgTable(
      * - 'access.role_upgrade_approved' - owner approved viewer's request
      * - 'access.role_upgrade_rejected' - owner rejected viewer's request
      * - 'access.member_joined' - someone consumed a link and joined
+     * - 'studio.member_invited' - admin added the user to a studio
+     * - 'studio.transfer_request' - admin asks the user to take admin (TTL)
+     * - 'studio.transfer_approved' - user accepted; old admin is notified
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
@@ -834,6 +837,12 @@ export const notifications = pgTable(
       onDelete: "set null",
     }),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /**
+     * Actionable-notification TTL (slice 3) — e.g. the 7-day transfer-admin
+     * confirmation window. null = no expiry (informational notices). Expired
+     * actionable rows are filtered out of the unread list / count.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

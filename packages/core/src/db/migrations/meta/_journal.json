@@ -197,6 +197,13 @@
       "when": 1780700200000,
       "tag": "0027_projects_initial_space_type",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780700300000,
+      "tag": "0028_notifications_studio_types_expiry",
+      "breakpoints": true
     }
   ]
 }
