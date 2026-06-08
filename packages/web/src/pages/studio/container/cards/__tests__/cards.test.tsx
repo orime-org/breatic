@@ -20,7 +20,7 @@ const OWNED_PRIVATE: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'private',
   myRole: 'owner',
-  isOwner: true,
+  updatedAt: '2026-06-01T00:00:00.000Z',
 };
 
 const SHARED_STUDIO: ContainerProject = {
@@ -30,7 +30,7 @@ const SHARED_STUDIO: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'studio',
   myRole: 'editor',
-  isOwner: false,
+  updatedAt: '2026-06-01T00:00:00.000Z',
 };
 
 function renderProject(project: ContainerProject, studioRole: StudioRole) {
@@ -73,6 +73,19 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     renderProject({ ...SHARED_STUDIO, myRole: null }, 'member');
     expect(screen.getByText('Viewer')).toBeInTheDocument();
   });
+
+  it('cardmenu overlay matches the neutral mock (2px radius, 7px inset, 70% black hover)', () => {
+    renderProject(OWNED_PRIVATE, 'member');
+    const menu = screen.getByRole('button', MORE);
+    // Neutral mock `.cardmenu`: rounded-sm (2px), top/right 7px, default
+    // rgba(0,0,0,.45) -> hover rgba(0,0,0,.7). The 70% black hover is permitted
+    // by lint:hover (black is a fixed color, not a mode-aware token).
+    expect(menu.className).toContain('rounded-[2px]');
+    expect(menu.className).toContain('right-[7px]');
+    expect(menu.className).toContain('top-[7px]');
+    expect(menu.className).toContain('bg-black/45');
+    expect(menu.className).toContain('hover:bg-black/70');
+  });
 });
 
 const MOODBOARD: ContainerCollection = {
@@ -84,7 +97,6 @@ const MOODBOARD: ContainerCollection = {
   kind: 'image',
   visibility: 'studio',
   myRole: 'editor',
-  isOwner: false,
 };
 
 describe('CollectionCard (spec §3.4)', () => {
@@ -104,6 +116,23 @@ describe('CollectionCard (spec §3.4)', () => {
       'href',
       '/collection/moodboard-c1',
     );
+  });
+
+  it('cardmenu overlay matches the neutral mock (2px radius, 7px inset, 70% black hover) — peer-consistent with ProjectCard', () => {
+    // An admin can manage any item, so the governance menu renders. The
+    // collection card's overlay must match the project card's: the neutral
+    // mock `.cardmenu` is identical across project/collection peers.
+    render(
+      <MemoryRouter>
+        <CollectionCard collection={MOODBOARD} studioRole='admin' />
+      </MemoryRouter>,
+    );
+    const menu = screen.getByRole('button', MORE);
+    expect(menu.className).toContain('rounded-[2px]');
+    expect(menu.className).toContain('right-[7px]');
+    expect(menu.className).toContain('top-[7px]');
+    expect(menu.className).toContain('bg-black/45');
+    expect(menu.className).toContain('hover:bg-black/70');
   });
 });
 

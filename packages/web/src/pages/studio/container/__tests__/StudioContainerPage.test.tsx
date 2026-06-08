@@ -221,7 +221,7 @@ describe('StudioContainerPage', () => {
     // but a non-member sees the works empty state and NO tabs.
     expect(await screen.findByText('Stranger Studio')).toBeInTheDocument();
     expect(
-      screen.getByText('This studio has no published works.'),
+      screen.getByText('This Studio has no published works.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.queryByRole('tab')).toBeNull();

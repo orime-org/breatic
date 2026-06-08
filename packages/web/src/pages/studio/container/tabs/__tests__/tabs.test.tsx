@@ -29,7 +29,7 @@ const STUDIO_VISIBLE: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'studio',
   myRole: 'viewer',
-  isOwner: false,
+  updatedAt: '2026-06-01T00:00:00.000Z',
 };
 const PRIVATE_UNINVOLVED: ContainerProject = {
   id: 'b',
@@ -38,7 +38,7 @@ const PRIVATE_UNINVOLVED: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'private',
   myRole: null,
-  isOwner: false,
+  updatedAt: '2026-06-01T00:00:00.000Z',
 };
 
 describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {

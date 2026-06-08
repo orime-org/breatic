@@ -9,7 +9,8 @@ import type { ProjectSummary } from '@breatic/shared';
 import { Tabs, TabsContent } from '@web/components/ui/tabs';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
-import { getStubStudioView } from '@web/pages/studio/container/container-stub';
+import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
+import { getEmptyContainerView } from '@web/pages/studio/container/container-stub';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import {
   creatableStudios,
@@ -29,9 +30,9 @@ import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
 
 /**
  * Map a backend `ProjectSummary` (the studio-projects API contract) onto the
- * container's `ContainerProject` view model: `isOwner` is derived from
- * `myRole` (the contract drops it as redundant), and the date fields the card
- * does not render are dropped.
+ * container's `ContainerProject` view model. Owner is derived at the callsite
+ * as `myRole === 'owner'` (no redundant field); `updatedAt` is normalized to an
+ * ISO string for the card's relative-time label.
  * @param p the project summary from `GET /studio/:slug/projects`.
  * @returns the project card view model.
  */
@@ -43,7 +44,7 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     thumbnailUrl: p.thumbnailUrl,
     visibility: p.visibility,
     myRole: p.myRole,
-    isOwner: p.myRole === 'owner',
+    updatedAt: new Date(p.updatedAt).toISOString(),
   };
 }
 
@@ -89,12 +90,12 @@ export default function StudioContainerPage(): React.JSX.Element {
   const [tab, setTab] = React.useState<StudioTabKey>('projects');
 
   const studio = studioQuery.data;
-  // Projects come from the real API (slice 2); the other tab CONTENTS stay on
-  // stub until their own slices.
+  // Projects come from the real API (slice 2); the other tab CONTENTS stay
+  // EMPTY (not faked) until their own slices wire real APIs.
   const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
     toContainerProject,
   );
-  const view = studio ? { ...getStubStudioView(slug), studio } : null;
+  const view = studio ? { ...getEmptyContainerView(), studio } : null;
   // The selector lists the studios the viewer may create in; the default is the
   // current studio when the viewer is its admin, else the personal studio (§7.1).
   const creatable = creatableStudios(studios);
@@ -119,7 +120,7 @@ export default function StudioContainerPage(): React.JSX.Element {
       ) : view.studio.myStudioRole === null ? (
         // Non-member (decision A: public façade, 200 + null role) — header +
         // works empty state, NO tabs (spec §6.3). No studio data is rendered.
-        <div className='mx-auto flex w-full min-h-0 max-w-[1320px] flex-1 flex-col'>
+        <div className='flex w-full min-h-0 flex-1 flex-col'>
           <StudioHeader studio={view.studio} />
           <div className='min-h-0 flex-1 overflow-auto'>
             <NonMemberView />
@@ -129,7 +130,7 @@ export default function StudioContainerPage(): React.JSX.Element {
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value as StudioTabKey)}
-          className='mx-auto flex w-full min-h-0 max-w-[1320px] flex-1 flex-col'
+          className='flex w-full min-h-0 flex-1 flex-col'
         >
           <StudioHeader studio={view.studio} />
           <StudioTabBar
@@ -140,42 +141,44 @@ export default function StudioContainerPage(): React.JSX.Element {
               members: view.members.length,
             }}
           />
-          <div className='min-h-0 flex-1 overflow-auto px-6 py-5'>
-            <TabsContent value='projects'>
-              <ProjectsTab
-                projects={projects}
-                studioRole={view.studio.myStudioRole}
-                onCreateProject={createProject}
-                creatableStudios={creatable}
-                defaultStudioId={defaultStudioId}
-              />
-            </TabsContent>
-            <TabsContent value='collections'>
-              <CollectionsTab
-                collections={view.collections}
-                studioRole={view.studio.myStudioRole}
-              />
-            </TabsContent>
-            <TabsContent value='works'>
-              <WorksTab />
-            </TabsContent>
-            {view.studio.type === 'team' ? (
-              <TabsContent value='members'>
-                <MembersTab
-                  members={view.members}
+          <div className='min-h-0 flex-1 overflow-auto'>
+            <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
+              <TabsContent value='projects'>
+                <ProjectsTab
+                  projects={projects}
+                  studioRole={view.studio.myStudioRole}
+                  onCreateProject={createProject}
+                  creatableStudios={creatable}
+                  defaultStudioId={defaultStudioId}
+                />
+              </TabsContent>
+              <TabsContent value='collections'>
+                <CollectionsTab
+                  collections={view.collections}
                   studioRole={view.studio.myStudioRole}
                 />
               </TabsContent>
-            ) : null}
-            <TabsContent value='credits'>
-              <CreditsTab
-                wallet={view.wallet}
-                studioRole={view.studio.myStudioRole}
-              />
-            </TabsContent>
-            <TabsContent value='settings'>
-              <SettingsTab studio={view.studio} />
-            </TabsContent>
+              <TabsContent value='works'>
+                <WorksTab />
+              </TabsContent>
+              {view.studio.type === 'team' ? (
+                <TabsContent value='members'>
+                  <MembersTab
+                    members={view.members}
+                    studioRole={view.studio.myStudioRole}
+                  />
+                </TabsContent>
+              ) : null}
+              <TabsContent value='credits'>
+                <CreditsTab
+                  wallet={view.wallet}
+                  studioRole={view.studio.myStudioRole}
+                />
+              </TabsContent>
+              <TabsContent value='settings'>
+                <SettingsTab studio={view.studio} />
+              </TabsContent>
+            </div>
           </div>
         </Tabs>
       )}
