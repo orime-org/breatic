@@ -29,11 +29,11 @@ export function RailRecentLink({
     <Link
       to='/studio'
       aria-current={active ? 'page' : undefined}
-      className={`flex items-center gap-2 rounded-content-md px-2 py-1.5 text-sm transition-colors ${
+      className={`flex h-8 items-center gap-2.5 rounded-[4px] px-2 text-[13px] font-medium leading-none transition-colors ${
         active ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted'
       }`}
     >
-      <Clock className='h-4 w-4' />
+      <Clock className='h-4 w-4 text-muted-foreground' />
       {label}
     </Link>
   );

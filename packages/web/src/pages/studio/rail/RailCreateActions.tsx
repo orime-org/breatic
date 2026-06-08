@@ -18,7 +18,7 @@ interface RailCreateActionsProps {
 }
 
 const ACTION =
-  'flex items-center gap-2 rounded-content-md px-2 py-1.5 text-sm transition-colors';
+  'flex h-8 items-center gap-2.5 rounded-[4px] px-2 text-[13px] font-medium leading-none transition-colors';
 
 /**
  * Rail create actions (spec §4.1 segments ① + ②): create project (enabled,
@@ -43,35 +43,41 @@ export function RailCreateActions({
   onCreateProject,
 }: RailCreateActionsProps): React.JSX.Element {
   return (
-    <div className='flex flex-col'>
+    <div className='flex flex-col gap-0.5'>
       <button
         type='button'
         onClick={onCreateProject}
         className={`${ACTION} text-foreground hover:bg-muted`}
       >
-        <Plus className='h-4 w-4' />
+        <Plus className='h-4 w-4 text-foreground' />
         {createProjectLabel}
       </button>
       <button
         type='button'
         disabled
         title={comingSoonLabel}
-        className={`${ACTION} cursor-not-allowed text-muted-foreground`}
+        className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
       >
         <Plus className='h-4 w-4' />
         {createCollectionLabel}
       </button>
 
-      <hr className='my-1.5 border-border' />
+      <hr className='mx-1.5 my-1.5 border-border' />
 
       <button
         type='button'
         disabled
         title={comingSoonLabel}
-        className={`${ACTION} cursor-not-allowed text-muted-foreground`}
+        className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
       >
         <Plus className='h-4 w-4' />
         {createStudioLabel}
+        <span
+          aria-hidden='true'
+          className='ml-auto rounded-full bg-muted px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-muted-foreground'
+        >
+          {comingSoonLabel}
+        </span>
       </button>
     </div>
   );

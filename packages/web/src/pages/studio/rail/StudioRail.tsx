@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
+import { Briefcase, Users } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
@@ -44,8 +45,12 @@ export function StudioRail({
   return (
     <nav
       aria-label={t('studio.rail.navLabel')}
-      className='flex w-60 shrink-0 flex-col gap-1.5 overflow-y-auto border-r border-border bg-background p-3'
+      className='flex w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-background p-2'
     >
+      <RailRecentLink label={t('studio.rail.recent')} active={activeSlug === null} />
+
+      <hr className='mx-1.5 my-1.5 border-border' />
+
       <RailCreateActions
         createProjectLabel={t('studio.rail.createProject')}
         createCollectionLabel={t('studio.rail.createCollection')}
@@ -54,11 +59,7 @@ export function StudioRail({
         onCreateProject={onCreateProject}
       />
 
-      <hr className='my-0.5 border-border' />
-
-      <RailRecentLink label={t('studio.rail.recent')} active={activeSlug === null} />
-
-      <hr className='my-0.5 border-border' />
+      <hr className='mx-1.5 my-1.5 border-border' />
 
       <RailStudioGroup
         title={t('studio.rail.myStudios')}
@@ -66,9 +67,10 @@ export function StudioRail({
         activeSlug={activeSlug}
         emptyText={t('studio.rail.myStudiosEmpty')}
         collapseKey='rail.myStudios'
+        Icon={Briefcase}
       />
 
-      <hr className='my-0.5 border-border' />
+      <hr className='mx-1.5 my-1.5 border-border' />
 
       <RailStudioGroup
         title={t('studio.rail.joinedStudios')}
@@ -76,6 +78,7 @@ export function StudioRail({
         activeSlug={activeSlug}
         emptyText={t('studio.rail.joinedEmpty')}
         collapseKey='rail.joinedStudios'
+        Icon={Users}
       />
     </nav>
   );
