@@ -6,7 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { BellMenu } from '@web/pages/project/chrome/top-bar/BellMenu';
+import { BellMenu } from '@web/features/notifications/BellMenu';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ApiException } from '@web/data/api/types';
 
@@ -20,6 +20,7 @@ vi.mock('@web/data/api/notifications', () => ({
     count: vi.fn(),
     markRead: vi.fn(),
     markAllRead: vi.fn(),
+    respondAction: vi.fn(),
   },
 }));
 
@@ -51,7 +52,7 @@ function setup() {
   return render(
     <QueryClientProvider client={qc}>
       <TooltipProvider>
-        <BellMenu projectId={PID} />
+        <BellMenu />
       </TooltipProvider>
     </QueryClientProvider>,
   );
@@ -61,12 +62,16 @@ type NotifType =
   | 'access.role_upgrade_request'
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
-  | 'access.member_joined';
+  | 'access.member_joined'
+  | 'studio.member_invited'
+  | 'studio.transfer_request'
+  | 'studio.transfer_approved';
 
 function fakeNotification(
   id: string,
   type: NotifType,
   payload: Record<string, unknown> = {},
+  overrides: { expiresAt?: string | null } = {},
 ) {
   return {
     id,
@@ -75,6 +80,7 @@ function fakeNotification(
     payload,
     projectId: PID,
     readAt: null,
+    expiresAt: overrides.expiresAt ?? null,
     createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     deletedAt: null,
@@ -237,5 +243,145 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
     await waitFor(() => {
       expect(notificationsApi.markRead).toHaveBeenCalledWith(N2);
     });
+  });
+});
+
+describe('BellMenu — studio notification types (slice 3)', () => {
+  it('renders member_invited as a read-on-click row (no confirm/cancel)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N1, 'studio.member_invited', {
+          studioName: 'Acme',
+          inviterName: 'Alex',
+          role: 'creator',
+        }),
+      ],
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByTestId(`bell-notification-${N1}`),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/You were added to Acme/i)).toBeInTheDocument();
+    expect(screen.getByText(/Joined as a creator/i)).toBeInTheDocument();
+    // Informational — mark-read affordance, not confirm/cancel.
+    expect(screen.getByTestId(`bell-mark-read-${N1}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`bell-confirm-${N1}`)).toBeNull();
+  });
+
+  it('renders transfer_request with confirm/cancel + a TTL countdown', async () => {
+    const user = userEvent.setup();
+    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(
+          N1,
+          'studio.transfer_request',
+          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+          { expiresAt },
+        ),
+      ],
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/You were asked to take over Acme/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
+    // The TTL countdown replaces the "x ago" label for actionable transfers.
+    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
+  });
+
+  it('confirm calls respondAction(id, confirm) + success toast', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(
+          N1,
+          'studio.transfer_request',
+          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+        ),
+      ],
+    });
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({
+      data: { ok: true },
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
+    });
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('cancel calls respondAction(id, cancel)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(
+          N1,
+          'studio.transfer_request',
+          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+        ),
+      ],
+    });
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({
+      data: { ok: true },
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
+    });
+  });
+
+  it('toasts the server error when respondAction rejects', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(
+          N1,
+          'studio.transfer_request',
+          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+        ),
+      ],
+    });
+    vi.mocked(notificationsApi.respondAction).mockRejectedValueOnce(
+      new ApiException({ status: 409, code: 'CONFLICT', message: 'Request expired' }),
+    );
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Request expired');
+    });
+  });
+
+  it('renders transfer_approved as a read-on-click row', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      data: [
+        fakeNotification(N2, 'studio.transfer_approved', { studioName: 'Acme' }),
+      ],
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/Your admin transfer for Acme was accepted/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });
 });

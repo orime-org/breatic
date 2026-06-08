@@ -3,13 +3,12 @@
 
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
-import { Bell } from 'lucide-react';
 
+import { BellMenu } from '@web/features/notifications/BellMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
-import { StudioChromeIconButton } from '@web/pages/studio/shell/StudioChromeIconButton';
 import { BrandMark } from '@web/ui/BrandMark';
 
 interface StudioTopBarProps {
@@ -25,9 +24,9 @@ interface StudioTopBarProps {
  * matching the project top bar + the neutral mock), shared by the Recent
  * landing and the studio container via `StudioLayout`. Left = optional
  * `leading` slot (the narrow-screen rail hamburger) + logo + "Breatic"; right =
- * language / theme / notifications (placeholder) / account avatar. Brand color
- * is only on the logo mark (chrome-baseline monochrome rule); the rest is
- * neutral.
+ * language / theme / notifications (`BellMenu`, shared with the project chrome)
+ * / account avatar. Brand color is only on the logo mark (chrome-baseline
+ * monochrome rule); the rest is neutral.
  * @param props the top bar props.
  * @param props.leading optional leading slot before the logo (rail hamburger).
  * @returns the studio top bar header.
@@ -53,10 +52,7 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
       <div className='flex items-center gap-1'>
         <LangSwitcher />
         <ThemeToggle />
-        <StudioChromeIconButton
-          icon={Bell}
-          label={t('studio.topBar.notifications')}
-        />
+        <BellMenu />
         <StudioAccountMenu />
       </div>
     </header>

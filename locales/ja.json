@@ -1324,7 +1324,26 @@
       "roleUpgradeRequest": "{project} の編集者権限のリクエストがあります",
       "roleUpgradeApproved": "{project} の編集者権限が承認されました",
       "roleUpgradeRejected": "{project} の編集者権限のリクエストが拒否されました",
-      "memberJoined": "{project} に新しいメンバーが参加しました"
+      "memberJoined": "{project} に新しいメンバーが参加しました",
+      "studioMemberInvited": "{studio} に追加されました",
+      "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
+      "studioTransferApproved": "{studio} の管理者委譲が承認されました"
+    },
+    "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
+    "transferConfirmedToast": "あなたがスタジオの管理者になりました。",
+    "transferCancelledToast": "委譲を辞退しました。",
+    "transferAccept": "承認",
+    "transferDecline": "辞退",
+    "subtitle": {
+      "invitedAsCreator": "クリエイターとして参加",
+      "invitedAsMember": "メンバーとして参加",
+      "transferHint": "承認するとスタジオの管理者になります"
+    },
+    "expiresLabel": {
+      "expired": "期限切れ",
+      "minutes": "あと{count}分で期限切れ",
+      "hours": "あと{count}時間で期限切れ",
+      "days": "あと{count}日で期限切れ"
     }
   },
   "connection": {
@@ -1477,7 +1496,30 @@
         "roleAdmin": "管理者",
         "roleMember": "メンバー",
         "remove": "削除",
-        "cannotInvitePersonal": "個人 studio はメンバーを招待できません — あなただけです。"
+        "cannotInvitePersonal": "個人 studio はメンバーを招待できません — あなただけです。",
+        "roleCreator": "クリエイター",
+        "rowMenu": "メンバー操作",
+        "promoteToCreator": "クリエイターにする",
+        "demoteToMember": "メンバーにする",
+        "transferAdmin": "管理者を委譲…",
+        "inviteTitle": "メンバーを招待",
+        "inviteEmailLabel": "メールアドレス",
+        "inviteEmailPlaceholder": "name@example.com",
+        "inviteRoleLabel": "ロール",
+        "inviteSubmit": "招待を送信",
+        "inviteSuccess": "メンバーを追加しました。",
+        "inviteFailed": "このメンバーを招待できませんでした。もう一度お試しください。",
+        "roleUpdated": "ロールを更新しました。",
+        "removeConfirmTitle": "メンバーを削除しますか？",
+        "removeConfirmBody": "{name} はこのスタジオのすべてのプロジェクトへのアクセスを失い、所有していたプロジェクトはあなたに移ります。この操作は元に戻せません。",
+        "removeConfirmAction": "削除",
+        "removeSuccess": "メンバーを削除しました。",
+        "transferConfirmTitle": "管理者を委譲しますか？",
+        "transferConfirmBody": "{name} が通知で委譲を承認するまで管理者になりません。承認されるまではあなたが管理者のままです。",
+        "transferConfirmAction": "リクエストを送信",
+        "transferRequested": "委譲リクエストを送信しました。",
+        "actionFailed": "エラーが発生しました。もう一度お試しください。",
+        "colActions": "操作"
       },
       "settings": {
         "basicTitle": "基本情報",

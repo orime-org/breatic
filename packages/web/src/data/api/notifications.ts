@@ -4,15 +4,23 @@
 import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**
- * Notification types — must match the SQL CHECK constraint on
- * `notifications.type`. See the access-permission design spec
- * (2026-05-28) § 7.
+ * Notification types — must match the backend `NotificationType` union
+ * (`notification.repo.ts`). The `access.*` types are project access-permission
+ * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer
+ * notifications (slice 3). `studio.transfer_request` is the only actionable
+ * type (confirm / cancel + a TTL); the rest are informational (read-on-click).
  */
 export type NotificationType =
   | 'access.role_upgrade_request'
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
-  | 'access.member_joined';
+  | 'access.member_joined'
+  | 'studio.member_invited'
+  | 'studio.transfer_request'
+  | 'studio.transfer_approved';
+
+/** Action on an actionable notification (e.g. a studio transfer request). */
+export type NotificationAction = 'confirm' | 'cancel';
 
 export interface Notification {
   id: string;
@@ -22,6 +30,8 @@ export interface Notification {
   payload: Record<string, unknown>;
   projectId: string | null;
   readAt: string | null;
+  /** Actionable-notification TTL (slice 3); `null` = no expiry. */
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -70,6 +80,26 @@ export const notificationsApi = {
     return apiPost<{ data: { count: number } }, undefined>(
       '/users/me/notifications/read-all',
       undefined,
+    );
+  },
+
+  /**
+   * Act on an actionable notification (`confirm` / `cancel`). For a
+   * `studio.transfer_request` this routes to the transfer-admin handshake
+   * (confirm = accept admin, cancel = decline). The server gates on the
+   * caller owning the notification; a missing / already-decided / expired
+   * request collapses to a `404` / `409` `ApiException`.
+   * @param id - The actionable notification to respond to.
+   * @param action - `confirm` to accept, `cancel` to decline.
+   * @returns An acknowledgement once the action is recorded.
+   */
+  respondAction(
+    id: string,
+    action: NotificationAction,
+  ): Promise<{ data: { ok: true } }> {
+    return apiPost<{ data: { ok: true } }, { action: NotificationAction }>(
+      `/users/me/notifications/${id}/action`,
+      { action },
     );
   },
 };

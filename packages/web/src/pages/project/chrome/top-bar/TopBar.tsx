@@ -13,7 +13,7 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ExportMenu } from '@web/pages/project/chrome/top-bar/ExportMenu';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
-import { BellMenu } from '@web/pages/project/chrome/top-bar/BellMenu';
+import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 
 import type { ProjectRole } from '@web/stores';
@@ -91,7 +91,7 @@ export function TopBar({
         >
           <ExportMenu />
           <ShareDialog projectId={projectId} />
-          <BellMenu projectId={projectId} />
+          <BellMenu />
         </div>
       </div>
       <MembersModal />

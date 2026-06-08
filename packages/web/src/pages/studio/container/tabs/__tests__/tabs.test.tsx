@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
@@ -177,16 +178,30 @@ const MEMBERS: readonly StudioMember[] = [
   },
 ];
 
+function withQuery(ui: ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 describe('MembersTab (spec §3.7)', () => {
   it('shows the invite button to an Admin', () => {
-    render(<MembersTab members={MEMBERS} studioRole='admin' studioType='team' />);
+    withQuery(
+      <MembersTab slug='acme' members={MEMBERS} studioRole='admin' studioType='team' />,
+    );
     expect(
       screen.getByRole('button', { name: 'Invite member' }),
     ).toBeInTheDocument();
   });
 
   it('hides the invite button from a Member', () => {
-    render(<MembersTab members={MEMBERS} studioRole='member' studioType='team' />);
+    withQuery(
+      <MembersTab slug='acme' members={MEMBERS} studioRole='member' studioType='team' />,
+    );
     expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
   });
 });
