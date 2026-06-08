@@ -31,7 +31,12 @@
       "verify_email_sent": "驗證郵件已寄送,請查收。"
     },
     "studio": {
-      "slug_taken": "該網址標識已被使用,請換一個。"
+      "slug_taken": "該網址標識已被使用,請換一個。",
+      "email_not_registered": "該信箱尚未註冊。",
+      "already_member": "該使用者已是成員。",
+      "cannot_modify_personal": "個人 studio 無法管理成員。",
+      "remove_last_admin": "移除前請先轉讓管理員。",
+      "cannot_change_admin_role": "管理員角色只能透過轉讓變更。"
     },
     "payment": {
       "checkout_created": "支付工作階段已建立",

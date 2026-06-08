@@ -31,7 +31,12 @@
       "verify_email_sent": "Verification email sent. Check your inbox."
     },
     "studio": {
-      "slug_taken": "That handle is already in use. Please choose another."
+      "slug_taken": "That handle is already in use. Please choose another.",
+      "email_not_registered": "No account is registered with that email.",
+      "already_member": "That user is already a member.",
+      "cannot_modify_personal": "A personal studio cannot have its members managed.",
+      "remove_last_admin": "Transfer the admin role before removing this member.",
+      "cannot_change_admin_role": "The admin role can only be changed by transferring it."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
