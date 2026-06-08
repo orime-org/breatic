@@ -24,7 +24,7 @@ interface RailStudioGroupProps {
 }
 
 const ROW =
-  'flex h-[30px] items-center gap-2 rounded-[4px] pl-3.5 pr-2 text-[13px] leading-none transition-colors';
+  'flex h-[30px] items-center gap-2 rounded-[4px] pl-3.5 pr-2 text-[13px] leading-normal transition-colors';
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand). A
@@ -65,7 +65,9 @@ export function RailStudioGroup({
         <Chevron className='ml-auto h-3.5 w-3.5' />
       </button>
       {collapsed ? null : studios.length === 0 ? (
-        <p className='px-2 py-1.5 text-[13px] text-muted-foreground'>{emptyText}</p>
+        <p className='py-1.5 pl-3.5 pr-2 text-xs text-muted-foreground'>
+          {emptyText}
+        </p>
       ) : (
         <ul className='flex flex-col'>
           {studios.map((studio) => (

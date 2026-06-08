@@ -37,15 +37,18 @@ describe('StudioTabBar', () => {
     ]);
   });
 
-  it('drops the Members tab for a personal studio (5 tabs, Works kept)', () => {
+  it('shows all 6 tabs for a personal studio (Members read-only, A 方案)', () => {
     setup('personal');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(5);
-    expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
+    expect(tabs).toHaveLength(6);
+    expect(
+      screen.getByRole('tab', { name: 'Members' }),
+    ).toBeInTheDocument();
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Projects',
       'Collections',
       'Works',
+      'Members',
       'Credits',
       'Settings',
     ]);

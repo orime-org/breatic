@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CreditWallet } from '@web/pages/studio/container/container-types';
 import { expiringDays } from '@web/pages/studio/container/credit-util';
@@ -39,32 +40,32 @@ export function CreditsTab({
   const isAdmin = studioRole === 'admin';
   const hasGift = wallet.giftLots.length > 0;
   return (
-    <div className='flex max-w-3xl flex-col gap-6'>
-      <div>
-        <p className='text-xs uppercase tracking-wide text-muted-foreground'>
-          {t('studio.container.credits.balance')}
-        </p>
-        <p
-          data-testid='wallet-balance'
-          className='text-3xl font-semibold text-foreground'
-        >
-          {wallet.balanceCached.toLocaleString()}
-        </p>
-        <p className='mt-1 text-xs text-muted-foreground'>
-          {t('studio.container.credits.hint')}
-        </p>
-      </div>
-
-      {isAdmin ? (
+    <div className='mx-auto flex max-w-3xl flex-col gap-6'>
+      {/* Wallet head (locked mock .creditshead): balance left, top-up right. */}
+      <div className='flex items-start gap-4'>
         <div>
-          <button
-            type='button'
-            className='rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
+          <p className='text-xs text-muted-foreground'>
+            {t('studio.container.credits.balance')}
+          </p>
+          <p
+            data-testid='wallet-balance'
+            className='text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
-            {t('studio.container.credits.topup')}
-          </button>
+            {wallet.balanceCached.toLocaleString()}
+            <small className='ml-1 align-baseline text-[13px] font-medium text-muted-foreground'>
+              {t('studio.container.credits.unit')}
+            </small>
+          </p>
+          <p className='mt-[3px] text-xs text-muted-foreground'>
+            {t('studio.container.credits.hint')}
+          </p>
         </div>
-      ) : null}
+        {isAdmin ? (
+          <Button type='button' className='ml-auto shrink-0'>
+            {t('studio.container.credits.topup')}
+          </Button>
+        ) : null}
+      </div>
 
       <div className='grid gap-4 sm:grid-cols-2'>
         <section className='rounded-content-md border border-border p-4'>

@@ -13,6 +13,7 @@ import {
 } from '@web/pages/studio/container/dialogs/studio-create';
 import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
+import { StudioRailDrawer } from '@web/pages/studio/rail/StudioRailDrawer';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
 
 /** Context the studio layout passes through `<Outlet>` to its child routes. */
@@ -54,7 +55,15 @@ export default function StudioLayout(): React.JSX.Element {
 
   return (
     <div className='flex h-screen flex-col bg-background text-foreground'>
-      <StudioTopBar />
+      <StudioTopBar
+        leading={
+          <StudioRailDrawer
+            studios={studios}
+            activeSlug={slug ?? null}
+            onCreateProject={() => setCreateOpen(true)}
+          />
+        }
+      />
       <div className='flex min-h-0 flex-1'>
         <StudioRail
           studios={studios}

@@ -90,6 +90,17 @@ describe('NewItemDialog (spec §3.12)', () => {
       spaceType: 'canvas',
     });
   });
+
+  it('disables Create until a name is entered and renders an outline Cancel (project-dialog parity)', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Cancel' }).className,
+    ).toContain('border-input');
+    await user.type(screen.getByLabelText('Name'), 'My Project');
+    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
+  });
 });
 
 describe('NewStudioDialog (spec §3.12 + §5.7 globally-unique slug)', () => {
@@ -142,5 +153,16 @@ describe('NewStudioDialog (spec §3.12 + §5.7 globally-unique slug)', () => {
       slug: 'nova-lab',
       type: 'team',
     });
+  });
+
+  it('disables Create until a name is entered and renders an outline Cancel', async () => {
+    const user = userEvent.setup();
+    render(<NewStudioDialog open onOpenChange={() => {}} takenSlugs={taken} />);
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Cancel' }).className,
+    ).toContain('border-input');
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
   });
 });

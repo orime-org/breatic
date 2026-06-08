@@ -1361,7 +1361,9 @@
       "home": "Studio home",
       "recent": "Recent",
       "search": "Search",
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "account": "Account",
+      "signOut": "Sign out"
     },
     "createProject": {
       "failed": "Failed to create project: {reason}"
@@ -1458,7 +1460,8 @@
           "spend": "Spend",
           "expiry": "Expiry",
           "refund": "Refund"
-        }
+        },
+        "unit": "credits"
       },
       "members": {
         "invite": "Invite member",
@@ -1468,7 +1471,8 @@
         "colJoined": "Joined",
         "roleAdmin": "Admin",
         "roleMember": "Member",
-        "remove": "Remove"
+        "remove": "Remove",
+        "cannotInvitePersonal": "Personal studios can not invite members — it is just you."
       },
       "settings": {
         "basicTitle": "Basic info",
@@ -1478,7 +1482,8 @@
         "avatar": "Avatar",
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
-        "delete": "Delete Studio"
+        "delete": "Delete Studio",
+        "dangerHint": "Transferring moves all projects, collections and the wallet to the new owner; deletion can not be undone. Owner only."
       },
       "dialog": {
         "newProjectTitle": "New project",
@@ -1523,7 +1528,8 @@
       "myStudios": "My Studios",
       "joinedStudios": "Joined Studios",
       "myStudiosEmpty": "No Studios yet",
-      "joinedEmpty": "You haven't joined any Studio yet"
+      "joinedEmpty": "You haven't joined any Studio yet",
+      "openNav": "Open navigation"
     }
   },
   "chrome": {

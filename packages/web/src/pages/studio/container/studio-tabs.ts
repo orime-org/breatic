@@ -17,7 +17,10 @@ export interface StudioTabDef {
   key: StudioTabKey;
   /** i18n key for the tab label. */
   labelKey: string;
-  /** Members is only shown for team studios (spec §2.2). */
+  /**
+   * Reserved for future team-only tabs. None today — personal studios show
+   * all tabs, including a read-only Members tab (decision A, 2026-06-08).
+   */
   teamOnly: boolean;
 }
 
@@ -30,14 +33,15 @@ export const STUDIO_TABS: readonly StudioTabDef[] = [
   { key: 'projects', labelKey: 'studio.container.tabs.projects', teamOnly: false },
   { key: 'collections', labelKey: 'studio.container.tabs.collections', teamOnly: false },
   { key: 'works', labelKey: 'studio.container.tabs.works', teamOnly: false },
-  { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: true },
+  { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: false },
   { key: 'credits', labelKey: 'studio.container.tabs.credits', teamOnly: false },
   { key: 'settings', labelKey: 'studio.container.tabs.settings', teamOnly: false },
 ];
 
 /**
- * The tabs visible for a given studio type — personal studios drop the
- * team-only Members tab (spec §6.1), leaving 5 tabs (team studios show all 6).
+ * The tabs visible for a given studio type. Personal studios now show all 6
+ * tabs too — their Members tab is read-only (decision A, 2026-06-08); no team-only
+ * tab remains, but the `teamOnly` filter is kept for future team-only tabs.
  * @param studioType whether the studio is personal or team.
  * @returns the ordered list of visible tabs.
  */

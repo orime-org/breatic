@@ -37,6 +37,7 @@
     "lint:no-trojan-source": "bash scripts/lint-no-trojan-source.sh",
     "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
+    "lint:storage-key-prefix": "bash scripts/lint-storage-key-prefix.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",

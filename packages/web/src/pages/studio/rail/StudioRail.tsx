@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
-import { Briefcase, Users } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
-import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
-import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
-import { splitStudios } from '@web/pages/studio/rail/rail-grouping';
+import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 interface StudioRailProps {
@@ -22,18 +18,16 @@ interface StudioRailProps {
 
 /**
  * The persistent studio rail (spec §4) — the always-on left navigation that
- * replaces the top-bar switcher popover. Five segments: create actions (①②),
- * Recent (③), and the viewer's studios split by CURRENT role into "My
- * studios" (④ = `admin`) and "Joined studios" (⑤ = `creator`/`member`) via
- * `splitStudios` (spec §0.2,
- * transfer-safe). The rail lists ONLY the viewer's own studios (the server's
- * `GET /studios` filters to active memberships — a stranger's studio never
- * appears here, invariant #1).
+ * replaces the top-bar switcher popover. On narrow screens (`< md`) the
+ * persistent rail is hidden and the same content moves into a top-bar
+ * hamburger drawer (`StudioRailDrawer`); the shared `StudioRailContent` keeps
+ * both in sync. The rail lists ONLY the viewer's own studios (the server's
+ * `GET /studios` filters to active memberships — invariant #1).
  * @param props the viewer's studios, the active slug and the create handler.
  * @param props.studios the viewer's studios.
  * @param props.activeSlug the active studio slug, or null on Recent.
  * @param props.onCreateProject opens the create-project dialog.
- * @returns the studio rail navigation.
+ * @returns the persistent studio rail navigation (hidden below `md`).
  */
 export function StudioRail({
   studios,
@@ -41,44 +35,15 @@ export function StudioRail({
   onCreateProject,
 }: StudioRailProps): React.JSX.Element {
   const t = useTranslation();
-  const { owned, joined } = splitStudios(studios);
   return (
     <nav
       aria-label={t('studio.rail.navLabel')}
-      className='flex w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-background p-2'
+      className='hidden w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-background p-2 md:flex'
     >
-      <RailRecentLink label={t('studio.rail.recent')} active={activeSlug === null} />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailCreateActions
-        createProjectLabel={t('studio.rail.createProject')}
-        createCollectionLabel={t('studio.rail.createCollection')}
-        createStudioLabel={t('studio.rail.createStudio')}
-        comingSoonLabel={t('studio.rail.comingSoon')}
+      <StudioRailContent
+        studios={studios}
+        activeSlug={activeSlug}
         onCreateProject={onCreateProject}
-      />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailStudioGroup
-        title={t('studio.rail.myStudios')}
-        studios={owned}
-        activeSlug={activeSlug}
-        emptyText={t('studio.rail.myStudiosEmpty')}
-        collapseKey='rail.myStudios'
-        Icon={Briefcase}
-      />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailStudioGroup
-        title={t('studio.rail.joinedStudios')}
-        studios={joined}
-        activeSlug={activeSlug}
-        emptyText={t('studio.rail.joinedEmpty')}
-        collapseKey='rail.joinedStudios'
-        Icon={Users}
       />
     </nav>
   );

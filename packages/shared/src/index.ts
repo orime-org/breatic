@@ -52,6 +52,7 @@ export type {
   StudioMember,
   StudioSummary,
   StudioDetail,
+  StudioMemberSummary,
   PersonalStudioRef,
   SpaceType,
   Space,

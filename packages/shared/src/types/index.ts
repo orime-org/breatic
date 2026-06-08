@@ -47,6 +47,7 @@ export type {
   StudioMember,
   StudioSummary,
   StudioDetail,
+  StudioMemberSummary,
   PersonalStudioRef,
 } from "@shared/types/studio.js";
 

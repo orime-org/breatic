@@ -231,6 +231,7 @@ lib/        工具(cn / format / env / analytics)
 - **ChatPanel 是 per-user、不绑 Yjs** — agent 对话走 SSE 流、只属当前查看者;聊天内容永不进 Yjs。
 - **Hover 规范** — `packages/web/src/` 里**禁用** Tailwind 的 `hover:bg-<token>/<两位数>` 透明度修饰(如 `hover:bg-accent/40`、`hover:bg-primary/90`)。透明默认的行 / outline / ghost 按钮用实色 token 切换(`hover:bg-accent`、`hover:bg-muted`),实色 CTA 按钮用 `transition-opacity hover:opacity-90`。**例外:`hover:bg-black/<N>` / `hover:bg-white/<N>` 放行**——black / white 是固定色(非 mode-aware token),alpha 叠加不会随 surface 混色、明暗模式读数一致,用于图片蒙层控件(如卡片缩略图上的 ⋯ 菜单)。由 `pnpm lint:hover`(CI 硬失败,放行规则在守卫脚本里)+ `components/ui/` 里 shadcn 原语默认值强制。理由:透明 hover 会跟底层 surface 混色、对比度随上下文变;实色切换 + opacity-90 跟 chrome-baseline mock 一致、跨 surface 视觉统一。
 - **统一类型节点(2026-05-19)** — 每种模态一个节点:`text` / `image` / `audio` / `video` / `3d` / `web`(6 种内容类型)外加 `annotation`(独立的协作便签)。不再分 asset / generator。`@` 引用是边关系 + 快照副本,**不是**一种节点类型。生成功能在节点 toolbar 左区(改当前节点);mini-tool 在右区(建一个新兄弟节点 + primary edge)。
+- **localStorage key 集中 + 统一前缀(2026-06-08)** — 所有浏览器持久化(localStorage)key 走集中注册表 `src/lib/storage-keys.ts`(`STORAGE_KEYS.*`),全部带 `breatic.` 前缀(防同源下跟浏览器扩展 / 未来兄弟应用静默撞键)。callsite 引 `STORAGE_KEYS.*`、不硬编码裸 key 字面量;新 key 加进注册表。唯一例外:`src/index.html` 的 pre-React inline 主题脚本(模块图加载前跑、无法 import 注册表)硬编码 `breatic.preferences` 字面量,前缀仍受守卫检查。由 `lint:storage-key-prefix`(CI 硬失败)强制。
 
 ### Naming conventions
 
@@ -247,7 +248,7 @@ lib/        工具(cn / format / env / analytics)
 - `/` → 重定向 `/studio`
 - `/studio/*` — studio layout route(`StudioLayout`):常驻左 rail + 顶栏挂一次,子路由出 `<Outlet/>`,切 studio 不重挂 rail(chrome 改造片)
   - `/studio`(index)— 跨 studio「最近」落地页(`StudioRecentPage`;per-user,无独立分享 URL,URL 设计 §5.7 B 修正:无 `/studio/recent`)
-  - `/studio/:slug` — studio 容器(`StudioContainerPage`),按 `myStudioRole` 分叉:**成员**(非 null)= 6 tab(项目 / 资产集 / 作品 / 成员 / 积分 / 设置;作品固定第 3 位、空壳;个人 studio 5 tab 无成员);**非成员**(null,decision A 公开门面 200+null)= 无 tab + 作品空态(`NonMemberView`,不下发私货)。项目 tab 走 `GET /studio/:slug/projects`(开放基线可见性过滤);建项目限 admin/creator(studio 积分共享)
+  - `/studio/:slug` — studio 容器(`StudioContainerPage`),按 `myStudioRole` 分叉:**成员**(非 null)= 6 tab(项目 / 资产集 / 作品 / 成员 / 积分 / 设置;作品固定第 3 位、空壳;个人 studio 也 6 tab,成员 tab 只读 — A 方案,显示创建者一行、无邀请/编辑);**非成员**(null,decision A 公开门面 200+null)= 无 tab + 作品空态(`NonMemberView`,不下发私货)。项目 tab 走 `GET /studio/:slug/projects`(开放基线可见性过滤)、成员 tab 走 `GET /studio/:slug/members`(JOIN 各成员个人 studio 显示名);建项目限 admin/creator(studio 积分共享)
 - `/project/:projectId` — 项目页(Agent 列 + Space outlet;Space 是 Project 内的 type / 模板,**不是**路由段)
 - `/project/:projectId/access` — 无权限落地页(NoAccessPage)
 - `/choose-slug` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门;显示文案仍叫「网址标识 / Handle」,只 URL 路径改名)

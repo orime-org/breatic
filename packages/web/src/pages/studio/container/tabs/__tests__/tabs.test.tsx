@@ -140,7 +140,7 @@ const NOW = Date.UTC(2026, 5, 5);
 describe('CreditsTab (spec §4 invariant 4: read-only cached balance)', () => {
   it('renders the cached balance verbatim, never recomputed from lots', () => {
     render(<CreditsTab wallet={TEAM_WALLET} studioRole='admin' now={NOW} />);
-    expect(screen.getByTestId('wallet-balance').textContent).toBe('999');
+    expect(screen.getByTestId('wallet-balance').textContent).toContain('999');
   });
 
   it('hides the gift section for a team studio (no gift lots)', () => {
@@ -179,14 +179,14 @@ const MEMBERS: readonly StudioMember[] = [
 
 describe('MembersTab (spec §3.7)', () => {
   it('shows the invite button to an Admin', () => {
-    render(<MembersTab members={MEMBERS} studioRole='admin' />);
+    render(<MembersTab members={MEMBERS} studioRole='admin' studioType='team' />);
     expect(
       screen.getByRole('button', { name: 'Invite member' }),
     ).toBeInTheDocument();
   });
 
   it('hides the invite button from a Member', () => {
-    render(<MembersTab members={MEMBERS} studioRole='member' />);
+    render(<MembersTab members={MEMBERS} studioRole='member' studioType='team' />);
     expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
   });
 });

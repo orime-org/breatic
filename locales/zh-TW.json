@@ -1361,7 +1361,9 @@
       "home": "Studio 首頁",
       "recent": "最近",
       "search": "搜尋",
-      "notifications": "通知"
+      "notifications": "通知",
+      "account": "帳號",
+      "signOut": "登出"
     },
     "createProject": {
       "failed": "建立專案失敗:{reason}"
@@ -1458,7 +1460,8 @@
           "spend": "消費",
           "expiry": "過期",
           "refund": "退款"
-        }
+        },
+        "unit": "積分"
       },
       "members": {
         "invite": "邀請成員",
@@ -1468,7 +1471,8 @@
         "colJoined": "加入時間",
         "roleAdmin": "管理員",
         "roleMember": "成員",
-        "remove": "移除"
+        "remove": "移除",
+        "cannotInvitePersonal": "個人 studio 無法邀請成員 —— 只有你自己。"
       },
       "settings": {
         "basicTitle": "基本資訊",
@@ -1478,7 +1482,8 @@
         "avatar": "頭像",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
-        "delete": "刪除 Studio"
+        "delete": "刪除 Studio",
+        "dangerHint": "轉讓會把所有專案、素材集與錢包整體過戶;刪除無法復原。僅擁有者可操作。"
       },
       "dialog": {
         "newProjectTitle": "新增專案",
@@ -1523,7 +1528,8 @@
       "myStudios": "我的 Studio",
       "joinedStudios": "我加入的 Studio",
       "myStudiosEmpty": "還沒有 Studio",
-      "joinedEmpty": "還沒加入任何 Studio"
+      "joinedEmpty": "還沒加入任何 Studio",
+      "openNav": "開啟導覽"
     }
   },
   "chrome": {

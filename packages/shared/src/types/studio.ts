@@ -111,3 +111,20 @@ export interface StudioSummary {
  * content inside the studio's tabs is gated by this role (later slices).
  */
 export type StudioDetail = StudioSummary;
+
+/**
+ * Studio member summary — one member as returned by `GET /studio/:slug/members`
+ * for the Members tab. Display fields (the member's display `name` from their
+ * personal studio, email, avatar) + studio role + join date. A personal studio
+ * returns exactly one of these (its admin — the creator); a team studio returns
+ * all of them.
+ */
+export interface StudioMemberSummary {
+  userId: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  role: StudioRole;
+  /** ISO-8601 join timestamp (`studio_members.addedAt`). */
+  addedAt: string;
+}

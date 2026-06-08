@@ -4,47 +4,62 @@
 import type * as React from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
-import type { StudioRole } from '@web/pages/studio/shared/studio-types';
+import type {
+  StudioRole,
+  StudioType,
+} from '@web/pages/studio/shared/studio-types';
 
 interface MembersTabProps {
   members: readonly StudioMember[];
   /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = guest. */
   studioRole: StudioRole | null;
+  /**
+   * Personal studios are permanently single-member (decision A, 2026-06-08): the tab
+   * is read-only — no invite button, no per-member actions.
+   */
+  studioType: StudioType;
 }
 
 /**
- * The Members tab (spec §3.7) — team studios only. Lists members (avatar /
- * name / email / studio role / join date). The "Invite member" action and
- * per-member remove are shown only to studio Admins (DD §5.2); a plain
- * Member sees a read-only roster.
- * @param props the members and the viewer's studio role.
+ * The Members tab (spec §3.7). Lists members (avatar / name / email / studio
+ * role / join date). For a **team** studio the "Invite member" action + the
+ * per-member row menu show to Admins only (DD §5.2). A **personal** studio is
+ * single-member: a read-only roster (just the creator) with no invite and no row
+ * actions, plus a note that personal studios cannot invite (decision A, 2026-06-08).
+ * @param props the members, the viewer's studio role and the studio type.
  * @param props.members the studio members.
  * @param props.studioRole the viewer's studio role.
+ * @param props.studioType whether the studio is personal or team.
  * @returns the Members tab content.
  */
 export function MembersTab({
   members,
   studioRole,
+  studioType,
 }: MembersTabProps): React.JSX.Element {
   const t = useTranslation();
-  const isAdmin = studioRole === 'admin';
+  // Manage = invite + per-member actions. Off for personal studios (always
+  // single-member) and for non-admins.
+  const canManage = studioRole === 'admin' && studioType === 'team';
   return (
-    <div className='flex max-w-3xl flex-col gap-4'>
-      {isAdmin ? (
+    <div className='mx-auto flex max-w-3xl flex-col gap-4'>
+      {canManage ? (
         <div>
-          <button
-            type='button'
-            className='rounded-chrome bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90'
-          >
+          <Button type='button'>
             {t('studio.container.members.invite')}
-          </button>
+          </Button>
         </div>
+      ) : studioType === 'personal' ? (
+        <p className='text-xs text-muted-foreground'>
+          {t('studio.container.members.cannotInvitePersonal')}
+        </p>
       ) : null}
       <table className='w-full text-left text-sm'>
         <thead className='text-xs text-muted-foreground'>
-          <tr className='border-b border-border'>
+          <tr>
             <th className='pb-2 font-medium'>
               {t('studio.container.members.colName')}
             </th>
@@ -54,14 +69,17 @@ export function MembersTab({
             <th className='pb-2 font-medium'>
               {t('studio.container.members.colRole')}
             </th>
-            {isAdmin ? <th className='pb-2' /> : null}
+            {canManage ? <th className='pb-2' /> : null}
           </tr>
         </thead>
         <tbody>
           {members.map((member) => {
             const admin = member.studioRole === 'admin';
             return (
-              <tr key={member.id} className='border-t border-border'>
+              <tr
+                key={member.id}
+                className='border-t border-border first:border-t-0'
+              >
                 {/* Member: avatar + name over email (locked mock .mrow .who). */}
                 <td className='py-2.5'>
                   <span className='flex items-center gap-3'>
@@ -95,7 +113,7 @@ export function MembersTab({
                       : t('studio.container.members.roleMember')}
                   </span>
                 </td>
-                {isAdmin ? (
+                {canManage ? (
                   <td className='py-2.5 text-right'>
                     <button
                       type='button'

@@ -20,12 +20,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary CTA (neutral) — bg-primary, hover via opacity. Mock
-        // chrome-baseline uses transition opacity 120ms + opacity 0.9
-        // on hover for all CTAs; avoids the shadcn-default alpha-on-
-        // self pattern that mixes with the background and gives weak
-        // visible feedback. See the hover-pattern-standard ADR
-        // (2026-05-21) for rationale.
+        // Primary CTA (neutral) — bg-primary with a SOLID hover swap to
+        // --color-primary-hover. The 2026-05-21 ADR's opacity-90 pattern
+        // was superseded (commit 1031cfc): on the pure-black / pure-white
+        // primary, opacity-90 gives <2% perceived hover delta, so a solid
+        // one-step swap is used instead (see tokens.css --color-primary-hover).
+        // Every studio CTA routes through this variant, so the hover stays
+        // consistent (matches the project NewSpaceDialog create button).
         default:
           'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
         destructive:

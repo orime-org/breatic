@@ -36,10 +36,10 @@ describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
     expect(keys).toHaveLength(6);
   });
 
-  it('shows Works for a personal studio (5 tabs, Members dropped)', () => {
+  it('shows all 6 tabs for a personal studio (Members now read-only, A 方案)', () => {
     const keys = visibleStudioTabs('personal').map((tab) => tab.key);
     expect(keys).toContain('works');
-    expect(keys).not.toContain('members');
-    expect(keys).toHaveLength(5);
+    expect(keys).toContain('members');
+    expect(keys).toHaveLength(6);
   });
 });

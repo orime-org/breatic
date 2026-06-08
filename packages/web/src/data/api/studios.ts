@@ -13,6 +13,7 @@ import { apiGet } from '@web/data/api/request';
 import type {
   ProjectSummary,
   StudioDetail,
+  StudioMemberSummary,
   StudioSummary,
 } from '@breatic/shared';
 
@@ -46,5 +47,15 @@ export const studiosApi = {
    */
   listProjects(slug: string): Promise<ProjectSummary[]> {
     return apiGet<ProjectSummary[]>(`/studio/${slug}/projects`);
+  },
+  /**
+   * `GET /api/v1/studio/:slug/members` — the studio's active members for the
+   * Members tab (display name / email / role / join date). A personal studio
+   * returns exactly its owner; a team studio returns all members.
+   * @param slug the studio's URL handle.
+   * @returns the member summaries.
+   */
+  listMembers(slug: string): Promise<StudioMemberSummary[]> {
+    return apiGet<StudioMemberSummary[]>(`/studio/${slug}/members`);
   },
 };

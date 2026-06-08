@@ -1361,7 +1361,9 @@
       "home": "Studio ホーム",
       "recent": "最近",
       "search": "検索",
-      "notifications": "通知"
+      "notifications": "通知",
+      "account": "アカウント",
+      "signOut": "ログアウト"
     },
     "createProject": {
       "failed": "プロジェクトの作成に失敗:{reason}"
@@ -1458,7 +1460,8 @@
           "spend": "消費",
           "expiry": "失効",
           "refund": "返金"
-        }
+        },
+        "unit": "クレジット"
       },
       "members": {
         "invite": "メンバーを招待",
@@ -1468,7 +1471,8 @@
         "colJoined": "参加日",
         "roleAdmin": "管理者",
         "roleMember": "メンバー",
-        "remove": "削除"
+        "remove": "削除",
+        "cannotInvitePersonal": "個人 studio はメンバーを招待できません — あなただけです。"
       },
       "settings": {
         "basicTitle": "基本情報",
@@ -1478,7 +1482,8 @@
         "avatar": "アバター",
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
-        "delete": "Studio を削除"
+        "delete": "Studio を削除",
+        "dangerHint": "譲渡はすべてのプロジェクト・アセット集・ウォレットを新しいオーナーに移します;削除は元に戻せません。オーナーのみ可能です。"
       },
       "dialog": {
         "newProjectTitle": "プロジェクトを新規作成",
@@ -1523,7 +1528,8 @@
       "myStudios": "マイ Studio",
       "joinedStudios": "参加中の Studio",
       "myStudiosEmpty": "Studio がまだありません",
-      "joinedEmpty": "まだ Studio に参加していません"
+      "joinedEmpty": "まだ Studio に参加していません",
+      "openNav": "ナビゲーションを開く"
     }
   },
   "chrome": {
