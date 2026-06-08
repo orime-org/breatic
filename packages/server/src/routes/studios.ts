@@ -20,9 +20,23 @@
  */
 
 import { Hono } from "hono";
+import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
+import { requireStudioRole } from "@server/middleware/studio-role.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService } from "@server/modules";
+import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+
+/** Invite body — a registered email + the granted role (never admin). */
+const inviteMemberSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(["creator", "member"]),
+});
+
+/** Change-role body — creator ↔ member only. */
+const changeRoleSchema = z.object({
+  role: z.enum(["creator", "member"]),
+});
 
 const studios = new Hono<{ Variables: AuthVariables }>();
 
@@ -85,6 +99,51 @@ studio.get("/:slug/members", async (c) => {
   const slug = c.req.param("slug");
   const data = await studioService.getStudioMembers(slug);
   return c.json({ data });
+});
+
+/**
+ * `POST /api/v1/studio/:slug/members` — invite a registered user (by email)
+ * into the studio. Admin-only; the invite takes effect immediately and drops
+ * an informational notification in the invitee's inbox (slice 3).
+ * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
+ *   `403` personal studio / caller not admin, `409` already a member
+ */
+studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  const body = inviteMemberSchema.parse(await c.req.json());
+  await studioMemberService.inviteMember(slug, user.id, body.email, body.role);
+  return c.json({ data: { ok: true } }, 201);
+});
+
+/**
+ * `DELETE /api/v1/studio/:slug/members/:userId` — remove (kick) a member.
+ * Admin-only; clears the member's access across all the studio's projects and
+ * transfers their owned projects to the acting admin, in one transaction.
+ * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
+ *   `404` not a member, `409` the sole admin (transfer first)
+ */
+studio.delete("/:slug/members/:userId", requireStudioRole("admin"), async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  const targetUserId = c.req.param("userId");
+  await studioMemberService.removeMember(slug, targetUserId, user.id);
+  return c.json({ data: { ok: true } });
+});
+
+/**
+ * `PATCH /api/v1/studio/:slug/members/:userId` — change a member's role
+ * (creator ↔ member). Admin-only; admin grant/demote goes through
+ * transfer-admin, not here.
+ * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
+ *   `404` not a member, `409` target is the admin (demote via transfer)
+ */
+studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => {
+  const slug = c.req.param("slug");
+  const targetUserId = c.req.param("userId");
+  const body = changeRoleSchema.parse(await c.req.json());
+  await studioMemberService.updateMemberRole(slug, targetUserId, body.role);
+  return c.json({ data: { ok: true } });
 });
 
 export { studios as studiosRoute, studio as studioRoute };
