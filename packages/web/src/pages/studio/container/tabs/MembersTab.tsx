@@ -76,7 +76,10 @@ export function MembersTab({
           {members.map((member) => {
             const admin = member.studioRole === 'admin';
             return (
-              <tr key={member.id} className='border-t border-border'>
+              <tr
+                key={member.id}
+                className='border-t border-border first:border-t-0'
+              >
                 {/* Member: avatar + name over email (locked mock .mrow .who). */}
                 <td className='py-2.5'>
                   <span className='flex items-center gap-3'>
