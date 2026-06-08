@@ -24,7 +24,7 @@ interface RailStudioGroupProps {
 }
 
 const ROW =
-  'flex h-[30px] items-center gap-2 rounded-[4px] pl-3.5 pr-2 text-[13px] leading-none transition-colors';
+  'flex h-[30px] items-center gap-2 rounded-[4px] pl-3.5 pr-2 text-[13px] leading-normal transition-colors';
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand). A
