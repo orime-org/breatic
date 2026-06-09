@@ -16,11 +16,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { useDebounce } from '@web/domain/use-debounce';
 import { studiosApi } from '@web/data/api/studios';
 import type { SlugAvailability } from '@web/data/api/studios';
 
 vi.mock('@web/domain/use-debounce', () => ({
-  useDebounce: <T,>(value: T): T => value,
+  useDebounce: vi.fn(<T,>(value: T): T => value),
 }));
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { checkSlugAvailable: vi.fn() },
@@ -111,5 +112,18 @@ describe('useSlugAvailability', () => {
     pending['alpha-one']!({ available: false, reason: 'taken' });
     await Promise.resolve();
     expect(result.current.status).toBe('available');
+  });
+
+  it('reports checking while the debounced value lags the live input (skew guard)', () => {
+    // Simulate the 300ms debounce window: the live input is 'new-slug' but
+    // useDebounce still returns the previous 'old-slug'. The gate must see
+    // `checking`, not a stale `available`, so a half-typed slug can't be
+    // submitted with the previous slug's verdict.
+    vi.mocked(useDebounce).mockReturnValueOnce('old-slug');
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({ available: true });
+    const { result } = renderHook(() => useSlugAvailability('new-slug'), {
+      wrapper,
+    });
+    expect(result.current.status).toBe('checking');
   });
 });

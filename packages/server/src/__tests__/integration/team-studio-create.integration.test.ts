@@ -69,12 +69,16 @@ function uniqueSlug(): string {
   return `tcs-${(slugSeq++).toString().padStart(6, "0")}`;
 }
 
-/** Seed N team studios owned by `userId` directly (bypassing the service). */
+/** Seed N team studios administered by `userId` (studio + its admin member). */
 async function seedTeamStudios(userId: string, n: number): Promise<void> {
   for (let i = 0; i < n; i++) {
-    await sql`
+    const rows = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)
-      VALUES (${userId}, ${uniqueSlug()}, 'team', 'Seed')
+      VALUES (${userId}, ${uniqueSlug()}, 'team', 'Seed') RETURNING id
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${rows[0]!.id}, ${userId}, 'admin')
     `;
   }
 }
@@ -155,12 +159,35 @@ describe("createTeamStudio", () => {
     expect(studio.type).toBe("team");
   });
 
-  it("counts only the creator's OWN active team studios toward the limit", async () => {
+  it("counts only the studios the user administers toward the limit", async () => {
     const user = await insertUser();
     const other = await insertUser();
     await seedTeamStudios(other.id, 50); // another user's 50 must not block
     const studio = await studioService.createTeamStudio(user.id, "Mine", uniqueSlug());
     expect(studio.type).toBe("team");
+  });
+
+  it("counts by current admin role, not the immutable created_by (transfer frees quota)", async () => {
+    const creator = await insertUser();
+    const recipient = await insertUser();
+    // A team studio created by `creator` but now administered by `recipient`
+    // (mirrors a post-transfer state: created_by unchanged, the admin row moved).
+    const rows = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${creator.id}, ${uniqueSlug()}, 'team', 'Transferred') RETURNING id
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${rows[0]!.id}, ${recipient.id}, 'admin')
+    `;
+    await seedTeamStudios(recipient.id, 49); // recipient now administers 50
+    // The creator administers 0 (created_by no longer counts) → can still create.
+    const fresh = await studioService.createTeamStudio(creator.id, "Fresh", uniqueSlug());
+    expect(fresh.type).toBe("team");
+    // The recipient administers 50 → blocked.
+    await expect(
+      studioService.createTeamStudio(recipient.id, "Over", uniqueSlug()),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });
 

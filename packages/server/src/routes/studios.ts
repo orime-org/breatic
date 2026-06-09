@@ -87,7 +87,7 @@ studios.get(
  * existing studio); per-user rate limited (10/hour) to bound abuse, and capped
  * at a per-user soft limit of active team studios.
  * @returns `201` with `{ data: Studio }`; `409` taken slug / per-user limit
- *   reached, `422` invalid body (zValidator), `429` rate limited
+ *   reached, `400` invalid body (zValidator), `429` rate limited
  */
 studios.post(
   "/",

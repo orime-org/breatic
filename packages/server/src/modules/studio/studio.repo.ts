@@ -115,26 +115,35 @@ export async function createTeamStudio(
 }
 
 /**
- * Count a user's active team studios (for the per-user creation limit).
+ * Count the team studios a user **currently administers** (for the per-user
+ * creation limit).
  *
- * Scoped to `type='team'` and the creator — personal studios and other users'
- * studios do not count; soft-deleted studios are excluded. Accepts an optional
+ * Scoped to `type='team'` + a current `admin` `studio_members` row — NOT the
+ * immutable `created_by_user_id`. A studio's ownership is its current admin
+ * (admin can be transferred), so the quota must follow the current role: a
+ * creator who transfers all their studios away frees the quota, and a recipient's
+ * quota fills up. This honours the project rule that mutable ownership is decided
+ * by `studio_members.role`, never by the immutable audit field. Personal studios
+ * and soft-deleted rows (studio or membership) are excluded. Accepts an optional
  * transaction so the count can run inside the create transaction.
- * @param createdByUserId - The creator's user UUID
+ * @param userId - The user UUID whose administered team studios to count
  * @param tx - Optional transaction handle
- * @returns The number of active team studios the user owns
+ * @returns The number of active team studios the user currently administers
  */
-export async function countTeamStudiosByCreator(
-  createdByUserId: string,
+export async function countTeamStudiosAdministeredBy(
+  userId: string,
   tx?: DbTx,
 ): Promise<number> {
   const runner = tx ?? db;
   const rows = await runner
     .select({ count: sql<number>`count(*)::int` })
     .from(studios)
+    .innerJoin(studioMembers, eq(studioMembers.studioId, studios.id))
     .where(
       and(
-        eq(studios.createdByUserId, createdByUserId),
+        eq(studioMembers.userId, userId),
+        eq(studioMembers.role, "admin"),
+        isNull(studioMembers.deletedAt),
         eq(studios.type, "team"),
         isNull(studios.deletedAt),
       ),

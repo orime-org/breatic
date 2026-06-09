@@ -60,7 +60,8 @@ function validateLocally(value: string): SlugError {
  * @returns the derived status + the failure reason when not available.
  */
 export function useSlugAvailability(rawSlug: string): SlugAvailabilityResult {
-  const slug = useDebounce(rawSlug.trim(), 300);
+  const trimmed = rawSlug.trim();
+  const slug = useDebounce(trimmed, 300);
   const localError = validateLocally(slug);
   const enabled = slug.length > 0 && localError === null;
 
@@ -71,8 +72,15 @@ export function useSlugAvailability(rawSlug: string): SlugAvailabilityResult {
     staleTime: 30_000,
   });
 
-  if (slug.length === 0) {
+  if (trimmed.length === 0) {
     return { status: 'idle' };
+  }
+  // Debounce-skew guard: while the live input has not yet settled into the
+  // debounced value, the query still reflects the OLD slug — report `checking`
+  // so the submit gate never treats a stale `available` as valid for the new
+  // input (the gate and the submitted slug stay consistent).
+  if (trimmed !== slug) {
+    return { status: 'checking' };
   }
   if (localError !== null) {
     return { status: 'invalid', reason: localError };

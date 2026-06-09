@@ -124,7 +124,7 @@ export async function createTeamStudio(
 ): Promise<Studio> {
   try {
     return await db.transaction(async (tx) => {
-      const count = await studioRepo.countTeamStudiosByCreator(userId, tx);
+      const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
       if (count >= TEAM_STUDIO_LIMIT) {
         throw new ConflictError(t("server.studio.team_limit_reached"));
       }
