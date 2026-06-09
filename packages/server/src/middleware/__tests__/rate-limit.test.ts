@@ -46,7 +46,7 @@ describe("rateLimit middleware", () => {
 
   it("keys by user id when keyBy='user'", async () => {
     checkRateLimit.mockResolvedValue(true);
-    const app = new Hono();
+    const app = new Hono<{ Variables: { user: { id: string } } }>();
     app.use("*", async (c, next) => {
       c.set("user", { id: "user-9" });
       await next();

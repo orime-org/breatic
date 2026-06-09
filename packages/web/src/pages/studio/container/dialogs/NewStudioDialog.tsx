@@ -28,7 +28,7 @@ interface NewStudioDialogProps {
 
 /**
  * The create-team-studio dialog (rail segment ③ / spec §3.12). Two independent
- * hand-typed fields — display name + globally-unique slug (C 方案) — with the
+ * hand-typed fields — display name + globally-unique slug (option C) — with the
  * slug checked live (debounced) via `useSlugAvailability`: the SlugField shows
  * checking / available / format / length / reserved / taken as you type. Submit
  * is gated on a non-empty name + an `available` slug. On submit `useCreateStudio`

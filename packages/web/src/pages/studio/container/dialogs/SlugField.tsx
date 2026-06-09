@@ -49,6 +49,7 @@ interface SlugFieldProps {
  * @param props.error the current validation error.
  * @param props.bounds the slug length bounds.
  * @param props.helper the always-on explanatory line (optional).
+ * @param props.availability the live async availability state (optional).
  * @returns the slug field.
  */
 export function SlugField({

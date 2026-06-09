@@ -23,7 +23,7 @@ export function useCreateStudio(): UseMutationResult<
   Studio,
   unknown,
   CreateStudioBody
-> {
+  > {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   return useMutation({
