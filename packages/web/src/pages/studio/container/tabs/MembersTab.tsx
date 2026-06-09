@@ -15,13 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@web/components/ui/alert-dialog';
-import { Button } from '@web/components/ui/button';
 import {
   studiosApi,
   type GrantableStudioRole,
 } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
+import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { InviteMemberDialog } from '@web/pages/studio/container/dialogs/InviteMemberDialog';
 import { MemberRowMenu } from '@web/pages/studio/container/tabs/MemberRowMenu';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
@@ -165,17 +165,13 @@ export function MembersTab({
 
   return (
     <div className='mx-auto flex max-w-3xl flex-col gap-4'>
-      {canManage ? (
-        <div>
-          <Button type='button' onClick={openInvite}>
-            {t('studio.container.members.invite')}
-          </Button>
-        </div>
-      ) : studioType === 'personal' ? (
-        <p className='text-xs text-muted-foreground'>
-          {t('studio.container.members.cannotInvitePersonal')}
-        </p>
-      ) : null}
+      <ContainerToolbar
+        title={t('studio.container.tabs.members')}
+        count={members.length}
+        createLabel={t('studio.container.members.invite')}
+        onCreate={canManage ? openInvite : undefined}
+        showViewControls={false}
+      />
       <table className='w-full text-left text-sm'>
         <thead className='text-xs text-muted-foreground'>
           <tr>
