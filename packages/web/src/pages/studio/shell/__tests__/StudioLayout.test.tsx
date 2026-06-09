@@ -8,15 +8,24 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioLayout from '@web/pages/studio/shell/StudioLayout';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: vi.fn() },
 }));
+// The top bar's shared BellMenu fetches the inbox on mount — stub it so the
+// layout structure tests stay deterministic (no real network, no late state
+// settle after the assertion).
+vi.mock('@web/data/api/notifications', () => ({
+  notificationsApi: { list: vi.fn() },
+}));
 import { studiosApi } from '@web/data/api/studios';
+import { notificationsApi } from '@web/data/api/notifications';
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([]);
+  vi.mocked(notificationsApi.list).mockResolvedValue({ data: [] });
 });
 
 function setup() {
@@ -25,20 +34,28 @@ function setup() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/studio']}>
-        <Routes>
-          <Route path='/studio' element={<StudioLayout />}>
-            <Route index element={<div data-testid='outlet-child'>child</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={['/studio']}>
+          <Routes>
+            <Route path='/studio' element={<StudioLayout />}>
+              <Route
+                index
+                element={<div data-testid='outlet-child'>child</div>}
+              />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
 
 describe('StudioLayout — shell structure (top bar full-width on top, rail below)', () => {
-  it('stacks the full-width top bar above the rail+content row (flex-col), not the rail beside the bar', () => {
+  it('stacks the full-width top bar above the rail+content row (flex-col), not the rail beside the bar', async () => {
     const { container } = setup();
+    // Flush the rail + BellMenu inbox queries so their state updates settle
+    // inside act() before the structure assertions.
+    await screen.findByTestId('outlet-child');
     const root = container.firstElementChild as HTMLElement;
 
     // GitHub/Linear layout per the dir3-neutral mock (.topbar is full-width

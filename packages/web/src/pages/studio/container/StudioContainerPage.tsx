@@ -179,6 +179,7 @@ export default function StudioContainerPage(): React.JSX.Element {
               </TabsContent>
               <TabsContent value='members'>
                 <MembersTab
+                  slug={slug}
                   members={members}
                   studioRole={view.studio.myStudioRole}
                   studioType={view.studio.type}

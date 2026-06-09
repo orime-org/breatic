@@ -17,7 +17,7 @@
  * See spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
  */
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
 import type { NotificationEntity } from "@breatic/shared";
@@ -31,7 +31,10 @@ export type NotificationType =
   | "access.role_upgrade_request"
   | "access.role_upgrade_approved"
   | "access.role_upgrade_rejected"
-  | "access.member_joined";
+  | "access.member_joined"
+  | "studio.member_invited"
+  | "studio.transfer_request"
+  | "studio.transfer_approved";
 
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
@@ -45,6 +48,8 @@ export interface NewNotificationInput {
   type: NotificationType;
   payload: Record<string, unknown>;
   projectId?: string | null;
+  /** Actionable-notification TTL (slice 3); omit/null for no expiry. */
+  expiresAt?: Date | null;
 }
 
 /**
@@ -63,6 +68,7 @@ function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
     payload: row.payload,
     projectId: row.projectId,
     readAt: row.readAt,
+    expiresAt: row.expiresAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -92,6 +98,7 @@ export async function create(
       type: input.type,
       payload: input.payload,
       projectId: input.projectId,
+      expiresAt: input.expiresAt,
     })
     .returning();
   const row = rows[0];
@@ -122,6 +129,12 @@ export async function listUnreadByUser(
         eq(notifications.userId, userId),
         isNull(notifications.readAt),
         isNull(notifications.deletedAt),
+        // Hide actionable notifications that have timed out (e.g. an
+        // unconfirmed transfer-admin past its 7-day window).
+        or(
+          isNull(notifications.expiresAt),
+          gt(notifications.expiresAt, sql`now()`),
+        ),
       ),
     )
     .orderBy(desc(notifications.createdAt))
@@ -220,6 +233,11 @@ export async function countUnread(userId: string): Promise<number> {
         eq(notifications.userId, userId),
         isNull(notifications.readAt),
         isNull(notifications.deletedAt),
+        // Red-dot count excludes timed-out actionable notifications too.
+        or(
+          isNull(notifications.expiresAt),
+          gt(notifications.expiresAt, sql`now()`),
+        ),
       ),
     );
   return rows[0]?.count ?? 0;

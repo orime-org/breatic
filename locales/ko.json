@@ -31,7 +31,12 @@
       "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요."
     },
     "studio": {
-      "slug_taken": "이미 사용 중인 핸들입니다. 다른 것을 선택하세요."
+      "slug_taken": "이미 사용 중인 핸들입니다. 다른 것을 선택하세요.",
+      "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
+      "already_member": "해당 사용자는 이미 멤버입니다.",
+      "cannot_modify_personal": "개인 스튜디오는 멤버를 관리할 수 없습니다.",
+      "remove_last_admin": "제거하기 전에 먼저 관리자를 이전하세요.",
+      "cannot_change_admin_role": "관리자 역할은 이전을 통해서만 변경할 수 있습니다."
     },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
@@ -1319,7 +1324,26 @@
       "roleUpgradeRequest": "{project}의 편집자 액세스를 요청한 사용자가 있습니다",
       "roleUpgradeApproved": "{project}의 편집자 액세스가 승인되었습니다",
       "roleUpgradeRejected": "{project}의 편집자 액세스가 거절되었습니다",
-      "memberJoined": "{project}에 새 멤버가 참여했습니다"
+      "memberJoined": "{project}에 새 멤버가 참여했습니다",
+      "studioMemberInvited": "{studio}에 추가되었습니다",
+      "studioTransferRequest": "{studio} 인수를 요청받았습니다",
+      "studioTransferApproved": "{studio}의 관리자 이전이 수락되었습니다"
+    },
+    "actionFailed": "작업을 완료할 수 없습니다. 다시 시도해 주세요.",
+    "transferConfirmedToast": "이제 스튜디오 관리자입니다.",
+    "transferCancelledToast": "이전을 거절했습니다.",
+    "transferAccept": "수락",
+    "transferDecline": "거절",
+    "subtitle": {
+      "invitedAsCreator": "크리에이터로 참여",
+      "invitedAsMember": "멤버로 참여",
+      "transferHint": "수락하면 스튜디오 관리자가 됩니다"
+    },
+    "expiresLabel": {
+      "expired": "만료됨",
+      "minutes": "{count}분 후 만료",
+      "hours": "{count}시간 후 만료",
+      "days": "{count}일 후 만료"
     }
   },
   "connection": {
@@ -1472,7 +1496,30 @@
         "roleAdmin": "관리자",
         "roleMember": "멤버",
         "remove": "삭제",
-        "cannotInvitePersonal": "개인 studio는 멤버를 초대할 수 없습니다 — 당신뿐입니다."
+        "cannotInvitePersonal": "개인 studio는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
+        "roleCreator": "크리에이터",
+        "rowMenu": "멤버 작업",
+        "promoteToCreator": "크리에이터로 지정",
+        "demoteToMember": "멤버로 지정",
+        "transferAdmin": "관리자 이전…",
+        "inviteTitle": "멤버 초대",
+        "inviteEmailLabel": "이메일",
+        "inviteEmailPlaceholder": "name@example.com",
+        "inviteRoleLabel": "역할",
+        "inviteSubmit": "초대 보내기",
+        "inviteSuccess": "멤버를 추가했습니다.",
+        "inviteFailed": "이 멤버를 초대할 수 없습니다. 다시 시도해 주세요.",
+        "roleUpdated": "역할이 업데이트되었습니다.",
+        "removeConfirmTitle": "멤버를 삭제할까요?",
+        "removeConfirmBody": "{name} 님은 이 스튜디오의 모든 프로젝트에 대한 접근 권한을 잃고, 소유한 프로젝트는 회원님에게 이전됩니다. 이 작업은 되돌릴 수 없습니다.",
+        "removeConfirmAction": "삭제",
+        "removeSuccess": "멤버를 삭제했습니다.",
+        "transferConfirmTitle": "관리자를 이전할까요?",
+        "transferConfirmBody": "{name} 님이 알림에서 이전을 수락해야 관리자가 됩니다. 상대방이 수락하기 전까지는 회원님이 관리자입니다.",
+        "transferConfirmAction": "요청 보내기",
+        "transferRequested": "이전 요청을 보냈습니다.",
+        "actionFailed": "문제가 발생했습니다. 다시 시도해 주세요.",
+        "colActions": "작업"
       },
       "settings": {
         "basicTitle": "기본 정보",

@@ -185,6 +185,8 @@ export interface NotificationEntity {
   payload: unknown;
   projectId: string | null;
   readAt: Date | null;
+  /** Actionable-notification TTL (slice 3); null = no expiry. */
+  expiresAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

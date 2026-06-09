@@ -17,7 +17,7 @@
  * `projectMembers.repo`, which is in core because collab uses it.)
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studioMembers, studios, users } from "@breatic/core";
@@ -136,4 +136,109 @@ export async function listByStudio(
     role: r.role as StudioRole,
     addedAt: r.addedAt,
   }));
+}
+
+/**
+ * Invite (upsert) a member — insert a fresh active row, revive a soft-deleted
+ * one, or reject a re-invite of an already-active member.
+ *
+ * ON CONFLICT (studio_id, user_id): a missing row inserts; a soft-deleted row
+ * (previously kicked) is revived with the new role + inviter (`setWhere
+ * deleted_at IS NOT NULL`); an ALREADY-active row does not match `setWhere`,
+ * so the UPDATE is skipped, RETURNING is empty → returns false (caller maps to
+ * ConflictError; no silent role overwrite). `role` is expected to be
+ * 'creator' | 'member' — admin is granted via transfer, never invite; the
+ * caller enforces that. Mirrors `materializeBaselineViewer`'s revive pattern.
+ * @param studioId - Studio UUID
+ * @param userId - The invitee's user UUID
+ * @param role - Granted studio role (creator | member)
+ * @param addedBy - The inviting admin's user UUID
+ * @param tx - Optional drizzle transaction handle
+ * @returns true if a row was inserted or revived; false if already active
+ */
+export async function upsertMember(
+  studioId: string,
+  userId: string,
+  role: StudioRole,
+  addedBy: string,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .insert(studioMembers)
+    .values({ studioId, userId, role, addedBy })
+    .onConflictDoUpdate({
+      target: [studioMembers.studioId, studioMembers.userId],
+      set: { role, addedBy, deletedAt: null },
+      setWhere: isNotNull(studioMembers.deletedAt),
+    })
+    .returning({ userId: studioMembers.userId });
+  return rows.length > 0;
+}
+
+/**
+ * Soft-delete (remove / kick) an active member — state-only.
+ *
+ * Flips `deleted_at` on the active row; the row physically remains (soft
+ * delete is the only deletion mode). Returns false when there is no active row
+ * (non-member or already removed), so the caller distinguishes success from
+ * NotFound without a separate read.
+ * @param studioId - Studio UUID
+ * @param userId - The member's user UUID
+ * @param tx - Optional drizzle transaction handle
+ * @returns true if an active row was soft-deleted; false otherwise
+ */
+export async function softDelete(
+  studioId: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(studioMembers)
+    .set({ deletedAt: sql`now()` })
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.userId, userId),
+        isNull(studioMembers.deletedAt),
+      ),
+    )
+    .returning({ userId: studioMembers.userId });
+  return rows.length > 0;
+}
+
+/**
+ * Update an active member's role — backs change-role (creator↔member) and the
+ * two same-tx steps of transfer-admin (demote old admin, promote new).
+ *
+ * Only touches the active row. Bumping to 'admin' while another active admin
+ * exists hits the `studio_members_one_admin_per_studio` partial unique
+ * (throws) — transfer MUST demote the old admin first in the same tx. Returns
+ * false when there is no active row (NotFound).
+ * @param studioId - Studio UUID
+ * @param userId - The member's user UUID
+ * @param role - New studio role
+ * @param tx - Optional drizzle transaction handle
+ * @returns true if an active row's role was updated; false otherwise
+ */
+export async function updateRole(
+  studioId: string,
+  userId: string,
+  role: StudioRole,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(studioMembers)
+    .set({ role })
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.userId, userId),
+        isNull(studioMembers.deletedAt),
+      ),
+    )
+    .returning({ userId: studioMembers.userId });
+  return rows.length > 0;
 }

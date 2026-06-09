@@ -22,14 +22,11 @@ import {
   notificationsApi,
   type Notification,
   type NotificationType,
+  type NotificationAction,
 } from '@web/data/api/notifications';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
-
-interface BellMenuProps {
-  projectId: string;
-}
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.
@@ -56,30 +53,56 @@ function timeAgoLabel(createdAt: string): string {
 }
 
 /**
- * Bell notification menu — per-user inbox surfacing the four
- * notification types defined by spec § 7:
- *   - access.role_upgrade_request   → owner inbox; owner can approve / reject inline
- *   - access.role_upgrade_approved  → viewer (now editor) inbox
- *   - access.role_upgrade_rejected  → viewer inbox
- *   - access.member_joined          → owner inbox
+ * Formats the remaining time until an actionable notification's `expiresAt` as
+ * a coarse "expires in Nd/Nh/Nm" label (or "expired" once past).
+ * @param expiresAt - ISO timestamp of when the notification self-voids.
+ * @param t - Translation function for the localized label.
+ * @returns the localized countdown label.
+ */
+function expiresInLabel(
+  expiresAt: string,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  const diffMs = new Date(expiresAt).getTime() - Date.now();
+  if (diffMs <= 0) return t('notifications.expiresLabel.expired');
+  const minutes = Math.round(diffMs / 60_000);
+  if (minutes < 60) {
+    return t('notifications.expiresLabel.minutes', { count: minutes });
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return t('notifications.expiresLabel.hours', { count: hours });
+  }
+  const days = Math.round(hours / 24);
+  return t('notifications.expiresLabel.days', { count: days });
+}
+
+/**
+ * Bell notification menu — the per-user inbox shared by the project chrome and
+ * the studio chrome. Surfaces every notification type:
+ *   - access.role_upgrade_request   → owner inbox; inline approve / reject
+ *   - access.role_upgrade_approved  → viewer (now editor) inbox; read-on-click
+ *   - access.role_upgrade_rejected  → viewer inbox; read-on-click
+ *   - access.member_joined          → owner inbox; read-on-click
+ *   - studio.member_invited         → invitee inbox; read-on-click (slice 3)
+ *   - studio.transfer_request       → proposed admin inbox; inline confirm /
+ *                                     cancel + a TTL countdown (slice 3)
+ *   - studio.transfer_approved      → old-admin inbox; read-on-click (slice 3)
  *
  * The unread count drives the red-dot badge. Clicking a row opens the
- * row-specific affordance: owner upgrade-request rows show inline
- * approve / reject buttons; the rest are read-on-click and mark-read.
+ * row-specific affordance: upgrade-request rows show inline approve / reject,
+ * transfer-request rows show inline confirm / cancel, the rest mark-read.
  *
- * Per spec § 7.4, the React Query refetch is triggered both on popover
- * open and on a stateless invalidate message from collab (Phase 7
- * backend pub/sub lands later — for now the popover reopens force a
- * refetch + a 30s background refetch interval keeps the badge fresh).
+ * The React Query refetch is triggered both on popover open and a 30s
+ * background interval (the collab stateless invalidate broadcast lands in a
+ * later phase). The inbox query key (`['notifications', 'unread']`) is
+ * page-agnostic, so this single component serves every chrome.
  *
- * Spec: access-permission design (2026-05-28) § 7.
- * @param root0 - Bell menu props.
- * @param root0.projectId - Id of the current project (reserved for the upcoming collab invalidate wiring).
+ * Spec: access-permission design (2026-05-28) § 7; studio member management
+ * (slice 3).
  * @returns the notifications bell trigger with its unread badge and inbox popover.
  */
-export function BellMenu({
-  projectId: _projectId,
-}: BellMenuProps): React.JSX.Element {
+export function BellMenu(): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
@@ -125,6 +148,32 @@ export function BellMenu({
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
       });
+    },
+  });
+
+  // Confirm / cancel an actionable notification (studio transfer request).
+  // The studios list is also invalidated so the rail's "My / Joined studios"
+  // split reflects the new admin role immediately after a confirm.
+  const actionMutation = useMutation({
+    mutationFn: (input: { id: string; action: NotificationAction }) =>
+      notificationsApi.respondAction(input.id, input.action),
+    onSuccess: async (_data, vars) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] }),
+        queryClient.invalidateQueries({ queryKey: ['studios', 'user'] }),
+      ]);
+      toast.success(
+        vars.action === 'confirm'
+          ? t('notifications.transferConfirmedToast')
+          : t('notifications.transferCancelledToast'),
+      );
+    },
+    onError: (err) => {
+      const msg =
+        err instanceof ApiException
+          ? err.message
+          : t('notifications.actionFailed');
+      toast.error(msg);
     },
   });
 
@@ -182,8 +231,10 @@ export function BellMenu({
                 <NotificationItem
                   notification={n}
                   decidePending={
-                    decideMutation.isPending &&
-                    decideMutation.variables?.notificationId === n.id
+                    (decideMutation.isPending &&
+                      decideMutation.variables?.notificationId === n.id) ||
+                    (actionMutation.isPending &&
+                      actionMutation.variables?.id === n.id)
                   }
                   onApprove={() =>
                     decideMutation.mutate({
@@ -196,6 +247,12 @@ export function BellMenu({
                       notificationId: n.id,
                       decision: 'rejected',
                     })
+                  }
+                  onConfirm={() =>
+                    actionMutation.mutate({ id: n.id, action: 'confirm' })
+                  }
+                  onCancel={() =>
+                    actionMutation.mutate({ id: n.id, action: 'cancel' })
                   }
                   onMarkRead={() => markReadMutation.mutate(n.id)}
                 />
@@ -213,18 +270,24 @@ interface NotificationItemProps {
   decidePending: boolean;
   onApprove: () => void;
   onReject: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
   onMarkRead: () => void;
 }
 
 /**
- * One inbox row — avatar glyph, headline/subtitle, age, and either inline
- * approve/reject (for upgrade requests) or a mark-read action.
+ * One inbox row — avatar glyph, headline/subtitle, age, and a type-specific
+ * affordance: inline approve/reject for role-upgrade requests, inline
+ * confirm/cancel + a TTL countdown for studio transfer requests, or a mark-read
+ * action for the informational rows.
  * @param root0 - Notification item props.
  * @param root0.notification - Notification rendered by this row.
- * @param root0.decidePending - Whether an approve/reject decision for this row is in flight (disables buttons).
+ * @param root0.decidePending - Whether a decision/action for this row is in flight (disables buttons).
  * @param root0.onApprove - Called when the owner approves a role-upgrade request.
  * @param root0.onReject - Called when the owner rejects a role-upgrade request.
- * @param root0.onMarkRead - Called when a non-request notification is marked read.
+ * @param root0.onConfirm - Called when the recipient confirms (accepts) a studio transfer request.
+ * @param root0.onCancel - Called when the recipient cancels (declines) a studio transfer request.
+ * @param root0.onMarkRead - Called when an informational notification is marked read.
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -232,11 +295,17 @@ function NotificationItem({
   decidePending,
   onApprove,
   onReject,
+  onConfirm,
+  onCancel,
   onMarkRead,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
   const headline = headlineFor(notification, t);
-  const subtitle = subtitleFor(notification);
+  const subtitle = subtitleFor(notification, t);
+  const isUpgradeRequest =
+    notification.type === 'access.role_upgrade_request';
+  const isTransferRequest =
+    notification.type === 'studio.transfer_request';
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
@@ -262,9 +331,11 @@ function NotificationItem({
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-[11px] text-muted-foreground'>
-          {timeAgoLabel(notification.createdAt)}
+          {isTransferRequest && notification.expiresAt
+            ? expiresInLabel(notification.expiresAt, t)
+            : timeAgoLabel(notification.createdAt)}
         </span>
-        {notification.type === 'access.role_upgrade_request' ? (
+        {isUpgradeRequest ? (
           <div className='flex items-center gap-2'>
             <Button
               variant='outline'
@@ -284,6 +355,28 @@ function NotificationItem({
               data-testid={`bell-approve-${notification.id}`}
             >
               {t('notifications.approve')}
+            </Button>
+          </div>
+        ) : isTransferRequest ? (
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 px-3 text-[12px]'
+              disabled={decidePending}
+              onClick={onCancel}
+              data-testid={`bell-cancel-${notification.id}`}
+            >
+              {t('notifications.transferDecline')}
+            </Button>
+            <Button
+              size='sm'
+              className='h-7 px-3 text-[12px]'
+              disabled={decidePending}
+              onClick={onConfirm}
+              data-testid={`bell-confirm-${notification.id}`}
+            >
+              {t('notifications.transferAccept')}
             </Button>
           </div>
         ) : (
@@ -317,6 +410,12 @@ function iconForType(type: NotificationType): string {
       return '✕';
     case 'access.member_joined':
       return initialsFromString('NJ');
+    case 'studio.member_invited':
+      return initialsFromString('ST');
+    case 'studio.transfer_request':
+      return initialsFromString('TR');
+    case 'studio.transfer_approved':
+      return '✓';
     default:
       return '?';
   }
@@ -349,17 +448,41 @@ function headlineFor(
       return t('notifications.headline.memberJoined', {
         project: String((n.payload as Record<string, unknown>).projectName ?? ''),
       });
+    case 'studio.member_invited':
+      return t('notifications.headline.studioMemberInvited', {
+        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
+      });
+    case 'studio.transfer_request':
+      return t('notifications.headline.studioTransferRequest', {
+        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
+      });
+    case 'studio.transfer_approved':
+      return t('notifications.headline.studioTransferApproved', {
+        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
+      });
     default:
       return n.type;
   }
 }
 
+/** Maps a studio role payload value to its localized member-role label. */
+const STUDIO_ROLE_KEY: Record<string, string> = {
+  creator: 'notifications.subtitle.invitedAsCreator',
+  member: 'notifications.subtitle.invitedAsMember',
+};
+
 /**
- * Extracts the optional subtitle (request message or rejection reason) for a notification.
+ * Extracts the optional subtitle for a notification: the request message
+ * (upgrade request), the rejection reason (upgrade rejected), the granted role
+ * (studio member invited), or the transfer-handshake hint (transfer request).
  * @param n - Notification whose payload is inspected for subtitle text.
+ * @param t - Translation function for the localized subtitle.
  * @returns the subtitle text, or `null` when none applies.
  */
-function subtitleFor(n: Notification): string | null {
+function subtitleFor(
+  n: Notification,
+  t: ReturnType<typeof useTranslation>,
+): string | null {
   const p = n.payload as Record<string, unknown>;
   if (n.type === 'access.role_upgrade_request') {
     const msg = typeof p.message === 'string' ? p.message : null;
@@ -368,6 +491,13 @@ function subtitleFor(n: Notification): string | null {
   if (n.type === 'access.role_upgrade_rejected') {
     const reason = typeof p.reason === 'string' ? p.reason : null;
     return reason && reason.length > 0 ? reason : null;
+  }
+  if (n.type === 'studio.member_invited') {
+    const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;
+    return roleKey ? t(roleKey) : null;
+  }
+  if (n.type === 'studio.transfer_request') {
+    return t('notifications.subtitle.transferHint');
   }
   return null;
 }

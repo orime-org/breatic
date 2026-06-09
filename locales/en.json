@@ -31,7 +31,12 @@
       "verify_email_sent": "Verification email sent. Check your inbox."
     },
     "studio": {
-      "slug_taken": "That handle is already in use. Please choose another."
+      "slug_taken": "That handle is already in use. Please choose another.",
+      "email_not_registered": "No account is registered with that email.",
+      "already_member": "That user is already a member.",
+      "cannot_modify_personal": "A personal studio cannot have its members managed.",
+      "remove_last_admin": "Transfer the admin role before removing this member.",
+      "cannot_change_admin_role": "The admin role can only be changed by transferring it."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -1319,7 +1324,26 @@
       "roleUpgradeRequest": "Someone wants editor access on {project}",
       "roleUpgradeApproved": "Your editor access on {project} was approved",
       "roleUpgradeRejected": "Your editor access on {project} was rejected",
-      "memberJoined": "Someone joined {project}"
+      "memberJoined": "Someone joined {project}",
+      "studioMemberInvited": "You were added to {studio}",
+      "studioTransferRequest": "You were asked to take over {studio}",
+      "studioTransferApproved": "Your admin transfer for {studio} was accepted"
+    },
+    "actionFailed": "Could not complete the action. Please try again.",
+    "transferConfirmedToast": "You are now the studio admin.",
+    "transferCancelledToast": "Transfer declined.",
+    "transferAccept": "Accept",
+    "transferDecline": "Decline",
+    "subtitle": {
+      "invitedAsCreator": "Joined as a creator",
+      "invitedAsMember": "Joined as a member",
+      "transferHint": "Accept to become the studio admin"
+    },
+    "expiresLabel": {
+      "expired": "expired",
+      "minutes": "expires in {count}m",
+      "hours": "expires in {count}h",
+      "days": "expires in {count}d"
     }
   },
   "connection": {
@@ -1472,7 +1496,30 @@
         "roleAdmin": "Admin",
         "roleMember": "Member",
         "remove": "Remove",
-        "cannotInvitePersonal": "Personal studios can not invite members — it is just you."
+        "cannotInvitePersonal": "Personal studios can not invite members — it is just you.",
+        "roleCreator": "Creator",
+        "rowMenu": "Member actions",
+        "promoteToCreator": "Make creator",
+        "demoteToMember": "Make member",
+        "transferAdmin": "Transfer admin…",
+        "inviteTitle": "Invite a member",
+        "inviteEmailLabel": "Email",
+        "inviteEmailPlaceholder": "name@example.com",
+        "inviteRoleLabel": "Role",
+        "inviteSubmit": "Send invite",
+        "inviteSuccess": "Member added.",
+        "inviteFailed": "Could not invite this member. Please try again.",
+        "roleUpdated": "Role updated.",
+        "removeConfirmTitle": "Remove member?",
+        "removeConfirmBody": "{name} will lose access to every project in this studio, and any projects they own pass to you. This cannot be undone.",
+        "removeConfirmAction": "Remove",
+        "removeSuccess": "Member removed.",
+        "transferConfirmTitle": "Transfer admin?",
+        "transferConfirmBody": "{name} must accept the transfer from their notifications before they become admin. You stay admin until they accept.",
+        "transferConfirmAction": "Send request",
+        "transferRequested": "Transfer request sent.",
+        "actionFailed": "Something went wrong. Please try again.",
+        "colActions": "Actions"
       },
       "settings": {
         "basicTitle": "Basic info",

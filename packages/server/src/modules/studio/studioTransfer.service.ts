@@ -1,0 +1,191 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * Studio transfer-admin handshake service (slice 3) — mirrors the
+ * role-upgrade-request handshake (see roleUpgradeRequest.service), but moves
+ * the studio admin role instead of a project member role.
+ *
+ * Three operations:
+ *   - `requestTransfer`: the current admin asks an existing member to take
+ *     over as admin. Drops an actionable `studio.transfer_request`
+ *     notification (confirm/cancel) in the recipient's inbox, expiring after
+ *     7 days.
+ *   - `confirmTransfer`: the recipient accepts. In ONE db.transaction: mark
+ *     the request read (the CAS serialization point), then demote the old
+ *     admin to member FIRST and promote the recipient to admin SECOND (order
+ *     is load-bearing — promoting first would collide with the
+ *     `studio_members_one_admin_per_studio` partial unique), then notify the
+ *     old admin via `studio.transfer_approved`.
+ *   - `cancelTransfer`: the recipient declines. Only marks the request read —
+ *     no role change. An unconfirmed request also self-voids once its 7-day
+ *     `expires_at` passes (the inbox queries hide expired actionable rows).
+ *
+ * Authorization model (route layer enforces gates):
+ *   - requestTransfer: caller must be the studio admin (`requireStudioRole('admin')`)
+ *   - confirm / cancel: caller must own the notification (the markRead userId guard)
+ *
+ * Atomicity & once-only: confirm runs in a single db transaction — the
+ * mark-read CAS (UPDATE … WHERE read_at IS NULL) is the serialization point,
+ * so under concurrency only the first confirm flips read_at and swaps roles;
+ * the loser's UPDATE matches zero rows and the whole transaction rolls back. A
+ * transfer is therefore applied EXACTLY ONCE, and the studio always has
+ * exactly one active admin.
+ */
+
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import * as notificationService from "@server/modules/notification/notification.service.js";
+import { db } from "@breatic/core";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@breatic/core";
+import { studioMembersRepo } from "@breatic/domain";
+import { t } from "@breatic/shared";
+
+/** Days an unconfirmed transfer request stays actionable before it self-voids. */
+const TRANSFER_TTL_DAYS = 7;
+
+/**
+ * The current admin asks an existing member to take over as the studio admin.
+ *
+ * Resolves the studio by slug, refuses personal studios, and requires the
+ * proposed new admin to be a distinct active member of the studio. Drops an
+ * actionable `studio.transfer_request` notification in their inbox that
+ * expires after {@link TRANSFER_TTL_DAYS} days. No role change happens here —
+ * the swap is deferred until the recipient confirms.
+ * @param slug - The studio's URL handle
+ * @param fromAdminUserId - The acting admin initiating the transfer
+ * @param toUserId - The member proposed as the new admin
+ * @throws {NotFoundError} studio not found, or the recipient is not an active member
+ * @throws {ForbiddenError} the studio is personal (admin cannot be transferred)
+ * @throws {ValidationError} the recipient is the acting admin themselves
+ */
+export async function requestTransfer(
+  slug: string,
+  fromAdminUserId: string,
+  toUserId: string,
+): Promise<void> {
+  const studio = await studioRepo.getBySlug(slug);
+  if (!studio) throw new NotFoundError(t("server.error.not_found"));
+  if (studio.type === "personal") {
+    throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
+  }
+  if (toUserId === fromAdminUserId) {
+    throw new ValidationError(t("server.error.validation"));
+  }
+  const role = await studioMembersRepo.getRole(studio.id, toUserId);
+  if (!role) throw new NotFoundError(t("server.error.not_found"));
+
+  const expiresAt = new Date(
+    Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  await notificationService.createStudioTransferRequest({
+    userId: toUserId,
+    payload: {
+      fromUserId: fromAdminUserId,
+      studioId: studio.id,
+      studioName: studio.name,
+    },
+    expiresAt,
+  });
+}
+
+/**
+ * The recipient confirms a transfer — atomically swaps the admin role to them.
+ *
+ * In one transaction: (1) mark-read CAS on the request (serialization point),
+ * (2) re-read + gate the notification (right type, still within its TTL),
+ * (3) demote the old admin to member FIRST, (4) promote the recipient to admin
+ * SECOND (order avoids the one-admin partial unique), (5) notify the old admin
+ * with `studio.transfer_approved`.
+ * @param notificationId - The `studio.transfer_request` notification id
+ * @param receiverUserId - The recipient confirming (owns the notification)
+ * @throws {NotFoundError} the notification is missing, already decided, not a
+ *   transfer request, or a member role-swap finds no active row
+ * @throws {ConflictError} the request has already expired (past its 7-day TTL)
+ */
+export async function confirmTransfer(
+  notificationId: string,
+  receiverUserId: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    // Serialization point: the CAS mark-read flips the request to decided.
+    // Under concurrency the row lock makes a losing confirm's UPDATE match
+    // zero rows → won=false → abort, rolling back the whole transaction
+    // before any role swap. A transfer is applied exactly once.
+    const won = await notificationRepo.markRead(
+      notificationId,
+      receiverUserId,
+      tx,
+    );
+    if (!won) throw new NotFoundError(t("server.error.not_found"));
+
+    const row = await notificationRepo.findById(notificationId, tx);
+    if (!row || row.type !== "studio.transfer_request") {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
+      // Expired requests self-void; confirming one is a no-op conflict.
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const payload = row.payload as {
+      fromUserId?: unknown;
+      studioId?: unknown;
+      studioName?: unknown;
+    };
+    if (
+      typeof payload.fromUserId !== "string" ||
+      typeof payload.studioId !== "string"
+    ) {
+      throw new ValidationError(t("server.error.validation"));
+    }
+    const { fromUserId, studioId } = payload;
+    const studioName =
+      typeof payload.studioName === "string" ? payload.studioName : "";
+
+    // Demote the old admin FIRST, then promote the new one — the reverse order
+    // would collide with studio_members_one_admin_per_studio (two active
+    // admins) mid-transaction.
+    const demoted = await studioMembersRepo.updateRole(
+      studioId,
+      fromUserId,
+      "member",
+      tx,
+    );
+    if (!demoted) throw new NotFoundError(t("server.error.not_found"));
+    const promoted = await studioMembersRepo.updateRole(
+      studioId,
+      receiverUserId,
+      "admin",
+      tx,
+    );
+    if (!promoted) throw new NotFoundError(t("server.error.not_found"));
+
+    await notificationService.createStudioTransferApproved({
+      userId: fromUserId,
+      payload: { studioName },
+      tx,
+    });
+  });
+}
+
+/**
+ * The recipient cancels (declines) a transfer — marks the request read, no
+ * role change. Idempotent on a second click: a missing / already-decided
+ * request collapses to NotFound.
+ * @param notificationId - The `studio.transfer_request` notification id
+ * @param receiverUserId - The recipient declining (owns the notification)
+ * @throws {NotFoundError} the notification is missing, already decided, or not
+ *   owned by `receiverUserId`
+ */
+export async function cancelTransfer(
+  notificationId: string,
+  receiverUserId: string,
+): Promise<void> {
+  const ok = await notificationRepo.markRead(notificationId, receiverUserId);
+  if (!ok) throw new NotFoundError(t("server.error.not_found"));
+}

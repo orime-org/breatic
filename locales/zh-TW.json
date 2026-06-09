@@ -31,7 +31,12 @@
       "verify_email_sent": "驗證郵件已寄送,請查收。"
     },
     "studio": {
-      "slug_taken": "該網址標識已被使用,請換一個。"
+      "slug_taken": "該網址標識已被使用,請換一個。",
+      "email_not_registered": "該信箱尚未註冊。",
+      "already_member": "該使用者已是成員。",
+      "cannot_modify_personal": "個人 studio 無法管理成員。",
+      "remove_last_admin": "移除前請先轉讓管理員。",
+      "cannot_change_admin_role": "管理員角色只能透過轉讓變更。"
     },
     "payment": {
       "checkout_created": "支付工作階段已建立",
@@ -1319,7 +1324,26 @@
       "roleUpgradeRequest": "有人申請 {project} 的編輯者權限",
       "roleUpgradeApproved": "你在 {project} 的編輯者權限已通過",
       "roleUpgradeRejected": "你在 {project} 的編輯者權限申請被拒絕",
-      "memberJoined": "有人加入了 {project}"
+      "memberJoined": "有人加入了 {project}",
+      "studioMemberInvited": "你已被加入 {studio}",
+      "studioTransferRequest": "有人邀請你接管 {studio}",
+      "studioTransferApproved": "你對 {studio} 的管理員轉讓已被接受"
+    },
+    "actionFailed": "無法完成操作，請重試。",
+    "transferConfirmedToast": "你現在是該工作室的管理員了。",
+    "transferCancelledToast": "已拒絕轉讓。",
+    "transferAccept": "接受",
+    "transferDecline": "拒絕",
+    "subtitle": {
+      "invitedAsCreator": "以建立者身分加入",
+      "invitedAsMember": "以成員身分加入",
+      "transferHint": "接受後即成為該工作室的管理員"
+    },
+    "expiresLabel": {
+      "expired": "已過期",
+      "minutes": "{count} 分鐘後過期",
+      "hours": "{count} 小時後過期",
+      "days": "{count} 天後過期"
     }
   },
   "connection": {
@@ -1472,7 +1496,30 @@
         "roleAdmin": "管理員",
         "roleMember": "成員",
         "remove": "移除",
-        "cannotInvitePersonal": "個人 studio 無法邀請成員 —— 只有你自己。"
+        "cannotInvitePersonal": "個人 studio 無法邀請成員 —— 只有你自己。",
+        "roleCreator": "建立者",
+        "rowMenu": "成員操作",
+        "promoteToCreator": "設為建立者",
+        "demoteToMember": "設為成員",
+        "transferAdmin": "轉讓管理員…",
+        "inviteTitle": "邀請成員",
+        "inviteEmailLabel": "電子郵件",
+        "inviteEmailPlaceholder": "name@example.com",
+        "inviteRoleLabel": "角色",
+        "inviteSubmit": "傳送邀請",
+        "inviteSuccess": "已新增成員。",
+        "inviteFailed": "無法邀請此成員，請重試。",
+        "roleUpdated": "角色已更新。",
+        "removeConfirmTitle": "移除成員？",
+        "removeConfirmBody": "{name} 將失去本工作室所有專案的存取權限，其擁有的專案會轉移給你。此操作無法復原。",
+        "removeConfirmAction": "移除",
+        "removeSuccess": "已移除成員。",
+        "transferConfirmTitle": "轉讓管理員？",
+        "transferConfirmBody": "{name} 需在通知中接受轉讓後才能成為管理員。在對方接受之前，你仍是管理員。",
+        "transferConfirmAction": "傳送請求",
+        "transferRequested": "轉讓請求已傳送。",
+        "actionFailed": "發生錯誤，請重試。",
+        "colActions": "操作"
       },
       "settings": {
         "basicTitle": "基本資訊",

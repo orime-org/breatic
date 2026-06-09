@@ -34,11 +34,15 @@
 
 import { randomBytes } from "node:crypto";
 import * as shareLinkRepo from "@server/modules/share/shareLink.repo.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as notificationService from "@server/modules/notification/notification.service.js";
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
+  db,
+  projectMembersRepo,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -171,18 +175,29 @@ export async function revokeLink(linkId: string): Promise<void> {
 }
 
 /**
- * Consume a share link.
+ * Consume a share link — enroll the caller as a project member.
  *
- * Returns the resolved link so the caller (route) decides what to
- * do next:
- *   - if caller is already a member: no-op, return the link
- *   - if caller is not a member: route enrolls them at `link.role`
- *     and (for email-invite links) the link is now spent
+ * This is the auth critical path where a non-member becomes a member.
+ * The membership write, the single-use CAS (email kind), and the
+ * owner's `member_joined` notification all run in ONE transaction so a
+ * consumed link always corresponds to an active `project_members` row
+ * (no "link spent but no membership" split-brain). Returns the resolved
+ * link so the caller (route) knows the project + role to navigate to.
+ *
+ * Idempotence & no-downgrade: if the caller already holds ANY active
+ * role on the project (owner / editor / viewer), the membership is left
+ * untouched and no `member_joined` notification fires — re-consuming a
+ * multi-use link, or the owner clicking their own link, never resets a
+ * role nor re-notifies. For an email-invite link the token is STILL
+ * spent (single-use semantics) even when the caller is already a member.
  *
  * kind='email': single-use; consume sets consumed_at; bound email
- * mismatch raises Forbidden; expired raises Forbidden.
- * kind='link':  multi-use; consume returns the link without mutation.
+ * mismatch raises Forbidden; expired raises Forbidden; already-spent
+ * raises Forbidden (no membership write in that case).
+ * kind='link':  multi-use; consume never mutates consumed_at.
  * @param token — the link token from the URL
+ * @param consumerUserId — the authenticated caller's user id; becomes a
+ *   project member at `link.role` unless they already have a role
  * @param callerEmail — the authenticated user's email; used only
  *   for the boundEmail check on kind='email' links
  * @returns The resolved share link (with `consumedAt` set for a freshly
@@ -191,10 +206,14 @@ export async function revokeLink(linkId: string): Promise<void> {
  *   link has been revoked
  * @throws {ForbiddenError} if the link is expired, the email
  *   doesn't match the bound recipient, or the single-use link was
- *   already consumed
+ *   already consumed (including a concurrent-consume race)
+ * @throws {ValidationError} if the link carries a non-grantable role
+ *   ('owner') — a corrupt row that should never exist (createLink
+ *   rejects it), guarded defensively before any membership write
  */
 export async function consumeLink(
   token: string,
+  consumerUserId: string,
   callerEmail: string,
 ): Promise<ShareLink> {
   const link = await shareLinkRepo.findActiveByToken(token);
@@ -204,21 +223,65 @@ export async function consumeLink(
   if (link.expiresAt !== null && link.expiresAt.getTime() <= Date.now()) {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
+  if (!isGrantableRole(link.role)) {
+    // Defensive: createLink rejects 'owner', so an active link should
+    // never carry it. Refuse rather than feed it to upsertMember.
+    throw new ValidationError(t("server.error.validation"));
+  }
+  const role = link.role;
+
   if (link.kind === "email") {
-    // Email-invite: must match the bound recipient.
+    // Email-invite: must match the bound recipient and not be spent.
     if (link.boundEmail !== callerEmail) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
     if (link.consumedAt !== null) {
       throw new ForbiddenError(t("server.error.forbidden"));
     }
-    const claimed = await shareLinkRepo.markConsumed(link.id);
-    if (!claimed) {
-      // Concurrent consume raced — another caller spent the token.
-      throw new ForbiddenError(t("server.error.forbidden"));
-    }
-    return { ...link, consumedAt: new Date() };
   }
-  // kind='link' — multi-use, no consumed_at mutation.
-  return link;
+
+  // Already a member? Leave the membership untouched (no downgrade, no
+  // re-notify). For an email link the token is still spent below.
+  const existingRole = await projectMembersRepo.getRole(
+    link.projectId,
+    consumerUserId,
+  );
+
+  return db.transaction(async (tx) => {
+    if (link.kind === "email") {
+      const claimed = await shareLinkRepo.markConsumed(link.id, tx);
+      if (!claimed) {
+        // Concurrent consume raced — another caller spent the token.
+        throw new ForbiddenError(t("server.error.forbidden"));
+      }
+    }
+
+    if (existingRole === null) {
+      // Not a member yet → enroll at the link's role and notify the
+      // project owner. `addedBy` is the link creator (the inviter).
+      await projectMembersRepo.upsertMember(
+        link.projectId,
+        consumerUserId,
+        role,
+        link.createdByUserId,
+        tx,
+      );
+      const ownerUserId = await projectMembersRepo.getOwner(link.projectId);
+      if (ownerUserId !== null && ownerUserId !== consumerUserId) {
+        const project = await projectRepo.getProjectById(link.projectId);
+        await notificationService.createMemberJoined({
+          ownerUserId,
+          projectId: link.projectId,
+          payload: {
+            newMemberUserId: consumerUserId,
+            projectName: project?.name ?? "",
+            role,
+          },
+          tx,
+        });
+      }
+    }
+
+    return link.kind === "email" ? { ...link, consumedAt: new Date() } : link;
+  });
 }

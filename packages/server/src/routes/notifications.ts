@@ -20,9 +20,18 @@
  */
 
 import { Hono } from "hono";
+import { z } from "zod";
+import { NotFoundError } from "@breatic/core";
+import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { notificationService } from "@server/modules";
+import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+
+/** Action body — confirm or cancel an actionable notification. */
+const actionSchema = z.object({
+  action: z.enum(["confirm", "cancel"]),
+});
 
 const route = new Hono<{ Variables: AuthVariables }>();
 
@@ -78,6 +87,36 @@ route.post("/read-all", async (c) => {
   const user = c.get("user");
   const count = await notificationService.markAllRead(user.id);
   return c.json({ data: { count } });
+});
+
+/**
+ * `POST /api/v1/users/me/notifications/:id/action` — act on an actionable
+ * notification (confirm / cancel). Dispatches by the notification's `type`:
+ * `studio.transfer_request` routes to the transfer-admin handshake. The
+ * caller must own the notification (the service's markRead userId guard);
+ * a missing / already-decided / other-user's notification collapses to 404.
+ */
+route.post("/:id/action", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const body = actionSchema.parse(await c.req.json());
+  const notification = await notificationService.getById(id);
+  if (!notification || notification.userId !== user.id) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  switch (notification.type) {
+    case "studio.transfer_request":
+      if (body.action === "confirm") {
+        await studioTransferService.confirmTransfer(id, user.id);
+      } else {
+        await studioTransferService.cancelTransfer(id, user.id);
+      }
+      break;
+    default:
+      // Not an actionable type — nothing to confirm/cancel.
+      throw new NotFoundError(t("server.error.not_found"));
+  }
+  return c.json({ data: { ok: true } });
 });
 
 export { route as notificationsRoute };
