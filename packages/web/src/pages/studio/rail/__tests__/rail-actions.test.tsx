@@ -18,6 +18,7 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
         createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={onCreateProject}
+        onCreateStudio={vi.fn()}
       />,
     );
 
@@ -25,7 +26,8 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
     expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
-  it('renders create-collection and create-studio as disabled placeholders (backend deferred)', () => {
+  it('fires onCreateStudio when create-studio is clicked', () => {
+    const onCreateStudio = vi.fn();
     render(
       <RailCreateActions
         createProjectLabel='New project'
@@ -33,11 +35,28 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
         createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={vi.fn()}
+        onCreateStudio={onCreateStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'New studio' }));
+    expect(onCreateStudio).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders create-collection as a disabled placeholder (backend deferred)', () => {
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        createStudioLabel='New studio'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+        onCreateStudio={vi.fn()}
       />,
     );
 
     expect(screen.getByRole('button', { name: 'New collection' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'New studio' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New studio' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled();
   });
 });

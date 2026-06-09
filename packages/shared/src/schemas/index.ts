@@ -5,6 +5,7 @@
 export {
   registerSchema,
   setupStudioSchema,
+  createTeamStudioSchema,
   SLUG_REGEX,
   loginSchema,
   googleAuthSchema,
@@ -22,6 +23,7 @@ export {
 export type {
   RegisterInput,
   SetupStudioInput,
+  CreateTeamStudioInput,
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,

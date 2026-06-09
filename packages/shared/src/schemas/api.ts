@@ -48,6 +48,18 @@ export const setupStudioSchema = z.object({
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
+/**
+ * `POST /api/v1/studios` body — create a team studio. The authenticated user
+ * picks a display name + a globally-unique slug (handle); the server validates
+ * format here and enforces uniqueness via the `studios_slug_idx` unique index.
+ * Name and slug are independent (the user types both — option C).
+ */
+export const createTeamStudioSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  slug: z.string().min(6).max(39).regex(SLUG_REGEX, "slug_invalid_format"),
+});
+export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),

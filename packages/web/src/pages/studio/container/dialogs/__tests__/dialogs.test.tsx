@@ -7,6 +7,11 @@ import userEvent from '@testing-library/user-event';
 
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { NewStudioDialog } from '@web/pages/studio/container/dialogs/NewStudioDialog';
+import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
+
+vi.mock('@web/pages/studio/container/dialogs/use-slug-availability');
+vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
 
 describe('NewItemDialog (spec §3.12)', () => {
   it('renders the project title and the name + slug fields when open', () => {
@@ -103,66 +108,85 @@ describe('NewItemDialog (spec §3.12)', () => {
   });
 });
 
-describe('NewStudioDialog (spec §3.12 + §5.7 globally-unique slug)', () => {
-  const taken = new Set(['acme-studio']);
+describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () => {
+  const mockMutate = vi.fn();
 
-  it('rejects a reserved studio slug', async () => {
-    const onCreate = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <NewStudioDialog
-        open
-        onOpenChange={() => {}}
-        takenSlugs={taken}
-        onCreate={onCreate}
-      />,
-    );
-    await user.type(screen.getByLabelText('Name'), 'Studio');
-    await user.type(screen.getByLabelText('Handle'), 'studio');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
-    expect(onCreate).not.toHaveBeenCalled();
-    expect(screen.getByText(/in use/)).toBeInTheDocument();
+  /**
+   * Drive `useSlugAvailability` to a fixed status for the test (the hook's own
+   * race-safety is covered in use-slug-availability.test.tsx).
+   * @param status the availability status to return.
+   * @param reason the failure reason, when applicable.
+   */
+  function setAvailability(
+    status: 'idle' | 'invalid' | 'checking' | 'available' | 'taken',
+    reason?: 'format' | 'length' | 'reserved' | 'taken',
+  ): void {
+    vi.mocked(useSlugAvailability).mockReturnValue({ status, reason });
+  }
+
+  beforeEach(() => {
+    mockMutate.mockReset();
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    setAvailability('idle');
   });
 
-  it('rejects an already-taken studio slug', async () => {
+  it('shows the title + name and slug fields, no type radio', () => {
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
+    expect(screen.getByText('New Studio')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Handle')).toBeInTheDocument();
+    // The personal/team radio is gone (a team studio is the only thing created here).
+    expect(screen.queryByLabelText('Team')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Personal')).not.toBeInTheDocument();
+  });
+
+  it('shows a checking line while the slug is being verified', () => {
+    setAvailability('checking');
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
+    expect(screen.getByText('Checking availability…')).toBeInTheDocument();
+  });
+
+  it('shows an available line for a free slug', () => {
+    setAvailability('available');
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
+    expect(screen.getByText('Handle is available')).toBeInTheDocument();
+  });
+
+  it('shows taken and keeps Create disabled for a taken slug', async () => {
+    setAvailability('taken', 'taken');
     const user = userEvent.setup();
-    render(<NewStudioDialog open onOpenChange={() => {}} takenSlugs={taken} />);
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Acme');
-    await user.type(screen.getByLabelText('Handle'), 'acme-studio');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(screen.getByText(/in use/)).toBeInTheDocument();
-  });
-
-  it('creates with the chosen type on a valid unique slug', async () => {
-    const onCreate = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <NewStudioDialog
-        open
-        onOpenChange={() => {}}
-        takenSlugs={taken}
-        onCreate={onCreate}
-      />,
-    );
-    await user.type(screen.getByLabelText('Name'), 'Nova');
-    await user.click(screen.getByLabelText('Team'));
-    await user.type(screen.getByLabelText('Handle'), 'nova-lab');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
-    expect(onCreate).toHaveBeenCalledWith({
-      name: 'Nova',
-      slug: 'nova-lab',
-      type: 'team',
-    });
-  });
-
-  it('disables Create until a name is entered and renders an outline Cancel', async () => {
-    const user = userEvent.setup();
-    render(<NewStudioDialog open onOpenChange={() => {}} takenSlugs={taken} />);
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    expect(
-      screen.getByRole('button', { name: 'Cancel' }).className,
-    ).toContain('border-input');
+  });
+
+  it('disables Create until a name is entered AND the slug is available', async () => {
+    setAvailability('available');
+    const user = userEvent.setup();
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
+    // Available slug but no name yet → still disabled.
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
     await user.type(screen.getByLabelText('Name'), 'Nova');
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
+  });
+
+  it('submits the name + slug (no type) when the slug is available', async () => {
+    setAvailability('available');
+    const user = userEvent.setup();
+    render(<NewStudioDialog open onOpenChange={() => {}} />);
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Handle'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mockMutate).toHaveBeenCalledWith(
+      { name: 'Nova', slug: 'nova-lab' },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    );
   });
 });

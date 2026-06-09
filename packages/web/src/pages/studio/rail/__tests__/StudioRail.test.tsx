@@ -28,7 +28,12 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     ];
     render(
       <MemoryRouter>
-        <StudioRail studios={studios} activeSlug={null} onCreateProject={vi.fn()} />
+        <StudioRail
+          studios={studios}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -55,7 +60,12 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     const { default: userEvent } = await import('@testing-library/user-event');
     render(
       <MemoryRouter>
-        <StudioRail studios={[]} activeSlug={null} onCreateProject={onCreateProject} />
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={onCreateProject}
+          onCreateStudio={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -73,7 +83,12 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     // was ④ "My studios" reusing the ⑤ "joined" empty copy.
     render(
       <MemoryRouter>
-        <StudioRail studios={[]} activeSlug={null} onCreateProject={vi.fn()} />
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
       </MemoryRouter>,
     );
     expect(screen.getByText('No Studios yet')).toBeInTheDocument();
@@ -85,7 +100,12 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
   it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {
     render(
       <MemoryRouter>
-        <StudioRail studios={[]} activeSlug={null} onCreateProject={vi.fn()} />
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
       </MemoryRouter>,
     );
     const recent = screen.getByText('Recent');

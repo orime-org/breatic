@@ -15,6 +15,7 @@ function setup() {
         studios={[]}
         activeSlug={null}
         onCreateProject={() => {}}
+        onCreateStudio={() => {}}
       />
     </MemoryRouter>,
   );

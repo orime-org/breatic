@@ -23,6 +23,8 @@ interface StudioRailDrawerProps {
   activeSlug: string | null;
   /** Opens the create-project dialog (rail segment ①). */
   onCreateProject: () => void;
+  /** Opens the create-team-studio dialog (rail segment ③). */
+  onCreateStudio: () => void;
 }
 
 /**
@@ -35,12 +37,14 @@ interface StudioRailDrawerProps {
  * @param props.studios the viewer's studios.
  * @param props.activeSlug the active studio slug, or null on Recent.
  * @param props.onCreateProject opens the create-project dialog.
+ * @param props.onCreateStudio opens the create-team-studio dialog.
  * @returns the hamburger button + rail drawer (hidden at `md` and up).
  */
 export function StudioRailDrawer({
   studios,
   activeSlug,
   onCreateProject,
+  onCreateStudio,
 }: StudioRailDrawerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -89,6 +93,7 @@ export function StudioRailDrawer({
           studios={studios}
           activeSlug={activeSlug}
           onCreateProject={onCreateProject}
+          onCreateStudio={onCreateStudio}
         />
       </SheetContent>
     </Sheet>

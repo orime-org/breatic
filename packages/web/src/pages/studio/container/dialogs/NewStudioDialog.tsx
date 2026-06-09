@@ -14,71 +14,55 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import {
-  STUDIO_SLUG_BOUNDS,
-  validateStudioSlug,
-  type SlugError,
-} from '@web/pages/studio/container/dialogs/slug-util';
-import type { StudioType } from '@web/pages/studio/shared/studio-types';
-
-/** The values entered into the new-studio dialog. */
-export interface NewStudioValues {
-  name: string;
-  slug: string;
-  type: StudioType;
-}
+import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
+import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
+import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
 
 interface NewStudioDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Existing studio slugs, for the global-uniqueness check (§5.7). */
-  takenSlugs: ReadonlySet<string>;
-  /** Called with the entered values on a valid submit (stub in slice 3). */
-  onCreate?: (values: NewStudioValues) => void;
 }
 
 /**
- * The new-studio dialog (spec §3.12) — name + personal/team type + slug. Studio
- * slugs are globally unique, so the slug is validated for shape, reserved words
- * and uniqueness (`validateStudioSlug`). On a valid submit it reports the
- * values and closes; the real create wires to the API in Phase 2. The primary
- * button uses the studio brand color (§1.2).
- * @param props the open state, taken slugs and create callback.
+ * The create-team-studio dialog (rail segment ③ / spec §3.12). Two independent
+ * hand-typed fields — display name + globally-unique slug (option C) — with the
+ * slug checked live (debounced) via `useSlugAvailability`: the SlugField shows
+ * checking / available / format / length / reserved / taken as you type. Submit
+ * is gated on a non-empty name + an `available` slug. On submit `useCreateStudio`
+ * creates the studio, refreshes the rail list and navigates into it; a server
+ * error (taken slug lost a race, per-user limit, rate limit) surfaces inline.
+ * The personal/team type radio and the synchronous `takenSlugs` set the old stub
+ * carried are gone: a personal studio is created at registration, never here,
+ * and global uniqueness can only be a server check, not a client-side set.
+ * @param props the open state + change handler.
  * @param props.open whether the dialog is open.
  * @param props.onOpenChange called when the open state should change.
- * @param props.takenSlugs the studio slugs already in use.
- * @param props.onCreate called with the entered values on a valid submit.
- * @returns the new-studio dialog.
+ * @returns the create-studio dialog.
  */
 export function NewStudioDialog({
   open,
   onOpenChange,
-  takenSlugs,
-  onCreate,
 }: NewStudioDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
-  const [type, setType] = React.useState<StudioType>('personal');
-  const [slugError, setSlugError] = React.useState<SlugError>(null);
-  const [submitted, setSubmitted] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const availability = useSlugAvailability(slug);
+  const createStudio = useCreateStudio();
 
-  /**
-   * Clear all form fields back to their initial empty state.
-   */
+  /** Clear the form back to empty (on close). */
   const reset = (): void => {
     setName('');
     setSlug('');
-    setType('personal');
-    setSlugError(null);
-    setSubmitted(false);
+    setFormError(null);
   };
 
   /**
    * Propagate the open change, resetting the form when closing.
-   * @param next the next value.
+   * @param next the next open value.
    */
   const handleOpenChange = (next: boolean): void => {
     onOpenChange(next);
@@ -87,31 +71,47 @@ export function NewStudioDialog({
     }
   };
 
-  /**
-   * Update the slug and re-validate once a submit has been attempted.
-   * @param next the next value.
-   */
-  const handleSlugChange = (next: string): void => {
-    setSlug(next);
-    if (submitted) {
-      setSlugError(validateStudioSlug(next, takenSlugs));
-    }
-  };
+  // Map the live availability status onto the SlugField's error / availability
+  // props (invalid + taken render as a destructive error line; checking +
+  // available render as a muted line).
+  const slugError =
+    availability.status === 'invalid' || availability.status === 'taken'
+      ? (availability.reason ?? null)
+      : null;
+  const slugLive =
+    availability.status === 'checking'
+      ? ('checking' as const)
+      : availability.status === 'available'
+        ? ('available' as const)
+        : undefined;
+
+  const canSubmit =
+    name.trim() !== '' &&
+    availability.status === 'available' &&
+    !createStudio.isPending;
 
   /**
-   * Validate the form and report the values on a successful submit.
+   * Validate (slug must already be `available`) and create the studio.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    setSubmitted(true);
-    const error = validateStudioSlug(slug, takenSlugs);
-    setSlugError(error);
-    if (name.trim() === '' || error !== null) {
+    setFormError(null);
+    if (!canSubmit) {
       return;
     }
-    onCreate?.({ name: name.trim(), slug, type });
-    handleOpenChange(false);
+    createStudio.mutate(
+      { name: name.trim(), slug: slug.trim() },
+      {
+        onSuccess: () => handleOpenChange(false),
+        onError: (err) =>
+          setFormError(
+            err instanceof ApiException
+              ? err.message
+              : t('studio.container.dialog.createStudioError'),
+          ),
+      },
+    );
   };
 
   return (
@@ -133,42 +133,21 @@ export function NewStudioDialog({
                 required
               />
             </div>
-            <fieldset className='flex flex-col gap-1.5'>
-              <legend className='text-sm font-medium'>
-                {t('studio.container.dialog.typeLabel')}
-              </legend>
-              <div className='flex gap-4 text-sm'>
-                <label className='flex items-center gap-1.5'>
-                  <input
-                    type='radio'
-                    name='new-studio-type'
-                    value='personal'
-                    checked={type === 'personal'}
-                    onChange={() => setType('personal')}
-                  />
-                  {t('studio.container.dialog.typePersonal')}
-                </label>
-                <label className='flex items-center gap-1.5'>
-                  <input
-                    type='radio'
-                    name='new-studio-type'
-                    value='team'
-                    checked={type === 'team'}
-                    onChange={() => setType('team')}
-                  />
-                  {t('studio.container.dialog.typeTeam')}
-                </label>
-              </div>
-            </fieldset>
             <SlugField
               id='new-studio-slug'
               label={t('studio.container.dialog.slugLabel')}
               placeholder={t('studio.container.dialog.slugPlaceholder')}
               value={slug}
-              onChange={handleSlugChange}
+              onChange={setSlug}
               error={slugError}
               bounds={STUDIO_SLUG_BOUNDS}
+              availability={slugLive}
             />
+            {formError ? (
+              <p className='text-xs text-destructive' role='alert'>
+                {formError}
+              </p>
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button
@@ -178,10 +157,7 @@ export function NewStudioDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button
-              type='submit'
-              disabled={name.trim() === '' || slugError !== null}
-            >
+            <Button type='submit' disabled={!canSubmit}>
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

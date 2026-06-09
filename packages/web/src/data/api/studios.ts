@@ -13,10 +13,23 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type {
   ProjectSummary,
+  Studio,
   StudioDetail,
   StudioMemberSummary,
   StudioSummary,
 } from '@breatic/shared';
+
+/** Body for `POST /api/v1/studios` — display name + globally-unique slug. */
+export interface CreateStudioBody {
+  name: string;
+  slug: string;
+}
+
+/** Response of `GET /api/v1/studios/slug-available`. */
+export interface SlugAvailability {
+  available: boolean;
+  reason?: 'format' | 'length' | 'taken';
+}
 
 /** A studio role an admin may grant by invite or change-role (never admin). */
 export type GrantableStudioRole = 'creator' | 'member';
@@ -45,6 +58,32 @@ export const studiosApi = {
    */
   listUserStudios(): Promise<StudioSummary[]> {
     return apiGet<StudioSummary[]>('/studios');
+  },
+  /**
+   * `POST /api/v1/studios` — create a team studio (display name + globally
+   * unique slug). The creator becomes its admin. Rejects with a typed
+   * `ApiException`: `409` slug taken or per-user limit reached, `422` invalid
+   * body, `429` rate limited.
+   * @param body the display name + slug.
+   * @returns the freshly created team studio.
+   */
+  createStudio(body: CreateStudioBody): Promise<Studio> {
+    return apiPost<Studio, CreateStudioBody>('/studios', body);
+  },
+  /**
+   * `GET /api/v1/studios/slug-available?slug=` — live slug availability for the
+   * create dialog's debounced indicator (and the onboarding slug page). A UX
+   * helper; the authoritative uniqueness guard is the insert-time unique index,
+   * so an "available" slug can still lose a race and surface as `409` on submit.
+   * @param slug the candidate slug.
+   * @param signal an `AbortSignal` so React Query can cancel a superseded check.
+   * @returns whether the slug is available, with a reason when not.
+   */
+  checkSlugAvailable(slug: string, signal?: AbortSignal): Promise<SlugAvailability> {
+    return apiGet<SlugAvailability>('/studios/slug-available', {
+      params: { slug },
+      signal,
+    });
   },
   /**
    * `GET /api/v1/studio/:slug` — one studio's public-facing shell, with the

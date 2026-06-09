@@ -23,7 +23,7 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
-import { t } from "@breatic/shared";
+import { t, SLUG_REGEX } from "@breatic/shared";
 import type {
   Studio,
   StudioDetail,
@@ -94,6 +94,77 @@ export async function createPersonalStudio(
     }
     throw err;
   }
+}
+
+/** Per-user cap on active team studios (user decision B, 2026-06-09). */
+const TEAM_STUDIO_LIMIT = 50;
+
+/**
+ * Create a team studio with the creator as its sole admin, atomically.
+ *
+ * Unlike a personal studio, a user may own up to `TEAM_STUDIO_LIMIT` active
+ * team studios. The studio row + the creator's admin `studio_members` row are
+ * written in one transaction (mirrors `createPersonalStudio`); the per-user
+ * limit is checked inside the same transaction. The limit is a soft cap —
+ * concurrent creates may marginally exceed it, which is acceptable for a
+ * non-integrity guard (the hard data-integrity invariant is the global-unique
+ * slug, backed by `studios_slug_idx`). A taken slug (lost the unique-index
+ * race) surfaces as a typed `ConflictError`.
+ * @param userId - The authenticated user's UUID (becomes the studio admin)
+ * @param name - The display name (independent of the slug)
+ * @param slug - The validated, globally-unique URL handle
+ * @returns The freshly created team studio
+ * @throws {ConflictError} if the slug is already taken, or the user has
+ *   reached the per-user team-studio limit
+ */
+export async function createTeamStudio(
+  userId: string,
+  name: string,
+  slug: string,
+): Promise<Studio> {
+  try {
+    return await db.transaction(async (tx) => {
+      const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
+      if (count >= TEAM_STUDIO_LIMIT) {
+        throw new ConflictError(t("server.studio.team_limit_reached"));
+      }
+      const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
+      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
+      return studio;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.studio.slug_taken"));
+    }
+    throw err;
+  }
+}
+
+/**
+ * Check whether a studio slug is available, for the create dialog's live
+ * (debounced) availability indicator.
+ *
+ * A UX helper only — the authoritative uniqueness guard is the
+ * `studios_slug_idx` unique index enforced at insert time (so a slug reported
+ * available here can still lose a concurrent race and surface as `409` on
+ * submit). Format + length are validated first so the caller gets a precise
+ * reason; reserved-word hardening is deferred to slice 7 (the frontend stub
+ * list blocks the obvious ones meanwhile).
+ * @param slug - The candidate slug to check
+ * @returns `{ available: true }`, or `{ available: false, reason }` with the
+ *   first failure (`format` / `length` / `taken`)
+ */
+export async function checkStudioSlug(
+  slug: string,
+): Promise<{ available: boolean; reason?: "format" | "length" | "taken" }> {
+  if (!SLUG_REGEX.test(slug)) {
+    return { available: false, reason: "format" };
+  }
+  if (slug.length < 6 || slug.length > 39) {
+    return { available: false, reason: "length" };
+  }
+  const existing = await studioRepo.getBySlug(slug);
+  return existing ? { available: false, reason: "taken" } : { available: true };
 }
 
 /**

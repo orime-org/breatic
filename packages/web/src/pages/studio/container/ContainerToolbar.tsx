@@ -19,6 +19,13 @@ interface ContainerToolbarProps {
    * create button is hidden — the rest of the toolbar still shows.
    */
   onCreate?: () => void;
+  /**
+   * Whether to show the sort + grid/list view-toggle placeholders. Default
+   * `true` (projects / collections). The Members tab passes `false` — a member
+   * list has no grid/list view, so it shows only the title + count + the
+   * invite button.
+   */
+  showViewControls?: boolean;
 }
 
 /**
@@ -35,6 +42,7 @@ interface ContainerToolbarProps {
  * @param root0.count - the item count.
  * @param root0.createLabel - the create-button label.
  * @param root0.onCreate - opens the create dialog (omit to hide the button).
+ * @param root0.showViewControls - whether to show the sort + grid/list view-toggle placeholders (default true; the Members tab passes false).
  * @returns the tab toolbar.
  */
 export function ContainerToolbar({
@@ -42,6 +50,7 @@ export function ContainerToolbar({
   count,
   createLabel,
   onCreate,
+  showViewControls = true,
 }: ContainerToolbarProps): React.JSX.Element {
   const t = useTranslation();
   // Disabled placeholders read as "not available" to assistive tech (the
@@ -60,32 +69,36 @@ export function ContainerToolbar({
         </span>
       </h2>
       <div className='flex-1' />
-      <button
-        type='button'
-        disabled
-        aria-label={notAvailable}
-        className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
-      >
-        <span className='font-normal text-muted-foreground'>
-          {t('studio.container.toolbar.sortLabel')}
-        </span>
-        {t('studio.container.toolbar.sortValue')}
-        <ChevronDown
-          className='h-3 w-3 text-muted-foreground'
-          aria-hidden='true'
-        />
-      </button>
-      <div
-        className='inline-flex overflow-hidden rounded-[4px] border border-border opacity-50'
-        aria-hidden='true'
-      >
-        <span className='flex h-[30px] w-[30px] items-center justify-center bg-muted text-foreground'>
-          <LayoutGrid className='h-3.5 w-3.5' />
-        </span>
-        <span className='flex h-[30px] w-[30px] items-center justify-center text-muted-foreground'>
-          <List className='h-3.5 w-3.5' />
-        </span>
-      </div>
+      {showViewControls ? (
+        <>
+          <button
+            type='button'
+            disabled
+            aria-label={notAvailable}
+            className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+          >
+            <span className='font-normal text-muted-foreground'>
+              {t('studio.container.toolbar.sortLabel')}
+            </span>
+            {t('studio.container.toolbar.sortValue')}
+            <ChevronDown
+              className='h-3 w-3 text-muted-foreground'
+              aria-hidden='true'
+            />
+          </button>
+          <div
+            className='inline-flex overflow-hidden rounded-[4px] border border-border opacity-50'
+            aria-hidden='true'
+          >
+            <span className='flex h-[30px] w-[30px] items-center justify-center bg-muted text-foreground'>
+              <LayoutGrid className='h-3.5 w-3.5' />
+            </span>
+            <span className='flex h-[30px] w-[30px] items-center justify-center text-muted-foreground'>
+              <List className='h-3.5 w-3.5' />
+            </span>
+          </div>
+        </>
+      ) : null}
       {onCreate ? (
         <Button
           type='button'

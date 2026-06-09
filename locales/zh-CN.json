@@ -35,6 +35,7 @@
     },
     "studio": {
       "slug_taken": "该网址标识已被使用,请换一个。",
+      "team_limit_reached": "你已达到 50 个团队 studio 的上限。",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已是成员。",
       "cannot_modify_personal": "个人 studio 不能管理成员。",
@@ -1553,6 +1554,9 @@
         "slugLength": "需 {min}–{max} 个字符。",
         "slugTaken": "该网址标识已被使用。",
         "slugReserved": "该网址标识已被使用。",
+        "slugChecking": "正在检查可用性…",
+        "slugAvailable": "该网址标识可用",
+        "createStudioError": "无法创建 studio",
         "visibilityLabel": "可见性",
         "visibilityStudioOption": "Studio 内可见 — 所有成员",
         "visibilityPrivateOption": "私有 — 仅受邀"

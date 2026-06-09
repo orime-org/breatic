@@ -32,6 +32,7 @@
     },
     "studio": {
       "slug_taken": "이미 사용 중인 핸들입니다. 다른 것을 선택하세요.",
+      "team_limit_reached": "팀 studio 한도(50개)에 도달했습니다.",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 멤버입니다.",
       "cannot_modify_personal": "개인 스튜디오는 멤버를 관리할 수 없습니다.",
@@ -1553,6 +1554,9 @@
         "slugLength": "{min}–{max}자여야 합니다.",
         "slugTaken": "이미 사용 중인 핸들입니다.",
         "slugReserved": "이미 사용 중인 핸들입니다.",
+        "slugChecking": "사용 가능 여부를 확인하는 중…",
+        "slugAvailable": "사용 가능한 핸들입니다",
+        "createStudioError": "studio를 만들지 못했습니다",
         "visibilityLabel": "공개 범위",
         "visibilityStudioOption": "Studio 내 공개 — 모든 멤버",
         "visibilityPrivateOption": "비공개 — 초대만"

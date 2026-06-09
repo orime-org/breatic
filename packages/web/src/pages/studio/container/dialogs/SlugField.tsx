@@ -25,6 +25,13 @@ interface SlugFieldProps {
    * below it.
    */
   helper?: string;
+  /**
+   * Live async availability state (the create-studio dialog + onboarding slug
+   * page): renders a muted "checking…" line or an "available" confirmation
+   * under the input. Omitted by callers without a live check (project /
+   * collection slugs are not unique, so they never check).
+   */
+  availability?: 'checking' | 'available';
 }
 
 /**
@@ -42,6 +49,7 @@ interface SlugFieldProps {
  * @param props.error the current validation error.
  * @param props.bounds the slug length bounds.
  * @param props.helper the always-on explanatory line (optional).
+ * @param props.availability the live async availability state (optional).
  * @returns the slug field.
  */
 export function SlugField({
@@ -53,6 +61,7 @@ export function SlugField({
   error,
   bounds,
   helper,
+  availability,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
   const message =
@@ -98,6 +107,16 @@ export function SlugField({
       {message ? (
         <p id={`${id}-error`} className='text-xs text-destructive'>
           {message}
+        </p>
+      ) : null}
+      {!message && availability === 'checking' ? (
+        <p className='text-xs text-muted-foreground'>
+          {t('studio.container.dialog.slugChecking')}
+        </p>
+      ) : null}
+      {!message && availability === 'available' ? (
+        <p className='text-xs text-muted-foreground'>
+          {t('studio.container.dialog.slugAvailable')}
         </p>
       ) : null}
     </div>

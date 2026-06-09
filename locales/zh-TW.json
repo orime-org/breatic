@@ -32,6 +32,7 @@
     },
     "studio": {
       "slug_taken": "該網址標識已被使用,請換一個。",
+      "team_limit_reached": "你已達到 50 個團隊 studio 的上限。",
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已是成員。",
       "cannot_modify_personal": "個人 studio 無法管理成員。",
@@ -1553,6 +1554,9 @@
         "slugLength": "需 {min}–{max} 個字元。",
         "slugTaken": "該網址標識已被使用。",
         "slugReserved": "該網址標識已被使用。",
+        "slugChecking": "正在檢查是否可用…",
+        "slugAvailable": "該網址標識可用",
+        "createStudioError": "無法建立 studio",
         "visibilityLabel": "可見性",
         "visibilityStudioOption": "Studio 內可見 — 所有成員",
         "visibilityPrivateOption": "私有 — 僅受邀"
