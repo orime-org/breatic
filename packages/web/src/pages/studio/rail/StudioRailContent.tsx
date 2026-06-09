@@ -19,6 +19,8 @@ interface StudioRailContentProps {
   activeSlug: string | null;
   /** Opens the create-project dialog (rail segment ①). */
   onCreateProject: () => void;
+  /** Opens the create-team-studio dialog (rail segment ③). */
+  onCreateStudio: () => void;
 }
 
 /**
@@ -32,12 +34,14 @@ interface StudioRailContentProps {
  * @param props.studios the viewer's studios.
  * @param props.activeSlug the active studio slug, or null on Recent.
  * @param props.onCreateProject opens the create-project dialog.
+ * @param props.onCreateStudio opens the create-team-studio dialog.
  * @returns the rail content segments.
  */
 export function StudioRailContent({
   studios,
   activeSlug,
   onCreateProject,
+  onCreateStudio,
 }: StudioRailContentProps): React.JSX.Element {
   const t = useTranslation();
   const { owned, joined } = splitStudios(studios);
@@ -56,6 +60,7 @@ export function StudioRailContent({
         createStudioLabel={t('studio.rail.createStudio')}
         comingSoonLabel={t('studio.rail.comingSoon')}
         onCreateProject={onCreateProject}
+        onCreateStudio={onCreateStudio}
       />
 
       <hr className='mx-1.5 my-1.5 border-border' />

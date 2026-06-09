@@ -1554,6 +1554,9 @@
         "slugLength": "{min}–{max} 文字で入力してください。",
         "slugTaken": "そのハンドルは既に使用されています。",
         "slugReserved": "そのハンドルは既に使用されています。",
+        "slugChecking": "利用可能か確認しています…",
+        "slugAvailable": "このハンドルは利用できます",
+        "createStudioError": "studio を作成できませんでした",
         "visibilityLabel": "公開範囲",
         "visibilityStudioOption": "Studio 内に表示 — 全メンバー",
         "visibilityPrivateOption": "非公開 — 招待のみ"

@@ -1554,6 +1554,9 @@
         "slugLength": "{min}–{max}자여야 합니다.",
         "slugTaken": "이미 사용 중인 핸들입니다.",
         "slugReserved": "이미 사용 중인 핸들입니다.",
+        "slugChecking": "사용 가능 여부를 확인하는 중…",
+        "slugAvailable": "사용 가능한 핸들입니다",
+        "createStudioError": "studio를 만들지 못했습니다",
         "visibilityLabel": "공개 범위",
         "visibilityStudioOption": "Studio 내 공개 — 모든 멤버",
         "visibilityPrivateOption": "비공개 — 초대만"

@@ -1554,6 +1554,9 @@
         "slugLength": "Must be {min}–{max} characters.",
         "slugTaken": "That handle is already in use.",
         "slugReserved": "That handle is already in use.",
+        "slugChecking": "Checking availability…",
+        "slugAvailable": "Handle is available",
+        "createStudioError": "Couldn't create the studio",
         "visibilityLabel": "Visibility",
         "visibilityStudioOption": "Studio — all members",
         "visibilityPrivateOption": "Private — invite only"

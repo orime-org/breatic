@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { studiosApi } from '@web/data/api/studios';
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
+import { NewStudioDialog } from '@web/pages/studio/container/dialogs/NewStudioDialog';
 import {
   creatableStudios,
   defaultCreateStudioId,
@@ -47,6 +48,7 @@ export default function StudioLayout(): React.JSX.Element {
   });
   const studios = studiosQuery.data ?? [];
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [createStudioOpen, setCreateStudioOpen] = React.useState(false);
   const createProject = useCreateProject(studios);
   // The rail's create-project is a GLOBAL entry (not inside a studio), so the
   // selector defaults to the personal studio (the viewer is always its admin).
@@ -61,6 +63,7 @@ export default function StudioLayout(): React.JSX.Element {
             studios={studios}
             activeSlug={slug ?? null}
             onCreateProject={() => setCreateOpen(true)}
+            onCreateStudio={() => setCreateStudioOpen(true)}
           />
         }
       />
@@ -69,6 +72,7 @@ export default function StudioLayout(): React.JSX.Element {
           studios={studios}
           activeSlug={slug ?? null}
           onCreateProject={() => setCreateOpen(true)}
+          onCreateStudio={() => setCreateStudioOpen(true)}
         />
         <main className='min-w-0 flex-1 overflow-hidden'>
           <Outlet
@@ -87,6 +91,10 @@ export default function StudioLayout(): React.JSX.Element {
         onCreate={createProject}
         studios={creatable}
         defaultStudioId={defaultStudioId}
+      />
+      <NewStudioDialog
+        open={createStudioOpen}
+        onOpenChange={setCreateStudioOpen}
       />
     </div>
   );

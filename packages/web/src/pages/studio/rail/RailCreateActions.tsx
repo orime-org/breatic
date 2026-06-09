@@ -9,12 +9,14 @@ interface RailCreateActionsProps {
   createProjectLabel: string;
   /** Label for the create-collection action (disabled — backend deferred). */
   createCollectionLabel: string;
-  /** Label for the create-studio action (disabled — team-studio backend deferred). */
+  /** Label for the create-studio action. */
   createStudioLabel: string;
   /** Tooltip on the disabled actions (e.g. "coming soon"). */
   comingSoonLabel: string;
   /** Opens the create-project dialog (with its studio selector, slice §7). */
   onCreateProject: () => void;
+  /** Opens the create-team-studio dialog (rail segment ③). */
+  onCreateStudio: () => void;
 }
 
 const ACTION =
@@ -30,9 +32,10 @@ const ACTION =
  * @param props the action labels, the coming-soon tooltip and the create handler.
  * @param props.createProjectLabel the create-project label.
  * @param props.createCollectionLabel the create-collection label (disabled).
- * @param props.createStudioLabel the create-studio label (disabled).
+ * @param props.createStudioLabel the create-studio label.
  * @param props.comingSoonLabel the tooltip shown on the disabled actions.
  * @param props.onCreateProject opens the create-project dialog.
+ * @param props.onCreateStudio opens the create-team-studio dialog.
  * @returns the rail's create-action segments.
  */
 export function RailCreateActions({
@@ -41,6 +44,7 @@ export function RailCreateActions({
   createStudioLabel,
   comingSoonLabel,
   onCreateProject,
+  onCreateStudio,
 }: RailCreateActionsProps): React.JSX.Element {
   return (
     <div className='flex flex-col gap-0.5'>
@@ -66,18 +70,11 @@ export function RailCreateActions({
 
       <button
         type='button'
-        disabled
-        title={comingSoonLabel}
-        className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
+        onClick={onCreateStudio}
+        className={`${ACTION} text-foreground hover:bg-muted`}
       >
-        <Plus className='h-4 w-4' />
+        <Plus className='h-4 w-4 text-foreground' />
         {createStudioLabel}
-        <span
-          aria-hidden='true'
-          className='ml-auto rounded-full bg-muted px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-muted-foreground'
-        >
-          {comingSoonLabel}
-        </span>
       </button>
     </div>
   );

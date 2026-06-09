@@ -14,6 +14,8 @@ interface StudioRailProps {
   activeSlug: string | null;
   /** Opens the create-project dialog (rail segment ①). */
   onCreateProject: () => void;
+  /** Opens the create-team-studio dialog (rail segment ③). */
+  onCreateStudio: () => void;
 }
 
 /**
@@ -27,12 +29,14 @@ interface StudioRailProps {
  * @param props.studios the viewer's studios.
  * @param props.activeSlug the active studio slug, or null on Recent.
  * @param props.onCreateProject opens the create-project dialog.
+ * @param props.onCreateStudio opens the create-team-studio dialog.
  * @returns the persistent studio rail navigation (hidden below `md`).
  */
 export function StudioRail({
   studios,
   activeSlug,
   onCreateProject,
+  onCreateStudio,
 }: StudioRailProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -44,6 +48,7 @@ export function StudioRail({
         studios={studios}
         activeSlug={activeSlug}
         onCreateProject={onCreateProject}
+        onCreateStudio={onCreateStudio}
       />
     </nav>
   );

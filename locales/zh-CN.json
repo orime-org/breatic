@@ -1554,6 +1554,9 @@
         "slugLength": "需 {min}–{max} 个字符。",
         "slugTaken": "该网址标识已被使用。",
         "slugReserved": "该网址标识已被使用。",
+        "slugChecking": "正在检查可用性…",
+        "slugAvailable": "该网址标识可用",
+        "createStudioError": "无法创建 studio",
         "visibilityLabel": "可见性",
         "visibilityStudioOption": "Studio 内可见 — 所有成员",
         "visibilityPrivateOption": "私有 — 仅受邀"
