@@ -105,6 +105,7 @@ export type {
 export {
   registerSchema,
   setupStudioSchema,
+  createTeamStudioSchema,
   SLUG_REGEX,
   loginSchema,
   chatMessageSchema,
@@ -121,6 +122,7 @@ export {
 export type {
   RegisterInput,
   SetupStudioInput,
+  CreateTeamStudioInput,
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,

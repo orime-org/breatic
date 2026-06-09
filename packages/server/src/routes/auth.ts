@@ -20,40 +20,14 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, studioService } from "@server/modules";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { checkRateLimit, getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
+import { rateLimit } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
   clearSessionCookie,
   readSessionCookie,
 } from "@server/middleware/session-cookie.js";
 import { logMailResult } from "@server/utils/log-mail.js";
-import type { MiddlewareHandler } from "hono";
-
-/**
- * Rate limit middleware factory.
- * @param opts - Limiter configuration.
- * @param opts.prefix - Redis key prefix identifying the limited action (e.g. `login`, `register`).
- * @param opts.max - Maximum allowed requests per window.
- * @param opts.windowSeconds - Sliding window length in seconds.
- * @returns A Hono middleware that limits per client IP and returns 429 with a `Retry-After` header when exceeded.
- */
-function rateLimit(opts: { prefix: string; max: number; windowSeconds: number }): MiddlewareHandler {
-  return async (c, next) => {
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const redis = getRedis();
-    const allowed = await checkRateLimit(redis, `${opts.prefix}:${ip}`, opts.max, opts.windowSeconds);
-    if (!allowed) {
-      logger.warn({ action: opts.prefix, ip }, "rate_limit_hit");
-      return c.json(
-        { error: { code: 429, message: t("server.error.rate_limited") } },
-        429,
-        { "Retry-After": String(opts.windowSeconds) },
-      );
-    }
-    await next();
-  };
-}
 
 const auth = new Hono<{ Variables: AuthVariables }>();
 

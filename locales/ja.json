@@ -32,6 +32,7 @@
     },
     "studio": {
       "slug_taken": "そのハンドルはすでに使用されています。別のものを選んでください。",
+      "team_limit_reached": "チーム studio の上限(50 個)に達しました。",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにメンバーです。",
       "cannot_modify_personal": "個人スタジオはメンバーを管理できません。",

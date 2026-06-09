@@ -32,6 +32,7 @@
     },
     "studio": {
       "slug_taken": "That handle is already in use. Please choose another.",
+      "team_limit_reached": "You've reached the limit of 50 team studios.",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user is already a member.",
       "cannot_modify_personal": "A personal studio cannot have its members managed.",

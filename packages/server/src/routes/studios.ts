@@ -21,8 +21,11 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
+import { createTeamStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
+import { rateLimit } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
@@ -58,6 +61,45 @@ studios.get("/", async (c) => {
   const data = await studioService.listUserStudios(user.id);
   return c.json({ data });
 });
+
+/**
+ * `GET /api/v1/studios/slug-available?slug=` — live slug availability for the
+ * create dialog's debounced indicator (and the personal-studio onboarding slug
+ * page). A UX helper only — the authoritative uniqueness guard is the
+ * insert-time unique index, so an "available" slug can still lose a concurrent
+ * race and surface as `409` on submit. High-frequency, so per-user rate limited.
+ * @returns `200` with `{ data: { available: boolean, reason?: string } }`
+ */
+studios.get(
+  "/slug-available",
+  rateLimit({ prefix: "slug-check", max: 60, windowSeconds: 60, keyBy: "user" }),
+  async (c) => {
+    const slug = c.req.query("slug") ?? "";
+    const data = await studioService.checkStudioSlug(slug);
+    return c.json({ data });
+  },
+);
+
+/**
+ * `POST /api/v1/studios` — create a team studio (display name + globally-unique
+ * slug, both hand-typed). The creator becomes its sole admin, atomically. Any
+ * authenticated user may create (it is a top-level action, not scoped to an
+ * existing studio); per-user rate limited (10/hour) to bound abuse, and capped
+ * at a per-user soft limit of active team studios.
+ * @returns `201` with `{ data: Studio }`; `409` taken slug / per-user limit
+ *   reached, `422` invalid body (zValidator), `429` rate limited
+ */
+studios.post(
+  "/",
+  rateLimit({ prefix: "studio-create", max: 10, windowSeconds: 3600, keyBy: "user" }),
+  zValidator("json", createTeamStudioSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { name, slug } = c.req.valid("json");
+    const data = await studioService.createTeamStudio(user.id, name, slug);
+    return c.json({ data }, 201);
+  },
+);
 
 const studio = new Hono<{ Variables: AuthVariables }>();
 

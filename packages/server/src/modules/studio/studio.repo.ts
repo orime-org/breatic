@@ -86,6 +86,63 @@ export async function createPersonalStudio(
 }
 
 /**
+ * Insert a team studio (name and slug are independent; `type='team'`).
+ *
+ * Unlike a personal studio (one per user), a user may own many team studios —
+ * the `studios_owner_personal_idx` partial unique index is scoped to
+ * `type='personal'`, so team rows are unconstrained on creator. The
+ * global-unique slug index (`studios_slug_idx`) still rejects a taken handle.
+ * Accepts an optional transaction so the service can create the studio + the
+ * creator's admin member row atomically.
+ * @param createdByUserId - The creator's user UUID (becomes the studio admin)
+ * @param slug - The globally-unique URL handle
+ * @param name - The display name (independent of the slug)
+ * @param tx - Optional transaction handle
+ * @returns The freshly created team studio entity
+ */
+export async function createTeamStudio(
+  createdByUserId: string,
+  slug: string,
+  name: string,
+  tx?: DbTx,
+): Promise<Studio> {
+  const runner = tx ?? db;
+  const rows = await runner
+    .insert(studios)
+    .values({ createdByUserId, slug, name, type: "team" })
+    .returning();
+  return toEntity(rows[0]!);
+}
+
+/**
+ * Count a user's active team studios (for the per-user creation limit).
+ *
+ * Scoped to `type='team'` and the creator — personal studios and other users'
+ * studios do not count; soft-deleted studios are excluded. Accepts an optional
+ * transaction so the count can run inside the create transaction.
+ * @param createdByUserId - The creator's user UUID
+ * @param tx - Optional transaction handle
+ * @returns The number of active team studios the user owns
+ */
+export async function countTeamStudiosByCreator(
+  createdByUserId: string,
+  tx?: DbTx,
+): Promise<number> {
+  const runner = tx ?? db;
+  const rows = await runner
+    .select({ count: sql<number>`count(*)::int` })
+    .from(studios)
+    .where(
+      and(
+        eq(studios.createdByUserId, createdByUserId),
+        eq(studios.type, "team"),
+        isNull(studios.deletedAt),
+      ),
+    );
+  return rows[0]?.count ?? 0;
+}
+
+/**
  * Batch-resolve each user's active personal studio `name`.
  *
  * Backs display-name lookup for `/users` batch + invite `inviterName`
