@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
+import { Checkbox } from '@web/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Select,
@@ -164,6 +166,39 @@ export default function PrimitivesGallery(): React.JSX.Element {
             <div className='mt-3'>
               <Label htmlFor='g-textarea'>Notes</Label>
               <Textarea id='g-textarea' rows={3} placeholder='Write something' />
+            </div>
+          </Section>
+
+          <Section title='Checkbox · RadioGroup'>
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+              <div className='flex flex-col gap-2'>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-checked' defaultChecked />
+                  <Label htmlFor='g-cb-checked'>Checked</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-unchecked' />
+                  <Label htmlFor='g-cb-unchecked'>Unchecked</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-disabled' disabled />
+                  <Label htmlFor='g-cb-disabled'>Disabled</Label>
+                </div>
+              </div>
+              <RadioGroup defaultValue='one'>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='one' id='g-rg-one' />
+                  <Label htmlFor='g-rg-one'>Option one</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='two' id='g-rg-two' />
+                  <Label htmlFor='g-rg-two'>Option two</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='three' id='g-rg-three' disabled />
+                  <Label htmlFor='g-rg-three'>Disabled</Label>
+                </div>
+              </RadioGroup>
             </div>
           </Section>
 

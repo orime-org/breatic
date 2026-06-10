@@ -6,7 +6,7 @@ import { cn } from '@web/lib/utils';
 
 /**
  * Checkbox — 16px square (chrome radius). Checked = pure-black `bg-primary`
- * (mirrors the primary button); unchecked = a hairline `border-input` box that
+ * (mirrors the primary button); unchecked = a hairline `border-border` box that
  * brightens to the neutral ring on hover. Neutral 1px focus ring (no glow).
  * Built on Radix so keyboard / form semantics are handled for us.
  * @param props - Radix Checkbox.Root props (controlled `checked` /
@@ -20,7 +20,7 @@ export function Checkbox({
   return (
     <CheckboxPrimitive.Root
       className={cn(
-        'peer inline-flex size-4 shrink-0 items-center justify-center rounded-chrome border border-input bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
+        'peer inline-flex size-4 shrink-0 items-center justify-center rounded-chrome border border-border bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
         className,
       )}
       {...props}

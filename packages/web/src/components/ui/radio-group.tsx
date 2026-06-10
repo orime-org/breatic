@@ -34,7 +34,7 @@ export function RadioGroupItem({
   return (
     <RadioGroupPrimitive.Item
       className={cn(
-        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary',
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-border bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary',
         className,
       )}
       {...props}

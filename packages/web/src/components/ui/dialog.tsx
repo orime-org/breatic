@@ -99,7 +99,9 @@ const DialogHeader = ({
     )}
     {...props}
   >
-    <div className='flex min-w-0 flex-col gap-1 text-left'>{children}</div>
+    <div className='flex min-h-[var(--btn-chrome)] min-w-0 flex-col justify-center gap-1 text-left'>
+      {children}
+    </div>
     {hideClose ? null : (
       <DialogPrimitive.Close
         className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none'

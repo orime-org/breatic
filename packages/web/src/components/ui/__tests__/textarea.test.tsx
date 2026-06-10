@@ -10,10 +10,12 @@ describe('Textarea', () => {
     expect(el.tagName).toBe('TEXTAREA');
   });
 
-  it('applies project token classes (border-input + bg-transparent)', () => {
+  it('applies project token classes (border-border + bg-transparent)', () => {
     render(<Textarea data-testid='ta' />);
     const el = screen.getByTestId('ta');
-    expect(el.className).toContain('border-input');
+    // Matches Input's visible hairline token; border-input was invisible in dark.
+    expect(el.className).toContain('border-border');
+    expect(el.className).not.toContain('border-input');
     expect(el.className).toContain('bg-transparent');
   });
 

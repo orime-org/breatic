@@ -14,6 +14,7 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
@@ -239,28 +240,21 @@ export function NewItemDialog({
               <legend className='text-sm font-medium'>
                 {t('studio.container.dialog.visibilityLabel')}
               </legend>
-              <div className='flex flex-col gap-1.5 text-sm'>
+              <RadioGroup
+                value={visibility}
+                onValueChange={(value) => setVisibility(value as ItemVisibility)}
+                data-testid={`new-${kind}-visibility`}
+                className='flex-row flex-wrap gap-4 text-sm'
+              >
                 <label className='flex items-center gap-1.5'>
-                  <input
-                    type='radio'
-                    name={`new-${kind}-visibility`}
-                    value='studio'
-                    checked={visibility === 'studio'}
-                    onChange={() => setVisibility('studio')}
-                  />
+                  <RadioGroupItem value='studio' />
                   {t('studio.container.dialog.visibilityStudioOption')}
                 </label>
                 <label className='flex items-center gap-1.5'>
-                  <input
-                    type='radio'
-                    name={`new-${kind}-visibility`}
-                    value='private'
-                    checked={visibility === 'private'}
-                    onChange={() => setVisibility('private')}
-                  />
+                  <RadioGroupItem value='private' />
                   {t('studio.container.dialog.visibilityPrivateOption')}
                 </label>
-              </div>
+              </RadioGroup>
             </fieldset>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={descId}>

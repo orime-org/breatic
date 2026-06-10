@@ -44,6 +44,17 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
+  it('title stack reserves chrome height + centers (title-only stays vertically aligned to the close button)', () => {
+    setup(true);
+    // The header keeps items-start (so multi-line title+description aligns the
+    // close X to the title's first line); the title/description stack itself
+    // gets a chrome-height floor + justify-center so a title-only header centers
+    // its single line against the 32px close button instead of top-aligning.
+    const titleStack = screen.getByText('Title').parentElement;
+    expect(titleStack?.className).toContain('min-h-[var(--btn-chrome)]');
+    expect(titleStack?.className).toContain('justify-center');
+  });
+
   it('content carries bg-popover + rounded-overlay + border tokens', () => {
     setup(true);
     const content = screen.getByTestId('content');
