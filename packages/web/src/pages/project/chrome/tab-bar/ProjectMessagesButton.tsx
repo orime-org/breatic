@@ -254,7 +254,7 @@ export function ProjectMessagesButton({
             edge of the header (px-4), letting `justify-between` push
             the clear button fully to the right.
           */}
-          <SheetTitle className='pr-10 text-[14px] font-semibold text-foreground'>
+          <SheetTitle className='pr-10 text-base font-semibold text-foreground'>
             {t('spaces.history.header')}
           </SheetTitle>
           {/*
@@ -265,7 +265,7 @@ export function ProjectMessagesButton({
             confirm step (PR #138 — prevent accidental data loss).
           */}
           <div className='flex items-center justify-between gap-3'>
-            <SheetDescription className='text-[12px] text-muted-foreground'>
+            <SheetDescription className='text-xs text-muted-foreground'>
               {t('spaces.history.description', { count: messages.length })}
             </SheetDescription>
             {/* Clear-all stays hidden — see CLEAR_ALL_ENABLED above. */}
@@ -276,7 +276,7 @@ export function ProjectMessagesButton({
                     type='button'
                     disabled={clearing}
                     data-testid='project-messages-clear-all'
-                    className='inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50'
+                    className='inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50'
                   >
                     <Trash2 className='h-3 w-3' aria-hidden />
                     {t('spaces.history.action.clearAll')}
@@ -316,7 +316,7 @@ export function ProjectMessagesButton({
           data-testid='project-messages-list'
         >
           {visible.length === 0 ? (
-            <li className='px-4 py-3 text-[13px] text-muted-foreground'>
+            <li className='px-4 py-3 text-sm text-muted-foreground'>
               {t('spaces.history.empty')}
             </li>
           ) : (
@@ -383,7 +383,7 @@ export function ProjectMessagesButton({
                     />
                   ) : null}
                   <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='text-[13px] leading-relaxed text-foreground'>
+                    <p className='text-sm leading-relaxed text-foreground'>
                       {m.message
                         ? t(m.message, m.context as Record<string, string | number> | undefined)
                         : t(KIND_LABEL_KEY[m.kind], {
@@ -392,7 +392,7 @@ export function ProjectMessagesButton({
                           oldSpaceName: m.oldSpaceName ?? '',
                         })}
                     </p>
-                    <p className='text-[11px] tabular-nums text-muted-foreground'>
+                    <p className='text-2xs tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
                     </p>
                   </div>
@@ -402,7 +402,7 @@ export function ProjectMessagesButton({
                       onClick={() => m.spaceId && onClickRestore(m.spaceId)}
                       disabled={busyId === m.spaceId}
                       data-testid={`project-messages-restore-${m.id}`}
-                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground hover:bg-accent disabled:opacity-50'
+                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
                     >
                       <RotateCcw className='h-3 w-3' aria-hidden />
                       {t('spaces.history.action.restore')}
@@ -413,7 +413,7 @@ export function ProjectMessagesButton({
                       disabled
                       aria-disabled
                       data-testid={`project-messages-restored-badge-${m.id}`}
-                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground opacity-60 cursor-not-allowed'
+                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground opacity-60 cursor-not-allowed'
                     >
                       <RotateCcw className='h-3 w-3' aria-hidden />
                       {t('spaces.history.action.restored')}

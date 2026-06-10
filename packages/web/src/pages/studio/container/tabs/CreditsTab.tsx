@@ -49,10 +49,10 @@ export function CreditsTab({
           </p>
           <p
             data-testid='wallet-balance'
-            className='text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
+            className='text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
             {wallet.balanceCached.toLocaleString()}
-            <small className='ml-1 align-baseline text-[13px] font-medium text-muted-foreground'>
+            <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
               {t('studio.container.credits.unit')}
             </small>
           </p>
@@ -138,7 +138,7 @@ export function CreditsTab({
               </span>
             ) : null}
             <span className='flex items-center gap-1.5'>
-              <span className='flex h-[18px] w-[18px] items-center justify-center rounded-full bg-muted text-[11px] font-bold text-foreground'>
+              <span className='flex h-[18px] w-[18px] items-center justify-center rounded-full bg-muted text-2xs font-bold text-foreground'>
                 {index + 1}
               </span>
               <span className='whitespace-nowrap text-xs font-semibold'>

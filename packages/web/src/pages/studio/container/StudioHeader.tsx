@@ -31,12 +31,12 @@ export function StudioHeader({
     <div className={`${CENTER_COLUMN} flex shrink-0 items-center gap-3 pt-[22px]`}>
       <span
         aria-hidden='true'
-        className='flex h-10 w-10 items-center justify-center rounded-[6px] bg-[var(--neutral-200)] text-sm font-bold text-[var(--neutral-600)]'
+        className='flex h-10 w-10 items-center justify-center rounded-chrome bg-muted text-sm font-bold text-muted-foreground'
       >
         {initial}
       </span>
       <span className='text-lg font-bold'>{studio.name}</span>
-      <span className='rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground'>
+      <span className='rounded-full bg-muted px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground'>
         {isTeam
           ? t('studio.container.header.teamTag')
           : t('studio.container.header.personalTag')}

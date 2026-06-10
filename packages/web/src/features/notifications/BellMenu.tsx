@@ -209,19 +209,19 @@ export function BellMenu(): React.JSX.Element {
         data-testid='bell-popover'
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
-          <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+          <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
             {t('notifications.title')}
           </span>
-          <span className='text-[11px] tabular-nums text-muted-foreground'>
+          <span className='text-2xs tabular-nums text-muted-foreground'>
             {count}
           </span>
         </div>
         {inboxQuery.isLoading ? (
-          <div className='px-3 py-2 text-[13px] text-muted-foreground'>
+          <div className='px-3 py-2 text-sm text-muted-foreground'>
             {t('notifications.loading')}
           </div>
         ) : count === 0 ? (
-          <div className='px-3 py-2 text-[13px] text-muted-foreground'>
+          <div className='px-3 py-2 text-sm text-muted-foreground'>
             {t('notifications.empty')}
           </div>
         ) : (
@@ -311,26 +311,26 @@ function NotificationItem({
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
-          <AvatarFallback className='text-[12px] font-semibold'>
+          <AvatarFallback className='text-xs font-semibold'>
             {iconForType(notification.type)}
           </AvatarFallback>
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
           <span
-            className='truncate text-[13px] font-medium text-foreground'
+            className='truncate text-sm font-medium text-foreground'
             data-testid={`bell-notification-headline-${notification.id}`}
           >
             {headline}
           </span>
           {subtitle ? (
-            <span className='truncate text-[12px] text-muted-foreground'>
+            <span className='truncate text-xs text-muted-foreground'>
               {subtitle}
             </span>
           ) : null}
         </div>
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
-        <span className='text-[11px] text-muted-foreground'>
+        <span className='text-2xs text-muted-foreground'>
           {isTransferRequest && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
             : timeAgoLabel(notification.createdAt)}
@@ -340,7 +340,7 @@ function NotificationItem({
             <Button
               variant='outline'
               size='sm'
-              className='h-7 px-3 text-[12px]'
+              className='h-7 px-3 text-xs'
               disabled={decidePending}
               onClick={onReject}
               data-testid={`bell-reject-${notification.id}`}
@@ -349,7 +349,7 @@ function NotificationItem({
             </Button>
             <Button
               size='sm'
-              className='h-7 px-3 text-[12px]'
+              className='h-7 px-3 text-xs'
               disabled={decidePending}
               onClick={onApprove}
               data-testid={`bell-approve-${notification.id}`}
@@ -362,7 +362,7 @@ function NotificationItem({
             <Button
               variant='outline'
               size='sm'
-              className='h-7 px-3 text-[12px]'
+              className='h-7 px-3 text-xs'
               disabled={decidePending}
               onClick={onCancel}
               data-testid={`bell-cancel-${notification.id}`}
@@ -371,7 +371,7 @@ function NotificationItem({
             </Button>
             <Button
               size='sm'
-              className='h-7 px-3 text-[12px]'
+              className='h-7 px-3 text-xs'
               disabled={decidePending}
               onClick={onConfirm}
               data-testid={`bell-confirm-${notification.id}`}
@@ -383,7 +383,7 @@ function NotificationItem({
           <Button
             variant='ghost'
             size='sm'
-            className='h-7 px-2 text-[12px]'
+            className='h-7 px-2 text-xs'
             onClick={onMarkRead}
             data-testid={`bell-mark-read-${notification.id}`}
           >

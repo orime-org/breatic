@@ -41,7 +41,7 @@ export function CollectionCard({
   const t = useTranslation();
   const canManage = canManageItem(studioRole, collection.myRole === 'owner');
   return (
-    <div className='group relative overflow-hidden rounded-[6px] border border-border bg-card transition-[box-shadow,border-color] hover:border-[var(--neutral-300)] hover:shadow-md'>
+    <div className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled'>
       <Link
         to={`/collection/${collection.slug}-${collection.id}`}
         className='flex flex-col'
@@ -68,7 +68,7 @@ export function CollectionCard({
         <div className='p-2.5'>
           {/* Title row (locked mock): name + asset count on one line. */}
           <div className='flex items-center gap-2'>
-            <p className='min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground'>
+            <p className='min-w-0 flex-1 truncate text-base font-semibold text-foreground'>
               {collection.name}
             </p>
             <span className='whitespace-nowrap text-xs text-muted-foreground'>
@@ -89,7 +89,7 @@ export function CollectionCard({
         <button
           type='button'
           aria-label={t('studio.container.card.more')}
-          className='absolute right-[7px] top-[7px] z-10 flex h-[22px] w-[22px] items-center justify-center rounded-[2px] bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
+          className='absolute right-[7px] top-[7px] z-10 flex h-[22px] w-[22px] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
         >
           <MoreHorizontal className='h-3.5 w-3.5' />
         </button>

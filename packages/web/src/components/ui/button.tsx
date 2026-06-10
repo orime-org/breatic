@@ -16,7 +16,7 @@ import { cn } from '@web/lib/utils';
 //     the click without forwarding; `pointer-events-none` is redundant
 //     and harmful. See memory `feedback_disabled_button_pointer_events_trap`.
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-chrome text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-chrome text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -46,10 +46,12 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 px-3',
-        lg: 'h-11 px-8',
-        icon: 'h-10 w-10',
+        // Sizes conform to the Linear-anchored ladder (24/28/32/44) via the
+        // --btn-* tokens — `default` 32, `sm` 28, `lg` 44 (= cta), `icon` 32².
+        default: 'h-[var(--btn-default)] px-4 py-2',
+        sm: 'h-[var(--btn-inline)] px-3',
+        lg: 'h-[var(--btn-cta)] px-8',
+        icon: 'h-[var(--btn-default)] w-[var(--btn-default)]',
         // Chrome button hit area — 32×32 per `--btn-chrome` token +
         // `--radius-chrome` 6px (overrides base `rounded-md` 12px which
         // looked too round per user feedback). Chrome v4.0 spec used by
@@ -62,7 +64,7 @@ const buttonVariants = cva(
         // + 13px label + asymmetric padding so a stack of items in a
         // 2px-padded popover lines up with the mock proportions.
         'menu-item':
-          'h-auto gap-2 rounded-chrome px-2 py-1.5 text-[13px]',
+          'h-auto gap-2 rounded-chrome px-2 py-1.5 text-sm',
       },
     },
     defaultVariants: {

@@ -32,7 +32,7 @@ export default function NoAccessPage(): React.JSX.Element {
         <h1 className='text-2xl font-semibold text-foreground'>
           {t('noAccess.title')}
         </h1>
-        <p className='max-w-md text-[14px] text-muted-foreground'>
+        <p className='max-w-md text-base text-muted-foreground'>
           {t('noAccess.description')}
         </p>
       </div>

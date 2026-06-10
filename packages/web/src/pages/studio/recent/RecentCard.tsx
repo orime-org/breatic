@@ -40,7 +40,7 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
     <Link
       to={href}
       aria-label={item.name}
-      className='group flex flex-col overflow-hidden rounded-[6px] border border-border bg-card text-card-foreground transition-colors hover:border-[var(--neutral-300)]'
+      className='group flex flex-col overflow-hidden rounded-chrome border border-border bg-card text-card-foreground transition-colors hover:border-foreground-disabled'
     >
       <div className='aspect-video w-full bg-muted'>
         {item.thumbnailUrl ? (

@@ -44,7 +44,7 @@ export function EmptyState({
 }: EmptyStateProps): React.JSX.Element {
   return (
     <div className='flex flex-col items-center justify-center gap-2.5 px-4 py-[72px] text-center'>
-      <div className='flex h-12 w-12 items-center justify-center rounded-[6px] bg-muted text-muted-foreground'>
+      <div className='flex h-12 w-12 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
         <Icon className='h-[22px] w-[22px]' aria-hidden='true' />
       </div>
       <p className='text-sm font-semibold text-foreground'>{title}</p>
@@ -53,7 +53,7 @@ export function EmptyState({
         <Button
           type='button'
           onClick={action.onClick}
-          className='mt-1 h-[30px] gap-1.5 rounded-[4px] px-3.5 text-xs font-semibold'
+          className='mt-1 h-[30px] gap-1.5 rounded-chrome px-3.5 text-xs font-semibold'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {action.label}

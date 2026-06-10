@@ -72,7 +72,7 @@ export function ReferencePicker({
                   }}
                   data-testid={`reference-candidate-${c.id}`}
                 >
-                  <span className='mr-2 text-[10px] uppercase opacity-60'>
+                  <span className='mr-2 text-2xs uppercase opacity-60'>
                     {c.modality}
                   </span>
                   <span className='truncate'>{c.label}</span>

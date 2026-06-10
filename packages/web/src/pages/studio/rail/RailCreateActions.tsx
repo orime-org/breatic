@@ -20,7 +20,7 @@ interface RailCreateActionsProps {
 }
 
 const ACTION =
-  'flex h-8 items-center gap-2.5 rounded-[4px] px-2 text-[13px] font-medium leading-none transition-colors';
+  'flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors';
 
 /**
  * Rail create actions (spec §4.1 segments ① + ②): create project (enabled,

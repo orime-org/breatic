@@ -36,7 +36,7 @@ export const TopBarTextIconButton = React.forwardRef<
       ref={ref}
       type='button'
       className={cn(
-        'inline-flex shrink-0 items-center text-[13px] font-normal text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+        'inline-flex shrink-0 items-center text-sm font-normal text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
         className,
       )}
       style={{

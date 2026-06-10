@@ -25,7 +25,7 @@ const NEUTRAL_TINT =
 // `.vbadge`. Black/white here are NOT theme tokens (an image overlay must read
 // the same in light + dark mode), so this is not a token violation.
 const VISIBILITY_OVERLAY =
-  'inline-flex items-center gap-1 rounded-[2px] bg-black/45 px-1.5 text-[11px] font-semibold leading-5 text-white';
+  'inline-flex items-center gap-1 rounded-chrome bg-black/45 px-1.5 text-2xs font-semibold leading-5 text-white';
 
 /**
  * Project / collection visibility badge (spec §3.5) — a dark overlay pill that
@@ -79,7 +79,7 @@ export function RoleBadge({
     <Badge
       variant='secondary'
       className={
-        itemRole === 'owner' ? 'rounded-[2px] text-foreground' : 'rounded-[2px]'
+        itemRole === 'owner' ? 'rounded-chrome text-foreground' : 'rounded-chrome'
       }
     >
       {t(`studio.container.badge.${key}`)}
@@ -109,8 +109,9 @@ export function StudioTypePill({
 
 /**
  * Credit lot badge (spec §3.5 / §3.6): paid lots read success (green), gift
- * lots read locked (amber), and gift lots within their expiry window read
- * destructive (red) with the remaining days.
+ * lots read warning (orange — the closest always-color to the old amber, since
+ * the design system dropped the `locked` color), and gift lots within their
+ * expiry window read destructive (red) with the remaining days.
  * @param props the lot source and, when expiring soon, the remaining days.
  * @param props.source the credit lot source.
  * @param props.expiringDays the remaining days when the lot is expiring soon.
@@ -139,7 +140,7 @@ export function CreditLotBadge({
     );
   }
   return (
-    <Badge className='border-transparent bg-status-locked-bg text-status-locked-foreground'>
+    <Badge className='border-transparent bg-status-warning-bg text-status-warning-foreground'>
       {t('studio.container.badge.lotGift')}
     </Badge>
   );

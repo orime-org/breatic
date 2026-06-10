@@ -76,22 +76,22 @@ export function SpaceReadOnlySheet({
         data-testid='space-read-only-sheet'
       >
         <SheetHeader className='flex flex-col gap-1 border-b border-border px-4 py-3 pr-14'>
-          <SheetTitle className='flex min-w-0 items-center gap-2 text-[15px] font-semibold text-foreground'>
+          <SheetTitle className='flex min-w-0 items-center gap-2 text-base font-semibold text-foreground'>
             <Icon className='h-4 w-4 text-muted-foreground' aria-hidden />
             <span className='truncate'>{space?.name ?? ''}</span>
-            <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
+            <span className='shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
               {meta ? t(meta.labelKey) : ''}
             </span>
-            <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
+            <span className='shrink-0 rounded-chrome bg-status-info-bg px-1 py-0.5 text-2xs font-medium text-status-info-foreground'>
               {t('spaces.readonly.label')}
             </span>
           </SheetTitle>
-          <SheetDescription className='text-[12px] text-muted-foreground'>
+          <SheetDescription className='text-xs text-muted-foreground'>
             {t('spaces.readonly.description')}
           </SheetDescription>
         </SheetHeader>
         <div
-          className='flex-1 overflow-auto p-4 text-[13px] text-muted-foreground'
+          className='flex-1 overflow-auto p-4 text-sm text-muted-foreground'
           data-testid='space-read-only-body'
         >
           {space ? <ReadOnlyBody space={space} /> : null}
@@ -117,7 +117,7 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }): React.JSX.Element | n
             <strong className='block text-foreground'>
               {t('spaces.readonly.canvas.title')}
             </strong>
-            <span className='text-[12px]'>
+            <span className='text-xs'>
               {t('spaces.readonly.canvas.description')}
             </span>
           </div>
@@ -130,7 +130,7 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }): React.JSX.Element | n
             <strong className='block text-foreground'>
               {t('spaces.readonly.document.title')}
             </strong>
-            <span className='text-[12px]'>
+            <span className='text-xs'>
               {t('spaces.readonly.document.description')}
             </span>
           </div>
@@ -143,7 +143,7 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }): React.JSX.Element | n
             <strong className='block text-foreground'>
               {t('spaces.readonly.timeline.title')}
             </strong>
-            <span className='text-[12px]'>
+            <span className='text-xs'>
               {t('spaces.readonly.timeline.description')}
             </span>
           </div>

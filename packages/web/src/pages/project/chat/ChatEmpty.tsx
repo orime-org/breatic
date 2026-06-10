@@ -54,7 +54,7 @@ export function ChatEmpty({
   return (
     <div
       data-testid='chat-empty'
-      className='flex flex-col items-center px-4 py-8 text-center text-[13px] leading-relaxed text-muted-foreground'
+      className='flex flex-col items-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
       <p className='leading-relaxed'>
@@ -71,7 +71,7 @@ export function ChatEmpty({
               key={qa.id}
               type='button'
               onClick={() => onQuickAction?.(label)}
-              className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-[12px] text-foreground transition-colors hover:bg-accent'
+              className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
               <Icon className='h-4 w-4 shrink-0 text-muted-foreground' />

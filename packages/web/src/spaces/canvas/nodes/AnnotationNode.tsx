@@ -37,17 +37,17 @@ export function AnnotationNode({
       selected={selected}
       locked={locked}
       className={cn(
-        'w-[200px] border-yellow-200 bg-[#FFF8C5] text-foreground',
+        'w-[200px] border-note-border bg-note text-note-foreground',
       )}
       testId='annotation-node'
     >
-      <div className='flex items-center gap-2 border-b border-yellow-300/60 px-2 py-1'>
+      <div className='flex items-center gap-2 border-b border-note-border px-2 py-1'>
         <Avatar className='h-5 w-5'>
-          <AvatarFallback className='text-[10px]'>
+          <AvatarFallback className='text-2xs'>
             {data.authorId.slice(0, 1).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <span className='text-[10px] text-muted-foreground'>
+        <span className='text-2xs text-muted-foreground'>
           {formatRelative(data.createdAt)}
         </span>
       </div>

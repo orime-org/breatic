@@ -165,7 +165,7 @@ export function SpaceTab({
       onClick={editing ? undefined : onActivate}
       data-testid={`space-tab-${id}`}
       className={cn(
-        'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-[13px]',
+        'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',
         active
           ? 'bg-muted text-foreground'
           : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -203,7 +203,7 @@ export function SpaceTab({
           onDoubleClick={(e) => e.stopPropagation()}
           data-testid={`space-tab-name-input-${id}`}
           aria-label={t('spaces.rename.inputAriaLabel')}
-          className='border-0 bg-transparent p-0 text-[13px] text-foreground outline-none'
+          className='border-0 bg-transparent p-0 text-sm text-foreground outline-none'
           style={{ width: `${Math.max(draft.length, 1) + 1}ch` }}
         />
       ) : (
@@ -241,7 +241,7 @@ export function SpaceTab({
             }
           }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>

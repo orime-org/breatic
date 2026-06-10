@@ -179,7 +179,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                   >
                     <AvatarFallback>U</AvatarFallback>
                   </Avatar>
-                  <span className='text-[10px] text-muted-foreground'>{sz}</span>
+                  <span className='text-2xs text-muted-foreground'>{sz}</span>
                 </div>
               ))}
             </div>
@@ -274,26 +274,18 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </ScrollArea>
           </Section>
 
-          <Section title='Status palette · 7 × 3-piece (bg / fg / border)'>
+          <Section title='Status palette · 5 × 3-piece (bg / fg / border) — always-color'>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
               {(
-                [
-                  'selected',
-                  'info',
-                  'handling',
-                  'locked',
-                  'warning',
-                  'error',
-                  'success',
-                ] as const
+                ['selected', 'info', 'success', 'warning', 'error'] as const
               ).map((name) => (
                 <div
                   key={name}
                   className='rounded-content-md border p-3 text-sm'
                   style={{
-                    background: `var(--status-${name}-bg)`,
-                    color: `var(--status-${name}-fg)`,
-                    borderColor: `var(--status-${name}-border)`,
+                    background: `var(--color-status-${name}-bg)`,
+                    color: `var(--color-status-${name}-foreground)`,
+                    borderColor: `var(--color-status-${name}-border)`,
                   }}
                 >
                   status · {name}

@@ -78,7 +78,7 @@ export function AgentColHeader({
         </TooltipContent>
       </Tooltip>
       <span
-        className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-[11px] font-medium tabular-nums text-muted-foreground'
+        className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-2xs font-medium tabular-nums text-muted-foreground'
         data-testid='conversation-count-chip'
         aria-label={`${messageCount} conversations`}
       >

@@ -62,7 +62,7 @@ export function ContainerToolbar({
       data-testid='container-toolbar'
       className='mb-[18px] flex items-center gap-2'
     >
-      <h2 className='flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-foreground'>
+      <h2 className='flex items-center gap-1.5 text-base font-semibold tracking-tight text-foreground'>
         {title}
         <span className='rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground'>
           {count}
@@ -75,7 +75,7 @@ export function ContainerToolbar({
             type='button'
             disabled
             aria-label={notAvailable}
-            className='inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+            className='inline-flex h-[30px] items-center gap-1.5 rounded-chrome border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
           >
             <span className='font-normal text-muted-foreground'>
               {t('studio.container.toolbar.sortLabel')}
@@ -87,7 +87,7 @@ export function ContainerToolbar({
             />
           </button>
           <div
-            className='inline-flex overflow-hidden rounded-[4px] border border-border opacity-50'
+            className='inline-flex overflow-hidden rounded-chrome border border-border opacity-50'
             aria-hidden='true'
           >
             <span className='flex h-[30px] w-[30px] items-center justify-center bg-muted text-foreground'>
@@ -103,7 +103,7 @@ export function ContainerToolbar({
         <Button
           type='button'
           onClick={onCreate}
-          className='h-[30px] gap-1.5 rounded-[4px] px-3 text-xs font-semibold'
+          className='h-[30px] gap-1.5 rounded-chrome px-3 text-xs font-semibold'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {createLabel}

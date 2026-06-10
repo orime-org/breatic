@@ -102,7 +102,7 @@ const DialogHeader = ({
     <div className='flex min-w-0 flex-col gap-1 text-left'>{children}</div>
     {hideClose ? null : (
       <DialogPrimitive.Close
-        className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none'
+        className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none'
         aria-label='Close'
       >
         <X className='h-[18px] w-[18px]' />
@@ -153,7 +153,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      'text-[18px] font-semibold leading-tight tracking-tight text-foreground',
+      'text-lg font-semibold leading-tight tracking-tight text-foreground',
       className,
     )}
     {...props}
@@ -167,7 +167,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('text-[13px] text-muted-foreground', className)}
+    className={cn('text-sm text-muted-foreground', className)}
     {...props}
   />
 ));

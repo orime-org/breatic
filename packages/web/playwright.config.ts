@@ -10,13 +10,18 @@
 import { defineConfig, devices } from 'playwright/test';
 
 export default defineConfig({
-  testDir: './tests/smoke',
+  testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
   reporter: 'list',
   timeout: 30_000,
+  expect: {
+    // Visual-regression defaults (tests/visual): freeze animations and allow a
+    // tiny tolerance for sub-pixel anti-aliasing noise between runs.
+    toHaveScreenshot: { animations: 'disabled', maxDiffPixelRatio: 0.01 },
+  },
   use: {
     baseURL: 'http://localhost:8000',
     trace: 'retain-on-failure',

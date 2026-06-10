@@ -155,10 +155,10 @@ export function SpaceDrawer({
         data-testid='space-drawer'
       >
         <SheetHeader className='border-b border-border px-4 py-3'>
-          <SheetTitle className='text-[15px] font-semibold text-foreground'>
+          <SheetTitle className='text-base font-semibold text-foreground'>
             {t('spaces.drawer.title')}
           </SheetTitle>
-          <SheetDescription className='text-[12px] text-muted-foreground'>
+          <SheetDescription className='text-xs text-muted-foreground'>
             {t('spaces.drawer.description', { count: spaces.length })}
           </SheetDescription>
         </SheetHeader>
@@ -168,7 +168,7 @@ export function SpaceDrawer({
           role='list'
         >
           {spaces.length === 0 ? (
-            <li className='px-4 py-3 text-[13px] text-muted-foreground'>
+            <li className='px-4 py-3 text-sm text-muted-foreground'>
               {t('spaces.drawer.empty')}
             </li>
           ) : (
@@ -302,20 +302,20 @@ function SpaceDrawerRow({
           aria-current={isActive ? 'true' : undefined}
           className='flex min-w-0 flex-1 items-start gap-3 text-left'
         >
-          <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] bg-muted text-muted-foreground'>
+          <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
             <Icon className='h-4 w-4' />
           </span>
           <span className='flex min-w-0 flex-1 flex-col gap-1'>
             <span className='flex items-center gap-2'>
-              <span className='truncate text-[14px] font-semibold text-foreground'>
+              <span className='truncate text-base font-semibold text-foreground'>
                 {space.name}
               </span>
               {isActive ? (
-                <span className='shrink-0 rounded-[4px] bg-status-info-bg px-1 py-0.5 text-[11px] font-medium text-status-info-foreground'>
+                <span className='shrink-0 rounded-chrome bg-status-info-bg px-1 py-0.5 text-2xs font-medium text-status-info-foreground'>
                   {t('spaces.drawer.status.editing')}
                 </span>
               ) : isOpen ? (
-                <span className='shrink-0 rounded-[4px] bg-muted px-1 py-0.5 text-[11px] font-medium text-muted-foreground'>
+                <span className='shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
                   {t('spaces.drawer.status.open')}
                 </span>
               ) : null}
@@ -327,7 +327,7 @@ function SpaceDrawerRow({
                 />
               ) : null}
             </span>
-            <span className='truncate text-[12px] text-muted-foreground'>
+            <span className='truncate text-xs text-muted-foreground'>
               {t(meta.labelKey)}
             </span>
           </span>

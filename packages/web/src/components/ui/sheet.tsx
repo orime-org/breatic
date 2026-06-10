@@ -120,7 +120,7 @@ const SheetContent = React.forwardRef<
       {children}
       <SheetPrimitive.Close
         aria-label='Close'
-        className='absolute right-3 top-3 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none'
+        className='absolute right-3 top-3 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none'
       >
         <X className='h-[18px] w-[18px]' />
         <span className='sr-only'>Close</span>

@@ -168,7 +168,7 @@ export function MembersModal({
 
         <DialogBody>
           <div className='flex flex-col gap-2'>
-            <div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+            <div className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
               {t('members.modal.inviteSection')}
             </div>
             <div className='flex items-center gap-2'>
@@ -181,7 +181,7 @@ export function MembersModal({
                   if (inviteError) setInviteError(null);
                 }}
                 placeholder={t('members.modal.invitePlaceholder')}
-                className='h-9 flex-1 text-[13px]'
+                className='h-9 flex-1 text-sm'
                 data-testid='members-modal-invite-input'
                 disabled={inviteSubmitting}
                 aria-invalid={!!inviteError || undefined}
@@ -210,10 +210,10 @@ export function MembersModal({
 
         <DialogBody>
           <div className='flex items-center justify-between'>
-            <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+            <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
               {t('members.modal.membersSection', { count: members.length })}
             </span>
-            <span className='text-[11px] text-muted-foreground'>
+            <span className='text-2xs text-muted-foreground'>
               {t('members.modal.ownerNote')}
             </span>
           </div>
@@ -267,25 +267,25 @@ function ModalMemberRow({
   return (
     <div className='flex items-center gap-3 py-2'>
       <Avatar className='h-9 w-9 shrink-0'>
-        <AvatarFallback className='text-[12px] font-semibold'>
+        <AvatarFallback className='text-xs font-semibold'>
           {initialsOf(member.name)}
         </AvatarFallback>
       </Avatar>
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-        <span className='truncate text-[13px] font-medium text-foreground'>
+        <span className='truncate text-sm font-medium text-foreground'>
           {member.name}
           {isMe ? (
-            <span className='ml-1 text-[12px] text-muted-foreground'>
+            <span className='ml-1 text-xs text-muted-foreground'>
               {t('members.modal.isMe')}
             </span>
           ) : null}
         </span>
-        <span className='truncate text-[12px] text-muted-foreground'>
+        <span className='truncate text-xs text-muted-foreground'>
           {member.email}
         </span>
       </div>
       {member.role === 'owner' || isMe ? (
-        <span className='shrink-0 text-[13px] font-medium text-foreground'>
+        <span className='shrink-0 text-sm font-medium text-foreground'>
           {member.role === 'owner' ? t('role.owner') : t('role.' + (member.role === 'editor' ? 'editor' : 'viewer'))}
         </span>
       ) : (
@@ -295,7 +295,7 @@ function ModalMemberRow({
           onValueChange={(v) => onSetRole(v as Exclude<MemberRole, 'owner'>)}
         >
           <SelectTrigger
-            className='h-8 w-24 text-[13px]'
+            className='h-8 w-24 text-sm'
             data-testid={`members-modal-role-${member.id}`}
             aria-label={t('members.modal.roleSelectAria', { name: member.name })}
           >
@@ -314,7 +314,7 @@ function ModalMemberRow({
         <Button
           variant='outline'
           size='sm'
-          className='h-8 px-3 text-[12px]'
+          className='h-8 px-3 text-xs'
           disabled={pending}
           onClick={onRemove}
           data-testid={`members-modal-remove-${member.id}`}

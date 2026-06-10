@@ -120,6 +120,16 @@ jobs:
         # breatic-inner-design design/decisions/2026-06-05-studio-brand-exemption.md
         run: pnpm lint:no-brand-usage
 
+      - name: Lint no raw design values (anti-drift token guard)
+        # Design-system 9th rebuild anti-drift gate: ban raw px font sizes
+        # (text-[Npx]), raw neutral primitives ([var(--neutral-N)]), raw radius
+        # (rounded-[Npx]), and raw hex colors in packages/web/src — components
+        # must consume design tokens, never hardcode values. Correct token
+        # consumption (h-[var(--btn-chrome)] etc.) is allowed. Logo (BrandMark) +
+        # inpaint brush ink + theme/tokens.css are exempt. See
+        # scripts/lint-no-raw-design-values.sh.
+        run: pnpm lint:no-raw-design-values
+
       - name: Lint storage-key-prefix (web persisted keys)
         # Enforce user decision 2026-06-08: every localStorage / sessionStorage
         # key carries the `breatic.` prefix, routed through the central registry

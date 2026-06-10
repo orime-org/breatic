@@ -65,7 +65,7 @@ export function NodeShell({
         <div
           aria-hidden='true'
           data-testid='node-lock-indicator'
-          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-[10px] text-muted-foreground'
+          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-2xs text-muted-foreground'
         >
           lock
         </div>

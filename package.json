@@ -18,6 +18,7 @@
     "lint:dependency-cruiser": "depcruise --config .dependency-cruiser.cjs packages/*/src",
     "lint:hover": "bash scripts/lint-hover-pattern.sh",
     "lint:no-brand-usage": "bash scripts/lint-no-brand-usage.sh",
+    "lint:no-raw-design-values": "bash scripts/lint-no-raw-design-values.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-collab-auth-table-sql": "bash scripts/lint-no-collab-auth-table-sql.sh",
     "lint:no-core-process-env": "bash scripts/lint-no-core-process-env.sh",
