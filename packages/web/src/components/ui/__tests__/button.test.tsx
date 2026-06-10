@@ -25,11 +25,13 @@ describe('Button', () => {
     expect(cls).toContain('bg-background');
   });
 
-  it('size=icon collapses to square 10×10', () => {
+  it('size=icon is a square at the default rung (--btn-default)', () => {
     render(<Button size='icon' aria-label='Pick'>i</Button>);
     const cls = screen.getByRole('button').className;
-    expect(cls).toContain('h-10');
-    expect(cls).toContain('w-10');
+    // Button ladder: icon collapses to a square at the default rung, driven by
+    // the --btn-default token (no raw px — see lint:no-raw-design-values).
+    expect(cls).toContain('h-[var(--btn-default)]');
+    expect(cls).toContain('w-[var(--btn-default)]');
   });
 
   it('asChild renders the wrapped element instead of a button', () => {
