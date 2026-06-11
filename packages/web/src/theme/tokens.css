@@ -39,9 +39,11 @@
  *      to the slider.
  *   3. `--color-primary` derives from neutral (pure black / white); raw
  *      `--brand-*` values are reserved for the logo SVG only.
- *   4. Status palette = 5 always-color tokens (selected / info / success /
- *      warning / error), same hue in light + dark. `handling` = info blue +
- *      spinner (no own color); `locked` = neutral gray + lock icon.
+ *   4. Status palette = 5 colors · scheme D (selected / info / success /
+ *      warning / error). Identity hue + bg + border are always-color (same
+ *      both modes); only the `-foreground` text flips by mode (deep in light,
+ *      lightened in dark) for readability. `handling` = info blue + spinner
+ *      (no own color); `locked` = neutral gray + lock icon.
  */
 
 /* ============================================================
@@ -190,39 +192,45 @@ html[data-theme='light'] {
      overrides below to a fixed off-step. */
   --color-primary-hover: var(--neutral-600);
 
-  /* ---- Destructive = status error coral (not the old pure red) ---- */
-  --color-destructive: #eb5757;
+  /* ---- Destructive · solid danger button (delete) = #c0392b + white (4.77:1
+     AA; fixes old #eb5757 + white = 3.48). Separate solid red from the error
+     tint (Radix-style one-color-three-steps). ---- */
+  --color-destructive: #c0392b;
   --color-destructive-foreground: #ffffff;
 
-  /* ---- Status · 5 always-color (same hue light + dark, NO dark override).
-     bg = 18% tint, border = 30% tint over transparent so the chip adapts to
-     any surface. Consumed via clean utility classes (`bg-status-error-bg`,
-     `text-status-success`, `border-status-selected-border`). handling = info
-     blue + spinner (no own color); locked = neutral gray + lock icon. ---- */
-  --color-status-selected: #5e6ad2; /* indigo · selected / focus semantic */
-  --color-status-selected-bg: color-mix(in srgb, #5e6ad2 18%, transparent);
-  --color-status-selected-foreground: #5e6ad2;
-  --color-status-selected-border: color-mix(in srgb, #5e6ad2 30%, transparent);
+  /* ---- Status · 5 colors · scheme D (2026-06-11). Identity hue (same both
+     modes) drives bg = 14% tint + border = 40% tint over transparent (chip
+     adapts to any surface). foreground = a READABLE color that flips by mode:
+     deep here (light), lightened in the dark block below — the old "tint +
+     same-hue text" was unreadable (light info 2.03:1); D passes AA both modes
+     (light 4.88–5.74 / dark 7.81–8.72). Consumed via utilities (`bg-status-
+     error-bg`, `text-status-success-foreground`, `border-status-*-border`);
+     node selection ring uses `ring-status-selected` (1px). handling = info
+     blue + spinner; locked = neutral gray + lock icon. ---- */
+  --color-status-selected: #5e6ad2; /* indigo identity · selection ring */
+  --color-status-selected-bg: color-mix(in srgb, #5e6ad2 14%, transparent);
+  --color-status-selected-foreground: #4f46e5; /* light deep text (dark → #a5acf5) */
+  --color-status-selected-border: color-mix(in srgb, #5e6ad2 40%, transparent);
 
-  --color-status-info: #4ea7fc; /* sky · tip / banner */
-  --color-status-info-bg: color-mix(in srgb, #4ea7fc 18%, transparent);
-  --color-status-info-foreground: #4ea7fc;
-  --color-status-info-border: color-mix(in srgb, #4ea7fc 30%, transparent);
+  --color-status-info: #4ea7fc; /* sky identity · tip / banner */
+  --color-status-info-bg: color-mix(in srgb, #4ea7fc 14%, transparent);
+  --color-status-info-foreground: #1864ab; /* light deep text (dark → #7cc0ff) */
+  --color-status-info-border: color-mix(in srgb, #4ea7fc 40%, transparent);
 
-  --color-status-success: #2ea043; /* green · success */
-  --color-status-success-bg: color-mix(in srgb, #2ea043 18%, transparent);
-  --color-status-success-foreground: #2ea043;
-  --color-status-success-border: color-mix(in srgb, #2ea043 30%, transparent);
+  --color-status-success: #2ea043; /* green identity · success */
+  --color-status-success-bg: color-mix(in srgb, #2ea043 14%, transparent);
+  --color-status-success-foreground: #237032; /* light deep text (dark → #5fd07a) */
+  --color-status-success-border: color-mix(in srgb, #2ea043 40%, transparent);
 
-  --color-status-warning: #fc7840; /* orange · usage / expiry */
-  --color-status-warning-bg: color-mix(in srgb, #fc7840 18%, transparent);
-  --color-status-warning-foreground: #fc7840;
-  --color-status-warning-border: color-mix(in srgb, #fc7840 30%, transparent);
+  --color-status-warning: #fc7840; /* orange identity · usage / expiry */
+  --color-status-warning-bg: color-mix(in srgb, #fc7840 14%, transparent);
+  --color-status-warning-foreground: #9a3a0a; /* light deep text (dark → #ffa472) */
+  --color-status-warning-border: color-mix(in srgb, #fc7840 40%, transparent);
 
-  --color-status-error: #eb5757; /* coral · failure */
-  --color-status-error-bg: color-mix(in srgb, #eb5757 18%, transparent);
-  --color-status-error-foreground: #eb5757;
-  --color-status-error-border: color-mix(in srgb, #eb5757 30%, transparent);
+  --color-status-error: #eb5757; /* coral identity · failure */
+  --color-status-error-bg: color-mix(in srgb, #eb5757 14%, transparent);
+  --color-status-error-foreground: #a82c20; /* light deep text (dark → #ff8f8f) */
+  --color-status-error-border: color-mix(in srgb, #eb5757 40%, transparent);
 
   /* ---- Annotation note surface · sticky-note color (canvas AnnotationNode).
      Standalone token, not part of the neutral / status systems. Dark variant
@@ -354,8 +362,14 @@ html[data-theme='dark'] {
 
   --color-ring: var(--neutral-600);
 
-  /* status stays always-color (color-mix, no dark override); destructive
-     stays #eb5757. */
+  /* status identity hue / bg / border stay always-color (color-mix);
+     destructive stays #c0392b. Scheme D overrides ONLY the foreground text:
+     lightened colored text on the dark tint (dark 7.81–8.72 AA). */
+  --color-status-selected-foreground: #a5acf5;
+  --color-status-info-foreground: #7cc0ff;
+  --color-status-success-foreground: #5fd07a;
+  --color-status-warning-foreground: #ffa472;
+  --color-status-error-foreground: #ff8f8f;
 
   /* Annotation note · dark variant (muted warm tone, readable foreground). */
   --color-note: #3a3214;
