@@ -36,15 +36,17 @@ describe('NodeShell', () => {
     );
   });
 
-  it('selected overrides status ring with primary ring', () => {
+  it('selected draws the selected-status ring (1px), overriding any status ring', () => {
     render(
       <NodeShell selected status='error'>
         x
       </NodeShell>,
     );
     const cls = screen.getByTestId('node-shell').className;
-    expect(cls).toMatch(/ring-primary/);
+    expect(cls).toMatch(/ring-status-selected/);
+    expect(cls).toMatch(/ring-1(\s|$)/);
     expect(cls).not.toMatch(/ring-status-error/);
+    expect(cls).not.toMatch(/ring-primary/);
   });
 
   it('locked exposes a lock indicator', () => {

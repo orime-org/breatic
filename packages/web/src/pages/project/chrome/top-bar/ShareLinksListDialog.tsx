@@ -138,12 +138,12 @@ export function ShareLinksListDialog({
           </DialogDescription>
         </DialogHeader>
         {linksQuery.isLoading ? (
-          <div className='py-6 text-center text-[13px] text-muted-foreground'>
+          <div className='py-6 text-center text-sm text-muted-foreground'>
             {t('common.loading')}
           </div>
         ) : links.length === 0 ? (
           <div
-            className='py-6 text-center text-[13px] text-muted-foreground'
+            className='py-6 text-center text-sm text-muted-foreground'
             data-testid='share-links-list-empty'
           >
             {t('share.linksList.empty')}
@@ -211,13 +211,13 @@ function LinkRow({
     <div className='flex w-full items-center gap-3'>
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <span
-          className='truncate text-[13px] font-mono'
+          className='truncate text-sm font-mono'
           title={link.token}
           data-testid={`share-links-list-token-${link.id}`}
         >
           {shortenToken(link.token)}
         </span>
-        <span className='flex items-center gap-2 text-[11px] text-muted-foreground'>
+        <span className='flex items-center gap-2 text-2xs text-muted-foreground'>
           <RoleBadge role={link.role} />
           <span>·</span>
           <span>{relativeTime(link.createdAt, t)}</span>
@@ -269,7 +269,7 @@ function RoleBadge({ role }: { role: string }): React.JSX.Element {
         ? t('share.role.view')
         : role;
   return (
-    <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground'>
+    <span className='rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground'>
       {label}
     </span>
   );

@@ -125,11 +125,11 @@ export function ChatComposer({
             <span
               key={chip.id}
               role='listitem'
-              className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-[12px] text-foreground'
+              className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-xs text-foreground'
               data-testid={`chat-chip-${chip.id}`}
             >
               {chip.type ? (
-                <span className='text-[11px] text-muted-foreground'>
+                <span className='text-2xs text-muted-foreground'>
                   {chip.type}
                 </span>
               ) : null}
@@ -139,7 +139,7 @@ export function ChatComposer({
                   type='button'
                   aria-label={`Remove ${chip.label}`}
                   onClick={() => onRemoveChip(chip.id)}
-                  className='inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-[12px] leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
+                  className='inline-flex h-4 w-4 items-center justify-center rounded-chrome text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
                 >
                   ×
                 </button>
@@ -159,7 +159,7 @@ export function ChatComposer({
         }}
         placeholder={t('chat.composer.placeholder')}
         rows={3}
-        className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-[13px] leading-normal text-foreground outline-none placeholder:text-muted-foreground'
+        className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
         data-testid='chat-composer-textarea'
       />
@@ -170,7 +170,7 @@ export function ChatComposer({
           title={t('chat.composer.skill.title')}
           onClick={onPickSkill}
           data-testid='chat-composer-skill'
-          className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-[12px] font-medium transition-colors ${
+          className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
             activeSkillLabel
               ? 'border-foreground bg-foreground text-background'
               : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'

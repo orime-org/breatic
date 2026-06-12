@@ -144,7 +144,7 @@ export function RecoveryCodeDialog({
               type='checkbox'
               checked={acknowledged}
               onChange={(e) => setAcknowledged(e.target.checked)}
-              className='mt-0.5 h-4 w-4 rounded border-input accent-foreground'
+              className='mt-0.5 h-4 w-4 rounded border-border accent-foreground'
             />
             <Label
               htmlFor='ack-recovery-saved'

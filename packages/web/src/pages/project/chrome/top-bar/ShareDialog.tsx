@@ -212,7 +212,7 @@ export function ShareDialog({
           <SectionTitle>{t('share.inviteSection')}</SectionTitle>
           {!emailEnabled ? (
             <p
-              className='px-2 pb-2 text-[12px] text-muted-foreground'
+              className='px-2 pb-2 text-xs text-muted-foreground'
               data-testid='share-email-disabled-hint'
             >
               {t('share.emailDisabledHint')}
@@ -228,7 +228,7 @@ export function ShareDialog({
                 if (inviteError) setInviteError(null);
               }}
               placeholder={t('share.invitePlaceholder')}
-              className='h-8 flex-1 text-[13px]'
+              className='h-8 flex-1 text-sm'
               data-testid='share-invite-input'
               disabled={!emailEnabled || inviteSubmitting}
               aria-invalid={!!inviteError || undefined}
@@ -268,7 +268,7 @@ export function ShareDialog({
 
           <SectionTitle>{t('share.linkSection')}</SectionTitle>
           <div className='flex items-center justify-between gap-2 px-2 pb-2'>
-            <span className='text-[12px] text-muted-foreground'>
+            <span className='text-xs text-muted-foreground'>
               {t('share.linkDefaultRole')}
             </span>
             <RoleSelect
@@ -297,7 +297,7 @@ export function ShareDialog({
               <Input
                 readOnly
                 value={inviteUrl}
-                className='h-8 flex-1 text-[13px]'
+                className='h-8 flex-1 text-sm'
                 data-testid='share-invite-url'
               />
               <Button
@@ -318,7 +318,7 @@ export function ShareDialog({
           <div className='px-2 py-2'>
             <button
               type='button'
-              className='w-full text-left text-[12px] text-primary underline-offset-2 hover:underline'
+              className='w-full text-left text-xs text-primary underline-offset-2 hover:underline'
               onClick={() => setListDialogOpen(true)}
               data-testid='share-view-all-links'
             >
@@ -348,7 +348,7 @@ function SectionTitle({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className='px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+    <div className='px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
       {children}
     </div>
   );
@@ -384,7 +384,7 @@ function RoleSelect({
       disabled={disabled}
     >
       <SelectTrigger
-        className='h-8 w-[88px] text-[12px]'
+        className='h-8 w-[88px] text-xs'
         data-testid={testId}
       >
         <SelectValue />

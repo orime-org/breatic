@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
+import { Checkbox } from '@web/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Select,
@@ -167,6 +169,39 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </div>
           </Section>
 
+          <Section title='Checkbox · RadioGroup'>
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+              <div className='flex flex-col gap-2'>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-checked' defaultChecked />
+                  <Label htmlFor='g-cb-checked'>Checked</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-unchecked' />
+                  <Label htmlFor='g-cb-unchecked'>Unchecked</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Checkbox id='g-cb-disabled' disabled />
+                  <Label htmlFor='g-cb-disabled'>Disabled</Label>
+                </div>
+              </div>
+              <RadioGroup defaultValue='one'>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='one' id='g-rg-one' />
+                  <Label htmlFor='g-rg-one'>Option one</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='two' id='g-rg-two' />
+                  <Label htmlFor='g-rg-two'>Option two</Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='three' id='g-rg-three' disabled />
+                  <Label htmlFor='g-rg-three'>Disabled</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </Section>
+
           <Section title='Avatar · 5 sizes'>
             <div className='flex items-end gap-3'>
               {(['xs', 'sm', 'md', 'lg', 'xl'] as const).map((sz) => (
@@ -179,7 +214,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                   >
                     <AvatarFallback>U</AvatarFallback>
                   </Avatar>
-                  <span className='text-[10px] text-muted-foreground'>{sz}</span>
+                  <span className='text-2xs text-muted-foreground'>{sz}</span>
                 </div>
               ))}
             </div>
@@ -274,26 +309,18 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </ScrollArea>
           </Section>
 
-          <Section title='Status palette · 7 × 3-piece (bg / fg / border)'>
+          <Section title='Status palette · 5 × 3-piece (bg / fg / border) — always-color'>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
               {(
-                [
-                  'selected',
-                  'info',
-                  'handling',
-                  'locked',
-                  'warning',
-                  'error',
-                  'success',
-                ] as const
+                ['selected', 'info', 'success', 'warning', 'error'] as const
               ).map((name) => (
                 <div
                   key={name}
                   className='rounded-content-md border p-3 text-sm'
                   style={{
-                    background: `var(--status-${name}-bg)`,
-                    color: `var(--status-${name}-fg)`,
-                    borderColor: `var(--status-${name}-border)`,
+                    background: `var(--color-status-${name}-bg)`,
+                    color: `var(--color-status-${name}-foreground)`,
+                    borderColor: `var(--color-status-${name}-border)`,
                   }}
                 >
                   status · {name}

@@ -1,91 +1,95 @@
 /**
- * tokens.css — web v14 visual token source of truth.
+ * tokens.css — web visual token source of truth (design system 9th rebuild).
  *
- * Mirrors the design-system tokens.css PLUS chrome-baseline
- * mock v4.x UI scale extensions.
+ * Mirrors design/tokens.css (the design-side authority, machine-verified
+ * byte-identical to the ratified `token_test` sandbox) PLUS the two
+ * implementation-only blocks the design file intentionally omits
+ * (@utility shadow overrides + input autofill reset).
  *
- * Token layout (post-Tailwind v4 migration):
- *   - `@theme {}` block holds Tailwind 4 design-token namespaces
- *     (--color-*, --radius-*, --font-*, --shadow-*) so utility classes
- *     get full alpha-modifier support (`bg-muted/50`, `text-foreground/75`).
- *   - `:root` keeps primitives (neutral / brand) so they're consumed
- *     via `var()` for nested alias chains but DO NOT generate Tailwind
- *     utility classes (project policy: `bg-neutral-N` / `bg-brand-N`
- *     forbidden in chrome — use semantic `bg-muted` / `bg-card`).
- *   - `:root` also keeps non-color tokens whose namespaces are not part
- *     of Tailwind 4's design token system (--space-N, --btn-*, --avatar-*,
- *     --icon-*, --ts, --font-size-base, --elevation-*). These stay as
- *     CSS variables consumed via `var()` in inline styles / CSS rules.
- *   - `html[data-theme='dark']` overrides neutral primitives + color
+ * Decision source: design-system-rebuild-9th ADR (2026-06-10).
+ *
+ * Token layout (Tailwind 4):
+ *   - `:root` holds neutral primitives + non-Tailwind-namespace tokens
+ *     (--space-N, --btn-*, --avatar-*, --icon-*, --font-size-base,
+ *     --duration-*, --z-*, --border-width-*) consumed via `var()`.
+ *   - `@theme {}` holds the Tailwind design-token namespaces (--color-*,
+ *     --radius-*, --font-*, --text-*, --shadow-*) so utility classes get
+ *     full alpha-modifier support (`bg-muted/50`, `text-foreground/75`).
+ *     The status palette and the annotation-note colors live here too:
+ *     a `color-mix()` value in `@theme` generates utilities and emits the
+ *     variable normally (verified by a controlled Tailwind 4.3 compile —
+ *     `bg-status-error-bg`, `text-status-success`, `border-status-*-border`
+ *     all generate). An earlier note claimed `color-mix()` in `@theme` got
+ *     tree-shaken; that was a misdiagnosis, so status stays in `@theme` and
+ *     is consumed via clean utility classes (not arbitrary `var()` values).
+ *   - `html[data-theme='dark']` overrides neutral primitives + the color
  *     tokens that don't auto-invert. `@theme {}` can't be nested
- *     (Tailwind 4 design limitation), so dark must live in a normal
- *     selector with cascade-based runtime resolve.
+ *     (Tailwind 4 limitation), so dark lives in a normal selector resolved
+ *     via cascade at runtime.
  *
- * 4 token model decisions (user-confirmed 2026-05-19):
- *   1. `-foreground` full names (shadcn standard) — NOT short `-fg`
+ * Core idea: the whole neutral scale is ONE temperature (near-neutral,
+ * gently warm — the stone mid-step taupe bulge is removed). Foreground /
+ * border / ring / input / primary all derive from `var(--neutral-N)` from a
+ * single source, so they can never drift to a second temperature.
+ *
+ * 4 token model decisions (carried from the 2026-05-19 set):
+ *   1. `-foreground` full names (shadcn standard) — NOT short `-fg`.
  *   2. `--radius-chrome` (6px fixed) + `--radius-content-{sm,md,lg,xl}`
- *      (Tweaks-linked) — supersedes shadcn single `--radius` scale because
- *      Direction B Tweaks needs content-radius to respond to the slider
- *   3. `--color-primary` / `--color-primary-foreground` (ADR 14 amended)
- *      — `--brand-*` raw values reserved for logo SVG only
- *      (`--brand-logo-primary`)
- *   4. `--color-status-{name}-{bg,foreground,border}` complete 5-palette
- *      set (selected / info / handling / locked / warning / error / success),
- *      light + dark mode variants (don't auto-invert from neutral)
- *
- * Provenance:
- *   - shadcn alias values: ADR 14 (canvas-neutral-first-status-colors)
- *   - UI scale (avatar/btn/icon/space/radius split): chrome-baseline mock v4.x
- *   - status palette + dark variants: the design-system tokens.css full file
- *   - Tailwind 4 `@theme {}` migration
+ *      (Tweaks-linked) — Direction B Tweaks needs content radius to respond
+ *      to the slider.
+ *   3. `--color-primary` derives from neutral (pure black / white); raw
+ *      `--brand-*` values are reserved for the logo SVG only.
+ *   4. Status palette = 5 colors · scheme D (selected / info / success /
+ *      warning / error). Identity hue + bg + border are always-color (same
+ *      both modes); only the `-foreground` text flips by mode (deep in light,
+ *      lightened in dark) for readability. `handling` = info blue + spinner
+ *      (no own color); `locked` = neutral gray + lock icon.
  */
 
 /* ============================================================
-   :root — primitives (neutral / brand) + non-Tailwind-namespace
-   tokens. Consumed via var() in CSS rules / inline styles.
+   :root — neutral primitives + non-Tailwind-namespace tokens
+   + status palette (color-mix, must stay out of @theme).
    ============================================================ */
 :root,
 html[data-theme='light'] {
-  /* Neutral · stone-warm 11-step (light mode default) */
+  /* Neutral · unified near-neutral warm 11-step (light; dark reverses).
+     One consistent warm hue (R>=G>=B) with saturation tapering by lightness;
+     mid channels differ by ~5 to kill the stone taupe bulge. Shape matched
+     to Radix Sand, one step more neutral to fit the surfaces. */
   --neutral-0: #ffffff;
   --neutral-50: #fafaf9;
-  --neutral-100: #f5f5f4;
-  --neutral-200: #e7e5e4;
-  --neutral-300: #d6d3d1;
-  --neutral-400: #a8a29e;
-  --neutral-500: #78716c;
-  --neutral-600: #57534e;
-  --neutral-700: #44403c;
-  --neutral-800: #292524;
-  --neutral-900: #1c1917;
-  --neutral-950: #0c0a09;
+  --neutral-100: #f4f4f3;
+  --neutral-200: #e6e5e3;
+  --neutral-300: #d5d4d1;
+  --neutral-400: #a5a4a0;
+  --neutral-500: #757470;
+  --neutral-600: #545350;
+  --neutral-700: #43423f;
+  --neutral-800: #282725;
+  --neutral-900: #1b1a18;
+  --neutral-950: #0c0b09;
 
-  /* Brand raw values · logo SVG only (ADR 13 / ADR 14 amended).
-     Raw `--brand-*` outside the whitelist fails `pnpm lint:no-brand-usage`
-     (now enforced — chrome-baseline §F10 monochrome rule). Whitelist: this
-     file and `--brand-logo-primary`. */
+  /* Brand raw · logo SVG only (chrome / canvas / studio forbidden →
+     fails `pnpm lint:no-brand-usage`). Whitelist: this file and
+     `--brand-logo-primary`. */
   --brand-50: hsl(8, 58%, 97%);
   --brand-100: hsl(8, 58%, 92%);
   --brand-200: hsl(8, 58%, 82%);
   --brand-300: hsl(8, 58%, 70%);
   --brand-400: hsl(8, 58%, 58%);
-  --brand-500: hsl(8, 58%, 47%); /* main · logo SVG only */
+  --brand-500: hsl(8, 58%, 47%); /* main · logo only */
   --brand-600: hsl(8, 58%, 40%);
   --brand-700: hsl(8, 53%, 32%);
   --brand-800: hsl(8, 48%, 23%);
   --brand-900: hsl(8, 43%, 15%);
   --brand-logo-primary: var(--brand-500);
+  /* Foreground text on the solid brand logo mark. The former studio
+     brand-exemption tokens were removed when studio chrome went neutral;
+     only the logo keeps brand identity. */
+  --brand-fg: #ffffff;
 
-  /* Logo foreground · white text on the solid brand logo mark. The former
-     studio brand-exemption tokens (--brand-accent / --brand-tint) were removed
-     when the studio chrome went neutral (2026-06-06 studio-visual-direction-
-     neutral ADR, supersedes 2026-06-05-studio-brand-exemption); only the logo
-     keeps brand identity. */
-  --brand-fg: #ffffff;              /* foreground text on the solid brand logo */
-
-  /* Space scale · 8pt grid (chrome v4.0) — discrete project scale,
-     NOT Tailwind 4's --spacing single multiplier. Consumed inline
-     via `var(--space-N)` or via tailwind.config.ts spacing entries. */
+  /* Space scale · 8pt grid — discrete project scale, NOT Tailwind 4's
+     --spacing single multiplier. Consumed inline via `var(--space-N)`. */
   --space-1: 2px;
   --space-2: 4px;
   --space-3: 6px;
@@ -93,128 +97,149 @@ html[data-theme='light'] {
   --space-5: 12px;
   --space-6: 16px;
 
-  /* Button hit area · 4-step (chrome v4.0) */
+  /* Button height · Linear ladder 24/28/32/44 (no 36/40). */
   --btn-compact: 24px;
   --btn-inline: 28px;
   --btn-chrome: 32px;
-  --btn-menu: 40px;
+  --btn-default: 32px; /* form / dialog / chrome all 32 */
+  --btn-cta: 44px; /* primary CTA / landing */
   --chrome-btn-size: var(--btn-chrome);
   --chrome-btn-gap: var(--space-4);
 
-  /* Icon size · 4-step (chrome v4.0 / v4.10) */
+  /* Icon size · 4-step. */
   --icon-xs: 12px;
   --icon-sm: 14px;
   --icon-base: 18px;
   --icon-lg: 20px;
   --chrome-btn-icon: var(--icon-base);
 
-  /* Avatar size · 5-step (chrome v4.22) */
+  /* Avatar size · 5-step. */
   --avatar-xs: 20px;
   --avatar-sm: 26px;
   --avatar-md: 32px;
   --avatar-lg: 40px;
   --avatar-xl: 64px;
 
-  /* Typography · Tweaks-linked text scale */
+  /* Typography baseline · 15px (Linear true default, not 14) + Tweaks scale. */
   --ts: 1;
-  --font-size-base: calc(14px * var(--ts));
+  --font-size-base: calc(15px * var(--ts));
 
-  /* Elevation semantic layer (consumes --shadow-* below) */
+  /* Elevation semantic layer (consumes --shadow-* below). */
   --elevation-0: none;
   --elevation-1: var(--shadow-sm);
   --elevation-2: var(--shadow-md);
+
+  /* Motion · duration 5-step (desktop density, snappy). */
+  --duration-instant: 75ms;
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+  --duration-slower: 360ms;
+
+  /* z-index ladder (self-defined; wide gaps leave room to insert). */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-overlay: 1200;
+  --z-modal: 1300;
+  --z-popover: 1400;
+  --z-toast: 1500;
+  --z-tooltip: 1600;
+
+  /* Border width. */
+  --border-width-thin: 1px;
+  --border-width-thick: 2px;
 }
 
 /* ============================================================
    @theme — Tailwind 4 design token namespaces.
-   Utility classes auto-generated; alpha modifiers work
-   (e.g. `bg-muted/50` → real color-mix-based semi-transparent).
+   Utility classes auto-generated; alpha modifiers work.
    ============================================================ */
 @theme {
-  /* ---- Color (CTA / Surface / Border / Ring) ---- */
-  --color-primary: var(--neutral-900);
-  --color-primary-foreground: var(--neutral-0);
-  /* Primary CTA hover state.
-     Design principle: hover color vs base color must satisfy a
-     *relative* lightness delta (perceptual / Weber-Fechner), NOT an
-     absolute delta. Humans perceive small absolute deltas only on
-     dark bases; on light bases a small delta is invisible (~2%).
-     Current primary inverts across modes (light=black / dark=white),
-     so a per-mode override approximates a "switch by base color"
-     mapping. Light uses neutral-700 (dark base jumps to mid-dark,
-     ~200% relative delta — clearly visible). Dark overrides to
-     neutral-500 in the `[data-theme='dark']` block (light base jumps
-     to mid-light, ~35% relative delta — clearly visible).
-     Mock `.composer-send.ready:hover` (finalized line 758) only
-     specifies neutral-700 for both modes; empirically the dark mode
-     hover is too weak there, so this project corrects to one step
-     deeper for dark to keep perceptual symmetry.
-     **Future warning**: if a non-mode-reflexive dark-base button
-     ever ships (e.g. a `bg-foreground` button used in light mode
-     too), do NOT reuse this alias — introduce a separate
-     `--color-cta-on-dark-hover` instead, because this alias assumes
-     the base color follows the mode 1:1.
-     `hover:opacity-90` on the pure-white / pure-black primary fails
-     visually (<2% perceived delta) — solid swap is the only pattern
-     that works on saturated extremes. */
-  --color-primary-hover: var(--neutral-700);
-  --color-secondary: var(--neutral-100);
-  --color-secondary-foreground: var(--neutral-900);
-  --color-destructive: #dc2626; /* red-600 (dark override below) */
-  --color-destructive-foreground: #ffffff;
-  --color-background: var(--neutral-0);
+  /* ---- Surfaces · light: pale neutral base → containers brighten upward
+     (elevation = brighter). Hand-tuned semantic values (float needs
+     inter-step precision), same temperature as the neutral scale. ---- */
+  --color-background: #f6f6f5; /* page base */
+  --color-elevated: #fafafa; /* panel / sidebar +1 */
+  --color-card: #fdfdfc; /* card +2 */
+  --color-popover: #ffffff; /* overlay (top) */
+  --color-muted: #ededec; /* hover fill */
+  --color-accent: #e4e4e2; /* stronger fill / selected row */
+  --color-secondary: #ededec;
+
+  /* ---- Foreground · derived from the neutral scale (single source). ---- */
   --color-foreground: var(--neutral-900);
-  --color-card: var(--neutral-0);
-  --color-card-foreground: var(--neutral-900);
-  --color-popover: var(--neutral-0);
-  --color-popover-foreground: var(--neutral-900);
-  /* Elevated surface — for content-bearing panes like Canvas and
-     Composer; one step lighter than the page background in both
-     light and dark mode (elevated effect). Reuses the --neutral-50
-     primitive (light #fafaf9 / dark #1c1917 via the dark block's
-     neutral override) so a single alias auto-inverts across modes
-     without a separate dark override. Matches the chrome-baseline
-     mock — both `.canvas-area` and `.composer` use
-     `background: var(--neutral-50)`. */
-  --color-elevated: var(--neutral-50);
-  --color-muted: var(--neutral-100);
+  --color-foreground-secondary: var(--neutral-700);
   --color-muted-foreground: var(--neutral-500);
-  --color-accent: var(--neutral-100);
+  --color-foreground-disabled: var(--neutral-400);
+  --color-card-foreground: var(--neutral-900);
+  --color-popover-foreground: var(--neutral-900);
   --color-accent-foreground: var(--neutral-900);
-  --color-border: var(--neutral-200);
+  --color-secondary-foreground: var(--neutral-900);
+
+  /* ---- Border / input / focus ring ---- */
+  --color-border: rgba(27, 26, 24, 0.12);
   --color-input: var(--neutral-200);
-  --color-ring: var(--neutral-900);
+  /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
+  --color-ring: var(--neutral-700);
 
-  /* ---- Status palette · 5 colors × 3-piece ---- */
-  --color-status-selected-bg: #dbeafe;
-  --color-status-selected-foreground: #1d4ed8;
-  --color-status-selected-border: #3b82f6;
+  /* ---- Primary button · pure black/white, derived from the scale ---- */
+  --color-primary: var(--neutral-900);
+  --color-primary-foreground: var(--neutral-50);
+  /* hover lifts toward mid-gray. Pure black/white can't hover via
+     opacity/brightness (perceived delta <2% on saturated extremes); a solid
+     color swap is the only pattern that works. Light uses neutral-600; dark
+     overrides below to a fixed off-step. */
+  --color-primary-hover: var(--neutral-600);
 
-  --color-status-info-bg: #eff6ff;
-  --color-status-info-foreground: #1e3a8a;
-  --color-status-info-border: #3b82f6;
+  /* ---- Destructive · solid danger button (delete) = #c0392b + white (4.77:1
+     AA; fixes old #eb5757 + white = 3.48). Separate solid red from the error
+     tint (Radix-style one-color-three-steps). ---- */
+  --color-destructive: #c0392b;
+  --color-destructive-foreground: #ffffff;
 
-  --color-status-handling-bg: #dbeafe;
-  --color-status-handling-foreground: #1e40af;
-  --color-status-handling-border: #60a5fa;
+  /* ---- Status · 5 colors · scheme D (2026-06-11). Identity hue (same both
+     modes) drives bg = 14% tint + border = 40% tint over transparent (chip
+     adapts to any surface). foreground = a READABLE color that flips by mode:
+     deep here (light), lightened in the dark block below — the old "tint +
+     same-hue text" was unreadable (light info 2.03:1); D passes AA both modes
+     (light 4.88–5.74 / dark 7.81–8.72). Consumed via utilities (`bg-status-
+     error-bg`, `text-status-success-foreground`, `border-status-*-border`);
+     node selection ring uses `ring-status-selected` (1px). handling = info
+     blue + spinner; locked = neutral gray + lock icon. ---- */
+  --color-status-selected: #5e6ad2; /* indigo identity · selection ring */
+  --color-status-selected-bg: color-mix(in srgb, #5e6ad2 14%, transparent);
+  --color-status-selected-foreground: #4f46e5; /* light deep text (dark → #a5acf5) */
+  --color-status-selected-border: color-mix(in srgb, #5e6ad2 40%, transparent);
 
-  --color-status-locked-bg: #fef3c7;
-  --color-status-locked-foreground: #d97706;
-  --color-status-locked-border: #fbbf24;
+  --color-status-info: #4ea7fc; /* sky identity · tip / banner */
+  --color-status-info-bg: color-mix(in srgb, #4ea7fc 14%, transparent);
+  --color-status-info-foreground: #1864ab; /* light deep text (dark → #7cc0ff) */
+  --color-status-info-border: color-mix(in srgb, #4ea7fc 40%, transparent);
 
-  --color-status-warning-bg: #fef3c7;
-  --color-status-warning-foreground: #78350f;
-  --color-status-warning-border: #fbbf24;
+  --color-status-success: #2ea043; /* green identity · success */
+  --color-status-success-bg: color-mix(in srgb, #2ea043 14%, transparent);
+  --color-status-success-foreground: #237032; /* light deep text (dark → #5fd07a) */
+  --color-status-success-border: color-mix(in srgb, #2ea043 40%, transparent);
 
-  --color-status-error-bg: #fee2e2;
-  --color-status-error-foreground: #991b1b;
-  --color-status-error-border: #ef4444;
+  --color-status-warning: #fc7840; /* orange identity · usage / expiry */
+  --color-status-warning-bg: color-mix(in srgb, #fc7840 14%, transparent);
+  --color-status-warning-foreground: #9a3a0a; /* light deep text (dark → #ffa472) */
+  --color-status-warning-border: color-mix(in srgb, #fc7840 40%, transparent);
 
-  --color-status-success-bg: #d1fae5;
-  --color-status-success-foreground: #065f46;
-  --color-status-success-border: #10b981;
+  --color-status-error: #eb5757; /* coral identity · failure */
+  --color-status-error-bg: color-mix(in srgb, #eb5757 14%, transparent);
+  --color-status-error-foreground: #a82c20; /* light deep text (dark → #ff8f8f) */
+  --color-status-error-border: color-mix(in srgb, #eb5757 40%, transparent);
 
-  /* ---- Radius · chrome FIXED / content responds to Tweaks ---- */
+  /* ---- Annotation note surface · sticky-note color (canvas AnnotationNode).
+     Standalone token, not part of the neutral / status systems. Dark variant
+     overridden in the dark block below. ---- */
+  --color-note: #fff8c5;
+  --color-note-border: #f1e05a;
+  --color-note-foreground: var(--neutral-900);
+
+  /* ---- Radius · chrome fixed / content responds to Tweaks ---- */
   --radius-chrome: 6px;
   --radius-content-sm: 6px;
   --radius-content-md: 12px;
@@ -224,123 +249,145 @@ html[data-theme='light'] {
   --radius-md: var(--radius-content-md);
   --radius-lg: var(--radius-content-lg);
   --radius-full: 9999px;
-  /*
-   * Floating overlay radius — Sheet / Dialog / Popover share one
-   * token so the "popup family" stays visually consistent (issues
-   * #385 + #387). Aliased to chrome 6px today; change here to retune
-   * the whole popup family in one stop.
-   */
+  /* Floating overlay radius — Sheet / Dialog / Popover share one token so the
+     popup family stays visually consistent. */
   --radius-overlay: var(--radius-chrome);
-
-  /*
-   * Active-state border (issue #388) — used by NewSpaceDialog
-   * selected card and ChatComposer focus-within. Aliased to
-   * muted-foreground (mid-gray in light, light-gray in dark) so
-   * the activated state reads as "focused / picked" without
-   * shouting. Both modes auto-flip via the underlying neutral-500
-   * dark-override in tokens.css.
-   */
+  /* Active-state border — selected / focus-within. */
   --color-active-border: var(--color-muted-foreground);
 
   /* ---- Font ---- */
   --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP',
     system-ui, -apple-system, sans-serif;
 
-  /* ---- Shadow · light mode subtle ---- */
+  /* ---- Shadow · strategy A (containers zero shadow, only overlays a faint
+     shadow; light) ---- */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06),
-    0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08),
     0 2px 4px -2px rgba(0, 0, 0, 0.04);
+
+  /* ---- Type scale · 10 steps (base 15, each with a line-height) ---- */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 26px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 38px;
+  --text-4xl: 36px;
+  --text-4xl--line-height: 44px;
+
+  /* ---- Weight 4 / line-height multiplier 4 / tracking 5 / easing 4 ---- */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.01em;
+  --tracking-wider: 0.02em;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
 }
 
 /* ============================================================
-   Dark mode · [data-theme="dark"]
-   - Neutral inversion drives auto-inverting color tokens via cascade
-   - Explicit overrides for tokens that don't follow neutral
+   Dark · unified warm-neutral scale reversal + overrides for
+   tokens that don't auto-invert.
    ============================================================ */
 html[data-theme='dark'] {
-  /* Neutral inversion (stone-warm dark) — full reverse of stone scale
-     so --neutral-0 (canvas background) is the deepest stone-950, matching
-     chrome-baseline mock ground truth. The design-system tokens.css
-     v3 used #1C1917 (stone-900) here which diverged from the mock; this
-     full-reverse aligns chrome surfaces (TopBar / TabBar / Agent col)
-     to the mock's deeper bg. */
-  --neutral-0: #0c0a09;
-  --neutral-50: #1c1917;
-  --neutral-100: #292524;
-  --neutral-200: #44403c;
-  --neutral-300: #57534e;
-  --neutral-400: #78716c;
-  --neutral-500: #a8a29e;
-  --neutral-600: #d6d3d1;
-  --neutral-700: #e7e5e4;
-  --neutral-800: #f5f5f4;
+  /* neutral reversal (= light scale reversed, same temperature). */
+  --neutral-0: #0c0b09;
+  --neutral-50: #1b1a18;
+  --neutral-100: #282725;
+  --neutral-200: #43423f;
+  --neutral-300: #545350;
+  --neutral-400: #757470;
+  --neutral-500: #a5a4a0;
+  --neutral-600: #d5d4d1;
+  --neutral-700: #e6e5e3;
+  --neutral-800: #f4f4f3;
   --neutral-900: #fafaf9;
   --neutral-950: #ffffff;
 
-  /* --brand-fg stays #fff in dark too (white reads on the solid logo mark);
-     defined once in :root, no dark override needed. */
+  /* Surfaces · dark: warm black → brightens layer by layer (elevation =
+     brighter). */
+  --color-background: #0c0b0a;
+  --color-elevated: #161413;
+  --color-card: #1c1b1a;
+  --color-popover: #222120;
+  --color-muted: #2a2826;
+  --color-accent: #322f2d;
+  /* = muted; must differ from card or badges / secondary buttons vanish on
+     cards. */
+  --color-secondary: #2a2826;
 
-  /* Popover elevated surface (one step lighter than background) */
-  --color-popover: var(--neutral-50);
+  /* Foreground · derived. */
+  --color-foreground: var(--neutral-900);
+  --color-foreground-secondary: var(--neutral-600);
+  --color-muted-foreground: var(--neutral-500);
+  --color-foreground-disabled: var(--neutral-400);
+  --color-card-foreground: var(--neutral-900);
+  --color-popover-foreground: var(--neutral-900);
+  --color-accent-foreground: var(--neutral-900);
+  --color-secondary-foreground: var(--neutral-900);
 
-  /* Primary CTA hover — dark override. The dark mode primary is a
-     near-white base; the light-mode default of neutral-700 (a
-     mid-dark gray) yields only ~8% perceived delta against that
-     white base and is effectively invisible. Override to
-     neutral-500 (a mid-light gray) so the dark hover lands at ~35%
-     relative delta — perceptually symmetric with the light mode
-     hover. See the @theme block's --color-primary-hover comment
-     for the full design rationale. */
-  --color-primary-hover: var(--neutral-500);
+  --color-border: rgba(250, 250, 249, 0.12);
+  --color-input: var(--neutral-100);
 
-  /* shadcn destructive · lighter for dark contrast */
-  --color-destructive: #ef4444;
+  --color-primary: var(--neutral-900);
+  --color-primary-foreground: var(--neutral-50);
+  /* off-step (between neutral-500/600) keeps the approved darkness, de-warmed. */
+  --color-primary-hover: #c3c2bf;
 
-  /* Status palette dark variants (manually set, not auto-inverted) */
-  --color-status-selected-bg: #1e3a8a;
-  --color-status-selected-foreground: #dbeafe;
-  --color-status-selected-border: #60a5fa;
+  --color-ring: var(--neutral-600);
 
-  --color-status-info-bg: #1e3a8a;
-  --color-status-info-foreground: #dbeafe;
-  --color-status-info-border: #60a5fa;
+  /* status identity hue / bg / border stay always-color (color-mix);
+     destructive stays #c0392b. Scheme D overrides ONLY the foreground text:
+     lightened colored text on the dark tint (dark 7.81–8.72 AA). */
+  --color-status-selected-foreground: #a5acf5;
+  --color-status-info-foreground: #7cc0ff;
+  --color-status-success-foreground: #5fd07a;
+  --color-status-warning-foreground: #ffa472;
+  --color-status-error-foreground: #ff8f8f;
 
-  --color-status-handling-bg: #1e3a8a;
-  --color-status-handling-foreground: #93c5fd;
-  --color-status-handling-border: #3b82f6;
+  /* Annotation note · dark variant (muted warm tone, readable foreground). */
+  --color-note: #3a3214;
+  --color-note-border: #5c5020;
+  --color-note-foreground: var(--neutral-900);
 
-  --color-status-locked-bg: #78350f;
-  --color-status-locked-foreground: #fde68a;
-  --color-status-locked-border: #f59e0b;
-
-  --color-status-warning-bg: #78350f;
-  --color-status-warning-foreground: #fde68a;
-  --color-status-warning-border: #f59e0b;
-
-  --color-status-error-bg: #7f1d1d;
-  --color-status-error-foreground: #fca5a5;
-  --color-status-error-border: #f87171;
-
-  --color-status-success-bg: #064e3b;
-  --color-status-success-foreground: #6ee7b7;
-  --color-status-success-border: #34d399;
-
-  /* Shadow deepens in dark for visibility on dark background */
+  /* Shadow deepens for visibility on dark background. */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4),
-    0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5),
     0 2px 4px -2px rgba(0, 0, 0, 0.4);
 }
 
 /* ============================================================
-   Shadow utility overrides — Tailwind 4 stock `.shadow-*` is
-   hardcoded with `--tw-shadow` chain and ignores our
-   `@theme { --shadow-* }` token. Override so the utility class
-   consumes our tokens (which auto-invert in dark via the dark
-   block above).
+   Shadow utility overrides — Tailwind 4 stock `.shadow-*` is hardcoded
+   with the `--tw-shadow` chain and ignores our `@theme { --shadow-* }`
+   token. Override so the utility class consumes our tokens (which
+   auto-invert in dark via the dark block above).
    ============================================================ */
 @utility shadow {
   box-shadow: var(--shadow);
@@ -353,20 +400,19 @@ html[data-theme='dark'] {
 }
 
 /* ============================================================
-   Input autofill reset — browser autofill (Chrome / Safari)
-   injects a light-blue (or yellow) -webkit-box-shadow as bg and
-   a dark -webkit-text-fill-color on autofilled inputs, bypassing
-   our `bg-transparent` + `text-foreground` token chain. Result:
-   dark-mode form inputs flash a bright pale bg after autofill.
+   Input autofill reset — browser autofill (Chrome / Safari) injects a
+   light-blue (or yellow) -webkit-box-shadow as bg and a dark
+   -webkit-text-fill-color on autofilled inputs, bypassing our
+   `bg-transparent` + `text-foreground` token chain. Result: dark-mode form
+   inputs flash a bright pale bg after autofill.
 
-   Standard counter: paint over the browser bg with a 1000px inset
-   box-shadow in the form's surface color, override text-fill-color,
-   and set a 5000s background-color transition to suppress the
-   brief autofill yellow flash before the shadow lands. `--color-popover`
-   matches Dialog / Popover surfaces, where 99% of autofillable
-   forms live (auth / invite / settings). Use `!important` because
-   `:-webkit-autofill` rules are also browser-injected via
-   `!important` and can only be defeated in kind.
+   Standard counter: paint over the browser bg with a 1000px inset box-shadow
+   in the form's surface color, override text-fill-color, and set a 5000s
+   background-color transition to suppress the brief autofill yellow flash
+   before the shadow lands. `--color-popover` matches Dialog / Popover
+   surfaces, where 99% of autofillable forms live. `!important` is required
+   because `:-webkit-autofill` rules are browser-injected via `!important`
+   and can only be defeated in kind.
    ============================================================ */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,

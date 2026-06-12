@@ -109,7 +109,7 @@ function BackLink(): React.JSX.Element {
       to='/studio'
       aria-label='Back to Studio'
       data-testid='top-bar-back'
-      className='inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground'
+      className='inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground'
     >
       <ArrowLeft className='h-3.5 w-3.5' />
       <span>Studio</span>
@@ -135,7 +135,7 @@ function CreditsPill({
     <span
       data-testid='credits-chip'
       aria-label='Credits balance'
-      className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-[12px] tabular-nums'
+      className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-xs tabular-nums'
       style={{ padding: '0 2px 0 var(--space-4)', gap: 'var(--space-3)' }}
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />

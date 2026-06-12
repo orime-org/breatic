@@ -21,7 +21,7 @@ export function NonMemberView(): React.JSX.Element {
   const t = useTranslation();
   return (
     <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
-      <h2 className='text-[15px] font-semibold tracking-tight text-foreground'>
+      <h2 className='text-base font-semibold tracking-tight text-foreground'>
         {t('studio.container.nonMember.worksTitle')}
       </h2>
       <div className='flex flex-col items-center justify-center gap-2 py-16 text-center'>

@@ -24,7 +24,7 @@ interface RailStudioGroupProps {
 }
 
 const ROW =
-  'flex h-[30px] items-center gap-2 rounded-[4px] pl-3.5 pr-2 text-[13px] leading-normal transition-colors';
+  'flex h-[30px] items-center gap-2 rounded-chrome pl-3.5 pr-2 text-sm leading-normal transition-colors';
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand). A
@@ -58,7 +58,7 @@ export function RailStudioGroup({
         type='button'
         onClick={toggle}
         aria-expanded={!collapsed}
-        className='flex h-8 items-center gap-2 rounded-[4px] px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+        className='flex h-8 items-center gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
       >
         <Icon className='h-4 w-4' />
         {title}
@@ -81,7 +81,7 @@ export function RailStudioGroup({
                     : 'text-foreground hover:bg-muted'
                 }`}
               >
-                <span className='flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--neutral-200)] text-[10px] font-bold text-[var(--neutral-600)]'>
+                <span className='flex h-5 w-5 items-center justify-center rounded-chrome bg-muted text-2xs font-bold text-muted-foreground'>
                   {studio.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className='flex-1 truncate'>{studio.name}</span>

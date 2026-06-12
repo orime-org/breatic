@@ -36,7 +36,7 @@ function Field({
         {label}
       </span>
       <span
-        className={`rounded-[4px] border border-border bg-[var(--neutral-50)] px-2.5 py-2 text-[13px] ${
+        className={`rounded-chrome border border-border bg-muted px-2.5 py-2 text-sm ${
           mono ? 'font-mono text-muted-foreground' : 'text-foreground'
         }`}
       >
@@ -75,8 +75,8 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
       </section>
 
       {canGovern ? (
-        <section className='flex flex-col gap-2 rounded-[4px] border border-destructive p-4'>
-          <h3 className='text-[13px] font-bold text-destructive'>
+        <section className='flex flex-col gap-2 rounded-chrome border border-destructive p-4'>
+          <h3 className='text-sm font-bold text-destructive'>
             {t('studio.container.settings.dangerTitle')}
           </h3>
           <p className='text-xs text-muted-foreground'>
@@ -85,13 +85,13 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
           <div className='mt-1 flex gap-2.5'>
             <button
               type='button'
-              className='h-[30px] rounded-[4px] border border-border px-3 text-xs font-medium transition-colors hover:bg-muted'
+              className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-muted'
             >
               {t('studio.container.settings.transfer')}
             </button>
             <button
               type='button'
-              className='h-[30px] rounded-[4px] border border-destructive px-3 text-xs font-medium text-destructive transition-colors hover:bg-muted'
+              className='h-[30px] rounded-chrome border border-destructive px-3 text-xs font-medium text-destructive transition-colors hover:bg-muted'
             >
               {t('studio.container.settings.delete')}
             </button>

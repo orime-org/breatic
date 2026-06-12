@@ -60,10 +60,12 @@ describe('AlertDialog', () => {
     expect(action!.className).toContain('text-primary-foreground');
   });
 
-  it('Cancel button carries outline tokens (border-input + bg-background)', () => {
+  it('Cancel button carries outline tokens (border-border + bg-background)', () => {
     setup(true);
     const cancel = screen.getByRole('button', { name: 'Cancel' });
-    expect(cancel.className).toContain('border-input');
+    // Outline buttons share the visible form-control hairline (border-border).
+    expect(cancel.className).toContain('border-border');
+    expect(cancel.className).not.toContain('border-input');
     expect(cancel.className).toContain('bg-background');
   });
 });

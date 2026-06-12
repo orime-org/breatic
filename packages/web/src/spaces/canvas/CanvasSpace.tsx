@@ -50,11 +50,11 @@ export function CanvasSpace({
     >
       <div
         data-testid='canvas-empty'
-        className='absolute inset-0 flex items-center justify-center text-center text-[13px] leading-relaxed text-muted-foreground'
+        className='absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
       >
         <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-elevated px-6 py-4'>
           <strong className='block text-foreground'>{t('canvas.emptyState.title')}</strong>
-          <span className='text-[12px] text-muted-foreground'>
+          <span className='text-xs text-muted-foreground'>
             {t('canvas.emptyState.hint')}
           </span>
         </div>

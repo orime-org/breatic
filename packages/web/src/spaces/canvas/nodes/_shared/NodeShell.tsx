@@ -33,7 +33,7 @@ const STATUS_RING: Record<NodeStatus, string> = {
  *   - `error`    → error ring (last operation failed)
  * @param root0 - Node shell props.
  * @param root0.status - Node status, selecting the status ring (idle / handling / error).
- * @param root0.selected - Whether the node is selected, drawing the primary selection ring.
+ * @param root0.selected - Whether the node is selected, drawing the selected-status ring (1px).
  * @param root0.locked - Whether the node is locked, rendering the lock indicator.
  * @param root0.children - The type node's body rendered inside the shell.
  * @param root0.className - Extra classes merged onto the shell (per-modality sizing / color).
@@ -56,7 +56,7 @@ export function NodeShell({
       data-locked={locked ? 'true' : 'false'}
       className={cn(
         'relative rounded-lg border border-border bg-card text-card-foreground shadow-sm transition-colors',
-        selected && 'ring-2 ring-primary ring-offset-2',
+        selected && 'ring-1 ring-status-selected ring-offset-2',
         !selected && STATUS_RING[status],
         className,
       )}
@@ -65,7 +65,7 @@ export function NodeShell({
         <div
           aria-hidden='true'
           data-testid='node-lock-indicator'
-          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-[10px] text-muted-foreground'
+          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-2xs text-muted-foreground'
         >
           lock
         </div>

@@ -52,7 +52,7 @@ export function LoadingOverlay({
     >
       <div className='flex flex-col items-center gap-3 rounded-md border border-border bg-popover px-6 py-4 shadow'>
         <Loader2 className='h-6 w-6 animate-spin text-foreground' />
-        <span className='text-[13px] text-foreground'>{message}</span>
+        <span className='text-sm text-foreground'>{message}</span>
       </div>
     </div>
   );

@@ -137,12 +137,12 @@ export function SpaceKindPicker({
                   selected ? 'text-foreground' : 'text-muted-foreground',
                 )}
               />
-              <span className='text-[13px] font-medium'>{t(card.titleKey)}</span>
-              <span className='text-[11px] text-muted-foreground'>
+              <span className='text-sm font-medium'>{t(card.titleKey)}</span>
+              <span className='text-2xs text-muted-foreground'>
                 {t(card.subtitleKey)}
               </span>
               {!card.available ? (
-                <span className='rounded-[4px] bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground'>
+                <span className='rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
                   {t('spaces.create.notAvailable')}
                 </span>
               ) : null}

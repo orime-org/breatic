@@ -102,9 +102,26 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Cancel' }).className,
-    ).toContain('border-input');
+    ).toContain('border-border');
     await user.type(screen.getByLabelText('Name'), 'My Project');
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
+  });
+
+  it('renders visibility as a neutral one-row RadioGroup (no native blue radio)', () => {
+    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
+    // The two options live in a Radix RadioGroup (role=radiogroup), laid out on
+    // one row (flex-row). Replaces the native <input type=radio> whose browser
+    // accent rendered blue against the all-neutral design system.
+    const group = screen.getByTestId('new-project-visibility');
+    expect(group).toHaveAttribute('role', 'radiogroup');
+    expect(group.className).toContain('flex-row');
+    // Both visible options are neutral Radix radios (role=radio carrying the
+    // border-border hairline), not the bare browser-blue <input type=radio>.
+    // (Radix also renders aria-hidden native inputs for form submission; those
+    // are visually hidden and never show the browser accent.)
+    const radios = group.querySelectorAll('[role="radio"]');
+    expect(radios).toHaveLength(2);
+    expect(radios[0].className).toContain('border-border');
   });
 });
 

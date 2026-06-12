@@ -62,7 +62,7 @@ function BannerButton({
       className={cn(
         'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
         'border border-white/30 bg-black/30 px-3',
-        'text-[13px] font-medium text-white',
+        'text-sm font-medium text-white',
         // Hover feedback: solid color swap (bg + border). Aligns with the
         // rest of the project's hover-only convention - project-wide
         // rule is "hover state, no active state" per user 2026-05-26
@@ -163,7 +163,7 @@ export function ConnectionBanner({
       data-status={status}
       className={cn(
         'fixed top-0 right-0 left-0 z-50',
-        'flex items-center justify-between gap-3 px-4 py-2 text-[13px]',
+        'flex items-center justify-between gap-3 px-4 py-2 text-sm',
         // Mode-independent - see component docstring. Tailwind static
         // palette is intentional: banner color does NOT follow light/dark.
         isAuthFailed

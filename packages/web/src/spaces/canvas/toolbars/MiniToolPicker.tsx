@@ -66,7 +66,7 @@ export function MiniToolPicker({
                 data-testid={`mini-tool-${t.id}`}
               >
                 <span>{t.label}</span>
-                <span className='text-[10px] uppercase text-muted-foreground'>
+                <span className='text-2xs uppercase text-muted-foreground'>
                   {t.output}
                 </span>
               </Button>

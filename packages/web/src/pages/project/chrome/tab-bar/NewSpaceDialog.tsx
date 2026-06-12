@@ -169,7 +169,7 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
                   coming before the maxLength hard-stops them. */}
               <span
                 className={cn(
-                  'text-[11px] tabular-nums',
+                  'text-2xs tabular-nums',
                   name.length >= SPACE_NAME_MAX_LEN - 8
                     ? 'text-status-warning-foreground'
                     : 'text-muted-foreground',

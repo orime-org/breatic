@@ -43,7 +43,7 @@ export function ThinkingFold({
       {open ? (
         <pre
           data-testid='thinking-fold-body'
-          className='whitespace-pre-wrap px-2 py-1 font-sans text-[11px] text-muted-foreground'
+          className='whitespace-pre-wrap px-2 py-1 font-sans text-2xs text-muted-foreground'
         >
           {thinking}
         </pre>

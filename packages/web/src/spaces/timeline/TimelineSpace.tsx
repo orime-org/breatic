@@ -55,7 +55,7 @@ export function TimelineSpace({
     >
       <div
         data-testid='timeline-ruler'
-        className='h-8 border-b border-border bg-muted/40 text-[10px] tabular-nums text-muted-foreground'
+        className='h-8 border-b border-border bg-muted/40 text-2xs tabular-nums text-muted-foreground'
       />
       <div className='flex-1 overflow-auto'>
         {tracks.map((track) => (
@@ -76,7 +76,7 @@ export function TimelineSpace({
                     left: `${clip.startMs * pixelsPerMs}px`,
                     width: `${clip.durationMs * pixelsPerMs}px`,
                   }}
-                  className='absolute top-1 bottom-1 truncate rounded bg-primary/20 px-1 text-[10px] text-foreground'
+                  className='absolute top-1 bottom-1 truncate rounded bg-primary/20 px-1 text-2xs text-foreground'
                   title={clip.label}
                 >
                   {clip.label}

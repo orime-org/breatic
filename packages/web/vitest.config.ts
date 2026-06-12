@@ -7,9 +7,10 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     globals: true,
     css: true,
-    // tests/smoke/ is the Playwright e2e suite (`pnpm test:smoke`); exclude
-    // it from vitest so the two runners do not clash on `test()` globals.
-    exclude: ['node_modules', 'dist', 'tests/smoke/**'],
+    // tests/smoke/ and tests/visual/ are Playwright suites (`pnpm test:smoke`
+    // / `pnpm test:visual`); exclude both from vitest so the two runners do not
+    // clash on `test()` globals.
+    exclude: ['node_modules', 'dist', 'tests/smoke/**', 'tests/visual/**'],
     // See packages/core/vitest.config.ts for the 5s → 15s rationale.
     testTimeout: 15_000,
   },

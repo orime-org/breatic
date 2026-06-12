@@ -117,7 +117,7 @@ export function ConversationHistorySheet({
         data-testid='conversation-history-sheet'
       >
         <SheetHeader className='px-4 py-3'>
-          <SheetTitle className='text-[13px] font-medium uppercase tracking-wide text-muted-foreground'>
+          <SheetTitle className='text-sm font-medium uppercase tracking-wide text-muted-foreground'>
             {t('chat.history.title')}
           </SheetTitle>
           <SheetDescription className='sr-only'>
@@ -130,7 +130,7 @@ export function ConversationHistorySheet({
           role='list'
         >
           {conversations.length === 0 ? (
-            <li className='px-4 py-3 text-[13px] text-muted-foreground'>
+            <li className='px-4 py-3 text-sm text-muted-foreground'>
               {t('chat.history.empty')}
             </li>
           ) : (
@@ -155,15 +155,15 @@ export function ConversationHistorySheet({
                       }`}
                     />
                     <span className='flex min-w-0 flex-1 flex-col gap-1'>
-                      <span className='truncate text-[14px] font-semibold text-foreground'>
+                      <span className='truncate text-base font-semibold text-foreground'>
                         {c.name}
                       </span>
                       {c.preview ? (
-                        <span className='truncate text-[12px] text-muted-foreground'>
+                        <span className='truncate text-xs text-muted-foreground'>
                           {c.preview}
                         </span>
                       ) : null}
-                      <span className='text-[11px] tabular-nums text-muted-foreground'>
+                      <span className='text-2xs tabular-nums text-muted-foreground'>
                         {t(rel.key, rel.params)}
                       </span>
                     </span>

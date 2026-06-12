@@ -70,7 +70,7 @@ export function LangSwitcher(): React.JSX.Element {
             >
               <span
                 aria-hidden='true'
-                className='inline-flex w-4 shrink-0 justify-center text-[13px] font-medium text-muted-foreground'
+                className='inline-flex w-4 shrink-0 justify-center text-sm font-medium text-muted-foreground'
               >
                 {l.glyph}
               </span>

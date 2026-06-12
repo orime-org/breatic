@@ -132,7 +132,7 @@ export function TitleEditable({
         // stone-warm value — `bg-muted/50` opacity modifier fell back to
         // browser-native input white in dark mode (Tailwind 4 + var color
         // alpha quirk). Solid token keeps the contrast right both modes.
-        className='inline-block min-w-[40px] border-0 bg-muted align-middle text-[13px] font-medium text-foreground outline-none [field-sizing:content]'
+        className='inline-block min-w-[40px] border-0 bg-muted align-middle text-sm font-medium text-foreground outline-none [field-sizing:content]'
         style={sharedStyle}
         data-testid='title-input'
       />
@@ -158,7 +158,7 @@ export function TitleEditable({
           setEditing(true);
         }
       }}
-      className='inline-block min-w-0 cursor-text truncate align-middle text-[13px] font-medium outline-none hover:bg-muted'
+      className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-muted'
       style={sharedStyle}
       data-testid='title-display'
       title={draft}

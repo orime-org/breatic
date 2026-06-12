@@ -160,10 +160,10 @@ export const MembersStack = React.forwardRef<
         data-testid='members-popover'
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
-          <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+          <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
             {t('members.popover.title')}
           </span>
-          <span className='text-[11px] tabular-nums text-muted-foreground'>
+          <span className='text-2xs tabular-nums text-muted-foreground'>
             {members.length}
           </span>
         </div>
@@ -184,7 +184,7 @@ export const MembersStack = React.forwardRef<
           <Button
             variant='outline'
             size='sm'
-            className='w-full justify-center gap-2 text-[13px]'
+            className='w-full justify-center gap-2 text-sm'
             onClick={openInvite}
             data-testid='members-invite-trigger'
           >
@@ -194,7 +194,7 @@ export const MembersStack = React.forwardRef<
           <Button
             variant='outline'
             size='sm'
-            className='w-full justify-center gap-2 text-[13px]'
+            className='w-full justify-center gap-2 text-sm'
             onClick={openManage}
             data-testid='members-manage-trigger'
           >
@@ -234,22 +234,22 @@ function MemberRow({
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <Avatar className='h-8 w-8 shrink-0'>
-        <AvatarFallback className='text-[12px] font-semibold'>
+        <AvatarFallback className='text-xs font-semibold'>
           {initialsOf(member.name)}
         </AvatarFallback>
       </Avatar>
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-        <span className='flex items-center gap-1.5 truncate text-[13px] text-foreground'>
+        <span className='flex items-center gap-1.5 truncate text-sm text-foreground'>
           {member.name}
           {isMe ? (
-            <span className='text-[12px] text-muted-foreground'>
+            <span className='text-xs text-muted-foreground'>
               {t('members.popover.isMe')}
             </span>
           ) : null}
         </span>
         <span
           className={cn(
-            'truncate text-[12px]',
+            'truncate text-xs',
             member.role === 'owner'
               ? 'font-medium text-foreground'
               : 'text-muted-foreground',
@@ -263,7 +263,7 @@ function MemberRow({
           variant='outline'
           size='sm'
           aria-label={`Remove ${member.name}`}
-          className='h-7 shrink-0 px-3 text-[12px] opacity-0 transition-opacity group-hover:opacity-100'
+          className='h-7 shrink-0 px-3 text-xs opacity-0 transition-opacity group-hover:opacity-100'
           disabled={removePending}
           onClick={onRemove}
           data-testid={`members-remove-${member.id}`}
@@ -273,7 +273,7 @@ function MemberRow({
       ) : (
         <span
           className={cn(
-            'shrink-0 text-[11px] uppercase tracking-wide',
+            'shrink-0 text-2xs uppercase tracking-wide',
             member.role === 'owner' ? 'text-foreground font-medium' : 'text-muted-foreground',
           )}
         >
@@ -313,7 +313,7 @@ function AvatarChip({
         muted && 'bg-muted text-muted-foreground',
       )}
     >
-      <AvatarFallback className='text-[10px] font-semibold'>
+      <AvatarFallback className='text-2xs font-semibold'>
         {initials.slice(0, 2).toUpperCase()}
       </AvatarFallback>
     </Avatar>

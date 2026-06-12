@@ -249,7 +249,7 @@ function VtButton({
           {...rest}
           disabled={disabled}
           className={cn(
-            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-chrome text-[13px] transition-colors',
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-chrome text-base transition-colors',
             disabled
               ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
               : active
@@ -338,7 +338,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
-              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-[11px] tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-2xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
             >
               <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>
             </button>
@@ -366,7 +366,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
                 onClick={() => apply(preset)}
                 data-testid={`zoom-preset-${Math.round(preset * 100)}`}
                 className={cn(
-                  'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-[12px] transition-colors',
+                  'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-xs transition-colors',
                   isCurrent
                     ? 'bg-secondary text-secondary-foreground'
                     : 'bg-transparent text-foreground hover:bg-accent',
@@ -398,9 +398,9 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
             aria-label={t('viewportToolbar.zoomCustomAria')}
             placeholder='100'
             data-testid='zoom-custom-input'
-            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-[12px] tabular-nums text-foreground outline-none transition-colors focus-visible:border-foreground'
+            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-foreground'
           />
-          <span className='text-[12px] text-muted-foreground'>%</span>
+          <span className='text-xs text-muted-foreground'>%</span>
         </div>
       </PopoverContent>
     </Popover>

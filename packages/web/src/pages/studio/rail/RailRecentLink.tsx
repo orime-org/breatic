@@ -29,7 +29,7 @@ export function RailRecentLink({
     <Link
       to='/studio'
       aria-current={active ? 'page' : undefined}
-      className={`flex h-8 items-center gap-2.5 rounded-[4px] px-2 text-[13px] font-medium leading-none transition-colors ${
+      className={`flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors ${
         active ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted'
       }`}
     >

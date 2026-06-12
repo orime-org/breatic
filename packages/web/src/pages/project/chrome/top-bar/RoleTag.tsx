@@ -67,7 +67,7 @@ function ReadOnlyRoleTag({ role }: { role: ProjectRole }): React.JSX.Element {
     <span
       data-testid='role-tag'
       className={cn(
-        'inline-flex shrink-0 items-center rounded-chrome bg-muted text-[11px] font-medium',
+        'inline-flex shrink-0 items-center rounded-chrome bg-muted text-2xs font-medium',
         isOwner ? 'text-foreground' : 'text-muted-foreground',
       )}
       style={{ padding: '2px var(--space-3)' }}
@@ -114,7 +114,7 @@ function ClickableViewerRoleTag({
           type='button'
           data-testid='role-tag'
           aria-label={t('roleTag.upgradeRequest.ariaLabel')}
-          className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-muted text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+          className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-muted text-2xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{ padding: '2px var(--space-3)' }}
         >
           <span>{ROLE_LABEL.viewer}</span>
@@ -127,10 +127,10 @@ function ClickableViewerRoleTag({
         data-testid='role-tag-popover'
       >
         <div className='flex flex-col gap-2'>
-          <div className='text-[13px] font-medium'>
+          <div className='text-sm font-medium'>
             {t('roleTag.upgradeRequest.title')}
           </div>
-          <p className='text-[12px] text-muted-foreground'>
+          <p className='text-xs text-muted-foreground'>
             {t('roleTag.upgradeRequest.description')}
           </p>
           <Textarea
@@ -138,7 +138,7 @@ function ClickableViewerRoleTag({
             value={message}
             maxLength={500}
             onChange={(e) => setMessage(e.target.value)}
-            className='min-h-[80px] text-[12px]'
+            className='min-h-[80px] text-xs'
             data-testid='role-tag-message'
           />
           <div className='flex items-center justify-end gap-2'>

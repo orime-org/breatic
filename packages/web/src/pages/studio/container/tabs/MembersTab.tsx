@@ -206,7 +206,7 @@ export function MembersTab({
                   <span className='flex items-center gap-3'>
                     <span
                       aria-hidden='true'
-                      className='flex h-8 w-8 items-center justify-center rounded-full bg-[var(--neutral-200)] text-[13px] font-bold text-[var(--neutral-600)]'
+                      className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'
                     >
                       {member.name.slice(0, 1).toUpperCase()}
                     </span>
@@ -225,7 +225,7 @@ export function MembersTab({
                 </td>
                 <td className='py-2.5'>
                   <span
-                    className={`inline-flex h-5 min-w-[64px] items-center justify-center rounded-content-sm border border-border bg-background px-2 text-[11px] font-semibold ${
+                    className={`inline-flex h-5 min-w-[64px] items-center justify-center rounded-content-sm border border-border bg-background px-2 text-2xs font-semibold ${
                       admin ? 'text-foreground' : 'text-muted-foreground'
                     }`}
                   >

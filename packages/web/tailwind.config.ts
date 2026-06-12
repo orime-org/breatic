@@ -37,7 +37,6 @@ const config: Config = {
         'btn-compact': 'var(--btn-compact)',
         'btn-inline': 'var(--btn-inline)',
         'btn-chrome': 'var(--btn-chrome)',
-        'btn-menu': 'var(--btn-menu)',
         // Avatar sizes
         'avatar-xs': 'var(--avatar-xs)',
         'avatar-sm': 'var(--avatar-sm)',

@@ -43,10 +43,13 @@ describe('Select', () => {
     expect(trigger.tagName).toBe('BUTTON');
   });
 
-  it('trigger carries border-input + bg-transparent tokens', () => {
+  it('trigger carries border-border + bg-transparent tokens', () => {
     setup(false);
     const trigger = screen.getByTestId('trigger');
-    expect(trigger.className).toContain('border-input');
+    // Form controls share Input's visible hairline token (border-border); the
+    // opaque --color-input grey is the Switch fill, not a border (see migration).
+    expect(trigger.className).toContain('border-border');
+    expect(trigger.className).not.toContain('border-input');
     expect(trigger.className).toContain('bg-transparent');
   });
 
