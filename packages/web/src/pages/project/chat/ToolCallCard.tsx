@@ -35,7 +35,7 @@ export function ToolCallCard({
       </div>
       {toolCall.status === 'error' ? (
         <div
-          className='mt-1 text-destructive'
+          className='mt-1 text-status-error-foreground'
           data-testid='tool-call-error'
         >
           {toolCall.errorMessage ?? 'Tool call failed'}

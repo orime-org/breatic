@@ -104,7 +104,7 @@ export function MemberRowMenu({
         <Button
           variant='ghost'
           size='menu-item'
-          className='w-full justify-start text-destructive hover:text-destructive'
+          className='w-full justify-start text-status-error-foreground hover:text-status-error-foreground'
           onClick={() => runClosing(onRemove)}
           data-testid={`member-remove-${member.id}`}
         >

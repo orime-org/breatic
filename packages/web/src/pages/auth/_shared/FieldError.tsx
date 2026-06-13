@@ -43,7 +43,7 @@ export function FieldError({
     <p
       id={id}
       role={role}
-      className={cn('text-sm leading-snug text-destructive', className)}
+      className={cn('text-sm leading-snug text-status-error-foreground', className)}
       {...rest}
     >
       {children}

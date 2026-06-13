@@ -241,7 +241,7 @@ export function ShareDialog({
             />
           </div>
           {inviteError ? (
-            <p className='px-2 pb-1 text-xs text-destructive' role='alert'>
+            <p className='px-2 pb-1 text-xs text-status-error-foreground' role='alert'>
               {inviteError}
             </p>
           ) : null}

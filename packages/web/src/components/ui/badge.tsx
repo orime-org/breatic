@@ -26,9 +26,11 @@ const badgeVariants = cva(
         default:
           'border-transparent bg-primary text-primary-foreground shadow transition-colors hover:bg-primary-hover',
         secondary:
-          'border-transparent bg-secondary text-secondary-foreground hover:bg-muted',
+          'border-transparent bg-secondary text-secondary-foreground hover:bg-accent',
+        // Destructive badge — red-narrowed to the status-error coral tint
+        // (2026-06-13): 14% bg + 40% border + readable coral text.
         destructive:
-          'border-transparent bg-destructive text-destructive-foreground shadow hover:opacity-90',
+          'border-status-error-border bg-status-error-bg text-status-error-foreground',
         outline: 'text-foreground',
       },
     },

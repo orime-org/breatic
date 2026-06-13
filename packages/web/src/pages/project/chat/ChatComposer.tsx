@@ -185,7 +185,7 @@ export function ChatComposer({
             aria-label='Abort'
             onClick={onAbort}
             data-testid='chat-composer-abort'
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome bg-destructive text-destructive-foreground transition-opacity hover:opacity-90'
+            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
           >
             <Square className='h-4 w-4' />
           </button>

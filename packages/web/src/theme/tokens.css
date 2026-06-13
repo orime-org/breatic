@@ -11,7 +11,7 @@
  * Token layout (Tailwind 4):
  *   - `:root` holds neutral primitives + non-Tailwind-namespace tokens
  *     (--space-N, --btn-*, --avatar-*, --icon-*, --font-size-base,
- *     --duration-*, --z-*, --border-width-*) consumed via `var()`.
+ *     --duration-*, --z-*) consumed via `var()`.
  *   - `@theme {}` holds the Tailwind design-token namespaces (--color-*,
  *     --radius-*, --font-*, --text-*, --shadow-*) so utility classes get
  *     full alpha-modifier support (`bg-muted/50`, `text-foreground/75`).
@@ -151,9 +151,6 @@ html[data-theme='light'] {
   --z-toast: 1500;
   --z-tooltip: 1600;
 
-  /* Border width. */
-  --border-width-thin: 1px;
-  --border-width-thick: 2px;
 }
 
 /* ============================================================
@@ -200,11 +197,9 @@ html[data-theme='light'] {
      keeps it pure-neutral. */
   --color-primary-hover: var(--neutral-600);
 
-  /* ---- Destructive · solid danger button (delete) = #c0392b + white (4.77:1
-     AA; fixes old #eb5757 + white = 3.48). Separate solid red from the error
-     tint (Radix-style one-color-three-steps). ---- */
-  --color-destructive: #c0392b;
-  --color-destructive-foreground: #ffffff;
+  /* Destructive (delete) is red-narrowed away — no separate solid danger
+     color. Delete buttons / errors all use the status-error coral tint
+     (bg/border/foreground), enforced by the lint:no-extreme status check. */
 
   /* ---- Status · 5 colors · scheme D (2026-06-11). Identity hue (same both
      modes) drives bg = 14% tint + border = 40% tint over transparent (chip
@@ -371,9 +366,9 @@ html[data-theme='dark'] {
 
   --color-ring: var(--neutral-600);
 
-  /* status identity hue / bg / border stay always-color (color-mix);
-     destructive stays #c0392b. Scheme D overrides ONLY the foreground text:
-     lightened colored text on the dark tint (dark 7.81–8.72 AA). */
+  /* status identity hue / bg / border stay always-color (color-mix). Scheme D
+     overrides ONLY the foreground text: lightened colored text on the dark
+     tint (dark 7.81–8.72 AA). */
   --color-status-selected-foreground: #a5acf5;
   --color-status-info-foreground: #7cc0ff;
   --color-status-success-foreground: #5fd07a;
