@@ -62,7 +62,7 @@ export function StudioRailDrawer({
         <button
           type='button'
           aria-label={t('studio.rail.openNav')}
-          className='flex h-7 w-7 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden'
+          className='flex h-7 w-7 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:hidden'
         >
           <Menu className='h-[18px] w-[18px]' />
         </button>

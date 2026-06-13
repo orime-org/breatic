@@ -309,7 +309,7 @@ function AvatarChip({
         ...style,
       }}
       className={cn(
-        'border-2 border-background',
+        'border border-background',
         muted && 'bg-muted text-muted-foreground',
       )}
     >

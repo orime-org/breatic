@@ -309,10 +309,10 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </ScrollArea>
           </Section>
 
-          <Section title='Status palette · 5 × 3-piece (bg / fg / border) — always-color'>
+          <Section title='Status palette · scheme D tint badges (bg / readable fg / border) — selected tints the node border, see node states below'>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
               {(
-                ['selected', 'info', 'success', 'warning', 'error'] as const
+                ['info', 'success', 'warning', 'error'] as const
               ).map((name) => (
                 <div
                   key={name}
@@ -329,7 +329,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </div>
           </Section>
 
-          <Section title='Canvas node states · NodeShell ring + content states'>
+          <Section title='Canvas node states · NodeShell 1px state border + content states'>
             <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3'>
               {(['idle', 'handling', 'error'] as const).map((status) => (
                 <NodeShell
@@ -352,7 +352,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                 </NodeShell>
               ))}
               <NodeShell selected className='w-full' testId='shell-selected'>
-                <div className='p-3 text-xs'>selected · primary ring</div>
+                <div className='p-3 text-xs'>selected · 1px border tinted</div>
               </NodeShell>
               <NodeShell locked className='w-full' testId='shell-locked'>
                 <div className='p-3 text-xs'>locked · indicator top-right</div>
