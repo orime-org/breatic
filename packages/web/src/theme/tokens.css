@@ -11,7 +11,7 @@
  * Token layout (Tailwind 4):
  *   - `:root` holds neutral primitives + non-Tailwind-namespace tokens
  *     (--space-N, --btn-*, --avatar-*, --icon-*, --font-size-base,
- *     --duration-*, --z-*, --border-width-*) consumed via `var()`.
+ *     --duration-*, --z-*) consumed via `var()`.
  *   - `@theme {}` holds the Tailwind design-token namespaces (--color-*,
  *     --radius-*, --font-*, --text-*, --shadow-*) so utility classes get
  *     full alpha-modifier support (`bg-muted/50`, `text-foreground/75`).
@@ -52,22 +52,27 @@
    ============================================================ */
 :root,
 html[data-theme='light'] {
-  /* Neutral · unified near-neutral warm 11-step (light; dark reverses).
-     One consistent warm hue (R>=G>=B) with saturation tapering by lightness;
-     mid channels differ by ~5 to kill the stone taupe bulge. Shape matched
-     to Radix Sand, one step more neutral to fit the surfaces. */
-  --neutral-0: #ffffff;
-  --neutral-50: #fafaf9;
-  --neutral-100: #f4f4f3;
-  --neutral-200: #e6e5e3;
-  --neutral-300: #d5d4d1;
-  --neutral-400: #a5a4a0;
-  --neutral-500: #757470;
-  --neutral-600: #545350;
-  --neutral-700: #43423f;
-  --neutral-800: #282725;
-  --neutral-900: #1b1a18;
-  --neutral-950: #0c0b09;
+  /* Neutral · pure-neutral 12-step R=G=B (light; dark reverses). Off-extreme
+     bounded: top #f5f5f5 (never #fff), bottom #141414 (above the #121212
+     floor). Surfaces / text / border / ring / primary all derive from this
+     single ramp. Enforced by lint:no-extreme-token-value. */
+  --neutral-0: #f5f5f5;
+  --neutral-50: #f0f0f0;
+  --neutral-100: #e3e3e3;
+  --neutral-200: #d4d4d4;
+  --neutral-300: #c0c0c0;
+  --neutral-400: #969696;
+  --neutral-500: #5f5f5f;
+  --neutral-600: #4d4d4d;
+  --neutral-700: #3b3b3b;
+  --neutral-800: #2a2a2a;
+  --neutral-900: #1e1e1e;
+  --neutral-950: #141414;
+
+  /* Canvas dot-grid color · kept in :root (NOT @theme): consumed only inline
+     via var() in a radial-gradient, with no utility class, so @theme would
+     tree-shake it. Lighter than border so dots read on the mid-gray canvas. */
+  --color-canvas-grid: #c4c4c4;
 
   /* Brand raw · logo SVG only (chrome / canvas / studio forbidden →
      fails `pnpm lint:no-brand-usage`). Whitelist: this file and
@@ -97,14 +102,23 @@ html[data-theme='light'] {
   --space-5: 12px;
   --space-6: 16px;
 
-  /* Button height · Linear ladder 24/28/32/44 (no 36/40). */
+  /* Chrome button height · Linear ladder 24/28/32/44 (no 36/40) — toolbar /
+     icon / chrome / compact-dialog buttons. Form-control buttons are a
+     SEPARATE family at 36px (see --control-height below). */
   --btn-compact: 24px;
   --btn-inline: 28px;
   --btn-chrome: 32px;
-  --btn-default: 32px; /* form / dialog / chrome all 32 */
-  --btn-cta: 44px; /* primary CTA / landing */
+  --btn-default: 32px; /* chrome / compact dialog */
+  --btn-cta: 44px; /* landing / marketing hero CTA */
   --chrome-btn-size: var(--btn-chrome);
   --chrome-btn-gap: var(--space-4);
+
+  /* Form-control height · 36px — shared by single-line form controls
+     (input / select) AND the primary action buttons that sit with them
+     (login / submit / create / invite …), so a CTA lines up flush with the
+     field above it. Deliberately off the chrome ladder: fields read best at
+     36, chrome buttons at 32. Consumed via h-[var(--control-height)]. */
+  --control-height: 36px;
 
   /* Icon size · 4-step. */
   --icon-xs: 12px;
@@ -146,9 +160,6 @@ html[data-theme='light'] {
   --z-toast: 1500;
   --z-tooltip: 1600;
 
-  /* Border width. */
-  --border-width-thin: 1px;
-  --border-width-thick: 2px;
 }
 
 /* ============================================================
@@ -156,16 +167,18 @@ html[data-theme='light'] {
    Utility classes auto-generated; alpha modifiers work.
    ============================================================ */
 @theme {
-  /* ---- Surfaces · light: pale neutral base → containers brighten upward
-     (elevation = brighter). Hand-tuned semantic values (float needs
-     inter-step precision), same temperature as the neutral scale. ---- */
-  --color-background: #f6f6f5; /* page base */
-  --color-elevated: #fafafa; /* panel / sidebar +1 */
-  --color-card: #fdfdfc; /* card +2 */
-  --color-popover: #ffffff; /* overlay (top) */
-  --color-muted: #ededec; /* hover fill */
-  --color-accent: #e4e4e2; /* stronger fill / selected row */
-  --color-secondary: #ededec;
+  /* ---- Surfaces · four tiers (elevated removed 2026-06-13): background (page
+     + chrome) / canvas (judge-gray work area) / card (content) / popover
+     (overlay). Pure-neutral, off-extreme. Chrome is background + 1px border,
+     not a separate tier. Fills split three ways: muted = recess, accent =
+     global hover, secondary = secondary-button. ---- */
+  --color-background: #ededed; /* page + chrome base */
+  --color-canvas: #e3e3e3; /* canvas judge-gray work area (CanvasSpace) */
+  --color-card: #f1f1f1; /* content card */
+  --color-popover: #f5f5f5; /* overlay panel (top) */
+  --color-muted: #e0e0e0; /* recess fill (avatar bg / track / disabled) */
+  --color-accent: #e4e4e4; /* global hover fill (light darker / dark lighter) */
+  --color-secondary: #e5e5e5; /* secondary-button fill */
 
   /* ---- Foreground · derived from the neutral scale (single source). ---- */
   --color-foreground: var(--neutral-900);
@@ -178,7 +191,7 @@ html[data-theme='light'] {
   --color-secondary-foreground: var(--neutral-900);
 
   /* ---- Border / input / focus ring ---- */
-  --color-border: rgba(27, 26, 24, 0.12);
+  --color-border: rgba(30, 30, 30, 0.12);
   --color-input: var(--neutral-200);
   /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
   --color-ring: var(--neutral-700);
@@ -188,15 +201,14 @@ html[data-theme='light'] {
   --color-primary-foreground: var(--neutral-50);
   /* hover lifts toward mid-gray. Pure black/white can't hover via
      opacity/brightness (perceived delta <2% on saturated extremes); a solid
-     color swap is the only pattern that works. Light uses neutral-600; dark
-     overrides below to a fixed off-step. */
+     color swap is the only pattern that works. Both modes use neutral-600 —
+     symmetric (light black→gray, dark white→gray); the dark override below
+     keeps it pure-neutral. */
   --color-primary-hover: var(--neutral-600);
 
-  /* ---- Destructive · solid danger button (delete) = #c0392b + white (4.77:1
-     AA; fixes old #eb5757 + white = 3.48). Separate solid red from the error
-     tint (Radix-style one-color-three-steps). ---- */
-  --color-destructive: #c0392b;
-  --color-destructive-foreground: #ffffff;
+  /* Destructive (delete) is red-narrowed away — no separate solid danger
+     color. Delete buttons / errors all use the status-error coral tint
+     (bg/border/foreground), enforced by the lint:no-extreme status check. */
 
   /* ---- Status · 5 colors · scheme D (2026-06-11). Identity hue (same both
      modes) drives bg = 14% tint + border = 40% tint over transparent (chip
@@ -317,30 +329,31 @@ html[data-theme='light'] {
    ============================================================ */
 html[data-theme='dark'] {
   /* neutral reversal (= light scale reversed, same temperature). */
-  --neutral-0: #0c0b09;
-  --neutral-50: #1b1a18;
-  --neutral-100: #282725;
-  --neutral-200: #43423f;
-  --neutral-300: #545350;
-  --neutral-400: #757470;
-  --neutral-500: #a5a4a0;
-  --neutral-600: #d5d4d1;
-  --neutral-700: #e6e5e3;
-  --neutral-800: #f4f4f3;
-  --neutral-900: #fafaf9;
-  --neutral-950: #ffffff;
+  --neutral-0: #141414;
+  --neutral-50: #1e1e1e;
+  --neutral-100: #2a2a2a;
+  --neutral-200: #3b3b3b;
+  --neutral-300: #4d4d4d;
+  --neutral-400: #5f5f5f;
+  --neutral-500: #969696;
+  --neutral-600: #c0c0c0;
+  --neutral-700: #d4d4d4;
+  --neutral-800: #e3e3e3;
+  --neutral-900: #f0f0f0;
+  --neutral-950: #f5f5f5;
 
-  /* Surfaces · dark: warm black → brightens layer by layer (elevation =
-     brighter). */
-  --color-background: #0c0b0a;
-  --color-elevated: #161413;
-  --color-card: #1c1b1a;
-  --color-popover: #222120;
-  --color-muted: #2a2826;
-  --color-accent: #322f2d;
-  /* = muted; must differ from card or badges / secondary buttons vanish on
-     cards. */
-  --color-secondary: #2a2826;
+  /* Surfaces · dark four tiers (elevated removed 2026-06-13): page + chrome
+     background, card / popover lifted only a restrained +5~8 L* (industrial
+     ground truth — overlays float via 1px border + shadow, not bright fill);
+     canvas judge-gray locked at L*18. */
+  --color-background: #1c1c1c;
+  --color-canvas: #2c2c2c;
+  --color-card: #202020;
+  --color-popover: #262626;
+  --color-muted: #161616; /* recess: below background (avatar bg / track / disabled) */
+  --color-accent: #303030; /* global hover: above every panel so hover lifts */
+  --color-secondary: #242424; /* secondary-button fill */
+  --color-canvas-grid: #404040;
 
   /* Foreground · derived. */
   --color-foreground: var(--neutral-900);
@@ -352,19 +365,19 @@ html[data-theme='dark'] {
   --color-accent-foreground: var(--neutral-900);
   --color-secondary-foreground: var(--neutral-900);
 
-  --color-border: rgba(250, 250, 249, 0.12);
-  --color-input: var(--neutral-100);
+  --color-border: rgba(240, 240, 240, 0.12);
+  --color-input: var(--neutral-400);
 
   --color-primary: var(--neutral-900);
   --color-primary-foreground: var(--neutral-50);
   /* off-step (between neutral-500/600) keeps the approved darkness, de-warmed. */
-  --color-primary-hover: #c3c2bf;
+  --color-primary-hover: var(--neutral-600);
 
   --color-ring: var(--neutral-600);
 
-  /* status identity hue / bg / border stay always-color (color-mix);
-     destructive stays #c0392b. Scheme D overrides ONLY the foreground text:
-     lightened colored text on the dark tint (dark 7.81–8.72 AA). */
+  /* status identity hue / bg / border stay always-color (color-mix). Scheme D
+     overrides ONLY the foreground text: lightened colored text on the dark
+     tint (dark 7.81–8.72 AA). */
   --color-status-selected-foreground: #a5acf5;
   --color-status-info-foreground: #7cc0ff;
   --color-status-success-foreground: #5fd07a;

@@ -31,7 +31,7 @@ export function SpaceOutlet({
     return (
       <div
         data-testid='space-outlet-unknown'
-        className='flex h-full w-full items-center justify-center text-sm text-destructive'
+        className='flex h-full w-full items-center justify-center text-sm text-status-error-foreground'
       >
         Unknown space type: {type}
       </div>

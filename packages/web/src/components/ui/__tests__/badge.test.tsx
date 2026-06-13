@@ -29,15 +29,17 @@ describe('Badge', () => {
     expect(el.className).toContain('text-secondary-foreground');
   });
 
-  it('destructive variant applies destructive tokens', () => {
+  it('destructive variant applies the status-error coral tint (red-narrowed)', () => {
     render(
       <Badge data-testid='badge' variant='destructive'>
         Delete
       </Badge>,
     );
     const el = screen.getByTestId('badge');
-    expect(el.className).toContain('bg-destructive');
-    expect(el.className).toContain('text-destructive-foreground');
+    expect(el.className).toContain('bg-status-error-bg');
+    expect(el.className).toContain('text-status-error-foreground');
+    expect(el.className).toContain('border-status-error-border');
+    expect(el.className).not.toContain('bg-destructive');
   });
 
   it('outline variant has no background; merges custom className', () => {

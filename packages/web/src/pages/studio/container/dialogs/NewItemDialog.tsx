@@ -213,6 +213,7 @@ export function NewItemDialog({
               </Label>
               <Input
                 id={nameId}
+                autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder={t('studio.container.dialog.namePlaceholder')}

@@ -81,7 +81,7 @@ function BannerButton({
         //     of the project; user rejected as cross-standard.
         'transition-colors duration-150',
         'hover:border-white/70 hover:bg-zinc-800',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50',
         className,
       )}
     >

@@ -241,13 +241,13 @@ export function ShareDialog({
             />
           </div>
           {inviteError ? (
-            <p className='px-2 pb-1 text-xs text-destructive' role='alert'>
+            <p className='px-2 pb-1 text-xs text-status-error-foreground' role='alert'>
               {inviteError}
             </p>
           ) : null}
           <div className='px-2 pb-2'>
             <Button
-              size='sm'
+              size='form'
               className='w-full'
               disabled={
                 !emailEnabled ||
@@ -280,7 +280,7 @@ export function ShareDialog({
           </div>
           <div className='px-2 pb-2'>
             <Button
-              size='sm'
+              size='form'
               variant='outline'
               className='w-full'
               onClick={handleGenerateLink}

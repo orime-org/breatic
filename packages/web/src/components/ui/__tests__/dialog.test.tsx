@@ -55,10 +55,10 @@ describe('Dialog', () => {
     expect(titleStack?.className).toContain('justify-center');
   });
 
-  it('content carries bg-popover + rounded-overlay + border tokens', () => {
+  it('content carries bg-card + rounded-overlay + border tokens', () => {
     setup(true);
     const content = screen.getByTestId('content');
-    expect(content.className).toContain('bg-popover');
+    expect(content.className).toContain('bg-card');
     expect(content.className).toContain('border-border');
     // #385+#387: unified overlay radius token (replaces sm:rounded-chrome
     // so Sheet / Dialog / Popover all share one radius source).

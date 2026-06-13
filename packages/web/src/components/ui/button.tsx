@@ -29,12 +29,15 @@ const buttonVariants = cva(
         // consistent (matches the project NewSpaceDialog create button).
         default:
           'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
+        // Destructive (delete) — red-narrowed to the status-error coral tint
+        // (2026-06-13): 14% bg + 40% border + readable coral text; hover
+        // deepens the border. No more solid brick-red button.
         destructive:
-          'bg-destructive text-destructive-foreground transition-opacity hover:opacity-90',
+          'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error',
         outline:
           'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-muted',
+          'bg-secondary text-secondary-foreground hover:bg-accent',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         // Chrome variant — TopBar/TabBar 32px buttons default to muted
         // foreground (mock §TopBar v4.0); hover lifts to foreground +
@@ -49,6 +52,10 @@ const buttonVariants = cva(
         // Sizes conform to the Linear-anchored ladder (24/28/32/44) via the
         // --btn-* tokens — `default` 32, `sm` 28, `lg` 44 (= cta), `icon` 32².
         default: 'h-[var(--btn-default)] px-4 py-2',
+        // Form-control height (36px) — matches input / select so a submit /
+        // create / invite CTA lines up flush with the field above it. Shares
+        // the --control-height token with the form controls themselves.
+        form: 'h-[var(--control-height)] px-4 py-2',
         sm: 'h-[var(--btn-inline)] px-3',
         lg: 'h-[var(--btn-cta)] px-8',
         icon: 'h-[var(--btn-default)] w-[var(--btn-default)]',

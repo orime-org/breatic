@@ -105,7 +105,7 @@ export function SlugField({
         </p>
       ) : null}
       {message ? (
-        <p id={`${id}-error`} className='text-xs text-destructive'>
+        <p id={`${id}-error`} className='text-xs text-status-error-foreground'>
           {message}
         </p>
       ) : null}

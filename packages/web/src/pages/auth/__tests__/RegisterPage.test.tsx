@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import RegisterPage from '@web/pages/auth/RegisterPage';
+import RecoveryCodePage from '@web/pages/auth/RecoveryCodePage';
 import { authApi } from '@web/data/api/auth';
 import { useCurrentUserStore } from '@web/stores';
 
@@ -28,6 +29,7 @@ function setup() {
     <MemoryRouter initialEntries={['/register']}>
       <Routes>
         <Route path='/register' element={<RegisterPage />} />
+        <Route path='/recovery-code' element={<RecoveryCodePage />} />
         <Route
           path='/choose-slug'
           element={<div data-testid='onboarding-page' />}
@@ -82,7 +84,7 @@ describe('RegisterPage (two-step entry)', () => {
   // INVARIANT (design §5.1): after acknowledging the recovery code, the
   // user is sent to step two (the onboarding slug page), NOT straight to
   // /studio — a half-finished sign-up must complete onboarding first.
-  it('continue from the recovery dialog navigates to /choose-slug (not /studio)', async () => {
+  it('continue from the recovery screen navigates to /choose-slug (not /studio)', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce({
       user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0 },
       recoveryCode: 'AAAA-BBBB-CCCC-DDDD',
@@ -93,7 +95,7 @@ describe('RegisterPage (two-step entry)', () => {
     await user.type(screen.getByLabelText('Password'), 'supersecret');
     await user.click(screen.getByRole('button', { name: 'Create account' }));
 
-    // The recovery-code dialog gates Continue behind the ack checkbox.
+    // The recovery-code screen gates Continue behind the ack checkbox.
     const ack = await screen.findByLabelText(
       /I have saved this recovery code/i,
     );

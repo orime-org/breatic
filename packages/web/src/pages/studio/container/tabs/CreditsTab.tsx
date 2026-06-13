@@ -61,7 +61,7 @@ export function CreditsTab({
           </p>
         </div>
         {isAdmin ? (
-          <Button type='button' className='ml-auto shrink-0'>
+          <Button type='button' size='form' className='ml-auto shrink-0'>
             {t('studio.container.credits.topup')}
           </Button>
         ) : null}
@@ -84,7 +84,7 @@ export function CreditsTab({
                 {isAdmin && lot.isRefundable && lot.amountRemaining > 0 ? (
                   <button
                     type='button'
-                    className='text-xs text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                    className='text-xs text-status-error-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
                   >
                     {t('studio.container.credits.refund')}
                   </button>
@@ -122,7 +122,7 @@ export function CreditsTab({
       </div>
 
       {/* Spend order (locked mock .order): label + numbered circle steps. */}
-      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-elevated px-3 py-2.5'>
+      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-card px-3 py-2.5'>
         <span className='whitespace-nowrap border-r border-border pr-3 text-xs font-bold text-muted-foreground'>
           {t('studio.container.credits.orderTitle')}
         </span>

@@ -128,6 +128,7 @@ export function NewStudioDialog({
               </Label>
               <Input
                 id='new-studio-name'
+                autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
@@ -144,7 +145,7 @@ export function NewStudioDialog({
               availability={slugLive}
             />
             {formError ? (
-              <p className='text-xs text-destructive' role='alert'>
+              <p className='text-xs text-status-error-foreground' role='alert'>
                 {formError}
               </p>
             ) : null}

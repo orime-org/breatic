@@ -53,7 +53,7 @@ export function EmptyState({
         <Button
           type='button'
           onClick={action.onClick}
-          className='mt-1 h-[30px] gap-1.5 rounded-chrome px-3.5 text-xs font-semibold'
+          className='mt-1 h-[var(--control-height)] gap-1.5 rounded-chrome px-3.5 text-xs font-semibold'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {action.label}

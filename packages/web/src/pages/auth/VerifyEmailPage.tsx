@@ -82,6 +82,7 @@ export default function VerifyEmailPage(): React.JSX.Element {
         </p>
         <Button
           type='button'
+          size='form'
           className='mt-4 w-full'
           onClick={() => navigate('/studio', { replace: true })}
         >

@@ -34,6 +34,14 @@ describe('Button', () => {
     expect(cls).toContain('w-[var(--btn-default)]');
   });
 
+  it('size=form uses the shared form-control height (--control-height)', () => {
+    render(<Button size='form'>Submit</Button>);
+    const cls = screen.getByRole('button').className;
+    // Form CTAs share the 36px form-control height with inputs/selects so a
+    // submit button lines up flush with the field above it (token, no raw px).
+    expect(cls).toContain('h-[var(--control-height)]');
+  });
+
   it('asChild renders the wrapped element instead of a button', () => {
     render(
       <Button asChild>

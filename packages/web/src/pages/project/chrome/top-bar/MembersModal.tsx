@@ -187,7 +187,7 @@ export function MembersModal({
                 aria-invalid={!!inviteError || undefined}
               />
               <Button
-                size='sm'
+                size='form'
                 disabled={invite.trim().length === 0 || inviteSubmitting}
                 onClick={handleInvite}
                 data-testid='members-modal-invite-send'
@@ -199,7 +199,7 @@ export function MembersModal({
               </Button>
             </div>
             {inviteError ? (
-              <p className='text-xs text-destructive' role='alert'>
+              <p className='text-xs text-status-error-foreground' role='alert'>
                 {inviteError}
               </p>
             ) : null}

@@ -52,7 +52,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         <button
           type='button'
           aria-label={t('studio.topBar.account')}
-          className='ml-1 flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='ml-1 flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           {user?.avatarUrl ? (
             <img

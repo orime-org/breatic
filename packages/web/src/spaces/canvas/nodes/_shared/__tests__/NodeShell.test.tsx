@@ -16,37 +16,38 @@ describe('NodeShell', () => {
     expect(screen.getByText('inside')).toBeInTheDocument();
   });
 
-  it('idle status leaves no status ring', () => {
+  it('idle tints the node with the neutral 1px border (no status color, no ring)', () => {
     render(<NodeShell status='idle'>x</NodeShell>);
-    const shell = screen.getByTestId('node-shell');
-    expect(shell.className).not.toMatch(/ring-status-/);
+    const cls = screen.getByTestId('node-shell').className;
+    expect(cls).toMatch(/border-border/);
+    expect(cls).not.toMatch(/border-status-/);
+    expect(cls).not.toMatch(/ring-/);
   });
 
-  it('handling status applies the info ring', () => {
+  it('handling tints the 1px border with the info status (no ring / offset glow)', () => {
     render(<NodeShell status='handling'>x</NodeShell>);
-    expect(screen.getByTestId('node-shell').className).toMatch(
-      /ring-status-info/,
-    );
+    const cls = screen.getByTestId('node-shell').className;
+    expect(cls).toMatch(/border-status-info/);
+    expect(cls).not.toMatch(/ring-/);
   });
 
-  it('error status applies the error ring (when not selected)', () => {
+  it('error tints the 1px border with the error status (when not selected)', () => {
     render(<NodeShell status='error'>x</NodeShell>);
-    expect(screen.getByTestId('node-shell').className).toMatch(
-      /ring-status-error/,
-    );
+    const cls = screen.getByTestId('node-shell').className;
+    expect(cls).toMatch(/border-status-error/);
+    expect(cls).not.toMatch(/ring-/);
   });
 
-  it('selected draws the selected-status ring (1px), overriding any status ring', () => {
+  it('selected tints its own 1px border with the selected status, overriding any status border, no ring or offset glow', () => {
     render(
       <NodeShell selected status='error'>
         x
       </NodeShell>,
     );
     const cls = screen.getByTestId('node-shell').className;
-    expect(cls).toMatch(/ring-status-selected/);
-    expect(cls).toMatch(/ring-1(\s|$)/);
-    expect(cls).not.toMatch(/ring-status-error/);
-    expect(cls).not.toMatch(/ring-primary/);
+    expect(cls).toMatch(/border-status-selected/);
+    expect(cls).not.toMatch(/border-status-error/);
+    expect(cls).not.toMatch(/ring-/);
   });
 
   it('locked exposes a lock indicator', () => {

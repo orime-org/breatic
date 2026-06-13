@@ -36,7 +36,7 @@ export default function NoAccessPage(): React.JSX.Element {
           {t('noAccess.description')}
         </p>
       </div>
-      <Button asChild>
+      <Button asChild size='form'>
         <Link to='/studio'>{t('noAccess.backToStudio')}</Link>
       </Button>
     </main>

@@ -130,6 +130,27 @@ jobs:
         # scripts/lint-no-raw-design-values.sh.
         run: pnpm lint:no-raw-design-values
 
+      - name: Lint no-extreme token values (design-system 9th rigid guard)
+        # Lock the pure-neutral + off-extreme + scheme-D status-readability
+        # invariants of theme/tokens.css: every --neutral-* / direct-hex
+        # --color-* is R=G=B and bounded (no channel brighter than #f5 / darker
+        # than #12, never #fff/#000), and every status -foreground clears WCAG
+        # AA 4.5:1 on its tint bg in both modes. See
+        # scripts/lint-no-extreme-token-value.sh.
+        run: pnpm lint:no-extreme-token-value
+
+      - name: Lint 1px borders / focus rings (rigid 1px guard)
+        # Enforce the rigid "all borders & focus rings are 1px solid, no glow"
+        # rule across packages/web/src: bans ring-offset, ring width >= 2, and
+        # border width >= 2. See scripts/lint-1px-border.sh.
+        run: pnpm lint:1px-border
+
+      - name: Lint overlay surface (popover panel unification)
+        # Every popover/overlay panel surface uses bg-popover (tooltip inverse
+        # is the only exception): bans bg-elevated / bg-card as a panel bg in
+        # the overlay component set. See scripts/lint-overlay-surface.sh.
+        run: pnpm lint:overlay-surface
+
       - name: Lint storage-key-prefix (web persisted keys)
         # Enforce user decision 2026-06-08: every localStorage / sessionStorage
         # key carries the `breatic.` prefix, routed through the central registry

@@ -123,7 +123,7 @@ export const MembersStack = React.forwardRef<
           aria-label={`Project members (${members.length})`}
           aria-haspopup='dialog'
           data-testid='members-trigger'
-          className='inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+          className='inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{
             height: 'var(--btn-chrome)',
             padding: '0 var(--space-2) 0 var(--space-2)',
@@ -183,7 +183,7 @@ export const MembersStack = React.forwardRef<
         <div className='flex flex-col gap-2 p-2'>
           <Button
             variant='outline'
-            size='sm'
+            size='form'
             className='w-full justify-center gap-2 text-sm'
             onClick={openInvite}
             data-testid='members-invite-trigger'
@@ -193,7 +193,7 @@ export const MembersStack = React.forwardRef<
           </Button>
           <Button
             variant='outline'
-            size='sm'
+            size='form'
             className='w-full justify-center gap-2 text-sm'
             onClick={openManage}
             data-testid='members-manage-trigger'
@@ -309,7 +309,7 @@ function AvatarChip({
         ...style,
       }}
       className={cn(
-        'border-2 border-background',
+        'border border-background',
         muted && 'bg-muted text-muted-foreground',
       )}
     >

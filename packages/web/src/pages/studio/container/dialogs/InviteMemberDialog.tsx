@@ -142,7 +142,7 @@ export function InviteMemberDialog({
             {error !== null ? (
               <p
                 role='alert'
-                className='text-xs text-destructive'
+                className='text-xs text-status-error-foreground'
                 data-testid='invite-member-error'
               >
                 {error}

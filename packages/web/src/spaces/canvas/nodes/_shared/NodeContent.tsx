@@ -48,7 +48,7 @@ export function NodeContent({
     return (
       <div
         data-testid='node-content-error'
-        className='flex h-full w-full items-center justify-center p-3 text-xs text-destructive'
+        className='flex h-full w-full items-center justify-center p-3 text-xs text-status-error-foreground'
       >
         {errorMessage ?? 'Something went wrong.'}
       </div>

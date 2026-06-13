@@ -9,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 import { useThemeMode } from '@web/features/preferences/theme-mode';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TopBarTextIconButton } from '@web/features/preferences/TopBarTextIconButton';
@@ -64,9 +65,9 @@ export function ThemeToggle(): React.JSX.Element {
             return (
               <Button
                 key={m.code}
-                variant={theme === m.code ? 'secondary' : 'ghost'}
+                variant='ghost'
                 size='menu-item'
-                className='justify-start'
+                className={cn('justify-start', theme === m.code && 'bg-accent')}
                 onClick={() => pick(m.code)}
                 data-testid={`theme-option-${m.code}`}
               >

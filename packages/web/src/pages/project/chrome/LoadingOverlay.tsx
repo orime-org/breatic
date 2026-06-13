@@ -32,7 +32,7 @@ interface LoadingOverlayProps {
  * backdrop blur) so a LoadingOverlay opened from inside / right after a
  * Dialog reads as the same surface and doesn't visibly tint-shift. Sits
  * at z-index 50 so it covers chrome layers. Inner card uses
- * `bg-popover` - same token as Dialog content for surface consistency.
+ * `bg-card` - same token as Dialog content for surface consistency.
  * (2026-05-25 user ask: bg + opacity must match Dialog. )
  * @param root0 - Component props.
  * @param root0.message - Visible message displayed under the spinner.
@@ -50,7 +50,7 @@ export function LoadingOverlay({
       aria-live='polite'
       className='fixed inset-0 z-50 flex items-center justify-center bg-black/80'
     >
-      <div className='flex flex-col items-center gap-3 rounded-md border border-border bg-popover px-6 py-4 shadow'>
+      <div className='flex flex-col items-center gap-3 rounded-md border border-border bg-card px-6 py-4 shadow'>
         <Loader2 className='h-6 w-6 animate-spin text-foreground' />
         <span className='text-sm text-foreground'>{message}</span>
       </div>

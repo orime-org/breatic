@@ -66,7 +66,7 @@ const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
  *
  * - 32px hit area (`--btn-chrome`)
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
- * - muted color at rest; foreground + neutral-100 bg on hover/active
+ * - muted-foreground at rest; active + hover both lift to bg-accent
  * - close button fades in on hover; hidden when locked
  * @param root0 - Component props.
  * @param root0.id - Space id, used for the tab's test ids and keys.
@@ -167,8 +167,8 @@ export function SpaceTab({
       className={cn(
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',
         active
-          ? 'bg-muted text-foreground'
-          : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'bg-accent text-foreground'
+          : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
       style={{
         height: 'var(--btn-chrome)',
@@ -241,7 +241,7 @@ export function SpaceTab({
             }
           }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>

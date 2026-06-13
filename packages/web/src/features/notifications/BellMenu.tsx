@@ -192,7 +192,7 @@ export function BellMenu(): React.JSX.Element {
               <Bell className='h-[18px] w-[18px]' />
               {count > 0 ? (
                 <span
-                  className='absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive'
+                  className='absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error'
                   data-testid='bell-unread-dot'
                 />
               ) : null}
