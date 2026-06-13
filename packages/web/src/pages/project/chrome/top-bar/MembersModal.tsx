@@ -187,7 +187,7 @@ export function MembersModal({
                 aria-invalid={!!inviteError || undefined}
               />
               <Button
-                size='sm'
+                size='form'
                 disabled={invite.trim().length === 0 || inviteSubmitting}
                 onClick={handleInvite}
                 data-testid='members-modal-invite-send'

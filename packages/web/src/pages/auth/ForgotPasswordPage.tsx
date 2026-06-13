@@ -124,7 +124,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
           <FieldError role='alert' className='mt-1'>{formError}</FieldError>
         ) : null}
 
-        <Button type='submit' disabled={submitting} className='mt-2'>
+        <Button type='submit' size='form' disabled={submitting} className='mt-2'>
           {submitting
             ? t('auth.forgot.sending')
             : t('auth.forgot.sendResetLink')}
@@ -139,6 +139,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
         </div>
         <Button
           type='button'
+          size='form'
           variant='outline'
           onClick={() => navigate('/reset-password?mode=recovery')}
           className='w-full'

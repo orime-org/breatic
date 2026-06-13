@@ -52,6 +52,10 @@ const buttonVariants = cva(
         // Sizes conform to the Linear-anchored ladder (24/28/32/44) via the
         // --btn-* tokens — `default` 32, `sm` 28, `lg` 44 (= cta), `icon` 32².
         default: 'h-[var(--btn-default)] px-4 py-2',
+        // Form-control height (36px) — matches input / select so a submit /
+        // create / invite CTA lines up flush with the field above it. Shares
+        // the --control-height token with the form controls themselves.
+        form: 'h-[var(--control-height)] px-4 py-2',
         sm: 'h-[var(--btn-inline)] px-3',
         lg: 'h-[var(--btn-cta)] px-8',
         icon: 'h-[var(--btn-default)] w-[var(--btn-default)]',

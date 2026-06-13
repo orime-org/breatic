@@ -61,7 +61,7 @@ export function CreditsTab({
           </p>
         </div>
         {isAdmin ? (
-          <Button type='button' className='ml-auto shrink-0'>
+          <Button type='button' size='form' className='ml-auto shrink-0'>
             {t('studio.container.credits.topup')}
           </Button>
         ) : null}

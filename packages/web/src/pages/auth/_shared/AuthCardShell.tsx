@@ -73,7 +73,7 @@ export function AuthLink({
   return (
     <Link
       to={to}
-      className='font-medium text-foreground underline-offset-4 hover:underline'
+      className='text-sm font-medium text-foreground underline-offset-4 hover:underline'
     >
       {children}
     </Link>

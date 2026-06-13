@@ -183,7 +183,7 @@ export const MembersStack = React.forwardRef<
         <div className='flex flex-col gap-2 p-2'>
           <Button
             variant='outline'
-            size='sm'
+            size='form'
             className='w-full justify-center gap-2 text-sm'
             onClick={openInvite}
             data-testid='members-invite-trigger'
@@ -193,7 +193,7 @@ export const MembersStack = React.forwardRef<
           </Button>
           <Button
             variant='outline'
-            size='sm'
+            size='form'
             className='w-full justify-center gap-2 text-sm'
             onClick={openManage}
             data-testid='members-manage-trigger'

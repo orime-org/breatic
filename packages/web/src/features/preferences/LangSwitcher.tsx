@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 import type { Locale } from '@breatic/shared';
 import {
   langFor,
@@ -62,9 +63,9 @@ export function LangSwitcher(): React.JSX.Element {
           {langs.map((l) => (
             <Button
               key={l.code}
-              variant={locale === l.code ? 'secondary' : 'ghost'}
+              variant='ghost'
               size='menu-item'
-              className='justify-start'
+              className={cn('justify-start', locale === l.code && 'bg-accent')}
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >

@@ -168,7 +168,7 @@ export default function LoginPage(): React.JSX.Element {
           <FieldError role='alert' className='mt-1'>{formError}</FieldError>
         ) : null}
 
-        <Button type='submit' disabled={submitting} className='mt-2'>
+        <Button type='submit' size='form' disabled={submitting} className='mt-2'>
           {submitting ? t('auth.login.signingIn') : t('auth.login.signIn')}
         </Button>
       </form>
@@ -227,6 +227,7 @@ function GoogleSignInButton(): React.JSX.Element {
   return (
     <Button
       type='button'
+      size='form'
       variant='outline'
       onClick={handleClick}
       disabled={busy}

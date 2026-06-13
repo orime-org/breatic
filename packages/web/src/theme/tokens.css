@@ -102,14 +102,23 @@ html[data-theme='light'] {
   --space-5: 12px;
   --space-6: 16px;
 
-  /* Button height · Linear ladder 24/28/32/44 (no 36/40). */
+  /* Chrome button height · Linear ladder 24/28/32/44 (no 36/40) — toolbar /
+     icon / chrome / compact-dialog buttons. Form-control buttons are a
+     SEPARATE family at 36px (see --control-height below). */
   --btn-compact: 24px;
   --btn-inline: 28px;
   --btn-chrome: 32px;
-  --btn-default: 32px; /* form / dialog / chrome all 32 */
-  --btn-cta: 44px; /* primary CTA / landing */
+  --btn-default: 32px; /* chrome / compact dialog */
+  --btn-cta: 44px; /* landing / marketing hero CTA */
   --chrome-btn-size: var(--btn-chrome);
   --chrome-btn-gap: var(--space-4);
+
+  /* Form-control height · 36px — shared by single-line form controls
+     (input / select) AND the primary action buttons that sit with them
+     (login / submit / create / invite …), so a CTA lines up flush with the
+     field above it. Deliberately off the chrome ladder: fields read best at
+     36, chrome buttons at 32. Consumed via h-[var(--control-height)]. */
+  --control-height: 36px;
 
   /* Icon size · 4-step. */
   --icon-xs: 12px;

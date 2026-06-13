@@ -12,6 +12,7 @@ import NoAccessPage from '@web/pages/project/access/NoAccessPage';
 import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
 import LoginPage from '@web/pages/auth/LoginPage';
 import RegisterPage from '@web/pages/auth/RegisterPage';
+import RecoveryCodePage from '@web/pages/auth/RecoveryCodePage';
 import SlugSetupPage from '@web/pages/auth/SlugSetupPage';
 import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
@@ -124,6 +125,10 @@ const baseRoutes: RouteObject[] = [
   },
   { path: '/login', element: <LoginPage /> },
   { path: '/register', element: <RegisterPage /> },
+  // Recovery-code reveal — a post-register / post-reset auth screen reached
+  // only via navigation state (the one-time code is never in the URL); a
+  // direct visit bounces to /login.
+  { path: '/recovery-code', element: <RecoveryCodePage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },

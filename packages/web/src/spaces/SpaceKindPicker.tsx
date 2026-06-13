@@ -125,7 +125,7 @@ export function SpaceKindPicker({
               className={cn(
                 'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
                 selected
-                  ? 'border-active-border bg-muted text-foreground'
+                  ? 'border-active-border bg-accent text-foreground'
                   : 'border-border bg-transparent text-foreground',
                 card.available
                   ? 'hover:bg-accent'

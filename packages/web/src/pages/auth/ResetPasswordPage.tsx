@@ -14,7 +14,6 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
-import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
 
 /**
  * Password reset — branches on the query string:
@@ -24,8 +23,8 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  *   `?mode=recovery`    → recovery-code reset (user typed the
  *                         one-time code they saved at registration).
  *                         Server rotates the code on success and
- *                         returns a fresh one, which we re-reveal in
- *                         the same `<RecoveryCodeDialog>` flow.
+ *                         returns a fresh one; we navigate to the
+ *                         `/recovery-code` screen to re-reveal it.
  *
  * Neither path requires the user to be logged in — the token or
  * code IS the auth.
@@ -131,7 +130,7 @@ function TokenResetForm({
           <FieldError role='alert' className='mt-1'>{formError}</FieldError>
         ) : null}
 
-        <Button type='submit' disabled={submitting} className='mt-2'>
+        <Button type='submit' size='form' disabled={submitting} className='mt-2'>
           {submitting ? t('auth.reset.saving') : t('auth.reset.save')}
         </Button>
       </form>
@@ -152,7 +151,6 @@ function RecoveryResetForm(): React.JSX.Element {
   const [recoveryCode, setRecoveryCode] = React.useState('');
   const [newPassword, setNewPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [newCode, setNewCode] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<{
     email?: string;
     recoveryCode?: string;
@@ -187,7 +185,10 @@ function RecoveryResetForm(): React.JSX.Element {
         recoveryCode: trimmedCode,
         newPassword,
       });
-      setNewCode(newRecoveryCode);
+      navigate('/recovery-code', {
+        state: { code: newRecoveryCode, next: '/login' },
+        replace: true,
+      });
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.reset.failed');
@@ -195,29 +196,6 @@ function RecoveryResetForm(): React.JSX.Element {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  /**
-   * Dismiss the rotated-code dialog and navigate to login once the user has
-   * acknowledged saving their new recovery code.
-   */
-  function handleContinue(): void {
-    setNewCode(null);
-    navigate('/login', { replace: true });
-  }
-
-  // Once the recovery-code reset succeeds we have a fresh recovery
-  // code to reveal — unmount the form for the same reasons as
-  // RegisterPage (overlay is semi-transparent, residual form would
-  // show through; single-task-at-a-time UX).
-  if (newCode !== null) {
-    return (
-      <RecoveryCodeDialog
-        open={true}
-        code={newCode}
-        onContinue={handleContinue}
-      />
-    );
   }
 
   return (
@@ -297,7 +275,7 @@ function RecoveryResetForm(): React.JSX.Element {
             <FieldError role='alert' className='mt-1'>{formError}</FieldError>
           ) : null}
 
-          <Button type='submit' disabled={submitting} className='mt-2'>
+          <Button type='submit' size='form' disabled={submitting} className='mt-2'>
             {submitting ? t('auth.reset.saving') : t('auth.reset.save')}
           </Button>
         </form>

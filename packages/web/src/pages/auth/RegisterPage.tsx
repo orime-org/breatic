@@ -14,7 +14,6 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
-import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
 
 /**
  * Email + password registration — step one of the two-step sign-up.
@@ -24,8 +23,8 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  *      server sets the session cookie. Response body returns
  *      `{ user, recoveryCode }`. At this point the account exists but
  *      has NO personal studio yet (`personalStudio === null`).
- *   2. We pop `<RecoveryCodeDialog>` to force the user to copy /
- *      download / acknowledge the one-time recovery code.
+ *   2. We navigate to `/recovery-code` (carrying the code in nav state) to
+ *      force the user to copy / download / acknowledge the one-time code.
  *   3. Continue redirects to the onboarding slug page
  *      (`/choose-slug`), step two, where the user picks a slug and
  *      the server creates their personal studio. The personal-studio
@@ -35,8 +34,8 @@ import { RecoveryCodeDialog } from '@web/pages/auth/_shared/RecoveryCodeDialog';
  * The recovery code is the ONLY recovery path on SMTP-less self-host
  * installs (`EMAIL_BACKEND=disabled`). The server only stores its
  * bcrypt hash — a missed save here is unrecoverable.
- * @returns the registration form, or the recovery-code reveal dialog once
- * registration has succeeded.
+ * @returns the registration form; on success it navigates to the
+ * recovery-code screen (`/recovery-code`).
  */
 export default function RegisterPage(): React.JSX.Element {
   const t = useTranslation();
@@ -46,7 +45,6 @@ export default function RegisterPage(): React.JSX.Element {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [recoveryCode, setRecoveryCode] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<{
     email?: string;
     password?: string;
@@ -89,7 +87,10 @@ export default function RegisterPage(): React.JSX.Element {
         }),
         personalStudio: user.personalStudio,
       });
-      setRecoveryCode(code);
+      navigate('/recovery-code', {
+        state: { code, next: '/choose-slug' },
+        replace: true,
+      });
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.register.failed');
@@ -97,31 +98,6 @@ export default function RegisterPage(): React.JSX.Element {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  /**
-   * Dismiss the recovery-code dialog and navigate to the onboarding slug
-   * page (step two) after the user has acknowledged saving their code.
-   */
-  function handleContinue(): void {
-    setRecoveryCode(null);
-    navigate('/choose-slug', { replace: true });
-  }
-
-  // Once registration succeeds we have a recovery code to reveal —
-  // unmount the registration form entirely instead of leaving it
-  // visible behind the dialog overlay. Dialog overlay is semi-
-  // transparent, so a residual form would show through; conditional
-  // render keeps the focus where it belongs and matches the
-  // single-task-at-a-time UX user spec called for.
-  if (recoveryCode !== null) {
-    return (
-      <RecoveryCodeDialog
-        open={true}
-        code={recoveryCode}
-        onContinue={handleContinue}
-      />
-    );
   }
 
   return (
@@ -186,7 +162,7 @@ export default function RegisterPage(): React.JSX.Element {
             <FieldError role='alert' className='mt-1'>{formError}</FieldError>
           ) : null}
 
-          <Button type='submit' disabled={submitting} className='mt-2'>
+          <Button type='submit' size='form' disabled={submitting} className='mt-2'>
             {submitting
               ? t('auth.register.creating')
               : t('auth.register.create')}

@@ -77,7 +77,7 @@ export function RailStudioGroup({
                 aria-current={studio.slug === activeSlug ? 'page' : undefined}
                 className={`${ROW} ${
                   studio.slug === activeSlug
-                    ? 'bg-muted text-foreground'
+                    ? 'bg-accent text-foreground'
                     : 'text-foreground hover:bg-accent'
                 }`}
               >

@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# lint:overlay-surface — every popover/overlay PANEL surface must be bg-popover.
+# lint:overlay-surface — two-tier overlay surface rule.
 #
-# Spec: inner design/decisions/2026-06-12-overlay-surface-background.md (option A:
-# one tier) + the 2026-06-13 dark-surface rework (popover dark #262626 / light
-# #f5f5f5). All floating-overlay panel containers use bg-popover; tooltip is the
-# only exception (bg-foreground inverse, so it is not in the scanned set).
+# Rule: two-tier (decided 2026-06-13), superseding the earlier one-tier
+# decision where every overlay panel used bg-popover. Floating overlays split
+# into two families by behaviour:
 #
-# Rule (ported from sandbox token_test, eye-verified #1213): the overlay
-# component files below must NOT use bg-elevated / bg-card as a panel surface
-# (the historical drift: sheet=elevated, toast=card). bg-background is allowed
-# (a CommandDialog wrapper / select trigger legitimately sits on the page), and
-# menu-item hover fills (bg-muted / bg-accent) are not panel surfaces.
+#   CONTENT PANELS (takeover modal / side sheet — backdrop + multi-element body)
+#     -> bg-card. Dialog / AlertDialog / Sheet. They read as a "screen in a box"
+#     and match the auth-card / content-card surface.
+#   ANCHORED FLOATS (popover / menu / picker attached to a trigger, no backdrop)
+#     -> bg-popover. Popover / DropdownMenu / ContextMenu / Select / Command /
+#     toast. Tooltip is inverse (bg-foreground) and exempt (not scanned).
+#
+# So: content panels must NOT use bg-popover / bg-elevated; anchored floats must
+# NOT use bg-card / bg-elevated. bg-background is allowed (a CommandDialog
+# wrapper / select trigger legitimately sits on the page); menu-item hover fills
+# (bg-muted / bg-accent) are not panel surfaces.
 #
 # Exit: 0 clean · 1 violation · 2 misconfiguration.
 #
@@ -23,24 +28,39 @@ set -euo pipefail
 ROOT="${1:-packages/web/src/components/ui}"
 [ -d "$ROOT" ] || { echo "lint-overlay-surface: dir not found: $ROOT" >&2; exit 2; }
 
-FILES="dialog alert-dialog sheet popover dropdown-menu context-menu select command sonner"
+CONTENT_PANELS="dialog alert-dialog sheet"
+ANCHORED_FLOATS="popover dropdown-menu context-menu select command sonner"
 
 fail=0
-for f in $FILES; do
+
+# Content panels must be bg-card (not the anchored-float popover surface).
+for f in $CONTENT_PANELS; do
   path="$ROOT/$f.tsx"
   [ -f "$path" ] || continue
-  hits=$(LC_ALL=C grep -nE "bg-elevated|bg-card" "$path" || true)
+  hits=$(LC_ALL=C grep -nE "bg-popover|bg-elevated" "$path" || true)
   if [ -n "$hits" ]; then
-    echo "FAIL $f.tsx — overlay panel surface must be bg-popover, not bg-elevated / bg-card:"
+    echo "FAIL $f.tsx — content panel surface must be bg-card, not bg-popover / bg-elevated:"
+    echo "$hits" | sed 's/^/     /'
+    fail=1
+  fi
+done
+
+# Anchored floats must be bg-popover (not the content-card surface).
+for f in $ANCHORED_FLOATS; do
+  path="$ROOT/$f.tsx"
+  [ -f "$path" ] || continue
+  hits=$(LC_ALL=C grep -nE "bg-card|bg-elevated" "$path" || true)
+  if [ -n "$hits" ]; then
+    echo "FAIL $f.tsx — anchored float surface must be bg-popover, not bg-card / bg-elevated:"
     echo "$hits" | sed 's/^/     /'
     fail=1
   fi
 done
 
 if [ "$fail" -eq 0 ]; then
-  echo "lint-overlay-surface: clean ✅ (all overlay panels use bg-popover; tooltip inverse is exempt)"
+  echo "lint-overlay-surface: clean ✅ (content panels = bg-card, anchored floats = bg-popover)"
   exit 0
 fi
 echo ""
-echo "lint-overlay-surface: FAIL — change the panel background to bg-popover"
+echo "lint-overlay-surface: FAIL — fix the panel surface per the two-tier rule"
 exit 1

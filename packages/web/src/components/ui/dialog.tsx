@@ -11,7 +11,7 @@ import { cn } from '@web/lib/utils';
  * irreversible / destructive confirmations use `AlertDialog` instead.
  *
  * Layout convention (per chrome-baseline `.modal-dialog`):
- *   - container: 520 px max, 6 px radius, popover bg, p-0 (sections own padding)
+ *   - container: 520 px max, 6 px radius, card bg, p-0 (sections own padding)
  *   - `<DialogHeader>` is a flex-row with title/desc stack on the left and an
  *     inline close X button on the right (matches mock `.modal-header`)
  *   - inner sections each pad themselves (mock `.modal-section` style)
@@ -64,7 +64,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 flex w-full max-w-[520px] translate-x-[-50%] translate-y-[-50%] flex-col border border-border bg-popover p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
+        'fixed left-[50%] top-[50%] z-50 flex w-full max-w-[520px] translate-x-[-50%] translate-y-[-50%] flex-col border border-border bg-card p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
         className,
       )}
       {...props}
