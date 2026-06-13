@@ -51,7 +51,7 @@ export function RailCreateActions({
       <button
         type='button'
         onClick={onCreateProject}
-        className={`${ACTION} text-foreground hover:bg-muted`}
+        className={`${ACTION} text-foreground hover:bg-accent`}
       >
         <Plus className='h-4 w-4 text-foreground' />
         {createProjectLabel}
@@ -71,7 +71,7 @@ export function RailCreateActions({
       <button
         type='button'
         onClick={onCreateStudio}
-        className={`${ACTION} text-foreground hover:bg-muted`}
+        className={`${ACTION} text-foreground hover:bg-accent`}
       >
         <Plus className='h-4 w-4 text-foreground' />
         {createStudioLabel}

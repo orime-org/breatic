@@ -144,7 +144,7 @@ function CreditsPill({
         type='button'
         onClick={onAdd}
         aria-label='Add credits'
-        className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted'
+        className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-accent'
         data-testid='credits-add'
       >
         <Plus className='h-3.5 w-3.5' />

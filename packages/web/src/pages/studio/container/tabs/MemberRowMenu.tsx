@@ -68,7 +68,7 @@ export function MemberRowMenu({
           type='button'
           aria-label={t('studio.container.members.rowMenu')}
           disabled={pending}
-          className='inline-flex h-7 w-7 items-center justify-center rounded-content-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+          className='inline-flex h-7 w-7 items-center justify-center rounded-content-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
           data-testid={`member-row-menu-${member.id}`}
         >
           <MoreHorizontal className='h-4 w-4' />

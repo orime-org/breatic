@@ -90,7 +90,7 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
  *      Lin Xia's growth arc and motives…
  *      yesterday
  *
- * Active state uses `bg-accent` row highlight + `bg-foreground` dot
+ * Active state uses `bg-muted` recess row highlight + `bg-foreground` dot
  * (neutral, no brand) per ADR 14 brand-guard policy — Direction B
  * Tweaks ground truth: neutral-first, no brand-red accents in chrome.
  * @param root0 - The component props.
@@ -144,7 +144,7 @@ export function ConversationHistorySheet({
                     onClick={() => onPick(c.id)}
                     aria-current={isActive ? 'true' : undefined}
                     className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent ${
-                      isActive ? 'bg-accent' : ''
+                      isActive ? 'bg-muted' : ''
                     }`}
                     data-testid={`conversation-${c.id}`}
                   >

@@ -89,7 +89,7 @@ export function TextNode({
             suppressContentEditableWarning
             onDoubleClick={startEdit}
             onBlur={commit}
-            className='min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-muted/30'
+            className='min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30'
           >
             {data.content}
           </div>

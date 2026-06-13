@@ -80,7 +80,8 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  *
  * Mock alignment: mirrors the chrome-baseline mock `.type-segmented` — a flex
  * row of 3 cards; the active card uses the brand border on the mock, but per
- * ADR 14 brand-guard we use `border-active-border + bg-accent` (neutral CTA).
+ * ADR 14 brand-guard we use `border-active-border + bg-muted` (selected =
+ * neutral recess + active border; hover uses bg-accent, so the two never collide).
  * @param root0 - Component props.
  * @param root0.value - The currently selected space type.
  * @param root0.onChange - Called with the chosen type when an available card is clicked.
@@ -124,10 +125,10 @@ export function SpaceKindPicker({
               className={cn(
                 'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
                 selected
-                  ? 'border-active-border bg-accent text-foreground'
+                  ? 'border-active-border bg-muted text-foreground'
                   : 'border-border bg-transparent text-foreground',
                 card.available
-                  ? 'hover:bg-muted'
+                  ? 'hover:bg-accent'
                   : 'cursor-not-allowed opacity-50',
               )}
             >

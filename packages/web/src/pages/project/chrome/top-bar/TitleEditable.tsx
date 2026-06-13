@@ -158,7 +158,7 @@ export function TitleEditable({
           setEditing(true);
         }
       }}
-      className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-muted'
+      className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-accent'
       style={sharedStyle}
       data-testid='title-display'
       title={draft}

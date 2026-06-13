@@ -291,7 +291,7 @@ function SpaceDrawerRow({
       <div
         className={cn(
           'group flex items-start gap-3 border-b border-border px-4 py-3 transition-colors',
-          isActive ? 'bg-accent' : 'hover:bg-muted',
+          isActive ? 'bg-muted' : 'hover:bg-accent',
         )}
         data-testid={`space-drawer-row-${space.id}`}
       >
@@ -469,7 +469,7 @@ function RowAction({
             'inline-flex h-7 w-7 items-center justify-center rounded-chrome transition-colors',
             disabled
               ? 'cursor-not-allowed text-muted-foreground/40'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             busy && 'animate-pulse',
           )}
         >

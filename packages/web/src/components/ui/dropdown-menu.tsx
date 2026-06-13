@@ -40,7 +40,7 @@ export function DropdownMenuContent({
 }
 
 const itemBase =
-  'relative flex cursor-default select-none items-center gap-2 rounded-chrome px-2 py-1.5 text-sm outline-none transition-colors focus:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0';
+  'relative flex cursor-default select-none items-center gap-2 rounded-chrome px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0';
 
 /**
  * Standard menu item.
@@ -171,7 +171,7 @@ export function DropdownMenuSubTrigger({
 }: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>): ReactNode {
   return (
     <DropdownMenuPrimitive.SubTrigger
-      className={cn(itemBase, 'data-[state=open]:bg-muted', className)}
+      className={cn(itemBase, 'data-[state=open]:bg-accent', className)}
       {...props}
     >
       {children}

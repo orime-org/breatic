@@ -58,7 +58,7 @@ export function RailStudioGroup({
         type='button'
         onClick={toggle}
         aria-expanded={!collapsed}
-        className='flex h-8 items-center gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+        className='flex h-8 items-center gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
       >
         <Icon className='h-4 w-4' />
         {title}
@@ -78,7 +78,7 @@ export function RailStudioGroup({
                 className={`${ROW} ${
                   studio.slug === activeSlug
                     ? 'bg-muted text-foreground'
-                    : 'text-foreground hover:bg-muted'
+                    : 'text-foreground hover:bg-accent'
                 }`}
               >
                 <span className='flex h-5 w-5 items-center justify-center rounded-chrome bg-muted text-2xs font-bold text-muted-foreground'>

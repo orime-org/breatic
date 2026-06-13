@@ -110,7 +110,7 @@ export function ChatComposer({
           className={`inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
             selectMode
               ? 'bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
           }`}
         >
           <SquareMousePointer className='h-4 w-4' />
@@ -173,7 +173,7 @@ export function ChatComposer({
           className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
             activeSkillLabel
               ? 'border-foreground bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
           }`}
         >
           <Wand2 className='h-4 w-4' />

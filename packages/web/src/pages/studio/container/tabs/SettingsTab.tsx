@@ -85,13 +85,13 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
           <div className='mt-1 flex gap-2.5'>
             <button
               type='button'
-              className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-muted'
+              className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
             >
               {t('studio.container.settings.transfer')}
             </button>
             <button
               type='button'
-              className='h-[30px] rounded-chrome border border-status-error px-3 text-xs font-medium text-status-error-foreground transition-colors hover:bg-muted'
+              className='h-[30px] rounded-chrome border border-status-error px-3 text-xs font-medium text-status-error-foreground transition-colors hover:bg-accent'
             >
               {t('studio.container.settings.delete')}
             </button>
