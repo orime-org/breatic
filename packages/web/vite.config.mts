@@ -28,8 +28,11 @@ export default defineConfig(({ command, mode }) => {
       react(),
       // Tailwind 4 vite plugin — processes `@import "tailwindcss"` +
       // `@theme {}` directives in CSS and generates utility classes.
-      // Replaces the v3 PostCSS plugin path; tailwind.config.ts content
-      // glob still works but token config moved to CSS @theme.
+      // Replaces the v3 PostCSS plugin path. No JS config: there is no
+      // `@config` directive in any CSS, so a tailwind.config.ts is never
+      // loaded — every token lives in CSS `@theme` (tokens.css). The old
+      // config was removed 2026-06-13 (dead: not loaded, its space/btn/
+      // avatar/icon utilities had 0 usages, text-base comes from @theme).
       tailwindcss(),
       // svg-icons plugin removed by the web v14 reset (src/assets/svg/ was
       // deleted); re-add per future PR if any module needs sprite icons.
