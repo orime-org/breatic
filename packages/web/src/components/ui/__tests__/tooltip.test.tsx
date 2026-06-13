@@ -54,15 +54,15 @@ describe('Tooltip', () => {
           <TooltipTrigger asChild>
             <button type='button'>T</button>
           </TooltipTrigger>
-          <TooltipContent data-testid='content' className='bg-destructive'>
+          <TooltipContent data-testid='content' className='bg-status-error-bg'>
             Err
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>,
     );
     const content = screen.getByTestId('content');
-    // tailwind-merge: bg-destructive overrides bg-primary.
-    expect(content.className).toContain('bg-destructive');
+    // tailwind-merge: the passed bg-* (bg-status-error-bg) overrides bg-primary.
+    expect(content.className).toContain('bg-status-error-bg');
     expect(content.className).not.toContain('bg-primary');
   });
 });

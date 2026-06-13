@@ -31,7 +31,7 @@ const buttonVariants = cva(
           'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
         // Destructive (delete) — red-narrowed to the status-error coral tint
         // (2026-06-13): 14% bg + 40% border + readable coral text; hover
-        // deepens the border. No more solid #c0392b button.
+        // deepens the border. No more solid brick-red button.
         destructive:
           'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error',
         outline:
