@@ -66,7 +66,7 @@ const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
  *
  * - 32px hit area (`--btn-chrome`)
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
- * - muted color at rest; foreground + neutral-100 bg on hover/active
+ * - muted-foreground at rest; active + hover both lift to bg-accent
  * - close button fades in on hover; hidden when locked
  * @param root0 - Component props.
  * @param root0.id - Space id, used for the tab's test ids and keys.
@@ -167,7 +167,7 @@ export function SpaceTab({
       className={cn(
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',
         active
-          ? 'bg-muted text-foreground'
+          ? 'bg-accent text-foreground'
           : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
       style={{

@@ -184,6 +184,7 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
             </div>
             <Input
               id='new-space-name'
+              autoComplete='off'
               value={name}
               maxLength={SPACE_NAME_MAX_LEN}
               onChange={(e) => setName(e.target.value)}

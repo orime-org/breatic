@@ -128,6 +128,7 @@ export function NewStudioDialog({
               </Label>
               <Input
                 id='new-studio-name'
+                autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
