@@ -10,9 +10,9 @@ import { useTranslation } from '@web/i18n/use-translation';
  * Canvas space body — chrome-baseline mock `.canvas-area`.
  *
  * Background:
- *   - 24px dot grid (radial-gradient circle 1px on neutral-200) over a
- *     `--neutral-50` elevated surface; light + dark auto-invert via the
- *     neutral token cascade
+ *   - 24px dot grid (radial-gradient 1px dots in `--color-canvas-grid`) over
+ *     the `--color-canvas` judge-gray work surface; light + dark auto-invert
+ *     via the neutral token cascade
  *   - dot grid is painted via inline `background-image` because Tailwind
  *     can't express the `radial-gradient + solid color` composite without
  *     a custom utility, and this lives on exactly one element
@@ -40,10 +40,10 @@ export function CanvasSpace({
       data-testid='canvas-space'
       data-project-id={projectId}
       data-space-id={spaceId}
-      className='relative h-full w-full overflow-hidden bg-elevated'
+      className='relative h-full w-full overflow-hidden bg-canvas'
       style={{
         backgroundImage:
-          'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
+          'radial-gradient(circle, var(--color-canvas-grid) 1px, transparent 1px)',
         backgroundSize: '24px 24px',
         backgroundPosition: '0 0',
       }}
@@ -52,7 +52,7 @@ export function CanvasSpace({
         data-testid='canvas-empty'
         className='absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
       >
-        <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-elevated px-6 py-4'>
+        <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-card px-6 py-4'>
           <strong className='block text-foreground'>{t('canvas.emptyState.title')}</strong>
           <span className='text-xs text-muted-foreground'>
             {t('canvas.emptyState.hint')}

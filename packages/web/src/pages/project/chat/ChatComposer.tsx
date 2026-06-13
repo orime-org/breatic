@@ -32,7 +32,7 @@ interface ChatComposerProps {
  * chrome-baseline mock `.composer` so the elevated card visually sits
  * on top of the panel surface.
  *
- *   ┌───────────────────────────────────┐  bg = --neutral-50 (elevated)
+ *   ┌───────────────────────────────────┐  bg = --color-card (content card)
  *   │ [📐 select mode] [chip] [chip]…   │  composer-top   p 8/16, min-h 32
  *   │ ─────────────────────────────────── │  chips/input divider
  *   │ describe what you want…            │  composer-input p 10/12/4
@@ -41,8 +41,8 @@ interface ChatComposerProps {
  *   └───────────────────────────────────┘  radius = --radius-content-md (12px)
  *
  * Visual tokens (mock-aligned, see CSS lines 627-758):
- *   - Outer card uses `bg-muted` (closest semantic to mock's
- *     `--neutral-50` elevated step; ADR 14 brand-guard forbids raw
+ *   - Outer card uses `bg-card` (content-card tier; the former `elevated`
+ *     step was removed 2026-06-13; ADR 14 brand-guard forbids raw
  *     `bg-neutral-*` in chrome surfaces)
  *   - Outer radius is `rounded-md` (= `--radius-content-md` 12px,
  *     Tweaks-linked so the slider can resize content-region radius)
@@ -97,7 +97,7 @@ export function ChatComposer({
   return (
     <div
       data-testid='chat-composer'
-      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-elevated transition-colors focus-within:border-active-border'
+      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-card transition-colors focus-within:border-active-border'
     >
       <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <button

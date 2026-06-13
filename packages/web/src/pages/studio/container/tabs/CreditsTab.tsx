@@ -122,7 +122,7 @@ export function CreditsTab({
       </div>
 
       {/* Spend order (locked mock .order): label + numbered circle steps. */}
-      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-elevated px-3 py-2.5'>
+      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-card px-3 py-2.5'>
         <span className='whitespace-nowrap border-r border-border pr-3 text-xs font-bold text-muted-foreground'>
           {t('studio.container.credits.orderTitle')}
         </span>
