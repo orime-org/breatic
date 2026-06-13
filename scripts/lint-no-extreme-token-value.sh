@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # no-extreme-token-value guard — lock the pure-neutral + off-extreme + scheme-D
-# status-readability invariants of the design system (第九片 final定稿).
+# status-readability invariants of the design system (9th-rebuild final spec).
 #
 # Three checks, all anti-drift gates for the token set (DESIGN.md §5.2 / §5.4):
 #   1. Pure neutral R=G=B — every --neutral-* (and any direct-hex --color-*
-#      surface override) has equal R/G/B channels (零偏色, no warm/cool tint).
+#      surface override) has equal R/G/B channels (zero hue, no warm/cool tint).
 #   2. Off-extreme bounds — no channel brighter than #f5 (245) or darker than
 #      #12 (18); never #fff / #000. Lightest token = #f5f5f5, darkest = #141414.
 #   3. Status readability — every status -foreground clears WCAG AA 4.5:1 on its
 #      own tint -bg color-mix composited over the page surface, in BOTH modes.
 #
-# Status colours (chromatic by design), brand/logo, and the note (yellow便签)
-# token are exempt from checks 1–2. There is no longer a `destructive` solid
-# button (红收窄: 删除按钮用 error 淡底) so it is not checked.
+# Status colours (chromatic by design), brand/logo, and the note (yellow
+# sticky-note) token are exempt from checks 1–2. There is no longer a
+# `destructive` solid button (red-narrowing: delete buttons use the error
+# tint now) so it is not checked.
 #
 # Exit: 0 clean · 1 violation · 2 misconfiguration.
 #
@@ -103,7 +104,7 @@ for (const mode of ['light', 'dark']) {
     if (!HEX.test(raw.trim())) continue; // skip var()/color-mix/keyword — primitive carries the check
     const [r, g, b] = hex2rgb(raw);
     if (!(r === g && g === b)) {
-      rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — not R=G=B (neutral must be零偏色)`);
+      rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — not R=G=B (neutral must have equal channels)`);
       fail = true; continue;
     }
     if (r > 245) { rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — brighter than #f5f5f5 (off-extreme upper bound)`); fail = true; }

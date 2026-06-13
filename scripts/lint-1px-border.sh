@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 1px-border guard — lock the rigid "all borders & focus rings are 1px solid,
-# no glow" rule (DESIGN.md §5: focus 1px 实色无光晕; user 2026-06-12 拍 A 刚性
-# 规范 + 2026-06-13 拍 A: 含头像叠层 border 也收 1px、守卫不留例外).
+# no glow" rule (DESIGN.md §5: focus ring is 1px solid with no glow; rigid spec
+# approved 2026-06-12 + 2026-06-13: the avatar-stack border also collapses to
+# 1px — no allowlist exception).
 #
 # Fails on, anywhere in packages/web/src (tests excluded):
 #   - ring-offset*            — the focus-ring glow gap (forbidden; use no offset)
