@@ -191,7 +191,7 @@ function withQuery(ui: ReactElement) {
 describe('MembersTab (spec §3.7)', () => {
   it('shows the invite button to an Admin', () => {
     withQuery(
-      <MembersTab slug='acme' members={MEMBERS} studioRole='admin' studioType='team' />,
+      <MembersTab slug='acme' members={MEMBERS} studioRole='admin' studioType='team' pendingInvitations={[]} />,
     );
     expect(
       screen.getByRole('button', { name: 'Invite member' }),
@@ -200,7 +200,7 @@ describe('MembersTab (spec §3.7)', () => {
 
   it('hides the invite button from a Member', () => {
     withQuery(
-      <MembersTab slug='acme' members={MEMBERS} studioRole='member' studioType='team' />,
+      <MembersTab slug='acme' members={MEMBERS} studioRole='member' studioType='team' pendingInvitations={[]} />,
     );
     expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
   });

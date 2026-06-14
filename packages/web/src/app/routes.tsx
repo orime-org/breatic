@@ -6,6 +6,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import StudioLayout from '@web/pages/studio/shell/StudioLayout';
 import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
+import StudioInvitePage from '@web/pages/studio/StudioInvitePage';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
 import NoAccessPage from '@web/pages/project/access/NoAccessPage';
@@ -106,6 +107,21 @@ const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <InviteConsumePage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // Studio invitation landing — `/studio-invite?token=xxx`, the OPTIONAL
+    // email-link path of the invite-confirm handshake (the always-delivered
+    // path is the bell notification). Wrapped in ProtectedRoute because both
+    // backend endpoints (`GET /studio-invitations/:token`, `POST
+    // /studio-invitations/respond`) are auth-only; an unauthenticated click
+    // bounces to /login and returns here after sign-in. The page peeks the
+    // invite then confirms/declines — it does NOT auto-accept.
+    path: '/studio-invite',
+    element: (
+      <ProtectedRoute>
+        <StudioInvitePage />
       </ProtectedRoute>
     ),
   },

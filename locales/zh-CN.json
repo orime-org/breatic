@@ -38,6 +38,7 @@
       "team_limit_reached": "你已达到 50 个团队 studio 的上限。",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已是成员。",
+      "already_invited": "该用户已有一个待确认的邀请。",
       "cannot_modify_personal": "个人 studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让管理员。",
       "cannot_change_admin_role": "管理员角色只能通过转让变更。"
@@ -1328,7 +1329,9 @@
       "memberJoined": "有人加入了 {project}",
       "studioMemberInvited": "你已被加入 {studio}",
       "studioTransferRequest": "有人邀请你接管 {studio}",
-      "studioTransferApproved": "你对 {studio} 的管理员转让已被接受"
+      "studioTransferApproved": "你对 {studio} 的管理员转让已被接受",
+      "studioInviteRequest": "你被邀请加入 {studio}",
+      "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请"
     },
     "actionFailed": "无法完成操作，请重试。",
     "transferConfirmedToast": "你现在是该工作室的管理员了。",
@@ -1345,7 +1348,11 @@
       "minutes": "{count} 分钟后过期",
       "hours": "{count} 小时后过期",
       "days": "{count} 天后过期"
-    }
+    },
+    "inviteAccept": "接受",
+    "inviteDecline": "拒绝",
+    "inviteConfirmedToast": "你已加入该 Studio。",
+    "inviteDeclinedToast": "已拒绝邀请。"
   },
   "connection": {
     "banner": {
@@ -1508,7 +1515,6 @@
         "inviteEmailPlaceholder": "name@example.com",
         "inviteRoleLabel": "角色",
         "inviteSubmit": "发送邀请",
-        "inviteSuccess": "已添加成员。",
         "inviteFailed": "无法邀请该成员，请重试。",
         "roleUpdated": "角色已更新。",
         "removeConfirmTitle": "移除成员？",
@@ -1520,7 +1526,12 @@
         "transferConfirmAction": "发送请求",
         "transferRequested": "转让请求已发送。",
         "actionFailed": "出错了，请重试。",
-        "colActions": "操作"
+        "colActions": "操作",
+        "pendingTitle": "邀请中",
+        "pendingBadge": "{role} · 待确认",
+        "revoke": "撤销",
+        "revokeSuccess": "已撤销邀请。",
+        "inviteSent": "邀请已发送。"
       },
       "settings": {
         "basicTitle": "基本信息",
@@ -1581,6 +1592,26 @@
       "myStudiosEmpty": "还没有 Studio",
       "joinedEmpty": "还没加入任何 Studio",
       "openNav": "打开导航"
+    },
+    "invite": {
+      "loadingTitle": "正在打开邀请…",
+      "loadingBody": "稍等，正在加载邀请。",
+      "title": "你收到一份邀请",
+      "body": "{inviter} 邀请你以{role, select, creator {创建者} member {成员} other {成员}}身份加入 {studio}。",
+      "confirm": "接受并加入",
+      "decline": "拒绝",
+      "invalidTitle": "邀请已失效",
+      "invalidBody": "链接可能已过期或被使用过。请让 Studio 管理员重新发送邀请。",
+      "expiredTitle": "邀请已过期",
+      "expiredBody": "你对 {studio} 的邀请已超过 7 天有效期。请让 Studio 管理员重新发送。",
+      "notInviteeTitle": "此邀请不属于当前账号",
+      "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
+      "declinedTitle": "已拒绝邀请",
+      "declinedBody": "你拒绝了对 {studio} 的邀请。之后可以让管理员重新邀请你。",
+      "joinedToast": "你已加入该 Studio。",
+      "actionFailed": "操作未能完成，请重试。",
+      "backToStudio": "返回 Studio",
+      "signIn": "登录"
     }
   },
   "chrome": {

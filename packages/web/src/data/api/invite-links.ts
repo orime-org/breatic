@@ -58,8 +58,8 @@ export const inviteLinksApi = {
    * @param body - Create payload discriminated by `kind` (email or link).
    * @returns The newly created invite link.
    */
-  create(projectId: string, body: CreateInviteLinkBody): Promise<{ data: InviteLink }> {
-    return apiPost<{ data: InviteLink }, CreateInviteLinkBody>(
+  create(projectId: string, body: CreateInviteLinkBody): Promise<InviteLink> {
+    return apiPost<InviteLink, CreateInviteLinkBody>(
       `/projects/${projectId}/invite-links`,
       body,
     );
@@ -71,10 +71,8 @@ export const inviteLinksApi = {
    * @param projectId - Project whose invite links to list.
    * @returns The project's active invite links.
    */
-  listByProject(projectId: string): Promise<{ data: InviteLink[] }> {
-    return apiGet<{ data: InviteLink[] }>(
-      `/projects/${projectId}/invite-links`,
-    );
+  listByProject(projectId: string): Promise<InviteLink[]> {
+    return apiGet<InviteLink[]>(`/projects/${projectId}/invite-links`);
   },
 
   /**
@@ -83,8 +81,8 @@ export const inviteLinksApi = {
    * @param linkId - The invite link to revoke.
    * @returns An acknowledgement once the link is soft-deleted.
    */
-  revoke(projectId: string, linkId: string): Promise<{ data: { ok: true } }> {
-    return apiDelete<{ data: { ok: true } }>(
+  revoke(projectId: string, linkId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(
       `/projects/${projectId}/invite-links/${linkId}`,
     );
   },
@@ -100,8 +98,8 @@ export const inviteLinksApi = {
    * @param token - The invite link token to consume.
    * @returns The resolved invite link, carrying the project and granted role.
    */
-  consume(token: string): Promise<{ data: InviteLink }> {
-    return apiPost<{ data: InviteLink }, Record<string, never>>(
+  consume(token: string): Promise<InviteLink> {
+    return apiPost<InviteLink, Record<string, never>>(
       `/invite-links/${token}/consume`,
       {},
     );

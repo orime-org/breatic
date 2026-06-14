@@ -123,7 +123,7 @@ export function ShareLinksListDialog({
     },
   });
 
-  const links = linksQuery.data?.data ?? [];
+  const links = linksQuery.data ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

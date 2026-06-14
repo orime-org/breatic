@@ -65,7 +65,9 @@ type NotifType =
   | 'access.member_joined'
   | 'studio.member_invited'
   | 'studio.transfer_request'
-  | 'studio.transfer_approved';
+  | 'studio.transfer_approved'
+  | 'studio.invite_request'
+  | 'studio.invite_accepted';
 
 function fakeNotification(
   id: string,
@@ -89,7 +91,7 @@ function fakeNotification(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(notificationsApi.list).mockResolvedValue({ data: [] });
+  vi.mocked(notificationsApi.list).mockResolvedValue([]);
 });
 
 describe('BellMenu — empty list', () => {
@@ -105,19 +107,17 @@ describe('BellMenu — empty list', () => {
 describe('BellMenu — 4 notification types render', () => {
   it('renders one row per notification with the right headline + action affordance', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'access.role_upgrade_request', {
-          projectName: 'Q1 Sprint',
-          message: 'Need editor for review',
-        }),
-        fakeNotification(N2, 'access.member_joined', {
-          projectName: 'Q1 Sprint',
-          newMemberUserId: 'u-newcomer',
-          role: 'editor',
-        }),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_request', {
+        projectName: 'Q1 Sprint',
+        message: 'Need editor for review',
+      }),
+      fakeNotification(N2, 'access.member_joined', {
+        projectName: 'Q1 Sprint',
+        newMemberUserId: 'u-newcomer',
+        role: 'editor',
+      }),
+    ]);
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -132,13 +132,11 @@ describe('BellMenu — 4 notification types render', () => {
   });
 
   it('badge dot appears when unread count > 0', async () => {
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'access.role_upgrade_approved', {
-          projectName: 'Demo',
-        }),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_approved', {
+        projectName: 'Demo',
+      }),
+    ]);
     setup();
     await waitFor(() => {
       expect(screen.getByTestId('bell-unread-dot')).toBeInTheDocument();
@@ -149,16 +147,12 @@ describe('BellMenu — 4 notification types render', () => {
 describe('BellMenu — approve / reject mutations on upgrade-request rows', () => {
   it('clicking approve calls roleUpgradeRequestsApi.decide(approved)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'access.role_upgrade_request', {
-          projectName: 'Demo',
-        }),
-      ],
-    });
-    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({
-      data: { ok: true },
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_request', {
+        projectName: 'Demo',
+      }),
+    ]);
+    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-approve-${N1}`));
@@ -173,16 +167,12 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 
   it('clicking reject calls decide(rejected) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'access.role_upgrade_request', {
-          projectName: 'Demo',
-        }),
-      ],
-    });
-    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({
-      data: { ok: true },
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_request', {
+        projectName: 'Demo',
+      }),
+    ]);
+    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-reject-${N1}`));
@@ -197,13 +187,11 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 
   it('toasts error when decide rejects', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'access.role_upgrade_request', {
-          projectName: 'Demo',
-        }),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_request', {
+        projectName: 'Demo',
+      }),
+    ]);
     vi.mocked(roleUpgradeRequestsApi.decide).mockRejectedValueOnce(
       new ApiException({
         status: 409,
@@ -224,18 +212,14 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 describe('BellMenu — mark-read affordance on non-decision rows', () => {
   it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N2, 'access.member_joined', {
-          projectName: 'Demo',
-          newMemberUserId: 'u-x',
-          role: 'viewer',
-        }),
-      ],
-    });
-    vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({
-      data: { ok: true },
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N2, 'access.member_joined', {
+        projectName: 'Demo',
+        newMemberUserId: 'u-x',
+        role: 'viewer',
+      }),
+    ]);
+    vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-mark-read-${N2}`));
@@ -249,15 +233,13 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
 describe('BellMenu — studio notification types (slice 3)', () => {
   it('renders member_invited as a read-on-click row (no confirm/cancel)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N1, 'studio.member_invited', {
-          studioName: 'Acme',
-          inviterName: 'Alex',
-          role: 'creator',
-        }),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'studio.member_invited', {
+        studioName: 'Acme',
+        inviterName: 'Alex',
+        role: 'creator',
+      }),
+    ]);
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -274,16 +256,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
   it('renders transfer_request with confirm/cancel + a TTL countdown', async () => {
     const user = userEvent.setup();
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(
-          N1,
-          'studio.transfer_request',
-          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-          { expiresAt },
-        ),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.transfer_request',
+        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+        { expiresAt },
+      ),
+    ]);
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -298,19 +278,15 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('confirm calls respondAction(id, confirm) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(
-          N1,
-          'studio.transfer_request',
-          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-        ),
-      ],
-    });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({
-      data: { ok: true },
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.transfer_request',
+        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
@@ -318,24 +294,21 @@ describe('BellMenu — studio notification types (slice 3)', () => {
     await waitFor(() => {
       expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
     });
-    expect(toast.success).toHaveBeenCalled();
+    // A transfer confirm makes the recipient the admin — the admin toast.
+    expect(toast.success).toHaveBeenCalledWith('You are now the studio admin.');
   });
 
   it('cancel calls respondAction(id, cancel)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(
-          N1,
-          'studio.transfer_request',
-          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-        ),
-      ],
-    });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({
-      data: { ok: true },
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.transfer_request',
+        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
@@ -347,16 +320,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('toasts the server error when respondAction rejects', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(
-          N1,
-          'studio.transfer_request',
-          { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-          { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-        ),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.transfer_request',
+        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
     vi.mocked(notificationsApi.respondAction).mockRejectedValueOnce(
       new ApiException({ status: 409, code: 'CONFLICT', message: 'Request expired' }),
     );
@@ -371,16 +342,108 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('renders transfer_approved as a read-on-click row', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      data: [
-        fakeNotification(N2, 'studio.transfer_approved', { studioName: 'Acme' }),
-      ],
-    });
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N2, 'studio.transfer_approved', { studioName: 'Acme' }),
+    ]);
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
       await screen.findByText(/Your admin transfer for Acme was accepted/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
+  });
+});
+
+describe('BellMenu — studio invite-confirm handshake', () => {
+  it('renders invite_request with confirm/cancel + role subtitle + TTL countdown', async () => {
+    const user = userEvent.setup();
+    const expiresAt = new Date(
+      Date.now() + 3 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.invite_request',
+        {
+          invitationId: 'inv-1',
+          studioId: 's1',
+          studioName: 'Acme',
+          inviterName: 'Alex',
+          role: 'creator',
+        },
+        { expiresAt },
+      ),
+    ]);
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/You were invited to join Acme/i),
+    ).toBeInTheDocument();
+    // Subtitle reuses the granted-role label (invitedAsCreator).
+    expect(screen.getByText(/Joined as a creator/i)).toBeInTheDocument();
+    // Actionable like the transfer handshake: confirm / cancel + a countdown.
+    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
+    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
+  });
+
+  it('confirm calls respondAction(id, confirm) + success toast', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.invite_request',
+        { invitationId: 'inv-1', studioName: 'Acme', role: 'member' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
+    });
+    // An invite confirm joins as a member — the join toast, NOT the admin one.
+    expect(toast.success).toHaveBeenCalledWith('You\'ve joined the studio.');
+  });
+
+  it('cancel calls respondAction(id, cancel)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'studio.invite_request',
+        { invitationId: 'inv-1', studioName: 'Acme', role: 'member' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
+    });
+  });
+
+  it('renders invite_accepted as a read-on-click row', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N2, 'studio.invite_accepted', {
+        studioName: 'Acme',
+        inviteeName: 'Dee',
+      }),
+    ]);
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/Dee accepted your invite to Acme/i),
     ).toBeInTheDocument();
     expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });

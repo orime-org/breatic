@@ -121,7 +121,7 @@ export function ShareDialog({
     enabled: open,
     refetchOnWindowFocus: false,
   });
-  const linkCount = (linksQuery.data?.data ?? []).length;
+  const linkCount = (linksQuery.data ?? []).length;
 
   const inviteUrl = generatedLink ? inviteUrlFor(generatedLink.token) : '';
 
@@ -180,7 +180,7 @@ export function ShareDialog({
         kind: 'link',
         role: generateRole,
       });
-      setGeneratedLink(res.data);
+      setGeneratedLink(res);
       linksQuery.refetch();
     } catch (err) {
       const msg =

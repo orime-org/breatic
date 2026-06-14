@@ -15,11 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@web/components/ui/alert-dialog';
+import { Button } from '@web/components/ui/button';
 import {
   studiosApi,
   type GrantableStudioRole,
 } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
+import type { PendingInvitationSummary } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { InviteMemberDialog } from '@web/pages/studio/container/dialogs/InviteMemberDialog';
@@ -34,6 +36,11 @@ interface MembersTabProps {
   /** The studio's URL handle — the path param for every member mutation. */
   slug: string;
   members: readonly StudioMember[];
+  /**
+   * In-flight pending invitations (admins only; non-admins get an empty list).
+   * Rendered in a separate "invited" section with a revoke action.
+   */
+  pendingInvitations: readonly PendingInvitationSummary[];
   /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = guest. */
   studioRole: StudioRole | null;
   /**
@@ -65,9 +72,11 @@ type Confirm =
  * entirely. Destructive actions (remove, transfer-admin) route through a
  * confirm dialog; errors surface as a `sonner` toast, except the invite dialog
  * which shows server errors inline.
- * @param props the studio slug, members, the viewer's studio role and type.
+ * @param props the studio slug, members, pending invitations, and the viewer's
+ *   studio role and type.
  * @param props.slug the studio's URL handle.
  * @param props.members the studio members.
+ * @param props.pendingInvitations in-flight pending invitations (admins only).
  * @param props.studioRole the viewer's studio role.
  * @param props.studioType whether the studio is personal or team.
  * @returns the Members tab content.
@@ -75,6 +84,7 @@ type Confirm =
 export function MembersTab({
   slug,
   members,
+  pendingInvitations,
   studioRole,
   studioType,
 }: MembersTabProps): React.JSX.Element {
@@ -102,7 +112,7 @@ export function MembersTab({
       await invalidateMembers();
       setInviteOpen(false);
       setInviteError(null);
-      toast.success(t('studio.container.members.inviteSuccess'));
+      toast.success(t('studio.container.members.inviteSent'));
     },
     onError: (err) => {
       // Invite errors stay inline in the dialog (404 email not registered / 409
@@ -143,6 +153,16 @@ export function MembersTab({
       // confirms. Just acknowledge the request was sent.
       setConfirm(null);
       toast.success(t('studio.container.members.transferRequested'));
+    },
+    onError: (err) => toast.error(errorMessage(err, t)),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (invitationId: string) =>
+      studiosApi.revokeInvitation(slug, invitationId),
+    onSuccess: async () => {
+      await invalidateMembers();
+      toast.success(t('studio.container.members.revokeSuccess'));
     },
     onError: (err) => toast.error(errorMessage(err, t)),
   });
@@ -261,6 +281,63 @@ export function MembersTab({
           })}
         </tbody>
       </table>
+
+      {canManage && pendingInvitations.length > 0 ? (
+        <div className='flex flex-col gap-2'>
+          <h3 className='text-xs font-medium text-muted-foreground'>
+            {t('studio.container.members.pendingTitle')}
+          </h3>
+          <table className='w-full text-left text-sm'>
+            <tbody>
+              {pendingInvitations.map((inv) => (
+                <tr
+                  key={inv.invitationId}
+                  className='border-t border-border first:border-t-0'
+                >
+                  <td className='py-2.5'>
+                    <span className='flex items-center gap-3'>
+                      <span
+                        aria-hidden='true'
+                        className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'
+                      >
+                        {inv.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className='flex min-w-0 flex-col'>
+                        <span className='truncate font-semibold text-foreground'>
+                          {inv.name}
+                        </span>
+                        <span className='truncate text-xs text-muted-foreground'>
+                          {inv.email}
+                        </span>
+                      </span>
+                    </span>
+                  </td>
+                  <td className='py-2.5'>
+                    <span className='inline-flex h-5 items-center rounded-content-sm border border-border bg-background px-2 text-2xs font-semibold text-muted-foreground'>
+                      {t('studio.container.members.pendingBadge', {
+                        role: roleLabel(inv.role, t),
+                      })}
+                    </span>
+                  </td>
+                  <td className='py-2.5 text-right'>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      disabled={
+                        revokeMutation.isPending &&
+                        revokeMutation.variables === inv.invitationId
+                      }
+                      onClick={() => revokeMutation.mutate(inv.invitationId)}
+                    >
+                      {t('studio.container.members.revoke')}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       <InviteMemberDialog
         open={inviteOpen}

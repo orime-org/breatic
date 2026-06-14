@@ -24,7 +24,9 @@
  * Cases (all real PG testcontainer + real Redis session):
  *   1. non-member        POST   → 403 (gate denies, existence hidden)
  *   2. member (non-admin) POST  → 403 (below the admin floor)
- *   3. admin             POST   → 201, and the invitee is an active member
+ *   3. admin             POST   → 201, creating a PENDING invite (not an immediate member)
+ *   3b. end-to-end       invitee CONFIRMS the bell invite → becomes a member
+ *   3c. admin            DELETE /invitations/:id → 200, the pending invite is revoked
  *   4. admin             DELETE → 200, and the target is no longer a member
  *   5. admin             PATCH {role:"creator"} → 200, role flipped
  *
@@ -188,7 +190,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBeNull();
   });
 
-  it("POST /studio/:slug/members → 201 for the ADMIN, and the invitee lands as an active member", async () => {
+  it("POST /studio/:slug/members → 201 for the ADMIN, creating a PENDING invite (not an immediate member)", async () => {
     const admin = await insertUser();
     const studio = await insertTeamStudio(admin);
     await insertMemberRaw(studio.id, admin, "admin");
@@ -203,7 +205,76 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     expect(res.status).toBe(201);
     const body = (await res.json()) as { data: { ok: boolean } };
     expect(body.data.ok).toBe(true);
-    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("member");
+    // Invite-confirm handshake: the invitee is NOT a member yet…
+    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBeNull();
+    // …but a pending invitation row exists.
+    const pending = await sql<{ status: string }[]>`
+      SELECT status FROM studio_invitations
+      WHERE studio_id = ${studio.id} AND invited_user_id = ${invitee.id}
+    `;
+    expect(pending.map((p) => p.status)).toEqual(["pending"]);
+  });
+
+  it("end-to-end: POST members → the invitee CONFIRMS the bell invite → becomes a member", async () => {
+    const admin = await insertUser();
+    const studio = await insertTeamStudio(admin);
+    await insertMemberRaw(studio.id, admin, "admin");
+    const invitee = await insertUserWithEmail();
+
+    const inviteRes = await app.request(`/api/v1/studio/${studio.slug}/members`, {
+      method: "POST",
+      headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
+      body: JSON.stringify({ email: invitee.email, role: "creator" }),
+    });
+    expect(inviteRes.status).toBe(201);
+    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBeNull();
+
+    // The invitee has an actionable studio.invite_request bell notification.
+    const notifs = await sql<{ id: string; type: string }[]>`
+      SELECT id, type FROM notifications WHERE user_id = ${invitee.id}
+    `;
+    const invite = notifs.find((n) => n.type === "studio.invite_request");
+    expect(invite).toBeDefined();
+
+    // Confirming it through the notification action endpoint promotes them.
+    const confirmRes = await app.request(
+      `/api/v1/users/me/notifications/${invite!.id}/action`,
+      {
+        method: "POST",
+        headers: { ...JSON_HEADERS, Cookie: await loginCookie(invitee.id) },
+        body: JSON.stringify({ action: "confirm" }),
+      },
+    );
+    expect(confirmRes.status).toBe(200);
+    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("creator");
+  });
+
+  it("DELETE /studio/:slug/invitations/:id → 200 for the ADMIN, revoking a pending invite", async () => {
+    const admin = await insertUser();
+    const studio = await insertTeamStudio(admin);
+    await insertMemberRaw(studio.id, admin, "admin");
+    const invitee = await insertUserWithEmail();
+    await app.request(`/api/v1/studio/${studio.slug}/members`, {
+      method: "POST",
+      headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
+      body: JSON.stringify({ email: invitee.email, role: "member" }),
+    });
+    const rows = await sql<{ id: string }[]>`
+      SELECT id FROM studio_invitations
+      WHERE invited_user_id = ${invitee.id} AND status = 'pending'
+    `;
+    const invitationId = rows[0]!.id;
+
+    const res = await app.request(
+      `/api/v1/studio/${studio.slug}/invitations/${invitationId}`,
+      { method: "DELETE", headers: { Cookie: await loginCookie(admin) } },
+    );
+
+    expect(res.status).toBe(200);
+    const after = await sql<{ status: string }[]>`
+      SELECT status FROM studio_invitations WHERE id = ${invitationId}
+    `;
+    expect(after[0]!.status).toBe("revoked");
   });
 
   it("DELETE /studio/:slug/members/:userId → 200 for the ADMIN, and the target is removed", async () => {

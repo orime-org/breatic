@@ -19,7 +19,7 @@ import { notificationsApi } from '@web/data/api/notifications';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(notificationsApi.list).mockResolvedValue({ data: [] });
+  vi.mocked(notificationsApi.list).mockResolvedValue([]);
 });
 
 function setup() {

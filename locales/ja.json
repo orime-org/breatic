@@ -35,6 +35,7 @@
       "team_limit_reached": "チーム studio の上限(50 個)に達しました。",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにメンバーです。",
+      "already_invited": "そのユーザーには保留中の招待があります。",
       "cannot_modify_personal": "個人スタジオはメンバーを管理できません。",
       "remove_last_admin": "削除する前に管理者権限を譲渡してください。",
       "cannot_change_admin_role": "管理者ロールは譲渡によってのみ変更できます。"
@@ -1328,7 +1329,9 @@
       "memberJoined": "{project} に新しいメンバーが参加しました",
       "studioMemberInvited": "{studio} に追加されました",
       "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
-      "studioTransferApproved": "{studio} の管理者委譲が承認されました"
+      "studioTransferApproved": "{studio} の管理者委譲が承認されました",
+      "studioInviteRequest": "{studio} への参加に招待されました",
+      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました"
     },
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
     "transferConfirmedToast": "あなたがスタジオの管理者になりました。",
@@ -1345,7 +1348,11 @@
       "minutes": "あと{count}分で期限切れ",
       "hours": "あと{count}時間で期限切れ",
       "days": "あと{count}日で期限切れ"
-    }
+    },
+    "inviteAccept": "承認",
+    "inviteDecline": "辞退",
+    "inviteConfirmedToast": "Studio に参加しました。",
+    "inviteDeclinedToast": "招待を辞退しました。"
   },
   "connection": {
     "banner": {
@@ -1508,7 +1515,6 @@
         "inviteEmailPlaceholder": "name@example.com",
         "inviteRoleLabel": "ロール",
         "inviteSubmit": "招待を送信",
-        "inviteSuccess": "メンバーを追加しました。",
         "inviteFailed": "このメンバーを招待できませんでした。もう一度お試しください。",
         "roleUpdated": "ロールを更新しました。",
         "removeConfirmTitle": "メンバーを削除しますか？",
@@ -1520,7 +1526,12 @@
         "transferConfirmAction": "リクエストを送信",
         "transferRequested": "委譲リクエストを送信しました。",
         "actionFailed": "エラーが発生しました。もう一度お試しください。",
-        "colActions": "操作"
+        "colActions": "操作",
+        "pendingTitle": "招待中",
+        "pendingBadge": "{role}・保留中",
+        "revoke": "取り消す",
+        "revokeSuccess": "招待を取り消しました。",
+        "inviteSent": "招待を送信しました。"
       },
       "settings": {
         "basicTitle": "基本情報",
@@ -1581,6 +1592,26 @@
       "myStudiosEmpty": "Studio がまだありません",
       "joinedEmpty": "まだ Studio に参加していません",
       "openNav": "ナビゲーションを開く"
+    },
+    "invite": {
+      "loadingTitle": "招待を開いています…",
+      "loadingBody": "招待を読み込んでいます。少々お待ちください。",
+      "title": "招待が届いています",
+      "body": "{inviter} さんがあなたを{role, select, creator {クリエイター} member {メンバー} other {メンバー}}として {studio} に招待しました。",
+      "confirm": "承認して参加",
+      "decline": "辞退",
+      "invalidTitle": "この招待は無効です",
+      "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Studio の管理者に新しい招待を依頼してください。",
+      "expiredTitle": "この招待は期限切れです",
+      "expiredBody": "{studio} への招待は 7 日間の有効期限を過ぎています。Studio の管理者に再送を依頼してください。",
+      "notInviteeTitle": "この招待はこのアカウント宛てではありません",
+      "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
+      "declinedTitle": "招待を辞退しました",
+      "declinedBody": "{studio} への招待を辞退しました。あとで管理者に再度招待を依頼できます。",
+      "joinedToast": "Studio に参加しました。",
+      "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
+      "backToStudio": "Studio に戻る",
+      "signIn": "サインイン"
     }
   },
   "chrome": {

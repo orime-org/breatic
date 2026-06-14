@@ -48,6 +48,10 @@ export type {
   StudioSummary,
   StudioDetail,
   StudioMemberSummary,
+  StudioInvitationStatus,
+  PendingInvitationSummary,
+  StudioMembersView,
+  InvitationLandingView,
   PersonalStudioRef,
 } from "@shared/types/studio.js";
 

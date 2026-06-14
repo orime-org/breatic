@@ -20,6 +20,8 @@
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
+import { isUniqueViolation } from "@server/modules/studio/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
@@ -27,39 +29,9 @@ import { t, SLUG_REGEX } from "@breatic/shared";
 import type {
   Studio,
   StudioDetail,
-  StudioMemberSummary,
+  StudioMembersView,
   StudioSummary,
 } from "@breatic/shared";
-
-/**
- * Detect a PostgreSQL unique-violation error (SQLSTATE 23505), walking the
- * `.cause` chain.
- *
- * Used to map a slug collision (lost the pre-check race) or a
- * second-personal-studio attempt to a typed `ConflictError` instead of a
- * raw 500. Inside a `db.transaction`, drizzle 0.45 wraps the driver error
- * in a `DrizzleQueryError` and hangs the original postgres error (carrying
- * `code: '23505'`) on `.cause` — so a flat `err.code` check is not enough;
- * we walk the cause chain.
- * @param err - Caught error of unknown shape
- * @returns True if any error in the cause chain carries the `23505` SQLSTATE code
- */
-function isUniqueViolation(err: unknown): boolean {
-  let cur: unknown = err;
-  for (let depth = 0; cur != null && depth < 5; depth++) {
-    if (
-      typeof cur === "object" &&
-      "code" in cur &&
-      (cur as { code: unknown }).code === "23505"
-    ) {
-      return true;
-    }
-    cur = typeof cur === "object" && "cause" in cur
-      ? (cur as { cause: unknown }).cause
-      : null;
-  }
-  return false;
-}
 
 /**
  * Create the user's personal studio with the slug they chose at
@@ -277,26 +249,29 @@ export async function listUserStudios(
 }
 
 /**
- * List a studio's active members for the Members tab (display name / email /
- * avatar / role / join date), resolved by slug.
+ * List a studio's Members-tab view, resolved by slug: the active members plus,
+ * for an ADMIN viewer, the in-flight pending invitations.
  *
  * The studio-shell decision A applies — visible to any authenticated user, but
- * only members' tabs call this (a non-member sees no Members tab). Each
- * member's display `name` comes from their personal studio (the `users` table
- * has no username). A personal studio returns exactly its admin (the creator).
+ * only members' tabs call this. Each member's display `name` comes from their
+ * personal studio (the `users` table has no username). Pending invitations are
+ * returned ONLY to an admin viewer (they carry the invitee's email — not leaked
+ * to non-admins); every other viewer gets an empty `pendingInvitations`.
  * @param slug - The studio's URL handle
- * @returns The active members, oldest-first (admin/creator at the top)
+ * @param viewerUserId - The viewing user (their role gates pending visibility)
+ * @returns Active members (oldest-first) + pending invitations (admins only)
  * @throws {NotFoundError} when no active studio has that slug
  */
 export async function getStudioMembers(
   slug: string,
-): Promise<StudioMemberSummary[]> {
+  viewerUserId: string,
+): Promise<StudioMembersView> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  const members = await studioMembersRepo.listByStudio(studio.id);
-  return members.map((m) => ({
+  const rows = await studioMembersRepo.listByStudio(studio.id);
+  const members = rows.map((m) => ({
     userId: m.userId,
     name: m.name,
     email: m.email,
@@ -304,4 +279,13 @@ export async function getStudioMembers(
     role: m.role,
     addedAt: m.addedAt.toISOString(),
   }));
+  const viewerRole = await studioAuthService.loadStudioRole(
+    viewerUserId,
+    studio.id,
+  );
+  const pendingInvitations =
+    viewerRole === "admin"
+      ? await studioInvitationsRepo.listPendingByStudio(studio.id)
+      : [];
+  return { members, pendingInvitations };
 }

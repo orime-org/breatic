@@ -17,7 +17,7 @@ const PID = '11111111-1111-4111-8111-111111111111';
 vi.mock('@web/data/api/invite-links', () => ({
   inviteLinksApi: {
     create: vi.fn(),
-    listByProject: vi.fn().mockResolvedValue({ data: [] }),
+    listByProject: vi.fn().mockResolvedValue([]),
     revoke: vi.fn(),
   },
 }));
@@ -57,7 +57,7 @@ function setup(props: Partial<React.ComponentProps<typeof ShareDialog>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(inviteLinksApi.listByProject).mockResolvedValue({ data: [] });
+  vi.mocked(inviteLinksApi.listByProject).mockResolvedValue([]);
 });
 
 describe('ShareDialog — invite by email flow', () => {
@@ -72,9 +72,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('sends a valid email + role=view (default) to the API', async () => {
     const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'viewer' }),
-    });
+    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'viewer' }));
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -122,9 +120,7 @@ describe('ShareDialog — invite by email flow', () => {
 describe('ShareDialog — Generate link flow', () => {
   it('Generate button calls API with kind=link + no invitee_email', async () => {
     const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ kind: 'link', boundEmail: null }),
-    });
+    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'link', boundEmail: null }));
     setup();
     await user.click(screen.getByTestId('share-generate-link'));
 
@@ -138,9 +134,7 @@ describe('ShareDialog — Generate link flow', () => {
 
   it('renders generated URL after link creation + copy button is enabled', async () => {
     const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce({
-      data: makeFakeLink({ kind: 'link', token: 'abc-token-123', boundEmail: null }),
-    });
+    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'link', token: 'abc-token-123', boundEmail: null }));
     setup();
     // URL/copy not visible before generate
     expect(screen.queryByTestId('share-invite-url')).not.toBeInTheDocument();
@@ -178,9 +172,7 @@ describe('ShareDialog — view all links entry', () => {
   });
 
   it('reflects the count from listByProject in the button label', async () => {
-    vi.mocked(inviteLinksApi.listByProject).mockResolvedValueOnce({
-      data: [makeFakeLink({}), makeFakeLink({ token: 'b' })],
-    });
+    vi.mocked(inviteLinksApi.listByProject).mockResolvedValueOnce([makeFakeLink({}), makeFakeLink({ token: 'b' })]);
     setup();
     const button = screen.getByTestId('share-view-all-links');
     await waitFor(() => {

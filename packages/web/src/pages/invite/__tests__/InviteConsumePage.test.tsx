@@ -56,9 +56,7 @@ describe('InviteConsumePage', () => {
   });
 
   it('navigates to /project/:projectId on successful consume', async () => {
-    vi.mocked(inviteLinksApi.consume).mockResolvedValueOnce({
-      data: makeFakeLink({ projectId: PID }),
-    });
+    vi.mocked(inviteLinksApi.consume).mockResolvedValueOnce(makeFakeLink({ projectId: PID }));
     setup();
     expect(await screen.findByText('ProjectStub')).toBeInTheDocument();
     expect(inviteLinksApi.consume).toHaveBeenCalledWith(TOKEN);

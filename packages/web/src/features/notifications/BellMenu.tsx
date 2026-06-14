@@ -114,7 +114,7 @@ export function BellMenu(): React.JSX.Element {
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const notifications = inboxQuery.data?.data ?? [];
+  const notifications = inboxQuery.data ?? [];
   const count = notifications.length;
 
   const decideMutation = useMutation({
@@ -155,18 +155,26 @@ export function BellMenu(): React.JSX.Element {
   // The studios list is also invalidated so the rail's "My / Joined studios"
   // split reflects the new admin role immediately after a confirm.
   const actionMutation = useMutation({
-    mutationFn: (input: { id: string; action: NotificationAction }) =>
-      notificationsApi.respondAction(input.id, input.action),
+    mutationFn: (input: {
+      id: string;
+      action: NotificationAction;
+      isInvite: boolean;
+    }) => notificationsApi.respondAction(input.id, input.action),
     onSuccess: async (_data, vars) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] }),
         queryClient.invalidateQueries({ queryKey: ['studios', 'user'] }),
       ]);
-      toast.success(
-        vars.action === 'confirm'
-          ? t('notifications.transferConfirmedToast')
-          : t('notifications.transferCancelledToast'),
-      );
+      // The same respondAction endpoint serves both handshakes; the toast must
+      // match the notification kind (an invitee joins as a member, NOT as admin).
+      const toastKey = vars.isInvite
+        ? vars.action === 'confirm'
+          ? 'notifications.inviteConfirmedToast'
+          : 'notifications.inviteDeclinedToast'
+        : vars.action === 'confirm'
+          ? 'notifications.transferConfirmedToast'
+          : 'notifications.transferCancelledToast';
+      toast.success(t(toastKey));
     },
     onError: (err) => {
       const msg =
@@ -249,10 +257,18 @@ export function BellMenu(): React.JSX.Element {
                     })
                   }
                   onConfirm={() =>
-                    actionMutation.mutate({ id: n.id, action: 'confirm' })
+                    actionMutation.mutate({
+                      id: n.id,
+                      action: 'confirm',
+                      isInvite: n.type === 'studio.invite_request',
+                    })
                   }
                   onCancel={() =>
-                    actionMutation.mutate({ id: n.id, action: 'cancel' })
+                    actionMutation.mutate({
+                      id: n.id,
+                      action: 'cancel',
+                      isInvite: n.type === 'studio.invite_request',
+                    })
                   }
                   onMarkRead={() => markReadMutation.mutate(n.id)}
                 />
@@ -306,6 +322,10 @@ function NotificationItem({
     notification.type === 'access.role_upgrade_request';
   const isTransferRequest =
     notification.type === 'studio.transfer_request';
+  const isInviteRequest = notification.type === 'studio.invite_request';
+  // Both actionable studio handshakes render the same confirm/cancel controls
+  // (the backend dispatches on the notification type).
+  const isActionableStudio = isTransferRequest || isInviteRequest;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
@@ -331,7 +351,7 @@ function NotificationItem({
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-2xs text-muted-foreground'>
-          {isTransferRequest && notification.expiresAt
+          {isActionableStudio && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
             : timeAgoLabel(notification.createdAt)}
         </span>
@@ -357,7 +377,7 @@ function NotificationItem({
               {t('notifications.approve')}
             </Button>
           </div>
-        ) : isTransferRequest ? (
+        ) : isActionableStudio ? (
           <div className='flex items-center gap-2'>
             <Button
               variant='outline'
@@ -367,7 +387,9 @@ function NotificationItem({
               onClick={onCancel}
               data-testid={`bell-cancel-${notification.id}`}
             >
-              {t('notifications.transferDecline')}
+              {isInviteRequest
+                ? t('notifications.inviteDecline')
+                : t('notifications.transferDecline')}
             </Button>
             <Button
               size='sm'
@@ -376,7 +398,9 @@ function NotificationItem({
               onClick={onConfirm}
               data-testid={`bell-confirm-${notification.id}`}
             >
-              {t('notifications.transferAccept')}
+              {isInviteRequest
+                ? t('notifications.inviteAccept')
+                : t('notifications.transferAccept')}
             </Button>
           </div>
         ) : (
@@ -415,6 +439,10 @@ function iconForType(type: NotificationType): string {
     case 'studio.transfer_request':
       return initialsFromString('TR');
     case 'studio.transfer_approved':
+      return '✓';
+    case 'studio.invite_request':
+      return initialsFromString('IN');
+    case 'studio.invite_accepted':
       return '✓';
     default:
       return '?';
@@ -460,6 +488,15 @@ function headlineFor(
       return t('notifications.headline.studioTransferApproved', {
         studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
       });
+    case 'studio.invite_request':
+      return t('notifications.headline.studioInviteRequest', {
+        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
+      });
+    case 'studio.invite_accepted':
+      return t('notifications.headline.studioInviteAccepted', {
+        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
+        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
+      });
     default:
       return n.type;
   }
@@ -493,6 +530,10 @@ function subtitleFor(
     return reason && reason.length > 0 ? reason : null;
   }
   if (n.type === 'studio.member_invited') {
+    const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;
+    return roleKey ? t(roleKey) : null;
+  }
+  if (n.type === 'studio.invite_request') {
     const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;
     return roleKey ? t(roleKey) : null;
   }

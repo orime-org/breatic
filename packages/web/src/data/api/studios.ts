@@ -12,10 +12,11 @@
 
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type {
+  InvitationLandingView,
   ProjectSummary,
   Studio,
   StudioDetail,
-  StudioMemberSummary,
+  StudioMembersView,
   StudioSummary,
 } from '@breatic/shared';
 
@@ -108,29 +109,41 @@ export const studiosApi = {
     return apiGet<ProjectSummary[]>(`/studio/${slug}/projects`);
   },
   /**
-   * `GET /api/v1/studio/:slug/members` — the studio's active members for the
-   * Members tab (display name / email / role / join date). A personal studio
-   * returns exactly its owner; a team studio returns all members.
+   * `GET /api/v1/studio/:slug/members` — the Members tab view: active members
+   * plus, for an admin viewer, the in-flight pending invitations (non-admins get
+   * an empty `pendingInvitations`).
    * @param slug the studio's URL handle.
-   * @returns the member summaries.
+   * @returns the members + pending-invitations view.
    */
-  listMembers(slug: string): Promise<StudioMemberSummary[]> {
-    return apiGet<StudioMemberSummary[]>(`/studio/${slug}/members`);
+  listMembers(slug: string): Promise<StudioMembersView> {
+    return apiGet<StudioMembersView>(`/studio/${slug}/members`);
   },
   /**
    * `POST /api/v1/studio/:slug/members` — invite a registered user (by email)
-   * into the studio with a `creator` / `member` role. Admin-only; takes effect
-   * immediately. Rejects with a typed `ApiException`: `404` unregistered email,
-   * `409` already a member, `403` personal studio / caller not admin, `422`
-   * invalid body.
+   * with a `creator` / `member` role. Admin-only; creates a PENDING invite + an
+   * actionable bell notification (and best-effort an email link). The invitee
+   * becomes a member only on confirm. Rejects: `404` unregistered email, `409`
+   * already a member / already invited, `403` personal / not admin, `422` body.
    * @param slug the studio's URL handle.
    * @param body the invitee's email + the granted role.
-   * @returns once the invite has been recorded.
+   * @returns once the invite has been created.
    */
   inviteMember(slug: string, body: InviteMemberBody): Promise<{ ok: true }> {
     return apiPost<{ ok: true }, InviteMemberBody>(
       `/studio/${slug}/members`,
       body,
+    );
+  },
+  /**
+   * `DELETE /api/v1/studio/:slug/invitations/:invitationId` — the admin revokes
+   * a pending invite. Admin-only.
+   * @param slug the studio's URL handle.
+   * @param invitationId the pending invitation to revoke.
+   * @returns once the invite has been revoked.
+   */
+  revokeInvitation(slug: string, invitationId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(
+      `/studio/${slug}/invitations/${invitationId}`,
     );
   },
   /**
@@ -181,5 +194,32 @@ export const studiosApi = {
       `/studio/${slug}/transfer-admin`,
       body,
     );
+  },
+  /**
+   * `GET /api/v1/studio-invitations/:token` — the landing-page view for an email
+   * invite link (studio + inviter names, role, `expired`, `isInvitee`).
+   * Auth-only. Rejects with `404` when the token / invite is gone.
+   * @param token the one-time token from the invite link.
+   * @returns the invitation landing view.
+   */
+  getInvitation(token: string): Promise<InvitationLandingView> {
+    return apiGet<InvitationLandingView>(`/studio-invitations/${token}`);
+  },
+  /**
+   * `POST /api/v1/studio-invitations/respond` — confirm or decline an invite
+   * from the email link; consumes the one-time token. Returns the studio slug
+   * for the post-confirm redirect.
+   * @param token the one-time token from the invite link.
+   * @param action `confirm` to accept (and join), `decline` to refuse.
+   * @returns the studio slug to redirect to on confirm.
+   */
+  respondInvitation(
+    token: string,
+    action: 'confirm' | 'decline',
+  ): Promise<{ studioSlug: string }> {
+    return apiPost<
+      { studioSlug: string },
+      { token: string; action: 'confirm' | 'decline' }
+    >('/studio-invitations/respond', { token, action });
   },
 };
