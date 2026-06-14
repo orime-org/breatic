@@ -9,6 +9,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ApiException } from '@web/data/api/types';
+import { useCurrentUserStore } from '@web/stores';
+
+const SELF = {
+  id: 'u-self',
+  name: 'Self',
+  email: 'self@x.example',
+  personalStudio: null,
+};
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const N1 = '22222222-2222-4222-8222-222222222222';
@@ -91,6 +99,9 @@ function fakeNotification(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A known user — the inbox query is gated on `userId`, so without this the
+  // query stays disabled and nothing renders.
+  useCurrentUserStore.setState({ user: SELF });
   vi.mocked(notificationsApi.list).mockResolvedValue([]);
 });
 
@@ -101,6 +112,28 @@ describe('BellMenu — empty list', () => {
     await user.click(screen.getByTestId('bell-trigger'));
     expect(await screen.findByTestId('bell-popover')).toBeInTheDocument();
     expect(screen.getByText(/No pending notifications/i)).toBeInTheDocument();
+  });
+});
+
+describe('BellMenu — auth gate (boot-race, #1261)', () => {
+  it('does not fetch notifications until a user is known', async () => {
+    const user = userEvent.setup();
+    useCurrentUserStore.setState({ user: null });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    expect(await screen.findByTestId('bell-popover')).toBeInTheDocument();
+    // The query is gated on userId — it must NOT fire (and cache an empty list)
+    // before the /auth/me boot ping resolves.
+    expect(notificationsApi.list).not.toHaveBeenCalled();
+    expect(screen.getByText(/No pending notifications/i)).toBeInTheDocument();
+  });
+
+  it('fetches once a user becomes known', async () => {
+    useCurrentUserStore.setState({ user: SELF });
+    setup();
+    await waitFor(() => {
+      expect(notificationsApi.list).toHaveBeenCalled();
+    });
   });
 });
 

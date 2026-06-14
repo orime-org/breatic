@@ -27,6 +27,7 @@ import {
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCurrentUserStore } from '@web/stores';
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.
@@ -106,10 +107,17 @@ export function BellMenu(): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
+  // Gate the inbox query on a known user. BellMenu mounts in the chrome before
+  // the `/auth/me` boot ping resolves; firing the query with no session caches
+  // an empty list that never refetches (30s interval, no refetch-on-focus), so
+  // notifications wouldn't appear until a reload. Keying on `userId` also keeps
+  // one user's inbox from leaking into the next after a logout/login.
+  const userId = useCurrentUserStore((s) => s.user?.id ?? null);
 
   const inboxQuery = useQuery({
-    queryKey: ['notifications', 'unread'],
+    queryKey: ['notifications', 'unread', userId],
     queryFn: () => notificationsApi.list(true),
+    enabled: userId !== null,
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
