@@ -175,17 +175,6 @@ export async function createMemberJoined(input: {
 }
 
 /**
- * Studio member-invited payload — an admin added the user to a studio.
- * Stored on the `studio.member_invited` notification in the invitee's inbox
- * (informational; the invite already took effect).
- */
-export interface StudioMemberInvitedPayload {
-  studioName: string;
-  inviterName: string;
-  role: "creator" | "member";
-}
-
-/**
  * Studio transfer-request payload — an admin asks the user to take over as
  * admin. Stored on the actionable `studio.transfer_request` notification
  * (confirm/cancel; expires after a TTL). `studioId` rides along so the
@@ -228,30 +217,6 @@ export interface StudioInviteRequestPayload {
 export interface StudioInviteAcceptedPayload {
   studioName: string;
   inviteeName: string;
-}
-
-/**
- * Notify a user they were added to a studio (slice 3) — informational, no
- * action and no TTL (studio invites take effect immediately).
- * @param input - Invitee inbox, payload, and optional transaction
- * @param input.userId - The invitee who receives the notice in their inbox
- * @param input.payload - Studio name, inviter name, and granted role
- * @param input.tx - Optional transaction to bundle with the membership insert
- * @returns The inserted `studio.member_invited` notification
- */
-export async function createStudioMemberInvited(input: {
-  userId: string;
-  payload: StudioMemberInvitedPayload;
-  tx?: DbTx;
-}): Promise<NotificationEntity> {
-  return notificationRepo.create(
-    {
-      userId: input.userId,
-      type: "studio.member_invited",
-      payload: input.payload as unknown as Record<string, unknown>,
-    },
-    input.tx,
-  );
 }
 
 /**
