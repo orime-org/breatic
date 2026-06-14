@@ -36,6 +36,7 @@ import { randomBytes } from "node:crypto";
 import * as shareLinkRepo from "@server/modules/share/shareLink.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   ConflictError,
   ForbiddenError,
@@ -61,21 +62,6 @@ export type GrantableRole = Exclude<ProjectRole, "owner">;
  */
 function isGrantableRole(role: string): role is GrantableRole {
   return role === "editor" || role === "viewer";
-}
-
-/**
- * Detect a PostgreSQL unique-violation error (SQLSTATE 23505), used to
- * map a token collision to a Conflict.
- * @param err - Caught error of unknown shape
- * @returns True if the error carries the `23505` SQLSTATE code
- */
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: string }).code === "23505"
-  );
 }
 
 /**

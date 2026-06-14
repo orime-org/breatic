@@ -21,7 +21,7 @@
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
-import { isUniqueViolation } from "@server/modules/studio/pg-error.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";

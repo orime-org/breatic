@@ -34,7 +34,7 @@ import * as usersRepo from "@server/modules/auth/user.repo.js";
 import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { isUniqueViolation } from "@server/modules/studio/pg-error.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
