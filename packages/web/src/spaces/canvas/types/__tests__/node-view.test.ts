@@ -115,12 +115,39 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('returns null for generative nodes (not rendered by these views)', () => {
-    expect(toNodeView(fields('generative', {}))).toBeNull();
+  it('projects Generate inputs (prompt/model/generateMode) onto a content view', () => {
+    // Model revision 2026-06-15: Generate is a toolbar action; its inputs
+    // (prompt/model/sub-mode) live on the content node. Wire `kind` (the
+    // generate sub-mode) projects to view `generateMode` to avoid colliding
+    // with the view's `kind` modality discriminant.
+    const v = toNodeView(
+      fields('image', {
+        content: 'x.png',
+        prompt: 'a cat',
+        model: 'flux-dev',
+        kind: 'text-to-image',
+      }),
+    );
+    expect(v).toMatchObject({
+      kind: 'image',
+      content: 'x.png',
+      prompt: 'a cat',
+      model: 'flux-dev',
+      generateMode: 'text-to-image',
+    });
   });
 
-  it('returns null for group nodes', () => {
-    expect(toNodeView(fields('group', {}))).toBeNull();
+  it('returns a group view for group nodes (backgroundColor / childIds)', () => {
+    // Model revision 2026-06-15: group is rendered (core feature), so it now
+    // has a view instead of being skipped.
+    const v = toNodeView(
+      fields('group', { backgroundColor: '#eef', childIds: ['a', 'b'] }),
+    );
+    expect(v).toMatchObject({
+      kind: 'group',
+      backgroundColor: '#eef',
+      childIds: ['a', 'b'],
+    });
   });
 
   it('returns null for a dirty / unknown type instead of throwing', () => {

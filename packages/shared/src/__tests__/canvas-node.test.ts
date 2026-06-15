@@ -180,10 +180,16 @@ describe("CanvasNodeFields", () => {
     expect(node.data.sourceNodeId).toBe("node-0");
   });
 
-  it("accepts a generative node with prompt/model/params populated", () => {
+  it("accepts a content node carrying Generate inputs (prompt/model/kind/params)", () => {
+    // Model revision 2026-06-15: Generate is a toolbar action on a content
+    // node, not a separate node type. prompt/model/kind/params live on the
+    // content node (image/audio/...) as the Generate panel's collaborative
+    // inputs. `kind` is the per-modality generate sub-mode (e.g. audio:
+    // TTS/Song/SFX/Melody/Clone). `outputType` is gone — the content node's
+    // own modality is its output.
     const node: CanvasNodeFields = {
       id: "node-3",
-      type: "generative",
+      type: "image",
       position: { x: 0, y: 0 },
       data: {
         name: "Generate Art",
@@ -195,19 +201,20 @@ describe("CanvasNodeFields", () => {
         handlingBy: { userId: "u1", type: "backend" },
         attachments: [],
         prompt: "a painting of a sunset",
-        outputType: "image",
-        kind: "文生图",
+        kind: "text-to-image",
         model: "flux-dev",
         params: { steps: 30, guidance: 7.5 },
       },
     };
     expect(node.data.state).toBe("handling");
     expect(node.data.handlingBy?.userId).toBe("u1");
-    expect(node.data.handlingBy?.type).toBe("backend");
     expect(node.data.model).toBe("flux-dev");
+    expect(node.data.kind).toBe("text-to-image");
   });
 
-  it("accepts a group node with childIds", () => {
+  it("accepts a group node with childIds + backgroundColor", () => {
+    // Model revision 2026-06-15: group is a core feature (canvas region
+    // management); backgroundColor is the group container tint.
     const node: CanvasNodeFields = {
       id: "group-1",
       type: "group",
@@ -221,9 +228,21 @@ describe("CanvasNodeFields", () => {
         state: "idle",
         attachments: [],
         childIds: ["node-1", "node-2"],
+        backgroundColor: "#eef2ff",
       },
     };
     expect(node.data.childIds).toEqual(["node-1", "node-2"]);
+    expect(node.data.backgroundColor).toBe("#eef2ff");
+  });
+
+  it("NodeType no longer includes 'generative' (model revision 2026-06-15)", () => {
+    // Generate became a toolbar action; there is no standalone generative
+    // node type. group survives (core feature).
+    // @ts-expect-error 'generative' removed from the NodeType union
+    const _gen: import("../types/canvas-node.js").NodeType = "generative";
+    expect(_gen).toBe("generative");
+    const grp: import("../types/canvas-node.js").NodeType = "group";
+    expect(grp).toBe("group");
   });
 
   it("accepts an annotation node — text via content, author via createdBy", () => {
@@ -326,6 +345,9 @@ describe("CanvasNodeFields", () => {
     // @ts-expect-error errorInfo renamed to errorMessage; old name gone
     data.errorInfo;
 
+    // @ts-expect-error outputType removed (2026-06-15 model revision — no generative node)
+    data.outputType;
+
     // Positive control: .name access works
     expect(data.name).toBe("x");
   });
@@ -421,6 +443,14 @@ describe("Removed types are absent from exports", () => {
   it("HistoryItemSource is not exported (verified via @ts-expect-error on import)", () => {
     // @ts-expect-error TS2305: 'HistoryItemSource' is not exported from module
     type _S = import("../types/canvas-node.js").HistoryItemSource;
+    expect(true).toBe(true);
+  });
+
+  it("CanvasEdgeData is not exported (removed with isPrimary, 2026-06-15)", () => {
+    // Edge data carried only `isPrimary` (a generative-node concept). With the
+    // generative/asset split gone, the whole interface is removed.
+    // @ts-expect-error TS2305: 'CanvasEdgeData' is not exported from module
+    type _E = import("../types/canvas-node.js").CanvasEdgeData;
     expect(true).toBe(true);
   });
 });

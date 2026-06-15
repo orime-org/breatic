@@ -144,12 +144,17 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
   });
 
-  it('skips nodes whose wire type has no view (generative / group)', () => {
+  it('includes group nodes now that they have a view (only dirty types skip)', () => {
+    // Model revision 2026-06-15: group is rendered, so readNodes keeps it.
+    // generative is gone from the type union entirely.
     addNode(PID, SID, sampleFields('image', {}, { id: 'keep' }));
-    addNode(PID, SID, sampleFields('generative', {}, { id: 'skip-gen' }));
-    addNode(PID, SID, sampleFields('group', {}, { id: 'skip-grp' }));
+    addNode(
+      PID,
+      SID,
+      sampleFields('group', { backgroundColor: '#eee', childIds: ['keep'] }, { id: 'grp' }),
+    );
     const ids = readNodes(doc()).map((n) => n.id);
-    expect(ids).toEqual(['keep']);
+    expect(ids).toEqual(['keep', 'grp']);
   });
 
   it('removeNode deletes from nodesMap', () => {

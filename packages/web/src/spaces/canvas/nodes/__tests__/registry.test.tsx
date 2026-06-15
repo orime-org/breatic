@@ -11,7 +11,7 @@ describe('canvas NODE_TYPES registry', () => {
     });
   });
 
-  it('NODE_KIND_LIST is exactly the 6 unified types + annotation', () => {
+  it('NODE_KIND_LIST is exactly the 6 unified types + annotation + group', () => {
     expect(NODE_KIND_LIST).toEqual([
       'text',
       'image',
@@ -20,6 +20,7 @@ describe('canvas NODE_TYPES registry', () => {
       '3d',
       'web',
       'annotation',
+      'group',
     ]);
   });
 });

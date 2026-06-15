@@ -16,9 +16,12 @@ export type NodeState = 'idle' | 'handling';
 
 /**
  * Node modality — semantic names (replaced the legacy numeric codes
- * `'1001'..'1004'` on 2026-06-15). `annotation` is a collaboration sticky
- * (text via `data.content`, author via `data.createdBy`); `generative`
- * produces an asset child; `group` contains other nodes.
+ * `'1001'..'1004'` on 2026-06-15). The 6 content modalities (text / image /
+ * audio / video / 3d / web) own a renderable payload; `annotation` is a
+ * collaboration sticky (text via `data.content`, author via `data.createdBy`);
+ * `group` contains other nodes. There is no `generative` type — Generate is a
+ * toolbar action on a content node, not a node type (model revision
+ * 2026-06-15).
  */
 export type NodeType =
   | 'text'
@@ -28,7 +31,6 @@ export type NodeType =
   | '3d'
   | 'web'
   | 'annotation'
-  | 'generative'
   | 'group';
 
 /**
@@ -97,10 +99,10 @@ export interface AttachRef {
   uploadedAt: string;
 }
 
-// ── Generative node helpers (v13) ─────────────────────────────────
+// ── Content-node Generate helpers (references + prompt) ───────────
 
-/** Source node modality for references / chip snapshots. */
-export type GenerativeRefSourceType = 'image' | 'video' | 'audio' | 'text' | 'generative';
+/** Source node modality for a content node's Generate references / chip snapshots. */
+export type GenerativeRefSourceType = 'image' | 'video' | 'audio' | 'text';
 
 /**
  * One row in a generative node's reference rail (spec §10.13.2 v13).
@@ -170,12 +172,13 @@ export interface PromptDoc {
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
  *
- * Two node categories:
- *   - Generative: has outputType/kind/prompt/references/model/params; click execute → produces data node
- *   - Data: has content/coverUrl/etc.; can be source for mini-tool ops
- *
- * Both share the state machine and core fields. Type fields below are
- * marked with which category they apply to.
+ * One content-node model (model revision 2026-06-15): a content node
+ * (text / image / audio / video / 3d / web) carries its payload
+ * (content / coverUrl / etc.) AND its Generate inputs
+ * (prompt / model / kind / references / params) — Generate is a toolbar
+ * action, not a separate node type. `annotation` is a sticky; `group`
+ * contains other nodes. All node types share the state machine and core
+ * fields.
  */
 export interface CanvasNodeFields {
   /** Stable node ID (frontend-generated UUID v4, immutable after creation). */
@@ -245,17 +248,18 @@ export interface CanvasNodeFields {
     /** Tool input params when applicable. */
     operationParams?: Record<string, unknown>;
 
-    // ─── Generative node fields ─────────────────────────────
+    // ─── Generate inputs (content nodes) ────────────────────
+    // Generate is a toolbar action on a content node (model revision
+    // 2026-06-15). kind / prompt / references / model / params are the
+    // Generate panel's inputs, stored on the content node and shared via Yjs
+    // so collaborators see edits live. There is no `outputType` — the content
+    // node's own modality is its output.
     /**
-     * Asset modality this generative node produces. Set once at creation;
-     * never updated (changing modality means deleting + creating a new node).
-     */
-    outputType?: 'text' | 'image' | 'video' | 'audio';
-    /**
-     * Sub-task variant within an `outputType` (spec §10.13.1 v13).
-     *  - image: 'text-to-image' / 'image-to-image'
-     *  - audio: 'music' / 'tts' / 'melody' / 'ambient'
-     *  - video / text / 3d: single kind, value still required for forward compat.
+     * Generate sub-mode — the variant picked in the Generate panel, one set
+     * per content modality (e.g. audio: TTS / Song / SFX / Melody / Clone;
+     * image: text-to-image / image-to-image). Stays a free `string`: the
+     * valid set per modality is a frontend / `config/models` concern, not a
+     * shape the wire contract should couple to the model catalog.
      */
     kind?: string;
     /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
@@ -269,12 +273,14 @@ export interface CanvasNodeFields {
     references?: ReferenceItem[];
     /** Model id from config/models/*.yaml. */
     model?: string;
-    /** Model-specific params (spec §10.13.2 v13). */
+    /** Model-specific params for the Generate request. */
     params?: Record<string, unknown>;
 
     // ─── Group node fields ──────────────────────────────────
     /** Child node IDs when type === 'group'. */
     childIds?: string[];
+    /** Group container tint when type === 'group' (model revision 2026-06-15). */
+    backgroundColor?: string;
 
     // ─── Common ─────────────────────────────────────────────
     /** Per-node upload pool — Y.Array<Y.Map> at runtime. */
@@ -340,18 +346,8 @@ export interface NodeStateUpdateEvent {
 /** Single union for forward-compat. */
 export type NodeEvent = NodeStateUpdateEvent;
 
-// ── Edge schema (v13) ──────────────────────────────────────────────
-
-/**
- * Per-edge data fields stored under `edgeMap.data` (a Y.Map at runtime).
- *
- * `isPrimary` is meaningful only on a generative node's outgoing edges:
- * at most one such edge per source carries `isPrimary: true` and marks
- * the "primary downstream" the next regenerate updates in place
- * (spec §10.13.2 / §10.13.5). Non-generative edges should leave it
- * absent (or `false`); the invariant is enforced by frontend writers.
- */
-export interface CanvasEdgeData {
-  /** Marks the primary-downstream edge from a generative node. At most 1 true per source node. */
-  isPrimary?: boolean;
-}
+// ── Edges ──────────────────────────────────────────────────────────
+// Edges carry no shared wire data fields. `isPrimary` (the generative
+// primary-downstream marker) was removed with the generative/asset split
+// (model revision 2026-06-15); mini-tool lineage edges are plain
+// source→target links. The frontend binding models edges locally.
