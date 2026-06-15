@@ -181,6 +181,26 @@ export default tseslint.config(
     },
   },
   {
+    // Naming guardrail for the shared cross-end contract types (2026-06-15).
+    // Internal data-contract fields must be camelCase — a snake_case field
+    // (the old `cover_url`) is a naming outlier that silently drifts front vs
+    // back. The ONLY whitelist is the external-API field names we mirror
+    // verbatim (OpenAI / ai-sdk message format: `tool_calls` / `tool_call_id`).
+    // Scoped to types/ (the contract layer) only; HTTP request/response schemas
+    // and provider params legitimately use snake_case and live outside this dir.
+    files: ["packages/shared/src/types/**/*.ts"],
+    rules: {
+      "@typescript-eslint/naming-convention": [
+        "error",
+        {
+          selector: ["objectLiteralProperty", "typeProperty"],
+          format: ["camelCase"],
+          filter: { regex: "^(tool_calls|tool_call_id)$", match: false },
+        },
+      ],
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );

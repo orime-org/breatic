@@ -3,13 +3,13 @@
 
 import type * as React from 'react';
 
-import type { ImageNodeData } from '@web/spaces/canvas/types/node';
+import type { ImageNodeView } from '@web/spaces/canvas/types/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface ImageNodeProps {
-  data: ImageNodeData;
+  data: ImageNodeView;
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
@@ -32,7 +32,7 @@ export function ImageNode({
   locked,
   onActivate,
 }: ImageNodeProps): React.JSX.Element {
-  const hasContent = Boolean(data.url);
+  const hasContent = Boolean(data.content);
   return (
     <NodeShell
       status={data.status}
@@ -50,7 +50,7 @@ export function ImageNode({
         }
         content={
           <img
-            src={data.url ?? ''}
+            src={data.content ?? ''}
             alt=''
             data-testid='image-node-img'
             className='block h-auto w-full rounded-[var(--radius-content-sm)]'

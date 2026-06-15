@@ -17,7 +17,7 @@ describe('ThreeDNode', () => {
       <ThreeDNode
         data={{
           kind: '3d',
-          url: 'https://e.com/x.glb',
+          content: 'https://e.com/x.glb',
           status: 'idle',
         }}
       />,
@@ -29,7 +29,7 @@ describe('ThreeDNode', () => {
 
   it('handling status shows the loading skeleton', () => {
     render(
-      <ThreeDNode data={{ kind: '3d', status: 'handling', url: 'x' }} />,
+      <ThreeDNode data={{ kind: '3d', status: 'handling', content: 'x' }} />,
     );
     expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
   });

@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@web/components/ui/select';
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 interface NodeGeneratePopoverProps {
   modality: Modality;

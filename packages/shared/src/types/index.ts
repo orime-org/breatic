@@ -23,6 +23,7 @@ export type {
 
 export type {
   NodeState,
+  NodeType,
   HandlingActor,
   OperationLock,
   AttachRef,

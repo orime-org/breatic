@@ -15,7 +15,7 @@ describe('AudioNode', () => {
   it('renders audio element when url is present', () => {
     render(
       <AudioNode
-        data={{ kind: 'audio', url: 'https://e.com/a.mp3', status: 'idle' }}
+        data={{ kind: 'audio', content: 'https://e.com/a.mp3', status: 'idle' }}
       />,
     );
     expect(

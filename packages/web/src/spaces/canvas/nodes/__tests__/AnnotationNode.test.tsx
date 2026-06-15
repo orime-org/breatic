@@ -12,9 +12,9 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
-          text: 'Please center this',
-          authorId: 'user-1',
-          createdAt: new Date().toISOString(),
+          content: 'Please center this',
+          createdBy: 'user-1',
+          createdAt: Date.now(),
         }}
       />,
     );
@@ -28,9 +28,9 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
-          text: 'x',
-          authorId: 'u',
-          createdAt: new Date().toISOString(),
+          content: 'x',
+          createdBy: 'u',
+          createdAt: Date.now(),
         }}
       />,
     );
@@ -44,9 +44,9 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
-          text: 'x',
-          authorId: 'alice',
-          createdAt: new Date().toISOString(),
+          content: 'x',
+          createdBy: 'alice',
+          createdAt: Date.now(),
         }}
       />,
     );

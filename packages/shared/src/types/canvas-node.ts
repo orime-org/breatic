@@ -15,6 +15,23 @@
 export type NodeState = 'idle' | 'handling';
 
 /**
+ * Node modality — semantic names (replaced the legacy numeric codes
+ * `'1001'..'1004'` on 2026-06-15). `annotation` is a collaboration sticky
+ * (text via `data.content`, author via `data.createdBy`); `generative`
+ * produces an asset child; `group` contains other nodes.
+ */
+export type NodeType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | '3d'
+  | 'web'
+  | 'annotation'
+  | 'generative'
+  | 'group';
+
+/**
  * Identifies the user who triggered the current handling AND the driver
  * responsible for advancing the node out of `handling`.
  *
@@ -155,7 +172,7 @@ export interface PromptDoc {
  *
  * Two node categories:
  *   - Generative: has outputType/kind/prompt/references/model/params; click execute → produces data node
- *   - Data: has content/cover_url/etc.; can be source for mini-tool ops
+ *   - Data: has content/coverUrl/etc.; can be source for mini-tool ops
  *
  * Both share the state machine and core fields. Type fields below are
  * marked with which category they apply to.
@@ -163,8 +180,8 @@ export interface PromptDoc {
 export interface CanvasNodeFields {
   /** Stable node ID (frontend-generated UUID v4, immutable after creation). */
   id: string;
-  /** Modality: '1001' text, '1002' image, '1003' video, '1004' audio, '3d', 'web', 'generative', 'group'. */
-  type: string;
+  /** Node modality — see {@link NodeType}. Semantic names (2026-06-15). */
+  type: NodeType;
   /** Canvas coordinates. Y.Map { x, y } at runtime. */
   position: { x: number; y: number };
   /** Nested data Y.Map at runtime. */
@@ -214,7 +231,7 @@ export interface CanvasNodeFields {
     /** Primary result: URL (image/video/audio/3D) or text body (text/web). */
     content?: string;
     /** Video first-frame thumbnail; equals `content` for image. */
-    cover_url?: string;
+    coverUrl?: string;
     /** Image / video pixel width. */
     width?: number;
     /** Image / video pixel height. */
@@ -293,7 +310,7 @@ export type NodeStateUpdatePayload = {
  * Universal rule: backend can ONLY modify state fields. It cannot
  * create or delete nodes — that's frontend's responsibility. So the
  * `update` payload here will only carry state-field updates (state /
- * content / cover_url / errorMessage / handlingBy / width / height /
+ * content / coverUrl / errorMessage / handlingBy / width / height /
  * duration), enforced by the consumer's allowlist.
  *
  * docName carries the target Yjs doc. In the v10 multi-doc layout

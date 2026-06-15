@@ -4,10 +4,10 @@
 import * as React from 'react';
 
 import { Skeleton } from '@web/components/ui/skeleton';
-import type { NodeStatus } from '@web/spaces/canvas/types/node';
+import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
 
 interface NodeContentProps {
-  status: NodeStatus;
+  status: DisplayStatus;
   errorMessage?: string;
   hasContent: boolean;
   placeholder: React.ReactNode;

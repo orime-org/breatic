@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 /**
  * Timeline data primitives — placeholders for the M3+ rebuild. The full

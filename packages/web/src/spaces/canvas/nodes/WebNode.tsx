@@ -3,13 +3,13 @@
 
 import type * as React from 'react';
 
-import type { WebNodeData } from '@web/spaces/canvas/types/node';
+import type { WebNodeView } from '@web/spaces/canvas/types/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface WebNodeProps {
-  data: WebNodeData;
+  data: WebNodeView;
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
@@ -33,7 +33,7 @@ export function WebNode({
   locked,
   onActivate,
 }: WebNodeProps): React.JSX.Element {
-  const hasContent = Boolean(data.url);
+  const hasContent = Boolean(data.content);
   return (
     <NodeShell
       status={data.status}
@@ -51,7 +51,7 @@ export function WebNode({
         }
         content={
           <iframe
-            src={data.url ?? 'about:blank'}
+            src={data.content ?? 'about:blank'}
             data-testid='web-node-iframe'
             title='Embedded web page'
             sandbox='allow-scripts allow-same-origin allow-popups'

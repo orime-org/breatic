@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { CanvasNode, Modality } from '@web/spaces/canvas/types/node';
+import type { CanvasNodeFields } from '@breatic/shared';
+
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 import { getMiniTool } from '@web/pages/project/mini-tool-system/catalog';
 
 export interface ApplyMiniToolInput {
-  sourceNode: Pick<CanvasNode, 'id' | 'position'>;
+  sourceNode: Pick<CanvasNodeFields, 'id' | 'position'>;
   toolId: string;
   /** Caller-supplied id generator (kept injectable for deterministic tests). */
   newId: () => string;

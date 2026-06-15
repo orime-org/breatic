@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import type * as React from 'react';
 
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 interface NodePlaceholderProps {
   modality: Modality;

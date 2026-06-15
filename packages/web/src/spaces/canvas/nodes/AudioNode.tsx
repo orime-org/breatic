@@ -3,13 +3,13 @@
 
 import type * as React from 'react';
 
-import type { AudioNodeData } from '@web/spaces/canvas/types/node';
+import type { AudioNodeView } from '@web/spaces/canvas/types/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface AudioNodeProps {
-  data: AudioNodeData;
+  data: AudioNodeView;
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
@@ -32,7 +32,7 @@ export function AudioNode({
   locked,
   onActivate,
 }: AudioNodeProps): React.JSX.Element {
-  const hasContent = Boolean(data.url);
+  const hasContent = Boolean(data.content);
   return (
     <NodeShell
       status={data.status}
@@ -53,7 +53,7 @@ export function AudioNode({
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded audio asset; the upload flow does not produce a caption track. Add a <track> when caption authoring lands. */}
             <audio
               controls
-              src={data.url}
+              src={data.content}
               data-testid='audio-node-audio'
               className='w-full'
             />

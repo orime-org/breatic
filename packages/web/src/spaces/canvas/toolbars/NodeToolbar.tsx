@@ -5,7 +5,7 @@ import type * as React from 'react';
 
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 import { NodeGeneratePopover } from '@web/spaces/canvas/toolbars/NodeGeneratePopover';
 import { NodeLoadButton } from '@web/spaces/canvas/toolbars/NodeLoadButton';
