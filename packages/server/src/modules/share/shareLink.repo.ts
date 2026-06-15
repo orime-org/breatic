@@ -20,7 +20,7 @@
  * `token`; the service catches 23505 and rethrows as Conflict (the
  * caller can retry with a freshly generated token).
  *
- * Design: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
+ * Design: access-permission design (2026-05-28) § 3.
  */
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";

@@ -25,7 +25,7 @@ import { notificationsApi } from '@web/data/api/notifications';
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([]);
-  vi.mocked(notificationsApi.list).mockResolvedValue({ data: [] });
+  vi.mocked(notificationsApi.list).mockResolvedValue([]);
 });
 
 function setup() {

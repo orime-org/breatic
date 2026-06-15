@@ -128,3 +128,59 @@ export interface StudioMemberSummary {
   /** ISO-8601 join timestamp (`studio_members.addedAt`). */
   addedAt: string;
 }
+
+/** Studio invitation lifecycle status (invite-confirm handshake, 2026-06-14). */
+export type StudioInvitationStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "revoked";
+
+/**
+ * Pending studio-invitation summary — one in-flight invite as returned by
+ * `GET /studio/:slug/members` (the `pendingInvitations` segment) for the
+ * Members tab. Surfaced to admins so they can see who is "invited (pending)"
+ * and revoke it. Display fields mirror {@link StudioMemberSummary};
+ * `expiresAt` drives the countdown. Invite-confirm handshake, 2026-06-14.
+ */
+export interface PendingInvitationSummary {
+  invitationId: string;
+  invitedUserId: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  role: StudioRole;
+  /** The inviting admin's display name. */
+  invitedByName: string;
+  /** ISO-8601 expiry timestamp (`studio_invitations.expiresAt`). */
+  expiresAt: string;
+}
+
+/**
+ * `GET /studio/:slug/members` response — active members plus, for admins, the
+ * in-flight pending invitations. The frontend renders pending rows in a
+ * separate "invited (pending)" section, shown only to admins. Invite-confirm
+ * handshake, 2026-06-14.
+ */
+export interface StudioMembersView {
+  members: StudioMemberSummary[];
+  pendingInvitations: PendingInvitationSummary[];
+}
+
+/**
+ * Studio invitation landing view — what the email-link page (`/studio-invite`)
+ * shows before the invitee acts. No invitation id / invitee id is exposed; the
+ * server resolves those from the one-time token. Invite-confirm handshake,
+ * 2026-06-14.
+ */
+export interface InvitationLandingView {
+  studioName: string;
+  studioSlug: string;
+  inviterName: string;
+  role: StudioRole;
+  /** True once past the 7-day window — the page shows an "expired" state. */
+  expired: boolean;
+  /** True when the logged-in user is the invitee (gates the confirm button). */
+  isInvitee: boolean;
+}

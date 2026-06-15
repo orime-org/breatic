@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Studio member service (slice 3) — invite / remove / change-role, against a
- * real Postgres. This is the 鉴权 + 数据完整性 critical path, so the
- * service-level invariants are pinned end-to-end:
+ * Studio member service — remove / change-role, against a real Postgres. This
+ * is the 鉴权 + 数据完整性 critical path, so the service-level invariants are
+ * pinned end-to-end. Inviting moved to the invite-confirm handshake (covered by
+ * studio-invite-service.integration.test); this suite keeps the kick + role
+ * paths:
  *
- *   - inviteMember: rejects an unregistered email (NotFound), rejects a
- *     personal studio (Forbidden), rejects a re-invite of an active member
- *     (Conflict), revives a kicked member, and lands the membership + an
- *     informational notification.
  *   - removeMember: in one tx clears the kicked member's access across ALL the
  *     studio's projects AND transfers each project they own to the acting
  *     admin; refuses to remove the sole admin (Conflict) and a personal studio.
@@ -94,55 +92,21 @@ async function insertProject(studioId: string, ownerUserId: string): Promise<str
   return pid;
 }
 
-describe("inviteMember", () => {
-  it("adds a registered user as a member and sends a notification", async () => {
-    const admin = await insertUser();
-    const invitee = await insertUser();
-    const studio = await insertStudioWithAdmin(admin.id);
-
-    await studioMemberService.inviteMember(studio.slug, admin.id, invitee.email, "member");
-
-    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("member");
-    const notifs = await sql<{ type: string }[]>`
-      SELECT type FROM notifications WHERE user_id = ${invitee.id}
-    `;
-    expect(notifs.map((n) => n.type)).toContain("studio.member_invited");
-  });
-
-  it("rejects an unregistered email with NotFound", async () => {
-    const admin = await insertUser();
-    const studio = await insertStudioWithAdmin(admin.id);
-    await expect(
-      studioMemberService.inviteMember(studio.slug, admin.id, "nobody@example.com", "member"),
-    ).rejects.toMatchObject({ statusCode:404 });
-  });
-
-  it("rejects re-inviting an already-active member with Conflict", async () => {
-    const admin = await insertUser();
-    const invitee = await insertUser();
-    const studio = await insertStudioWithAdmin(admin.id);
-    await studioMemberService.inviteMember(studio.slug, admin.id, invitee.email, "member");
-    await expect(
-      studioMemberService.inviteMember(studio.slug, admin.id, invitee.email, "creator"),
-    ).rejects.toMatchObject({ statusCode:409 });
-  });
-
-  it("rejects inviting into a personal studio with Forbidden", async () => {
-    const admin = await insertUser();
-    const invitee = await insertUser();
-    const studio = await insertStudioWithAdmin(admin.id, "personal");
-    await expect(
-      studioMemberService.inviteMember(studio.slug, admin.id, invitee.email, "member"),
-    ).rejects.toMatchObject({ statusCode:403 });
-  });
-});
+/** Insert an active studio member row directly (bypasses the invite handshake). */
+async function insertMember(
+  studioId: string,
+  userId: string,
+  role: string,
+): Promise<void> {
+  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, ${role})`;
+}
 
 describe("removeMember", () => {
   it("clears the member's project access and transfers their owned projects to the acting admin", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
-    await studioMemberService.inviteMember(studio.slug, admin.id, member.email, "member");
+    await insertMember(studio.id, member.id, "member");
     const ownedByMember = await insertProject(studio.id, member.id); // member owns this
     const adminProject = await insertProject(studio.id, admin.id); // admin owns this
 
@@ -171,7 +135,7 @@ describe("updateMemberRole", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
-    await studioMemberService.inviteMember(studio.slug, admin.id, member.email, "member");
+    await insertMember(studio.id, member.id, "member");
 
     await studioMemberService.updateMemberRole(studio.slug, member.id, "creator");
 

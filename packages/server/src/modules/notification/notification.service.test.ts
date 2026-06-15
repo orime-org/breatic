@@ -9,7 +9,7 @@
  * into the right `type` + targets the right `userId` (since user-mix
  * bugs here would leak notifications across accounts).
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * Spec: access-permission design (2026-05-28) § 7.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

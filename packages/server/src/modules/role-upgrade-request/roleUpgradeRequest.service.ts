@@ -14,7 +14,7 @@
  *     `role_upgrade_rejected` notification in the requester's inbox
  *     AND marks the original request as read. No member-table change.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 6.3.
+ * Spec: access-permission design (2026-05-28) § 6.3.
  *
  * Authorization model (route layer enforces gates):
  *   - request: caller must be an active member of the project, role 'viewer'

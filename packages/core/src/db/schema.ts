@@ -805,7 +805,7 @@ export const shareLinks = pgTable(
 // invalidate signal to attached clients so the React Query cache
 // refetches via REST.
 //
-// Design: see `breatic-inner/engineering/specs/2026-05-28-access-permission-design.md` § 7.
+// Design: see `access-permission design (2026-05-28)` § 7.
 // per-user private + cross-project + offline catchup → PG, not Yjs.
 
 export const notifications = pgTable(
@@ -824,6 +824,8 @@ export const notifications = pgTable(
      * - 'studio.member_invited' - admin added the user to a studio
      * - 'studio.transfer_request' - admin asks the user to take admin (TTL)
      * - 'studio.transfer_approved' - user accepted; old admin is notified
+     * - 'studio.invite_request' - admin invites the user to a studio (TTL; confirm/decline)
+     * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
@@ -854,5 +856,64 @@ export const notifications = pgTable(
       table.readAt,
       table.deletedAt,
     ),
+  ],
+);
+
+// ── Studio Invitations (invite-confirm handshake, 2026-06-14) ─────────
+//
+// Pending studio-member invitations. A studio invite no longer takes effect
+// immediately: the admin creates a `pending` row here, the invitee confirms
+// via the bell notification or an email link, and ONLY THEN is a
+// `studio_members` row written. Keeping pending invites in their OWN table
+// (not a `status` column on `studio_members`) means `studio_members` stays
+// "active members only" — studio auth / member-list / member-count queries
+// need zero status filter, and a pending invitee can never be mistaken for a
+// real member (the rejected rejected-by-design rationale, DD §2). `status`
+// flows pending → accepted | declined | expired | revoked (append-only
+// lifecycle; rows are soft-deleted only). All FKs are `onDelete: restrict`
+// except `notification_id` (`set null` — the bell row may be GC'd). One LIVE
+// pending invite per (studio, invitee) is enforced by a partial unique index
+// in the migration. See the studio invite-confirmation DD (2026-06-14).
+
+export const studioInvitations = pgTable(
+  "studio_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    invitedUserId: uuid("invited_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Granted studio role — 'creator' | 'member' (admin is never invited). */
+    role: varchar("role", { length: 16 }).notNull(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * The bell notification that surfaces this invite, so confirm / decline /
+     * revoke can mark it read in the same transaction — the bell entry then
+     * disappears even when the invite was acted on via the email link. Null
+     * when no notification was created, and `set null` if the notice is GC'd.
+     */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    /** Invite times out after this; expired pendings self-void in queries. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("studio_invitations_studio_id_idx").on(
+      table.studioId,
+      table.deletedAt,
+    ),
+    index("studio_invitations_invited_user_id_idx").on(table.invitedUserId),
+    // One LIVE pending invite per (studio, invitee) is enforced by a partial
+    // unique index (`studio_invitations_one_pending`) in the migration —
+    // Drizzle's table builder does not emit partial unique indexes.
   ],
 );

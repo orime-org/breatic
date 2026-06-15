@@ -6,9 +6,10 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 /**
  * Notification types — must match the backend `NotificationType` union
  * (`notification.repo.ts`). The `access.*` types are project access-permission
- * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer
- * notifications (slice 3). `studio.transfer_request` is the only actionable
- * type (confirm / cancel + a TTL); the rest are informational (read-on-click).
+ * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer /
+ * invite notifications. `studio.transfer_request` and `studio.invite_request`
+ * are the actionable types (confirm / cancel + a TTL); the rest are
+ * informational (read-on-click).
  */
 export type NotificationType =
   | 'access.role_upgrade_request'
@@ -17,7 +18,9 @@ export type NotificationType =
   | 'access.member_joined'
   | 'studio.member_invited'
   | 'studio.transfer_request'
-  | 'studio.transfer_approved';
+  | 'studio.transfer_approved'
+  | 'studio.invite_request'
+  | 'studio.invite_accepted';
 
 /** Action on an actionable notification (e.g. a studio transfer request). */
 export type NotificationAction = 'confirm' | 'cancel';
@@ -45,19 +48,17 @@ export const notificationsApi = {
    * @param unreadOnly - When true (default), return only unread notifications.
    * @returns The caller's notifications.
    */
-  list(unreadOnly = true): Promise<{ data: Notification[] }> {
+  list(unreadOnly = true): Promise<Notification[]> {
     const qs = unreadOnly ? '?unread=true' : '?unread=false';
-    return apiGet<{ data: Notification[] }>(`/users/me/notifications${qs}`);
+    return apiGet<Notification[]>(`/users/me/notifications${qs}`);
   },
 
   /**
    * Unread count — drives the red-dot badge on the bell icon.
    * @returns The number of unread notifications for the caller.
    */
-  count(): Promise<{ data: { count: number } }> {
-    return apiGet<{ data: { count: number } }>(
-      '/users/me/notifications/count',
-    );
+  count(): Promise<{ count: number }> {
+    return apiGet<{ count: number }>('/users/me/notifications/count');
   },
 
   /**
@@ -65,8 +66,8 @@ export const notificationsApi = {
    * @param id - The notification to mark as read.
    * @returns An acknowledgement once the notification is marked read.
    */
-  markRead(id: string): Promise<{ data: { ok: true } }> {
-    return apiPatch<{ data: { ok: true } }, undefined>(
+  markRead(id: string): Promise<{ ok: true }> {
+    return apiPatch<{ ok: true }, undefined>(
       `/users/me/notifications/${id}/read`,
       undefined,
     );
@@ -76,8 +77,8 @@ export const notificationsApi = {
    * Mark every unread notification as read.
    * @returns The number of notifications that were marked read.
    */
-  markAllRead(): Promise<{ data: { count: number } }> {
-    return apiPost<{ data: { count: number } }, undefined>(
+  markAllRead(): Promise<{ count: number }> {
+    return apiPost<{ count: number }, undefined>(
       '/users/me/notifications/read-all',
       undefined,
     );
@@ -96,8 +97,8 @@ export const notificationsApi = {
   respondAction(
     id: string,
     action: NotificationAction,
-  ): Promise<{ data: { ok: true } }> {
-    return apiPost<{ data: { ok: true } }, { action: NotificationAction }>(
+  ): Promise<{ ok: true }> {
+    return apiPost<{ ok: true }, { action: NotificationAction }>(
       `/users/me/notifications/${id}/action`,
       { action },
     );

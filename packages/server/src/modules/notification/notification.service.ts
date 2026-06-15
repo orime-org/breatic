@@ -17,7 +17,7 @@
  * writes here; the route layer (application boundary) is responsible
  * for triggering the broadcast post-commit.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * Spec: access-permission design (2026-05-28) § 7.
  */
 
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -175,17 +175,6 @@ export async function createMemberJoined(input: {
 }
 
 /**
- * Studio member-invited payload — an admin added the user to a studio.
- * Stored on the `studio.member_invited` notification in the invitee's inbox
- * (informational; the invite already took effect).
- */
-export interface StudioMemberInvitedPayload {
-  studioName: string;
-  inviterName: string;
-  role: "creator" | "member";
-}
-
-/**
  * Studio transfer-request payload — an admin asks the user to take over as
  * admin. Stored on the actionable `studio.transfer_request` notification
  * (confirm/cancel; expires after a TTL). `studioId` rides along so the
@@ -207,27 +196,27 @@ export interface StudioTransferApprovedPayload {
 }
 
 /**
- * Notify a user they were added to a studio (slice 3) — informational, no
- * action and no TTL (studio invites take effect immediately).
- * @param input - Invitee inbox, payload, and optional transaction
- * @param input.userId - The invitee who receives the notice in their inbox
- * @param input.payload - Studio name, inviter name, and granted role
- * @param input.tx - Optional transaction to bundle with the membership insert
- * @returns The inserted `studio.member_invited` notification
+ * Studio invite-request payload — an admin invites a registered user to join a
+ * studio. Stored on the actionable `studio.invite_request` notification in the
+ * invitee's inbox (confirm/decline; expires after a TTL). `invitationId` is the
+ * `studio_invitations` row the confirm step CAS-accepts (source of truth); the
+ * rest is for rendering the bell entry.
  */
-export async function createStudioMemberInvited(input: {
-  userId: string;
-  payload: StudioMemberInvitedPayload;
-  tx?: DbTx;
-}): Promise<NotificationEntity> {
-  return notificationRepo.create(
-    {
-      userId: input.userId,
-      type: "studio.member_invited",
-      payload: input.payload as unknown as Record<string, unknown>,
-    },
-    input.tx,
-  );
+export interface StudioInviteRequestPayload {
+  invitationId: string;
+  studioId: string;
+  studioName: string;
+  inviterName: string;
+  role: "creator" | "member";
+}
+
+/**
+ * Studio invite-accepted payload — the invitee accepted; stored on the
+ * `studio.invite_accepted` notification in the inviting admin's inbox.
+ */
+export interface StudioInviteAcceptedPayload {
+  studioName: string;
+  inviteeName: string;
 }
 
 /**
@@ -275,6 +264,59 @@ export async function createStudioTransferApproved(input: {
     {
       userId: input.userId,
       type: "studio.transfer_approved",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify a user that an admin invited them to join a studio (invite-confirm
+ * handshake, 2026-06-14) — actionable (confirm/cancel), expires after the given
+ * TTL. The invite's source of truth is the `studio_invitations` row whose id
+ * rides in the payload; this notice is just the bell entry point.
+ * @param input - Invitee inbox, payload, expiry, and optional transaction
+ * @param input.userId - The invited user who receives the request in their inbox
+ * @param input.payload - Invitation id, studio id/name, inviter name, granted role
+ * @param input.expiresAt - When the invite times out (matches the invitation row)
+ * @param input.tx - Optional transaction to bundle with the invitation insert
+ * @returns The inserted `studio.invite_request` notification
+ */
+export async function createStudioInviteRequest(input: {
+  userId: string;
+  payload: StudioInviteRequestPayload;
+  expiresAt: Date;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "studio.invite_request",
+      payload: input.payload as unknown as Record<string, unknown>,
+      expiresAt: input.expiresAt,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify the inviting admin that the invitee accepted (invite-confirm
+ * handshake, 2026-06-14) — informational, no action, no TTL.
+ * @param input - Inviting-admin inbox, payload, and optional transaction
+ * @param input.userId - The inviting admin who receives the confirmation
+ * @param input.payload - The studio name and the invitee's display name
+ * @param input.tx - Optional transaction to bundle with the accept writes
+ * @returns The inserted `studio.invite_accepted` notification
+ */
+export async function createStudioInviteAccepted(input: {
+  userId: string;
+  payload: StudioInviteAcceptedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "studio.invite_accepted",
       payload: input.payload as unknown as Record<string, unknown>,
     },
     input.tx,

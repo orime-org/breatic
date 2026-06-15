@@ -11,6 +11,7 @@ import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
 import { ApiException } from '@web/data/api/types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import type { PendingInvitationSummary } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: {
@@ -18,6 +19,7 @@ vi.mock('@web/data/api/studios', () => ({
     removeMember: vi.fn(),
     updateMemberRole: vi.fn(),
     requestTransfer: vi.fn(),
+    revokeInvitation: vi.fn(),
   },
 }));
 
@@ -52,6 +54,16 @@ const CREATOR: StudioMember = {
   studioRole: 'creator',
   joinedAt: '2026-04-03T00:00:00.000Z',
 };
+const PENDING: PendingInvitationSummary = {
+  invitationId: 'inv-1',
+  invitedUserId: 'u-dee',
+  name: 'Dee',
+  email: 'dee@x.example',
+  avatarUrl: null,
+  role: 'member',
+  invitedByName: 'Admin Ada',
+  expiresAt: '2026-06-21T00:00:00.000Z',
+};
 
 function renderTab(ui: ReactElement) {
   const qc = new QueryClient({
@@ -74,7 +86,7 @@ describe('MembersTab — row menu visibility', () => {
         slug='acme'
         members={[ADMIN, MEMBER, CREATOR]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     expect(screen.getByTestId(`member-row-menu-${MEMBER.id}`)).toBeInTheDocument();
@@ -89,7 +101,7 @@ describe('MembersTab — row menu visibility', () => {
         slug='acme'
         members={[ADMIN, MEMBER]}
         studioRole='member'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     expect(screen.queryByTestId(`member-row-menu-${MEMBER.id}`)).toBeNull();
@@ -101,7 +113,7 @@ describe('MembersTab — invite flow', () => {
     const user = userEvent.setup();
     vi.mocked(studiosApi.inviteMember).mockResolvedValueOnce({ ok: true });
     renderTab(
-      <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' />,
+      <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' pendingInvitations={[]} />,
     );
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -127,7 +139,7 @@ describe('MembersTab — invite flow', () => {
       }),
     );
     renderTab(
-      <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' />,
+      <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' pendingInvitations={[]} />,
     );
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     const dialog = await screen.findByTestId('invite-member-dialog');
@@ -151,7 +163,7 @@ describe('MembersTab — change role', () => {
         slug='acme'
         members={[ADMIN, MEMBER]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
@@ -172,7 +184,7 @@ describe('MembersTab — change role', () => {
         slug='acme'
         members={[ADMIN, CREATOR]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     await user.click(screen.getByTestId(`member-row-menu-${CREATOR.id}`));
@@ -195,7 +207,7 @@ describe('MembersTab — remove member (confirm gate)', () => {
         slug='acme'
         members={[ADMIN, MEMBER]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
@@ -221,7 +233,7 @@ describe('MembersTab — transfer admin (confirm gate)', () => {
         slug='acme'
         members={[ADMIN, MEMBER]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
@@ -242,6 +254,63 @@ describe('MembersTab — transfer admin (confirm gate)', () => {
   });
 });
 
+describe('MembersTab — pending invitations', () => {
+  it('shows the pending section with the invitee + role badge to an admin', () => {
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[PENDING]}
+      />,
+    );
+    expect(screen.getByText('Invited')).toBeInTheDocument();
+    expect(screen.getByText(PENDING.name)).toBeInTheDocument();
+    expect(screen.getByText(PENDING.email)).toBeInTheDocument();
+    // pendingBadge = "{role} · pending" with the localized role label.
+    expect(screen.getByText(/Member · pending/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument();
+  });
+
+  it('hides the pending section from a non-admin viewer', () => {
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN, MEMBER]}
+        studioRole='member'
+        studioType='team'
+        pendingInvitations={[PENDING]}
+      />,
+    );
+    expect(screen.queryByText('Invited')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+  });
+
+  it('clicking revoke calls revokeInvitation(slug, invitationId) + success toast', async () => {
+    const user = userEvent.setup();
+    vi.mocked(studiosApi.revokeInvitation).mockResolvedValueOnce({ ok: true });
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[PENDING]}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Revoke' }));
+
+    await waitFor(() => {
+      expect(studiosApi.revokeInvitation).toHaveBeenCalledWith(
+        'acme',
+        PENDING.invitationId,
+      );
+    });
+    expect(toast.success).toHaveBeenCalled();
+  });
+});
+
 describe('MembersTab — a11y', () => {
   it('has no axe violations for an admin-managed team roster', async () => {
     const { container } = renderTab(
@@ -249,7 +318,7 @@ describe('MembersTab — a11y', () => {
         slug='acme'
         members={[ADMIN, MEMBER, CREATOR]}
         studioRole='admin'
-        studioType='team'
+        studioType='team' pendingInvitations={[]}
       />,
     );
     await expectNoA11yViolations(container);

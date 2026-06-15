@@ -35,6 +35,7 @@
       "team_limit_reached": "You've reached the limit of 50 team studios.",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user is already a member.",
+      "already_invited": "That user already has a pending invitation.",
       "cannot_modify_personal": "A personal studio cannot have its members managed.",
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it."
@@ -1328,7 +1329,9 @@
       "memberJoined": "Someone joined {project}",
       "studioMemberInvited": "You were added to {studio}",
       "studioTransferRequest": "You were asked to take over {studio}",
-      "studioTransferApproved": "Your admin transfer for {studio} was accepted"
+      "studioTransferApproved": "Your admin transfer for {studio} was accepted",
+      "studioInviteRequest": "You were invited to join {studio}",
+      "studioInviteAccepted": "{invitee} accepted your invite to {studio}"
     },
     "actionFailed": "Could not complete the action. Please try again.",
     "transferConfirmedToast": "You are now the studio admin.",
@@ -1345,7 +1348,11 @@
       "minutes": "expires in {count}m",
       "hours": "expires in {count}h",
       "days": "expires in {count}d"
-    }
+    },
+    "inviteAccept": "Accept",
+    "inviteDecline": "Decline",
+    "inviteConfirmedToast": "You've joined the studio.",
+    "inviteDeclinedToast": "Invitation declined."
   },
   "connection": {
     "banner": {
@@ -1508,7 +1515,6 @@
         "inviteEmailPlaceholder": "name@example.com",
         "inviteRoleLabel": "Role",
         "inviteSubmit": "Send invite",
-        "inviteSuccess": "Member added.",
         "inviteFailed": "Could not invite this member. Please try again.",
         "roleUpdated": "Role updated.",
         "removeConfirmTitle": "Remove member?",
@@ -1520,7 +1526,12 @@
         "transferConfirmAction": "Send request",
         "transferRequested": "Transfer request sent.",
         "actionFailed": "Something went wrong. Please try again.",
-        "colActions": "Actions"
+        "colActions": "Actions",
+        "pendingTitle": "Invited",
+        "pendingBadge": "{role} · pending",
+        "revoke": "Revoke",
+        "revokeSuccess": "Invitation revoked.",
+        "inviteSent": "Invitation sent."
       },
       "settings": {
         "basicTitle": "Basic info",
@@ -1581,6 +1592,26 @@
       "myStudiosEmpty": "No Studios yet",
       "joinedEmpty": "You haven't joined any Studio yet",
       "openNav": "Open navigation"
+    },
+    "invite": {
+      "loadingTitle": "Opening your invitation…",
+      "loadingBody": "One moment while we load the invite.",
+      "title": "You've been invited",
+      "body": "{inviter} invited you to join {studio} as {role, select, creator {a creator} member {a member} other {a member}}.",
+      "confirm": "Accept & join",
+      "decline": "Decline",
+      "invalidTitle": "This invitation is no longer valid",
+      "invalidBody": "The link may have expired or already been used. Ask the studio admin to send a new invite.",
+      "expiredTitle": "This invitation has expired",
+      "expiredBody": "Your invite to {studio} is past its 7-day window. Ask the studio admin to send a new one.",
+      "notInviteeTitle": "This invitation isn't for this account",
+      "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
+      "declinedTitle": "Invitation declined",
+      "declinedBody": "You declined the invite to {studio}. You can ask the admin to invite you again later.",
+      "joinedToast": "You've joined the studio.",
+      "actionFailed": "Could not complete that. Please try again.",
+      "backToStudio": "Back to Studio",
+      "signIn": "Sign in"
     }
   },
   "chrome": {

@@ -4,7 +4,7 @@
 /**
  * Hocuspocus `beforeHandleMessage` hook — client write authorization.
  *
- * Per ADR 2026-05-23-yjs-collab-only-write-authz (breatic-inner-design):
+ * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  * client-side writes to certain meta-doc paths must be rejected at the
  * collab process so editor / owner users cannot bypass the stateless
  * RPC layer and tamper with shared state directly.

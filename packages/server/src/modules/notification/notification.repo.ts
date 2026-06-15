@@ -14,7 +14,7 @@
  *   - cross-project (Yjs is per-project; Bell aggregates everywhere)
  *   - offline catchup (Yjs only syncs while ws is connected)
  *
- * See spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * See spec: access-permission design (2026-05-28) § 7.
  */
 
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
@@ -34,7 +34,9 @@ export type NotificationType =
   | "access.member_joined"
   | "studio.member_invited"
   | "studio.transfer_request"
-  | "studio.transfer_approved";
+  | "studio.transfer_approved"
+  | "studio.invite_request"
+  | "studio.invite_accepted";
 
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 

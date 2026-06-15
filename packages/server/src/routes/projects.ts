@@ -115,8 +115,8 @@ const projectUpdateSchema = z
 /**
  * `PATCH /projects/:id` — partial update of name / description / thumbnail.
  *
- * PATCH semantic = client sends only fields to change (DD orime-org/
- * breatic-inner-design#152 D1; aligns with `members.patch` precedent).
+ * PATCH semantic = client sends only fields to change (per the
+ * access-permission design D1; aligns with `members.patch` precedent).
  * Requires `editor` (renaming etc. is content editing, not an admin-only
  * operation). v10 §7.2.1.
  * @returns `200` with `{ data: ProjectEntity }`

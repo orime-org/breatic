@@ -2,77 +2,26 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Studio member management service (slice 3) — invite / remove / change-role.
+ * Studio member management service — remove / change-role.
  *
  * The auth + data-integrity critical path for team studios. Membership writes go
  * through `studioMembersRepo` (domain); a kick fans out to `projectMembersRepo`
  * (core) to revoke project access + reassign owned projects, all in one tx.
- * Admin grant/demote is NOT here — that goes through transfer-admin (a
- * two-step handshake; see studioTransfer.service). Route-layer
- * `requireStudioRole('admin')` gates who may call these; the service still
- * enforces the data invariants (personal studio, sole admin, already-member).
+ * Inviting now goes through the invite-confirm handshake (studioInvite.service,
+ * 2026-06-14); admin grant/demote goes through transfer-admin
+ * (studioTransfer.service). Route-layer `requireStudioRole('admin')` gates who
+ * may call these; the service still enforces the data invariants (personal
+ * studio, sole admin).
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
-import * as notificationService from "@server/modules/notification/notification.service.js";
 import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
-/** Roles an admin may grant by invite or change-role; admin is excluded. */
+/** Roles an admin may grant by change-role; admin is excluded. */
 type GrantableRole = "creator" | "member";
-
-/**
- * Invite a registered user into a studio — takes effect immediately (slice 3:
- * no accept step), and drops an informational notification in their inbox.
- *
- * Resolves the studio by slug, refuses personal studios, looks the invitee up
- * by email (unregistered → NotFound, surfaced to the admin as "email not registered"),
- * then in one tx upserts the membership (revives a previously-kicked row) and
- * writes the notification. An upsert that hits an already-active member
- * returns false → ConflictError (no silent role overwrite).
- * @param slug - The studio's URL handle
- * @param inviterUserId - The acting admin (becomes `addedBy`; name in payload)
- * @param email - The invitee's email; must belong to a registered user
- * @param role - The granted studio role (creator | member; never admin)
- * @throws {NotFoundError} studio not found, or no user with that email
- * @throws {ForbiddenError} the studio is personal (cannot have invited members)
- * @throws {ConflictError} the user is already an active member
- */
-export async function inviteMember(
-  slug: string,
-  inviterUserId: string,
-  email: string,
-  role: GrantableRole,
-): Promise<void> {
-  const studio = await studioRepo.getBySlug(slug);
-  if (!studio) throw new NotFoundError(t("server.error.not_found"));
-  if (studio.type === "personal") {
-    throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
-  }
-  const invitee = await usersRepo.getUserByEmail(email);
-  if (!invitee) throw new NotFoundError(t("server.studio.email_not_registered"));
-  const names = await studioRepo.getPersonalNamesByCreators([inviterUserId]);
-  const inviterName = names.get(inviterUserId) ?? "";
-
-  await db.transaction(async (tx) => {
-    const inserted = await studioMembersRepo.upsertMember(
-      studio.id,
-      invitee.id,
-      role,
-      inviterUserId,
-      tx,
-    );
-    if (!inserted) throw new ConflictError(t("server.studio.already_member"));
-    await notificationService.createStudioMemberInvited({
-      userId: invitee.id,
-      payload: { studioName: studio.name, inviterName, role },
-      tx,
-    });
-  });
-}
 
 /**
  * Remove (kick) a member from a studio — one atomic transaction that revokes

@@ -30,6 +30,10 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import { buildStudioInvitationMail } from "@server/modules/studio/studio-invite-mail.js";
+import { sendMail } from "@server/infra/mailer.js";
+import { logger } from "@breatic/core";
 
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
@@ -144,23 +148,50 @@ studio.get("/:slug/projects", async (c) => {
  *   studio has that slug (service throws `NotFoundError`)
  */
 studio.get("/:slug/members", async (c) => {
+  const user = c.get("user");
   const slug = c.req.param("slug");
-  const data = await studioService.getStudioMembers(slug);
+  const data = await studioService.getStudioMembers(slug, user.id);
   return c.json({ data });
 });
 
 /**
- * `POST /api/v1/studio/:slug/members` — invite a registered user (by email)
- * into the studio. Admin-only; the invite takes effect immediately and drops
- * an informational notification in the invitee's inbox (slice 3).
+ * `POST /api/v1/studio/:slug/members` — invite a registered user (by email) to
+ * the studio. Admin-only; creates a PENDING invite + an actionable bell
+ * notification, and (best-effort) sends an email link. The invitee becomes a
+ * member only on confirm (invite-confirm handshake, 2026-06-14).
  * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
- *   `403` personal studio / caller not admin, `409` already a member
+ *   `403` personal studio / caller not admin, `409` already a member or already
+ *   invited
  */
 studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
   const user = c.get("user");
   const slug = c.req.param("slug");
   const body = inviteMemberSchema.parse(await c.req.json());
-  await studioMemberService.inviteMember(slug, user.id, body.email, body.role);
+  const invite = await studioInviteService.createInvite(
+    slug,
+    user.id,
+    body.email,
+    body.role,
+  );
+  // Email is an OPTIONAL enhancement — the bell notification is the always-
+  // delivered path. A send failure must NOT fail the request (the invite + bell
+  // already landed); best-effort, logged at the application boundary.
+  try {
+    const token = await studioInviteService.issueInviteToken(invite.invitationId);
+    const origin = c.req.header("Origin") ?? "http://localhost:8000";
+    const mailResult = await sendMail(
+      buildStudioInvitationMail({
+        inviteeEmail: invite.inviteeEmail,
+        inviterName: invite.inviterName,
+        studioName: invite.studioName,
+        role: invite.role,
+        inviteLink: `${origin}/studio-invite?token=${token}`,
+      }),
+    );
+    logger.info({ slug, mailStatus: mailResult.status }, "studio_invite_email");
+  } catch (err) {
+    logger.error({ err, slug }, "studio_invite_email_failed");
+  }
   return c.json({ data: { ok: true } }, 201);
 });
 
@@ -210,5 +241,23 @@ studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
   await studioTransferService.requestTransfer(slug, user.id, body.toUserId);
   return c.json({ data: { ok: true } }, 201);
 });
+
+/**
+ * `DELETE /api/v1/studio/:slug/invitations/:invitationId` — the admin revokes a
+ * pending invite. Admin-only; flips it to `revoked` and clears the invitee's
+ * bell notification.
+ * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
+ *   `404` studio not found or no matching pending invite
+ */
+studio.delete(
+  "/:slug/invitations/:invitationId",
+  requireStudioRole("admin"),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const invitationId = c.req.param("invitationId");
+    await studioInviteService.revokeInvite(slug, invitationId);
+    return c.json({ data: { ok: true } });
+  },
+);
 
 export { studios as studiosRoute, studio as studioRoute };

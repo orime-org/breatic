@@ -32,6 +32,7 @@ import { assetsRoute } from "@server/routes/assets.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
+import { studioInvitationsRoute } from "@server/routes/studio-invitations.js";
 import {
   projectInviteLinksRoute,
   consumeInviteLinkRoute,
@@ -87,6 +88,8 @@ export function createApp(): Hono {
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
   app.route("/api/v1/users", usersRoute);
+  // Mounted before "/api/v1/studio" so the more specific prefix matches first.
+  app.route("/api/v1/studio-invitations", studioInvitationsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);
   app.route("/api/v1/skills", skillsRoute);

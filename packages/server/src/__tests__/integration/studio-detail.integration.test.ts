@@ -234,7 +234,8 @@ describe("getStudioMembers — member roster (display name from personal studio)
     await insertMemberRaw(team.id, owner, "admin");
     await insertMemberRaw(team.id, member, "member");
 
-    const members = await studioService.getStudioMembers(team.slug);
+    const members = (await studioService.getStudioMembers(team.slug, owner))
+      .members;
     expect(members).toHaveLength(2);
     const byRole = new Map(members.map((m) => [m.role, m]));
     expect(byRole.get("admin")!.userId).toBe(owner);
@@ -252,11 +253,13 @@ describe("getStudioMembers — member roster (display name from personal studio)
     const team = await insertStudio(owner, "team");
     await insertMemberRaw(team.id, owner, "admin");
     await insertMemberRaw(team.id, member, "member");
-    expect(await studioService.getStudioMembers(team.slug)).toHaveLength(2);
+    expect(
+      (await studioService.getStudioMembers(team.slug, owner)).members,
+    ).toHaveLength(2);
 
     await softDeleteMember(team.id, member);
 
-    const after = await studioService.getStudioMembers(team.slug);
+    const after = (await studioService.getStudioMembers(team.slug, owner)).members;
     expect(after).toHaveLength(1);
     expect(after[0]!.userId).toBe(owner);
   });
@@ -266,7 +269,8 @@ describe("getStudioMembers — member roster (display name from personal studio)
     const personal = await insertStudio(user, "personal");
     await insertMemberRaw(personal.id, user, "admin");
 
-    const members = await studioService.getStudioMembers(personal.slug);
+    const members = (await studioService.getStudioMembers(personal.slug, user))
+      .members;
     expect(members).toHaveLength(1);
     expect(members[0]!.userId).toBe(user);
     expect(members[0]!.role).toBe("admin");
@@ -274,7 +278,10 @@ describe("getStudioMembers — member roster (display name from personal studio)
 
   it("throws NotFoundError for a slug with no active studio", async () => {
     await expect(
-      studioService.getStudioMembers("no-such-members-slug"),
+      studioService.getStudioMembers(
+        "no-such-members-slug",
+        "00000000-0000-0000-0000-000000000000",
+      ),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

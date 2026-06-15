@@ -103,7 +103,8 @@ export default function StudioContainerPage(): React.JSX.Element {
   const projects: ContainerProject[] = (projectsQuery.data ?? []).map(
     toContainerProject,
   );
-  const members: StudioMember[] = (membersQuery.data ?? []).map((m) => ({
+  const membersView = membersQuery.data;
+  const members: StudioMember[] = (membersView?.members ?? []).map((m) => ({
     id: m.userId,
     name: m.name,
     email: m.email,
@@ -111,6 +112,9 @@ export default function StudioContainerPage(): React.JSX.Element {
     studioRole: m.role,
     joinedAt: m.addedAt,
   }));
+  // Pending invitations are returned only to an admin viewer (the server gates
+  // it); the Members tab renders them in a separate "invited" section.
+  const pendingInvitations = membersView?.pendingInvitations ?? [];
   const view = studio ? { ...getEmptyContainerView(), studio } : null;
   // The selector lists the studios the viewer may create in; the default is the
   // current studio when the viewer is its admin, else the personal studio (§7.1).
@@ -181,6 +185,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                 <MembersTab
                   slug={slug}
                   members={members}
+                  pendingInvitations={pendingInvitations}
                   studioRole={view.studio.myStudioRole}
                   studioType={view.studio.type}
                 />

@@ -26,8 +26,8 @@ export const roleUpgradeRequestsApi = {
    * @param body - Optional message included with the upgrade request.
    * @returns The created request notification placed in the owner's inbox.
    */
-  submit(projectId: string, body: SubmitRoleUpgradeBody): Promise<{ data: Notification }> {
-    return apiPost<{ data: Notification }, SubmitRoleUpgradeBody>(
+  submit(projectId: string, body: SubmitRoleUpgradeBody): Promise<Notification> {
+    return apiPost<Notification, SubmitRoleUpgradeBody>(
       `/projects/${projectId}/role-upgrade-requests`,
       body,
     );
@@ -45,8 +45,8 @@ export const roleUpgradeRequestsApi = {
    * @param body - The decision (approved / rejected) and an optional reason.
    * @returns An acknowledgement once the decision is recorded.
    */
-  decide(notificationId: string, body: DecideRoleUpgradeBody): Promise<{ data: { ok: true } }> {
-    return apiPatch<{ data: { ok: true } }, DecideRoleUpgradeBody>(
+  decide(notificationId: string, body: DecideRoleUpgradeBody): Promise<{ ok: true }> {
+    return apiPatch<{ ok: true }, DecideRoleUpgradeBody>(
       `/role-upgrade-requests/${notificationId}/decision`,
       body,
     );

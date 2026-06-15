@@ -47,7 +47,7 @@ export default function InviteConsumePage(): React.JSX.Element {
     void (async () => {
       try {
         const res = await inviteLinksApi.consume(token);
-        navigate(`/project/${res.data.projectId}`, { replace: true });
+        navigate(`/project/${res.projectId}`, { replace: true });
       } catch (err) {
         // Per 2026-05-28 spec § 2.1: expired / revoked / consumed /
         // bound-email-mismatch all surface a friendly full-screen
