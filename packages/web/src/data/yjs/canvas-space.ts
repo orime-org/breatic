@@ -30,8 +30,8 @@ import { toNodeView } from '@web/spaces/canvas/types/node-view';
  * via Collab) only sets state fields inside the node's `data` Y.Map.
  *
  * Read side projects each wire node through `toNodeView`, returning
- * ReactFlow-ready `CanvasNodeView`s (nodes with no view — `generative` /
- * `group` — are skipped).
+ * ReactFlow-ready `CanvasNodeView`s (only nodes with a dirty / unknown
+ * `type` or a missing `data` Y.Map are skipped).
  */
 
 /** A render-ready canvas node: identity + position + the narrowed view. */
@@ -231,8 +231,8 @@ export function removeEdge(
 
 /**
  * Read all nodes from `nodesMap` into render-ready views. Each node's wire
- * fields are projected through `toNodeView`; nodes with no view
- * (`generative` / `group`) or a missing `data` Y.Map are skipped.
+ * fields are projected through `toNodeView`; nodes with a dirty / unknown
+ * `type` or a missing `data` Y.Map are skipped.
  * @param doc - The canvas-space Y.Doc to read from.
  * @returns The current renderable canvas nodes.
  */

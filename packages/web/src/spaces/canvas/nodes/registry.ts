@@ -17,6 +17,7 @@ type CanvasNodeComponent = ComponentType<{
 }>;
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { AudioNode } from '@web/spaces/canvas/nodes/AudioNode';
+import { GroupNode } from '@web/spaces/canvas/nodes/GroupNode';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { ThreeDNode } from '@web/spaces/canvas/nodes/ThreeDNode';
@@ -42,6 +43,7 @@ export const NODE_TYPES: Record<NodeKind, CanvasNodeComponent> = {
   '3d': ThreeDNode as CanvasNodeComponent,
   web: WebNode as CanvasNodeComponent,
   annotation: AnnotationNode as CanvasNodeComponent,
+  group: GroupNode as CanvasNodeComponent,
 };
 
 export const NODE_KIND_LIST: ReadonlyArray<NodeKind> = [
@@ -52,4 +54,5 @@ export const NODE_KIND_LIST: ReadonlyArray<NodeKind> = [
   '3d',
   'web',
   'annotation',
+  'group',
 ];

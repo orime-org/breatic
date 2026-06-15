@@ -21,18 +21,22 @@
  *     canonical timestamp), not an ISO string.
  *
  * `kind` is the view discriminant; it carries the same string values as
- * wire `type` for the 7 modalities these components render. Wire types
- * with no view here (`generative`, `group`) make `toNodeView` return
- * `null` — those nodes are rendered elsewhere.
+ * wire `type`. Every wire `type` now has a view (the 6 content modalities,
+ * `annotation`, and `group`); `toNodeView` returns `null` only for a dirty
+ * or unknown `type`.
+ *
+ * Content views also project the Generate panel's inputs (model revision
+ * 2026-06-15): wire `kind` (the generate sub-mode) surfaces as
+ * `generateMode` to avoid colliding with the view's `kind` discriminant.
  */
 
-import type { CanvasNodeFields } from '@breatic/shared';
+import type { CanvasNodeFields, ReferenceItem } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
 
-/** Every kind the canvas node components render: the 6 content + annotation. */
-export type NodeKind = Modality | 'annotation';
+/** Every kind the canvas node components render: the 6 content + annotation + group. */
+export type NodeKind = Modality | 'annotation' | 'group';
 
 /**
  * Derived body status that drives the placeholder / skeleton / error /
@@ -55,6 +59,19 @@ interface NodeViewCommon {
 interface ContentNodeViewBase extends NodeViewCommon {
   status: DisplayStatus;
   errorMessage?: string;
+  // Generate panel inputs (model revision 2026-06-15) — a content node can
+  // carry the Generate action's collaborative inputs. All optional: a node
+  // with no Generate history simply omits them.
+  /** Rich-text prompt body (Y.XmlFragment at runtime). */
+  prompt?: unknown;
+  /** Selected model id. */
+  model?: string;
+  /** Reference rail rows feeding the prompt context. */
+  references?: ReferenceItem[];
+  /** Model-specific request params. */
+  params?: Record<string, unknown>;
+  /** Generate sub-mode (wire `kind`), renamed to avoid the `kind` discriminant clash. */
+  generateMode?: string;
 }
 
 export interface TextNodeView extends ContentNodeViewBase {
@@ -109,6 +126,20 @@ export interface AnnotationNodeView extends NodeViewCommon {
   createdAt: number;
 }
 
+/**
+ * Group container view (model revision 2026-06-15) — a canvas region that
+ * holds other nodes. A core feature; the full grouping interactions
+ * (marquee-group, lock-move, ReactFlow `parentId` containment) land in the
+ * dedicated group slice. This view carries what the container renders.
+ */
+export interface GroupNodeView extends NodeViewCommon {
+  kind: 'group';
+  /** Ids of the nodes contained in the group. */
+  childIds?: string[];
+  /** Group container tint. */
+  backgroundColor?: string;
+}
+
 /** Any of the 6 content-node views (excludes the annotation sticky). */
 export type ContentNodeView =
   | TextNodeView
@@ -119,7 +150,7 @@ export type ContentNodeView =
   | WebNodeView;
 
 /** Discriminated union of every renderable node view. */
-export type NodeView = ContentNodeView | AnnotationNodeView;
+export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
 
 /**
  * Collapses the wire 2-state lifecycle + last error into the 3-state
@@ -140,22 +171,32 @@ export function deriveStatus(
 
 /**
  * Projects a wire {@link CanvasNodeFields} into the narrowed view its
- * component renders. Returns `null` for wire types these components do
- * not render (`generative`, `group`) and for any dirty / unknown `type`
- * — the caller treats `null` as "skip this node" rather than crashing.
+ * component renders. Every known `type` maps to a view; returns `null`
+ * only for a dirty / unknown `type` — the caller treats `null` as "skip
+ * this node" rather than crashing.
  * @param fields - The wire node fields read from the canvas Yjs doc.
- * @returns The matching node view, or `null` when the type has no view.
+ * @returns The matching node view, or `null` when the type is unknown.
  */
 export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const { type, data } = fields;
   const status = deriveStatus(data);
   const errorMessage = data.errorMessage;
   const locked = data.locked;
+  // Generate panel inputs projected onto every content view. Wire `kind`
+  // (the generate sub-mode) → view `generateMode` avoids clashing with the
+  // view's `kind` modality discriminant.
+  const generate = {
+    prompt: data.prompt,
+    model: data.model,
+    references: data.references,
+    params: data.params,
+    generateMode: data.kind,
+  };
   switch (type) {
     case 'text':
-      return { kind: 'text', content: data.content ?? '', status, errorMessage, locked };
+      return { kind: 'text', content: data.content ?? '', status, errorMessage, locked, ...generate };
     case 'image':
-      return { kind: 'image', content: data.content, status, errorMessage, locked };
+      return { kind: 'image', content: data.content, status, errorMessage, locked, ...generate };
     case 'audio':
       return {
         kind: 'audio',
@@ -164,6 +205,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         status,
         errorMessage,
         locked,
+        ...generate,
       };
     case 'video':
       return {
@@ -174,17 +216,25 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         status,
         errorMessage,
         locked,
+        ...generate,
       };
     case '3d':
-      return { kind: '3d', content: data.content, status, errorMessage, locked };
+      return { kind: '3d', content: data.content, status, errorMessage, locked, ...generate };
     case 'web':
-      return { kind: 'web', content: data.content, status, errorMessage, locked };
+      return { kind: 'web', content: data.content, status, errorMessage, locked, ...generate };
     case 'annotation':
       return {
         kind: 'annotation',
         content: data.content ?? '',
         createdBy: data.createdBy,
         createdAt: data.createdAt,
+        locked,
+      };
+    case 'group':
+      return {
+        kind: 'group',
+        childIds: data.childIds,
+        backgroundColor: data.backgroundColor,
         locked,
       };
     default:

@@ -84,7 +84,7 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 export const chatAttachedChipSchema = z.object({
   /** Source node id (audit only — not a live reference). */
   id: z.string(),
-  type: z.enum(["image", "video", "audio", "text", "generative", "annotation"]),
+  type: z.enum(["image", "video", "audio", "text", "annotation"]),
   /** Display name for the chip; LLM context renders this as the section title. */
   name: z.string(),
   /** Deep copy of the source node's `data` at attach time. */

@@ -27,7 +27,7 @@ const inputSchema = z.object({
     .array(
       z.object({
         type: z
-          .enum(["image", "video", "audio", "text", "generative", "annotation"])
+          .enum(["image", "video", "audio", "text", "annotation"])
           .describe("Node type per spec/03-data-model §5.3.2"),
         position: z
           .object({ x: z.number(), y: z.number() })

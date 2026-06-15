@@ -28,7 +28,6 @@ export type {
   OperationLock,
   AttachRef,
   CanvasNodeFields,
-  CanvasEdgeData,
   GenerativeRefSourceType,
   ReferenceItem,
   ChipSnapshot,
