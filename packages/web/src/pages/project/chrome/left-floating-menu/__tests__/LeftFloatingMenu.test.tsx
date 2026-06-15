@@ -9,14 +9,19 @@ import { LeftFloatingMenu } from '@web/pages/project/chrome/left-floating-menu/L
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
-function setup() {
+function setup(disabled = false) {
   const onPick = vi.fn();
+  const onCreateNode = vi.fn();
   render(
     <TooltipProvider>
-      <LeftFloatingMenu onPick={onPick} />
+      <LeftFloatingMenu
+        onPick={onPick}
+        onCreateNode={onCreateNode}
+        disabled={disabled}
+      />
     </TooltipProvider>,
   );
-  return { onPick };
+  return { onPick, onCreateNode };
 }
 
 describe('LeftFloatingMenu', () => {
@@ -82,5 +87,30 @@ describe('LeftFloatingMenu', () => {
     // Still no aria-pressed attribute after click — pure action, no
     // pinned / activated state survives the click.
     expect(upload.hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('node-library button opens a dropdown listing the 4 creatable node types', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('tool-nodes'));
+    expect(await screen.findByTestId('create-node-text')).toBeInTheDocument();
+    expect(screen.getByTestId('create-node-image')).toBeInTheDocument();
+    expect(screen.getByTestId('create-node-audio')).toBeInTheDocument();
+    expect(screen.getByTestId('create-node-video')).toBeInTheDocument();
+  });
+
+  it('picking a node type fires onCreateNode with that type', async () => {
+    const user = userEvent.setup();
+    const { onCreateNode } = setup();
+    await user.click(screen.getByTestId('tool-nodes'));
+    await user.click(await screen.findByTestId('create-node-audio'));
+    expect(onCreateNode).toHaveBeenCalledWith('audio');
+  });
+
+  it('viewer (disabled): the node-library button does not open a create menu', async () => {
+    const user = userEvent.setup();
+    setup(true);
+    await user.click(screen.getByTestId('tool-nodes'));
+    expect(screen.queryByTestId('create-node-text')).toBeNull();
   });
 });

@@ -53,7 +53,7 @@ pnpm test / typecheck / lint
 - **语言(MANDATORY)**:breatic 是全球开源项目,贡献者来自世界各地 → **代码 + 注释必须英文**(给人读,方便全球协作)。三类例外可非英文:① i18n 多语言文案(`locales/*.json` + 语言原生名等故意产品数据)· ② 测试 fixtures(`*.test.*` / `__tests__/` 的 Unicode / locale 测试逻辑)· ③ `lint:no-cjk` allowlist 里的故意产品数据字符串。**规范文档(`CLAUDE.md` / `docs/*` / 各包 `CLAUDE.md` 等 `.md`)是给机器(AI)读的,中文 OK、不强制英文** —— 代码给人看(英文)、文档给机器读(中文)是两个层面。判定题:**这内容会编译进产物 / 被开发者直接读吗?会 → 英文(代码 + 注释);只是给 AI 读的规范说明 → 中文 OK**。`lint:no-cjk` CI 强制(扫 `.ts/.tsx/.css` 含注释 + `.yaml/.yml` 配置 + `scripts/*.sh` 守卫脚本;唯 `lint-no-cjk.sh` 自身因内含 CJK 检测正则而排除)
 - **PostgreSQL**:Drizzle + UUID + JSONB,积分扣费走 `db.transaction()`(扣费+记流水原子)
 - **Redis 3 DB**:DB0 session/lock/rate-limit,DB1 BullMQ,DB2 Streams + Hocuspocus pub/sub。Key `{env}:{service}:{entity}:{id}`,**禁止无 TTL**,Stream MAXLEN ~10000
-- **Auth 安全**:登录 5/分,注册 10/时,Google OAuth 10/分(Redis 滑窗)。NoAccount 仅 dev,prod 启动拒绝
+- **Auth 安全**:登录 5/分,注册 10/时,Google OAuth 10/分(Redis 滑窗)。邮箱两步注册(注册即发 session,onboarding 闸门 = 个人 studio 为空);NoAccount mock 登录已移除(#147)
 - **XSS / Prompt**:HTML 渲染走 DOMPurify `sanitizeRichText()`;AIGC prompt 先经 `extractPromptText()` 去 HTML/注释/不可见字符
 - **异常**:`AppError(status, msg)` 在 Service 层抛,路由层 handler 处理(NotFound / Conflict / Validation / Forbidden / Unauthorized)
 - **SSE**:仅 Agent 聊天 + Text mini-tool,**per-request 私有流**(前端 `fetchEventSource` POST,每次请求各开各的流、靠回调对账)。**事件 `data` 不携带归属 ID** —— 对话归属由 `conversations` 表的 `user_id` / `project_id` 列兜底(SSE 片段不落库、前端不读、每 chunk 重复 = 冗余无消费方);要审计单次操作走 application 层 `logger`,不塞进 wire

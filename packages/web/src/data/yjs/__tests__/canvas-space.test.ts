@@ -13,6 +13,7 @@ import {
   readNodes,
   removeEdge,
   removeNode,
+  setNodeName,
   setNodePosition,
 } from '@web/data/yjs/canvas-space';
 
@@ -86,6 +87,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
         position: { x: 5, y: 6 },
         data: {
           kind: 'image',
+          name: 'N',
           content: 'x.png',
           status: 'idle',
           errorMessage: undefined,
@@ -121,6 +123,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     const view = readNodes(d)[0];
     expect(view.data).toEqual({
       kind: 'image',
+      name: 'N',
       content: 'result.png',
       status: 'idle',
       errorMessage: undefined,
@@ -168,6 +171,12 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     addNode(PID, SID, sampleFields('text', { content: 'hi' }));
     setNodePosition(PID, SID, 'n1', { x: 99, y: 88 });
     expect(readNodes(doc())[0].position).toEqual({ x: 99, y: 88 });
+  });
+
+  it('setNodeName writes the new name into the node data Y.Map', () => {
+    addNode(PID, SID, sampleFields('image', { content: 'x' }));
+    setNodeName(PID, SID, 'n1', 'Hero shot');
+    expect(readNodes(doc())[0].data).toMatchObject({ name: 'Hero shot' });
   });
 
   it('addEdge / removeEdge round-trip under the edgesMap', () => {

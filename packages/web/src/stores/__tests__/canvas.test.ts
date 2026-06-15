@@ -12,6 +12,7 @@ describe('useCanvasStore', () => {
       zoom: 1,
       minimapVisible: false,
       showLockedOverlay: false,
+      pendingNodeCreate: null,
     });
   });
 
@@ -40,5 +41,13 @@ describe('useCanvasStore', () => {
     useCanvasStore.getState().setSelectedNodeIds(['a', 'b']);
     useCanvasStore.getState().clearSelection();
     expect(useCanvasStore.getState().selectedNodeIds).toEqual([]);
+  });
+
+  it('requestNodeCreate queues a pending create that consume clears (chrome → canvas mailbox)', () => {
+    expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
+    useCanvasStore.getState().requestNodeCreate('image');
+    expect(useCanvasStore.getState().pendingNodeCreate).toBe('image');
+    useCanvasStore.getState().consumePendingNodeCreate();
+    expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
   });
 });

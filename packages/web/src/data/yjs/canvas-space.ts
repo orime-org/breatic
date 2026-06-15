@@ -188,6 +188,30 @@ export function setNodePosition(
 }
 
 /**
+ * Rename a node (name-header edit) — frontend-owned operation. Writes into
+ * the nested `data` Y.Map so the change merges field-wise with concurrent
+ * collaborator / backend writes.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to rename.
+ * @param name - The node's new display name.
+ */
+export function setNodeName(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  name: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  data.set('name', name);
+}
+
+/**
  * Add an edge (e.g. mini-tool primary edge).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the edge to.

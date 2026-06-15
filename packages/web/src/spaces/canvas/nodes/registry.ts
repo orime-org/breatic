@@ -8,12 +8,15 @@ import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 /**
  * Common prop surface every canvas node component accepts. The body is
  * passed the narrowed `data` view at runtime (cast per kind); `selected`
- * / `locked` are supplied by the ReactFlow wrapper.
+ * / `locked` / `onRename` are supplied by the ReactFlow wrapper (the wrapper
+ * pre-binds `onRename` to this node's id; content nodes use it, annotation /
+ * group ignore it).
  */
 type CanvasNodeComponent = ComponentType<{
   data: unknown;
   selected?: boolean;
   locked?: boolean;
+  onRename?: (name: string) => void;
 }>;
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { AudioNode } from '@web/spaces/canvas/nodes/AudioNode';
