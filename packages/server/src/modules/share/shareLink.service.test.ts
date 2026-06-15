@@ -14,7 +14,7 @@
  * consume race-condition path. Repo is mocked so tests run without
  * a PG connection.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
+ * Spec: access-permission design (2026-05-28) § 3.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

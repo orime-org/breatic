@@ -16,7 +16,7 @@
  * The frontend pulls these via React Query; the collab stateless
  * invalidate signal (Phase 7) triggers refetch (~150ms total delay).
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * Spec: access-permission design (2026-05-28) § 7.
  */
 
 import { Hono } from "hono";

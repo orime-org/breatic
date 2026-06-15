@@ -805,7 +805,7 @@ export const shareLinks = pgTable(
 // invalidate signal to attached clients so the React Query cache
 // refetches via REST.
 //
-// Design: see `breatic-inner/engineering/specs/2026-05-28-access-permission-design.md` § 7.
+// Design: see `access-permission design (2026-05-28)` § 7.
 // per-user private + cross-project + offline catchup → PG, not Yjs.
 
 export const notifications = pgTable(
@@ -873,7 +873,7 @@ export const notifications = pgTable(
 // lifecycle; rows are soft-deleted only). All FKs are `onDelete: restrict`
 // except `notification_id` (`set null` — the bell row may be GC'd). One LIVE
 // pending invite per (studio, invitee) is enforced by a partial unique index
-// in the migration. See breatic-inner DD 2026-06-14-studio-invite-confirmation.
+// in the migration. See the studio invite-confirmation DD (2026-06-14).
 
 export const studioInvitations = pgTable(
   "studio_invitations",

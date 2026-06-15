@@ -13,8 +13,7 @@
  *
  * Space lifecycle (create / delete / lock / restore) used to live
  * here as `publishSpace*` + `space:*` channels — removed 2026-05-23
- * (ADR breatic-inner-design engineering/decisions/
- * 2026-05-23-yjs-collab-only-write-authz.md). Those writes now run
+ * (ADR 2026-05-23-yjs-collab-only-write-authz). Those writes now run
  * as collab stateless RPC inside `packages/collab/src/space-rpc.ts`
  * (caller: the live Hocuspocus connection on the meta doc), so no
  * Redis round-trip is needed.

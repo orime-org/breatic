@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * On-disconnect cleanup for mini-tool state (ADR
- * `breatic-inner/decisions/2026-05-11-mini-tool-state-machine.md` §D4).
+ * On-disconnect cleanup for mini-tool state (the mini-tool
+ * state-machine ADR, 2026-05-11, §D4).
  *
  * Hocuspocus fires `onDisconnect` when a client's WebSocket closes. For
  * each canvas doc the client was holding, we scan all nodes and:

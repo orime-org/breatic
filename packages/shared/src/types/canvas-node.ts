@@ -8,8 +8,7 @@
  * + edgesMap (Y.Map<edgeId, Y.Map>). Node state machine: 'idle' / 'handling'
  * (in Yjs); 'localPending' is local-only React state, never in Yjs.
  *
- * See design spec at:
- *   breatic-inner/design/2026-04-26-yjs-editor-redesign/spec.md (04-29 banner)
+ * See the yjs-editor-redesign design spec (2026-04-26, 04-29 banner).
  */
 
 /** Yjs-shared lifecycle. localPending is local-only and not represented here. */

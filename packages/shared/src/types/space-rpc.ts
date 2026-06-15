@@ -4,7 +4,7 @@
 /**
  * Client ↔ Collab stateless RPC for Space lifecycle.
  *
- * Per ADR 2026-05-23-yjs-collab-only-write-authz (breatic-inner-design):
+ * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  * Space create / delete / lock / unlock / restore are no longer routed
  * through the server REST API. The client sends a stateless message
  * over the live Hocuspocus connection on the project's meta doc and

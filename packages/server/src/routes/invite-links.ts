@@ -53,7 +53,7 @@ import { logMailResult } from "@server/utils/log-mail.js";
  *   - kind: 'link'  - invitee_email MUST be omitted. Multi-use, no
  *     expiry. Server just returns the URL.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
+ * Spec: access-permission design (2026-05-28) § 3.
  */
 const bodySchemaCreate = z.discriminatedUnion("kind", [
   z.object({

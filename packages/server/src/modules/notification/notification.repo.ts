@@ -14,7 +14,7 @@
  *   - cross-project (Yjs is per-project; Bell aggregates everywhere)
  *   - offline catchup (Yjs only syncs while ws is connected)
  *
- * See spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * See spec: access-permission design (2026-05-28) § 7.
  */
 
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";

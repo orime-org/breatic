@@ -4,7 +4,7 @@
 /**
  * Share link service — create / list / consume / revoke.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 3.
+ * Spec: access-permission design (2026-05-28) § 3.
  *
  * Authorization model (route layer enforces gates):
  *   - createLink / listByProject / revokeLink: owner gate

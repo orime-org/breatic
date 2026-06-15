@@ -17,7 +17,7 @@
  * writes here; the route layer (application boundary) is responsible
  * for triggering the broadcast post-commit.
  *
- * Spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 7.
+ * Spec: access-permission design (2026-05-28) § 7.
  */
 
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
