@@ -1,16 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import {
-  Box,
-  FileText,
-  Globe,
-  Image as ImageIcon,
-  Music,
-  Video,
-} from 'lucide-react';
 import type * as React from 'react';
 
+import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 interface NodePlaceholderProps {
@@ -20,15 +13,6 @@ interface NodePlaceholderProps {
   /** Click handler for the call-to-action (typically opens generate popover). */
   onActivate?: () => void;
 }
-
-const ICONS: Record<Modality, typeof FileText> = {
-  text: FileText,
-  image: ImageIcon,
-  audio: Music,
-  video: Video,
-  '3d': Box,
-  web: Globe,
-};
 
 const DEFAULT_HINT: Record<Modality, string> = {
   text: 'Double-click to write or generate text',
@@ -54,7 +38,7 @@ export function NodePlaceholder({
   hint,
   onActivate,
 }: NodePlaceholderProps): React.JSX.Element {
-  const Icon = ICONS[modality];
+  const Icon = MODALITY_ICONS[modality];
   return (
     <button
       type='button'

@@ -57,6 +57,13 @@ interface NodeViewCommon {
 
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
+  /**
+   * Editable display name shown in the node name header (fixed-English
+   * default). Optional in the view (like `locked`) so component tests that
+   * only exercise the body need not spell it out; `toNodeView` always
+   * populates it from the required wire `data.name`.
+   */
+  name?: string;
   status: DisplayStatus;
   errorMessage?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
@@ -182,10 +189,15 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const status = deriveStatus(data);
   const errorMessage = data.errorMessage;
   const locked = data.locked;
-  // Generate panel inputs projected onto every content view. Wire `kind`
-  // (the generate sub-mode) → view `generateMode` avoids clashing with the
-  // view's `kind` modality discriminant.
-  const generate = {
+  // Common content-view fields: the editable name (node name header), the
+  // derived status, and the Generate panel inputs. Wire `kind` (the generate
+  // sub-mode) → view `generateMode` avoids clashing with the view's `kind`
+  // modality discriminant.
+  const contentCommon = {
+    name: data.name,
+    status,
+    errorMessage,
+    locked,
     prompt: data.prompt,
     model: data.model,
     references: data.references,
@@ -194,34 +206,23 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   };
   switch (type) {
     case 'text':
-      return { kind: 'text', content: data.content ?? '', status, errorMessage, locked, ...generate };
+      return { kind: 'text', content: data.content ?? '', ...contentCommon };
     case 'image':
-      return { kind: 'image', content: data.content, status, errorMessage, locked, ...generate };
+      return { kind: 'image', content: data.content, ...contentCommon };
     case 'audio':
-      return {
-        kind: 'audio',
-        content: data.content,
-        duration: data.duration,
-        status,
-        errorMessage,
-        locked,
-        ...generate,
-      };
+      return { kind: 'audio', content: data.content, duration: data.duration, ...contentCommon };
     case 'video':
       return {
         kind: 'video',
         content: data.content,
         coverUrl: data.coverUrl,
         duration: data.duration,
-        status,
-        errorMessage,
-        locked,
-        ...generate,
+        ...contentCommon,
       };
     case '3d':
-      return { kind: '3d', content: data.content, status, errorMessage, locked, ...generate };
+      return { kind: '3d', content: data.content, ...contentCommon };
     case 'web':
-      return { kind: 'web', content: data.content, status, errorMessage, locked, ...generate };
+      return { kind: 'web', content: data.content, ...contentCommon };
     case 'annotation':
       return {
         kind: 'annotation',

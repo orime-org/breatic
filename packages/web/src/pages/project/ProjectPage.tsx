@@ -20,7 +20,7 @@ import {
   useProjectMessages,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import { useCurrentUserStore, useUIStore } from '@web/stores';
+import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import type { SpaceType } from '@web/spaces';
 
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
@@ -125,6 +125,9 @@ export default function ProjectPage(): React.JSX.Element {
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
+  // Chrome → canvas mailbox: the node-library dropdown posts the picked type
+  // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
+  const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
   const {
     spaces,
     openTabIds,
@@ -494,6 +497,7 @@ export default function ProjectPage(): React.JSX.Element {
                   projectId={projectId}
                   spaceId={activeSpace.id}
                   type={activeSpace.type}
+                  readOnly={isViewer}
                 />
               ) : (
                 <div
@@ -507,15 +511,16 @@ export default function ProjectPage(): React.JSX.Element {
                 <>
                   <LeftFloatingMenu
                     disabled={isViewer}
+                    onCreateNode={requestNodeCreate}
                     onPick={(_tool) => {
                     // TODO: dispatch per-button actions
-                    //   nodes        - open node-library popover
                     //   upload       - open file picker (presigned URL upload)
                     //   comment      - enter annotation mode
                     //   collection  - placeholder (M1+)
                     //   help         - placeholder (M1+)
                     //   feedback     - placeholder (M1+)
                     // Buttons never store a "selected" state - they fire and forget.
+                    // The node-library (`nodes`) button owns its own dropdown.
                     }}
                   />
                   <ViewportToolbar

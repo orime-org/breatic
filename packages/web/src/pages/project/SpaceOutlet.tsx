@@ -9,6 +9,8 @@ interface SpaceOutletProps {
   projectId: string;
   spaceId: string;
   type: SpaceType;
+  /** Read-only mode for the current user (viewer role), forwarded to the body. */
+  readOnly?: boolean;
 }
 
 /**
@@ -19,12 +21,14 @@ interface SpaceOutletProps {
  * @param root0.projectId - The id of the project the Space belongs to.
  * @param root0.spaceId - The id of the Space to render.
  * @param root0.type - The Space type used to resolve the body component.
+ * @param root0.readOnly - Read-only mode for the current user, forwarded to the body.
  * @returns The registered Space body, or an error message for an unknown type.
  */
 export function SpaceOutlet({
   projectId,
   spaceId,
   type,
+  readOnly,
 }: SpaceOutletProps): React.JSX.Element {
   const def = SPACE_TYPES[type];
   if (!def) {
@@ -38,5 +42,7 @@ export function SpaceOutlet({
     );
   }
   const Body = def.bodyComponent;
-  return <Body projectId={projectId} spaceId={spaceId} />;
+  return (
+    <Body projectId={projectId} spaceId={spaceId} readOnly={readOnly} />
+  );
 }

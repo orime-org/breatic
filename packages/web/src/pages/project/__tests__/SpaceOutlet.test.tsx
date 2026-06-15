@@ -21,4 +21,19 @@ describe('SpaceOutlet', () => {
     render(<SpaceOutlet projectId='p' spaceId='s' type='timeline' />);
     expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
   });
+
+  it('forwards readOnly to the space body (viewer gate reaches the canvas)', () => {
+    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
+    expect(screen.getByTestId('canvas-space')).toHaveAttribute(
+      'data-readonly',
+      'true',
+    );
+  });
+
+  it('omits the read-only marker for editors', () => {
+    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    expect(screen.getByTestId('canvas-space')).not.toHaveAttribute(
+      'data-readonly',
+    );
+  });
 });

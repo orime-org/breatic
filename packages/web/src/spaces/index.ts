@@ -12,6 +12,13 @@ export type SpaceType = 'canvas' | 'document' | 'timeline';
 export interface SpaceBodyProps {
   spaceId: string;
   projectId: string;
+  /**
+   * Read-only mode for the current user (viewer role). Sourced from the
+   * project's `myRole` and threaded through `SpaceOutlet` — space bodies gate
+   * their writes on it (e.g. the canvas blocks node creation). Defaults to
+   * editable when omitted.
+   */
+  readOnly?: boolean;
 }
 
 export interface SpaceDefinition {

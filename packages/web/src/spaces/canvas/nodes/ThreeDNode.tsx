@@ -5,7 +5,7 @@ import { Box } from 'lucide-react';
 import type * as React from 'react';
 
 import type { ThreeDNodeView } from '@web/spaces/canvas/types/node-view';
-import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
@@ -14,6 +14,7 @@ interface ThreeDNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
+  onRename?: (name: string) => void;
 }
 
 /**
@@ -26,6 +27,7 @@ interface ThreeDNodeProps {
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The 3D node element (placeholder or model URL stub).
  */
 export function ThreeDNode({
@@ -33,13 +35,17 @@ export function ThreeDNode({
   selected,
   locked,
   onActivate,
+  onRename,
 }: ThreeDNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   return (
-    <NodeShell
+    <ContentNodeFrame
+      modality='3d'
+      name={data.name}
       status={data.status}
       selected={selected}
       locked={locked}
+      onRename={onRename}
       className='w-64'
       testId='three-d-node'
     >
@@ -60,6 +66,6 @@ export function ThreeDNode({
           </div>
         }
       />
-    </NodeShell>
+    </ContentNodeFrame>
   );
 }

@@ -43,11 +43,17 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(fields('text', { content: 'hello' }));
     expect(v).toEqual({
       kind: 'text',
+      name: 'N',
       content: 'hello',
       status: 'idle',
       errorMessage: undefined,
       locked: false,
     });
+  });
+
+  it('projects data.name onto a content view (drives the node name header)', () => {
+    const v = toNodeView(fields('image', { content: 'x', name: 'My Pic' }));
+    expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
   });
 
   it('defaults missing text content to an empty string', () => {

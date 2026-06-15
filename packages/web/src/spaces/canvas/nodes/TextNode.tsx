@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
-import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
@@ -14,6 +14,7 @@ interface TextNodeProps {
   locked?: boolean;
   onActivate?: () => void;
   onChange?: (next: string) => void;
+  onRename?: (name: string) => void;
 }
 
 /**
@@ -29,6 +30,7 @@ interface TextNodeProps {
  * @param root0.locked - Whether the node is locked, blocking inline editing and showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onChange - Called with the new text when an inline edit is committed on blur.
+ * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The text node element (placeholder or inline-editable body).
  */
 export function TextNode({
@@ -37,6 +39,7 @@ export function TextNode({
   locked,
   onActivate,
   onChange,
+  onRename,
 }: TextNodeProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -63,10 +66,13 @@ export function TextNode({
   const hasContent = data.content.length > 0;
 
   return (
-    <NodeShell
+    <ContentNodeFrame
+      modality='text'
+      name={data.name}
       status={data.status}
       selected={selected}
       locked={locked}
+      onRename={onRename}
       className='w-64'
       testId='text-node'
     >
@@ -95,6 +101,6 @@ export function TextNode({
           </div>
         }
       />
-    </NodeShell>
+    </ContentNodeFrame>
   );
 }
