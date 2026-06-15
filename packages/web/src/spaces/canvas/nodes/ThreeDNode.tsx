@@ -4,13 +4,13 @@
 import { Box } from 'lucide-react';
 import type * as React from 'react';
 
-import type { ThreeDNodeData } from '@web/spaces/canvas/types/node';
+import type { ThreeDNodeView } from '@web/spaces/canvas/types/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface ThreeDNodeProps {
-  data: ThreeDNodeData;
+  data: ThreeDNodeView;
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
@@ -34,7 +34,7 @@ export function ThreeDNode({
   locked,
   onActivate,
 }: ThreeDNodeProps): React.JSX.Element {
-  const hasContent = Boolean(data.url);
+  const hasContent = Boolean(data.content);
   return (
     <NodeShell
       status={data.status}
@@ -56,7 +56,7 @@ export function ThreeDNode({
             className='flex h-32 w-full flex-col items-center justify-center gap-1 bg-muted/40 text-xs text-muted-foreground'
           >
             <Box className='h-5 w-5 opacity-60' aria-hidden='true' />
-            <span className='truncate px-2'>{data.url}</span>
+            <span className='truncate px-2'>{data.content}</span>
           </div>
         }
       />

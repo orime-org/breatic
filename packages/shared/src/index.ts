@@ -32,6 +32,7 @@ export type {
   MemoryContext,
   SkillMeta,
   NodeState,
+  NodeType,
   HandlingActor,
   OperationLock,
   AttachRef,

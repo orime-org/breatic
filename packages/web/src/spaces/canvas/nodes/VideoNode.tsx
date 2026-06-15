@@ -3,13 +3,13 @@
 
 import type * as React from 'react';
 
-import type { VideoNodeData } from '@web/spaces/canvas/types/node';
+import type { VideoNodeView } from '@web/spaces/canvas/types/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 interface VideoNodeProps {
-  data: VideoNodeData;
+  data: VideoNodeView;
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
@@ -32,7 +32,7 @@ export function VideoNode({
   locked,
   onActivate,
 }: VideoNodeProps): React.JSX.Element {
-  const hasContent = Boolean(data.url);
+  const hasContent = Boolean(data.content);
   return (
     <NodeShell
       status={data.status}
@@ -52,7 +52,7 @@ export function VideoNode({
           // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video asset; the upload flow does not produce a caption track. Add a <track> when caption authoring lands.
           <video
             controls
-            src={data.url}
+            src={data.content}
             poster={data.coverUrl}
             data-testid='video-node-video'
             className='block w-full rounded-[var(--radius-content-sm)]'

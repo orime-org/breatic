@@ -16,7 +16,7 @@ describe('ImageNode', () => {
   it('renders the image when url is present', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', url: 'https://e.com/x.jpg', status: 'idle' }}
+        data={{ kind: 'image', content: 'https://e.com/x.jpg', status: 'idle' }}
       />,
     );
     expect(
@@ -27,7 +27,7 @@ describe('ImageNode', () => {
   it('handling status shows skeleton even with url', () => {
     render(
       <ImageNode
-        data={{ kind: 'image', url: 'https://e.com/x', status: 'handling' }}
+        data={{ kind: 'image', content: 'https://e.com/x', status: 'handling' }}
       />,
     );
     expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();

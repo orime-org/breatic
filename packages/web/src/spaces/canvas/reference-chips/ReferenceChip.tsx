@@ -14,7 +14,7 @@ import type * as React from 'react';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 export interface ReferenceChipProps {
   modality: Modality;

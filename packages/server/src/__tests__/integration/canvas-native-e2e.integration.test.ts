@@ -274,7 +274,7 @@ async function seedNode(
       const posMap = new Y.Map<unknown>([["x", 100], ["y", 200]]);
       const nodeMap = new Y.Map<unknown>([
         ["id", nodeId],
-        ["type", "1002"],
+        ["type", "image"],
         ["position", posMap],
         ["data", dataMap],
       ]);
@@ -407,11 +407,11 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    * Invariants:
    *   - state becomes 'idle'
    *   - content is set to the provider URL
-   *   - cover_url is set
+   *   - coverUrl is set
    *   - handlingBy is deleted (not merely null)
    *   - errorMessage is absent
    */
-  it("Test 1: success path — state=idle, content+cover_url written, handlingBy deleted", async () => {
+  it("Test 1: success path — state=idle, content+coverUrl written, handlingBy deleted", async () => {
     const nodeId = "node-success-t1";
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
@@ -484,7 +484,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data!["state"]).toBe("idle");
     // Content fields
     expect(data!["content"]).toBe("https://oss/result-t1.png");
-    expect(data!["cover_url"]).toBe("https://oss/thumb-t1.png");
+    expect(data!["coverUrl"]).toBe("https://oss/thumb-t1.png");
     // handlingBy MUST be absent (deleted, not set to undefined/null)
     expect("handlingBy" in (data ?? {})).toBe(false);
     // No error on success
@@ -657,7 +657,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       expect(data).not.toBeNull();
       expect(data!["state"]).toBe("idle");
       expect(data!["content"]).toBe(providerCtrl.outputs[i]!.url);
-      expect(data!["cover_url"]).toBe(providerCtrl.outputs[i]!.cover_url);
+      expect(data!["coverUrl"]).toBe(providerCtrl.outputs[i]!.cover_url);
       expect("handlingBy" in (data ?? {})).toBe(false);
     }
   });

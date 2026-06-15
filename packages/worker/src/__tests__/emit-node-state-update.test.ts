@@ -109,7 +109,7 @@ describe("emitNodeStateDone", () => {
     const nodeId = "n1";
     const contentFields = {
       content: "https://oss/x.png",
-      cover_url: "https://oss/x-thumb.png",
+      coverUrl: "https://oss/x-thumb.png",
       width: 100,
       height: 200,
     };
@@ -124,7 +124,7 @@ describe("emitNodeStateDone", () => {
       update: {
         state: "idle",
         content: contentFields.content,
-        cover_url: contentFields.cover_url,
+        coverUrl: contentFields.coverUrl,
         width: contentFields.width,
         height: contentFields.height,
         duration: undefined,
@@ -145,7 +145,7 @@ describe("emitNodeStateDone", () => {
 
     expect(update.state).toBe("idle");
     expect(update.content).toBe("https://oss/y.mp4");
-    expect(update.cover_url).toBeUndefined();
+    expect(update.coverUrl).toBeUndefined();
     expect(update.width).toBeUndefined();
     expect(update.height).toBeUndefined();
     expect(update.handlingBy).toBeNull();

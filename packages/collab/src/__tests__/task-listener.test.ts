@@ -292,7 +292,7 @@ describe("handleNodeStateUpdateEvent", () => {
       update: {
         state: "idle",
         content: "https://cdn.example.com/r.png",
-        cover_url: "https://cdn.example.com/r.png",
+        coverUrl: "https://cdn.example.com/r.png",
         handlingBy: undefined,
       },
     };
@@ -309,7 +309,7 @@ describe("handleNodeStateUpdateEvent", () => {
     const dataMap = getDataMap(doc, NODE_ID);
     expect(dataMap.get("state")).toBe("idle");
     expect(dataMap.get("content")).toBe("https://cdn.example.com/r.png");
-    expect(dataMap.get("cover_url")).toBe("https://cdn.example.com/r.png");
+    expect(dataMap.get("coverUrl")).toBe("https://cdn.example.com/r.png");
     expect(dataMap.has("handlingBy")).toBe(false);
   });
 

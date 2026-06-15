@@ -12,7 +12,7 @@ import {
 } from '@web/components/ui/popover';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { miniToolsForModality } from '@web/pages/project/mini-tool-system/catalog';
-import type { Modality } from '@web/spaces/canvas/types/node';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 interface MiniToolPickerProps {
   modality: Modality;

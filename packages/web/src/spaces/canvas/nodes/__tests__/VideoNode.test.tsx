@@ -17,7 +17,7 @@ describe('VideoNode', () => {
       <VideoNode
         data={{
           kind: 'video',
-          url: 'https://e.com/v.mp4',
+          content: 'https://e.com/v.mp4',
           coverUrl: 'https://e.com/c.jpg',
           status: 'idle',
         }}

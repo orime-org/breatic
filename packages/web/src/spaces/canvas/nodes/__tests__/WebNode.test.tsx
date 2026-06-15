@@ -17,7 +17,7 @@ describe('WebNode', () => {
       <WebNode
         data={{
           kind: 'web',
-          url: 'https://example.com',
+          content: 'https://example.com',
           status: 'idle',
         }}
       />,

@@ -457,7 +457,7 @@ async function runTaskBody(
       try {
         await emitNodeStateDone(streamRedis, docName, nodeId, {
           content: url,
-          cover_url: out?.cover_url,
+          coverUrl: out?.cover_url,
         });
       } catch (err) {
         logger.warn({ err, taskId, nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
@@ -479,7 +479,7 @@ export interface NodeStateDoneFields {
   /** Permanent URL of the generated asset. */
   content: string;
   /** Optional cover/thumbnail URL (video first-frame, 3D preview, etc.). */
-  cover_url?: string;
+  coverUrl?: string;
   /** Image / video pixel width. */
   width?: number;
   /** Image / video pixel height. */
@@ -516,7 +516,7 @@ export async function emitNodeStateDone(
     update: {
       state: "idle",
       content: contentFields.content,
-      cover_url: contentFields.cover_url,
+      coverUrl: contentFields.coverUrl,
       width: contentFields.width,
       height: contentFields.height,
       duration: contentFields.duration,

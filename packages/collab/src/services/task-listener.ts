@@ -47,7 +47,7 @@ const logger = createLogger("task-listener");
 const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "state",
   "content",
-  "cover_url",
+  "coverUrl",
   "errorMessage",
   "width",
   "height",

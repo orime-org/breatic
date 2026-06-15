@@ -4,10 +4,10 @@
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
-import type { NodeStatus } from '@web/spaces/canvas/types/node';
+import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
 
 interface NodeShellProps {
-  status?: NodeStatus;
+  status?: DisplayStatus;
   selected?: boolean;
   locked?: boolean;
   children: React.ReactNode;
@@ -18,7 +18,7 @@ interface NodeShellProps {
 
 // The node carries a single 1px border whose colour reflects its state.
 // One flat border, no rings or focus glow (rigid 1px rule, lint:1px-border).
-const STATUS_BORDER: Record<NodeStatus, string> = {
+const STATUS_BORDER: Record<DisplayStatus, string> = {
   idle: 'border-border',
   handling: 'border-status-info',
   error: 'border-status-error',

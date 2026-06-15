@@ -132,7 +132,7 @@ describe("CanvasNodeFields", () => {
   it("accepts a minimal valid shape with only required fields", () => {
     const node: CanvasNodeFields = {
       id: "node-1",
-      type: "1002",
+      type: "image",
       position: { x: 100, y: 200 },
       data: {
         name: "Image Node",
@@ -152,7 +152,7 @@ describe("CanvasNodeFields", () => {
   it("accepts a full data node with all optional data fields populated", () => {
     const node: CanvasNodeFields = {
       id: "node-2",
-      type: "1002",
+      type: "image",
       position: { x: 50, y: 50 },
       data: {
         name: "Result Image",
@@ -165,7 +165,7 @@ describe("CanvasNodeFields", () => {
         handlingBy: undefined,
         errorMessage: undefined,
         content: "https://cdn.example.com/image.png",
-        cover_url: "https://cdn.example.com/image.png",
+        coverUrl: "https://cdn.example.com/image.png",
         width: 1024,
         height: 768,
         duration: undefined,
@@ -226,12 +226,35 @@ describe("CanvasNodeFields", () => {
     expect(node.data.childIds).toEqual(["node-1", "node-2"]);
   });
 
+  it("accepts an annotation node — text via content, author via createdBy", () => {
+    const node: CanvasNodeFields = {
+      id: "note-1",
+      type: "annotation",
+      position: { x: 10, y: 20 },
+      data: {
+        name: "Sticky",
+        createdAt: 1714492800000,
+        createdBy: "user-author",
+        locked: false,
+        operationLocks: [],
+        state: "idle",
+        attachments: [],
+        content: "remember to fix the bug",
+      },
+    };
+    // Annotation reuses contract fields: content = note text, createdBy = author
+    // (user 2026-06-15 ruling A: author is the immutable creator, no transfer).
+    expect(node.type).toBe("annotation");
+    expect(node.data.content).toBe("remember to fix the bug");
+    expect(node.data.createdBy).toBe("user-author");
+  });
+
   it("locked defaults to false (still required) and createdAt/createdBy are required", () => {
     // v13: audit fields are mandatory on every node creation, not optional.
     // Reader-side fallbacks handle pre-v13 docs; type definition stays strict.
     const node: CanvasNodeFields = {
       id: "node-locked",
-      type: "1002",
+      type: "image",
       position: { x: 0, y: 0 },
       data: {
         name: "Locked node",
@@ -254,7 +277,7 @@ describe("CanvasNodeFields", () => {
     //     onDisconnect writes errorMessage if the holder leaves mid-op
     const node: CanvasNodeFields = {
       id: "node-mid-op",
-      type: "1002",
+      type: "image",
       position: { x: 0, y: 0 },
       data: {
         name: "Adjusting",
@@ -335,7 +358,7 @@ describe("NodeStateUpdateEvent", () => {
       update: {
         state: "idle",
         content: "https://cdn.example.com/result.mp4",
-        cover_url: "https://cdn.example.com/thumb.jpg",
+        coverUrl: "https://cdn.example.com/thumb.jpg",
         width: 1920,
         height: 1080,
         duration: 15,
