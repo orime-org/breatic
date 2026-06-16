@@ -71,3 +71,15 @@ body {
 .react-flow__node.dragging .canvas-node-shell {
   box-shadow: var(--shadow-md);
 }
+
+/* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
+   (set only when you pass colorMode="dark"), which never matches our
+   `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /
+   #555 selected) leaked into dark mode and made an unselected edge read brighter
+   than a selected one. Drive both from our mode-aware tokens instead: a default
+   edge is a recessive mid-grey and a selected edge takes the same selected colour
+   as a selected node — correct in light AND dark. */
+.react-flow {
+  --xy-edge-stroke-default: var(--color-foreground-disabled);
+  --xy-edge-stroke-selected-default: var(--color-status-selected);
+}
