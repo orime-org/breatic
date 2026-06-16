@@ -281,6 +281,38 @@ export interface ProjectSummary {
   updatedAt: Date;
 }
 
+/**
+ * A row in the cross-studio "Recent" landing feed, returned by
+ * `GET /api/v1/studios/recent`.
+ *
+ * One entry per project the viewer has opened, ordered by the viewer's own
+ * last-open time (per-user — another user's opens never affect this list).
+ * Access-filtered server-side: a project the viewer can no longer reach
+ * (kicked from the studio, turned private with no membership, soft-deleted) is
+ * never returned, and another user's private project is never leaked. The
+ * studio identity (`studioId` / `studioName`) backs the "from X studio" label
+ * on the landing card. Recent-landing design §4.2.
+ */
+export interface RecentItem {
+  /** The opened project's id (URL is `/project/{slug}-{projectId}`). */
+  projectId: string;
+  name: string;
+  /** URL slug for /project/{slug}-{projectId}; format-validated, not unique. */
+  slug: string;
+  thumbnailUrl: string | null;
+  /** The studio that houses the project. */
+  studioId: string;
+  /** The studio's display name (the "from X studio" label on the card). */
+  studioName: string;
+  /**
+   * The viewer's role on this project (the card's role badge), or `null` for a
+   * studio-visible project admitted via open baseline with no membership row.
+   */
+  myRole: ProjectRole | null;
+  /** The viewer's own last-open time for this project (the sort key). */
+  lastOpenedAt: Date;
+}
+
 /** Three-layer memory context for LLM prompts. */
 export interface MemoryContext {
   userMemory: string;

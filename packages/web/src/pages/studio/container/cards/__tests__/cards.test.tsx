@@ -20,7 +20,7 @@ const OWNED_PRIVATE: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'private',
   myRole: 'owner',
-  updatedAt: '2026-06-01T00:00:00.000Z',
+  createdAt: '2026-06-01T00:00:00.000Z',
 };
 
 const SHARED_STUDIO: ContainerProject = {
@@ -30,7 +30,7 @@ const SHARED_STUDIO: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'studio',
   myRole: 'editor',
-  updatedAt: '2026-06-01T00:00:00.000Z',
+  createdAt: '2026-06-01T00:00:00.000Z',
 };
 
 function renderProject(project: ContainerProject, studioRole: StudioRole) {

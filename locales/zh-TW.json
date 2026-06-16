@@ -1387,7 +1387,9 @@
       "title": "最近",
       "subtitle": "你最近編輯、參與過的專案和資產集 —— 跨你所有的 Studio,按最近時間排序。",
       "emptyTitle": "還沒有最近的內容",
-      "emptyHint": "你還沒有建立或參與任何專案。建立第一個專案,或進入一個 Studio 開始創作 —— 之後你最近編輯的內容會顯示在這裡。"
+      "emptyHint": "你還沒有建立或參與任何專案。建立第一個專案,或進入一個 Studio 開始創作 —— 之後你最近編輯的內容會顯示在這裡。",
+      "loadError": "無法載入最近的專案，請重新整理頁面再試。",
+      "openedAt": "開啟於 {time}"
     },
     "topBar": {
       "home": "Studio 首頁",
@@ -1454,7 +1456,8 @@
       "card": {
         "assetCount": "{count} 個素材",
         "fromStudio": "來自 {studio}",
-        "more": "更多操作"
+        "more": "更多操作",
+        "createdAt": "建立於 {time}"
       },
       "projects": {
         "title": "專案",

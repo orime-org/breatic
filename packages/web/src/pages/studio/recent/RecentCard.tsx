@@ -69,7 +69,9 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
           </Badge>
         </div>
         <div className='text-xs text-muted-foreground'>
-          {formatRelativeTime(item.lastOpenedAt, t)}
+          {t('studio.recent.openedAt', {
+            time: formatRelativeTime(item.lastOpenedAt, t),
+          })}
         </div>
       </div>
     </Link>

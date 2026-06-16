@@ -65,7 +65,9 @@ export function ProjectCard({
           </p>
           <div className='mt-2 flex items-center gap-2'>
             <span className='text-xs text-muted-foreground'>
-              {formatRelativeTime(project.updatedAt, t)}
+              {t('studio.container.card.createdAt', {
+                time: formatRelativeTime(project.createdAt, t),
+              })}
             </span>
             <span className='ml-auto inline-flex'>
               <RoleBadge itemRole={effectiveItemRole(project.myRole)} />

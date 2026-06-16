@@ -16,8 +16,9 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
  * Projects tab (spec §7 / §8.2). It creates the project in the studio the user
  * selected — the server checks the caller is that studio's `admin`/`creator`
  * and rejects otherwise (§8.2) — then refreshes that studio's projects and
- * navigates to it, so the new card appears wherever the project landed (even if
- * it differs from the studio the dialog opened in). On failure it surfaces the
+ * navigates straight INTO the new project (decision B): the creator lands in
+ * the canvas, and the project page records the open so the project also surfaces
+ * at the top of the cross-studio Recent landing. On failure it surfaces the
  * error as a toast (an application-layer concern; the API layer stays silent).
  * @param studios the viewer's studios (used to resolve the fallback default + the target slug).
  * @returns a `mutate(values)` to call when the create dialog submits.
@@ -45,14 +46,17 @@ export function useCreateProject(
         description: values.description || undefined,
       });
     },
-    onSuccess: (project) => {
+    onSuccess: (project, values) => {
       const target = studios.find((s) => s.id === project.studioId);
       void queryClient.invalidateQueries({
         queryKey: ['studio', target?.slug, 'projects'],
       });
-      if (target !== undefined) {
-        navigate(`/studio/${target.slug}`);
-      }
+      // Navigate straight INTO the new project (decision B): the creator lands
+      // in the canvas, and the project page records the open so the project
+      // also surfaces at the top of the cross-studio Recent landing (it is
+      // invisible there until first opened). The URL slug is decorative — the
+      // page keys on the uuid — so the user-typed slug (stored as-is) is fine.
+      navigate(`/project/${values.slug}-${project.id}`);
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : '';

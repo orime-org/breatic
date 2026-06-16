@@ -1,16 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import { RecentLanding } from '@web/pages/studio/recent/RecentLanding';
 import type { RecentItem } from '@web/pages/studio/recent/recent-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
-// Local fixtures — the Recent landing's real data comes from a future
-// `GET /studio/recent`; the tests own their sample items (no shared stub).
+// Local fixtures — the Recent landing's data comes from `GET /studios/recent`
+// (mapped to the view model upstream); these tests own their sample items.
 const ITEM: RecentItem = {
   id: 'r1',
   kind: 'project',
@@ -26,15 +26,10 @@ const ITEM: RecentItem = {
 function setup(
   projects: RecentItem[] = [ITEM],
   collections: RecentItem[] = [],
-  onCreateProject: () => void = () => {},
 ) {
   return render(
     <MemoryRouter>
-      <RecentLanding
-        projects={projects}
-        collections={collections}
-        onCreateProject={onCreateProject}
-      />
+      <RecentLanding projects={projects} collections={collections} />
     </MemoryRouter>,
   );
 }
@@ -47,15 +42,13 @@ describe('RecentLanding', () => {
     expect(screen.getByText('Second Project')).toBeInTheDocument();
   });
 
-  it('shows the recent empty state (no cards) with a create-project button that fires onCreateProject', () => {
-    const onCreate = vi.fn();
-    setup([], [], onCreate);
+  it('shows a PASSIVE recent empty state — no cards and NO create-project button', () => {
+    setup([], []);
     // No card links in the empty state.
     expect(screen.queryAllByRole('link')).toHaveLength(0);
-    // The empty state offers the create-project entry (neutral mock §recent-empty).
-    const btn = screen.getByRole('button', { name: /New project/i });
-    fireEvent.click(btn);
-    expect(onCreate).toHaveBeenCalledTimes(1);
+    // The empty-state create CTA was removed (2026-06-16): creating is one
+    // click away in the rail, so the landing does not duplicate it.
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('has no a11y violations (content + empty)', async () => {

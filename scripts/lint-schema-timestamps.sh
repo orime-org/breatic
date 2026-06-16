@@ -29,6 +29,13 @@
 #                           sent_at, and they're retained as an audit
 #                           trail — never user-facing, never deleted.
 #                           Same append-only carve-out.
+#   - project_last_opened   per-user "last opened this project" UPSERT
+#                           tracker backing the Recent feed. No soft-delete
+#                           semantics: a row for a deleted / now-inaccessible
+#                           project is filtered out by the recent query's JOIN
+#                           (projects.deleted_at IS NULL) + access predicate,
+#                           so a leftover row is harmless. The mutable column
+#                           IS last_opened_at; there is no updated_at either.
 # created_at has NO allowlist — every table must have it.
 #
 # Implementation: parse each `export const <name> = pgTable(` block and
@@ -58,6 +65,7 @@ VIOLATIONS=$(
         allow["creditTransactions"] = 1
         allow["creditBalances"] = 1
         allow["projectLifecycleOutbox"] = 1
+        allow["projectLastOpened"] = 1
       }
       function evaluate() {
         if (curname == "") return

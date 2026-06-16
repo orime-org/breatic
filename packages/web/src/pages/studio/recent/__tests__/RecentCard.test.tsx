@@ -40,6 +40,12 @@ describe('RecentCard', () => {
     expect(screen.getByText('Acme Studio')).toBeInTheDocument();
   });
 
+  it('prefixes the time with the "opened" label (disambiguates from "modified")', () => {
+    // The fixture was last opened 30 min ago → en renders "Opened 30 minutes ago".
+    setup();
+    expect(screen.getByText(/^Opened\b/i)).toBeInTheDocument();
+  });
+
   it('links a project to /project/{slug}-{uuid}', () => {
     setup();
     expect(screen.getByRole('link')).toHaveAttribute(

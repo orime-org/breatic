@@ -34,6 +34,7 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
@@ -108,6 +109,10 @@ export default function ProjectPage(): React.JSX.Element {
       navigate(`/project/${projectId}/access`, { replace: true });
     }
   }, [projectQuery.error, projectId, navigate]);
+
+  // Record the open once the project has loaded — floats it to the top of the
+  // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
+  useRecordProjectOpen(projectId, projectQuery.isSuccess);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   const role = projectQuery.data?.myRole ?? 'owner';
