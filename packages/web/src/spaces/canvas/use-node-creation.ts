@@ -5,6 +5,11 @@ import * as React from 'react';
 
 import { addNode } from '@web/data/yjs/canvas-space';
 import {
+  cloneForPaste,
+  textToNode,
+  type ClipboardNode,
+} from '@web/spaces/canvas/node-clipboard';
+import {
   createEmptyNode,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
@@ -20,6 +25,19 @@ export interface NodeCreation {
     type: CreatableNodeType,
     position: { x: number; y: number },
   ) => string;
+  /**
+   * Paste plain text as a new text node at a position; returns its id.
+   * The pasted text becomes the node's content.
+   */
+  pasteTextAt: (text: string, position: { x: number; y: number }) => string;
+  /**
+   * Paste cloned clipboard nodes (fresh ids, positions shifted by `offset`
+   * so relative layout is preserved); returns the new node ids in order.
+   */
+  pasteNodesAt: (
+    nodes: ReadonlyArray<ClipboardNode>,
+    offset: { dx: number; dy: number },
+  ) => string[];
 }
 
 /**
@@ -45,5 +63,24 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
-  return { createNodeAt };
+  const pasteTextAt = React.useCallback(
+    (text: string, position: { x: number; y: number }): string => {
+      const node = textToNode(text, position, userId);
+      addNode(projectId, spaceId, node);
+      return node.id;
+    },
+    [projectId, spaceId, userId],
+  );
+  const pasteNodesAt = React.useCallback(
+    (
+      nodes: ReadonlyArray<ClipboardNode>,
+      offset: { dx: number; dy: number },
+    ): string[] => {
+      const cloned = cloneForPaste(nodes, userId, offset);
+      cloned.forEach((node) => addNode(projectId, spaceId, node));
+      return cloned.map((node) => node.id);
+    },
+    [projectId, spaceId, userId],
+  );
+  return { createNodeAt, pasteTextAt, pasteNodesAt };
 }
