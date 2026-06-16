@@ -13,6 +13,7 @@ describe('useCanvasStore', () => {
       minimapVisible: false,
       showLockedOverlay: false,
       pendingNodeCreate: null,
+      pendingViewportCommand: null,
     });
   });
 
@@ -49,5 +50,17 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pendingNodeCreate).toBe('image');
     useCanvasStore.getState().consumePendingNodeCreate();
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
+  });
+
+  it('requestViewportCommand queues a zoom command that consume clears (chrome → canvas mailbox)', () => {
+    expect(useCanvasStore.getState().pendingViewportCommand).toBeNull();
+    useCanvasStore.getState().requestViewportCommand('zoomIn');
+    expect(useCanvasStore.getState().pendingViewportCommand).toBe('zoomIn');
+    useCanvasStore.getState().requestViewportCommand({ zoomTo: 1.5 });
+    expect(useCanvasStore.getState().pendingViewportCommand).toEqual({
+      zoomTo: 1.5,
+    });
+    useCanvasStore.getState().consumeViewportCommand();
+    expect(useCanvasStore.getState().pendingViewportCommand).toBeNull();
   });
 });

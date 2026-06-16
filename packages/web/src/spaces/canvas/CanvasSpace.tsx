@@ -9,6 +9,7 @@ import {
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
+  useStore,
   type Connection,
   type Edge,
   type Node,
@@ -144,7 +145,42 @@ function CanvasSpaceInner({
   const { nodes, edges } = useCanvasSpace(projectId, spaceId);
   const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
+    useReactFlow();
+
+  // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
+  // The zoom toolbar lives in chrome, outside this ReactFlowProvider, so it
+  // can't read or drive the real zoom. Mirror the live zoom into the canvas
+  // store for the toolbar's read-out, and run the toolbar's commands (posted
+  // through the store mailbox) against ReactFlow here, where the API exists.
+  const setZoom = useCanvasStore((s) => s.setZoom);
+  const rfZoom = useStore((s) => s.transform[2]);
+  React.useEffect(() => {
+    setZoom(rfZoom);
+  }, [rfZoom, setZoom]);
+
+  const pendingViewportCommand = useCanvasStore(
+    (s) => s.pendingViewportCommand,
+  );
+  const consumeViewportCommand = useCanvasStore(
+    (s) => s.consumeViewportCommand,
+  );
+  React.useEffect(() => {
+    if (!pendingViewportCommand) return;
+    const command = pendingViewportCommand;
+    if (command === 'zoomIn') zoomIn();
+    else if (command === 'zoomOut') zoomOut();
+    else if (command === 'fit') fitView();
+    else zoomTo(command.zoomTo);
+    consumeViewportCommand();
+  }, [
+    pendingViewportCommand,
+    zoomIn,
+    zoomOut,
+    fitView,
+    zoomTo,
+    consumeViewportCommand,
+  ]);
   const { createNodeAt, pasteTextAt, pasteNodesAt } = useNodeCreation(
     projectId,
     spaceId,

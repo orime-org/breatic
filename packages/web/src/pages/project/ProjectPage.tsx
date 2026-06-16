@@ -209,7 +209,13 @@ export default function ProjectPage(): React.JSX.Element {
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
-  const [zoom, setZoom] = React.useState(1);
+  // Zoom is owned by the canvas (the ReactFlow viewport): the canvas mirrors the
+  // live zoom into the store for this read-out, and the toolbar posts zoom
+  // commands back through the store mailbox (consumed inside the canvas).
+  const zoom = useCanvasStore((s) => s.zoom);
+  const requestViewportCommand = useCanvasStore(
+    (s) => s.requestViewportCommand,
+  );
   const [minimapVisible, setMinimapVisible] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
 
@@ -532,10 +538,10 @@ export default function ProjectPage(): React.JSX.Element {
                     zoom={zoom}
                     minimapVisible={minimapVisible}
                     snapToGrid={snapToGrid}
-                    onZoomIn={() => setZoom((z) => Math.min(z + 0.1, 4))}
-                    onZoomOut={() => setZoom((z) => Math.max(z - 0.1, 0.1))}
-                    onZoomChange={(z) => setZoom(z)}
-                    onFit={() => setZoom(1)}
+                    onZoomIn={() => requestViewportCommand('zoomIn')}
+                    onZoomOut={() => requestViewportCommand('zoomOut')}
+                    onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                    onFit={() => requestViewportCommand('fit')}
                     onToggleSnap={() => setSnapToGrid((v) => !v)}
                     onToggleMinimap={() => setMinimapVisible((v) => !v)}
                   // Undo/redo render disabled until the canvas history

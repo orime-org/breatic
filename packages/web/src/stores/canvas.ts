@@ -9,6 +9,17 @@ import { immer } from 'zustand/middleware/immer';
 type CreateIntent = CanvasNodeFields['type'];
 
 /**
+ * A viewport command posted by the chrome zoom toolbar for the canvas to run
+ * against ReactFlow. `'zoomIn'` / `'zoomOut'` step the zoom, `'fit'` frames all
+ * nodes, and `{ zoomTo }` applies an absolute zoom (preset / custom input).
+ */
+export type ViewportCommand =
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'fit'
+  | { readonly zoomTo: number };
+
+/**
  * Canvas UI store — non-Yjs UI state for the canvas viewport.
  *
  * **Important**: real canvas data (nodes / edges / positions) lives in Yjs
@@ -30,6 +41,8 @@ interface CanvasState {
   showLockedOverlay: boolean;
   /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
+  /** Chrome → canvas mailbox: a zoom-toolbar command for the canvas to run. */
+  pendingViewportCommand: ViewportCommand | null;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -42,6 +55,10 @@ interface CanvasState {
   requestNodeCreate: (type: CreateIntent) => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
+  /** Post a viewport command from the chrome zoom toolbar. */
+  requestViewportCommand: (command: ViewportCommand) => void;
+  /** Clear the mailbox once the canvas has run the command. */
+  consumeViewportCommand: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -52,6 +69,7 @@ export const useCanvasStore = create<CanvasState>()(
     minimapVisible: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
+    pendingViewportCommand: null,
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -91,6 +109,14 @@ export const useCanvasStore = create<CanvasState>()(
     consumePendingNodeCreate: () =>
       set((s) => {
         s.pendingNodeCreate = null;
+      }),
+    requestViewportCommand: (command) =>
+      set((s) => {
+        s.pendingViewportCommand = command;
+      }),
+    consumeViewportCommand: () =>
+      set((s) => {
+        s.pendingViewportCommand = null;
       }),
   })),
 );

@@ -44,7 +44,10 @@ function dispatchPaste(text: string): void {
 describe('CanvasSpace (ReactFlow mount)', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
-    useCanvasStore.setState({ pendingNodeCreate: null });
+    useCanvasStore.setState({
+      pendingNodeCreate: null,
+      pendingViewportCommand: null,
+    });
     useCurrentUserStore.getState().setUser({
       id: 'u-1',
       name: 'Ada',
@@ -69,6 +72,18 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
     expect(pane?.className).not.toContain('draggable');
+  });
+
+  // Zoom bridge: the chrome zoom toolbar posts a command through the canvas
+  // store; the canvas (which owns the ReactFlow viewport) must pick it up and
+  // clear the mailbox. Proves the toolbar's buttons actually reach ReactFlow.
+  it('consumes a viewport command posted by the chrome zoom toolbar', async () => {
+    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    useCanvasStore.getState().requestViewportCommand('fit');
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pendingViewportCommand).toBeNull(),
+    );
   });
 
   it('renders a node body through ReactFlow + the handle wrapper', () => {
