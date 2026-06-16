@@ -23,4 +23,4 @@
 入口注入后经 core 读;collab 配置走 `config.ts`。本包逻辑不直接读 `process.env`。
 
 ## 关键路径
-Yjs 协作 = 关键路径,必 100% TDD;hook 顺序坑(`onConnect` 在 `onAuthenticate` 前 fire,`context.user` 未就绪)等已知陷阱见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md);改 collab 源码无 hot-reload,必手动重启。
+Yjs 协作 = 关键路径,必 100% TDD;hook 顺序坑(`onConnect` 在 `onAuthenticate` 前 fire,`context.user` 未就绪)等已知陷阱见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。改 collab 源码(或依赖 `core/dist` 重建)tsx watch 自动重启拾取,不需手动 kill;优雅关闭先关 WS 监听端口 + 整体超时兜底(`runGracefulShutdown`),重启不撞 EADDRINUSE。
