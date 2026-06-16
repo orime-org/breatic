@@ -27,6 +27,13 @@ import type { HealthCheck } from "@breatic/core";
 
 /** Reachability probes for each of collab's critical dependencies. */
 export interface CollabHealthProbes {
+  /**
+   * Resolves true when the general Redis (DB0) answers PING. DB0 holds
+   * sessions and drives `auth.ts`; a drifted DB0 connection rejects
+   * every WS auth while the rest of collab looks healthy, so healthz
+   * MUST probe it (server/worker already do — this closed that gap).
+   */
+  pingRedisGeneral: () => Promise<boolean>;
   /** Resolves true when the members-sync control Redis answers PING. */
   pingRedisStream: () => Promise<boolean>;
   /** Resolves true when Postgres answers a trivial round-trip query. */
@@ -44,6 +51,7 @@ export interface CollabHealthProbes {
  */
 export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck[] {
   return [
+    { name: "redis_general", check: probes.pingRedisGeneral },
     { name: "redis_stream", check: probes.pingRedisStream },
     { name: "postgres", check: probes.pingPostgres },
     { name: "postgres_yjs", check: probes.pingYjsPostgres },

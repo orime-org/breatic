@@ -34,6 +34,29 @@ import { getCollabConfig } from "@collab/config.js";
 
 const logger = createLogger("main");
 
+/**
+ * Flush the pino transport's worker-thread buffer before an explicit
+ * `process.exit`, so the shutdown / fatal trace oncall needs isn't
+ * dropped (pino #1338). Best-effort and time-bounded: resolves on flush
+ * completion, on a flush error, or after 500ms — never hangs shutdown.
+ * @returns Resolves once flushed, errored, or timed out.
+ */
+function flushLogger(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 500);
+    timer.unref();
+    try {
+      logger.flush(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
+}
+
 // All from the validated config (injected by bootstrap-config's
 // initCore). REDIS_STREAM_URL / ENV / health port carry schema
 // defaults; collab sources them from the one validated config instead
@@ -120,8 +143,9 @@ async function main(): Promise<void> {
   const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
-  // touch the WS port. Probes all three critical dependencies: the
-  // members-sync control Redis, Postgres (Yjs doc store + auth), and
+  // touch the WS port. Probes all five critical dependencies: the
+  // general Redis (DB0 - sessions + auth), the members-sync control
+  // Redis (DB2 stream), both Postgres DBs (Yjs doc store + auth), and
   // the Hocuspocus WS listen socket. LB / docker healthcheck kills
   // the instance on N consecutive 503s so a drifted connection pool
   // gets a fresh process automatically - per CLAUDE.md "industrial-grade server standards" and memory `feedback_dev_collab_long_running_drift`.
@@ -158,6 +182,12 @@ async function main(): Promise<void> {
     // → always false → /healthz always 503; with the docker
     // `healthcheck:` that would have looped-restarted prod collab.
     checks: buildCollabHealthChecks({
+      // DB0 holds sessions and drives `auth.ts`. The bug this closes: a
+      // drifted DB0 connection rejected every WS auth while /healthz
+      // stayed green (it never probed DB0), so the LB never recycled the
+      // process — users saw a stuck "session invalid" banner with no red
+      // health signal. server/worker already probe this; collab didn't.
+      pingRedisGeneral: () => pingRedis(getRedis()),
       pingRedisStream: () => pingRedis(controlRedis),
       // Single SELECT-1 liveness helper, shared across all services,
       // over the process-wide `db` singleton (same pool collab uses for
@@ -188,6 +218,7 @@ async function main(): Promise<void> {
     await stopLifecycle();
     await server.destroy();
     logger.info("Shutdown complete");
+    await flushLogger();
     process.exit(0);
   };
 
@@ -195,7 +226,8 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.fatal({ err }, "Failed to start collaboration server");
+  await flushLogger();
   process.exit(1);
 });
