@@ -263,6 +263,10 @@
     "emptyState": {
       "title": "畫布是空的",
       "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
+    },
+    "nodeMenu": {
+      "lock": "鎖定",
+      "unlock": "解鎖"
     }
   },
   "editor": {

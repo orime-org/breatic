@@ -19,6 +19,7 @@ import * as React from 'react';
 import {
   addEdge,
   removeNode,
+  setNodeLocked,
   setNodeName,
   setNodePosition,
   useCanvasSpace,
@@ -32,6 +33,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
 import {
   parseClipboardNodes,
@@ -54,6 +56,9 @@ const STAGGER_WRAP = 8;
 const PASTE_OFFSET_PX = 24;
 
 const DELETE_KEYS = ['Backspace', 'Delete'];
+
+/** Background dot grid spacing (px at zoom 1). Tighter = denser dot field. */
+const DOT_GAP_PX = 12;
 
 /**
  * Whether a focused element should keep the browser's native paste / copy —
@@ -206,6 +211,13 @@ function CanvasSpaceInner({
     x: 0,
     y: 0,
   });
+  const [nodeMenu, setNodeMenu] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+    nodeId: '',
+    locked: false,
+  });
 
   // Create a node at a flow position and flag it for auto-selection once the
   // Yjs round-trip mirrors it back into the render buffer.
@@ -266,6 +278,30 @@ function CanvasSpaceInner({
     },
     [contextMenu.x, contextMenu.y, screenToFlowPosition, createNode],
   );
+
+  // Node right-click path: open the per-node action menu (lock / unlock) at the
+  // cursor. Suppress the browser menu for everyone, but only editors get the
+  // menu — locking is a shared-state edit gated like node creation.
+  const onNodeContextMenu = React.useCallback(
+    (event: React.MouseEvent, node: Node): void => {
+      event.preventDefault();
+      if (readOnly) return;
+      const locked = Boolean((node.data as { locked?: unknown }).locked);
+      setNodeMenu({
+        open: true,
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+        locked,
+      });
+    },
+    [readOnly],
+  );
+
+  const onToggleNodeLock = React.useCallback((): void => {
+    setNodeLocked(projectId, spaceId, nodeMenu.nodeId, !nodeMenu.locked);
+    setNodeMenu((prev) => ({ ...prev, open: false }));
+  }, [projectId, spaceId, nodeMenu.nodeId, nodeMenu.locked]);
 
   // Select the freshly created / pasted node(s) once the Yjs mirror has them
   // all. Runs once per creation (keyed on the pending ids), not on every
@@ -385,13 +421,14 @@ function CanvasSpaceInner({
           onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
         >
           <Background
             variant={BackgroundVariant.Dots}
-            gap={24}
+            gap={DOT_GAP_PX}
             size={1}
             color='var(--color-canvas-grid)'
           />
@@ -419,6 +456,14 @@ function CanvasSpaceInner({
             setContextMenu((prev) => ({ ...prev, open }))
           }
           onPick={onContextMenuPick}
+        />
+        <NodeContextMenu
+          open={nodeMenu.open}
+          x={nodeMenu.x}
+          y={nodeMenu.y}
+          locked={nodeMenu.locked}
+          onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
+          onToggleLock={onToggleNodeLock}
         />
       </div>
     </CanvasActionsContext.Provider>

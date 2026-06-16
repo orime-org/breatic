@@ -212,6 +212,30 @@ export function setNodeName(
 }
 
 /**
+ * Lock / unlock a node — frontend-owned operation. Writes into the nested
+ * `data` Y.Map so the flag merges field-wise with concurrent collaborator /
+ * backend writes.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to lock / unlock.
+ * @param locked - The node's new lock state.
+ */
+export function setNodeLocked(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  locked: boolean,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  data.set('locked', locked);
+}
+
+/**
  * Add an edge (e.g. mini-tool primary edge).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the edge to.
