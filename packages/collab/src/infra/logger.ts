@@ -11,6 +11,7 @@
 import pino from "pino";
 import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
+import { attachTransportErrorFallback } from "@collab/infra/logger-fallback.js";
 
 const ENV = process.env.ENV ?? "dev";
 const DEBUG = process.env.DEBUG === "true";
@@ -69,11 +70,22 @@ export function createLogger(name: string): pino.Logger {
   return rootLogger.child({ component: name });
 }
 
-const rootLogger = pino({
-  name: "collab",
-  level: DEBUG ? "debug" : "info",
-  timestamp: () => `,"time":${Date.now()},"timestamp":"${new Date().toISOString()}"`,
-  transport: buildTransport(),
-});
+// Build the transport explicitly (not via the `transport:` option) so we
+// can attach an `error` listener. A pino transport runs in a worker
+// thread and, with no listener, dies silently — collab lost 15 days of
+// file logging (2026-06-01 → 06-16) exactly this way. The fallback makes
+// any future transport death loud on stderr instead of invisible.
+const transport = pino.transport(buildTransport());
+attachTransportErrorFallback(transport, (line) => process.stderr.write(line));
+
+const rootLogger = pino(
+  {
+    name: "collab",
+    level: DEBUG ? "debug" : "info",
+    timestamp: () =>
+      `,"time":${Date.now()},"timestamp":"${new Date().toISOString()}"`,
+  },
+  transport,
+);
 
 export { rootLogger as logger };

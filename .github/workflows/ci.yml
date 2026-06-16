@@ -289,6 +289,15 @@ jobs:
         # scripts/lint-no-library-process-exit.sh for rationale.
         run: pnpm lint:no-library-process-exit
 
+      - name: Lint service-logging (server + worker + collab entries)
+        # Enforce CLAUDE.md "industrial-grade server standards": every
+        # long-running service entry must wire a logger AND
+        # startHealthServer. collab ran 15 days with dead file logging
+        # (2026-06-01 to 06-16) because a transport died silently; this
+        # stops a logger / health wire from being removed unnoticed. See
+        # scripts/lint-service-logging.sh for rationale.
+        run: pnpm lint:service-logging
+
       - name: Lint no-relative-import (all packages)
         # Enforce CLAUDE.md prohibition list (2026-05-29): non-test source must
         # import via a path alias, never a relative './' or '../' path.

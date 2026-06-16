@@ -4,6 +4,7 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
+import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 
 /**
  * Placeholder token the Hocuspocus client must send purely to
@@ -92,6 +93,12 @@ export function useSocket({
   const providerRef = React.useRef<HocuspocusProvider | null>(null);
 
   React.useEffect(() => {
+    // Per-run flag so this provider's own teardown close (unmount / doc
+    // swap) isn't mis-reported as a connection failure. Captured in the
+    // effect closure (not a ref) so the async onClose that fires AFTER
+    // destroy() reads THIS run's value — immune to a re-mount resetting it.
+    let closing = false;
+
     // Reset state on (re)mount so a doc swap starts from a clean
     // lifecycle, not a stale `connected` / `authFailed`.
     setStatus('connecting');
@@ -112,8 +119,12 @@ export function useSocket({
         setStatus('connected');
       },
       onAuthenticationFailed: (data: { reason?: string } | undefined) => {
+        const reason = data?.reason ?? 'unknown';
         setStatus('authFailed');
-        setAuthFailedReason(data?.reason ?? 'unknown');
+        setAuthFailedReason(reason);
+        // Always report — an auth rejection is a genuine failure (the
+        // stuck-banner bug). console for dev, Sentry for prod oncall.
+        reportCollabFailure({ kind: 'auth', docName: name, reason });
       },
       onClose: (data: { event?: { code?: number } } | undefined) => {
         // 4401 / 4403 means auth was rejected — `onAuthenticationFailed`
@@ -125,11 +136,17 @@ export function useSocket({
         // follows it. For everything else, surface a soft disconnect.
         setSynced(false);
         setStatus((prev) => (prev === 'authFailed' ? prev : 'disconnected'));
+        // Report genuine drops (network / server crash) — but NOT our own
+        // teardown close, which sets `closing` in the cleanup below.
+        if (!closing) {
+          reportCollabFailure({ kind: 'disconnect', docName: name, code });
+        }
       },
     });
     providerRef.current = provider;
 
     return () => {
+      closing = true;
       provider.destroy();
       providerRef.current = null;
       setSynced(false);
