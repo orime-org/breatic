@@ -34,6 +34,11 @@ import {
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
 import {
+  parseClipboardNodes,
+  serializeNodes,
+  type ClipboardNode,
+} from '@web/spaces/canvas/node-clipboard';
+import {
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
@@ -45,7 +50,44 @@ import { useCanvasStore } from '@web/stores';
 const STAGGER_STEP_PX = 24;
 const STAGGER_WRAP = 8;
 
+/** Pixels a pasted node is shifted from its source so it doesn't fully cover it. */
+const PASTE_OFFSET_PX = 24;
+
 const DELETE_KEYS = ['Backspace', 'Delete'];
+
+/**
+ * Whether a focused element should keep the browser's native paste / copy —
+ * so editing a node body or a form field isn't hijacked by the canvas
+ * clipboard handlers.
+ * @param el - The currently focused element (`document.activeElement`).
+ * @returns True for inputs, textareas, and contenteditable elements.
+ */
+function isEditableTarget(el: Element | null): boolean {
+  if (!el) return false;
+  const tag = el.tagName;
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    (el as HTMLElement).isContentEditable
+  );
+}
+
+/**
+ * Project a ReactFlow node into the clipboard-portable subset, or null when
+ * it isn't a copyable content node (annotation / group aren't copied yet).
+ * @param node - A ReactFlow node from the render buffer.
+ * @returns The clipboard node, or null to skip it.
+ */
+function flowNodeToClipboard(node: Node): ClipboardNode | null {
+  if (!node.type || !isCreatableNodeType(node.type)) return null;
+  const data = node.data as { name?: unknown; content?: unknown };
+  return {
+    type: node.type,
+    position: node.position,
+    ...(typeof data.name === 'string' ? { name: data.name } : {}),
+    ...(typeof data.content === 'string' ? { content: data.content } : {}),
+  };
+}
 
 /**
  * Project a Yjs canvas node view into a ReactFlow node. ReactFlow's
@@ -97,7 +139,10 @@ function CanvasSpaceInner({
   const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
-  const { createNodeAt } = useNodeCreation(projectId, spaceId);
+  const { createNodeAt, pasteTextAt, pasteNodesAt } = useNodeCreation(
+    projectId,
+    spaceId,
+  );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -153,7 +198,7 @@ function CanvasSpaceInner({
     (s) => s.consumePendingNodeCreate,
   );
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
-    string | null
+    string[] | null
   >(null);
   const staggerRef = React.useRef(0);
   const [contextMenu, setContextMenu] = React.useState({
@@ -166,7 +211,7 @@ function CanvasSpaceInner({
   // Yjs round-trip mirrors it back into the render buffer.
   const createNode = React.useCallback(
     (type: CreatableNodeType, position: { x: number; y: number }): void => {
-      setSelectAfterCreate(createNodeAt(type, position));
+      setSelectAfterCreate([createNodeAt(type, position)]);
     },
     [createNodeAt],
   );
@@ -222,19 +267,93 @@ function CanvasSpaceInner({
     [contextMenu.x, contextMenu.y, screenToFlowPosition, createNode],
   );
 
-  // Select the freshly created node once the Yjs mirror has it. Runs once per
-  // creation (keyed on the pending id), not on every collaborator edit.
+  // Select the freshly created / pasted node(s) once the Yjs mirror has them
+  // all. Runs once per creation (keyed on the pending ids), not on every
+  // collaborator edit. A multi-node paste selects the whole pasted group.
   React.useEffect(() => {
     if (!selectAfterCreate) return;
-    if (!nodes.some((node) => node.id === selectAfterCreate)) return;
+    if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
+      return;
+    const targets = new Set(selectAfterCreate);
     setFlowNodes((current) =>
       current.map((node) => ({
         ...node,
-        selected: node.id === selectAfterCreate,
+        selected: targets.has(node.id),
       })),
     );
     setSelectAfterCreate(null);
   }, [selectAfterCreate, nodes]);
+
+  // ---- Clipboard (slice 2b) ----
+  // The system clipboard is the single source of truth. Copy serializes the
+  // selected nodes (marker-tagged JSON); paste branches on the marker —
+  // cloning nodes or, for plain text, creating a text node. Both bail when a
+  // field / node body is being edited (browser default) or the viewer is
+  // read-only. The copy handler reads the latest selection through a ref so
+  // the document listener needn't re-attach on every render.
+  const flowNodesRef = React.useRef<Node[]>([]);
+  React.useEffect(() => {
+    flowNodesRef.current = flowNodes;
+  }, [flowNodes]);
+
+  React.useEffect(() => {
+    /**
+     * Document paste handler: clone a marked node payload, else create a text
+     * node from plain text. No-op while read-only or editing a field.
+     * @param event - The clipboard paste event.
+     */
+    const onPaste = (event: ClipboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+
+      const clipboardNodes = parseClipboardNodes(text);
+      if (clipboardNodes && clipboardNodes.length > 0) {
+        event.preventDefault();
+        setSelectAfterCreate(
+          pasteNodesAt(clipboardNodes, {
+            dx: PASTE_OFFSET_PX,
+            dy: PASTE_OFFSET_PX,
+          }),
+        );
+        return;
+      }
+
+      if (text.trim().length === 0) return;
+      event.preventDefault();
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const center = screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+      setSelectAfterCreate([pasteTextAt(text, center)]);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition]);
+
+  React.useEffect(() => {
+    /**
+     * Document copy handler: serialize the selected nodes to the system
+     * clipboard. No-op while read-only, editing a field, or with no selection.
+     * @param event - The clipboard copy event.
+     */
+    const onCopy = (event: ClipboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      const clipboardNodes = flowNodesRef.current
+        .filter((node) => node.selected)
+        .map(flowNodeToClipboard)
+        .filter((node): node is ClipboardNode => node !== null);
+      if (clipboardNodes.length === 0) return;
+      event.clipboardData?.setData(
+        'text/plain',
+        serializeNodes(clipboardNodes),
+      );
+      event.preventDefault();
+    };
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [readOnly]);
 
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The
