@@ -12,27 +12,24 @@ import { EmptyState } from '@web/pages/studio/shared/EmptyState';
 interface RecentLandingProps {
   projects: RecentItem[];
   collections: RecentItem[];
-  /** Opens the create-project dialog from the empty-state CTA (Outlet context). */
-  onCreateProject: () => void;
 }
 
 /**
  * "Recent" landing — the login-default, cross-studio home (`/studio`,
  * spec §2.1): a "Recent" header + the cross-studio recent projects /
  * collections, centered in the 1100px column. When the viewer has nothing
- * recent yet (the common case until `GET /studio/recent` lands), it shows the
- * shared `EmptyState` (clock + copy + a create-project CTA) instead of
- * per-section placeholder lines — neutral mock §recent-empty.
+ * recent yet, it shows the shared `EmptyState` (clock + copy) instead of
+ * per-section placeholder lines — neutral mock §recent-empty. The empty state
+ * is passive (no create CTA): creating a project is always one click away in
+ * the left rail, so the landing does not duplicate that entry (2026-06-16).
  * @param root0 - component props
  * @param root0.projects - recent projects across all studios (newest first)
  * @param root0.collections - recent collections across all studios
- * @param root0.onCreateProject - opens the create-project dialog from the empty CTA
  * @returns the recent landing (header + content or empty state).
  */
 export function RecentLanding({
   projects,
   collections,
-  onCreateProject,
 }: RecentLandingProps): React.JSX.Element {
   const t = useTranslation();
   const isEmpty = projects.length === 0 && collections.length === 0;
@@ -51,10 +48,6 @@ export function RecentLanding({
           icon={Clock}
           title={t('studio.recent.emptyTitle')}
           hint={t('studio.recent.emptyHint')}
-          action={{
-            label: t('studio.rail.createProject'),
-            onClick: onCreateProject,
-          }}
         />
       ) : (
         <div className='pt-[18px]'>

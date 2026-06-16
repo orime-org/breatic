@@ -1387,7 +1387,8 @@
       "title": "Recent",
       "subtitle": "Projects and collections you recently edited or joined — across all your Studios, newest first.",
       "emptyTitle": "Nothing recent yet",
-      "emptyHint": "You haven't created or joined any project yet. Create your first project, or open a Studio to start — what you edit shows up here."
+      "emptyHint": "You haven't created or joined any project yet. Create your first project, or open a Studio to start — what you edit shows up here.",
+      "loadError": "Couldn’t load your recent projects. Try refreshing the page."
     },
     "topBar": {
       "home": "Studio home",

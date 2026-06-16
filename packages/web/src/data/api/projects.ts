@@ -51,6 +51,18 @@ export const projectsApi = {
   rename(id: string, name: string) {
     return apiPatch<ProjectDetail>(`/projects/${id}`, { name });
   },
+  /**
+   * `POST /api/v1/projects/:id/opened` — record that the caller just opened
+   * this project, floating it to the top of their cross-studio "Recent" feed.
+   * Access-gated server-side (404 when the caller cannot view it) and
+   * idempotent (re-opening just bumps the timestamp). Fire-and-forget from the
+   * project page on mount.
+   * @param id the bare project uuid.
+   * @returns once the open has been recorded.
+   */
+  recordOpen(id: string) {
+    return apiPost<{ ok: boolean }>(`/projects/${id}/opened`, {});
+  },
   delete(id: string) {
     return apiDelete(`/projects/${id}`);
   },

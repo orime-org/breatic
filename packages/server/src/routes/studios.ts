@@ -4,8 +4,9 @@
 /**
  * Studio routes — the container shell (slice 1).
  *
- * Two endpoints, both authenticated:
+ * Endpoints, all authenticated:
  *   - `GET /api/v1/studios`            — the current user's studios (switcher).
+ *   - `GET /api/v1/studios/recent`     — the cross-studio "Recent" landing feed.
  *   - `GET /api/v1/studio/:slug`       — one studio's public-facing shell.
  *   - `GET /api/v1/studio/:slug/projects` — the studio's projects, filtered
  *     to what the viewer may see (open-baseline visibility, slice 2).
@@ -27,7 +28,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimit } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { studioService, projectService } from "@server/modules";
+import { studioService, projectService, recentService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
@@ -63,6 +64,24 @@ studios.use(requireAuth);
 studios.get("/", async (c) => {
   const user = c.get("user");
   const data = await studioService.listUserStudios(user.id);
+  return c.json({ data });
+});
+
+/**
+ * `GET /api/v1/studios/recent` — the cross-studio "Recent" landing feed: the
+ * projects the current user has opened, newest-first by the user's OWN
+ * last-open time, filtered to the ones they can still access (a project they
+ * were kicked from / that turned private / was deleted never appears; another
+ * user's private project is never leaked). Backs the `/studio` default landing.
+ *
+ * Mounted on the plural `studios` app (a cross-studio read, alongside the
+ * `GET /studios` switcher) — NOT under `/studio/:slug`, so there is no
+ * collision with the `:slug` param route.
+ * @returns `200` with `{ data: RecentItem[] }`
+ */
+studios.get("/recent", async (c) => {
+  const user = c.get("user");
+  const data = await recentService.listRecent(user.id);
   return c.json({ data });
 });
 

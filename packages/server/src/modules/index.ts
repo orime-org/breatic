@@ -22,6 +22,7 @@ export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
 export * as projectService from "@server/modules/project/project.service.js";
 export * as projectMembersService from "@server/modules/project/projectMembers.service.js";
+export * as recentService from "@server/modules/recent/recent.service.js";
 export * as roleUpgradeRequestService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 export * as notificationService from "@server/modules/notification/notification.service.js";
 export * as shareLinkService from "@server/modules/share/shareLink.service.js";

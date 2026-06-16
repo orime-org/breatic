@@ -202,6 +202,51 @@ export const projectMembers = pgTable(
   ],
 );
 
+// ── 4c. Project Last Opened ──────────────────────────────────────────
+//
+// Per-user "when did I last open this project" tracker, backing the
+// cross-studio "Recent" landing feed (`GET /studios/recent`). One row per
+// (user, project): opening a project again UPSERTs `last_opened_at = now()`
+// in place (composite PK), so re-opening floats the project to the top of the
+// viewer's own recent list. Ordering is per-user — another user's opens never
+// touch this user's rows (spec §2.1, 2026-06-05).
+//
+// A project-specific table (not a generic polymorphic "recently viewed"),
+// so both FKs are real `onDelete: restrict` references and integrity holds.
+// No `deleted_at`: it carries no soft-delete semantics — a row for a deleted
+// or now-inaccessible project is simply filtered out by the recent query's
+// JOIN (`projects.deleted_at IS NULL`) + access predicate, so a leftover row
+// is harmless. `created_at` (first-open time) is kept per the "every table has
+// created_at" rule; there is no `updated_at` (the mutable timestamp IS
+// `last_opened_at`). Recent-landing design §3.
+
+export const projectLastOpened = pgTable(
+  "project_last_opened",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    /** The viewer's most-recent open time (UPSERTed to now() on each open). */
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.projectId] }),
+    // Hot index for the recent feed: a user's opens, newest first.
+    index("project_last_opened_user_idx").on(
+      table.userId,
+      table.lastOpenedAt,
+    ),
+  ],
+);
+
 // ── 4b. Studio Members ───────────────────────────────────────────────
 //
 // Studio-level membership + role (Admin / Member). The admin role lives

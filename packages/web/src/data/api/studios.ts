@@ -14,11 +14,23 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type {
   InvitationLandingView,
   ProjectSummary,
+  RecentItem,
   Studio,
   StudioDetail,
   StudioMembersView,
   StudioSummary,
 } from '@breatic/shared';
+
+/**
+ * One row of the `GET /api/v1/studios/recent` feed, as it arrives over the
+ * wire: the shared {@link RecentItem} with `lastOpenedAt` as the JSON ISO
+ * string (the shared type carries a `Date` for the server's in-memory entity;
+ * JSON serializes it to a string). Derived from the shared contract so a field
+ * change there flows here automatically — only the date representation differs.
+ */
+export type RecentFeedItem = Omit<RecentItem, 'lastOpenedAt'> & {
+  lastOpenedAt: string;
+};
 
 /** Body for `POST /api/v1/studios` — display name + globally-unique slug. */
 export interface CreateStudioBody {
@@ -59,6 +71,16 @@ export const studiosApi = {
    */
   listUserStudios(): Promise<StudioSummary[]> {
     return apiGet<StudioSummary[]>('/studios');
+  },
+  /**
+   * `GET /api/v1/studios/recent` — the cross-studio "Recent" landing feed: the
+   * projects the current user has opened, newest-first by their OWN last-open
+   * time, filtered server-side to the ones they can still access. Backs the
+   * `/studio` default landing.
+   * @returns the viewer's accessible recent projects (empty when none opened).
+   */
+  getRecent(): Promise<RecentFeedItem[]> {
+    return apiGet<RecentFeedItem[]>('/studios/recent');
   },
   /**
    * `POST /api/v1/studios` — create a team studio (display name + globally

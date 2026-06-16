@@ -22,7 +22,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
-import { projectService } from "@server/modules";
+import { projectService, recentService } from "@server/modules";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -87,6 +87,26 @@ projects.get("/:id", async (c) => {
     deletedAt: project.deletedAt,
   };
   return c.json({ data: detail });
+});
+
+/**
+ * `POST /projects/:id/opened` — record that the caller just opened this
+ * project, floating it to the top of their cross-studio "Recent" feed.
+ *
+ * A dedicated write endpoint: the `GET /:id` open path stays side-effect-light
+ * (it only materializes the baseline membership), while recording an open is
+ * an explicit write the project page fires on mount. NOT behind
+ * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
+ * collapsing no-access to a `404` so existence is never leaked) and UPSERTs
+ * idempotently, so re-opening just bumps the timestamp in place.
+ * @returns `200` with `{ data: { ok: true } }`; `404` when the caller cannot
+ *   access the project
+ */
+projects.post("/:id/opened", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  await recentService.recordOpen(id, user.id);
+  return c.json({ data: { ok: true } });
 });
 
 // ── Membership-gated writes ────────────────────────────────────────
