@@ -53,16 +53,35 @@ describe('NodeHeader', () => {
     expect(screen.queryByTestId('node-header-input')).toBeNull();
   });
 
-  // The rename input must read as a standard chrome input: the fixed
-  // `rounded-chrome` corner (not the Tweaks-driven content radius) and the
-  // shared active-border focus, matching the Input primitive.
-  it('rename input matches the standard input chrome', () => {
+  // The rename matches the project-title editor (TitleEditable): no input
+  // chrome box — a borderless subtle-fill field, not a bordered input.
+  it('rename input is borderless like the project title', () => {
     render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
     fireEvent.doubleClick(screen.getByTestId('node-header-name'));
     const input = screen.getByTestId('node-header-input');
-    expect(input.className).toContain('rounded-chrome');
-    expect(input.className).not.toContain('rounded-sm');
-    expect(input.className).toContain('focus-visible:border-active-border');
+    expect(input.className).toContain('border-0');
+    expect(input.className).not.toContain('border-border');
+    expect(input.className).not.toContain('focus-visible:border-active-border');
+    expect(input.className).toContain('bg-muted');
+  });
+
+  // ReactFlow drags a node when a pointer press starts inside it; the rename
+  // input must carry `nodrag` so dragging to select text edits the name
+  // instead of moving the whole node.
+  it('rename input carries nodrag so selecting text does not move the node', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    expect(screen.getByTestId('node-header-input').className).toContain('nodrag');
+  });
+
+  // Double-click selects the whole name (like the project title) so the user
+  // can type to replace it immediately.
+  it('double-click selects the whole name', () => {
+    render(<NodeHeader modality='image' name='Hero shot' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId<HTMLInputElement>('node-header-input');
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
   });
 
   // The input width follows the content length (field-sizing) so it doesn't

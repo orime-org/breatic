@@ -49,8 +49,13 @@ export function NodeHeader({
   const Icon = MODALITY_ICONS[modality];
   const display = name && name.length > 0 ? name : MODALITY_LABEL[modality];
 
+  // Match the project-title editor: on entering edit, focus AND select the
+  // whole name so a keystroke replaces it immediately.
   React.useEffect(() => {
-    if (editing) inputRef.current?.focus();
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
   }, [editing]);
 
   /**
@@ -102,10 +107,12 @@ export function NodeHeader({
             if (e.key === 'Enter') commit();
             else if (e.key === 'Escape') cancel();
           }}
-          // Chrome input look: fixed `rounded-chrome` corner + shared
-          // active-border focus (matching the Input primitive), and the width
-          // follows the content length (`field-sizing`) up to the header cap.
-          className='min-w-[3rem] max-w-full rounded-chrome border border-border bg-background px-1 outline-none transition-colors [field-sizing:content] focus-visible:border-active-border'
+          // Borderless edit field matching the project-title editor
+          // (TitleEditable): no input chrome box, just a subtle muted fill;
+          // width follows the content length (`field-sizing`) up to the cap.
+          // `nodrag` lets a pointer press select text instead of dragging the
+          // node (the input only renders while editing, so it's always safe).
+          className='nodrag min-w-[3rem] max-w-full rounded-chrome border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span

@@ -95,7 +95,10 @@ export function TextNode({
             suppressContentEditableWarning
             onDoubleClick={startEdit}
             onBlur={commit}
-            className='min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30'
+            // While editing, `nodrag` lets a pointer press select text instead
+            // of dragging the node; when not editing, the body stays a drag
+            // handle so the node can be moved by its content.
+            className={`${editing ? 'nodrag ' : ''}min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30`}
           >
             {data.content}
           </div>
