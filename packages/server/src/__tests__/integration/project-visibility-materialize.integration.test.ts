@@ -274,6 +274,26 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     expect(row.slug).toMatch(/^pv-project-/);
     expect(row.studioId).toBe(studioId);
   });
+
+  it("orders projects newest-CREATED first (catalog order, not last-activity)", async () => {
+    const owner = await insertUser();
+    const studioId = await insertStudio(owner);
+    await insertStudioMember(studioId, owner, "admin");
+    const pOld = await insertProject(studioId, owner, "studio");
+    const pMid = await insertProject(studioId, owner, "studio");
+    const pNew = await insertProject(studioId, owner, "studio");
+    // Insert defaults created_at to now() (not orderable across fast inserts);
+    // stamp explicit creation times so the DESC order is deterministic.
+    await sql`UPDATE projects SET created_at = '2026-01-01T00:00:00Z' WHERE id = ${pOld}`;
+    await sql`UPDATE projects SET created_at = '2026-02-01T00:00:00Z' WHERE id = ${pMid}`;
+    await sql`UPDATE projects SET created_at = '2026-03-01T00:00:00Z' WHERE id = ${pNew}`;
+
+    const ids = (await projectService.listByStudioForViewer(studioId, owner)).map(
+      (p) => p.id,
+    );
+    expect(ids.indexOf(pNew)).toBeLessThan(ids.indexOf(pMid));
+    expect(ids.indexOf(pMid)).toBeLessThan(ids.indexOf(pOld));
+  });
 });
 
 describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)", () => {

@@ -1457,7 +1457,7 @@
         "assetCount": "에셋 {count}개",
         "fromStudio": "{studio}에서",
         "more": "더보기",
-        "modifiedAt": "{time}에 수정"
+        "createdAt": "{time}에 생성"
       },
       "projects": {
         "title": "프로젝트",

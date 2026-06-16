@@ -65,8 +65,8 @@ export function ProjectCard({
           </p>
           <div className='mt-2 flex items-center gap-2'>
             <span className='text-xs text-muted-foreground'>
-              {t('studio.container.card.modifiedAt', {
-                time: formatRelativeTime(project.updatedAt, t),
+              {t('studio.container.card.createdAt', {
+                time: formatRelativeTime(project.createdAt, t),
               })}
             </span>
             <span className='ml-auto inline-flex'>

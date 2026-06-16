@@ -1457,7 +1457,7 @@
         "assetCount": "{count} assets",
         "fromStudio": "From {studio}",
         "more": "More actions",
-        "modifiedAt": "Modified {time}"
+        "createdAt": "Created {time}"
       },
       "projects": {
         "title": "Projects",

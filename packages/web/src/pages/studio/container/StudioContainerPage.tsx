@@ -34,8 +34,9 @@ import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
 /**
  * Map a backend `ProjectSummary` (the studio-projects API contract) onto the
  * container's `ContainerProject` view model. Owner is derived at the callsite
- * as `myRole === 'owner'` (no redundant field); `updatedAt` is normalized to an
- * ISO string for the card's relative-time label.
+ * as `myRole === 'owner'` (no redundant field); `createdAt` is normalized to an
+ * ISO string for the card's "created {time}" label (the catalog shows a stable
+ * creation time, not last-activity).
  * @param p the project summary from `GET /studio/:slug/projects`.
  * @returns the project card view model.
  */
@@ -47,7 +48,7 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     thumbnailUrl: p.thumbnailUrl,
     visibility: p.visibility,
     myRole: p.myRole,
-    updatedAt: new Date(p.updatedAt).toISOString(),
+    createdAt: new Date(p.createdAt).toISOString(),
   };
 }
 

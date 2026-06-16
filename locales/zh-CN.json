@@ -1457,7 +1457,7 @@
         "assetCount": "{count} 个素材",
         "fromStudio": "来自 {studio}",
         "more": "更多操作",
-        "modifiedAt": "修改于 {time}"
+        "createdAt": "创建于 {time}"
       },
       "projects": {
         "title": "项目",

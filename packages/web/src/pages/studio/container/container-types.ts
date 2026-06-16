@@ -31,8 +31,13 @@ export interface ContainerProject {
   visibility: ItemVisibility;
   /** The viewer's role on this project, or `null` for studio baseline-only access (DD §5.3). Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
   myRole: ItemRole | null;
-  /** ISO-8601 timestamp of the project's last modification (card "x ago" label). */
-  updatedAt: string;
+  /**
+   * ISO-8601 creation timestamp, shown as the card's "created {time}" label.
+   * The studio container is a catalog — it shows a stable creation time, NOT a
+   * "last modified" time (canvas edits live in Yjs and never touch the project
+   * row, so "modified" would be misleading). Recent-landing handles recency.
+   */
+  createdAt: string;
 }
 
 /** The dominant media kind of a collection, shown as a tag (spec §3.4). */

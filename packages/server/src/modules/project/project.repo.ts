@@ -98,7 +98,9 @@ export async function getProjectById(id: string): Promise<ProjectEntity | null> 
  * @param studioId - Studio UUID whose projects to list
  * @param viewerUserId - The viewing user's UUID (resolves `myRole`)
  * @param isStudioAdmin - Whether the viewer is this studio's admin (sees all)
- * @returns The visible project summaries ordered by most recently updated
+ * @returns The visible project summaries, newest-CREATED first (the studio
+ *   container is a catalog: a stable creation order, not a last-activity order
+ *   — canvas edits live in Yjs and never bump the project row)
  */
 export async function listProjectsByStudioForViewer(
   studioId: string,
@@ -138,7 +140,7 @@ export async function listProjectsByStudioForViewer(
             ),
       ),
     )
-    .orderBy(desc(projects.updatedAt));
+    .orderBy(desc(projects.createdAt));
 
   return rows.map((row) => ({
     id: row.id,

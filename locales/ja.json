@@ -1457,7 +1457,7 @@
         "assetCount": "アセット {count} 個",
         "fromStudio": "{studio} より",
         "more": "その他の操作",
-        "modifiedAt": "{time}に更新"
+        "createdAt": "{time}に作成"
       },
       "projects": {
         "title": "プロジェクト",

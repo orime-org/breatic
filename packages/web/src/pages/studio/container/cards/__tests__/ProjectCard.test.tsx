@@ -16,8 +16,8 @@ const project: ContainerProject = {
   thumbnailUrl: null,
   visibility: 'studio',
   myRole: 'owner',
-  // Last modified 30 min ago → en renders a relative "30 minutes ago" label.
-  updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+  // Created 30 min ago → en renders a relative "30 minutes ago" label.
+  createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 };
 
 function setup(p: ContainerProject = project) {
@@ -38,11 +38,13 @@ describe('ProjectCard', () => {
     );
   });
 
-  it('prefixes the time with the "modified" label (disambiguates from "opened")', () => {
-    // The container card shows the project's last-MODIFIED time, distinct from
-    // the Recent card's last-OPENED time — the label makes that explicit.
+  it('prefixes the time with the "created" label (the studio catalog shows creation time)', () => {
+    // The container is a catalog: it shows the project's CREATION time (stable,
+    // honest), not "modified" — canvas activity lives in Yjs and never bumps
+    // the project row, so "modified" would mislead. The Recent landing handles
+    // "what I recently opened" separately.
     setup();
-    expect(screen.getByText(/^Modified\b/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Created\b/i)).toBeInTheDocument();
   });
 
   it('has no a11y violations', async () => {
