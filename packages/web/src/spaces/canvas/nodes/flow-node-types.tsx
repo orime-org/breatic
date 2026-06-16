@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -46,29 +47,36 @@ function makeFlowNode(
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
     const { renameNode } = useCanvasActions();
+    // The canvas zoom (transform[2]) lets the name header counter-scale to a
+    // constant screen size; provide `1 / zoom` to the frame. Guard the (never
+    // observed, but defensive) zero case so the scale can't become Infinity.
+    const zoom = useStore((s) => s.transform[2]);
+    const headerScale = zoom > 0 ? 1 / zoom : 1;
     const onRename = React.useCallback(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
     );
     return (
-      <div className='relative'>
-        <Handle
-          type='target'
-          position={Position.Left}
-          className='!h-2 !w-2 !border-border !bg-muted'
-        />
-        <Inner
-          data={data}
-          selected={props.selected}
-          locked={data.locked}
-          onRename={onRename}
-        />
-        <Handle
-          type='source'
-          position={Position.Right}
-          className='!h-2 !w-2 !border-border !bg-muted'
-        />
-      </div>
+      <NodeScaleContext.Provider value={headerScale}>
+        <div className='relative'>
+          <Handle
+            type='target'
+            position={Position.Left}
+            className='!h-2 !w-2 !border-border !bg-muted'
+          />
+          <Inner
+            data={data}
+            selected={props.selected}
+            locked={data.locked}
+            onRename={onRename}
+          />
+          <Handle
+            type='source'
+            position={Position.Right}
+            className='!h-2 !w-2 !border-border !bg-muted'
+          />
+        </div>
+      </NodeScaleContext.Provider>
     );
   }
   return FlowNode;

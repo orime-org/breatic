@@ -13,6 +13,7 @@ import {
   readNodes,
   removeEdge,
   removeNode,
+  setNodeLocked,
   setNodeName,
   setNodePosition,
 } from '@web/data/yjs/canvas-space';
@@ -177,6 +178,14 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     addNode(PID, SID, sampleFields('image', { content: 'x' }));
     setNodeName(PID, SID, 'n1', 'Hero shot');
     expect(readNodes(doc())[0].data).toMatchObject({ name: 'Hero shot' });
+  });
+
+  it('setNodeLocked writes the lock flag into the node data Y.Map', () => {
+    addNode(PID, SID, sampleFields('image', { content: 'x', locked: false }));
+    setNodeLocked(PID, SID, 'n1', true);
+    expect(readNodes(doc())[0].data).toMatchObject({ locked: true });
+    setNodeLocked(PID, SID, 'n1', false);
+    expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
   });
 
   it('addEdge / removeEdge round-trip under the edgesMap', () => {

@@ -9,6 +9,9 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 
+/** Node name length cap — over-long names are clipped on commit + ellipsised. */
+const MAX_NODE_NAME_LEN = 30;
+
 interface NodeHeaderProps {
   modality: Modality;
   /** Current node name; blank falls back to the modality label. */
@@ -46,8 +49,13 @@ export function NodeHeader({
   const Icon = MODALITY_ICONS[modality];
   const display = name && name.length > 0 ? name : MODALITY_LABEL[modality];
 
+  // Match the project-title editor: on entering edit, focus AND select the
+  // whole name so a keystroke replaces it immediately.
   React.useEffect(() => {
-    if (editing) inputRef.current?.focus();
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
   }, [editing]);
 
   /**
@@ -68,7 +76,7 @@ export function NodeHeader({
   const commit = (): void => {
     if (!editingRef.current) return;
     editingRef.current = false;
-    const next = draft.trim();
+    const next = draft.trim().slice(0, MAX_NODE_NAME_LEN);
     if (next.length > 0) onRename?.(next);
     setEditing(false);
   };
@@ -84,7 +92,7 @@ export function NodeHeader({
   return (
     <div
       data-testid='node-header'
-      className='flex items-center gap-1.5 px-1 pb-1 text-xs text-foreground'
+      className='flex max-w-[16rem] items-center gap-1.5 px-1 text-xs text-foreground'
     >
       <Icon className='h-4 w-4 shrink-0 opacity-70' aria-hidden='true' />
       {editing ? (
@@ -92,13 +100,19 @@ export function NodeHeader({
           ref={inputRef}
           data-testid='node-header-input'
           value={draft}
+          maxLength={MAX_NODE_NAME_LEN}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commit();
             else if (e.key === 'Escape') cancel();
           }}
-          className='min-w-0 flex-1 rounded-sm border border-border bg-background px-1 outline-none'
+          // Borderless edit field matching the project-title editor
+          // (TitleEditable): no input chrome box, just a subtle muted fill;
+          // width follows the content length (`field-sizing`) up to the cap.
+          // `nodrag` lets a pointer press select text instead of dragging the
+          // node (the input only renders while editing, so it's always safe).
+          className='nodrag min-w-[3rem] max-w-full rounded-chrome border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span

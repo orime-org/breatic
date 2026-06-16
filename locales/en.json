@@ -263,6 +263,10 @@
     "emptyState": {
       "title": "The canvas is empty",
       "hint": "Drag assets onto the canvas, or pick a node type from the left menu to create one."
+    },
+    "nodeMenu": {
+      "lock": "Lock",
+      "unlock": "Unlock"
     }
   },
   "editor": {

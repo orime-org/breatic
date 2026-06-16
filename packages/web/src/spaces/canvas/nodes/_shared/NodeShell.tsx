@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Lock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
@@ -18,8 +19,10 @@ interface NodeShellProps {
 
 // The node carries a single 1px border whose colour reflects its state.
 // One flat border, no rings or focus glow (rigid 1px rule, lint:1px-border).
+// Hover changes ONLY the border (never the background) and ONLY while idle —
+// the handling / error / selected state colours must not be overridden on hover.
 const STATUS_BORDER: Record<DisplayStatus, string> = {
-  idle: 'border-border',
+  idle: 'border-border hover:border-foreground-disabled',
   handling: 'border-status-info',
   error: 'border-status-error',
 };
@@ -58,7 +61,10 @@ export function NodeShell({
       data-selected={selected ? 'true' : 'false'}
       data-locked={locked ? 'true' : 'false'}
       className={cn(
-        'relative rounded-lg border bg-card text-card-foreground shadow-sm transition-colors',
+        // `canvas-node-shell` is the stable hook the drag-lift CSS rule targets
+        // (`.react-flow__node.dragging .canvas-node-shell` → shadow in index.css);
+        // a static card is flat — no shadow — per the design system.
+        'canvas-node-shell relative rounded-sm border bg-card text-card-foreground transition-colors',
         selected ? 'border-status-selected' : STATUS_BORDER[status],
         className,
       )}
@@ -67,9 +73,9 @@ export function NodeShell({
         <div
           aria-hidden='true'
           data-testid='node-lock-indicator'
-          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-2xs text-muted-foreground'
+          className='absolute right-1 top-1 rounded-full bg-muted p-0.5 text-muted-foreground'
         >
-          lock
+          <Lock className='h-3 w-3' />
         </div>
       ) : null}
       {children}

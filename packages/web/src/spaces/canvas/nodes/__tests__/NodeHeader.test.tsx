@@ -52,4 +52,65 @@ describe('NodeHeader', () => {
     fireEvent.doubleClick(screen.getByTestId('node-header-name'));
     expect(screen.queryByTestId('node-header-input')).toBeNull();
   });
+
+  // The rename matches the project-title editor (TitleEditable): no input
+  // chrome box — a borderless subtle-fill field, not a bordered input.
+  it('rename input is borderless like the project title', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input.className).toContain('border-0');
+    expect(input.className).not.toContain('border-border');
+    expect(input.className).not.toContain('focus-visible:border-active-border');
+    expect(input.className).toContain('bg-muted');
+  });
+
+  // ReactFlow drags a node when a pointer press starts inside it; the rename
+  // input must carry `nodrag` so dragging to select text edits the name
+  // instead of moving the whole node.
+  it('rename input carries nodrag so selecting text does not move the node', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    expect(screen.getByTestId('node-header-input').className).toContain('nodrag');
+  });
+
+  // Double-click selects the whole name (like the project title) so the user
+  // can type to replace it immediately.
+  it('double-click selects the whole name', () => {
+    render(<NodeHeader modality='image' name='Hero shot' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId<HTMLInputElement>('node-header-input');
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
+  });
+
+  // The input width follows the content length (field-sizing) so it doesn't
+  // sit at a fixed full-width box while editing a short name.
+  it('rename input grows with its content', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    expect(screen.getByTestId('node-header-input').className).toContain(
+      '[field-sizing:content]',
+    );
+  });
+
+  it('caps the node name at 30 characters', () => {
+    const onRename = vi.fn();
+    render(<NodeHeader modality='image' name='Old' onRename={onRename} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input).toHaveAttribute('maxlength', '30');
+    // Defense in depth: even if a 40-char value slips past maxLength (paste),
+    // commit slices it to 30 before firing the rename.
+    fireEvent.change(input, { target: { value: 'x'.repeat(40) } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith('x'.repeat(30));
+  });
+
+  // #2: the header sits tight above the card — no bottom padding adding to the
+  // gap (the constant gap is owned by the frame's absolute header anchor).
+  it('header carries no bottom padding', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    expect(screen.getByTestId('node-header').className).not.toContain('pb-1');
+  });
 });

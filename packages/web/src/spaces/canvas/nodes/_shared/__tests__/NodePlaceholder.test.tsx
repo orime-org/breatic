@@ -41,4 +41,14 @@ describe('NodePlaceholder', () => {
       screen.getByTestId('node-placeholder').getAttribute('data-modality'),
     ).toBe('audio');
   });
+
+  // Empty state is the one node body that responds on hover, and it does so by
+  // brightening its prompt text (muted → foreground), NOT by filling a bg —
+  // the rest of the shell hovers its border only (9th-slice design system).
+  it('hovers the TEXT color, not the background', () => {
+    render(<NodePlaceholder modality='image' />);
+    const btn = screen.getByTestId('node-placeholder');
+    expect(btn.className).toContain('hover:text-foreground');
+    expect(btn.className).not.toContain('hover:bg-');
+  });
 });

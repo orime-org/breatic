@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import type {
   DisplayStatus,
@@ -61,14 +62,27 @@ export function ContentNodeFrame({
   testId,
   children,
 }: ContentNodeFrameProps): React.JSX.Element {
+  // The header floats in an absolutely-positioned anchor pinned just above the
+  // card's top-left, counter-scaled by the canvas zoom so it keeps a constant
+  // screen size. Taking it out of flow makes the frame's in-flow box the card
+  // alone, which is what centres the wrapper's Left/Right connection handles on
+  // the card body rather than the header+card stack. The bottom padding is the
+  // (constant, zoom-independent) gap between the header and the card.
+  const headerScale = React.useContext(NodeScaleContext);
   return (
-    <div className='flex flex-col gap-1'>
-      <NodeHeader
-        modality={modality}
-        name={name}
-        readOnly={locked}
-        onRename={onRename}
-      />
+    <div className='relative'>
+      <div
+        data-testid='node-header-anchor'
+        className='absolute bottom-full left-0 origin-bottom-left pb-0.5'
+        style={{ transform: `scale(${headerScale})` }}
+      >
+        <NodeHeader
+          modality={modality}
+          name={name}
+          readOnly={locked}
+          onRename={onRename}
+        />
+      </div>
       <NodeShell
         status={status}
         selected={selected}

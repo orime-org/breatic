@@ -62,3 +62,24 @@ body {
 [data-sonner-toast] {
   position: relative !important;
 }
+
+/* Canvas node drag-lift. A static node card is flat — NodeShell drops its
+   shadow per the design system (containers carry no shadow). ONLY a node being
+   dragged lifts off the canvas. Targets ReactFlow's `.dragging` class on the
+   node wrapper + the `.canvas-node-shell` hook on the shell, using the shadow
+   token (not a raw value, so lint:no-raw-design-values stays clean). */
+.react-flow__node.dragging .canvas-node-shell {
+  box-shadow: var(--shadow-md);
+}
+
+/* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
+   (set only when you pass colorMode="dark"), which never matches our
+   `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /
+   #555 selected) leaked into dark mode and made an unselected edge read brighter
+   than a selected one. Drive both from our mode-aware tokens instead: a default
+   edge is a recessive mid-grey and a selected edge takes the same selected colour
+   as a selected node — correct in light AND dark. */
+.react-flow {
+  --xy-edge-stroke-default: var(--color-foreground-disabled);
+  --xy-edge-stroke-selected-default: var(--color-status-selected);
+}

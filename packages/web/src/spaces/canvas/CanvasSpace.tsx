@@ -4,10 +4,12 @@
 import {
   Background,
   BackgroundVariant,
+  PanOnScrollMode,
   ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
+  useStore,
   type Connection,
   type Edge,
   type Node,
@@ -19,6 +21,7 @@ import * as React from 'react';
 import {
   addEdge,
   removeNode,
+  setNodeLocked,
   setNodeName,
   setNodePosition,
   useCanvasSpace,
@@ -32,6 +35,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
 import {
   parseClipboardNodes,
@@ -54,6 +58,9 @@ const STAGGER_WRAP = 8;
 const PASTE_OFFSET_PX = 24;
 
 const DELETE_KEYS = ['Backspace', 'Delete'];
+
+/** Background dot grid spacing (px at zoom 1). Tighter = denser dot field. */
+const DOT_GAP_PX = 12;
 
 /**
  * Whether a focused element should keep the browser's native paste / copy —
@@ -138,7 +145,42 @@ function CanvasSpaceInner({
   const { nodes, edges } = useCanvasSpace(projectId, spaceId);
   const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
+    useReactFlow();
+
+  // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
+  // The zoom toolbar lives in chrome, outside this ReactFlowProvider, so it
+  // can't read or drive the real zoom. Mirror the live zoom into the canvas
+  // store for the toolbar's read-out, and run the toolbar's commands (posted
+  // through the store mailbox) against ReactFlow here, where the API exists.
+  const setZoom = useCanvasStore((s) => s.setZoom);
+  const rfZoom = useStore((s) => s.transform[2]);
+  React.useEffect(() => {
+    setZoom(rfZoom);
+  }, [rfZoom, setZoom]);
+
+  const pendingViewportCommand = useCanvasStore(
+    (s) => s.pendingViewportCommand,
+  );
+  const consumeViewportCommand = useCanvasStore(
+    (s) => s.consumeViewportCommand,
+  );
+  React.useEffect(() => {
+    if (!pendingViewportCommand) return;
+    const command = pendingViewportCommand;
+    if (command === 'zoomIn') zoomIn();
+    else if (command === 'zoomOut') zoomOut();
+    else if (command === 'fit') fitView();
+    else zoomTo(command.zoomTo);
+    consumeViewportCommand();
+  }, [
+    pendingViewportCommand,
+    zoomIn,
+    zoomOut,
+    fitView,
+    zoomTo,
+    consumeViewportCommand,
+  ]);
   const { createNodeAt, pasteTextAt, pasteNodesAt } = useNodeCreation(
     projectId,
     spaceId,
@@ -206,6 +248,13 @@ function CanvasSpaceInner({
     x: 0,
     y: 0,
   });
+  const [nodeMenu, setNodeMenu] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+    nodeId: '',
+    locked: false,
+  });
 
   // Create a node at a flow position and flag it for auto-selection once the
   // Yjs round-trip mirrors it back into the render buffer.
@@ -266,6 +315,30 @@ function CanvasSpaceInner({
     },
     [contextMenu.x, contextMenu.y, screenToFlowPosition, createNode],
   );
+
+  // Node right-click path: open the per-node action menu (lock / unlock) at the
+  // cursor. Suppress the browser menu for everyone, but only editors get the
+  // menu — locking is a shared-state edit gated like node creation.
+  const onNodeContextMenu = React.useCallback(
+    (event: React.MouseEvent, node: Node): void => {
+      event.preventDefault();
+      if (readOnly) return;
+      const locked = Boolean((node.data as { locked?: unknown }).locked);
+      setNodeMenu({
+        open: true,
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+        locked,
+      });
+    },
+    [readOnly],
+  );
+
+  const onToggleNodeLock = React.useCallback((): void => {
+    setNodeLocked(projectId, spaceId, nodeMenu.nodeId, !nodeMenu.locked);
+    setNodeMenu((prev) => ({ ...prev, open: false }));
+  }, [projectId, spaceId, nodeMenu.nodeId, nodeMenu.locked]);
 
   // Select the freshly created / pasted node(s) once the Yjs mirror has them
   // all. Runs once per creation (keyed on the pending ids), not on every
@@ -385,13 +458,23 @@ function CanvasSpaceInner({
           onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
+          // Figma-like interaction: left-button drag marquee-selects (not
+          // pans); two-finger trackpad scroll pans the canvas freely; pinch
+          // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
+          // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
+          // routes the two automatically, so zoomOnScroll stays at its default.
+          selectionOnDrag
+          panOnDrag={false}
+          panOnScroll
+          panOnScrollMode={PanOnScrollMode.Free}
         >
           <Background
             variant={BackgroundVariant.Dots}
-            gap={24}
+            gap={DOT_GAP_PX}
             size={1}
             color='var(--color-canvas-grid)'
           />
@@ -401,7 +484,7 @@ function CanvasSpaceInner({
             data-testid='canvas-empty'
             className='pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
           >
-            <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-card px-6 py-4'>
+            <div className='max-w-[360px] rounded-sm border border-dashed border-border bg-card px-6 py-4'>
               <strong className='block text-foreground'>
                 {t('canvas.emptyState.title')}
               </strong>
@@ -419,6 +502,14 @@ function CanvasSpaceInner({
             setContextMenu((prev) => ({ ...prev, open }))
           }
           onPick={onContextMenuPick}
+        />
+        <NodeContextMenu
+          open={nodeMenu.open}
+          x={nodeMenu.x}
+          y={nodeMenu.y}
+          locked={nodeMenu.locked}
+          onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
+          onToggleLock={onToggleNodeLock}
         />
       </div>
     </CanvasActionsContext.Provider>
