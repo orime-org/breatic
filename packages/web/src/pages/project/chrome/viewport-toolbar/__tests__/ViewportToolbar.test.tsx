@@ -97,20 +97,37 @@ describe('ViewportToolbar', () => {
     expect(handlers.onZoomChange).toHaveBeenCalledWith(1.5);
   });
 
-  it('custom input clamps to [10%, 400%]', async () => {
+  it('custom input clamps to [10%, 200%]', async () => {
     const user = userEvent.setup();
     const handlers = setup();
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     const input = await screen.findByTestId('zoom-custom-input');
     await user.clear(input);
     await user.type(input, '9999{Enter}');
-    expect(handlers.onZoomChange).toHaveBeenLastCalledWith(4);
+    expect(handlers.onZoomChange).toHaveBeenLastCalledWith(2);
 
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     const input2 = await screen.findByTestId('zoom-custom-input');
     await user.clear(input2);
     await user.type(input2, '1{Enter}');
     expect(handlers.onZoomChange).toHaveBeenLastCalledWith(0.1);
+  });
+
+  it('zoom presets are 10/25/50/100/150/200 — 400% removed, 10% added', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('zoom-readout-trigger'));
+    await screen.findByTestId('zoom-menu');
+    expect(screen.getByTestId('zoom-preset-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('zoom-preset-400')).not.toBeInTheDocument();
+  });
+
+  it('clicking the 10% preset applies 0.1', async () => {
+    const user = userEvent.setup();
+    const handlers = setup();
+    await user.click(screen.getByTestId('zoom-readout-trigger'));
+    await user.click(await screen.findByTestId('zoom-preset-10'));
+    expect(handlers.onZoomChange).toHaveBeenCalledWith(0.1);
   });
 
   it('fit / snap / minimap buttons all wired', async () => {

@@ -17,6 +17,7 @@ const customTwMerge = extendTailwindMerge({
     theme: {
       radius: [
         'chrome',
+        'content-xs',
         'content-sm',
         'content-md',
         'content-lg',

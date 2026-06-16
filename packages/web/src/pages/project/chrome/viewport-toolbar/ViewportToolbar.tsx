@@ -21,10 +21,10 @@ import {
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** Hard limits on canvas zoom (matches ReactFlow defaults: 0.1 – 4). */
+/** Hard limits on canvas zoom — 10%–200% (ReactFlow is pinned to the same range). */
 const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 4;
-const ZOOM_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
+const ZOOM_MAX = 2;
+const ZOOM_PRESETS = [0.1, 0.25, 0.5, 1, 1.5, 2] as const;
 
 interface ViewportToolbarProps {
   zoom: number;

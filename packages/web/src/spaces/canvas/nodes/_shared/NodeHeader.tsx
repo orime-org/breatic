@@ -112,7 +112,7 @@ export function NodeHeader({
           // width follows the content length (`field-sizing`) up to the cap.
           // `nodrag` lets a pointer press select text instead of dragging the
           // node (the input only renders while editing, so it's always safe).
-          className='nodrag min-w-[3rem] max-w-full rounded-chrome border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
+          className='nodrag min-w-[3rem] max-w-full rounded-content-xs border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span
