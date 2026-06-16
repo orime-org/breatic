@@ -52,4 +52,46 @@ describe('NodeHeader', () => {
     fireEvent.doubleClick(screen.getByTestId('node-header-name'));
     expect(screen.queryByTestId('node-header-input')).toBeNull();
   });
+
+  // The rename input must read as a standard chrome input: the fixed
+  // `rounded-chrome` corner (not the Tweaks-driven content radius) and the
+  // shared active-border focus, matching the Input primitive.
+  it('rename input matches the standard input chrome', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input.className).toContain('rounded-chrome');
+    expect(input.className).not.toContain('rounded-sm');
+    expect(input.className).toContain('focus-visible:border-active-border');
+  });
+
+  // The input width follows the content length (field-sizing) so it doesn't
+  // sit at a fixed full-width box while editing a short name.
+  it('rename input grows with its content', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    expect(screen.getByTestId('node-header-input').className).toContain(
+      '[field-sizing:content]',
+    );
+  });
+
+  it('caps the node name at 30 characters', () => {
+    const onRename = vi.fn();
+    render(<NodeHeader modality='image' name='Old' onRename={onRename} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input).toHaveAttribute('maxlength', '30');
+    // Defense in depth: even if a 40-char value slips past maxLength (paste),
+    // commit slices it to 30 before firing the rename.
+    fireEvent.change(input, { target: { value: 'x'.repeat(40) } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith('x'.repeat(30));
+  });
+
+  // #2: the header sits tight above the card — no bottom padding adding to the
+  // gap (the constant gap is owned by the frame's absolute header anchor).
+  it('header carries no bottom padding', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    expect(screen.getByTestId('node-header').className).not.toContain('pb-1');
+  });
 });
