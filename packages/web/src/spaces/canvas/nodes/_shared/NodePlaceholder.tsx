@@ -46,7 +46,7 @@ export function NodePlaceholder({
       onClick={onActivate}
       data-testid='node-placeholder'
       data-modality={modality}
-      className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:bg-accent'
+      className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'
     >
       <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
       <span className='text-xs'>{hint ?? DEFAULT_HINT[modality]}</span>

@@ -401,7 +401,7 @@ function CanvasSpaceInner({
             data-testid='canvas-empty'
             className='pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
           >
-            <div className='max-w-[360px] rounded-lg border border-dashed border-border bg-card px-6 py-4'>
+            <div className='max-w-[360px] rounded-sm border border-dashed border-border bg-card px-6 py-4'>
               <strong className='block text-foreground'>
                 {t('canvas.emptyState.title')}
               </strong>

@@ -62,3 +62,12 @@ body {
 [data-sonner-toast] {
   position: relative !important;
 }
+
+/* Canvas node drag-lift. A static node card is flat — NodeShell drops its
+   shadow per the design system (containers carry no shadow). ONLY a node being
+   dragged lifts off the canvas. Targets ReactFlow's `.dragging` class on the
+   node wrapper + the `.canvas-node-shell` hook on the shell, using the shadow
+   token (not a raw value, so lint:no-raw-design-values stays clean). */
+.react-flow__node.dragging .canvas-node-shell {
+  box-shadow: var(--shadow-md);
+}
