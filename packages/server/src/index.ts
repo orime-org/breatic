@@ -19,6 +19,7 @@ import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
+import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
@@ -76,6 +77,17 @@ const server = serve(
   },
 );
 
+/** Cap graceful shutdown so a stuck teardown can't hold the process / port. */
+const SHUTDOWN_DEADLINE_MS = 4000;
+
+// Surface a main-port listen-bind failure (EADDRINUSE etc.) cleanly instead of
+// letting Node crash on the unhandled `'error'` event; the app entry logs +
+// exits (the library layer never logs / exits itself).
+server.on("error", (err) => {
+  logger.fatal({ err, port: env.PORT }, "http_listen_error");
+  process.exit(1);
+});
+
 // Transactional-outbox relay: forwards project delete / duplicate
 // commands from the business DB to collab via the durable lifecycle
 // Redis Stream (the yjs store is a separate DB, so these can't cascade
@@ -109,6 +121,12 @@ const health = startHealthServer({
         { service: event.serviceName, err: event.err },
         "healthz_handler_unexpected_error",
       );
+    } else if (event.type === "listen_error") {
+      logger.fatal(
+        { service: event.serviceName, port: event.port, err: event.err },
+        "healthz_listen_error",
+      );
+      process.exit(1);
     }
   },
   checks: [
@@ -141,9 +159,19 @@ async function shutdown(signal: string): Promise<void> {
   // instance while it drains in-flight HTTP requests; failing health
   // early is the explicit signal to the LB "rotate me out".
   await health.stop();
-  lifecycleRelay.stop();
-  server.close();
-  await Promise.allSettled([closeDb(), closeRedis(), closeQueues()]);
+  await runGracefulShutdown({
+    // Close the HTTP socket up front (in-flight requests finish within the
+    // deadline), then drain the relay + pools concurrently and bounded.
+    releaseListenSocket: () => server.close(),
+    drains: [
+      () => {
+        lifecycleRelay.stop();
+        return Promise.resolve();
+      },
+      () => Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+    ],
+    deadlineMs: SHUTDOWN_DEADLINE_MS,
+  });
 
   logger.info("Shutdown complete");
   process.exit(0);

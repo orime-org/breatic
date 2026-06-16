@@ -79,6 +79,8 @@ export {
   type HealthCheck,
   type HealthServerOptions,
 } from "@core/infra/health-server.js";
+export { runGracefulShutdown } from "@core/infra/graceful-shutdown.js";
+export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
