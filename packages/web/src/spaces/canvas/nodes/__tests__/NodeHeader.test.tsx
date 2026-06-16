@@ -65,6 +65,16 @@ describe('NodeHeader', () => {
     expect(input.className).toContain('bg-muted');
   });
 
+  // #1314: the rename input uses the new 2px radius tier (rounded-content-xs),
+  // tighter than the 6px chrome radius the rest of chrome uses.
+  it('rename input uses the 2px radius (rounded-content-xs)', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input.className).toContain('rounded-content-xs');
+    expect(input.className).not.toContain('rounded-chrome');
+  });
+
   // ReactFlow drags a node when a pointer press starts inside it; the rename
   // input must carry `nodrag` so dragging to select text edits the name
   // instead of moving the whole node.

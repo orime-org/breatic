@@ -47,6 +47,13 @@ describe('Tooltip', () => {
     expect(content.className).toContain('text-primary-foreground');
   });
 
+  it('content uses the 6px overlay-consistent radius (rounded-sm), not rounded-md', () => {
+    setup(true);
+    const content = screen.getByTestId('content');
+    expect(content.className).toContain('rounded-sm');
+    expect(content.className).not.toContain('rounded-md');
+  });
+
   it('content merges custom className (tailwind-merge)', () => {
     render(
       <TooltipProvider>

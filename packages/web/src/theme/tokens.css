@@ -253,6 +253,7 @@ html[data-theme='light'] {
 
   /* ---- Radius · chrome fixed / content responds to Tweaks ---- */
   --radius-chrome: 6px;
+  --radius-content-xs: 2px;
   --radius-content-sm: 6px;
   --radius-content-md: 12px;
   --radius-content-lg: 16px;
