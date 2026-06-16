@@ -24,10 +24,14 @@ import {
   pingRedis,
   yjsRawPg,
   startHealthServer,
+  runGracefulShutdown,
 } from "@breatic/core";
 
 initLogger("worker");
 import { runTask } from "@worker/handlers/dispatch.js";
+
+/** Cap graceful shutdown so a stuck drain can't hold the process. */
+const SHUTDOWN_DEADLINE_MS = 4000;
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 
 // Health probe port from the validated config (default 9101).
@@ -89,6 +93,12 @@ export function startWorker(): void {
           { service: event.serviceName, err: event.err },
           "healthz_handler_unexpected_error",
         );
+      } else if (event.type === "listen_error") {
+        logger.fatal(
+          { service: event.serviceName, port: event.port, err: event.err },
+          "healthz_listen_error",
+        );
+        process.exit(1);
       }
     },
     checks: [
@@ -125,22 +135,18 @@ export function startWorker(): void {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "worker_shutdown_starting");
-    try {
-      // Stop health probe first so the LB stops sending traffic
-      // to this instance while it drains the in-flight job;
-      // failing health early is the explicit signal to the LB
-      // "rotate me out".
-      await health.stop();
-      // Then ask BullMQ to drain. `close()` resolves once the
-      // current job (if any) has finished and the connection
-      // is closed - safe even if no job is running.
-      await worker.close();
-      logger.info("worker_shutdown_complete");
-      process.exit(0);
-    } catch (err) {
-      logger.error({ err }, "worker_shutdown_error");
-      process.exit(1);
-    }
+    // Stop health probe first so the LB rotates this instance out, then ask
+    // BullMQ to drain (its `close()` resolves once the in-flight job, if any,
+    // has finished). Bounded by the shared deadline so a stuck close can't hold
+    // the process past the grace window.
+    await health.stop();
+    await runGracefulShutdown({
+      releaseListenSocket: () => {},
+      drains: [() => worker.close()],
+      deadlineMs: SHUTDOWN_DEADLINE_MS,
+    });
+    logger.info("worker_shutdown_complete");
+    process.exit(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));

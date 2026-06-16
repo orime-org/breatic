@@ -108,6 +108,15 @@ export type HealthServerEvent =
       type: "handler_unexpected_error";
       serviceName: string;
       err: unknown;
+    }
+  | {
+      // The listen socket failed to bind (e.g. EADDRINUSE). Surfaced so the
+      // application entry can log + exit cleanly instead of Node crashing on
+      // the unhandled `'error'` event (library doesn't log / exit itself).
+      type: "listen_error";
+      port: number;
+      serviceName: string;
+      err: unknown;
     };
 
 /**
@@ -202,6 +211,13 @@ export function startHealthServer(opts: HealthServerOptions): {
         res.statusCode = 500;
         res.end();
       });
+  });
+
+  // Surface a listen-bind failure (EADDRINUSE etc.) instead of letting Node
+  // crash on the unhandled `'error'` event. The application entry routes this
+  // to its logger + a graceful exit.
+  server.on("error", (err) => {
+    onEvent?.({ type: "listen_error", port, serviceName, err });
   });
 
   server.listen(port, () => {

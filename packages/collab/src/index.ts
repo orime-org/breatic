@@ -22,6 +22,7 @@ import {
   yjsRawPg,
   checkInfraReady,
   startHealthServer,
+  runGracefulShutdown,
   InfraNotReadyError,
 } from "@breatic/core";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
@@ -33,6 +34,12 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 import { getCollabConfig } from "@collab/config.js";
 
 const logger = createLogger("main");
+
+/**
+ * Overall graceful-shutdown deadline (ms). Kept under the dev `tsx watch` 5s
+ * force-kill window so a restart never races a slow drain holding :1234.
+ */
+const SHUTDOWN_DEADLINE_MS = 4000;
 
 /**
  * Flush the pino transport's worker-thread buffer before an explicit
@@ -100,6 +107,14 @@ async function main(): Promise<void> {
   const { server, hocuspocus } = await createCollabServer({
     streamRedisUrl: REDIS_STREAM_URL,
     envPrefix: ENV_PREFIX,
+  });
+
+  // Surface a WS listen-bind failure (EADDRINUSE etc.) cleanly instead of
+  // letting Node crash on the unhandled `'error'` event; the app entry logs
+  // + exits (the library layer never logs / exits itself).
+  server.httpServer.on("error", (err) => {
+    logger.fatal({ err, port: cfg.port }, "ws_listen_error");
+    void flushLogger().then(() => process.exit(1));
   });
 
   await server.listen();
@@ -171,6 +186,12 @@ async function main(): Promise<void> {
           { service: event.serviceName, err: event.err },
           "healthz_handler_unexpected_error",
         );
+      } else if (event.type === "listen_error") {
+        logger.fatal(
+          { service: event.serviceName, port: event.port, err: event.err },
+          "healthz_listen_error",
+        );
+        void flushLogger().then(() => process.exit(1));
       }
     },
     // Wiring lives in `health-checks.ts` (`buildCollabHealthChecks`)
@@ -211,12 +232,22 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
-    await healthServer.stop();
-    await stopMembersSync();
-    await controlRedis.quit();
-    await stopListener();
-    await stopLifecycle();
-    await server.destroy();
+    await runGracefulShutdown({
+      // Release the WS listen socket first so a restart can rebind :1234
+      // immediately, instead of holding it behind the drains below — the old
+      // sequential order freed it last, which on a dev tsx-watch restart
+      // overran the 5s window → EADDRINUSE on the new process.
+      releaseListenSocket: () => server.httpServer.close(),
+      drains: [
+        () => server.destroy(),
+        () => healthServer.stop(),
+        () => stopMembersSync(),
+        () => controlRedis.quit(),
+        () => stopListener(),
+        () => stopLifecycle(),
+      ],
+      deadlineMs: SHUTDOWN_DEADLINE_MS,
+    });
     logger.info("Shutdown complete");
     await flushLogger();
     process.exit(0);
