@@ -1,0 +1,49 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+
+import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
+
+describe('ContentNodeFrame', () => {
+  it('floats the name header in an absolute anchor above the card', () => {
+    render(
+      <ContentNodeFrame modality='text' name='A' testId='text-node'>
+        <div>body</div>
+      </ContentNodeFrame>,
+    );
+    const anchor = screen.getByTestId('node-header-anchor');
+    // Absolute so the header leaves the flow: the frame's in-flow box becomes
+    // the card alone, which is what centres the Left/Right handles on the card
+    // body rather than the header+card stack.
+    expect(anchor.className).toContain('absolute');
+    expect(anchor).toContainElement(screen.getByTestId('node-header'));
+    expect(screen.getByTestId('text-node')).toBeInTheDocument();
+  });
+
+  it('counter-scales the header by the canvas zoom from context', () => {
+    render(
+      <NodeScaleContext.Provider value={0.5}>
+        <ContentNodeFrame modality='text' name='A' testId='text-node'>
+          <div>body</div>
+        </ContentNodeFrame>
+      </NodeScaleContext.Provider>,
+    );
+    expect(screen.getByTestId('node-header-anchor').style.transform).toContain(
+      'scale(0.5)',
+    );
+  });
+
+  it('defaults to no counter-scale outside the canvas (scale 1)', () => {
+    render(
+      <ContentNodeFrame modality='text' name='A' testId='text-node'>
+        <div>body</div>
+      </ContentNodeFrame>,
+    );
+    expect(screen.getByTestId('node-header-anchor').style.transform).toContain(
+      'scale(1)',
+    );
+  });
+});

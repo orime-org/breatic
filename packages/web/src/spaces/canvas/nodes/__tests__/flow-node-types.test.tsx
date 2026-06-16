@@ -48,4 +48,26 @@ describe('FLOW_NODE_TYPES', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
+
+  // The wrapper is the only layer with the ReactFlow store, so it must feed
+  // the canvas zoom down so the name header can counter-scale to a constant
+  // screen size. Proves the counter-scaled anchor is wired for content nodes.
+  it('feeds the canvas zoom so the content node renders a counter-scaled header anchor', () => {
+    const Text = FLOW_NODE_TYPES.text;
+    const data: TextNodeView = {
+      kind: 'text',
+      content: 'x',
+      status: 'idle',
+      name: 'Old',
+    };
+    render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn() }}>
+          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    const anchor = screen.getByTestId('node-header-anchor');
+    expect(anchor.style.transform).toContain('scale(');
+  });
 });
