@@ -60,6 +60,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(screen.getByTestId('canvas-empty')).toBeInTheDocument();
   });
 
+  // Figma-like interaction: the left-button drag marquee-selects rather than
+  // pans, so ReactFlow's pane must NOT carry the `draggable` class (which it
+  // only adds when panOnDrag enables the left button).
+  it('left-button drag selects instead of panning (pane is not draggable)', () => {
+    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const pane = document.querySelector('.react-flow__pane');
+    expect(pane).not.toBeNull();
+    expect(pane?.className).not.toContain('draggable');
+  });
+
   it('renders a node body through ReactFlow + the handle wrapper', () => {
     mockUseCanvasSpace.mockReturnValue({
       nodes: [

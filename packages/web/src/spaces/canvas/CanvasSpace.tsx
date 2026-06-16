@@ -4,6 +4,7 @@
 import {
   Background,
   BackgroundVariant,
+  PanOnScrollMode,
   ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
@@ -425,6 +426,15 @@ function CanvasSpaceInner({
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
+          // Figma-like interaction: left-button drag marquee-selects (not
+          // pans); two-finger trackpad scroll pans the canvas freely; pinch
+          // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
+          // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
+          // routes the two automatically, so zoomOnScroll stays at its default.
+          selectionOnDrag
+          panOnDrag={false}
+          panOnScroll
+          panOnScrollMode={PanOnScrollMode.Free}
         >
           <Background
             variant={BackgroundVariant.Dots}
