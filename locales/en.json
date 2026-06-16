@@ -1388,7 +1388,8 @@
       "subtitle": "Projects and collections you recently edited or joined — across all your Studios, newest first.",
       "emptyTitle": "Nothing recent yet",
       "emptyHint": "You haven't created or joined any project yet. Create your first project, or open a Studio to start — what you edit shows up here.",
-      "loadError": "Couldn’t load your recent projects. Try refreshing the page."
+      "loadError": "Couldn’t load your recent projects. Try refreshing the page.",
+      "openedAt": "Opened {time}"
     },
     "topBar": {
       "home": "Studio home",
@@ -1455,7 +1456,8 @@
       "card": {
         "assetCount": "{count} assets",
         "fromStudio": "From {studio}",
-        "more": "More actions"
+        "more": "More actions",
+        "modifiedAt": "Modified {time}"
       },
       "projects": {
         "title": "Projects",

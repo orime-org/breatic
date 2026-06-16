@@ -1388,7 +1388,8 @@
       "subtitle": "你最近编辑、参与过的项目和资产集 —— 跨你所有的 Studio,按最近时间排序。",
       "emptyTitle": "还没有最近的内容",
       "emptyHint": "你还没有创建或参与任何项目。创建第一个项目,或进入一个 Studio 开始创作 —— 之后你最近编辑的内容会显示在这里。",
-      "loadError": "无法加载最近的项目，请刷新页面重试。"
+      "loadError": "无法加载最近的项目，请刷新页面重试。",
+      "openedAt": "打开于 {time}"
     },
     "topBar": {
       "home": "Studio 主页",
@@ -1455,7 +1456,8 @@
       "card": {
         "assetCount": "{count} 个素材",
         "fromStudio": "来自 {studio}",
-        "more": "更多操作"
+        "more": "更多操作",
+        "modifiedAt": "修改于 {time}"
       },
       "projects": {
         "title": "项目",
