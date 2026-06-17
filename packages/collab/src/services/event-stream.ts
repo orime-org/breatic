@@ -20,8 +20,7 @@
  * Streams read loop, last-id persistence, and retry semantics.
  */
 
-import { createRedisClient } from "@breatic/core";
-import { createLogger } from "@collab/infra/logger.js";
+import { createLogger, createRedisClient } from "@breatic/core";
 
 const logger = createLogger("event-stream");
 

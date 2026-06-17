@@ -41,7 +41,7 @@
 ### DevOps
 
 - [x] Docker build 验证通过（CI + 本地）
-- [x] 日志系统：pino-roll daily rotation，per-service 子目录（api/worker/collab/nginx），双时间戳（ISO + epoch）
+- [x] 日志系统：主线程 `pino.multistream`（无 worker 线程 / 无 pino-roll），per-service 子目录（server/worker/collab/nginx），双时间戳（ISO + epoch）
 - [x] Logger 改为 initLogger(serviceName) 模式，Worker 显式调用 initLogger("worker")
 - [x] Nginx 日志轮转：logrotate，30 天保留，日志写到 logs/nginx/
 - [x] Pre-commit hook：拦截 .env 和密钥文件

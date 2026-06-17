@@ -112,7 +112,10 @@ export function NodeHeader({
           // width follows the content length (`field-sizing`) up to the cap.
           // `nodrag` lets a pointer press select text instead of dragging the
           // node (the input only renders while editing, so it's always safe).
-          className='nodrag min-w-[3rem] max-w-full rounded-content-xs border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
+          // `-ml-1` cancels the `px-1` left padding's offset so the text stays
+          // at the same x as the static span — entering edit must not shift the
+          // name sideways (the fill still gets its breathing room from px-1).
+          className='nodrag -ml-1 min-w-[3rem] max-w-full rounded-content-xs border-0 bg-muted px-1 text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span

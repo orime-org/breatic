@@ -20,14 +20,20 @@ const { warnSpy, infoSpy, errorSpy } = vi.hoisted(() => ({
   errorSpy: vi.fn(),
 }));
 
-vi.mock("../infra/logger.js", () => ({
-  createLogger: () => ({
-    warn: warnSpy,
-    info: infoSpy,
-    error: errorSpy,
-    debug: vi.fn(),
-  }),
-}));
+// `createLogger` now comes from `@breatic/core` (the unified logger). Spread
+// the real core barrel and override only `createLogger` with a spy factory.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    createLogger: () => ({
+      warn: warnSpy,
+      info: infoSpy,
+      error: errorSpy,
+      debug: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("../services/event-stream.js", () => ({
   startStreamConsumer: vi.fn(),

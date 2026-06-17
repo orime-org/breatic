@@ -56,7 +56,7 @@ services:
       - ./docker/certs:/etc/nginx/certs:ro
       - ./logs/nginx:/var/log/nginx
     depends_on:
-      - api
+      - server
       - collab
     restart: unless-stopped
 
@@ -74,7 +74,7 @@ services:
 
   # ── Application ────────────────────────────────
   # Each application service exposes `GET /healthz` on a dedicated
-  # health port (`main port + 1` convention) — api 3001 / collab 1235 /
+  # health port (`main port + 1` convention) — server 3001 / collab 1235 /
   # worker 9101 — so docker's healthcheck can probe an isolated
   # endpoint that fails its own port independent of main traffic.
   # After `retries` consecutive failures docker marks the container
@@ -82,7 +82,7 @@ services:
   # container is killed and respawned automatically — closing the
   # self-heal loop the 2026-05-27 collab long-running drift exposed
   # (see CLAUDE.md "server-side industrial-grade standards" mandate).
-  api:
+  server:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
     ports:

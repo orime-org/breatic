@@ -30,13 +30,13 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
+import { createLogger } from "@breatic/core";
 import {
   ALL_PROJECT_CHANNELS_PATTERN,
   parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
 } from "@breatic/shared";
-import { createLogger } from "@collab/infra/logger.js";
 
 const logger = createLogger("members-sync");
 

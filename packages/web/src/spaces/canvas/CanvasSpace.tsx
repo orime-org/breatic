@@ -67,8 +67,13 @@ const PASTE_OFFSET_PX = 24;
 
 const DELETE_KEYS = ['Backspace', 'Delete'];
 
-/** Background dot grid spacing (px at zoom 1). Tighter = denser dot field. */
-const DOT_GAP_PX = 12;
+/**
+ * Background dot grid base. Doubled from the old gap (12) + size (1) so the
+ * dots read at 100% zoom the way they used to at 200% — bigger + sparser —
+ * while still scaling with zoom (a frozen, non-scaling grid felt disorienting).
+ */
+const DOT_GAP_PX = 24;
+const DOT_SIZE_PX = 2;
 
 /**
  * Whether a focused element should keep the browser's native paste / copy —
@@ -589,7 +594,7 @@ function CanvasSpaceInner({
           <Background
             variant={BackgroundVariant.Dots}
             gap={DOT_GAP_PX}
-            size={1}
+            size={DOT_SIZE_PX}
             color='var(--color-canvas-grid)'
           />
         </ReactFlow>

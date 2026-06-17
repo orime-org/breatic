@@ -27,11 +27,10 @@
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
-import { lifecycleStreamKey } from "@breatic/core";
+import { createLogger, lifecycleStreamKey } from "@breatic/core";
 import { parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
-import { createLogger } from "@collab/infra/logger.js";
 
 const logger = createLogger("lifecycle-listener");
 

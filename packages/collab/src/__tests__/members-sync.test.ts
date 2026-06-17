@@ -25,6 +25,24 @@ import {
   membersChangedChannel,
   type MembersChangedEvent,
 } from "@breatic/shared";
+
+// `createLogger` now comes from `@breatic/core` (the unified logger), which
+// reads the injected config at call time. Spread the real core barrel and
+// override only `createLogger` with a no-op stub so the module-level
+// `createLogger("members-sync")` doesn't require initCore under test.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    createLogger: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
+
 import { startMembersSync } from "../services/members-sync.js";
 
 type FakeRedis = EventEmitter & {

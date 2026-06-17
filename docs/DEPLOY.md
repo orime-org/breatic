@@ -154,9 +154,9 @@ docker compose up -d
 
 # 5. Verify each service is reporting healthy
 docker compose ps
-# → STATUS column should show "Up (healthy)" for api / collab / worker
+# → STATUS column should show "Up (healthy)" for server / collab / worker
 #   once start_period elapses (~30s after first start)
-docker exec breatic-api-1 wget -q -O - http://localhost:3001/healthz
+docker exec breatic-server-1 wget -q -O - http://localhost:3001/healthz
 # → { "status": "ok", "service": "server", "checks": { "postgres": { "ok": true, ... }, "redis_general": { "ok": true, ... } } }
 ```
 
@@ -201,7 +201,7 @@ The default `docker-compose.yml` includes `postgres` and `redis` services so a s
 To switch to external infra, edit `docker-compose.yml` before `docker compose up`:
 
 1. **Delete (or comment out) the `postgres` and `redis` service blocks** near the top of the file.
-2. **Delete (or comment out) the `depends_on` entries that reference them** in `migrate`, `api`, `collab`, and `worker`. Compose will error if a service depends on one that doesn't exist.
+2. **Delete (or comment out) the `depends_on` entries that reference them** in `migrate`, `server`, `collab`, and `worker`. Compose will error if a service depends on one that doesn't exist.
 3. **Point the URLs at your external hosts** in `.env`:
 
    ```bash
@@ -211,7 +211,7 @@ To switch to external infra, edit `docker-compose.yml` before `docker compose up
    REDIS_STREAM_URL=redis://your-redis-host:6379/2
    ```
 
-4. `docker compose up -d` — only the 5 app containers (api / worker / collab / migrate / web) come up; there is no embedded PG/Redis running unused.
+4. `docker compose up -d` — only the 5 app containers (server / worker / collab / migrate / web) come up; there is no embedded PG/Redis running unused.
 
 This is the pattern Immich, Outline, Mattermost, and most other Compose-distributed OSS projects use. It's a one-time ~5-line edit, done once per deployment.
 
@@ -314,7 +314,7 @@ Configure in [Google Cloud Console](https://console.cloud.google.com/apis/creden
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
 | `web` | nginx:1.27-alpine | 80, 443 | Frontend + reverse proxy + SSL auto-detect |
-| `api` | breatic | 3000 (internal) | HTTP API + SSE |
+| `server` | breatic | 3000 (internal) | HTTP API + SSE |
 | `collab` | breatic | 1234 (internal) | Hocuspocus WebSocket |
 | `worker` | breatic | — | BullMQ task worker |
 | `postgres` | postgres:16-alpine | 5432 | Database |
@@ -326,7 +326,7 @@ Configure in [Google Cloud Console](https://console.cloud.google.com/apis/creden
 
 ```bash
 # View logs
-docker compose logs -f api       # API server
+docker compose logs -f server    # API server
 docker compose logs -f worker    # BullMQ worker
 docker compose logs -f collab    # Hocuspocus
 docker compose logs -f web       # Nginx
@@ -459,16 +459,16 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to main:
 
 | Service | Stateless? | Scale Strategy |
 |---------|-----------|----------------|
-| API | Yes | Multiple replicas behind load balancer |
+| Server | Yes | Multiple replicas behind load balancer |
 | Collab | Semi (Yjs docs in memory, synced via Redis DB 2) | Multiple instances, Redis pub/sub ensures sync |
 | Worker | Yes | `--scale worker=N`, concurrency per instance in `config/worker.yaml` |
 
 ### Monitoring
 
-- **Application logs**: Daily rotation (pino-roll), each entry has `timestamp` (ISO 8601) + `time` (epoch ms)
-  - `logs/api/` — API server (via `initLogger("api")`)
+- **Application logs**: main-thread `pino.multistream` (no worker thread, no pino-roll) writes `{service}.{yyyy-MM-dd}.log` synchronously to file + console; rotation is delegated to the container log driver / logrotate. Each entry has `timestamp` (ISO 8601) + `time` (epoch ms)
+  - `logs/server/` — server (via `initLogger("server")`)
   - `logs/worker/` — BullMQ worker (via `initLogger("worker")`)
-  - `logs/collab/` — Hocuspocus (standalone logger)
+  - `logs/collab/` — Hocuspocus (via `initLogger("collab")`)
   - `logs/nginx/` — Nginx access + error (logrotate, 30-day retention)
 - **Docker logs**: `docker compose logs -f <service>`
 - **Health check**: Each application service exposes `GET /healthz` on a dedicated port. See the [Health check design](#health-check-design) section below for the full contract + docker healthcheck wiring.
@@ -480,7 +480,7 @@ Per CLAUDE.md "服务器端工业级标准" mandate, each long-lived application
 
 | service | main port | health port | check returns |
 |---|---|---|---|
-| api(server) | 3000 | 3001 | `postgres` SELECT 1 + `redis_general` PING |
+| server | 3000 | 3001 | `postgres` SELECT 1 + `redis_general` PING |
 | collab | 1234 | 1235 | `redis_stream` PING + `hocuspocus_listening` Server.listening |
 | worker | n/a(BullMQ subscriber, no main port) | 9101 | `redis_general` PING + `postgres` SELECT 1 |
 
@@ -495,7 +495,7 @@ Why a dedicated port instead of reusing the main service port:
 - naming consistent across all three services (`主+1` convention)
 - aligns with how docker / k8s liveness probes are conventionally wired (separate port → separate readiness signal)
 
-Beyond binary health, the **api** health port (3001) also serves `GET /metrics` — a minimal Prometheus surface: `http_requests_total` (by method + status), `db_up` (a SELECT-1 gauge; postgres.js exposes no live pool stats), and prom-client default process metrics. It is wired via the health server's optional `onMetrics` hook, so it stays container-internal exactly like `/healthz` (scrape via `docker exec breatic-api-1 wget -q -O - http://localhost:3001/metrics`). Worker / collab `/metrics` + Grafana dashboards remain tracked in `docs/ROADMAP.md`.
+Beyond binary health, the **server** health port (3001) also serves `GET /metrics` — a minimal Prometheus surface: `http_requests_total` (by method + status), `db_up` (a SELECT-1 gauge; postgres.js exposes no live pool stats), and prom-client default process metrics. It is wired via the health server's optional `onMetrics` hook, so it stays container-internal exactly like `/healthz` (scrape via `docker exec breatic-server-1 wget -q -O - http://localhost:3001/metrics`). Worker / collab `/metrics` + Grafana dashboards remain tracked in `docs/ROADMAP.md`.
 
 ---
 
@@ -589,7 +589,7 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 ```
 
-The API always returns success (anti-enumeration), so check API logs for actual SMTP errors: `docker compose logs api | grep smtp`
+The API always returns success (anti-enumeration), so check API logs for actual SMTP errors: `docker compose logs server | grep smtp`
 
 ### (Dev only) "登录已失效" banner stuck on `/project/:id` after a long-running dev session
 

@@ -32,7 +32,11 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 
-import { encodeInitialSpaceContentState, writeSpaceEntry } from "@breatic/core";
+import {
+  createLogger,
+  encodeInitialSpaceContentState,
+  writeSpaceEntry,
+} from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   canvasSpaceDocName,
@@ -43,8 +47,6 @@ import {
   type SpaceRpcResponse,
   type ProjectMessageKind,
 } from "@breatic/shared";
-
-import { createLogger } from "@collab/infra/logger.js";
 
 const logger = createLogger("space-rpc");
 

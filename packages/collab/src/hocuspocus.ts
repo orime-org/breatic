@@ -16,7 +16,7 @@
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
-import { createRedisClient, getRedis } from "@breatic/core";
+import { createLogger, createRedisClient, getRedis } from "@breatic/core";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import * as Y from "yjs";
 import {
@@ -32,7 +32,6 @@ import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
-import { createLogger } from "@collab/infra/logger.js";
 
 const logger = createLogger("hocuspocus");
 

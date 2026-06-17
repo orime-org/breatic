@@ -14,9 +14,11 @@
 import "@collab/bootstrap-config.js";
 import {
   env,
+  createLogger,
   createRedisClient,
   getRedis,
   getStreamRedis,
+  initLogger,
   pingDb,
   pingRedis,
   yjsRawPg,
@@ -26,12 +28,16 @@ import {
   InfraNotReadyError,
 } from "@breatic/core";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
-import { createLogger } from "@collab/infra/logger.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startMembersSync } from "@collab/services/members-sync.js";
 import { getCollabConfig } from "@collab/config.js";
+
+// Initialize the root logger with the collab service name before any child
+// (`createLogger("main")` below) is created — otherwise children would bind
+// to the lazy default ("api") logger instead of the collab one.
+initLogger("collab");
 
 const logger = createLogger("main");
 

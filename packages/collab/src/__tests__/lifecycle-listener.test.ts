@@ -21,14 +21,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Hocuspocus } from "@hocuspocus/server";
 
-vi.mock("@collab/infra/logger.js", () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+// `createLogger` now comes from `@breatic/core` (the unified logger). Spread
+// the real core barrel (so `lifecycleStreamKey` etc. stay intact) and
+// override only `createLogger` with a no-op spy factory.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    createLogger: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
 
 const { softDeleteByProjectPrefixMock, duplicateByProjectPrefixMock } =
   vi.hoisted(() => ({

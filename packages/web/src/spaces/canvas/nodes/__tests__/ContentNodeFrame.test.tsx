@@ -19,6 +19,8 @@ describe('ContentNodeFrame', () => {
     // the card alone, which is what centres the Left/Right handles on the card
     // body rather than the header+card stack.
     expect(anchor.className).toContain('absolute');
+    // #2: the gap between the name header and the card below is 4px (pb-1).
+    expect(anchor.className).toContain('pb-1');
     expect(anchor).toContainElement(screen.getByTestId('node-header'));
     expect(screen.getByTestId('text-node')).toBeInTheDocument();
   });

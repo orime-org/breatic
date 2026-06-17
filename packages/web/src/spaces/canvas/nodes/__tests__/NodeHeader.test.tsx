@@ -65,6 +65,18 @@ describe('NodeHeader', () => {
     expect(input.className).toContain('bg-muted');
   });
 
+  // Entering edit must NOT shift the name sideways (the reported bug). The
+  // input keeps `px-1` for the fill's breathing room but adds `-ml-1` to cancel
+  // that left padding's horizontal offset, so the text stays at the same x as
+  // the static span — matching the project-title editor's no-shift behaviour.
+  it('rename input compensates its left padding so the name does not shift', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    expect(input.className).toContain('px-1');
+    expect(input.className).toContain('-ml-1');
+  });
+
   // #1314: the rename input uses the new 2px radius tier (rounded-content-xs),
   // tighter than the 6px chrome radius the rest of chrome uses.
   it('rename input uses the 2px radius (rounded-content-xs)', () => {

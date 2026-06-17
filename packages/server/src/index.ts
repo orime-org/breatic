@@ -21,9 +21,14 @@ import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
-import { logger } from "@breatic/core";
+import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
+
+// Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
+// Runs after initCore (bootstrap-config) and before the first log below;
+// the HTTP routes stay mounted under /api/v1 — only the log identity changes.
+initLogger("server");
 
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;
