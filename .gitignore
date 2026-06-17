@@ -48,6 +48,8 @@ worktrees/
 .claude/
 .remember/
 CLAUDE.local.md
+# Private completed-task archive (kept out of the sensitive .claude/ path)
+/TaskList_Completed.md
 
 # Playwright MCP cache
 .playwright-mcp/
