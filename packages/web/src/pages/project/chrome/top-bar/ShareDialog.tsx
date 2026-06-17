@@ -197,7 +197,7 @@ export function ShareDialog({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <Button variant='chrome-ghost' size='chrome' aria-label='Share'>
+              <Button variant='chrome-ghost' size='chrome' aria-label={t('chrome.tooltip.share')}>
                 <Share2 className='h-[18px] w-[18px]' />
               </Button>
             </PopoverTrigger>
@@ -305,7 +305,7 @@ export function ShareDialog({
                 size='chrome'
                 onClick={copy}
                 disabled={!inviteUrl}
-                aria-label={copied ? 'Copied' : 'Copy link'}
+                aria-label={copied ? t('share.copiedAria') : t('share.copyLinkAria')}
                 data-testid='share-copy-link'
               >
                 <Copy className='h-[16px] w-[16px]' />

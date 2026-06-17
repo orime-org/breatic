@@ -120,7 +120,7 @@ export const MembersStack = React.forwardRef<
         <button
           ref={ref}
           type='button'
-          aria-label={`Project members (${members.length})`}
+          aria-label={t('members.stack.triggerAria', { count: members.length })}
           aria-haspopup='dialog'
           data-testid='members-trigger'
           className='inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
@@ -262,7 +262,7 @@ function MemberRow({
         <Button
           variant='outline'
           size='sm'
-          aria-label={`Remove ${member.name}`}
+          aria-label={t('members.stack.removeAria', { name: member.name })}
           className='h-7 shrink-0 px-3 text-xs opacity-0 transition-opacity group-hover:opacity-100'
           disabled={removePending}
           onClick={onRemove}

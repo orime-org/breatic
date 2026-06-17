@@ -35,11 +35,11 @@
     },
     "studio": {
       "slug_taken": "该网址标识已被使用,请换一个。",
-      "team_limit_reached": "你已达到 50 个团队 studio 的上限。",
+      "team_limit_reached": "你已达到 50 个团队 Studios 的上限。",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已是成员。",
       "already_invited": "该用户已有一个待确认的邀请。",
-      "cannot_modify_personal": "个人 studio 不能管理成员。",
+      "cannot_modify_personal": "个人 Studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让管理员。",
       "cannot_change_admin_role": "管理员角色只能通过转让变更。"
     },
@@ -181,7 +181,7 @@
     }
   },
   "canvas": {
-    "new_project": "新建项目",
+    "new_project": "新建 Project",
     "generating": "生成中...",
     "completed": "已完成",
     "failed": "生成失败",
@@ -334,7 +334,7 @@
       "helper": "你的主页将位于 /studio/{slug}。只能使用小写字母、数字和连字符;必须唯一。",
       "submit": "继续",
       "submitting": "设置中...",
-      "failed": "无法设置你的工作室,请重试。"
+      "failed": "无法设置你的 Studio,请重试。"
     },
     "recovery": {
       "title": "保存你的恢复码",
@@ -390,12 +390,12 @@
     "upgradeRequest": {
       "ariaLabel": "申请编辑者权限",
       "title": "申请编辑者权限",
-      "description": "你当前是该项目的观察者。给项目所有者发送一条消息,申请编辑者权限。",
-      "placeholder": "给项目所有者的留言(可选)…",
+      "description": "你当前是该 Project 的观察者。给 Project 所有者发送一条消息,申请编辑者权限。",
+      "placeholder": "给 Project 所有者的留言(可选)…",
       "submit": "发送申请",
       "sending": "发送中…",
       "toast": {
-        "sent": "申请已发送 — 项目所有者会在通知中看到。",
+        "sent": "申请已发送 — Project 所有者会在通知中看到。",
         "failed": "申请发送失败,请重试。"
       }
     }
@@ -412,32 +412,32 @@
   "common_error_noLogin": "请登录。",
   "workspace": {
     "label": "工作台",
-    "copy_success": "项目复制成功",
-    "delete_success": "项目删除成功",
-    "project_name_required": "项目名称是必需的",
-    "rename_success": "项目重命名成功",
-    "create_failed": "创建项目失败",
-    "copy_failed": "复制项目失败",
-    "copy_project": "复制项目",
-    "rename_project": "重命名项目",
-    "delete_project": "删除项目",
+    "copy_success": "Project 复制成功",
+    "delete_success": "Project 删除成功",
+    "project_name_required": "Project 名称是必需的",
+    "rename_success": "Project 重命名成功",
+    "create_failed": "创建 Project 失败",
+    "copy_failed": "复制 Project 失败",
+    "copy_project": "复制 Project",
+    "rename_project": "重命名 Project",
+    "delete_project": "删除 Project",
     "btn_confirm": "确认",
     "btn_cancel": "取消",
-    "rename_project_title": "重命名项目",
-    "rename_project_placeholder": "请输入新的项目名称",
-    "delete_project_content_title": "删除项目",
+    "rename_project_title": "重命名 Project",
+    "rename_project_placeholder": "请输入新的 Project 名称",
+    "delete_project_content_title": "删除 Project",
     "delete_project_content_description": "此操作无法撤销。",
-    "recent_projects": "最近的项目",
-    "create_new_project": "创建新项目",
-    "no_more_data": "没有更多项目",
-    "create_project_title": "创建新项目",
-    "create_project_placeholder": "请输入新项目的名称",
+    "recent_projects": "最近的 Projects",
+    "create_new_project": "创建新 Project",
+    "no_more_data": "没有更多 Projects",
+    "create_project_title": "创建新 Project",
+    "create_project_placeholder": "请输入新 Project 的名称",
     "use_case": "用例",
     "use_case_description": "用例描述",
     "home_tooltip": "返回首页",
     "create_user_case_title": "创建用例",
-    "create_user_case_description": "这将基于此用例创建一个新项目。",
-    "create_user_case_placeholder": "输入新项目名称",
+    "create_user_case_description": "这将基于此用例创建一个新 Project。",
+    "create_user_case_placeholder": "输入新 Project 名称",
     "not_logged_in": {
       "title": "未登录",
       "description": "登录以体验所有产品功能",
@@ -573,7 +573,7 @@
       "exportFailed": "导出失败！",
       "importSuccessful": "导入成功",
       "importFailed": "导入失败！",
-      "renameFailed": "重命名项目失败",
+      "renameFailed": "重命名 Project 失败",
       "importing": "导入中...",
       "exporting": "导出中...",
       "english": "English",
@@ -593,13 +593,13 @@
       },
       "error": {
         "create": "Space 创建失败",
-        "notSynced": "项目正在同步,请稍后再试"
+        "notSynced": "Project 正在同步,请稍后再试"
       },
       "loading": {
         "create": "正在创建 Space…",
         "delete": "正在删除 Space…"
       },
-      "noActive": "没有打开的工作面 — 点抽屉里的工作面打开,或点 + 新建。"
+      "noActive": "没有打开的 Space — 点抽屉里的 Space 打开,或点 + 新建。"
     }
   },
   "common": {
@@ -860,10 +860,10 @@
     "zoomIn": "放大"
   },
   "message": {
-    "projectSaved": "项目已保存",
-    "saveProjectFailed": "保存项目失败",
-    "projectLoaded": "项目已加载",
-    "loadProjectFailed": "加载项目失败",
+    "projectSaved": "Project 已保存",
+    "saveProjectFailed": "保存 Project 失败",
+    "projectLoaded": "Project 已加载",
+    "loadProjectFailed": "加载 Project 失败",
     "mockDataLoaded": "Mock数据已加载",
     "loadMockDataFailed": "加载Mock数据失败",
     "noContentToExport": "没有可导出的内容",
@@ -976,7 +976,7 @@
   },
   "members": {
     "popover": {
-      "title": "项目成员",
+      "title": "Project 成员",
       "invite": "邀请新成员",
       "manage": "管理协作者",
       "remove": "移除",
@@ -987,12 +987,12 @@
     },
     "panel": {
       "title": "协作者管理",
-      "subtitle": "管理项目成员及其权限",
+      "subtitle": "管理 Project 成员及其权限",
       "invite_section": "邀请新协作者",
       "invite_placeholder": "邮箱或用户 ID",
       "invite_button": "邀请",
       "list_count": "成员 ({count})",
-      "list_note": "所有者永久绑定项目创建者",
+      "list_note": "所有者永久绑定 Project 创建者",
       "confirm_remove": "确认移除此协作者?",
       "done": "完成"
     },
@@ -1003,7 +1003,7 @@
     },
     "modal": {
       "title": "协作者管理",
-      "description": "管理项目成员及其权限",
+      "description": "管理 Project 成员及其权限",
       "inviteSection": "邀请新协作者",
       "invitePlaceholder": "邮箱地址",
       "inviteButton": "邀请",
@@ -1012,7 +1012,7 @@
       "inviteFailed": "邀请发送失败,请重试。",
       "invalidEmail": "请输入有效的邮箱地址。",
       "membersSection": "成员 ({count})",
-      "ownerNote": "所有者永久绑定项目创建者",
+      "ownerNote": "所有者永久绑定 Project 创建者",
       "roleSelectAria": "修改 {name} 的角色",
       "roleChanged": "角色已更新。",
       "roleChangeFailed": "角色更新失败,请重试。",
@@ -1020,6 +1020,10 @@
       "removeFailed": "成员移除失败,请重试。",
       "isMe": "(你)",
       "remove": "移除"
+    },
+    "stack": {
+      "triggerAria": "Project 成员（{count}）",
+      "removeAria": "移除 {name}"
     }
   },
   "credits": {
@@ -1039,28 +1043,29 @@
   },
   "spaces": {
     "tab": {
-      "new": "新建画布",
-      "drawer": "所有画布",
+      "new": "新建 Canvas",
+      "drawer": "所有 Canvases",
       "close": "关闭",
       "rename": "重命名",
       "duplicate": "复制",
       "delete": "删除",
       "lock": "锁定",
-      "unlock": "解锁"
+      "unlock": "解锁",
+      "closeAria": "关闭 Space 标签页"
     },
     "drawer": {
-      "title": "所有工作面",
+      "title": "所有 Spaces",
       "count": "个",
       "tag_open": "已打开",
       "tag_active": "当前",
       "nodes_count": "{count} 节点",
       "confirm_delete": "确认删除此 Space?",
-      "new_canvas": "新建画布",
-      "new_document": "新建文档",
-      "new_timeline": "新建时间线",
-      "label": "所有工作面",
+      "new_canvas": "新建 Canvas",
+      "new_document": "新建 Document",
+      "new_timeline": "新建 Timeline",
+      "label": "所有 Spaces",
       "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
-      "empty": "暂无工作面",
+      "empty": "暂无 Spaces",
       "openAria": "打开 {name}",
       "status": {
         "editing": "编辑中",
@@ -1071,9 +1076,9 @@
         "lock": "加锁",
         "unlock": "解锁",
         "delete": "删除",
-        "deleteLocked": "锁住的工作面无法删除",
-        "deleteConfirmTitle": "删除工作面「{name}」？",
-        "deleteConfirmDescription": "此工作面及其内容将被软删除。Owner 可从项目消息频道恢复。",
+        "deleteLocked": "锁住的 Spaces 无法删除",
+        "deleteConfirmTitle": "删除 Space「{name}」？",
+        "deleteConfirmDescription": "此 Space 及其内容将被软删除。Owner 可从 Project 消息频道恢复。",
         "lockFail": "加锁失败",
         "unlockFail": "解锁失败",
         "operationFail": "操作失败",
@@ -1102,9 +1107,9 @@
       "timelineSub": "视频 / 音频剪辑"
     },
     "history": {
-      "label": "项目消息",
-      "title": "项目消息 — 节点缺失 + Space 生命周期",
-      "header": "项目消息",
+      "label": "Project 消息",
+      "title": "Project 消息 — 节点缺失 + Space 生命周期",
+      "header": "Project 消息",
       "description": "{count, plural, other {# 条消息}}",
       "empty": "暂无消息。节点缺失提示和 Space 创建 / 删除 / 锁定事件会显示在这里。",
       "markRead": "已读",
@@ -1123,7 +1128,7 @@
         "restored": "已恢复",
         "clearAll": "清空",
         "clearAllConfirmTitle": "确认清空所有消息？",
-        "clearAllConfirmDescription": "此操作无法撤销。项目消息频道中的所有条目都将被永久删除。"
+        "clearAllConfirmDescription": "此操作无法撤销。Project 消息频道中的所有条目都将被永久删除。"
       },
       "relative": {
         "justNow": "刚刚",
@@ -1160,18 +1165,19 @@
       "description": "此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。",
       "close": "关闭只读预览",
       "canvas": {
-        "title": "只读画布",
+        "title": "只读 Canvas",
         "description": "真实 ReactFlow viewer 在 canvas-space 完整实现时接入; 此处展示节点与边的只读快照,支持缩放与复制。"
       },
       "document": {
-        "title": "只读文档",
+        "title": "只读 Document",
         "description": "TipTap 只读 viewer 在 document-space 实施时接入; 此处展示富文本快照,支持复制段落。"
       },
       "timeline": {
-        "title": "只读时间线",
+        "title": "只读 Timeline",
         "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
-    }
+    },
+    "lockedAria": "已锁定"
   },
   "image": {
     "flipVertical": "垂直翻转",
@@ -1212,7 +1218,7 @@
       "nodes": "节点库 — 4 类生成节点",
       "upload": "上传素材(多文件混合)",
       "comment": "在画布加批注",
-      "collection": "资产集 — 跨项目共享素材(敬请期待)",
+      "collection": "Collection — 跨 Projects 共享素材(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
     },
@@ -1292,7 +1298,7 @@
     },
     "linksList": {
       "title": "已生成的邀请链接",
-      "description": "本项目下所有有效的邀请链接。撤销任一链接将立即失效。",
+      "description": "本 Project 下所有有效的邀请链接。撤销任一链接将立即失效。",
       "empty": "你还没有生成任何邀请链接。",
       "emailBadge": "邮箱邀请",
       "copyAria": "复制 URL",
@@ -1306,7 +1312,9 @@
       "minutes": "{n} 分钟前",
       "hours": "{n} 小时前",
       "days": "{n} 天前"
-    }
+    },
+    "copyLinkAria": "复制链接",
+    "copiedAria": "已复制"
   },
   "notifications": {
     "title": "访问申请",
@@ -1319,7 +1327,7 @@
     "approve": "批准",
     "request": {
       "audio": "想加入做配音和 BGM 部分",
-      "project": "想参考你的 prompt 风格做我自己的项目"
+      "project": "想参考你的 prompt 风格做我自己的 Project"
     },
     "loading": "加载中…",
     "markRead": "标为已读",
@@ -1338,14 +1346,14 @@
       "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请"
     },
     "actionFailed": "无法完成操作，请重试。",
-    "transferConfirmedToast": "你现在是该工作室的管理员了。",
+    "transferConfirmedToast": "你现在是该 Studio 的管理员了。",
     "transferCancelledToast": "已拒绝转让。",
     "transferAccept": "接受",
     "transferDecline": "拒绝",
     "subtitle": {
       "invitedAsCreator": "以创建者身份加入",
       "invitedAsMember": "以成员身份加入",
-      "transferHint": "接受后即成为该工作室的管理员"
+      "transferHint": "接受后即成为该 Studio 的管理员"
     },
     "expiresLabel": {
       "expired": "已过期",
@@ -1361,7 +1369,7 @@
   "connection": {
     "banner": {
       "authFailed": {
-        "text": "登录已失效 — 项目内容无法加载,请重新登录。",
+        "text": "登录已失效 — Project 内容无法加载,请重新登录。",
         "action": "重新登录"
       },
       "disconnected": {
@@ -1379,20 +1387,20 @@
   },
   "studio": {
     "recent": {
-      "projectsTitle": "最近参与的项目",
-      "collectionsTitle": "最近的资产集",
-      "emptyProjects": "还没有最近的项目。",
-      "emptyCollections": "还没有最近的资产集。",
+      "projectsTitle": "最近参与的 Projects",
+      "collectionsTitle": "最近的 Collections",
+      "emptyProjects": "还没有最近的 Projects。",
+      "emptyCollections": "还没有最近的 Collections。",
       "role": {
         "owner": "Owner",
         "editor": "Editor",
         "viewer": "Viewer"
       },
       "title": "最近",
-      "subtitle": "你最近编辑、参与过的项目和资产集 —— 跨你所有的 Studio,按最近时间排序。",
+      "subtitle": "你最近编辑、参与过的 Projects 和 Collections —— 跨你所有的 Studio,按最近时间排序。",
       "emptyTitle": "还没有最近的内容",
-      "emptyHint": "你还没有创建或参与任何项目。创建第一个项目,或进入一个 Studio 开始创作 —— 之后你最近编辑的内容会显示在这里。",
-      "loadError": "无法加载最近的项目，请刷新页面重试。",
+      "emptyHint": "你还没有创建或参与任何 Project。创建第一个 Project,或进入一个 Studio 开始创作 —— 之后你最近编辑的内容会显示在这里。",
+      "loadError": "无法加载最近的 Projects，请刷新页面重试。",
       "openedAt": "打开于 {time}"
     },
     "topBar": {
@@ -1404,7 +1412,7 @@
       "signOut": "退出登录"
     },
     "createProject": {
-      "failed": "创建项目失败:{reason}"
+      "failed": "创建 Project 失败:{reason}"
     },
     "container": {
       "shell": {
@@ -1413,19 +1421,19 @@
       },
       "tabs": {
         "projects": "Projects",
-        "collections": "资产集",
-        "works": "作品",
+        "collections": "Collections",
+        "works": "Works",
         "members": "成员",
         "credits": "积分",
         "settings": "设置"
       },
       "works": {
-        "emptyHint": "作品是从项目发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",
-        "emptyTitle": "还没有作品"
+        "emptyHint": "Works 是从 Project 发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",
+        "emptyTitle": "还没有 Works"
       },
       "nonMember": {
-        "worksTitle": "作品",
-        "empty": "该 Studio 暂无作品发布"
+        "worksTitle": "Works",
+        "empty": "该 Studio 暂无 Works 发布"
       },
       "header": {
         "personalTag": "个人",
@@ -1436,9 +1444,9 @@
         "recent": "最近",
         "myStudios": "我的 Studio",
         "collaboration": "协作",
-        "guestProjects": "{count} 个参与的项目",
+        "guestProjects": "{count} 个参与的 Projects",
         "newStudio": "新建 Studio",
-        "guideRecent": "最近 = 跨 Studio 的近期项目。",
+        "guideRecent": "最近 = 跨 Studio 的近期 Project。",
         "guideEnter": "点某个 Studio 进入它的容器。",
         "guideTools": "工具在右上角。"
       },
@@ -1464,16 +1472,16 @@
         "createdAt": "创建于 {time}"
       },
       "projects": {
-        "new": "新建项目",
-        "createError": "创建项目失败",
-        "emptyTitle": "还没有项目",
-        "emptyHint": "项目是你在无限画布上创作的地方。创建第一个项目,开始你的创作。"
+        "new": "新建 Project",
+        "createError": "创建 Project 失败",
+        "emptyTitle": "还没有 Projects",
+        "emptyHint": "Project 是你在无限画布上创作的地方。创建第一个 Project,开始你的创作。"
       },
       "collections": {
-        "title": "资产集",
-        "new": "新建资产集",
-        "emptyTitle": "还没有资产集",
-        "emptyHint": "资产集是跨项目复用的素材集合(图 / 视频 / 音频)。后端能力上线后,这里会列出你创建的资产集。"
+        "title": "Collections",
+        "new": "新建 Collection",
+        "emptyTitle": "还没有 Collections",
+        "emptyHint": "Collection 是跨 Projects 复用的素材集合(图 / 视频 / 音频)。后端能力上线后,这里会列出你创建的 Collection。"
       },
       "credits": {
         "balance": "钱包余额",
@@ -1510,7 +1518,7 @@
         "roleAdmin": "Admin",
         "roleMember": "Member",
         "remove": "移除",
-        "cannotInvitePersonal": "个人 studio 无法邀请成员 —— 只有你自己。",
+        "cannotInvitePersonal": "个人 Studios 无法邀请成员 —— 只有你自己。",
         "roleCreator": "Creator",
         "rowMenu": "成员操作",
         "promoteToCreator": "设为创建者",
@@ -1524,7 +1532,7 @@
         "inviteFailed": "无法邀请该成员，请重试。",
         "roleUpdated": "角色已更新。",
         "removeConfirmTitle": "移除成员？",
-        "removeConfirmBody": "{name} 将失去对本工作室所有项目的访问权限，其拥有的项目会转移给你。此操作不可撤销。",
+        "removeConfirmBody": "{name} 将失去对本 Studio 所有 Project 的访问权限，其拥有的 Project 会转移给你。此操作不可撤销。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成员。",
         "transferConfirmTitle": "转让管理员？",
@@ -1548,19 +1556,19 @@
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
         "delete": "删除 Studio",
-        "dangerHint": "转让会把所有项目、资产集与钱包整体过户;删除不可恢复。仅所有者可操作。"
+        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户;删除不可恢复。仅所有者可操作。"
       },
       "dialog": {
-        "newProjectTitle": "新建项目",
-        "newCollectionTitle": "新建资产集",
+        "newProjectTitle": "新建 Project",
+        "newCollectionTitle": "新建 Collection",
         "newStudioTitle": "新建 Studio",
         "studioLabel": "Studio",
         "nameLabel": "名称",
-        "namePlaceholder": "我的项目",
+        "namePlaceholder": "我的 Project",
         "slugLabel": "网址标识",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "项目地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
-        "slugHelperCollection": "资产集地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
+        "slugHelperProject": "Project 地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
+        "slugHelperCollection": "Collection 地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
         "descriptionLabel": "简介(可选)",
         "typeLabel": "类型",
         "typePersonal": "个人",
@@ -1573,7 +1581,7 @@
         "slugReserved": "该网址标识已被使用。",
         "slugChecking": "正在检查可用性…",
         "slugAvailable": "该网址标识可用",
-        "createStudioError": "无法创建 studio",
+        "createStudioError": "无法创建 Studio",
         "visibilityLabel": "可见性",
         "visibilityStudioOption": "Studio 内可见 — 所有成员",
         "visibilityPrivateOption": "私有 — 仅受邀"
@@ -1588,8 +1596,8 @@
     },
     "rail": {
       "navLabel": "Studio 导航",
-      "createProject": "新建项目",
-      "createCollection": "新建资产集",
+      "createProject": "新建 Project",
+      "createCollection": "新建 Collection",
       "createStudio": "新建 Studio",
       "comingSoon": "即将推出",
       "recent": "最近",
@@ -1625,30 +1633,48 @@
       "export": "导出",
       "share": "分享",
       "notifications": "通知",
-      "newSpace": "新建工作面",
-      "allSpaces": "所有工作面",
-      "projectMessages": "项目消息",
+      "newSpace": "新建 Space",
+      "allSpaces": "所有 Spaces",
+      "projectMessages": "Project 消息",
       "agentHide": "收起 Agent 面板",
       "agentShow": "展开 Agent 面板",
       "openHistory": "对话历史",
       "newConversation": "新建对话"
+    },
+    "aria": {
+      "backToStudio": "返回 Studio",
+      "creditsBalance": "积分余额",
+      "addCredits": "添加积分",
+      "home": "首页",
+      "conversationCount": "{count} 个对话",
+      "scrollTabsLeft": "向左滚动标签",
+      "scrollTabsRight": "向右滚动标签",
+      "spacesToolbar": "Spaces",
+      "openSpaces": "已打开的 Space",
+      "language": "语言：{name}",
+      "theme": "主题：{theme}"
+    },
+    "export": {
+      "png": "PNG（当前视图）",
+      "pdf": "PDF（整个画布）",
+      "json": "JSON（原始数据）"
     }
   },
   "invite": {
     "consume": {
-      "loadingTitle": "正在加入项目…",
+      "loadingTitle": "正在加入 Project…",
       "loadingBody": "正在验证邀请链接,请稍候。",
       "errorTitle": "无法接受邀请",
-      "errorBody": "请重新打开链接,或向项目所有者索取新的邀请链接。",
+      "errorBody": "请重新打开链接,或向 Project 所有者索取新的邀请链接。",
       "invalidToken": "邀请链接格式错误。",
-      "expiredOrInvalid": "邀请链接已失效。请联系项目所有者获取新的链接。",
+      "expiredOrInvalid": "邀请链接已失效。请联系 Project 所有者获取新的链接。",
       "failed": "接受邀请时发生错误。",
       "backToStudio": "返回 Studio"
     }
   },
   "noAccess": {
-    "title": "你没有访问该项目的权限",
-    "description": "请联系项目所有者申请访问,他们可以给你一个新的邀请链接。",
+    "title": "你没有访问该 Project 的权限",
+    "description": "请联系 Project 所有者申请访问,他们可以给你一个新的邀请链接。",
     "backToStudio": "返回 Studio"
   }
 }

@@ -66,7 +66,7 @@ export function AgentColHeader({
           <Button
             variant='chrome-ghost'
             size='chrome'
-            aria-label='Open conversation history'
+            aria-label={t('chrome.tooltip.openHistory')}
             onClick={onOpenHistory}
             data-testid='open-conversation-history'
           >
@@ -80,7 +80,7 @@ export function AgentColHeader({
       <span
         className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-2xs font-medium tabular-nums text-muted-foreground'
         data-testid='conversation-count-chip'
-        aria-label={`${messageCount} conversations`}
+        aria-label={t('chrome.aria.conversationCount', { count: messageCount })}
       >
         {messageCount}
       </span>
@@ -96,7 +96,7 @@ export function AgentColHeader({
           <Button
             variant='chrome-ghost'
             size='chrome'
-            aria-label='New conversation'
+            aria-label={t('chrome.tooltip.newConversation')}
             onClick={onNewConversation}
             data-testid='new-conversation'
           >

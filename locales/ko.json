@@ -32,11 +32,11 @@
     },
     "studio": {
       "slug_taken": "이미 사용 중인 핸들입니다. 다른 것을 선택하세요.",
-      "team_limit_reached": "팀 studio 한도(50개)에 도달했습니다.",
+      "team_limit_reached": "팀 Studios 한도(50개)에 도달했습니다.",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 멤버입니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
-      "cannot_modify_personal": "개인 스튜디오는 멤버를 관리할 수 없습니다.",
+      "cannot_modify_personal": "개인 Studio는 멤버를 관리할 수 없습니다.",
       "remove_last_admin": "제거하기 전에 먼저 관리자를 이전하세요.",
       "cannot_change_admin_role": "관리자 역할은 이전을 통해서만 변경할 수 있습니다."
     },
@@ -181,7 +181,7 @@
     }
   },
   "canvas": {
-    "new_project": "새 프로젝트",
+    "new_project": "새 Project",
     "generating": "생성 중...",
     "completed": "완료",
     "failed": "생성 실패",
@@ -334,7 +334,7 @@
       "helper": "홈은 /studio/{slug}에 위치합니다. 소문자, 숫자, 하이픈만 사용할 수 있으며 고유해야 합니다.",
       "submit": "계속",
       "submitting": "설정 중...",
-      "failed": "스튜디오를 설정할 수 없습니다. 다시 시도해 주세요."
+      "failed": "Studio를 설정할 수 없습니다. 다시 시도해 주세요."
     },
     "recovery": {
       "title": "복구 코드를 저장하세요",
@@ -377,7 +377,7 @@
       "pleaseWait": "잠시만 기다려 주세요.",
       "successTitle": "이메일이 확인되었습니다",
       "successBody": "이메일이 확인되었습니다. 이제 Breatic의 모든 기능을 이용할 수 있습니다.",
-      "goToStudio": "스튜디오로 이동",
+      "goToStudio": "Studio로 이동",
       "failedTitle": "이메일을 확인하지 못했습니다",
       "failedBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인 후 계정 설정에서 새 확인 이메일을 요청하세요.",
       "checkInboxTitle": "받은편지함을 확인하세요",
@@ -390,7 +390,7 @@
     "upgradeRequest": {
       "ariaLabel": "편집자 권한 요청",
       "title": "편집자 권한 요청",
-      "description": "현재 이 프로젝트의 뷰어입니다. 소유자에게 메시지를 보내 편집자 권한을 요청하세요.",
+      "description": "현재 이 Project의 뷰어입니다. 소유자에게 메시지를 보내 편집자 권한을 요청하세요.",
       "placeholder": "소유자에게 보낼 메시지(선택)…",
       "submit": "요청 보내기",
       "sending": "보내는 중…",
@@ -412,32 +412,32 @@
   "common_error_noLogin": "계속하려면 로그인해 주세요.",
   "workspace": {
     "label": "워크스페이스",
-    "copy_success": "프로젝트 복사에 성공했습니다",
-    "copy_failed": "프로젝트 복사에 실패했습니다",
-    "delete_success": "프로젝트 삭제에 성공했습니다",
-    "project_name_required": "프로젝트 이름은 필수입니다",
-    "rename_success": "프로젝트 이름 변경에 성공했습니다",
-    "create_failed": "프로젝트 생성에 실패했습니다",
-    "copy_project": "프로젝트 복사",
-    "rename_project": "프로젝트 이름 변경",
-    "delete_project": "프로젝트 삭제",
+    "copy_success": "Project 복사에 성공했습니다",
+    "copy_failed": "Project 복사에 실패했습니다",
+    "delete_success": "Project 삭제에 성공했습니다",
+    "project_name_required": "Project 이름은 필수입니다",
+    "rename_success": "Project 이름 변경에 성공했습니다",
+    "create_failed": "Project 생성에 실패했습니다",
+    "copy_project": "Project 복사",
+    "rename_project": "Project 이름 변경",
+    "delete_project": "Project 삭제",
     "btn_confirm": "확인",
     "btn_cancel": "취소",
-    "rename_project_title": "프로젝트 이름 변경",
-    "rename_project_placeholder": "새 프로젝트 이름을 입력하세요",
-    "delete_project_content_title": "프로젝트 삭제",
+    "rename_project_title": "Project 이름 변경",
+    "rename_project_placeholder": "새 Project 이름을 입력하세요",
+    "delete_project_content_title": "Project 삭제",
     "delete_project_content_description": "이 작업은 되돌릴 수 없습니다.",
-    "recent_projects": "최근 프로젝트",
-    "create_new_project": "새 프로젝트 만들기",
-    "no_more_data": "더 이상 프로젝트가 없습니다",
-    "create_project_title": "새 프로젝트 만들기",
-    "create_project_placeholder": "새 프로젝트의 이름을 입력하세요",
+    "recent_projects": "최근 Projects",
+    "create_new_project": "새 Project 만들기",
+    "no_more_data": "더 이상 Projects가 없습니다",
+    "create_project_title": "새 Project 만들기",
+    "create_project_placeholder": "새 Project의 이름을 입력하세요",
     "use_case": "사용 사례",
     "use_case_description": "사용 사례 설명",
     "home_tooltip": "홈으로 이동",
     "create_user_case_title": "사용 사례 만들기",
-    "create_user_case_description": "이 사용 사례를 기반으로 새 프로젝트가 생성됩니다.",
-    "create_user_case_placeholder": "새 프로젝트 이름을 입력하세요",
+    "create_user_case_description": "이 사용 사례를 기반으로 새 Project가 생성됩니다.",
+    "create_user_case_placeholder": "새 Project 이름을 입력하세요",
     "not_logged_in": {
       "title": "로그인하지 않음",
       "description": "로그인하여 모든 제품 기능을 사용해 보세요",
@@ -573,7 +573,7 @@
       "exportFailed": "내보내기 실패!",
       "importSuccessful": "가져오기 성공",
       "importFailed": "가져오기 실패!",
-      "renameFailed": "프로젝트 이름을 변경하지 못했습니다",
+      "renameFailed": "Project 이름을 변경하지 못했습니다",
       "importing": "가져오는 중...",
       "exporting": "내보내는 중...",
       "english": "English",
@@ -587,19 +587,19 @@
     },
     "space": {
       "timeout": {
-        "create": "스페이스 생성 시간이 초과되었습니다",
+        "create": "Space 생성 시간이 초과되었습니다",
         "retry": "페이지를 새로고침한 후 다시 시도하세요",
-        "delete": "스페이스 삭제 시간이 초과되었습니다"
+        "delete": "Space 삭제 시간이 초과되었습니다"
       },
       "error": {
-        "create": "스페이스 생성에 실패했습니다",
-        "notSynced": "프로젝트를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
+        "create": "Space 생성에 실패했습니다",
+        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
       },
       "loading": {
-        "create": "스페이스를 생성하는 중…",
-        "delete": "스페이스를 삭제하는 중…"
+        "create": "Space를 생성하는 중…",
+        "delete": "Space를 삭제하는 중…"
       },
-      "noActive": "열려 있는 스페이스가 없습니다 — 드로어에서 열거나 + 를 클릭하여 새로 만드세요."
+      "noActive": "열려 있는 Spaces가 없습니다 — 드로어에서 열거나 + 를 클릭하여 새로 만드세요."
     }
   },
   "common": {
@@ -860,10 +860,10 @@
     "zoomIn": "확대"
   },
   "message": {
-    "projectSaved": "프로젝트를 저장했습니다",
-    "saveProjectFailed": "프로젝트 저장에 실패했습니다",
-    "projectLoaded": "프로젝트를 불러왔습니다",
-    "loadProjectFailed": "프로젝트 불러오기에 실패했습니다",
+    "projectSaved": "Project를 저장했습니다",
+    "saveProjectFailed": "Project 저장에 실패했습니다",
+    "projectLoaded": "Project를 불러왔습니다",
+    "loadProjectFailed": "Project 불러오기에 실패했습니다",
     "mockDataLoaded": "목 데이터를 불러왔습니다",
     "loadMockDataFailed": "목 데이터 불러오기에 실패했습니다",
     "noContentToExport": "내보낼 콘텐츠가 없습니다",
@@ -976,7 +976,7 @@
   },
   "members": {
     "popover": {
-      "title": "프로젝트 멤버",
+      "title": "Project 멤버",
       "invite": "새 멤버 초대",
       "manage": "공동 작업자 관리",
       "remove": "제거",
@@ -987,12 +987,12 @@
     },
     "panel": {
       "title": "멤버 관리",
-      "subtitle": "프로젝트 멤버와 역할을 관리합니다",
+      "subtitle": "Project 멤버와 역할을 관리합니다",
       "invite_section": "공동 작업자 초대",
       "invite_placeholder": "이메일 또는 사용자 ID",
       "invite_button": "초대",
       "list_count": "멤버 ({count})",
-      "list_note": "소유자는 프로젝트 생성자에게 영구적으로 고정됩니다",
+      "list_note": "소유자는 Project 생성자에게 영구적으로 고정됩니다",
       "confirm_remove": "이 공동 작업자를 제거하시겠습니까?",
       "done": "완료"
     },
@@ -1003,7 +1003,7 @@
     },
     "modal": {
       "title": "공동 작업자",
-      "description": "프로젝트 멤버와 역할을 관리합니다",
+      "description": "Project 멤버와 역할을 관리합니다",
       "inviteSection": "새 공동 작업자 초대",
       "invitePlaceholder": "이메일 주소",
       "inviteButton": "초대",
@@ -1012,7 +1012,7 @@
       "inviteFailed": "초대를 보내지 못했습니다. 다시 시도해 주세요.",
       "invalidEmail": "올바른 이메일 주소를 입력해 주세요.",
       "membersSection": "멤버 ({count})",
-      "ownerNote": "소유자는 프로젝트 생성자에게 영구적으로 고정됩니다",
+      "ownerNote": "소유자는 Project 생성자에게 영구적으로 고정됩니다",
       "roleSelectAria": "{name}의 역할 변경",
       "roleChanged": "역할을 업데이트했습니다.",
       "roleChangeFailed": "역할을 업데이트하지 못했습니다. 다시 시도해 주세요.",
@@ -1020,6 +1020,10 @@
       "removeFailed": "멤버를 제거하지 못했습니다. 다시 시도해 주세요.",
       "isMe": "(나)",
       "remove": "제거"
+    },
+    "stack": {
+      "triggerAria": "Project 멤버({count})",
+      "removeAria": "{name} 제거"
     }
   },
   "credits": {
@@ -1039,28 +1043,29 @@
   },
   "spaces": {
     "tab": {
-      "new": "새 캔버스",
-      "drawer": "모든 캔버스",
+      "new": "새 Canvas",
+      "drawer": "모든 Canvases",
       "close": "탭 닫기",
       "rename": "이름 변경",
       "duplicate": "복제",
       "delete": "삭제",
       "lock": "잠금",
-      "unlock": "잠금 해제"
+      "unlock": "잠금 해제",
+      "closeAria": "Space 탭 닫기"
     },
     "drawer": {
-      "title": "모든 스페이스",
+      "title": "모든 Spaces",
       "count": "개",
       "tag_open": "열림",
       "tag_active": "활성",
       "nodes_count": "노드 {count}개",
-      "confirm_delete": "이 스페이스를 삭제하시겠습니까?",
-      "new_canvas": "새 캔버스",
-      "new_document": "새 문서",
-      "new_timeline": "새 타임라인",
-      "label": "모든 스페이스",
-      "description": "{count, plural, one {# 스페이스 · 클릭하여 열거나 우측 메뉴 사용} other {# 스페이스 · 클릭하여 열거나 우측 메뉴 사용}}",
-      "empty": "아직 스페이스가 없습니다",
+      "confirm_delete": "이 Space를 삭제하시겠습니까?",
+      "new_canvas": "새 Canvas",
+      "new_document": "새 Document",
+      "new_timeline": "새 Timeline",
+      "label": "모든 Spaces",
+      "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
+      "empty": "아직 Spaces가 없습니다",
       "openAria": "{name} 열기",
       "status": {
         "editing": "편집 중",
@@ -1071,9 +1076,9 @@
         "lock": "잠금",
         "unlock": "잠금 해제",
         "delete": "삭제",
-        "deleteLocked": "잠긴 스페이스는 삭제할 수 없습니다",
-        "deleteConfirmTitle": "스페이스 \"{name}\"을(를) 삭제하시겠습니까?",
-        "deleteConfirmDescription": "이 스페이스와 콘텐츠는 소프트 삭제됩니다. 소유자는 프로젝트 메시지 채널에서 복원할 수 있습니다.",
+        "deleteLocked": "잠긴 Spaces는 삭제할 수 없습니다",
+        "deleteConfirmTitle": "Space \"{name}\"을(를) 삭제하시겠습니까?",
+        "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. 소유자는 Project 메시지 채널에서 복원할 수 있습니다.",
         "lockFail": "잠금에 실패했습니다",
         "unlockFail": "잠금 해제에 실패했습니다",
         "operationFail": "작업에 실패했습니다",
@@ -1081,17 +1086,17 @@
       }
     },
     "new_dialog": {
-      "title": "새 스페이스",
+      "title": "새 Space",
       "subtitle": "종류를 선택하고 이름을 입력하세요.",
       "name_label": "이름",
       "name_placeholder": "예: Scene v3",
       "create": "만들기",
       "cancel": "취소",
-      "placeholder_kind_unsupported": "{kind} 스페이스는 아직 V1에서 지원되지 않습니다."
+      "placeholder_kind_unsupported": "{kind} Spaces는 아직 V1에서 지원되지 않습니다."
     },
     "placeholder": {
       "title": "곧 출시",
-      "description": "{kind} 스페이스 유형은 향후 릴리스에서 제공될 예정입니다."
+      "description": "{kind} Space 유형은 향후 릴리스에서 제공될 예정입니다."
     },
     "kind": {
       "canvas": "Canvas",
@@ -1102,28 +1107,28 @@
       "timelineSub": "비디오 / 오디오 편집"
     },
     "history": {
-      "label": "프로젝트 메시지",
-      "title": "프로젝트 메시지 — 누락된 노드 + 스페이스 수명 주기",
-      "header": "프로젝트 메시지",
+      "label": "Project 메시지",
+      "title": "Project 메시지 — 누락된 노드 + Space 수명 주기",
+      "header": "Project 메시지",
       "description": "{count, plural, one {메시지 #개} other {메시지 #개}}",
-      "empty": "아직 메시지가 없습니다. 누락된 노드 배너와 스페이스 생성 / 삭제 / 잠금 이벤트가 여기에 표시됩니다.",
+      "empty": "아직 메시지가 없습니다. 누락된 노드 배너와 Space 생성 / 삭제 / 잠금 이벤트가 여기에 표시됩니다.",
       "markRead": "읽음",
       "markUnread": "읽지 않음으로 표시",
       "kind": {
         "missingNode": "참조된 노드가 누락되었습니다",
-        "spaceCreated": "{actor}님이 스페이스 {spaceName}을(를) 만들었습니다",
-        "spaceDeleted": "{actor}님이 스페이스 {spaceName}을(를) 삭제했습니다",
-        "spaceLocked": "{actor}님이 스페이스 {spaceName}을(를) 잠갔습니다",
-        "spaceUnlocked": "{actor}님이 스페이스 {spaceName}의 잠금을 해제했습니다",
-        "spaceRestored": "{actor}님이 스페이스 {spaceName}을(를) 복원했습니다",
-        "spaceRenamed": "{actor}님이 스페이스 {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다"
+        "spaceCreated": "{actor}님이 Space {spaceName}을(를) 만들었습니다",
+        "spaceDeleted": "{actor}님이 Space {spaceName}을(를) 삭제했습니다",
+        "spaceLocked": "{actor}님이 Space {spaceName}을(를) 잠갔습니다",
+        "spaceUnlocked": "{actor}님이 Space {spaceName}의 잠금을 해제했습니다",
+        "spaceRestored": "{actor}님이 Space {spaceName}을(를) 복원했습니다",
+        "spaceRenamed": "{actor}님이 Space {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다"
       },
       "action": {
         "restore": "복원",
         "restored": "복원됨",
         "clearAll": "모두 지우기",
         "clearAllConfirmTitle": "모든 메시지를 지우시겠습니까?",
-        "clearAllConfirmDescription": "이 작업은 되돌릴 수 없습니다. 프로젝트 메시지 채널의 모든 항목이 영구적으로 삭제됩니다."
+        "clearAllConfirmDescription": "이 작업은 되돌릴 수 없습니다. Project 메시지 채널의 모든 항목이 영구적으로 삭제됩니다."
       },
       "relative": {
         "justNow": "방금 전",
@@ -1136,10 +1141,10 @@
       }
     },
     "create": {
-      "title": "새 스페이스",
-      "description": "스페이스 유형을 선택하고 이름을 입력하세요",
+      "title": "새 Space",
+      "description": "Space 유형을 선택하고 이름을 입력하세요",
       "typeLabel": "유형",
-      "typeAria": "스페이스 유형",
+      "typeAria": "Space 유형",
       "notAvailable": "사용 불가",
       "nameLabel": "이름",
       "namePlaceholder": "예: Cyberpunk Concept",
@@ -1149,29 +1154,30 @@
       "submitting": "만드는 중…"
     },
     "rename": {
-      "inputAriaLabel": "스페이스 이름 변경",
-      "locked": "잠김 — 이름을 변경하려면 먼저 스페이스의 잠금을 해제하세요.",
+      "inputAriaLabel": "Space 이름 변경",
+      "locked": "잠김 — 이름을 변경하려면 먼저 Space의 잠금을 해제하세요.",
       "error": {
-        "failed": "스페이스 이름을 변경할 수 없습니다. 다시 시도해 주세요."
+        "failed": "Space 이름을 변경할 수 없습니다. 다시 시도해 주세요."
       }
     },
     "readonly": {
       "label": "읽기 전용",
-      "description": "이 스페이스는 탭 바에서 열려 있지 않습니다. 읽기 전용 미리보기에서는 화면 이동/확대·축소와 콘텐츠 복사가 가능하지만 편집은 할 수 없습니다.",
+      "description": "이 Space는 탭 바에서 열려 있지 않습니다. 읽기 전용 미리보기에서는 화면 이동/확대·축소와 콘텐츠 복사가 가능하지만 편집은 할 수 없습니다.",
       "close": "읽기 전용 미리보기 닫기",
       "canvas": {
-        "title": "읽기 전용 캔버스",
+        "title": "읽기 전용 Canvas",
         "description": "실제 ReactFlow 뷰어는 canvas-space 완성 시 연결됩니다. 여기서는 노드와 엣지의 읽기 전용 스냅샷을 확대·축소 및 복사와 함께 표시합니다."
       },
       "document": {
-        "title": "읽기 전용 문서",
+        "title": "읽기 전용 Document",
         "description": "TipTap 읽기 전용 뷰어는 document-space 출시 시 연결됩니다. 여기서는 리치 텍스트 스냅샷을 단락 복사와 함께 표시합니다."
       },
       "timeline": {
-        "title": "읽기 전용 타임라인",
-        "description": "타임라인 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
+        "title": "읽기 전용 Timeline",
+        "description": "Timeline 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
       }
-    }
+    },
+    "lockedAria": "잠김"
   },
   "image": {
     "flipVertical": "상하 반전",
@@ -1212,7 +1218,7 @@
       "nodes": "노드 라이브러리 — 4가지 생성 노드 유형",
       "upload": "에셋 업로드 (혼합 파일)",
       "comment": "캔버스에 주석 달기",
-      "collection": "컬렉션 — 프로젝트 간 공유 (출시 예정)",
+      "collection": "Collection — Projects 간 공유 (출시 예정)",
       "help": "도움말 (출시 예정)",
       "feedback": "피드백 / 지원 (출시 예정)"
     },
@@ -1292,7 +1298,7 @@
     },
     "linksList": {
       "title": "생성된 초대 링크",
-      "description": "이 프로젝트의 모든 활성 초대 링크입니다. 링크를 취소하면 즉시 무효화됩니다.",
+      "description": "이 Project의 모든 활성 초대 링크입니다. 링크를 취소하면 즉시 무효화됩니다.",
       "empty": "아직 초대 링크를 생성하지 않았습니다.",
       "emailBadge": "이메일 초대",
       "copyAria": "URL 복사",
@@ -1306,7 +1312,9 @@
       "minutes": "{n}분 전",
       "hours": "{n}시간 전",
       "days": "{n}일 전"
-    }
+    },
+    "copyLinkAria": "링크 복사",
+    "copiedAria": "복사됨"
   },
   "notifications": {
     "title": "액세스 요청",
@@ -1319,7 +1327,7 @@
     "approve": "승인",
     "request": {
       "audio": "보이스오버와 BGM 작업에 참여하고 싶어 합니다",
-      "project": "자신의 프로젝트에 프롬프트 스타일을 참고하고 싶어 합니다"
+      "project": "자신의 Project에 프롬프트 스타일을 참고하고 싶어 합니다"
     },
     "loading": "불러오는 중…",
     "markRead": "읽음으로 표시",
@@ -1338,14 +1346,14 @@
       "studioInviteAccepted": "{invitee}님이 {studio} 초대를 수락했습니다"
     },
     "actionFailed": "작업을 완료할 수 없습니다. 다시 시도해 주세요.",
-    "transferConfirmedToast": "이제 스튜디오 관리자입니다.",
+    "transferConfirmedToast": "이제 Studio 관리자입니다.",
     "transferCancelledToast": "이전을 거절했습니다.",
     "transferAccept": "수락",
     "transferDecline": "거절",
     "subtitle": {
       "invitedAsCreator": "크리에이터로 참여",
       "invitedAsMember": "멤버로 참여",
-      "transferHint": "수락하면 스튜디오 관리자가 됩니다"
+      "transferHint": "수락하면 Studio 관리자가 됩니다"
     },
     "expiresLabel": {
       "expired": "만료됨",
@@ -1355,7 +1363,7 @@
     },
     "inviteAccept": "수락",
     "inviteDecline": "거절",
-    "inviteConfirmedToast": "스튜디오에 참여했습니다.",
+    "inviteConfirmedToast": "Studio에 참여했습니다.",
     "inviteDeclinedToast": "초대를 거절했습니다."
   },
   "connection": {
@@ -1379,20 +1387,20 @@
   },
   "studio": {
     "recent": {
-      "projectsTitle": "최근 프로젝트",
-      "collectionsTitle": "최근 컬렉션",
-      "emptyProjects": "아직 최근 프로젝트가 없습니다.",
-      "emptyCollections": "아직 최근 컬렉션이 없습니다.",
+      "projectsTitle": "최근 Projects",
+      "collectionsTitle": "최근 Collections",
+      "emptyProjects": "아직 최근 Projects가 없습니다.",
+      "emptyCollections": "아직 최근 Collections이 없습니다.",
       "role": {
         "owner": "Owner",
         "editor": "Editor",
         "viewer": "Viewer"
       },
       "title": "최근",
-      "subtitle": "최근 편집하거나 참여한 프로젝트와 에셋 모음 —— 모든 Studio에 걸쳐 최신순으로 표시됩니다.",
+      "subtitle": "최근 편집하거나 참여한 Projects와 에셋 모음 —— 모든 Studio에 걸쳐 최신순으로 표시됩니다.",
       "emptyTitle": "아직 최근 항목이 없습니다",
-      "emptyHint": "아직 프로젝트를 만들거나 참여하지 않았습니다. 첫 프로젝트를 만들거나 Studio를 열어 시작하세요 —— 편집한 내용이 여기에 표시됩니다.",
-      "loadError": "최근 프로젝트를 불러오지 못했습니다. 페이지를 새로고침해 주세요.",
+      "emptyHint": "아직 Project를 만들거나 참여하지 않았습니다. 첫 Project를 만들거나 Studio를 열어 시작하세요 —— 편집한 내용이 여기에 표시됩니다.",
+      "loadError": "최근 Projects를 불러오지 못했습니다. 페이지를 새로고침해 주세요.",
       "openedAt": "{time}에 열람"
     },
     "topBar": {
@@ -1404,7 +1412,7 @@
       "signOut": "로그아웃"
     },
     "createProject": {
-      "failed": "프로젝트 생성에 실패했습니다: {reason}"
+      "failed": "Project 생성에 실패했습니다: {reason}"
     },
     "container": {
       "shell": {
@@ -1413,19 +1421,19 @@
       },
       "tabs": {
         "projects": "Projects",
-        "collections": "컬렉션",
-        "works": "작품",
+        "collections": "Collections",
+        "works": "Works",
         "members": "멤버",
         "credits": "크레딧",
         "settings": "설정"
       },
       "works": {
-        "emptyHint": "작품은 프로젝트에서 발행한 독립 완성물(완성된 동영상 / 미니게임…)로, Studio의 대외적인 얼굴입니다. 발행 기능이 출시되면 발행한 작품이 여기에 표시됩니다.",
-        "emptyTitle": "아직 작품이 없습니다"
+        "emptyHint": "Work은 Project에서 발행한 독립 완성물(완성된 동영상 / 미니게임…)로, Studio의 대외적인 얼굴입니다. 발행 기능이 출시되면 발행한 Work이 여기에 표시됩니다.",
+        "emptyTitle": "아직 Works이 없습니다"
       },
       "nonMember": {
-        "worksTitle": "작품",
-        "empty": "이 Studio에 게시된 작품이 없습니다."
+        "worksTitle": "Works",
+        "empty": "이 Studio에 게시된 Works이 없습니다."
       },
       "header": {
         "personalTag": "개인",
@@ -1436,9 +1444,9 @@
         "recent": "최근",
         "myStudios": "내 Studio",
         "collaboration": "협업",
-        "guestProjects": "참여 중인 프로젝트 {count}개",
+        "guestProjects": "참여 중인 Projects {count}개",
         "newStudio": "새 Studio",
-        "guideRecent": "최근 = Studio 전체의 최근 프로젝트.",
+        "guideRecent": "최근 = Studio 전체의 최근 Project.",
         "guideEnter": "Studio를 선택해 컨테이너를 엽니다.",
         "guideTools": "도구는 오른쪽 위에 있습니다."
       },
@@ -1464,16 +1472,16 @@
         "createdAt": "{time}에 생성"
       },
       "projects": {
-        "new": "새 프로젝트",
-        "createError": "프로젝트를 만들지 못했습니다",
-        "emptyTitle": "아직 프로젝트가 없습니다",
-        "emptyHint": "프로젝트는 무한 캔버스에서 창작하는 공간입니다. 첫 프로젝트를 만들어 시작하세요."
+        "new": "새 Project",
+        "createError": "Project를 만들지 못했습니다",
+        "emptyTitle": "아직 Projects가 없습니다",
+        "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
-        "title": "컬렉션",
-        "new": "새 컬렉션",
+        "title": "Collections",
+        "new": "새 Collection",
         "emptyTitle": "아직 에셋 모음이 없습니다",
-        "emptyHint": "에셋 모음은 프로젝트 간에 재사용하는 소재 모음(이미지 / 동영상 / 오디오)입니다. 백엔드 기능이 출시되면 만든 에셋 모음이 여기에 표시됩니다."
+        "emptyHint": "에셋 모음은 Projects 간에 재사용하는 소재 모음(이미지 / 동영상 / 오디오)입니다. 백엔드 기능이 출시되면 만든 에셋 모음이 여기에 표시됩니다."
       },
       "credits": {
         "balance": "지갑 잔액",
@@ -1510,7 +1518,7 @@
         "roleAdmin": "Admin",
         "roleMember": "Member",
         "remove": "삭제",
-        "cannotInvitePersonal": "개인 studio는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
+        "cannotInvitePersonal": "개인 Studios는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
         "roleCreator": "Creator",
         "rowMenu": "멤버 작업",
         "promoteToCreator": "크리에이터로 지정",
@@ -1524,7 +1532,7 @@
         "inviteFailed": "이 멤버를 초대할 수 없습니다. 다시 시도해 주세요.",
         "roleUpdated": "역할이 업데이트되었습니다.",
         "removeConfirmTitle": "멤버를 삭제할까요?",
-        "removeConfirmBody": "{name} 님은 이 스튜디오의 모든 프로젝트에 대한 접근 권한을 잃고, 소유한 프로젝트는 회원님에게 이전됩니다. 이 작업은 되돌릴 수 없습니다.",
+        "removeConfirmBody": "{name} 님은 이 Studio의 모든 Project에 대한 접근 권한을 잃고, 소유한 Project는 회원님에게 이전됩니다. 이 작업은 되돌릴 수 없습니다.",
         "removeConfirmAction": "삭제",
         "removeSuccess": "멤버를 삭제했습니다.",
         "transferConfirmTitle": "관리자를 이전할까요?",
@@ -1548,19 +1556,19 @@
         "dangerTitle": "위험 영역",
         "transfer": "Studio 양도",
         "delete": "Studio 삭제",
-        "dangerHint": "양도하면 모든 프로젝트, 에셋 모음, 지갑이 새 소유자에게 이전됩니다; 삭제는 되돌릴 수 없습니다. 소유자만 가능합니다."
+        "dangerHint": "양도하면 모든 Projects, 에셋 모음, 지갑이 새 소유자에게 이전됩니다; 삭제는 되돌릴 수 없습니다. 소유자만 가능합니다."
       },
       "dialog": {
-        "newProjectTitle": "새 프로젝트",
-        "newCollectionTitle": "새 컬렉션",
+        "newProjectTitle": "새 Project",
+        "newCollectionTitle": "새 Collection",
         "newStudioTitle": "새 Studio",
         "studioLabel": "Studio",
         "nameLabel": "이름",
-        "namePlaceholder": "내 프로젝트",
+        "namePlaceholder": "내 Project",
         "slugLabel": "핸들",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "프로젝트 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
-        "slugHelperCollection": "컬렉션 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
+        "slugHelperProject": "Project 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
+        "slugHelperCollection": "Collection 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
         "descriptionLabel": "설명(선택)",
         "typeLabel": "유형",
         "typePersonal": "개인",
@@ -1573,7 +1581,7 @@
         "slugReserved": "이미 사용 중인 핸들입니다.",
         "slugChecking": "사용 가능 여부를 확인하는 중…",
         "slugAvailable": "사용 가능한 핸들입니다",
-        "createStudioError": "studio를 만들지 못했습니다",
+        "createStudioError": "Studio를 만들지 못했습니다",
         "visibilityLabel": "공개 범위",
         "visibilityStudioOption": "Studio 내 공개 — 모든 멤버",
         "visibilityPrivateOption": "비공개 — 초대만"
@@ -1588,8 +1596,8 @@
     },
     "rail": {
       "navLabel": "Studio 탐색",
-      "createProject": "새 프로젝트",
-      "createCollection": "새 컬렉션",
+      "createProject": "새 Project",
+      "createCollection": "새 Collection",
       "createStudio": "새 Studio",
       "comingSoon": "곧 출시",
       "recent": "최근",
@@ -1607,16 +1615,16 @@
       "confirm": "수락하고 참여",
       "decline": "거절",
       "invalidTitle": "더 이상 유효하지 않은 초대입니다",
-      "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. 스튜디오 관리자에게 새 초대를 요청하세요.",
+      "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Studio 관리자에게 새 초대를 요청하세요.",
       "expiredTitle": "초대가 만료되었습니다",
-      "expiredBody": "{studio} 초대가 7일 유효 기간을 지났습니다. 스튜디오 관리자에게 재발송을 요청하세요.",
+      "expiredBody": "{studio} 초대가 7일 유효 기간을 지났습니다. Studio 관리자에게 재발송을 요청하세요.",
       "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
       "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
       "declinedTitle": "초대를 거절했습니다",
       "declinedBody": "{studio} 초대를 거절했습니다. 나중에 관리자에게 다시 초대를 요청할 수 있습니다.",
-      "joinedToast": "스튜디오에 참여했습니다.",
+      "joinedToast": "Studio에 참여했습니다.",
       "actionFailed": "완료하지 못했습니다. 다시 시도해 주세요.",
-      "backToStudio": "스튜디오로 돌아가기",
+      "backToStudio": "Studio로 돌아가기",
       "signIn": "로그인"
     }
   },
@@ -1625,30 +1633,48 @@
       "export": "내보내기",
       "share": "공유",
       "notifications": "알림",
-      "newSpace": "새 스페이스",
-      "allSpaces": "모든 스페이스",
-      "projectMessages": "프로젝트 메시지",
+      "newSpace": "새 Space",
+      "allSpaces": "모든 Spaces",
+      "projectMessages": "Project 메시지",
       "agentHide": "에이전트 패널 숨기기",
       "agentShow": "에이전트 패널 표시",
       "openHistory": "대화 기록",
       "newConversation": "새 대화"
+    },
+    "aria": {
+      "backToStudio": "Studio로 돌아가기",
+      "creditsBalance": "크레딧 잔액",
+      "addCredits": "크레딧 추가",
+      "home": "홈",
+      "conversationCount": "대화 {count}개",
+      "scrollTabsLeft": "탭 왼쪽으로 스크롤",
+      "scrollTabsRight": "탭 오른쪽으로 스크롤",
+      "spacesToolbar": "Spaces",
+      "openSpaces": "열려 있는 Space",
+      "language": "언어: {name}",
+      "theme": "테마: {theme}"
+    },
+    "export": {
+      "png": "PNG(현재 보기)",
+      "pdf": "PDF(전체 캔버스)",
+      "json": "JSON(원본 데이터)"
     }
   },
   "invite": {
     "consume": {
-      "loadingTitle": "프로젝트에 참여하는 중…",
+      "loadingTitle": "Project에 참여하는 중…",
       "loadingBody": "초대 링크를 확인하고 있습니다. 잠시만 기다려 주세요.",
       "errorTitle": "이 초대를 수락할 수 없습니다",
-      "errorBody": "링크를 다시 열거나, 프로젝트 소유자에게 새 링크를 요청해 주세요.",
+      "errorBody": "링크를 다시 열거나, Project 소유자에게 새 링크를 요청해 주세요.",
       "invalidToken": "이 초대 링크의 형식이 올바르지 않습니다.",
-      "expiredOrInvalid": "이 초대 링크는 더 이상 유효하지 않습니다. 프로젝트 소유자에게 새 링크를 요청해 주세요.",
+      "expiredOrInvalid": "이 초대 링크는 더 이상 유효하지 않습니다. Project 소유자에게 새 링크를 요청해 주세요.",
       "failed": "초대를 수락하는 중 문제가 발생했습니다.",
-      "backToStudio": "스튜디오로 돌아가기"
+      "backToStudio": "Studio로 돌아가기"
     }
   },
   "noAccess": {
-    "title": "이 프로젝트에 대한 접근 권한이 없습니다",
-    "description": "프로젝트 소유자에게 연락하여 접근을 요청해 주세요. 새 초대 링크를 공유해 줄 수 있습니다.",
-    "backToStudio": "스튜디오로 돌아가기"
+    "title": "이 Project에 대한 접근 권한이 없습니다",
+    "description": "Project 소유자에게 연락하여 접근을 요청해 주세요. 새 초대 링크를 공유해 줄 수 있습니다.",
+    "backToStudio": "Studio로 돌아가기"
   }
 }

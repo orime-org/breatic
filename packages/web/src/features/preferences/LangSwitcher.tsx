@@ -17,6 +17,7 @@ import {
   useLocaleSwitch,
 } from '@web/features/preferences/supported-langs';
 import { TopBarTextIconButton } from '@web/features/preferences/TopBarTextIconButton';
+import { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * Language switcher · TopBar group A (mock § TopBar v4.0).
@@ -29,6 +30,7 @@ import { TopBarTextIconButton } from '@web/features/preferences/TopBarTextIconBu
  * @returns the top-bar language trigger and its locale-selection popover.
  */
 export function LangSwitcher(): React.JSX.Element {
+  const t = useTranslation();
   const { locale, setLocale, langs } = useLocaleSwitch();
   const current = langFor(locale);
   const [open, setOpen] = React.useState(false);
@@ -46,7 +48,7 @@ export function LangSwitcher(): React.JSX.Element {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Language: ${current.nativeName}`}
+          aria-label={t('chrome.aria.language', { name: current.nativeName })}
           data-testid='lang-trigger'
           icon={<Globe className='h-[18px] w-[18px]' />}
           withChevron

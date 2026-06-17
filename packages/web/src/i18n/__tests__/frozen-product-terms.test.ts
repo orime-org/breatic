@@ -54,6 +54,8 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['share.role.view', 'Viewer'],
   // Entity + space-type nouns — Title Case English.
   ['studio.container.tabs.projects', 'Projects'],
+  ['studio.container.tabs.collections', 'Collections'],
+  ['studio.container.collections.title', 'Collections'],
   ['studio.container.dialog.studioLabel', 'Studio'],
   ['spaces.kind.canvas', 'Canvas'],
   ['spaces.kind.document', 'Document'],
@@ -115,6 +117,85 @@ describe('frozen product terms (#1336)', () => {
       for (const key of REMOVED_DEAD_KEYS) {
         it(`${locale}: ${key} absent`, () => {
           expect(readPath(catalog, key)).toBeUndefined();
+        });
+      }
+    }
+  });
+
+  /**
+   * Collision-noun keys (#1340): Canvas / Document / Timeline / Space have a
+   * translated form that collides with a genuine common word that legitimately
+   * stays localized (画布 = drawing surface, 文件/文档 = a file, 時間軸/タイムライン
+   * = the video-editor track, スペース/스페이스 = a Workspace substring), so they
+   * cannot go in the blanket lint:no-translated-product-noun denylist. They are
+   * frozen per-key here instead: each space-type / entity key must CONTAIN the
+   * English term inside its (still-translated) sentence and NOT contain any of
+   * the localized noun forms. The blanket forms (Project / Collection / Work /
+   * Studio / Space's 工作面·作業面) are owned by the lint guard.
+   */
+  const CANVAS_FORMS = ['画布', '畫布', 'キャンバス', '캔버스'];
+  const DOCUMENT_FORMS = ['文档', '文檔', '文件', 'ドキュメント', '문서'];
+  const TIMELINE_FORMS = ['时间线', '時間線', '時間軸', '时间轴', 'タイムライン', '타임라인'];
+  const SPACE_FORMS = ['工作面', '作業面', 'スペース', '스페이스', '작업면'];
+
+  /** Each collision key paired with its English term + the localized forms that must be absent. */
+  const COLLISION_FROZEN: ReadonlyArray<
+    readonly [key: string, term: string, forbidden: readonly string[]]
+  > = [
+    ['spaces.drawer.new_canvas', 'Canvas', CANVAS_FORMS],
+    ['spaces.readonly.canvas.title', 'Canvas', CANVAS_FORMS],
+    ['spaces.tab.new', 'Canvas', CANVAS_FORMS],
+    ['spaces.tab.drawer', 'Canvas', CANVAS_FORMS],
+    ['spaces.drawer.new_document', 'Document', DOCUMENT_FORMS],
+    ['spaces.readonly.document.title', 'Document', DOCUMENT_FORMS],
+    ['spaces.drawer.new_timeline', 'Timeline', TIMELINE_FORMS],
+    ['spaces.readonly.timeline.title', 'Timeline', TIMELINE_FORMS],
+    ['spaces.readonly.timeline.description', 'Timeline', TIMELINE_FORMS],
+    ['chrome.tooltip.newSpace', 'Space', SPACE_FORMS],
+    ['chrome.tooltip.allSpaces', 'Space', SPACE_FORMS],
+    ['project.space.noActive', 'Space', SPACE_FORMS],
+    ['spaces.create.title', 'Space', SPACE_FORMS],
+  ];
+
+  // The freeze applies to the four non-English locales; en is the source and
+  // keeps its own casual lowercase common words ("New canvas", "personal
+  // studio"), so the collision + lowercase-studio assertions skip it.
+  const NON_EN_CATALOGS = LOCALE_CATALOGS.filter(([locale]) => locale !== 'en');
+
+  describe('collision-noun keys frozen per-key in every non-English locale', () => {
+    for (const [locale] of NON_EN_CATALOGS) {
+      for (const [key, term, forbidden] of COLLISION_FROZEN) {
+        it(`${locale}: ${key} keeps "${term}" English`, () => {
+          setLocale(locale);
+          const value = t(key);
+          expect(value).toContain(term);
+          for (const form of forbidden) expect(value).not.toContain(form);
+        });
+      }
+    }
+  });
+
+  /**
+   * Lowercase-English "studio" that names the Studio entity (not the ICU
+   * {studio} placeholder, not a /studio/ URL) is capitalized to the frozen
+   * brand term. These four server / dialog strings carried a bare lowercase
+   * "studio"; after the freeze they must read "Studio".
+   */
+  const LOWERCASE_STUDIO_KEYS: readonly string[] = [
+    'server.studio.team_limit_reached',
+    'server.studio.cannot_modify_personal',
+    'studio.container.members.cannotInvitePersonal',
+    'studio.container.dialog.createStudioError',
+  ];
+
+  describe('lowercase studio entity capitalized to Studio in every non-English locale', () => {
+    for (const [locale] of NON_EN_CATALOGS) {
+      for (const key of LOWERCASE_STUDIO_KEYS) {
+        it(`${locale}: ${key} reads "Studio" not lowercase "studio"`, () => {
+          setLocale(locale);
+          const value = t(key);
+          expect(value).toContain('Studio');
+          expect(value).not.toMatch(/\bstudio\b/);
         });
       }
     }

@@ -323,7 +323,7 @@ function SpaceDrawerRow({
                 <Lock
                   className='shrink-0 text-muted-foreground'
                   style={{ width: 12, height: 12 }}
-                  aria-label='Locked'
+                  aria-label={t('spaces.lockedAria')}
                 />
               ) : null}
             </span>

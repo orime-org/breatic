@@ -64,7 +64,7 @@ describe('AgentColHeader', () => {
   it('clicking history opens it', async () => {
     const user = userEvent.setup();
     const { onOpenHistory } = setup();
-    await user.click(screen.getByLabelText('Open conversation history'));
+    await user.click(screen.getByLabelText('Conversation history'));
     expect(onOpenHistory).toHaveBeenCalledTimes(1);
   });
 

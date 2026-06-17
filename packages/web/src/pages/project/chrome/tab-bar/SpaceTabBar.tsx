@@ -291,7 +291,7 @@ export function SpaceTabBar({
     <Button
       variant='chrome-ghost'
       size='chrome'
-      aria-label={direction === 'left' ? 'Scroll tabs left' : 'Scroll tabs right'}
+      aria-label={direction === 'left' ? t('chrome.aria.scrollTabsLeft') : t('chrome.aria.scrollTabsRight')}
       onClick={onClick}
       disabled={disabled}
       data-testid={direction === 'left' ? 'tabs-scroll-left' : 'tabs-scroll-right'}
@@ -324,7 +324,7 @@ export function SpaceTabBar({
     <div
       data-testid='space-tab-bar'
       role='toolbar'
-      aria-label='Spaces'
+      aria-label={t('chrome.aria.spacesToolbar')}
       className='flex shrink-0 items-center border-b border-border bg-background'
       style={{
         height: 40,
@@ -346,7 +346,7 @@ export function SpaceTabBar({
             <Button
               variant='chrome-ghost'
               size='chrome'
-              aria-label={agentOpen ? 'Hide agent column' : 'Show agent column'}
+              aria-label={agentOpen ? t('chrome.tooltip.agentHide') : t('chrome.tooltip.agentShow')}
               aria-pressed={agentOpen}
               onClick={toggleAgent}
               data-testid='agent-toggle'
@@ -383,7 +383,7 @@ export function SpaceTabBar({
           padding: '0 var(--space-2)',
         }}
         role='tablist'
-        aria-label='Open spaces'
+        aria-label={t('chrome.aria.openSpaces')}
       >
         {spaces.map((s) => (
           <SpaceTab
@@ -426,7 +426,7 @@ export function SpaceTabBar({
             <Button
               variant='chrome-ghost'
               size='chrome'
-              aria-label='New space'
+              aria-label={t('chrome.tooltip.newSpace')}
               data-testid='new-space-button'
               style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
             >

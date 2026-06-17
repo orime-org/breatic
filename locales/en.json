@@ -1020,6 +1020,10 @@
       "removeFailed": "Could not remove the member. Please try again.",
       "isMe": "(you)",
       "remove": "Remove"
+    },
+    "stack": {
+      "triggerAria": "Project members ({count})",
+      "removeAria": "Remove {name}"
     }
   },
   "credits": {
@@ -1046,7 +1050,8 @@
       "duplicate": "Duplicate",
       "delete": "Delete",
       "lock": "Lock",
-      "unlock": "Unlock"
+      "unlock": "Unlock",
+      "closeAria": "Close space tab"
     },
     "drawer": {
       "title": "All spaces",
@@ -1171,7 +1176,8 @@
         "title": "Read-only timeline",
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
-    }
+    },
+    "lockedAria": "Locked"
   },
   "image": {
     "flipVertical": "Flip vertical",
@@ -1306,7 +1312,9 @@
       "minutes": "{n}m ago",
       "hours": "{n}h ago",
       "days": "{n}d ago"
-    }
+    },
+    "copyLinkAria": "Copy link",
+    "copiedAria": "Copied"
   },
   "notifications": {
     "title": "Access requests",
@@ -1632,6 +1640,24 @@
       "agentShow": "Show agent panel",
       "openHistory": "Conversation history",
       "newConversation": "New conversation"
+    },
+    "aria": {
+      "backToStudio": "Back to Studio",
+      "creditsBalance": "Credits balance",
+      "addCredits": "Add credits",
+      "home": "Home",
+      "conversationCount": "{count} conversations",
+      "scrollTabsLeft": "Scroll tabs left",
+      "scrollTabsRight": "Scroll tabs right",
+      "spacesToolbar": "Spaces",
+      "openSpaces": "Open spaces",
+      "language": "Language: {name}",
+      "theme": "Theme: {theme}"
+    },
+    "export": {
+      "png": "PNG (current view)",
+      "pdf": "PDF (whole canvas)",
+      "json": "JSON (raw data)"
     }
   },
   "invite": {

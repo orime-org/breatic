@@ -41,6 +41,7 @@
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "lint:no-sync-in-request-path": "bash scripts/lint-no-sync-in-request-path.sh",
     "lint:no-trojan-source": "bash scripts/lint-no-trojan-source.sh",
+    "lint:no-translated-product-noun": "bash scripts/lint-no-translated-product-noun.sh",
     "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "lint:storage-key-prefix": "bash scripts/lint-storage-key-prefix.sh",
