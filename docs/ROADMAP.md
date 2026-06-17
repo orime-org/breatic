@@ -77,6 +77,7 @@
 
 - [x] 节点编辑器文档（Phase 1）：per-node Yjs 文档 `project-{id}/node/{nodeId}` 支持文本/混合编辑器 —— PR #138 + #140。已在 Phase 2 替换为 canvas-native 模型（见下方 Phase 2）
 - [x] **Phase 2: canvas-native 架构前向修复（PR #13 后端 + PR #14 前端）**：单项目 Yjs 文档（`project-{id}`），取消 per-node 编辑器子文档；NodeStateUpdateEvent 统一事件形态（替代 handling/completed/failed 三事件）；节点状态机 idle/handling（Yjs）+ localPending（本地）；后端不再持有 per-node Redis 锁；操作产生新兄弟节点；1:N 支持（targetNodeIds）
+- [x] **画布撤销/重做（PR #243）**：per-space `Y.UndoManager`（每个 space 一个），追踪本客户端的结构 / 元数据 / 名称写入（建/删/移动/锁/改名节点 + 建/删边），后端内容写（`node-state-update` origin）与视口操作不进栈；per-client 隔离、深度 50、刷新清栈；工具栏按钮 + 键盘双平台（Cmd/Ctrl+Z、Cmd+Shift+Z、Ctrl+Y）
 - [ ] 文档权限控制：onAuthenticate 中按 project 成员关系校验，支持 readOnly
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
