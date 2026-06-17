@@ -267,6 +267,9 @@
     "nodeMenu": {
       "lock": "ロック",
       "unlock": "ロック解除"
+    },
+    "edge": {
+      "delete": "接続を削除"
     }
   },
   "editor": {

@@ -37,7 +37,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -62,7 +62,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn() }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn() }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,

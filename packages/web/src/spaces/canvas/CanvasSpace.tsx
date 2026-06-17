@@ -7,11 +7,13 @@ import {
   PanOnScrollMode,
   ReactFlow,
   ReactFlowProvider,
+  applyEdgeChanges,
   applyNodeChanges,
   useReactFlow,
   useStore,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
 } from '@xyflow/react';
@@ -20,7 +22,8 @@ import * as React from 'react';
 
 import {
   addEdge,
-  removeNode,
+  removeEdge,
+  removeElements,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -35,9 +38,13 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
-import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
+import {
+  mergeMirroredEdgeSelection,
+  mergeMirroredSelection,
+} from '@web/spaces/canvas/mirror-selection';
 import {
   parseClipboardNodes,
   serializeNodes,
@@ -119,7 +126,12 @@ function toFlowNode(node: CanvasNodeView): Node {
  * @returns The ReactFlow edge.
  */
 function toFlowEdge(edge: CanvasEdge): Edge {
-  return { id: edge.id, source: edge.source, target: edge.target };
+  return {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: 'scissors',
+  };
 }
 
 /**
@@ -249,10 +261,29 @@ function CanvasSpaceInner({
     setFlowNodes((prev) => mergeMirroredSelection(prev, nodes.map(toFlowNode)));
   }, [nodes]);
 
-  const flowEdges = React.useMemo(() => edges.map(toFlowEdge), [edges]);
+  // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
+  // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
+  // ReactFlow can't track per-user edge selection: the `selected` flag never
+  // reaches the scissors edge (so no scissors appears) and the delete key has
+  // no selected edge to remove. Yjs stays the source of truth; the viewer
+  // read-only flag rides on each edge's `data` so the scissors hides for
+  // viewers, and local `selected` is carried forward across Yjs re-mirrors.
+  const [flowEdges, setFlowEdges] = React.useState<Edge[]>([]);
+  React.useEffect(() => {
+    setFlowEdges((prev) =>
+      mergeMirroredEdgeSelection(
+        prev,
+        edges.map((edge) => ({ ...toFlowEdge(edge), data: { readOnly } })),
+      ),
+    );
+  }, [edges, readOnly]);
 
   const onNodesChange = React.useCallback((changes: NodeChange[]): void => {
     setFlowNodes((current) => applyNodeChanges(changes, current));
+  }, []);
+
+  const onEdgesChange = React.useCallback((changes: EdgeChange[]): void => {
+    setFlowEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
   const onNodeDragStop = React.useCallback(
@@ -262,11 +293,30 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
-  const onNodesDelete = React.useCallback(
-    (deleted: Node[]): void => {
-      deleted.forEach((node) => removeNode(projectId, spaceId, node.id));
+  // Persist deletions to Yjs. ReactFlow's onDelete fires ONCE with both the
+  // deleted nodes and their cascaded (connected) edges — and for a standalone
+  // edge delete (select + Delete key). Persisting them in one removeElements
+  // transaction makes node + edge deletion a single undo entry, so one undo
+  // restores BOTH the node and its edges (the reported bug: node came back but
+  // the edge did not). Without this, a deletion only left ReactFlow's local
+  // buffer and reappeared on the next Yjs sync. Read-only viewers can't delete.
+  const onDelete = React.useCallback(
+    ({
+      nodes: deletedNodes,
+      edges: deletedEdges,
+    }: {
+      nodes: Node[];
+      edges: Edge[];
+    }): void => {
+      if (readOnly) return;
+      removeElements(
+        projectId,
+        spaceId,
+        deletedNodes.map((node) => node.id),
+        deletedEdges.map((edge) => edge.id),
+      );
     },
-    [projectId, spaceId],
+    [projectId, spaceId, readOnly],
   );
 
   const onConnect = React.useCallback(
@@ -488,8 +538,12 @@ function CanvasSpaceInner({
     () => ({
       renameNode: (nodeId: string, name: string): void =>
         setNodeName(projectId, spaceId, nodeId, name),
+      deleteEdge: (edgeId: string): void => {
+        if (readOnly) return;
+        removeEdge(projectId, spaceId, edgeId);
+      },
     }),
-    [projectId, spaceId],
+    [projectId, spaceId, readOnly],
   );
 
   return (
@@ -506,9 +560,11 @@ function CanvasSpaceInner({
           nodes={flowNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
-          onNodesDelete={onNodesDelete}
+          onDelete={onDelete}
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}

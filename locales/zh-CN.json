@@ -267,6 +267,9 @@
     "nodeMenu": {
       "lock": "锁定",
       "unlock": "解锁"
+    },
+    "edge": {
+      "delete": "删除连线"
     }
   },
   "editor": {

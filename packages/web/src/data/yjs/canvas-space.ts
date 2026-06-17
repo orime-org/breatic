@@ -158,39 +158,51 @@ export function useCanvasSpace(
   // Per-space undo manager. Created + destroyed in one effect keyed on the
   // doc (StrictMode-safe, same pattern as useSocket): a page refresh is a new
   // JS context so the stack is empty by construction (design decision: refresh
-  // clears history). `canUndo` / `canRedo` are mirrored into React state from
-  // the manager's stack events so the toolbar buttons stay in sync.
+  // clears history). `canUndo` / `canRedo` are mirrored into React state both
+  // from the manager's stack events AND imperatively after each undo / redo —
+  // see `syncAvailability` for why the events alone are not enough.
   const undoManagerRef = React.useRef<Y.UndoManager | null>(null);
   const [canUndo, setCanUndo] = React.useState(false);
   const [canRedo, setCanRedo] = React.useState(false);
 
+  // Mirror the manager's undo / redo availability into React state. Called
+  // from the manager's stack events AND directly after every undo() / redo().
+  // The latter is load-bearing: yjs's undo()/redo() can DRAIN "dead" stack
+  // items (whose target node / edge a collaborator deleted) without emitting
+  // any 'stack-item-popped' event — popStackItem pops them but, since undoing
+  // a remotely-deleted item performs no change, never reports a popped item.
+  // An events-only mirror would then go stale (button stuck enabled, clickable
+  // forever). Re-reading after the call reflects the now-drained stack.
+  const syncAvailability = React.useCallback((): void => {
+    const manager = undoManagerRef.current;
+    setCanUndo(manager ? manager.canUndo() : false);
+    setCanRedo(manager ? manager.canRedo() : false);
+  }, []);
+
   React.useEffect(() => {
     const undoManager = createCanvasUndoManager(doc);
     undoManagerRef.current = undoManager;
-    /** Re-read undo/redo availability from the manager into React state. */
-    const sync = (): void => {
-      setCanUndo(undoManager.canUndo());
-      setCanRedo(undoManager.canRedo());
-    };
-    undoManager.on('stack-item-added', sync);
-    undoManager.on('stack-item-popped', sync);
-    undoManager.on('stack-cleared', sync);
-    sync();
+    undoManager.on('stack-item-added', syncAvailability);
+    undoManager.on('stack-item-popped', syncAvailability);
+    undoManager.on('stack-cleared', syncAvailability);
+    syncAvailability();
     return () => {
-      undoManager.off('stack-item-added', sync);
-      undoManager.off('stack-item-popped', sync);
-      undoManager.off('stack-cleared', sync);
+      undoManager.off('stack-item-added', syncAvailability);
+      undoManager.off('stack-item-popped', syncAvailability);
+      undoManager.off('stack-cleared', syncAvailability);
       undoManager.destroy();
       undoManagerRef.current = null;
     };
-  }, [doc]);
+  }, [doc, syncAvailability]);
 
   const undo = React.useCallback((): void => {
     undoManagerRef.current?.undo();
-  }, []);
+    syncAvailability();
+  }, [syncAvailability]);
   const redo = React.useCallback((): void => {
     undoManagerRef.current?.redo();
-  }, []);
+    syncAvailability();
+  }, [syncAvailability]);
 
   return { nodes, edges, synced, undo, redo, canUndo, canRedo };
 }
@@ -363,6 +375,32 @@ export function removeEdge(
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   doc.transact(() => {
     edgesMap.delete(edgeId);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Delete nodes and edges together in a single tracked transaction — frontend-
+ * owned. Deleting a node cascades its connected edges (ReactFlow surfaces both
+ * sets in one `onDelete`); doing it in one transaction makes it ONE undo
+ * entry, so a single undo restores the node AND its edges (separate
+ * removeNode / removeEdge calls would be two entries, restoring only one).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to delete from.
+ * @param nodeIds - Node ids to delete.
+ * @param edgeIds - Edge ids to delete.
+ */
+export function removeElements(
+  projectId: string,
+  spaceId: string,
+  nodeIds: ReadonlyArray<string>,
+  edgeIds: ReadonlyArray<string>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  doc.transact(() => {
+    nodeIds.forEach((id) => nodesMap.delete(id));
+    edgeIds.forEach((id) => edgesMap.delete(id));
   }, CANVAS_UNDO);
 }
 

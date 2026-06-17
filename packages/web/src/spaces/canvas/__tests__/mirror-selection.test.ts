@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import type { Node } from '@xyflow/react';
+import type { Edge, Node } from '@xyflow/react';
 
-import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
+import {
+  mergeMirroredEdgeSelection,
+  mergeMirroredSelection,
+} from '@web/spaces/canvas/mirror-selection';
 
 describe('mergeMirroredSelection', () => {
   it('carries forward selected + dragging by id while taking data/position from the fresh nodes', () => {
@@ -39,5 +42,30 @@ describe('mergeMirroredSelection', () => {
     // A brand-new node (just created) is left unselected here; the auto-select
     // effect selects it explicitly once it appears.
     expect(merged.find((n) => n.id === 'c')?.selected).toBeUndefined();
+  });
+});
+
+describe('mergeMirroredEdgeSelection', () => {
+  it('carries forward the edge selected flag by id across a Yjs re-mirror', () => {
+    // Without this, edge selection is wiped on every Yjs change, so the
+    // scissors (gated on selected) never shows and Delete has no selected edge.
+    const prev = [
+      { id: 'e1', source: 'a', target: 'b', selected: true },
+      { id: 'e2', source: 'b', target: 'c', selected: false },
+    ] as Edge[];
+    // Fresh edges from the Yjs mirror carry no selection field.
+    const fresh = [
+      { id: 'e1', source: 'a', target: 'b', type: 'scissors' },
+      { id: 'e2', source: 'b', target: 'c', type: 'scissors' },
+      { id: 'e3', source: 'a', target: 'c', type: 'scissors' },
+    ] as Edge[];
+
+    const merged = mergeMirroredEdgeSelection(prev, fresh);
+
+    expect(merged.find((e) => e.id === 'e1')?.selected).toBe(true);
+    expect(merged.find((e) => e.id === 'e1')?.type).toBe('scissors'); // data from fresh
+    expect(merged.find((e) => e.id === 'e2')?.selected).toBe(false);
+    // A brand-new edge (not in prev) stays unselected.
+    expect(merged.find((e) => e.id === 'e3')?.selected).toBeUndefined();
   });
 });

@@ -267,6 +267,9 @@
     "nodeMenu": {
       "lock": "Lock",
       "unlock": "Unlock"
+    },
+    "edge": {
+      "delete": "Delete connection"
     }
   },
   "editor": {
