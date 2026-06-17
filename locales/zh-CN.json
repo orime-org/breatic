@@ -1046,10 +1046,7 @@
       "duplicate": "复制",
       "delete": "删除",
       "lock": "锁定",
-      "unlock": "解锁",
-      "kind_canvas": "画布",
-      "kind_document": "文档",
-      "kind_timeline": "时间线"
+      "unlock": "解锁"
     },
     "drawer": {
       "title": "所有工作面",
@@ -1097,11 +1094,11 @@
       "description": "{kind} 类型的 Space 将在未来版本中支持。"
     },
     "kind": {
-      "canvas": "画布",
+      "canvas": "Canvas",
       "canvasSub": "无限画布 + 节点",
-      "document": "文档",
+      "document": "Document",
       "documentSub": "富文本 + 协作",
-      "timeline": "时间线",
+      "timeline": "Timeline",
       "timelineSub": "视频 / 音频剪辑"
     },
     "history": {
@@ -1268,9 +1265,9 @@
     }
   },
   "role": {
-    "owner": "所有者",
-    "editor": "编辑",
-    "viewer": "只读"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "通过邮箱邀请",
@@ -1290,8 +1287,8 @@
     "emailDisabledHint": "本服务器未配置邮件发送,请使用『生成链接』复制 URL 自行发送。",
     "viewAllLinks": "查看所有已生成的链接({count, plural, =0 {无} one {1 个} other {# 个}})",
     "role": {
-      "view": "观察者",
-      "edit": "编辑者"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "已生成的邀请链接",
@@ -1387,9 +1384,9 @@
       "emptyProjects": "还没有最近的项目。",
       "emptyCollections": "还没有最近的资产集。",
       "role": {
-        "owner": "所有者",
-        "editor": "编辑者",
-        "viewer": "查看者"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "最近",
       "subtitle": "你最近编辑、参与过的项目和资产集 —— 跨你所有的 Studio,按最近时间排序。",
@@ -1415,7 +1412,7 @@
         "loadError": "无法加载该 Studio。"
       },
       "tabs": {
-        "projects": "项目",
+        "projects": "Projects",
         "collections": "资产集",
         "works": "作品",
         "members": "成员",
@@ -1448,9 +1445,9 @@
       "badge": {
         "visibilityStudio": "Studio 内可见",
         "visibilityPrivate": "私有",
-        "roleOwner": "所有者",
-        "roleEditor": "编辑者",
-        "roleViewer": "查看者",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "个人",
         "typeTeam": "团队",
         "lotPaid": "永久 · 可退",
@@ -1467,7 +1464,6 @@
         "createdAt": "创建于 {time}"
       },
       "projects": {
-        "title": "项目",
         "new": "新建项目",
         "createError": "创建项目失败",
         "emptyTitle": "还没有项目",
@@ -1511,11 +1507,11 @@
         "colEmail": "邮箱",
         "colRole": "角色",
         "colJoined": "加入时间",
-        "roleAdmin": "管理员",
-        "roleMember": "成员",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "移除",
         "cannotInvitePersonal": "个人 studio 无法邀请成员 —— 只有你自己。",
-        "roleCreator": "创建者",
+        "roleCreator": "Creator",
         "rowMenu": "成员操作",
         "promoteToCreator": "设为创建者",
         "demoteToMember": "设为成员",

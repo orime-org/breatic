@@ -1046,10 +1046,7 @@
       "duplicate": "複製",
       "delete": "削除",
       "lock": "ロック",
-      "unlock": "ロック解除",
-      "kind_canvas": "キャンバス",
-      "kind_document": "ドキュメント",
-      "kind_timeline": "タイムライン"
+      "unlock": "ロック解除"
     },
     "drawer": {
       "title": "すべての作業面",
@@ -1097,11 +1094,11 @@
       "description": "{kind} タイプの Space は今後のリリースで対応予定です。"
     },
     "kind": {
-      "canvas": "キャンバス",
+      "canvas": "Canvas",
       "canvasSub": "無限キャンバス + ノード",
-      "document": "ドキュメント",
+      "document": "Document",
       "documentSub": "リッチテキスト + 共同編集",
-      "timeline": "タイムライン",
+      "timeline": "Timeline",
       "timelineSub": "ビデオ / オーディオ編集"
     },
     "history": {
@@ -1268,9 +1265,9 @@
     }
   },
   "role": {
-    "owner": "オーナー",
-    "editor": "編集者",
-    "viewer": "閲覧者"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "メールで招待",
@@ -1290,8 +1287,8 @@
     "emailDisabledHint": "このサーバーではメールが無効です。代わりに『リンクを生成』を使って URL を自分で共有してください。",
     "viewAllLinks": "生成したすべてのリンクを表示({count, plural, =0 {なし} one {1 件} other {# 件}})",
     "role": {
-      "view": "閲覧者",
-      "edit": "編集者"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "生成済みの招待リンク",
@@ -1387,9 +1384,9 @@
       "emptyProjects": "最近のプロジェクトはまだありません。",
       "emptyCollections": "最近のコレクションはまだありません。",
       "role": {
-        "owner": "オーナー",
-        "editor": "編集者",
-        "viewer": "閲覧者"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "最近",
       "subtitle": "最近編集・参加したプロジェクトとアセット集 —— すべての Studio を横断し、新しい順に表示。",
@@ -1415,7 +1412,7 @@
         "loadError": "この Studio を読み込めませんでした。"
       },
       "tabs": {
-        "projects": "プロジェクト",
+        "projects": "Projects",
         "collections": "コレクション",
         "works": "作品",
         "members": "メンバー",
@@ -1448,9 +1445,9 @@
       "badge": {
         "visibilityStudio": "Studio 内に表示",
         "visibilityPrivate": "非公開",
-        "roleOwner": "オーナー",
-        "roleEditor": "編集者",
-        "roleViewer": "閲覧者",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "個人",
         "typeTeam": "チーム",
         "lotPaid": "無期限 · 返金可",
@@ -1467,7 +1464,6 @@
         "createdAt": "{time}に作成"
       },
       "projects": {
-        "title": "プロジェクト",
         "new": "プロジェクトを新規作成",
         "createError": "プロジェクトを作成できませんでした",
         "emptyTitle": "プロジェクトがまだありません",
@@ -1511,11 +1507,11 @@
         "colEmail": "メール",
         "colRole": "ロール",
         "colJoined": "参加日",
-        "roleAdmin": "管理者",
-        "roleMember": "メンバー",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "削除",
         "cannotInvitePersonal": "個人 studio はメンバーを招待できません — あなただけです。",
-        "roleCreator": "クリエイター",
+        "roleCreator": "Creator",
         "rowMenu": "メンバー操作",
         "promoteToCreator": "クリエイターにする",
         "demoteToMember": "メンバーにする",

@@ -273,7 +273,7 @@ function MemberRow({
       ) : (
         <span
           className={cn(
-            'shrink-0 text-2xs uppercase tracking-wide',
+            'shrink-0 text-2xs tracking-wide',
             member.role === 'owner' ? 'text-foreground font-medium' : 'text-muted-foreground',
           )}
         >

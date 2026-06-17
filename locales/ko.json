@@ -1046,10 +1046,7 @@
       "duplicate": "복제",
       "delete": "삭제",
       "lock": "잠금",
-      "unlock": "잠금 해제",
-      "kind_canvas": "캔버스",
-      "kind_document": "문서",
-      "kind_timeline": "타임라인"
+      "unlock": "잠금 해제"
     },
     "drawer": {
       "title": "모든 스페이스",
@@ -1097,11 +1094,11 @@
       "description": "{kind} 스페이스 유형은 향후 릴리스에서 제공될 예정입니다."
     },
     "kind": {
-      "canvas": "캔버스",
+      "canvas": "Canvas",
       "canvasSub": "무한 캔버스 + 노드",
-      "document": "문서",
+      "document": "Document",
       "documentSub": "리치 텍스트 + 협업",
-      "timeline": "타임라인",
+      "timeline": "Timeline",
       "timelineSub": "비디오 / 오디오 편집"
     },
     "history": {
@@ -1268,9 +1265,9 @@
     }
   },
   "role": {
-    "owner": "소유자",
-    "editor": "편집자",
-    "viewer": "뷰어"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "이메일로 초대",
@@ -1290,8 +1287,8 @@
     "emailDisabledHint": "이 서버에서는 이메일이 비활성화되어 있습니다. 대신 '링크 생성'을 사용하여 URL을 직접 공유하세요.",
     "viewAllLinks": "생성된 모든 링크 보기({count, plural, =0 {없음} one {1개} other {#개}})",
     "role": {
-      "view": "뷰어",
-      "edit": "편집자"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "생성된 초대 링크",
@@ -1387,9 +1384,9 @@
       "emptyProjects": "아직 최근 프로젝트가 없습니다.",
       "emptyCollections": "아직 최근 컬렉션이 없습니다.",
       "role": {
-        "owner": "소유자",
-        "editor": "편집자",
-        "viewer": "뷰어"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "최근",
       "subtitle": "최근 편집하거나 참여한 프로젝트와 에셋 모음 —— 모든 Studio에 걸쳐 최신순으로 표시됩니다.",
@@ -1415,7 +1412,7 @@
         "loadError": "이 Studio를 불러오지 못했습니다."
       },
       "tabs": {
-        "projects": "프로젝트",
+        "projects": "Projects",
         "collections": "컬렉션",
         "works": "작품",
         "members": "멤버",
@@ -1448,9 +1445,9 @@
       "badge": {
         "visibilityStudio": "Studio 내 공개",
         "visibilityPrivate": "비공개",
-        "roleOwner": "소유자",
-        "roleEditor": "편집자",
-        "roleViewer": "뷰어",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "개인",
         "typeTeam": "팀",
         "lotPaid": "영구 · 환불 가능",
@@ -1467,7 +1464,6 @@
         "createdAt": "{time}에 생성"
       },
       "projects": {
-        "title": "프로젝트",
         "new": "새 프로젝트",
         "createError": "프로젝트를 만들지 못했습니다",
         "emptyTitle": "아직 프로젝트가 없습니다",
@@ -1511,11 +1507,11 @@
         "colEmail": "이메일",
         "colRole": "역할",
         "colJoined": "가입일",
-        "roleAdmin": "관리자",
-        "roleMember": "멤버",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "삭제",
         "cannotInvitePersonal": "개인 studio는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
-        "roleCreator": "크리에이터",
+        "roleCreator": "Creator",
         "rowMenu": "멤버 작업",
         "promoteToCreator": "크리에이터로 지정",
         "demoteToMember": "멤버로 지정",

@@ -1046,10 +1046,7 @@
       "duplicate": "Duplicate",
       "delete": "Delete",
       "lock": "Lock",
-      "unlock": "Unlock",
-      "kind_canvas": "Canvas",
-      "kind_document": "Document",
-      "kind_timeline": "Timeline"
+      "unlock": "Unlock"
     },
     "drawer": {
       "title": "All spaces",
@@ -1467,7 +1464,6 @@
         "createdAt": "Created {time}"
       },
       "projects": {
-        "title": "Projects",
         "new": "New project",
         "createError": "Couldn't create the project",
         "emptyTitle": "No projects yet",

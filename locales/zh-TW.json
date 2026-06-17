@@ -1046,10 +1046,7 @@
       "duplicate": "複製",
       "delete": "刪除",
       "lock": "鎖定",
-      "unlock": "解鎖",
-      "kind_canvas": "畫布",
-      "kind_document": "文件",
-      "kind_timeline": "時間軸"
+      "unlock": "解鎖"
     },
     "drawer": {
       "title": "所有工作面",
@@ -1097,11 +1094,11 @@
       "description": "{kind} 類型的 Space 將在未來版本支援。"
     },
     "kind": {
-      "canvas": "畫布",
+      "canvas": "Canvas",
       "canvasSub": "無限畫布 + 節點",
-      "document": "文件",
+      "document": "Document",
       "documentSub": "富文本 + 協作",
-      "timeline": "時間軸",
+      "timeline": "Timeline",
       "timelineSub": "影片 / 音訊剪輯"
     },
     "history": {
@@ -1268,9 +1265,9 @@
     }
   },
   "role": {
-    "owner": "擁有者",
-    "editor": "編輯",
-    "viewer": "唯讀"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "透過電子郵件邀請",
@@ -1290,8 +1287,8 @@
     "emailDisabledHint": "本伺服器未設定郵件發送,請使用『產生連結』複製 URL 自行傳送。",
     "viewAllLinks": "檢視所有已產生的連結({count, plural, =0 {無} one {1 個} other {# 個}})",
     "role": {
-      "view": "檢視者",
-      "edit": "編輯者"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "已產生的邀請連結",
@@ -1387,9 +1384,9 @@
       "emptyProjects": "還沒有最近的專案。",
       "emptyCollections": "還沒有最近的資產集。",
       "role": {
-        "owner": "擁有者",
-        "editor": "編輯者",
-        "viewer": "檢視者"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "最近",
       "subtitle": "你最近編輯、參與過的專案和資產集 —— 跨你所有的 Studio,按最近時間排序。",
@@ -1415,7 +1412,7 @@
         "loadError": "無法載入該 Studio。"
       },
       "tabs": {
-        "projects": "專案",
+        "projects": "Projects",
         "collections": "資產集",
         "works": "作品",
         "members": "成員",
@@ -1448,9 +1445,9 @@
       "badge": {
         "visibilityStudio": "Studio 內可見",
         "visibilityPrivate": "私有",
-        "roleOwner": "擁有者",
-        "roleEditor": "編輯者",
-        "roleViewer": "檢視者",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "個人",
         "typeTeam": "團隊",
         "lotPaid": "永久 · 可退",
@@ -1467,7 +1464,6 @@
         "createdAt": "建立於 {time}"
       },
       "projects": {
-        "title": "專案",
         "new": "新增專案",
         "createError": "建立專案失敗",
         "emptyTitle": "還沒有專案",
@@ -1511,11 +1507,11 @@
         "colEmail": "電子郵件",
         "colRole": "角色",
         "colJoined": "加入時間",
-        "roleAdmin": "管理員",
-        "roleMember": "成員",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "移除",
         "cannotInvitePersonal": "個人 studio 無法邀請成員 —— 只有你自己。",
-        "roleCreator": "建立者",
+        "roleCreator": "Creator",
         "rowMenu": "成員操作",
         "promoteToCreator": "設為建立者",
         "demoteToMember": "設為成員",
