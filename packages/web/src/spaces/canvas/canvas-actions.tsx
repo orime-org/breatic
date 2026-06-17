@@ -16,15 +16,21 @@ export interface CanvasActions {
    * same pattern as node position / deletion).
    */
   renameNode: (nodeId: string, name: string) => void;
+  /**
+   * Delete an edge from the Yjs doc (frontend-owned write). Bound to the
+   * scissors affordance on a selected edge; a no-op for read-only viewers.
+   */
+  deleteEdge: (edgeId: string) => void;
 }
 
 /**
- * Default no-op actions so a node rendered outside a provider (defensive /
- * isolated tests) never crashes; the real implementation is always injected
- * by `CanvasSpaceInner` in production.
+ * Default no-op actions so a node / edge rendered outside a provider
+ * (defensive / isolated tests) never crashes; the real implementation is
+ * always injected by `CanvasSpaceInner` in production.
  */
 const NOOP_ACTIONS: CanvasActions = {
   renameNode: () => undefined,
+  deleteEdge: () => undefined,
 };
 
 export const CanvasActionsContext =

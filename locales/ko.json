@@ -267,6 +267,9 @@
     "nodeMenu": {
       "lock": "잠금",
       "unlock": "잠금 해제"
+    },
+    "edge": {
+      "delete": "연결 삭제"
     }
   },
   "editor": {

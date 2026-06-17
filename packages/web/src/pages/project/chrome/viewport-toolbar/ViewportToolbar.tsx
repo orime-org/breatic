@@ -284,9 +284,10 @@ interface ZoomMenuProps {
  * applying the 100% preset; treating it differently was the source of
  * a missing-close bug in the first cut.
  *
- * Zoom is currently a ProjectPage local state placeholder — when
- * ReactFlow integration lands, `onZoomChange` should drive the
- * `setViewport` API and `zoom` should read back from it.
+ * Zoom is driven by the canvas: the canvas mirrors ReactFlow's live zoom
+ * into the canvas store (read here as `zoom`), and `onZoomChange` posts a
+ * zoom command back through the store mailbox that the canvas applies to
+ * ReactFlow (`zoomTo`).
  * @param root0 - Component props.
  * @param root0.zoom - Current zoom level shown in the readout and used to mark the active preset.
  * @param root0.onZoomChange - Applies the chosen zoom (clamped to the toolbar's min/max).

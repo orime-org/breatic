@@ -16,6 +16,7 @@ import {
   setNodeLocked,
   addEdge,
   removeEdge,
+  removeElements,
 } from '@web/data/yjs/canvas-space';
 import { getDoc, docName, _resetForTests } from '@web/data/yjs/manager';
 
@@ -50,6 +51,8 @@ function makeNode(id: string): CanvasNodeFields {
 
 const nodesOf = (doc: Y.Doc): Y.Map<Y.Map<unknown>> =>
   doc.getMap<Y.Map<unknown>>('nodesMap');
+const edgesOf = (doc: Y.Doc): Y.Map<Y.Map<unknown>> =>
+  doc.getMap<Y.Map<unknown>>('edgesMap');
 const lockedOf = (doc: Y.Doc, id: string): unknown =>
   (nodesOf(doc).get(id)?.get('data') as Y.Map<unknown>).get('locked');
 const nameOf = (doc: Y.Doc, id: string): unknown =>
@@ -163,6 +166,24 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     expect(nodesOf(docA).has('a')).toBe(false);
     expect(nodesOf(docA).has('b')).toBe(true); // B's op survives A's undo
     expect(nodesOf(docB).has('b')).toBe(true);
+  });
+
+  it('removeElements deletes a node and its edge in ONE atomic undo entry', () => {
+    const { p, s, doc } = space();
+    addNode(p, s, makeNode('a'));
+    addNode(p, s, makeNode('b'));
+    addEdge(p, s, { id: 'e1', source: 'a', target: 'b', kind: 'primary' });
+    const um = createCanvasUndoManager(doc);
+    // Deleting node 'b' cascades its edge 'e1' — both go in one transaction.
+    removeElements(p, s, ['b'], ['e1']);
+    expect(um.undoStack.length).toBe(1); // ONE entry, not two
+    expect(nodesOf(doc).has('b')).toBe(false);
+    expect(edgesOf(doc).has('e1')).toBe(false);
+    um.undo();
+    // A single undo must restore BOTH the node and its edge (the reported bug:
+    // node came back but the edge did not, because they were two entries).
+    expect(nodesOf(doc).has('b')).toBe(true);
+    expect(edgesOf(doc).has('e1')).toBe(true);
   });
 
   it('A decision: undo does not overwrite a collaborator property value (ignoreRemoteMapChanges false)', () => {

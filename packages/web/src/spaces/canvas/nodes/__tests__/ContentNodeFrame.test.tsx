@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
@@ -45,5 +45,23 @@ describe('ContentNodeFrame', () => {
     expect(screen.getByTestId('node-header-anchor').style.transform).toContain(
       'scale(1)',
     );
+  });
+
+  it('a locked node name is still editable (lock does not lock rename)', () => {
+    render(
+      <ContentNodeFrame
+        modality='text'
+        name='Old'
+        locked
+        onRename={() => undefined}
+        testId='text-node'
+      >
+        <div>body</div>
+      </ContentNodeFrame>,
+    );
+    // Lock only restricts move / delete; the name is metadata and stays
+    // editable — double-click the name must enter inline edit mode.
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    expect(screen.getByTestId('node-header-input')).toBeInTheDocument();
   });
 });

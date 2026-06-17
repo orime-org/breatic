@@ -367,6 +367,32 @@ export function removeEdge(
 }
 
 /**
+ * Delete nodes and edges together in a single tracked transaction — frontend-
+ * owned. Deleting a node cascades its connected edges (ReactFlow surfaces both
+ * sets in one `onDelete`); doing it in one transaction makes it ONE undo
+ * entry, so a single undo restores the node AND its edges (separate
+ * removeNode / removeEdge calls would be two entries, restoring only one).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to delete from.
+ * @param nodeIds - Node ids to delete.
+ * @param edgeIds - Edge ids to delete.
+ */
+export function removeElements(
+  projectId: string,
+  spaceId: string,
+  nodeIds: ReadonlyArray<string>,
+  edgeIds: ReadonlyArray<string>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  doc.transact(() => {
+    nodeIds.forEach((id) => nodesMap.delete(id));
+    edgeIds.forEach((id) => edgesMap.delete(id));
+  }, CANVAS_UNDO);
+}
+
+/**
  * Read all nodes from `nodesMap` into render-ready views. Each node's wire
  * fields are projected through `toNodeView`; nodes with a dirty / unknown
  * `type` or a missing `data` Y.Map are skipped.
