@@ -20,6 +20,14 @@ export type ViewportCommand =
   | { readonly zoomTo: number };
 
 /**
+ * A canvas history command posted by the chrome viewport toolbar for the
+ * canvas to run against its per-space `Y.UndoManager`. The toolbar's undo /
+ * redo buttons live outside the ReactFlow provider (same boundary as zoom),
+ * so they post here and the canvas consumes it.
+ */
+export type HistoryCommand = 'undo' | 'redo';
+
+/**
  * Canvas UI store — non-Yjs UI state for the canvas viewport.
  *
  * **Important**: real canvas data (nodes / edges / positions) lives in Yjs
@@ -43,6 +51,12 @@ interface CanvasState {
   pendingNodeCreate: CreateIntent | null;
   /** Chrome → canvas mailbox: a zoom-toolbar command for the canvas to run. */
   pendingViewportCommand: ViewportCommand | null;
+  /** Chrome → canvas mailbox: an undo/redo command for the canvas to run. */
+  pendingHistoryCommand: HistoryCommand | null;
+  /** Canvas → chrome mirror: whether an undo is currently available. */
+  canUndo: boolean;
+  /** Canvas → chrome mirror: whether a redo is currently available. */
+  canRedo: boolean;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -59,6 +73,12 @@ interface CanvasState {
   requestViewportCommand: (command: ViewportCommand) => void;
   /** Clear the mailbox once the canvas has run the command. */
   consumeViewportCommand: () => void;
+  /** Post an undo/redo command from the chrome viewport toolbar. */
+  requestHistoryCommand: (command: HistoryCommand) => void;
+  /** Clear the mailbox once the canvas has run the history command. */
+  consumeHistoryCommand: () => void;
+  /** Mirror the canvas undo manager's availability flags for the toolbar. */
+  setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -70,6 +90,9 @@ export const useCanvasStore = create<CanvasState>()(
     showLockedOverlay: false,
     pendingNodeCreate: null,
     pendingViewportCommand: null,
+    pendingHistoryCommand: null,
+    canUndo: false,
+    canRedo: false,
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -117,6 +140,19 @@ export const useCanvasStore = create<CanvasState>()(
     consumeViewportCommand: () =>
       set((s) => {
         s.pendingViewportCommand = null;
+      }),
+    requestHistoryCommand: (command) =>
+      set((s) => {
+        s.pendingHistoryCommand = command;
+      }),
+    consumeHistoryCommand: () =>
+      set((s) => {
+        s.pendingHistoryCommand = null;
+      }),
+    setHistoryAvailability: (canUndo, canRedo) =>
+      set((s) => {
+        s.canUndo = canUndo;
+        s.canRedo = canRedo;
       }),
   })),
 );

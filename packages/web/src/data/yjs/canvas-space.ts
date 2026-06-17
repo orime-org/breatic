@@ -55,16 +55,68 @@ interface CanvasSpaceState {
   nodes: ReadonlyArray<CanvasNodeView>;
   edges: ReadonlyArray<CanvasEdge>;
   synced: boolean;
+  /** Undo the last tracked structural / metadata / name edit by this client. */
+  undo: () => void;
+  /** Redo the last undone edit by this client. */
+  redo: () => void;
+  /** Whether an undo is currently available (drives the toolbar button). */
+  canUndo: boolean;
+  /** Whether a redo is currently available (drives the toolbar button). */
+  canRedo: boolean;
 }
 
 const NODES_KEY = 'nodesMap';
 const EDGES_KEY = 'edgesMap';
 
 /**
+ * Tracked transaction origin for canvas undo. Every frontend structural /
+ * metadata / name write below runs in `doc.transact(fn, CANVAS_UNDO)` so the
+ * per-space `Y.UndoManager` captures it. Backend content writes use a
+ * different origin (`'node-state-update'`, see collab `task-listener`) and so
+ * are naturally excluded from the undo stack.
+ */
+export const CANVAS_UNDO = Symbol('canvas-undo');
+
+/** Max canvas undo stack depth — oldest entries are dropped past this. */
+export const MAX_UNDO_DEPTH = 50;
+
+/**
+ * Create a per-space canvas undo manager scoped to the node + edge maps.
+ * Captures only `CANVAS_UNDO`-origin transactions (this client's own
+ * structural / metadata / name edits); remote collaborator writes carry the
+ * sync provider as origin and are excluded, so undo is per-client.
+ *
+ * `captureTimeout: 0` disables time-based merging so two separate actions
+ * never collapse into one undo step; a drag is already one entry because
+ * `setNodePosition` is committed once on drag-end.
+ *
+ * The stack is capped at {@link MAX_UNDO_DEPTH} by trimming the oldest in
+ * place on each push (Y.UndoManager has no native maxDepth). The dropped
+ * tail's `keepItem` flags are not released (no public API) — a bounded,
+ * accepted leak (design doc §3 / §9.1, decision B.1).
+ * @param doc - The canvas-space Y.Doc whose nodes + edges to track.
+ * @returns A Y.UndoManager bound to the doc's node and edge maps.
+ */
+export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  const undoManager = new Y.UndoManager([nodesMap, edgesMap], {
+    trackedOrigins: new Set([CANVAS_UNDO]),
+    captureTimeout: 0,
+  });
+  undoManager.on('stack-item-added', () => {
+    while (undoManager.undoStack.length > MAX_UNDO_DEPTH) {
+      undoManager.undoStack.shift();
+    }
+  });
+  return undoManager;
+}
+
+/**
  * Subscribe to a canvas-space document.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose nodes and edges to observe.
- * @returns The current nodes, edges, and whether the doc has synced with the server.
+ * @returns The current nodes, edges, sync flag, and per-space undo controls.
  */
 export function useCanvasSpace(
   projectId: string,
@@ -103,7 +155,44 @@ export function useCanvasSpace(
     };
   }, [doc]);
 
-  return { nodes, edges, synced };
+  // Per-space undo manager. Created + destroyed in one effect keyed on the
+  // doc (StrictMode-safe, same pattern as useSocket): a page refresh is a new
+  // JS context so the stack is empty by construction (design decision: refresh
+  // clears history). `canUndo` / `canRedo` are mirrored into React state from
+  // the manager's stack events so the toolbar buttons stay in sync.
+  const undoManagerRef = React.useRef<Y.UndoManager | null>(null);
+  const [canUndo, setCanUndo] = React.useState(false);
+  const [canRedo, setCanRedo] = React.useState(false);
+
+  React.useEffect(() => {
+    const undoManager = createCanvasUndoManager(doc);
+    undoManagerRef.current = undoManager;
+    /** Re-read undo/redo availability from the manager into React state. */
+    const sync = (): void => {
+      setCanUndo(undoManager.canUndo());
+      setCanRedo(undoManager.canRedo());
+    };
+    undoManager.on('stack-item-added', sync);
+    undoManager.on('stack-item-popped', sync);
+    undoManager.on('stack-cleared', sync);
+    sync();
+    return () => {
+      undoManager.off('stack-item-added', sync);
+      undoManager.off('stack-item-popped', sync);
+      undoManager.off('stack-cleared', sync);
+      undoManager.destroy();
+      undoManagerRef.current = null;
+    };
+  }, [doc]);
+
+  const undo = React.useCallback((): void => {
+    undoManagerRef.current?.undo();
+  }, []);
+  const redo = React.useCallback((): void => {
+    undoManagerRef.current?.redo();
+  }, []);
+
+  return { nodes, edges, synced, undo, redo, canUndo, canRedo };
 }
 
 /**
@@ -144,7 +233,7 @@ export function addNode(
     map.set('position', node.position);
     map.set('data', buildDataMap(node.data));
     nodesMap.set(node.id, map);
-  });
+  }, CANVAS_UNDO);
 }
 
 /**
@@ -162,7 +251,7 @@ export function removeNode(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   doc.transact(() => {
     nodesMap.delete(nodeId);
-  });
+  }, CANVAS_UNDO);
 }
 
 /**
@@ -184,7 +273,7 @@ export function setNodePosition(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!node) return;
-  node.set('position', position);
+  doc.transact(() => node.set('position', position), CANVAS_UNDO);
 }
 
 /**
@@ -208,7 +297,7 @@ export function setNodeName(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  data.set('name', name);
+  doc.transact(() => data.set('name', name), CANVAS_UNDO);
 }
 
 /**
@@ -232,7 +321,7 @@ export function setNodeLocked(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  data.set('locked', locked);
+  doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
 }
 
 /**
@@ -256,7 +345,7 @@ export function addEdge(
     map.set('kind', edge.kind);
     if (edge.toolId) map.set('toolId', edge.toolId);
     edgesMap.set(edge.id, map);
-  });
+  }, CANVAS_UNDO);
 }
 
 /**
@@ -274,7 +363,7 @@ export function removeEdge(
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   doc.transact(() => {
     edgesMap.delete(edgeId);
-  });
+  }, CANVAS_UNDO);
 }
 
 /**

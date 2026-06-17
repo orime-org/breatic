@@ -22,6 +22,54 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
+let undoSpy: ReturnType<typeof vi.fn>;
+let redoSpy: ReturnType<typeof vi.fn>;
+
+/**
+ * Build a full `useCanvasSpace` return, defaulting the undo controls so each
+ * test only states the fields it cares about.
+ * @param over - Partial overrides (nodes / edges / canUndo / canRedo).
+ * @returns The mocked hook return value.
+ */
+function mockSpace(
+  over: Partial<ReturnType<typeof canvasSpace.useCanvasSpace>> = {},
+): ReturnType<typeof canvasSpace.useCanvasSpace> {
+  return {
+    nodes: [],
+    edges: [],
+    synced: true,
+    undo: undoSpy,
+    redo: redoSpy,
+    canUndo: false,
+    canRedo: false,
+    ...over,
+  };
+}
+
+/**
+ * Dispatch a `keydown` on the document so the canvas history shortcut handler
+ * (a document-level listener) sees it.
+ * @param key - The `KeyboardEvent.key` value.
+ * @param mods - Modifier flags (meta = mac Cmd, ctrl = windows Ctrl).
+ */
+function dispatchKeyDown(
+  key: string,
+  mods: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
+): void {
+  act(() => {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        metaKey: mods.meta ?? false,
+        ctrlKey: mods.ctrl ?? false,
+        shiftKey: mods.shift ?? false,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+}
+
 /**
  * Dispatch a `paste` event on the document with a stubbed clipboard payload.
  * jsdom's ClipboardEvent doesn't populate `clipboardData`, so we attach a
@@ -44,9 +92,14 @@ function dispatchPaste(text: string): void {
 describe('CanvasSpace (ReactFlow mount)', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
+    undoSpy = vi.fn();
+    redoSpy = vi.fn();
     useCanvasStore.setState({
       pendingNodeCreate: null,
       pendingViewportCommand: null,
+      pendingHistoryCommand: null,
+      canUndo: false,
+      canRedo: false,
     });
     useCurrentUserStore.getState().setUser({
       id: 'u-1',
@@ -57,7 +110,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('shows the empty-state hint when there are no nodes', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     render(<CanvasSpace projectId='p' spaceId='s' />);
     expect(screen.getByTestId('canvas-space')).toBeInTheDocument();
     expect(screen.getByTestId('canvas-empty')).toBeInTheDocument();
@@ -67,7 +120,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // pans, so ReactFlow's pane must NOT carry the `draggable` class (which it
   // only adds when panOnDrag enables the left button).
   it('left-button drag selects instead of panning (pane is not draggable)', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     render(<CanvasSpace projectId='p' spaceId='s' />);
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
@@ -78,7 +131,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // store; the canvas (which owns the ReactFlow viewport) must pick it up and
   // clear the mailbox. Proves the toolbar's buttons actually reach ReactFlow.
   it('consumes a viewport command posted by the chrome zoom toolbar', async () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     useCanvasStore.getState().requestViewportCommand('fit');
     render(<CanvasSpace projectId='p' spaceId='s' />);
     await waitFor(() =>
@@ -87,18 +140,18 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('renders a node body through ReactFlow + the handle wrapper', () => {
-    mockUseCanvasSpace.mockReturnValue({
-      nodes: [
-        {
-          id: 'n1',
-          type: 'image',
-          position: { x: 0, y: 0 },
-          data: { kind: 'image', content: 'x.png', status: 'idle' },
-        },
-      ],
-      edges: [],
-      synced: true,
-    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
     render(<CanvasSpace projectId='p' spaceId='s' />);
     expect(screen.getByTestId('image-node')).toBeInTheDocument();
     expect(screen.queryByTestId('canvas-empty')).not.toBeInTheDocument();
@@ -109,7 +162,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // writing to Yjs. The `consumed` assertion proves the effect actually ran
   // and took the readOnly branch (not that it silently never fired).
   it('readOnly canvas drops a library create intent without writing to Yjs', async () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -125,7 +178,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('editor canvas fulfils a library create intent (writes via addNode)', async () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -139,7 +192,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('paste plain text creates a text node carrying the pasted text', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -155,7 +208,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('paste a marked node payload clones the node (offset +24), not a text node', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -176,7 +229,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('readOnly canvas ignores paste (no Yjs write)', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -189,7 +242,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   it('paste while a field is focused is left to the browser (no node created)', () => {
-    mockUseCanvasSpace.mockReturnValue({ nodes: [], edges: [], synced: true });
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
@@ -203,5 +256,73 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(addNode).not.toHaveBeenCalled();
     input.remove();
     addNode.mockRestore();
+  });
+
+  // ---- History bridge (undo / redo) ----
+
+  it('mirrors the hook undo availability into the canvas store (canvas → chrome)', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: false }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    expect(useCanvasStore.getState().canUndo).toBe(true);
+    expect(useCanvasStore.getState().canRedo).toBe(false);
+  });
+
+  it('consumes an undo command posted by the chrome toolbar (chrome → canvas mailbox)', async () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
+    useCanvasStore.getState().requestHistoryCommand('undo');
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull(),
+    );
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+    expect(redoSpy).not.toHaveBeenCalled();
+  });
+
+  it('Cmd+Z (mac) triggers undo; Cmd+Shift+Z triggers redo', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: true }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+
+    dispatchKeyDown('z', { meta: true });
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+
+    dispatchKeyDown('z', { meta: true, shift: true });
+    expect(redoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+Z (windows) triggers undo; Ctrl+Y triggers redo', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: true }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+
+    dispatchKeyDown('z', { ctrl: true });
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+
+    dispatchKeyDown('y', { ctrl: true });
+    expect(redoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keyboard undo is a no-op while a field is focused (input native undo wins)', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    dispatchKeyDown('z', { meta: true });
+
+    expect(undoSpy).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('readOnly canvas ignores keyboard undo and posted history commands', async () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
+    useCanvasStore.getState().requestHistoryCommand('undo');
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull(),
+    );
+    dispatchKeyDown('z', { meta: true });
+
+    expect(undoSpy).not.toHaveBeenCalled();
   });
 });
