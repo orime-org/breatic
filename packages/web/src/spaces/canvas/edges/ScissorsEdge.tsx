@@ -13,20 +13,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
-
-/**
- * Counter-scale factor that keeps an edge overlay (the scissors button) a
- * constant screen size at any canvas zoom: ReactFlow scales the whole edge
- * layer by `zoom`, so the overlay scales by `1 / zoom` against it — the same
- * mechanism the node name header uses (see `_shared/node-scale.ts`). Guards
- * the (never observed, defensive) non-positive case so the scale can't become
- * Infinity / negative.
- * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
- * @returns The `1 / zoom` overlay scale, or `1` when `zoom <= 0`.
- */
-export function edgeOverlayScale(zoom: number): number {
-  return zoom > 0 ? 1 / zoom : 1;
-}
+import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 
 /**
  * Whether the delete-scissors button should render on an edge: only when the
@@ -44,9 +31,9 @@ export function shouldShowScissors(selected: boolean, readOnly: boolean): boolea
  * Canvas edge with a delete affordance: the edge renders as a bezier line and,
  * when selected on an editable canvas, floats a scissors button at its
  * midpoint. Clicking the scissors deletes the edge (via the canvas actions →
- * Yjs `removeEdge`, which is undo-tracked). The button counter-scales by
- * `1 / zoom` so it stays a constant screen size at any zoom, matching the node
- * name header.
+ * Yjs `removeEdge`, which is undo-tracked). The button counter-scales to a
+ * constant screen size down to a floor zoom (then shrinks with the canvas) via
+ * the shared `overlayCounterScale`, matching the node name header.
  * @param props - ReactFlow edge props; endpoints, `selected`, and `data` (which carries the viewer `readOnly` flag).
  * @returns The edge path plus the conditional scissors overlay.
  */
@@ -80,7 +67,7 @@ export function ScissorsEdge(props: EdgeProps): React.JSX.Element {
             }}
             style={{
               position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${edgeOverlayScale(zoom)})`,
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${overlayCounterScale(zoom)})`,
               pointerEvents: 'all',
             }}
             // `nopan nodrag` so pressing the scissors never pans the canvas or

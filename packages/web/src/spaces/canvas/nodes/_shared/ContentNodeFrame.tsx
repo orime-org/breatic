@@ -75,7 +75,7 @@ export function ContentNodeFrame({
     <div className='relative'>
       <div
         data-testid='node-header-anchor'
-        className='absolute bottom-full left-0 origin-bottom-left pb-0.5'
+        className='absolute bottom-full left-0 origin-bottom-left pb-1'
         style={{ transform: `scale(${headerScale})` }}
       >
         <NodeHeader

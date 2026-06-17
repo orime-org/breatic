@@ -8,6 +8,7 @@ import * as React from 'react';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
+import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
@@ -47,11 +48,12 @@ function makeFlowNode(
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
     const { renameNode } = useCanvasActions();
-    // The canvas zoom (transform[2]) lets the name header counter-scale to a
-    // constant screen size; provide `1 / zoom` to the frame. Guard the (never
-    // observed, but defensive) zero case so the scale can't become Infinity.
+    // The canvas zoom (transform[2]) lets the name header counter-scale so it
+    // keeps a constant screen size — down to a floor zoom, below which it
+    // shrinks with the canvas (see `overlayCounterScale`). The scissors button
+    // uses the same shared factor.
     const zoom = useStore((s) => s.transform[2]);
-    const headerScale = zoom > 0 ? 1 / zoom : 1;
+    const headerScale = overlayCounterScale(zoom);
     const onRename = React.useCallback(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
