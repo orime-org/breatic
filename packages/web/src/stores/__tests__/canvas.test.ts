@@ -14,6 +14,9 @@ describe('useCanvasStore', () => {
       showLockedOverlay: false,
       pendingNodeCreate: null,
       pendingViewportCommand: null,
+      pendingHistoryCommand: null,
+      canUndo: false,
+      canRedo: false,
     });
   });
 
@@ -62,5 +65,26 @@ describe('useCanvasStore', () => {
     });
     useCanvasStore.getState().consumeViewportCommand();
     expect(useCanvasStore.getState().pendingViewportCommand).toBeNull();
+  });
+
+  it('requestHistoryCommand queues an undo/redo command that consume clears (chrome → canvas mailbox)', () => {
+    expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull();
+    useCanvasStore.getState().requestHistoryCommand('undo');
+    expect(useCanvasStore.getState().pendingHistoryCommand).toBe('undo');
+    useCanvasStore.getState().requestHistoryCommand('redo');
+    expect(useCanvasStore.getState().pendingHistoryCommand).toBe('redo');
+    useCanvasStore.getState().consumeHistoryCommand();
+    expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull();
+  });
+
+  it('setHistoryAvailability mirrors the canvas undo manager flags (canvas → chrome)', () => {
+    expect(useCanvasStore.getState().canUndo).toBe(false);
+    expect(useCanvasStore.getState().canRedo).toBe(false);
+    useCanvasStore.getState().setHistoryAvailability(true, false);
+    expect(useCanvasStore.getState().canUndo).toBe(true);
+    expect(useCanvasStore.getState().canRedo).toBe(false);
+    useCanvasStore.getState().setHistoryAvailability(false, true);
+    expect(useCanvasStore.getState().canUndo).toBe(false);
+    expect(useCanvasStore.getState().canRedo).toBe(true);
   });
 });

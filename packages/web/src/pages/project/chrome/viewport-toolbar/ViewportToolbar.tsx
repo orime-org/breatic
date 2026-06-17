@@ -31,12 +31,11 @@ interface ViewportToolbarProps {
   minimapVisible: boolean;
   snapToGrid: boolean;
   /**
-   * Canvas history availability. Both default to `false` so the toolbar
-   * renders the undo / redo buttons in their disabled state until a
-   * future PR wires the canvas history engine (Yjs `UndoManager` or
-   * equivalent). When that lands, drive these flags from the history
-   * snapshot — the props surface is intentionally minimal so the
-   * toolbar stays presentation-only.
+   * Canvas history availability, mirrored from the per-space Yjs
+   * `UndoManager` (ProjectPage reads the canvas store; the canvas owns
+   * the manager). Both default to `false` so the toolbar renders the
+   * undo / redo buttons disabled when no caller wires history. The props
+   * surface is intentionally minimal so the toolbar stays presentation-only.
    */
   canUndo?: boolean;
   canRedo?: boolean;
@@ -63,10 +62,11 @@ interface ViewportToolbarProps {
  *   4. View aux: ▦ snap-to-grid   ▤ minimap
  *
  * Notes:
- *   - History buttons render but stay disabled until the canvas undo
- *     engine is wired (props default `canUndo` / `canRedo` to `false`,
- *     and `onUndo` / `onRedo` are optional). Source comment + the
- *     button's disabled visual state document this placeholder status.
+ *   - History buttons are driven by the per-space Yjs undo manager
+ *     (canUndo / canRedo mirrored through the canvas store); they fall
+ *     back to disabled when a caller doesn't wire history (props
+ *     default `canUndo` / `canRedo` to `false`, `onUndo` / `onRedo`
+ *     optional).
  *   - 32px (`--btn-chrome`) hit areas, 6px chrome radius.
  *   - `bg-popover` elevated surface + `shadow` so it floats above the
  *     dot-grid canvas.

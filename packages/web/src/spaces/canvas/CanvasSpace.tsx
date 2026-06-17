@@ -34,6 +34,7 @@ import {
   CanvasActionsContext,
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
+import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import { mergeMirroredSelection } from '@web/spaces/canvas/mirror-selection';
@@ -142,7 +143,10 @@ function CanvasSpaceInner({
   readOnly = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
-  const { nodes, edges } = useCanvasSpace(projectId, spaceId);
+  const { nodes, edges, undo, redo, canUndo, canRedo } = useCanvasSpace(
+    projectId,
+    spaceId,
+  );
   const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
@@ -181,6 +185,55 @@ function CanvasSpaceInner({
     zoomTo,
     consumeViewportCommand,
   ]);
+
+  // ---- History bridge (chrome toolbar ↔ canvas undo manager) ----
+  // The undo / redo buttons live in chrome, outside this provider, same as
+  // zoom. Mirror the manager's availability into the store for the toolbar's
+  // disabled state, and run the toolbar's posted commands here where the
+  // manager lives. Viewport (zoom / pan) is deliberately NOT undoable.
+  const setHistoryAvailability = useCanvasStore(
+    (s) => s.setHistoryAvailability,
+  );
+  React.useEffect(() => {
+    setHistoryAvailability(canUndo, canRedo);
+  }, [canUndo, canRedo, setHistoryAvailability]);
+
+  const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
+  const consumeHistoryCommand = useCanvasStore(
+    (s) => s.consumeHistoryCommand,
+  );
+  React.useEffect(() => {
+    if (!pendingHistoryCommand) return;
+    if (readOnly) {
+      consumeHistoryCommand();
+      return;
+    }
+    if (pendingHistoryCommand === 'undo') undo();
+    else redo();
+    consumeHistoryCommand();
+  }, [pendingHistoryCommand, readOnly, undo, redo, consumeHistoryCommand]);
+
+  // Keyboard undo / redo — double-platform (Cmd on mac, Ctrl on windows; see
+  // matchHistoryShortcut). Gated like the clipboard handlers: no-op while a
+  // field / node body is being edited (let the input's native undo win) or
+  // the viewer is read-only.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: route undo / redo shortcuts to the manager.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      const action = matchHistoryShortcut(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'undo') undo();
+      else redo();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, undo, redo]);
+
   const { createNodeAt, pasteTextAt, pasteNodesAt } = useNodeCreation(
     projectId,
     spaceId,

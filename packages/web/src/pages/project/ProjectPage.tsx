@@ -216,6 +216,13 @@ export default function ProjectPage(): React.JSX.Element {
   const requestViewportCommand = useCanvasStore(
     (s) => s.requestViewportCommand,
   );
+  // Undo/redo availability is mirrored by the canvas (which owns the per-space
+  // undo manager); the toolbar posts commands back through the store mailbox.
+  const canUndo = useCanvasStore((s) => s.canUndo);
+  const canRedo = useCanvasStore((s) => s.canRedo);
+  const requestHistoryCommand = useCanvasStore(
+    (s) => s.requestHistoryCommand,
+  );
   const [minimapVisible, setMinimapVisible] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
 
@@ -538,14 +545,16 @@ export default function ProjectPage(): React.JSX.Element {
                     zoom={zoom}
                     minimapVisible={minimapVisible}
                     snapToGrid={snapToGrid}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
                     onZoomIn={() => requestViewportCommand('zoomIn')}
                     onZoomOut={() => requestViewportCommand('zoomOut')}
                     onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
                     onFit={() => requestViewportCommand('fit')}
                     onToggleSnap={() => setSnapToGrid((v) => !v)}
                     onToggleMinimap={() => setMinimapVisible((v) => !v)}
-                  // Undo/redo render disabled until the canvas history
-                  // engine lands; canUndo/canRedo default to false.
+                    onUndo={() => requestHistoryCommand('undo')}
+                    onRedo={() => requestHistoryCommand('redo')}
                   />
                 </>
               ) : null}
