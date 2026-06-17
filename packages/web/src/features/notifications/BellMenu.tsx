@@ -201,7 +201,7 @@ export function BellMenu(): React.JSX.Element {
             <Button
               variant='chrome-ghost'
               size='chrome'
-              aria-label='Notifications'
+              aria-label={t('chrome.tooltip.notifications')}
               className='relative'
               data-testid='bell-trigger'
             >

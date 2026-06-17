@@ -45,7 +45,7 @@ export function ThemeToggle(): React.JSX.Element {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <TopBarTextIconButton
-          aria-label={`Theme: ${theme}`}
+          aria-label={t('chrome.aria.theme', { theme })}
           data-testid='theme-toggle'
           icon={<TriggerIcon className='h-[18px] w-[18px]' />}
           withChevron

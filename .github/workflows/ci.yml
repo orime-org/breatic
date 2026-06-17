@@ -188,6 +188,21 @@ jobs:
         # the PR. See scripts/lint-no-trojan-source.sh.
         run: pnpm lint:no-trojan-source
 
+      - name: Lint no-translated-product-noun (i18n DNT glossary)
+        # Enforce the product-term do-not-translate glossary (user decision
+        # 2026-06-17): the 8 product entity / type nouns (Studio / Project /
+        # Collection / Space / Work / Canvas / Document / Timeline) are brand
+        # vocabulary kept in English in every locale, even inside translated
+        # sentences. This blanket guard scans the four non-English locale
+        # catalogs' VALUES and hard-fails if any collision-free translated form
+        # of Project / Collection / Work / Studio / Space survives —
+        # future-proofing every new key. Collision forms (Canvas's form is also
+        # the drawing surface, Timeline's the video track, Document's "a file",
+        # Space's katakana/hangul form a Workspace substring) stay localized and
+        # are enforced per-key by frozen-product-terms.test instead. See
+        # scripts/lint-no-translated-product-noun.sh.
+        run: pnpm lint:no-translated-product-noun
+
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01) over all packages/*/src via

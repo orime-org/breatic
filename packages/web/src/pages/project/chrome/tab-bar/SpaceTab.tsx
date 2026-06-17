@@ -218,7 +218,7 @@ export function SpaceTab({
         <Lock
           className='shrink-0 text-muted-foreground'
           style={{ width: 10, height: 10, opacity: 0.5, strokeWidth: 1.5 }}
-          aria-label='Locked'
+          aria-label={t('spaces.lockedAria')}
         />
       ) : null}
       {onClose ? (
@@ -231,7 +231,7 @@ export function SpaceTab({
         <span
           role='button'
           tabIndex={0}
-          aria-label='Close space tab'
+          aria-label={t('spaces.tab.closeAria')}
           onClick={onCloseClick}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {

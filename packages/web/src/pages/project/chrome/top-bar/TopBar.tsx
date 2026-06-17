@@ -15,6 +15,7 @@ import { ExportMenu } from '@web/pages/project/chrome/top-bar/ExportMenu';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import type { ProjectRole } from '@web/stores';
 
@@ -104,10 +105,11 @@ export function TopBar({
  * @returns the back link pointing to the Studio route.
  */
 function BackLink(): React.JSX.Element {
+  const t = useTranslation();
   return (
     <Link
       to='/studio'
-      aria-label='Back to Studio'
+      aria-label={t('chrome.aria.backToStudio')}
       data-testid='top-bar-back'
       className='inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground'
     >
@@ -131,10 +133,11 @@ function CreditsPill({
   credits: number;
   onAdd?: () => void;
 }): React.JSX.Element {
+  const t = useTranslation();
   return (
     <span
       data-testid='credits-chip'
-      aria-label='Credits balance'
+      aria-label={t('chrome.aria.creditsBalance')}
       className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-xs tabular-nums'
       style={{ padding: '0 2px 0 var(--space-4)', gap: 'var(--space-3)' }}
     >
@@ -143,7 +146,7 @@ function CreditsPill({
       <button
         type='button'
         onClick={onAdd}
-        aria-label='Add credits'
+        aria-label={t('chrome.aria.addCredits')}
         className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-accent'
         data-testid='credits-add'
       >

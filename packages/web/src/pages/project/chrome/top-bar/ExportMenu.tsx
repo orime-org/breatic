@@ -18,9 +18,9 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 
 const EXPORT_FORMATS = [
-  { id: 'png', label: 'PNG (current view)', icon: FileImage },
-  { id: 'pdf', label: 'PDF (whole canvas)', icon: FileText },
-  { id: 'json', label: 'JSON (raw data)', icon: FileJson },
+  { id: 'png', labelKey: 'chrome.export.png', icon: FileImage },
+  { id: 'pdf', labelKey: 'chrome.export.pdf', icon: FileText },
+  { id: 'json', labelKey: 'chrome.export.json', icon: FileJson },
 ] as const;
 
 /**
@@ -42,7 +42,7 @@ export function ExportMenu({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant='chrome-ghost' size='chrome' aria-label='Export'>
+            <Button variant='chrome-ghost' size='chrome' aria-label={t('chrome.tooltip.export')}>
               <Download className='h-[18px] w-[18px]' />
             </Button>
           </PopoverTrigger>
@@ -66,7 +66,7 @@ export function ExportMenu({
                 onClick={() => onExport?.(f.id)}
               >
                 <ItemIcon className='h-4 w-4' />
-                {f.label}
+                {t(f.labelKey)}
               </Button>
             );
           })}

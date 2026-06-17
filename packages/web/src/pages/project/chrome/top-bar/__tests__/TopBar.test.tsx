@@ -67,9 +67,9 @@ describe('TopBar', () => {
     await expectNoA11yViolations(document.body);
   });
 
-  it('shows the role tag with the uppercase label (OWNER)', () => {
+  it('shows the role tag with the frozen English label (Owner)', () => {
     setup();
-    expect(screen.getByTestId('role-tag')).toHaveTextContent('OWNER');
+    expect(screen.getByTestId('role-tag')).toHaveTextContent('Owner');
   });
 
   it('shows the credits chip with the credit count', () => {

@@ -32,11 +32,11 @@
     },
     "studio": {
       "slug_taken": "そのハンドルはすでに使用されています。別のものを選んでください。",
-      "team_limit_reached": "チーム studio の上限(50 個)に達しました。",
+      "team_limit_reached": "チーム Studios の上限(50 個)に達しました。",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにメンバーです。",
       "already_invited": "そのユーザーには保留中の招待があります。",
-      "cannot_modify_personal": "個人スタジオはメンバーを管理できません。",
+      "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
       "remove_last_admin": "削除する前に管理者権限を譲渡してください。",
       "cannot_change_admin_role": "管理者ロールは譲渡によってのみ変更できます。"
     },
@@ -181,7 +181,7 @@
     }
   },
   "canvas": {
-    "new_project": "新規プロジェクト",
+    "new_project": "新規 Project",
     "generating": "生成中...",
     "completed": "完了",
     "failed": "生成失敗",
@@ -334,7 +334,7 @@
       "helper": "ホームは /studio/{slug} になります。小文字の英字・数字・ハイフンが使え、一意である必要があります。",
       "submit": "続行",
       "submitting": "設定中...",
-      "failed": "スタジオを設定できませんでした。もう一度お試しください。"
+      "failed": "Studio を設定できませんでした。もう一度お試しください。"
     },
     "recovery": {
       "title": "リカバリーコードを保存してください",
@@ -390,8 +390,8 @@
     "upgradeRequest": {
       "ariaLabel": "編集者権限をリクエスト",
       "title": "編集者権限をリクエスト",
-      "description": "現在このプロジェクトの閲覧者です。プロジェクトオーナーにメッセージを送り、編集者権限をリクエストできます。",
-      "placeholder": "プロジェクトオーナーへのメッセージ(任意)…",
+      "description": "現在この Project の閲覧者です。Project オーナーにメッセージを送り、編集者権限をリクエストできます。",
+      "placeholder": "Project オーナーへのメッセージ(任意)…",
       "submit": "リクエストを送信",
       "sending": "送信中…",
       "toast": {
@@ -412,32 +412,32 @@
   "common_error_noLogin": "ログインしてください。",
   "workspace": {
     "label": "ワークスペース",
-    "copy_success": "プロジェクトのコピーに成功しました",
-    "delete_success": "プロジェクトの削除に成功しました",
-    "project_name_required": "プロジェクト名は必須です",
-    "rename_success": "プロジェクトの名前変更に成功しました",
-    "create_failed": "プロジェクトの作成に失敗しました",
-    "copy_failed": "プロジェクトのコピーに失敗しました",
-    "copy_project": "プロジェクトをコピー",
-    "rename_project": "プロジェクトの名前を変更",
-    "delete_project": "プロジェクトを削除",
+    "copy_success": "Project のコピーに成功しました",
+    "delete_success": "Project の削除に成功しました",
+    "project_name_required": "Project 名は必須です",
+    "rename_success": "Project の名前変更に成功しました",
+    "create_failed": "Project の作成に失敗しました",
+    "copy_failed": "Project のコピーに失敗しました",
+    "copy_project": "Project をコピー",
+    "rename_project": "Project の名前を変更",
+    "delete_project": "Project を削除",
     "btn_confirm": "確認",
     "btn_cancel": "キャンセル",
-    "rename_project_title": "プロジェクトの名前を変更",
-    "rename_project_placeholder": "新しいプロジェクト名を入力してください",
-    "delete_project_content_title": "プロジェクトを削除",
+    "rename_project_title": "Project の名前を変更",
+    "rename_project_placeholder": "新しい Project 名を入力してください",
+    "delete_project_content_title": "Project を削除",
     "delete_project_content_description": "この操作は元に戻せません。",
-    "recent_projects": "最近のプロジェクト",
-    "create_new_project": "新しいプロジェクトを作成",
-    "no_more_data": "これ以上のプロジェクトはありません",
-    "create_project_title": "新しいプロジェクトを作成",
-    "create_project_placeholder": "新しいプロジェクトの名前を入力してください",
+    "recent_projects": "最近の Projects",
+    "create_new_project": "新しい Project を作成",
+    "no_more_data": "これ以上の Projects はありません",
+    "create_project_title": "新しい Project を作成",
+    "create_project_placeholder": "新しい Project の名前を入力してください",
     "use_case": "ユースケース",
     "use_case_description": "ユースケースの説明",
     "home_tooltip": "ホームに戻る",
     "create_user_case_title": "ユースケースを作成",
-    "create_user_case_description": "このユースケースに基づいて新しいプロジェクトが作成されます。",
-    "create_user_case_placeholder": "新しいプロジェクト名を入力",
+    "create_user_case_description": "このユースケースに基づいて新しい Project が作成されます。",
+    "create_user_case_placeholder": "新しい Project 名を入力",
     "not_logged_in": {
       "title": "ログインしていません",
       "description": "ログインしてすべての製品機能を体験してください",
@@ -573,7 +573,7 @@
       "exportFailed": "エクスポート失敗！",
       "importSuccessful": "インポート成功",
       "importFailed": "インポート失敗！",
-      "renameFailed": "プロジェクト名を変更できませんでした",
+      "renameFailed": "Project 名を変更できませんでした",
       "importing": "インポート中...",
       "exporting": "エクスポート中...",
       "english": "English",
@@ -593,13 +593,13 @@
       },
       "error": {
         "create": "Space の作成に失敗しました",
-        "notSynced": "プロジェクトを同期中です。しばらくしてから再試行してください"
+        "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
       "loading": {
         "create": "Space を作成中…",
         "delete": "Space を削除中…"
       },
-      "noActive": "開いている作業面がありません — ドロワーから開くか、+ で新規作成してください。"
+      "noActive": "開いている Spaces がありません — ドロワーから開くか、+ で新規作成してください。"
     }
   },
   "common": {
@@ -860,10 +860,10 @@
     "zoomIn": "拡大"
   },
   "message": {
-    "projectSaved": "プロジェクトを保存しました",
-    "saveProjectFailed": "プロジェクトの保存に失敗しました",
-    "projectLoaded": "プロジェクトを読み込みました",
-    "loadProjectFailed": "プロジェクトの読み込みに失敗しました",
+    "projectSaved": "Project を保存しました",
+    "saveProjectFailed": "Project の保存に失敗しました",
+    "projectLoaded": "Project を読み込みました",
+    "loadProjectFailed": "Project の読み込みに失敗しました",
     "mockDataLoaded": "モックデータを読み込みました",
     "loadMockDataFailed": "モックデータの読み込みに失敗しました",
     "noContentToExport": "エクスポートするコンテンツがありません",
@@ -976,7 +976,7 @@
   },
   "members": {
     "popover": {
-      "title": "プロジェクトメンバー",
+      "title": "Project メンバー",
       "invite": "新しいメンバーを招待",
       "manage": "コラボレーターを管理",
       "remove": "削除",
@@ -1003,7 +1003,7 @@
     },
     "modal": {
       "title": "コラボレーター管理",
-      "description": "プロジェクトメンバーと権限を管理",
+      "description": "Project メンバーと権限を管理",
       "inviteSection": "新しいコラボレーターを招待",
       "invitePlaceholder": "メールアドレス",
       "inviteButton": "招待",
@@ -1012,7 +1012,7 @@
       "inviteFailed": "招待を送信できませんでした。再試行してください。",
       "invalidEmail": "有効なメールアドレスを入力してください。",
       "membersSection": "メンバー ({count})",
-      "ownerNote": "オーナーはプロジェクト作成者に永久に紐づきます",
+      "ownerNote": "オーナーは Project 作成者に永久に紐づきます",
       "roleSelectAria": "{name} のロールを変更",
       "roleChanged": "ロールを更新しました。",
       "roleChangeFailed": "ロールを更新できませんでした。再試行してください。",
@@ -1020,6 +1020,10 @@
       "removeFailed": "メンバーを削除できませんでした。再試行してください。",
       "isMe": "(自分)",
       "remove": "削除"
+    },
+    "stack": {
+      "triggerAria": "Project メンバー({count})",
+      "removeAria": "{name} を削除"
     }
   },
   "credits": {
@@ -1039,31 +1043,29 @@
   },
   "spaces": {
     "tab": {
-      "new": "新規キャンバス",
-      "drawer": "全キャンバス",
+      "new": "新規 Canvas",
+      "drawer": "全 Canvases",
       "close": "閉じる",
       "rename": "名前変更",
       "duplicate": "複製",
       "delete": "削除",
       "lock": "ロック",
       "unlock": "ロック解除",
-      "kind_canvas": "キャンバス",
-      "kind_document": "ドキュメント",
-      "kind_timeline": "タイムライン"
+      "closeAria": "Space タブを閉じる"
     },
     "drawer": {
-      "title": "すべての作業面",
+      "title": "すべての Spaces",
       "count": "個",
       "tag_open": "開いた",
       "tag_active": "現在",
       "nodes_count": "{count} ノード",
       "confirm_delete": "この Space を削除しますか?",
-      "new_canvas": "新規キャンバス",
-      "new_document": "新規ドキュメント",
-      "new_timeline": "新規タイムライン",
-      "label": "すべての作業面",
+      "new_canvas": "新規 Canvas",
+      "new_document": "新規 Document",
+      "new_timeline": "新規 Timeline",
+      "label": "すべての Spaces",
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
-      "empty": "作業面はまだありません",
+      "empty": "Spaces はまだありません",
       "openAria": "{name} を開く",
       "status": {
         "editing": "編集中",
@@ -1074,9 +1076,9 @@
         "lock": "ロック",
         "unlock": "解除",
         "delete": "削除",
-        "deleteLocked": "ロックされた作業面は削除できません",
-        "deleteConfirmTitle": "作業面「{name}」を削除しますか？",
-        "deleteConfirmDescription": "この作業面と内容はソフト削除されます。オーナーはプロジェクトメッセージチャンネルから復元できます。",
+        "deleteLocked": "ロックされた Spaces は削除できません",
+        "deleteConfirmTitle": "Space「{name}」を削除しますか？",
+        "deleteConfirmDescription": "この Space と内容はソフト削除されます。オーナーは Project メッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
         "operationFail": "操作に失敗しました",
@@ -1097,17 +1099,17 @@
       "description": "{kind} タイプの Space は今後のリリースで対応予定です。"
     },
     "kind": {
-      "canvas": "キャンバス",
+      "canvas": "Canvas",
       "canvasSub": "無限キャンバス + ノード",
-      "document": "ドキュメント",
+      "document": "Document",
       "documentSub": "リッチテキスト + 共同編集",
-      "timeline": "タイムライン",
+      "timeline": "Timeline",
       "timelineSub": "ビデオ / オーディオ編集"
     },
     "history": {
-      "label": "プロジェクトメッセージ",
-      "title": "プロジェクトメッセージ — 欠落ノード + Space ライフサイクル",
-      "header": "プロジェクトメッセージ",
+      "label": "Project メッセージ",
+      "title": "Project メッセージ — 欠落ノード + Space ライフサイクル",
+      "header": "Project メッセージ",
       "description": "{count, plural, other {# 件のメッセージ}}",
       "empty": "メッセージはまだありません。欠落ノードの通知や Space 作成 / 削除 / ロックイベントがここに表示されます。",
       "markRead": "既読",
@@ -1126,7 +1128,7 @@
         "restored": "復元済み",
         "clearAll": "すべて削除",
         "clearAllConfirmTitle": "すべてのメッセージを削除しますか？",
-        "clearAllConfirmDescription": "この操作は取り消せません。プロジェクトメッセージチャンネル内のすべての項目が完全に削除されます。"
+        "clearAllConfirmDescription": "この操作は取り消せません。Project メッセージチャンネル内のすべての項目が完全に削除されます。"
       },
       "relative": {
         "justNow": "たった今",
@@ -1163,18 +1165,19 @@
       "description": "この Space はタブバーで開いていません。読み取り専用プレビューでズームとコピーは可能ですが編集はできません。",
       "close": "読み取り専用プレビューを閉じる",
       "canvas": {
-        "title": "読み取り専用キャンバス",
+        "title": "読み取り専用 Canvas",
         "description": "実際の ReactFlow viewer は canvas-space 実装完了時に接続。ここではノードとエッジの読み取り専用スナップショットを表示します(ズーム/コピー可)。"
       },
       "document": {
-        "title": "読み取り専用ドキュメント",
+        "title": "読み取り専用 Document",
         "description": "TipTap の読み取り専用 viewer は document-space 実装時に接続。ここではリッチテキストのスナップショットを表示します(段落コピー可)。"
       },
       "timeline": {
-        "title": "読み取り専用タイムライン",
+        "title": "読み取り専用 Timeline",
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
-    }
+    },
+    "lockedAria": "ロック中"
   },
   "image": {
     "flipVertical": "上下反転",
@@ -1215,7 +1218,7 @@
       "nodes": "ノードライブラリ — 4 種類の生成ノード",
       "upload": "素材をアップロード(混在ファイル可)",
       "comment": "キャンバスに注釈を追加",
-      "collection": "コレクション — プロジェクト横断共有(近日対応)",
+      "collection": "Collection — Projects 横断共有(近日対応)",
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
     },
@@ -1268,9 +1271,9 @@
     }
   },
   "role": {
-    "owner": "オーナー",
-    "editor": "編集者",
-    "viewer": "閲覧者"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "メールで招待",
@@ -1290,12 +1293,12 @@
     "emailDisabledHint": "このサーバーではメールが無効です。代わりに『リンクを生成』を使って URL を自分で共有してください。",
     "viewAllLinks": "生成したすべてのリンクを表示({count, plural, =0 {なし} one {1 件} other {# 件}})",
     "role": {
-      "view": "閲覧者",
-      "edit": "編集者"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "生成済みの招待リンク",
-      "description": "このプロジェクトの有効な招待リンク一覧。任意のリンクを取り消すと即座に無効になります。",
+      "description": "この Project の有効な招待リンク一覧。任意のリンクを取り消すと即座に無効になります。",
       "empty": "まだ招待リンクを生成していません。",
       "emailBadge": "メール招待",
       "copyAria": "URL をコピー",
@@ -1309,7 +1312,9 @@
       "minutes": "{n} 分前",
       "hours": "{n} 時間前",
       "days": "{n} 日前"
-    }
+    },
+    "copyLinkAria": "リンクをコピー",
+    "copiedAria": "コピーしました"
   },
   "notifications": {
     "title": "アクセス申請",
@@ -1322,7 +1327,7 @@
     "approve": "承認",
     "request": {
       "audio": "ボイスオーバーと BGM 部分に参加したい",
-      "project": "あなたの prompt スタイルを自分のプロジェクトで参考にしたい"
+      "project": "あなたの prompt スタイルを自分の Project で参考にしたい"
     },
     "loading": "読み込み中…",
     "markRead": "既読にする",
@@ -1341,14 +1346,14 @@
       "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました"
     },
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
-    "transferConfirmedToast": "あなたがスタジオの管理者になりました。",
+    "transferConfirmedToast": "あなたが Studio の管理者になりました。",
     "transferCancelledToast": "委譲を辞退しました。",
     "transferAccept": "承認",
     "transferDecline": "辞退",
     "subtitle": {
       "invitedAsCreator": "クリエイターとして参加",
       "invitedAsMember": "メンバーとして参加",
-      "transferHint": "承認するとスタジオの管理者になります"
+      "transferHint": "承認すると Studio の管理者になります"
     },
     "expiresLabel": {
       "expired": "期限切れ",
@@ -1382,20 +1387,20 @@
   },
   "studio": {
     "recent": {
-      "projectsTitle": "最近のプロジェクト",
-      "collectionsTitle": "最近のコレクション",
-      "emptyProjects": "最近のプロジェクトはまだありません。",
-      "emptyCollections": "最近のコレクションはまだありません。",
+      "projectsTitle": "最近の Projects",
+      "collectionsTitle": "最近の Collections",
+      "emptyProjects": "最近の Projects はまだありません。",
+      "emptyCollections": "最近の Collections はまだありません。",
       "role": {
-        "owner": "オーナー",
-        "editor": "編集者",
-        "viewer": "閲覧者"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "最近",
-      "subtitle": "最近編集・参加したプロジェクトとアセット集 —— すべての Studio を横断し、新しい順に表示。",
+      "subtitle": "最近編集・参加した Projects と Collections —— すべての Studio を横断し、新しい順に表示。",
       "emptyTitle": "最近のコンテンツはまだありません",
-      "emptyHint": "まだプロジェクトを作成・参加していません。最初のプロジェクトを作成するか、Studio を開いて始めましょう —— 編集した内容がここに表示されます。",
-      "loadError": "最近のプロジェクトを読み込めませんでした。ページを再読み込みしてください。",
+      "emptyHint": "まだ Project を作成・参加していません。最初の Project を作成するか、Studio を開いて始めましょう —— 編集した内容がここに表示されます。",
+      "loadError": "最近の Projects を読み込めませんでした。ページを再読み込みしてください。",
       "openedAt": "{time}に開いた"
     },
     "topBar": {
@@ -1407,7 +1412,7 @@
       "signOut": "ログアウト"
     },
     "createProject": {
-      "failed": "プロジェクトの作成に失敗:{reason}"
+      "failed": "Project の作成に失敗:{reason}"
     },
     "container": {
       "shell": {
@@ -1415,20 +1420,20 @@
         "loadError": "この Studio を読み込めませんでした。"
       },
       "tabs": {
-        "projects": "プロジェクト",
-        "collections": "コレクション",
-        "works": "作品",
+        "projects": "Projects",
+        "collections": "Collections",
+        "works": "Works",
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定"
       },
       "works": {
-        "emptyHint": "作品はプロジェクトから公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した作品がここに表示されます。",
-        "emptyTitle": "作品がまだありません"
+        "emptyHint": "Work は Project から公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した Work がここに表示されます。",
+        "emptyTitle": "Works がまだありません"
       },
       "nonMember": {
-        "worksTitle": "作品",
-        "empty": "この Studio には公開された作品がありません。"
+        "worksTitle": "Works",
+        "empty": "この Studio には公開された Works がありません。"
       },
       "header": {
         "personalTag": "個人",
@@ -1439,18 +1444,18 @@
         "recent": "最近",
         "myStudios": "マイ Studio",
         "collaboration": "コラボ",
-        "guestProjects": "参加中のプロジェクト {count} 件",
+        "guestProjects": "参加中の Projects {count} 件",
         "newStudio": "Studio を新規作成",
-        "guideRecent": "最近 = Studio をまたいだ直近のプロジェクト。",
+        "guideRecent": "最近 = Studio をまたいだ直近の Project。",
         "guideEnter": "Studio を選んでコンテナを開きます。",
         "guideTools": "ツールは右上にあります。"
       },
       "badge": {
         "visibilityStudio": "Studio 内に表示",
         "visibilityPrivate": "非公開",
-        "roleOwner": "オーナー",
-        "roleEditor": "編集者",
-        "roleViewer": "閲覧者",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "個人",
         "typeTeam": "チーム",
         "lotPaid": "無期限 · 返金可",
@@ -1467,17 +1472,16 @@
         "createdAt": "{time}に作成"
       },
       "projects": {
-        "title": "プロジェクト",
-        "new": "プロジェクトを新規作成",
-        "createError": "プロジェクトを作成できませんでした",
-        "emptyTitle": "プロジェクトがまだありません",
-        "emptyHint": "プロジェクトは無限キャンバスで創作する場所です。最初のプロジェクトを作成して始めましょう。"
+        "new": "Project を新規作成",
+        "createError": "Project を作成できませんでした",
+        "emptyTitle": "Projects がまだありません",
+        "emptyHint": "Project は無限キャンバスで創作する場所です。最初の Project を作成して始めましょう。"
       },
       "collections": {
-        "title": "コレクション",
-        "new": "コレクションを新規作成",
-        "emptyTitle": "アセット集がまだありません",
-        "emptyHint": "アセット集はプロジェクト間で再利用する素材のまとまり(画像 / 動画 / 音声)です。バックエンド機能が公開されると、作成したアセット集がここに表示されます。"
+        "title": "Collections",
+        "new": "Collection を新規作成",
+        "emptyTitle": "Collections がまだありません",
+        "emptyHint": "Collection は Projects 間で再利用する素材のまとまり(画像 / 動画 / 音声)です。バックエンド機能が公開されると、作成した Collection がここに表示されます。"
       },
       "credits": {
         "balance": "ウォレット残高",
@@ -1511,11 +1515,11 @@
         "colEmail": "メール",
         "colRole": "ロール",
         "colJoined": "参加日",
-        "roleAdmin": "管理者",
-        "roleMember": "メンバー",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "削除",
-        "cannotInvitePersonal": "個人 studio はメンバーを招待できません — あなただけです。",
-        "roleCreator": "クリエイター",
+        "cannotInvitePersonal": "個人 Studios はメンバーを招待できません — あなただけです。",
+        "roleCreator": "Creator",
         "rowMenu": "メンバー操作",
         "promoteToCreator": "クリエイターにする",
         "demoteToMember": "メンバーにする",
@@ -1528,7 +1532,7 @@
         "inviteFailed": "このメンバーを招待できませんでした。もう一度お試しください。",
         "roleUpdated": "ロールを更新しました。",
         "removeConfirmTitle": "メンバーを削除しますか？",
-        "removeConfirmBody": "{name} はこのスタジオのすべてのプロジェクトへのアクセスを失い、所有していたプロジェクトはあなたに移ります。この操作は元に戻せません。",
+        "removeConfirmBody": "{name} はこの Studio のすべての Project へのアクセスを失い、所有していた Project はあなたに移ります。この操作は元に戻せません。",
         "removeConfirmAction": "削除",
         "removeSuccess": "メンバーを削除しました。",
         "transferConfirmTitle": "管理者を委譲しますか？",
@@ -1552,19 +1556,19 @@
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
         "delete": "Studio を削除",
-        "dangerHint": "譲渡はすべてのプロジェクト・アセット集・ウォレットを新しいオーナーに移します;削除は元に戻せません。オーナーのみ可能です。"
+        "dangerHint": "譲渡はすべての Projects ・ Collections ・ウォレットを新しいオーナーに移します;削除は元に戻せません。オーナーのみ可能です。"
       },
       "dialog": {
-        "newProjectTitle": "プロジェクトを新規作成",
-        "newCollectionTitle": "コレクションを新規作成",
+        "newProjectTitle": "Project を新規作成",
+        "newCollectionTitle": "Collection を新規作成",
         "newStudioTitle": "Studio を新規作成",
         "studioLabel": "Studio",
         "nameLabel": "名前",
-        "namePlaceholder": "マイプロジェクト",
+        "namePlaceholder": "マイ Project",
         "slugLabel": "ハンドル",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "プロジェクトのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
-        "slugHelperCollection": "コレクションのURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
+        "slugHelperProject": "Project のURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
+        "slugHelperCollection": "Collection のURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
         "descriptionLabel": "説明(任意)",
         "typeLabel": "種類",
         "typePersonal": "個人",
@@ -1577,7 +1581,7 @@
         "slugReserved": "そのハンドルは既に使用されています。",
         "slugChecking": "利用可能か確認しています…",
         "slugAvailable": "このハンドルは利用できます",
-        "createStudioError": "studio を作成できませんでした",
+        "createStudioError": "Studio を作成できませんでした",
         "visibilityLabel": "公開範囲",
         "visibilityStudioOption": "Studio 内に表示 — 全メンバー",
         "visibilityPrivateOption": "非公開 — 招待のみ"
@@ -1592,8 +1596,8 @@
     },
     "rail": {
       "navLabel": "Studio ナビゲーション",
-      "createProject": "プロジェクトを新規作成",
-      "createCollection": "コレクションを新規作成",
+      "createProject": "Project を新規作成",
+      "createCollection": "Collection を新規作成",
       "createStudio": "Studio を新規作成",
       "comingSoon": "近日公開",
       "recent": "最近",
@@ -1629,30 +1633,48 @@
       "export": "エクスポート",
       "share": "共有",
       "notifications": "通知",
-      "newSpace": "新規スペース",
-      "allSpaces": "全スペース",
-      "projectMessages": "プロジェクト通知",
+      "newSpace": "新規 Space",
+      "allSpaces": "全 Spaces",
+      "projectMessages": "Project 通知",
       "agentHide": "エージェントパネルを隠す",
       "agentShow": "エージェントパネルを表示",
       "openHistory": "会話履歴",
       "newConversation": "新規会話"
+    },
+    "aria": {
+      "backToStudio": "Studio に戻る",
+      "creditsBalance": "クレジット残高",
+      "addCredits": "クレジットを追加",
+      "home": "ホーム",
+      "conversationCount": "{count} 件の会話",
+      "scrollTabsLeft": "タブを左へスクロール",
+      "scrollTabsRight": "タブを右へスクロール",
+      "spacesToolbar": "Spaces",
+      "openSpaces": "開いている Space",
+      "language": "言語：{name}",
+      "theme": "テーマ：{theme}"
+    },
+    "export": {
+      "png": "PNG(現在のビュー)",
+      "pdf": "PDF(キャンバス全体)",
+      "json": "JSON(生データ)"
     }
   },
   "invite": {
     "consume": {
-      "loadingTitle": "プロジェクトに参加中…",
+      "loadingTitle": "Project に参加中…",
       "loadingBody": "招待リンクを確認しています。少々お待ちください。",
       "errorTitle": "招待を受諾できませんでした",
-      "errorBody": "リンクをもう一度開くか、プロジェクトオーナーに新しいリンクを依頼してください。",
+      "errorBody": "リンクをもう一度開くか、Project オーナーに新しいリンクを依頼してください。",
       "invalidToken": "招待リンクの形式が正しくありません。",
-      "expiredOrInvalid": "この招待リンクはもう有効ではありません。プロジェクトオーナーに新しいリンクを依頼してください。",
+      "expiredOrInvalid": "この招待リンクはもう有効ではありません。Project オーナーに新しいリンクを依頼してください。",
       "failed": "招待の受諾でエラーが発生しました。",
       "backToStudio": "Studio に戻る"
     }
   },
   "noAccess": {
-    "title": "このプロジェクトへのアクセス権がありません",
-    "description": "プロジェクトオーナーに連絡してアクセスを依頼してください。新しい招待リンクを共有してもらえます。",
+    "title": "この Project へのアクセス権がありません",
+    "description": "Project オーナーに連絡してアクセスを依頼してください。新しい招待リンクを共有してもらえます。",
     "backToStudio": "Studio に戻る"
   }
 }

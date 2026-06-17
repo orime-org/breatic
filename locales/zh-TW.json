@@ -32,11 +32,11 @@
     },
     "studio": {
       "slug_taken": "該網址標識已被使用,請換一個。",
-      "team_limit_reached": "你已達到 50 個團隊 studio 的上限。",
+      "team_limit_reached": "你已達到 50 個團隊 Studios 的上限。",
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已是成員。",
       "already_invited": "該使用者已有一個待確認的邀請。",
-      "cannot_modify_personal": "個人 studio 無法管理成員。",
+      "cannot_modify_personal": "個人 Studio 無法管理成員。",
       "remove_last_admin": "移除前請先轉讓管理員。",
       "cannot_change_admin_role": "管理員角色只能透過轉讓變更。"
     },
@@ -181,7 +181,7 @@
     }
   },
   "canvas": {
-    "new_project": "新建專案",
+    "new_project": "新建 Project",
     "generating": "生成中...",
     "completed": "已完成",
     "failed": "生成失敗",
@@ -334,7 +334,7 @@
       "helper": "你的首頁將位於 /studio/{slug}。只能使用小寫字母、數字和連字號;必須唯一。",
       "submit": "繼續",
       "submitting": "設定中...",
-      "failed": "無法設定你的工作室,請重試。"
+      "failed": "無法設定你的 Studio,請重試。"
     },
     "recovery": {
       "title": "保存你的復原碼",
@@ -390,12 +390,12 @@
     "upgradeRequest": {
       "ariaLabel": "申請編輯者權限",
       "title": "申請編輯者權限",
-      "description": "你目前是該專案的檢視者。給專案所有者發送訊息,申請編輯者權限。",
-      "placeholder": "給專案所有者的留言(可選)…",
+      "description": "你目前是該 Project 的檢視者。給 Project 所有者發送訊息,申請編輯者權限。",
+      "placeholder": "給 Project 所有者的留言(可選)…",
       "submit": "發送申請",
       "sending": "發送中…",
       "toast": {
-        "sent": "申請已發送 — 專案所有者會在通知中看到。",
+        "sent": "申請已發送 — Project 所有者會在通知中看到。",
         "failed": "申請發送失敗,請重試。"
       }
     }
@@ -412,32 +412,32 @@
   "common_error_noLogin": "請登錄。",
   "workspace": {
     "label": "工作臺",
-    "copy_success": "專案複製成功",
-    "delete_success": "專案刪除成功",
-    "project_name_required": "專案名稱是必需的",
-    "rename_success": "專案重新命名成功",
-    "create_failed": "建立專案失敗",
-    "copy_failed": "複製專案失敗",
-    "copy_project": "複製專案",
-    "rename_project": "重新命名專案",
-    "delete_project": "刪除專案",
+    "copy_success": "Project 複製成功",
+    "delete_success": "Project 刪除成功",
+    "project_name_required": "Project 名稱是必需的",
+    "rename_success": "Project 重新命名成功",
+    "create_failed": "建立 Project 失敗",
+    "copy_failed": "複製 Project 失敗",
+    "copy_project": "複製 Project",
+    "rename_project": "重新命名 Project",
+    "delete_project": "刪除 Project",
     "btn_confirm": "確認",
     "btn_cancel": "取消",
-    "rename_project_title": "重新命名專案",
-    "rename_project_placeholder": "請輸入新的專案名稱",
-    "delete_project_content_title": "刪除專案",
+    "rename_project_title": "重新命名 Project",
+    "rename_project_placeholder": "請輸入新的 Project 名稱",
+    "delete_project_content_title": "刪除 Project",
     "delete_project_content_description": "此操作無法撤銷。",
-    "recent_projects": "最近的專案",
-    "create_new_project": "建立新專案",
-    "no_more_data": "沒有更多專案",
-    "create_project_title": "建立新專案",
-    "create_project_placeholder": "請輸入新專案的名稱",
+    "recent_projects": "最近的 Projects",
+    "create_new_project": "建立新 Project",
+    "no_more_data": "沒有更多 Projects",
+    "create_project_title": "建立新 Project",
+    "create_project_placeholder": "請輸入新 Project 的名稱",
     "use_case": "用例",
     "use_case_description": "用例描述",
     "home_tooltip": "返回首頁",
     "create_user_case_title": "建立用例",
-    "create_user_case_description": "這將基於此用例建立一個新專案。",
-    "create_user_case_placeholder": "輸入新專案名稱",
+    "create_user_case_description": "這將基於此用例建立一個新 Project。",
+    "create_user_case_placeholder": "輸入新 Project 名稱",
     "not_logged_in": {
       "title": "未登入",
       "description": "登入以體驗所有產品功能",
@@ -573,7 +573,7 @@
       "exportFailed": "導出失敗！",
       "importSuccessful": "導入成功",
       "importFailed": "導入失敗！",
-      "renameFailed": "重新命名專案失敗",
+      "renameFailed": "重新命名 Project 失敗",
       "importing": "導入中...",
       "exporting": "導出中...",
       "english": "English",
@@ -593,13 +593,13 @@
       },
       "error": {
         "create": "Space 建立失敗",
-        "notSynced": "專案正在同步,請稍後再試"
+        "notSynced": "Project 正在同步,請稍後再試"
       },
       "loading": {
         "create": "正在建立 Space…",
         "delete": "正在刪除 Space…"
       },
-      "noActive": "沒有開啟的工作面 — 點抽屜裡的工作面開啟,或點 + 新增。"
+      "noActive": "沒有開啟的 Space — 點抽屜裡的 Space 開啟,或點 + 新增。"
     }
   },
   "common": {
@@ -860,10 +860,10 @@
     "zoomIn": "放大"
   },
   "message": {
-    "projectSaved": "專案已儲存",
-    "saveProjectFailed": "儲存專案失敗",
-    "projectLoaded": "專案已載入",
-    "loadProjectFailed": "載入專案失敗",
+    "projectSaved": "Project 已儲存",
+    "saveProjectFailed": "儲存 Project 失敗",
+    "projectLoaded": "Project 已載入",
+    "loadProjectFailed": "載入 Project 失敗",
     "mockDataLoaded": "模擬資料已載入",
     "loadMockDataFailed": "載入模擬資料失敗",
     "noContentToExport": "沒有可匯出的內容",
@@ -976,7 +976,7 @@
   },
   "members": {
     "popover": {
-      "title": "專案成員",
+      "title": "Project 成員",
       "invite": "邀請新成員",
       "manage": "管理協作者",
       "remove": "移除",
@@ -987,12 +987,12 @@
     },
     "panel": {
       "title": "協作者管理",
-      "subtitle": "管理專案成員及其權限",
+      "subtitle": "管理 Project 成員及其權限",
       "invite_section": "邀請新協作者",
       "invite_placeholder": "電子郵件或使用者 ID",
       "invite_button": "邀請",
       "list_count": "成員 ({count})",
-      "list_note": "所有者永久綁定專案建立者",
+      "list_note": "所有者永久綁定 Project 建立者",
       "confirm_remove": "確認移除此協作者?",
       "done": "完成"
     },
@@ -1003,7 +1003,7 @@
     },
     "modal": {
       "title": "協作者管理",
-      "description": "管理專案成員及其權限",
+      "description": "管理 Project 成員及其權限",
       "inviteSection": "邀請新協作者",
       "invitePlaceholder": "電子郵件地址",
       "inviteButton": "邀請",
@@ -1012,7 +1012,7 @@
       "inviteFailed": "邀請傳送失敗,請重試。",
       "invalidEmail": "請輸入有效的電子郵件地址。",
       "membersSection": "成員 ({count})",
-      "ownerNote": "擁有者永久綁定專案建立者",
+      "ownerNote": "擁有者永久綁定 Project 建立者",
       "roleSelectAria": "修改 {name} 的角色",
       "roleChanged": "角色已更新。",
       "roleChangeFailed": "角色更新失敗,請重試。",
@@ -1020,6 +1020,10 @@
       "removeFailed": "成員移除失敗,請重試。",
       "isMe": "(你)",
       "remove": "移除"
+    },
+    "stack": {
+      "triggerAria": "Project 成員（{count}）",
+      "removeAria": "移除 {name}"
     }
   },
   "credits": {
@@ -1039,31 +1043,29 @@
   },
   "spaces": {
     "tab": {
-      "new": "新增畫布",
-      "drawer": "所有畫布",
+      "new": "新增 Canvas",
+      "drawer": "所有 Canvases",
       "close": "關閉",
       "rename": "重新命名",
       "duplicate": "複製",
       "delete": "刪除",
       "lock": "鎖定",
       "unlock": "解鎖",
-      "kind_canvas": "畫布",
-      "kind_document": "文件",
-      "kind_timeline": "時間軸"
+      "closeAria": "關閉 Space 標籤頁"
     },
     "drawer": {
-      "title": "所有工作面",
+      "title": "所有 Spaces",
       "count": "個",
       "tag_open": "已開啟",
       "tag_active": "目前",
       "nodes_count": "{count} 節點",
       "confirm_delete": "確認刪除此 Space?",
-      "new_canvas": "新增畫布",
-      "new_document": "新增文件",
-      "new_timeline": "新增時間軸",
-      "label": "所有工作面",
+      "new_canvas": "新增 Canvas",
+      "new_document": "新增 Document",
+      "new_timeline": "新增 Timeline",
+      "label": "所有 Spaces",
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
-      "empty": "尚無工作面",
+      "empty": "尚無 Spaces",
       "openAria": "開啟 {name}",
       "status": {
         "editing": "編輯中",
@@ -1074,9 +1076,9 @@
         "lock": "鎖定",
         "unlock": "解鎖",
         "delete": "刪除",
-        "deleteLocked": "鎖定的工作面無法刪除",
-        "deleteConfirmTitle": "刪除工作面「{name}」？",
-        "deleteConfirmDescription": "此工作面及其內容將被軟刪除。Owner 可從專案訊息頻道還原。",
+        "deleteLocked": "鎖定的 Spaces 無法刪除",
+        "deleteConfirmTitle": "刪除 Space「{name}」？",
+        "deleteConfirmDescription": "此 Space 及其內容將被軟刪除。Owner 可從 Project 訊息頻道還原。",
         "lockFail": "鎖定失敗",
         "unlockFail": "解鎖失敗",
         "operationFail": "操作失敗",
@@ -1097,17 +1099,17 @@
       "description": "{kind} 類型的 Space 將在未來版本支援。"
     },
     "kind": {
-      "canvas": "畫布",
+      "canvas": "Canvas",
       "canvasSub": "無限畫布 + 節點",
-      "document": "文件",
+      "document": "Document",
       "documentSub": "富文本 + 協作",
-      "timeline": "時間軸",
+      "timeline": "Timeline",
       "timelineSub": "影片 / 音訊剪輯"
     },
     "history": {
-      "label": "專案訊息",
-      "title": "專案訊息 — 節點遺失 + Space 生命週期",
-      "header": "專案訊息",
+      "label": "Project 訊息",
+      "title": "Project 訊息 — 節點遺失 + Space 生命週期",
+      "header": "Project 訊息",
       "description": "{count, plural, other {# 則訊息}}",
       "empty": "尚無訊息。節點遺失提示和 Space 建立 / 刪除 / 鎖定事件會顯示在這裡。",
       "markRead": "已讀",
@@ -1126,7 +1128,7 @@
         "restored": "已還原",
         "clearAll": "清空",
         "clearAllConfirmTitle": "確認清空所有訊息？",
-        "clearAllConfirmDescription": "此操作無法復原。專案訊息頻道中的所有項目都將被永久刪除。"
+        "clearAllConfirmDescription": "此操作無法復原。Project 訊息頻道中的所有項目都將被永久刪除。"
       },
       "relative": {
         "justNow": "剛剛",
@@ -1163,18 +1165,19 @@
       "description": "此 Space 未在標籤列開啟;唯讀預覽,可縮放與複製內容,不可編輯。",
       "close": "關閉唯讀預覽",
       "canvas": {
-        "title": "唯讀畫布",
+        "title": "唯讀 Canvas",
         "description": "真實 ReactFlow viewer 在 canvas-space 完整實作時接入;此處展示節點與邊的唯讀快照,支援縮放與複製。"
       },
       "document": {
-        "title": "唯讀文件",
+        "title": "唯讀 Document",
         "description": "TipTap 唯讀 viewer 在 document-space 實作時接入;此處展示富文本快照,支援複製段落。"
       },
       "timeline": {
-        "title": "唯讀時間軸",
+        "title": "唯讀 Timeline",
         "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
-    }
+    },
+    "lockedAria": "已鎖定"
   },
   "image": {
     "flipVertical": "垂直翻轉",
@@ -1215,7 +1218,7 @@
       "nodes": "節點庫 — 4 類生成節點",
       "upload": "上傳素材(多檔案混合)",
       "comment": "在畫布加註解",
-      "collection": "資產集 — 跨專案共享素材(敬請期待)",
+      "collection": "Collection — 跨 Projects 共享素材(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
     },
@@ -1268,9 +1271,9 @@
     }
   },
   "role": {
-    "owner": "擁有者",
-    "editor": "編輯",
-    "viewer": "唯讀"
+    "owner": "Owner",
+    "editor": "Editor",
+    "viewer": "Viewer"
   },
   "share": {
     "inviteSection": "透過電子郵件邀請",
@@ -1290,12 +1293,12 @@
     "emailDisabledHint": "本伺服器未設定郵件發送,請使用『產生連結』複製 URL 自行傳送。",
     "viewAllLinks": "檢視所有已產生的連結({count, plural, =0 {無} one {1 個} other {# 個}})",
     "role": {
-      "view": "檢視者",
-      "edit": "編輯者"
+      "view": "Viewer",
+      "edit": "Editor"
     },
     "linksList": {
       "title": "已產生的邀請連結",
-      "description": "本專案下所有有效的邀請連結。撤銷任一連結將立即失效。",
+      "description": "本 Project 下所有有效的邀請連結。撤銷任一連結將立即失效。",
       "empty": "你尚未產生任何邀請連結。",
       "emailBadge": "電子郵件邀請",
       "copyAria": "複製 URL",
@@ -1309,7 +1312,9 @@
       "minutes": "{n} 分鐘前",
       "hours": "{n} 小時前",
       "days": "{n} 天前"
-    }
+    },
+    "copyLinkAria": "複製連結",
+    "copiedAria": "已複製"
   },
   "notifications": {
     "title": "存取申請",
@@ -1322,7 +1327,7 @@
     "approve": "核准",
     "request": {
       "audio": "想加入做配音和 BGM 部分",
-      "project": "想參考你的 prompt 風格做我自己的專案"
+      "project": "想參考你的 prompt 風格做我自己的 Project"
     },
     "loading": "載入中…",
     "markRead": "標為已讀",
@@ -1341,14 +1346,14 @@
       "studioInviteAccepted": "{invitee} 接受了你對 {studio} 的邀請"
     },
     "actionFailed": "無法完成操作，請重試。",
-    "transferConfirmedToast": "你現在是該工作室的管理員了。",
+    "transferConfirmedToast": "你現在是該 Studio 的管理員了。",
     "transferCancelledToast": "已拒絕轉讓。",
     "transferAccept": "接受",
     "transferDecline": "拒絕",
     "subtitle": {
       "invitedAsCreator": "以建立者身分加入",
       "invitedAsMember": "以成員身分加入",
-      "transferHint": "接受後即成為該工作室的管理員"
+      "transferHint": "接受後即成為該 Studio 的管理員"
     },
     "expiresLabel": {
       "expired": "已過期",
@@ -1364,7 +1369,7 @@
   "connection": {
     "banner": {
       "authFailed": {
-        "text": "登入已失效 — 專案內容無法載入,請重新登入。",
+        "text": "登入已失效 — Project 內容無法載入,請重新登入。",
         "action": "重新登入"
       },
       "disconnected": {
@@ -1382,20 +1387,20 @@
   },
   "studio": {
     "recent": {
-      "projectsTitle": "最近參與的專案",
-      "collectionsTitle": "最近的資產集",
-      "emptyProjects": "還沒有最近的專案。",
-      "emptyCollections": "還沒有最近的資產集。",
+      "projectsTitle": "最近參與的 Projects",
+      "collectionsTitle": "最近的 Collections",
+      "emptyProjects": "還沒有最近的 Projects。",
+      "emptyCollections": "還沒有最近的 Collections。",
       "role": {
-        "owner": "擁有者",
-        "editor": "編輯者",
-        "viewer": "檢視者"
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
       },
       "title": "最近",
-      "subtitle": "你最近編輯、參與過的專案和資產集 —— 跨你所有的 Studio,按最近時間排序。",
+      "subtitle": "你最近編輯、參與過的 Projects 和 Collections —— 跨你所有的 Studio,按最近時間排序。",
       "emptyTitle": "還沒有最近的內容",
-      "emptyHint": "你還沒有建立或參與任何專案。建立第一個專案,或進入一個 Studio 開始創作 —— 之後你最近編輯的內容會顯示在這裡。",
-      "loadError": "無法載入最近的專案，請重新整理頁面再試。",
+      "emptyHint": "你還沒有建立或參與任何 Project。建立第一個 Project,或進入一個 Studio 開始創作 —— 之後你最近編輯的內容會顯示在這裡。",
+      "loadError": "無法載入最近的 Projects，請重新整理頁面再試。",
       "openedAt": "開啟於 {time}"
     },
     "topBar": {
@@ -1407,7 +1412,7 @@
       "signOut": "登出"
     },
     "createProject": {
-      "failed": "建立專案失敗:{reason}"
+      "failed": "建立 Project 失敗:{reason}"
     },
     "container": {
       "shell": {
@@ -1415,20 +1420,20 @@
         "loadError": "無法載入該 Studio。"
       },
       "tabs": {
-        "projects": "專案",
-        "collections": "資產集",
-        "works": "作品",
+        "projects": "Projects",
+        "collections": "Collections",
+        "works": "Works",
         "members": "成員",
         "credits": "點數",
         "settings": "設定"
       },
       "works": {
-        "emptyHint": "作品是從專案發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",
-        "emptyTitle": "還沒有作品"
+        "emptyHint": "Works 是從 Project 發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",
+        "emptyTitle": "還沒有 Works"
       },
       "nonMember": {
-        "worksTitle": "作品",
-        "empty": "此 Studio 尚無發布作品"
+        "worksTitle": "Works",
+        "empty": "此 Studio 尚無發布 Works"
       },
       "header": {
         "personalTag": "個人",
@@ -1439,18 +1444,18 @@
         "recent": "最近",
         "myStudios": "我的 Studio",
         "collaboration": "協作",
-        "guestProjects": "{count} 個參與的專案",
+        "guestProjects": "{count} 個參與的 Projects",
         "newStudio": "新增 Studio",
-        "guideRecent": "最近 = 跨 Studio 的近期專案。",
+        "guideRecent": "最近 = 跨 Studio 的近期 Project。",
         "guideEnter": "點某個 Studio 進入它的容器。",
         "guideTools": "工具在右上角。"
       },
       "badge": {
         "visibilityStudio": "Studio 內可見",
         "visibilityPrivate": "私有",
-        "roleOwner": "擁有者",
-        "roleEditor": "編輯者",
-        "roleViewer": "檢視者",
+        "roleOwner": "Owner",
+        "roleEditor": "Editor",
+        "roleViewer": "Viewer",
         "typePersonal": "個人",
         "typeTeam": "團隊",
         "lotPaid": "永久 · 可退",
@@ -1467,17 +1472,16 @@
         "createdAt": "建立於 {time}"
       },
       "projects": {
-        "title": "專案",
-        "new": "新增專案",
-        "createError": "建立專案失敗",
-        "emptyTitle": "還沒有專案",
-        "emptyHint": "專案是你在無限畫布上創作的地方。建立第一個專案,開始你的創作。"
+        "new": "新增 Project",
+        "createError": "建立 Project 失敗",
+        "emptyTitle": "還沒有 Projects",
+        "emptyHint": "Project 是你在無限畫布上創作的地方。建立第一個 Project,開始你的創作。"
       },
       "collections": {
-        "title": "資產集",
-        "new": "新增資產集",
-        "emptyTitle": "還沒有資產集",
-        "emptyHint": "資產集是跨專案複用的素材集合(圖 / 影片 / 音訊)。後端能力上線後,這裡會列出你建立的資產集。"
+        "title": "Collections",
+        "new": "新增 Collection",
+        "emptyTitle": "還沒有 Collections",
+        "emptyHint": "Collection 是跨 Projects 複用的素材集合(圖 / 影片 / 音訊)。後端能力上線後,這裡會列出你建立的 Collection。"
       },
       "credits": {
         "balance": "錢包餘額",
@@ -1511,11 +1515,11 @@
         "colEmail": "電子郵件",
         "colRole": "角色",
         "colJoined": "加入時間",
-        "roleAdmin": "管理員",
-        "roleMember": "成員",
+        "roleAdmin": "Admin",
+        "roleMember": "Member",
         "remove": "移除",
-        "cannotInvitePersonal": "個人 studio 無法邀請成員 —— 只有你自己。",
-        "roleCreator": "建立者",
+        "cannotInvitePersonal": "個人 Studios 無法邀請成員 —— 只有你自己。",
+        "roleCreator": "Creator",
         "rowMenu": "成員操作",
         "promoteToCreator": "設為建立者",
         "demoteToMember": "設為成員",
@@ -1528,7 +1532,7 @@
         "inviteFailed": "無法邀請此成員，請重試。",
         "roleUpdated": "角色已更新。",
         "removeConfirmTitle": "移除成員？",
-        "removeConfirmBody": "{name} 將失去本工作室所有專案的存取權限，其擁有的專案會轉移給你。此操作無法復原。",
+        "removeConfirmBody": "{name} 將失去本 Studio 所有 Project 的存取權限，其擁有的 Project 會轉移給你。此操作無法復原。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成員。",
         "transferConfirmTitle": "轉讓管理員？",
@@ -1552,19 +1556,19 @@
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
         "delete": "刪除 Studio",
-        "dangerHint": "轉讓會把所有專案、素材集與錢包整體過戶;刪除無法復原。僅擁有者可操作。"
+        "dangerHint": "轉讓會把所有 Projects、素材集與錢包整體過戶;刪除無法復原。僅擁有者可操作。"
       },
       "dialog": {
-        "newProjectTitle": "新增專案",
-        "newCollectionTitle": "新增資產集",
+        "newProjectTitle": "新增 Project",
+        "newCollectionTitle": "新增 Collection",
         "newStudioTitle": "新增 Studio",
         "studioLabel": "Studio",
         "nameLabel": "名稱",
-        "namePlaceholder": "我的專案",
+        "namePlaceholder": "我的 Project",
         "slugLabel": "網址標識",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "專案網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
-        "slugHelperCollection": "資產集網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
+        "slugHelperProject": "Project 網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
+        "slugHelperCollection": "Collection 網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
         "descriptionLabel": "簡介(選填)",
         "typeLabel": "類型",
         "typePersonal": "個人",
@@ -1577,7 +1581,7 @@
         "slugReserved": "該網址標識已被使用。",
         "slugChecking": "正在檢查是否可用…",
         "slugAvailable": "該網址標識可用",
-        "createStudioError": "無法建立 studio",
+        "createStudioError": "無法建立 Studio",
         "visibilityLabel": "可見性",
         "visibilityStudioOption": "Studio 內可見 — 所有成員",
         "visibilityPrivateOption": "私有 — 僅受邀"
@@ -1592,8 +1596,8 @@
     },
     "rail": {
       "navLabel": "Studio 導覽",
-      "createProject": "新增專案",
-      "createCollection": "新增資產集",
+      "createProject": "新增 Project",
+      "createCollection": "新增 Collection",
       "createStudio": "新增 Studio",
       "comingSoon": "即將推出",
       "recent": "最近",
@@ -1629,30 +1633,48 @@
       "export": "匯出",
       "share": "分享",
       "notifications": "通知",
-      "newSpace": "新增工作面",
-      "allSpaces": "所有工作面",
-      "projectMessages": "專案訊息",
+      "newSpace": "新增 Space",
+      "allSpaces": "所有 Spaces",
+      "projectMessages": "Project 訊息",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",
       "openHistory": "對話歷史",
       "newConversation": "新增對話"
+    },
+    "aria": {
+      "backToStudio": "返回 Studio",
+      "creditsBalance": "積分餘額",
+      "addCredits": "新增積分",
+      "home": "首頁",
+      "conversationCount": "{count} 個對話",
+      "scrollTabsLeft": "向左捲動標籤",
+      "scrollTabsRight": "向右捲動標籤",
+      "spacesToolbar": "Spaces",
+      "openSpaces": "已開啟的 Space",
+      "language": "語言：{name}",
+      "theme": "主題：{theme}"
+    },
+    "export": {
+      "png": "PNG（目前檢視）",
+      "pdf": "PDF（整個畫布）",
+      "json": "JSON（原始資料）"
     }
   },
   "invite": {
     "consume": {
-      "loadingTitle": "正在加入專案…",
+      "loadingTitle": "正在加入 Project…",
       "loadingBody": "正在驗證邀請連結,請稍候。",
       "errorTitle": "無法接受邀請",
-      "errorBody": "請重新開啟連結,或向專案所有者索取新的邀請連結。",
+      "errorBody": "請重新開啟連結,或向 Project 所有者索取新的邀請連結。",
       "invalidToken": "邀請連結格式錯誤。",
-      "expiredOrInvalid": "邀請連結已失效。請聯絡專案所有者取得新的連結。",
+      "expiredOrInvalid": "邀請連結已失效。請聯絡 Project 所有者取得新的連結。",
       "failed": "接受邀請時發生錯誤。",
       "backToStudio": "返回 Studio"
     }
   },
   "noAccess": {
-    "title": "你沒有存取此專案的權限",
-    "description": "請聯絡專案所有者申請存取,他們可以給你一個新的邀請連結。",
+    "title": "你沒有存取此 Project 的權限",
+    "description": "請聯絡 Project 所有者申請存取,他們可以給你一個新的邀請連結。",
     "backToStudio": "返回 Studio"
   }
 }

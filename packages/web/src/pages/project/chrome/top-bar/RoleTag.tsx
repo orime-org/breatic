@@ -19,10 +19,15 @@ import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ProjectRole } from '@web/stores';
 
-const ROLE_LABEL: Record<ProjectRole, string> = {
-  owner: 'OWNER',
-  editor: 'EDITOR',
-  viewer: 'VIEWER',
+/**
+ * Role → i18n key. Roles are frozen product vocabulary (#1336): the key
+ * resolves to the same Title-Case English label ('Owner' / 'Editor' /
+ * 'Viewer') in every locale, so the chip never localizes the role name.
+ */
+const ROLE_KEY: Record<ProjectRole, string> = {
+  owner: 'role.owner',
+  editor: 'role.editor',
+  viewer: 'role.viewer',
 };
 
 interface RoleTagProps {
@@ -39,7 +44,7 @@ interface RoleTagProps {
  *   which lands a notification in the owner's BellMenu.
  *
  * Per spec § 6.3 — the upgrade entry point lives on RoleTag (not a
- * separate button) because viewers see "VIEWER" and intuitively know
+ * separate button) because viewers see "Viewer" and intuitively know
  * to click it.
  *
  * Spec: access-permission design (2026-05-28) § 6.3.
@@ -62,6 +67,7 @@ export function RoleTag({ role, projectId }: RoleTagProps): React.JSX.Element {
  * @returns the non-interactive role chip.
  */
 function ReadOnlyRoleTag({ role }: { role: ProjectRole }): React.JSX.Element {
+  const t = useTranslation();
   const isOwner = role === 'owner';
   return (
     <span
@@ -72,7 +78,7 @@ function ReadOnlyRoleTag({ role }: { role: ProjectRole }): React.JSX.Element {
       )}
       style={{ padding: '2px var(--space-3)' }}
     >
-      {ROLE_LABEL[role]}
+      {t(ROLE_KEY[role])}
     </span>
   );
 }
@@ -117,7 +123,7 @@ function ClickableViewerRoleTag({
           className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-muted text-2xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{ padding: '2px var(--space-3)' }}
         >
-          <span>{ROLE_LABEL.viewer}</span>
+          <span>{t(ROLE_KEY.viewer)}</span>
           <ArrowUp className='h-3 w-3' aria-hidden='true' />
         </button>
       </PopoverTrigger>
