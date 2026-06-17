@@ -29,16 +29,21 @@ const { warnSpy, infoSpy, debugSpy, errorSpy } = vi.hoisted(() => ({
 }));
 
 // ── Mock the logger before importing the module under test ────────────────
-// `createLogger` returns a child pino logger. We replace it with a factory
-// that hands out a plain object with spy methods so we can assert on calls.
-vi.mock("../infra/logger.js", () => ({
-  createLogger: () => ({
-    warn: warnSpy,
-    info: infoSpy,
-    debug: debugSpy,
-    error: errorSpy,
-  }),
-}));
+// `createLogger` now comes from `@breatic/core` (the unified logger). We
+// spread the real core barrel (so `taskEventsStreamKey` etc. stay intact)
+// and override only `createLogger` with a factory handing out spy methods.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    createLogger: () => ({
+      warn: warnSpy,
+      info: infoSpy,
+      debug: debugSpy,
+      error: errorSpy,
+    }),
+  };
+});
 
 // Mock event-stream so importing task-listener doesn't try to connect to Redis.
 vi.mock("../services/event-stream.js", () => ({

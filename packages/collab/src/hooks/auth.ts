@@ -39,13 +39,16 @@
 
 import type { Redis } from "@breatic/core";
 import type { IncomingHttpHeaders } from "node:http";
-import { getSession, projectAuthService, SESSION_COOKIE_NAME } from "@breatic/core";
+import {
+  createLogger,
+  getSession,
+  projectAuthService,
+  SESSION_COOKIE_NAME,
+} from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
-
-import { createLogger } from "@collab/infra/logger.js";
 
 /**
  * Auth hook logger - every onAuthenticate decision (success or

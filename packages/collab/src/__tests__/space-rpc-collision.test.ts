@@ -36,6 +36,25 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   seedInitialState: vi.fn(),
 }));
 
+// `createLogger` now comes from `@breatic/core` (the unified logger), which
+// reads the injected config at call time. Spread the real core barrel (so
+// `encodeInitialSpaceContentState` / `writeSpaceEntry` keep their real impls
+// the invariants depend on) and override only `createLogger` with a no-op
+// stub so the module-level `createLogger("space-rpc")` doesn't require
+// initCore under test.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    createLogger: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
+
 import { handleSpaceRpc } from "../services/space-rpc.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";

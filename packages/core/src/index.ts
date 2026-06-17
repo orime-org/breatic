@@ -110,7 +110,7 @@ export * as projectAuthService from "@core/auth/projectAuth.service.js";
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 
 // ── Utilities ────────────────────────────────────────────────────
-export { logger, initLogger } from "@core/infra/logger.js";
+export { logger, initLogger, createLogger } from "@core/infra/logger.js";
 export {
   AppError,
   NotFoundError,

@@ -53,20 +53,13 @@ const {
   fetchDocDataMock: vi.fn(),
 }));
 
-vi.mock("../infra/logger.js", () => ({
-  createLogger: () => ({
-    warn: loggerWarn,
-    error: loggerError,
-    info: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
-
 // `@breatic/core` is mocked wholesale (not spread-from-actual) because
 // importing the real barrel pulls the `ai` SDK + opentelemetry
 // transitive deps that vitest's ESM resolver chokes on. auth.ts uses
-// exactly four exports — substitute each:
+// exactly five exports — substitute each:
 //   - getSession / loadProjectRole: the shared auth kernel, mocked
+//   - createLogger: the unified core logger factory, mocked to expose
+//     the warn/error spies the log-trail assertions below check
 //   - yjsDocumentsRepo.fetchDocData: the single home for `yjs_documents`
 //     SQL (the space-existence read), mocked to return a meta blob
 //   - SESSION_COOKIE_NAME: the cookie name constant
@@ -74,6 +67,12 @@ vi.mock("@breatic/core", () => ({
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
   SESSION_COOKIE_NAME: "breatic_session",
+  createLogger: () => ({
+    warn: loggerWarn,
+    error: loggerError,
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 // The yjs-store repo moved to collab; the auth hook now imports it
 // locally. Mock the local repo (so its core `yjsDb` dependency never
