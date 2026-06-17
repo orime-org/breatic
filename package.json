@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "dev:collab": "tsx watch packages/collab/src/index.ts",
-    "dev:worker": "tsx watch packages/worker/src/index.ts",
+    "dev:server": "pnpm --filter @breatic/server dev",
+    "dev:collab": "pnpm --filter @breatic/collab dev",
+    "dev:worker": "pnpm --filter @breatic/worker dev",
     "start": "node packages/server/dist/index.js",
     "start:collab": "node packages/collab/dist/index.js",
     "start:worker": "node packages/worker/dist/index.js",

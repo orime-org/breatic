@@ -81,6 +81,7 @@ pnpm dev
 This starts API (:3000), Collab (:1234), Worker, and frontend (:8000) via turbo. Or start individually:
 
 ```bash
+pnpm dev:server       # API server (port 3000)
 pnpm dev:collab       # Hocuspocus (port 1234)
 pnpm dev:worker       # BullMQ Worker
 cd packages/web && pnpm dev  # Vite frontend (port 8000)
