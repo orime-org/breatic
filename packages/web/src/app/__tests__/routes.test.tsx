@@ -1,9 +1,28 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+
+// This is a ROUTE-RESOLUTION test: it asserts each path maps to the right page
+// component (e.g. /project/:id → ProjectPage, top-bar mounts). ProjectPage gates
+// its body on the meta doc's collab socket status, so stub the socket to a
+// terminal `connected` state — the real WebSocket lifecycle is covered by
+// collab-socket / use-socket / SpaceDocSync unit tests, not here.
+vi.mock('@web/data/yjs/use-socket', () => ({
+  useSocket: (): {
+    provider: null;
+    synced: boolean;
+    status: 'connected';
+    authFailedReason: null;
+  } => ({
+    provider: null,
+    synced: true,
+    status: 'connected',
+    authFailedReason: null,
+  }),
+}));
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import StudioLayout from '@web/pages/studio/shell/StudioLayout';

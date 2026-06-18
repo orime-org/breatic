@@ -6,7 +6,6 @@ import * as Y from 'yjs';
 import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { useSocket } from '@web/data/yjs/use-socket';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -54,7 +53,6 @@ export interface CanvasEdge {
 interface CanvasSpaceState {
   nodes: ReadonlyArray<CanvasNodeView>;
   edges: ReadonlyArray<CanvasEdge>;
-  synced: boolean;
   /** Undo the last tracked structural / metadata / name edit by this client. */
   undo: () => void;
   /** Redo the last undone edit by this client. */
@@ -113,10 +111,13 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 }
 
 /**
- * Subscribe to a canvas-space document.
+ * Subscribe to a canvas-space document. Observes the cached Y.Doc only — the
+ * document is kept attached to the shared collab socket by its open tab's
+ * `SpaceDocSync`, so this hook never opens its own connection (attach follows
+ * tab open / close, not the active render).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose nodes and edges to observe.
- * @returns The current nodes, edges, sync flag, and per-space undo controls.
+ * @returns The current nodes, edges, and per-space undo controls.
  */
 export function useCanvasSpace(
   projectId: string,
@@ -124,7 +125,6 @@ export function useCanvasSpace(
 ): CanvasSpaceState {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const { synced } = useSocket({ name, doc });
   const [nodes, setNodes] = React.useState<ReadonlyArray<CanvasNodeView>>(() =>
     readNodes(doc),
   );
@@ -204,7 +204,7 @@ export function useCanvasSpace(
     syncAvailability();
   }, [syncAvailability]);
 
-  return { nodes, edges, synced, undo, redo, canUndo, canRedo };
+  return { nodes, edges, undo, redo, canUndo, canRedo };
 }
 
 /**

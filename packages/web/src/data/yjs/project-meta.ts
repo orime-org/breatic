@@ -262,20 +262,20 @@ export function useProjectMeta(
  * Returns an immutable array snapshot; re-renders on any push / delete
  * coming from collab.
  * @param projectId - Project whose meta document carries the messages channel.
- * @returns The current project messages snapshot and whether the doc has synced.
+ * @returns The current project messages snapshot.
  */
 export function useProjectMessages(projectId: string): {
   messages: ReadonlyArray<ProjectMessageEntry>;
-  synced: boolean;
 } {
+  // Observe the SAME cached meta doc that `useProjectMeta` keeps attached to
+  // the shared collab socket — this hook does NOT open its own connection. One
+  // HocuspocusProvider per doc name rides the shared socket; a second attach
+  // for the same `…/meta` doc would collide on the providerMap (the bug the
+  // shared-socket rework exposed — both hooks used to dial `…/meta` separately).
   const doc = React.useMemo(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
-  const { synced } = useSocket({
-    name: docName.projectMeta(projectId),
-    doc,
-  });
 
   const [messages, setMessages] = React.useState<
     ReadonlyArray<ProjectMessageEntry>
@@ -293,7 +293,7 @@ export function useProjectMessages(projectId: string): {
     return () => arr.unobserveDeep(update);
   }, [doc]);
 
-  return { messages, synced };
+  return { messages };
 }
 
 /**
