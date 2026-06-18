@@ -1016,7 +1016,9 @@
       "removeSuccess": "メンバーを削除しました。",
       "removeFailed": "メンバーを削除できませんでした。再試行してください。",
       "isMe": "(自分)",
-      "remove": "削除"
+      "remove": "削除",
+      "removeConfirmTitle": "コラボレーターを削除しますか？",
+      "removeConfirmBody": "{name} はこの Project へのアクセスを失います。この操作は元に戻せません。"
     },
     "stack": {
       "triggerAria": "Project メンバー({count})",

@@ -1016,7 +1016,9 @@
       "removeSuccess": "已移除成員。",
       "removeFailed": "成員移除失敗,請重試。",
       "isMe": "(你)",
-      "remove": "移除"
+      "remove": "移除",
+      "removeConfirmTitle": "移除協作者？",
+      "removeConfirmBody": "{name} 將失去這個 Project 的存取權限。此操作無法復原。"
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）",

@@ -2,10 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@web/components/ui/alert-dialog';
 import {
   Dialog,
   DialogBody,
@@ -67,7 +78,9 @@ function initialsOf(name: string): string {
  * Manage-only: inviting collaborators lives in the ShareDialog (email-only
  * invite-confirm handshake). This dialog manages the EXISTING roster:
  *   - Role select on each non-owner row calls membersApi.setRole.
- *   - Remove button on each non-owner row calls membersApi.remove.
+ *   - Remove button on each non-owner row opens a confirm AlertDialog;
+ *     confirming calls membersApi.remove (removal is destructive — the
+ *     collaborator loses access — so it is gated behind a second step).
  *   - Subtitle below each member name shows their email.
  *
  * Spec: access-permission design (2026-05-28) § 5.
@@ -85,6 +98,8 @@ export function MembersModal({
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('members-modal');
   const [pendingRowId, setPendingRowId] = React.useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = React.useState<Member | null>(null);
+  const queryClient = useQueryClient();
 
   /**
    * Changes a member's role on the backend, showing a success or error toast.
@@ -99,6 +114,9 @@ export function MembersModal({
     setPendingRowId(member.id);
     try {
       await membersApi.setRole(projectId, member.id, next);
+      await queryClient.invalidateQueries({
+        queryKey: ['project-members', projectId],
+      });
       toast.success(t('members.modal.roleChanged'));
     } catch {
       toast.error(t('members.modal.roleChangeFailed'));
@@ -116,7 +134,13 @@ export function MembersModal({
     setPendingRowId(member.id);
     try {
       await membersApi.remove(projectId, member.id);
+      await queryClient.invalidateQueries({
+        queryKey: ['project-members', projectId],
+      });
       toast.success(t('members.modal.removeSuccess'));
+      // Close the confirm dialog only on success — a failure leaves it open
+      // with the error toast so the owner can retry.
+      setConfirmRemove(null);
     } catch {
       toast.error(t('members.modal.removeFailed'));
     } finally {
@@ -125,40 +149,82 @@ export function MembersModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent data-testid='members-modal'>
-        <DialogHeader>
-          <DialogTitle>{t('members.modal.title')}</DialogTitle>
-          <DialogDescription>{t('members.modal.description')}</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent data-testid='members-modal'>
+          <DialogHeader>
+            <DialogTitle>{t('members.modal.title')}</DialogTitle>
+            <DialogDescription>
+              {t('members.modal.description')}
+            </DialogDescription>
+          </DialogHeader>
 
-        <DialogBody>
-          <div className='flex items-center justify-between'>
-            <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
-              {t('members.modal.membersSection', { count: members.length })}
-            </span>
-            <span className='text-2xs text-muted-foreground'>
-              {t('members.modal.ownerNote')}
-            </span>
-          </div>
-          <ul className='flex flex-col divide-y divide-border'>
-            {members.map((m) => (
-              <li key={m.id} data-testid={`members-modal-row-${m.id}`}>
-                <ModalMemberRow
-                  member={m}
-                  isMe={
-                    currentUserId !== undefined && m.userId === currentUserId
-                  }
-                  pending={pendingRowId === m.id}
-                  onSetRole={(r) => handleSetRole(m, r)}
-                  onRemove={() => handleRemove(m)}
-                />
-              </li>
-            ))}
-          </ul>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+          <DialogBody>
+            <div className='flex items-center justify-between'>
+              <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
+                {t('members.modal.membersSection', { count: members.length })}
+              </span>
+              <span className='text-2xs text-muted-foreground'>
+                {t('members.modal.ownerNote')}
+              </span>
+            </div>
+            <ul className='flex flex-col divide-y divide-border'>
+              {members.map((m) => (
+                <li key={m.id} data-testid={`members-modal-row-${m.id}`}>
+                  <ModalMemberRow
+                    member={m}
+                    isMe={
+                      currentUserId !== undefined && m.userId === currentUserId
+                    }
+                    pending={pendingRowId === m.id}
+                    onSetRole={(r) => handleSetRole(m, r)}
+                    onRemove={() => setConfirmRemove(m)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmRemove !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmRemove(null);
+        }}
+      >
+        <AlertDialogContent data-testid='members-modal-remove-confirm'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('members.modal.removeConfirmTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmRemove
+                ? t('members.modal.removeConfirmBody', {
+                  name: confirmRemove.name,
+                })
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant='destructive'
+              disabled={pendingRowId !== null}
+              onClick={(event) => {
+                // Keep the dialog mounted until handleRemove's success path
+                // closes it, so a failure leaves it open with the error toast.
+                event.preventDefault();
+                if (confirmRemove) void handleRemove(confirmRemove);
+              }}
+              data-testid='members-modal-remove-confirm-action'
+            >
+              {t('members.modal.remove')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

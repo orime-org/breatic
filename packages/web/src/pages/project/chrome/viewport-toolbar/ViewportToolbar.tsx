@@ -67,7 +67,9 @@ interface ViewportToolbarProps {
  *     back to disabled when a caller doesn't wire history (props
  *     default `canUndo` / `canRedo` to `false`, `onUndo` / `onRedo`
  *     optional).
- *   - 32px (`--btn-chrome`) hit areas, 6px chrome radius.
+ *   - 32px (`--btn-chrome`) hit areas; the bar frame + its buttons use the
+ *     12px `rounded-md` radius (2026-06-18 — softer than the 6px chrome
+ *     default the rest of the chrome uses).
  *   - `bg-popover` elevated surface + `shadow` so it floats above the
  *     dot-grid canvas.
  *   - No viewport-lock button (lock is space-level, surfaced in the
@@ -109,7 +111,7 @@ export function ViewportToolbar({
       data-testid='viewport-toolbar'
       role='toolbar'
       aria-label={t('viewportToolbar.aria')}
-      className='absolute bottom-4 right-4 z-10 flex rounded-chrome border border-border bg-popover p-1 shadow'
+      className='absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover p-1 shadow'
     >
       <Group>
         <VtButton
@@ -249,7 +251,7 @@ function VtButton({
           {...rest}
           disabled={disabled}
           className={cn(
-            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-chrome text-base transition-colors',
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-base transition-colors',
             disabled
               ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
               : active
@@ -339,7 +341,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
-              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-chrome bg-transparent text-2xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+              className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-md bg-transparent text-2xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
             >
               <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>
             </button>
