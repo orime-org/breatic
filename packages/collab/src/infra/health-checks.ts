@@ -42,6 +42,18 @@ export interface CollabHealthProbes {
   pingYjsPostgres: () => Promise<boolean>;
   /** True while the Hocuspocus WS http server's listen socket is open. */
   isHocuspocusListening: () => boolean;
+  /**
+   * Resolves true when collab can actually PROCESS a document end-to-end —
+   * opening a server-side connection to a sentinel doc, loading it, and tearing
+   * it down within a timeout. The five probes above all stay green when the
+   * process is alive but has STOPPED serving connections (the throttle-ban /
+   * doc-pipeline-wedge failure mode: socket still listening, infra still
+   * reachable, yet nothing syncs). This is the only probe that walks the real
+   * load-and-process path, so a wedge flips healthz red and the LB / docker
+   * healthcheck recycles the process. Resolves false (never throws) on timeout
+   * or error so one stuck probe can't crash the health handler.
+   */
+  probeWsProcessing: () => Promise<boolean>;
 }
 
 /**
@@ -56,5 +68,6 @@ export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck
     { name: "postgres", check: probes.pingPostgres },
     { name: "postgres_yjs", check: probes.pingYjsPostgres },
     { name: "hocuspocus_listening", check: async () => probes.isHocuspocusListening() },
+    { name: "ws_processing", check: probes.probeWsProcessing },
   ];
 }
