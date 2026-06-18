@@ -19,7 +19,7 @@ export { studiosApi } from '@web/data/api/studios';
 // spacesApi removed 2026-05-23: see ADR yjs-collab-only-write-authz.
 // Space lifecycle (create / delete / lock / restore) now routes through
 // `sendSpaceRpc` in `@/data/yjs/space-rpc-client`.
-export { membersApi, type Member, type MemberRole } from '@web/data/api/members';
+export { membersApi, type Member, type MemberRole, type ProjectMembership } from '@web/data/api/members';
 export { chatApi, type ChatStreamEvent, type ConversationSummary, type ConversationDetail } from '@web/data/api/chat';
 export { canvasApi, type CanvasTask } from '@web/data/api/canvas';
 export { miniToolsApi } from '@web/data/api/mini-tools';

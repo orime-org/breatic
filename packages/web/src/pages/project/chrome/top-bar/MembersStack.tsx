@@ -25,6 +25,13 @@ interface MembersStackProps {
   projectId: string;
   members?: ReadonlyArray<Member>;
   currentUserId?: string;
+  /**
+   * Current user's role on the project. Drives owner-only affordances:
+   * the "Manage collaborators" button and the per-row hover-remove
+   * button only render for `owner` (B model — hidden, not disabled, for
+   * editor / viewer). Backend `requireRole` is the real enforcement.
+   */
+  currentUserRole?: MemberRole;
 }
 
 const STUB_MEMBERS: ReadonlyArray<Member> = [
@@ -71,8 +78,11 @@ function initialsOf(name: string): string {
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ projectId, members = STUB_MEMBERS, currentUserId }, ref) => {
+>(({ projectId, members = STUB_MEMBERS, currentUserId, currentUserRole }, ref) => {
   const t = useTranslation();
+  // Owner-only affordances (B model — hidden, not disabled). The manage
+  // button + per-row remove only render when the current user is owner.
+  const isOwner = currentUserRole === 'owner';
   const visible = members.slice(0, 2);
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
@@ -152,7 +162,10 @@ export const MembersStack = React.forwardRef<
         data-testid='members-popover'
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
-          <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
+          <span
+            className='text-2xs font-medium tracking-wide text-muted-foreground'
+            data-testid='members-popover-title'
+          >
             {t('members.popover.title')}
           </span>
           <span className='text-2xs tabular-nums text-muted-foreground'>
@@ -165,25 +178,34 @@ export const MembersStack = React.forwardRef<
               <MemberRow
                 member={m}
                 isMe={currentUserId !== undefined && m.userId === currentUserId}
+                canRemove={isOwner}
                 onRemove={() => handleRemove(m)}
                 removePending={pendingRemoveId === m.id}
               />
             </li>
           ))}
         </ul>
-        <Separator className='my-1' />
-        <div className='flex flex-col gap-2 p-2'>
-          <Button
-            variant='outline'
-            size='form'
-            className='w-full justify-center gap-2 text-sm'
-            onClick={openManage}
-            data-testid='members-manage-trigger'
-          >
-            <Users className='h-4 w-4' />
-            {t('members.popover.manage')}
-          </Button>
-        </div>
+        {/* Manage collaborators is an owner-only affordance (B model —
+            hidden, not disabled, for editor / viewer). The whole footer
+            (separator + button) collapses when the user isn't owner so
+            there's no empty padded gap. */}
+        {isOwner ? (
+          <>
+            <Separator className='my-1' />
+            <div className='flex flex-col gap-2 p-2'>
+              <Button
+                variant='outline'
+                size='form'
+                className='w-full justify-center gap-2 text-sm'
+                onClick={openManage}
+                data-testid='members-manage-trigger'
+              >
+                <Users className='h-4 w-4' />
+                {t('members.popover.manage')}
+              </Button>
+            </div>
+          </>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
@@ -193,6 +215,12 @@ MembersStack.displayName = 'MembersStack';
 interface MemberRowProps {
   member: Member;
   isMe: boolean;
+  /**
+   * Whether the current user may remove members (owner-only). When false
+   * the hover-remove button never renders — the row shows the role badge
+   * instead (B model — hidden, not disabled, for editor / viewer).
+   */
+  canRemove: boolean;
   onRemove: () => void;
   removePending: boolean;
 }
@@ -202,6 +230,7 @@ interface MemberRowProps {
  * @param root0 - Member row props.
  * @param root0.member - Member rendered by this row.
  * @param root0.isMe - Whether this row is the current viewer (shows a role badge instead of remove).
+ * @param root0.canRemove - Whether the current user may remove members (owner-only); gates the remove button.
  * @param root0.onRemove - Called when the viewer removes this member.
  * @param root0.removePending - Whether the remove request for this member is in flight (disables the button).
  * @returns the popover member row with its role badge or remove control.
@@ -209,6 +238,7 @@ interface MemberRowProps {
 function MemberRow({
   member,
   isMe,
+  canRemove,
   onRemove,
   removePending,
 }: MemberRowProps): React.JSX.Element {
@@ -240,7 +270,7 @@ function MemberRow({
           {member.email}
         </span>
       </div>
-      {member.role !== 'owner' && !isMe ? (
+      {canRemove && member.role !== 'owner' && !isMe ? (
         <Button
           variant='outline'
           size='sm'

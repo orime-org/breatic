@@ -129,6 +129,13 @@ function ClickableViewerRoleTag({
       </PopoverTrigger>
       <PopoverContent
         align='start'
+        // The role chip is a short pill (~20px) vs the full-height chrome
+        // buttons (~32px); both are centred in the 40px top-bar row, so the
+        // chip's bottom sits ~6px higher. With the default sideOffset (8) the
+        // popover would open ~2px INTO the top-bar. Bump to 14 so it lands
+        // 4px below the top-bar row — matching the theme/lang popovers
+        // (chrome-overlay rhythm, [[project_chrome_overlay_rhythm]]).
+        sideOffset={14}
         className='w-80 p-3'
         data-testid='role-tag-popover'
       >
