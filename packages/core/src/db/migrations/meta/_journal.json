@@ -218,6 +218,13 @@
       "when": 1780700500000,
       "tag": "0030_project_last_opened",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780700600000,
+      "tag": "0031_project_invitations",
+      "breakpoints": true
     }
   ]
 }

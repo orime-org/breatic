@@ -37,6 +37,10 @@ import {
   projectInviteLinksRoute,
   consumeInviteLinkRoute,
 } from "@server/routes/invite-links.js";
+import {
+  projectInvitationsRoute,
+  projectInvitesRoute,
+} from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
 import {
   projectRoleUpgradeRequestsRoute,
@@ -75,6 +79,8 @@ export function createApp(): Hono {
   app.route("/api/v1/projects/:pid/members", membersRoute);
   app.route("/api/v1/projects/:pid/invite-links", projectInviteLinksRoute);
   app.route("/api/v1/invite-links", consumeInviteLinkRoute);
+  app.route("/api/v1/projects/:pid/invitations", projectInvitesRoute);
+  app.route("/api/v1/project-invitations", projectInvitationsRoute);
   app.route("/api/v1/users/me/notifications", notificationsRoute);
   app.route(
     "/api/v1/projects/:pid/role-upgrade-requests",

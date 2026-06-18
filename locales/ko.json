@@ -40,6 +40,11 @@
       "remove_last_admin": "제거하기 전에 먼저 관리자를 이전하세요.",
       "cannot_change_admin_role": "관리자 역할은 이전을 통해서만 변경할 수 있습니다."
     },
+    "project": {
+      "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
+      "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
+      "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다."
+    },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
     },

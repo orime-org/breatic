@@ -40,6 +40,11 @@
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it."
     },
+    "project": {
+      "email_not_registered": "No account is registered with that email.",
+      "already_member": "That user already has access.",
+      "already_invited": "That user already has a pending invitation."
+    },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
     },

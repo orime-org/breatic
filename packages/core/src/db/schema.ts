@@ -871,6 +871,8 @@ export const notifications = pgTable(
      * - 'studio.transfer_approved' - user accepted; old admin is notified
      * - 'studio.invite_request' - admin invites the user to a studio (TTL; confirm/decline)
      * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
+     * - 'project.invite_request' - owner invites the user to a project (TTL; confirm/decline)
+     * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
@@ -959,6 +961,69 @@ export const studioInvitations = pgTable(
     index("studio_invitations_invited_user_id_idx").on(table.invitedUserId),
     // One LIVE pending invite per (studio, invitee) is enforced by a partial
     // unique index (`studio_invitations_one_pending`) in the migration —
+    // Drizzle's table builder does not emit partial unique indexes.
+  ],
+);
+
+// ── Project Invitations (invite-confirm handshake, 2026-06-18) ────────
+//
+// Pending project-member invitations — the direct mirror of
+// `studio_invitations` for the project membership layer (#1337). A project
+// invite no longer takes effect immediately (the old `share_links` model let a
+// link consumer join on click, with no decline state and no invitee-side
+// handshake): the inviter creates a `pending` row here, the invitee confirms
+// via the bell notification or an email link, and ONLY THEN is a
+// `project_members` row written. Keeping pending invites in their OWN table
+// (not a `status` column on `project_members`) means `project_members` stays
+// "active members only" — project auth (`loadProjectRole`) / member-list /
+// member-count queries need zero status filter, and a pending invitee can never
+// be mistaken for a real member. `status` flows pending → accepted | declined |
+// revoked (append-only lifecycle; rows are soft-deleted only). All FKs are
+// `onDelete: restrict` except `notification_id` (`set null` — the bell row may
+// be GC'd). The granted `role` is `editor` | `viewer` only (never `owner` —
+// owner is granted at project creation / transfer, never invited). One LIVE
+// pending invite per (project, invitee) is enforced by a partial unique index
+// in the migration. See the project-invite parity spec (2026-06-18).
+
+export const projectInvitations = pgTable(
+  "project_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    invitedUserId: uuid("invited_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Granted project role — 'editor' | 'viewer' (owner is never invited). */
+    role: varchar("role", { length: 16 }).notNull(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'revoked'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * The bell notification that surfaces this invite, so confirm / decline /
+     * revoke can mark it read in the same transaction — the bell entry then
+     * disappears even when the invite was acted on via the email link. Null
+     * when no notification was created, and `set null` if the notice is GC'd.
+     */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    /** Invite times out after this; expired pendings self-void in queries. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("project_invitations_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    index("project_invitations_invited_user_id_idx").on(table.invitedUserId),
+    // One LIVE pending invite per (project, invitee) is enforced by a partial
+    // unique index (`project_invitations_one_pending`) in the migration —
     // Drizzle's table builder does not emit partial unique indexes.
   ],
 );

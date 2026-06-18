@@ -40,6 +40,11 @@
       "remove_last_admin": "削除する前に管理者権限を譲渡してください。",
       "cannot_change_admin_role": "管理者ロールは譲渡によってのみ変更できます。"
     },
+    "project": {
+      "email_not_registered": "そのメールアドレスは登録されていません。",
+      "already_member": "そのユーザーはすでにアクセス権を持っています。",
+      "already_invited": "そのユーザーには保留中の招待があります。"
+    },
     "payment": {
       "checkout_created": "決済セッションが作成されました",
       "credits_granted": "{amount} クレジットがチャージされました",

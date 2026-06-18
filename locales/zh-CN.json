@@ -43,6 +43,11 @@
       "remove_last_admin": "移除前请先转让管理员。",
       "cannot_change_admin_role": "管理员角色只能通过转让变更。"
     },
+    "project": {
+      "email_not_registered": "该邮箱未注册。",
+      "already_member": "该用户已有访问权限。",
+      "already_invited": "该用户已有一个待确认的邀请。"
+    },
     "payment": {
       "checkout_created": "支付会话已创建",
       "credits_granted": "已充值 {amount} 积分",

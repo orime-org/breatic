@@ -40,6 +40,11 @@
       "remove_last_admin": "移除前請先轉讓管理員。",
       "cannot_change_admin_role": "管理員角色只能透過轉讓變更。"
     },
+    "project": {
+      "email_not_registered": "該信箱尚未註冊。",
+      "already_member": "該使用者已有存取權限。",
+      "already_invited": "該使用者已有一個待確認的邀請。"
+    },
     "payment": {
       "checkout_created": "支付工作階段已建立",
       "credits_granted": "已儲值 {amount} 積分",

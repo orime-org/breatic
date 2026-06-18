@@ -56,6 +56,13 @@ export type {
   PersonalStudioRef,
 } from "@shared/types/studio.js";
 
+export type {
+  InvitableProjectRole,
+  ProjectInvitationStatus,
+  PendingProjectInvitationSummary,
+  ProjectInvitationLandingView,
+} from "@shared/types/project-invite.js";
+
 export type { SpaceType, Space } from "@shared/types/space.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 

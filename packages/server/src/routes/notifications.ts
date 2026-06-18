@@ -28,6 +28,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { notificationService } from "@server/modules";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 
 /** Action body — confirm or cancel an actionable notification. */
 const actionSchema = z.object({
@@ -125,6 +126,21 @@ route.post("/:id/action", async (c) => {
         await studioInviteService.confirmInvite(payload.invitationId, user.id);
       } else {
         await studioInviteService.declineInvite(payload.invitationId, user.id);
+      }
+      break;
+    }
+    case "project.invite_request": {
+      // The invite's source of truth is the project_invitations row whose id
+      // rides in the notification payload (the notification is just the entry
+      // point); confirm/decline act on that invitation.
+      const payload = notification.payload as { invitationId?: unknown };
+      if (typeof payload.invitationId !== "string") {
+        throw new NotFoundError(t("server.error.not_found"));
+      }
+      if (body.action === "confirm") {
+        await projectInviteService.confirmInvite(payload.invitationId, user.id);
+      } else {
+        await projectInviteService.declineInvite(payload.invitationId, user.id);
       }
       break;
     }
