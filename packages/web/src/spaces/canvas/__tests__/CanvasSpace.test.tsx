@@ -37,7 +37,6 @@ function mockSpace(
   return {
     nodes: [],
     edges: [],
-    synced: true,
     undo: undoSpy,
     redo: redoSpy,
     canUndo: false,

@@ -12,6 +12,7 @@ import { useProjectMembers } from '@web/data/use-project-members';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   closeSpaceTab,
@@ -39,6 +40,7 @@ import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
+import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
 
 /**
  * Project page shell - TopBar above two columns:
@@ -68,12 +70,12 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
 /**
- * Project page shell rendering the TopBar, the per-user Agent chat column,
- * and the Space tab bar with the active Space body.
- * @returns The project workspace, or a loading screen while the websocket connects.
+ * Project page shell — resolves the project uuid from the route and gates the
+ * shared collab socket on userId, then renders the workspace inside it so every
+ * Yjs document hook attaches onto ONE shared WebSocket (#1378 / #1381).
+ * @returns The collab-socket-wrapped project workspace.
  */
 export default function ProjectPage(): React.JSX.Element {
-  const t = useTranslation();
   const { projectId: routeParam = 'demo' } = useParams<{
     projectId: string;
   }>();
@@ -81,6 +83,32 @@ export default function ProjectPage(): React.JSX.Element {
   // decorative and the backend keys on the bare uuid, so resolve it once here
   // and use it for every API call + the Yjs document name downstream.
   const projectId = projectUuidFromRouteParam(routeParam);
+  // Gate the shared collab socket on userId — the #1381 boot-race fix: don't
+  // dial until AuthBootstrap has resolved a session, or the first connect
+  // races the cookie and sticks on authFailed forever (regressed in v14 reset).
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  return (
+    <CollabSocketProvider userId={userId}>
+      <ProjectWorkspace projectId={projectId} />
+    </CollabSocketProvider>
+  );
+}
+
+/**
+ * Project workspace rendering the TopBar, the per-user Agent chat column, and
+ * the Space tab bar with the active Space body. Every Yjs document hook here
+ * attaches onto the shared collab socket from the parent
+ * {@link CollabSocketProvider}.
+ * @param root0 - Workspace props.
+ * @param root0.projectId - Resolved project uuid (slug already stripped).
+ * @returns The project workspace, or a loading screen while the socket connects.
+ */
+function ProjectWorkspace({
+  projectId,
+}: {
+  projectId: string;
+}): React.JSX.Element {
+  const t = useTranslation();
   const navigate = useNavigate();
 
   // ---- Project meta (name / credits / role) ----
@@ -457,6 +485,18 @@ export default function ProjectPage(): React.JSX.Element {
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
+      {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
+          socket. Attach follows tab open / close — NOT the active tab — so
+          background tabs stay live and re-activating one is instant (user
+          requirement 2026-06-18). Renders nothing. */}
+      {openTabs.map((tab) => (
+        <SpaceDocSync
+          key={tab.id}
+          projectId={projectId}
+          spaceId={tab.id}
+          type={tab.type}
+        />
+      ))}
       <ConnectionBanner
         status={connectionStatus}
         onReload={() => window.location.reload()}
@@ -529,7 +569,12 @@ export default function ProjectPage(): React.JSX.Element {
             />
             <div className='relative flex-1'>
               {activeSpace ? (
+                // key on the Space id so switching tabs REMOUNTS the body —
+                // ReactFlow re-runs fitView so the camera frames the new
+                // Space's nodes (#1378). Cheap now: remount only re-binds the
+                // already-attached doc, it does not rebuild a WebSocket.
                 <SpaceOutlet
+                  key={activeSpace.id}
                   projectId={projectId}
                   spaceId={activeSpace.id}
                   type={activeSpace.type}

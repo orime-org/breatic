@@ -1,30 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { HocuspocusProvider } from '@hocuspocus/provider';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
-
-/**
- * Placeholder token the Hocuspocus client must send purely to
- * trip the server's `onAuthenticate` hook — without ANY token the
- * client-side library short-circuits and the hook is never invoked
- * (see ueberdosis/hocuspocus#596). The server ignores this string
- * and reads the real session token from the httpOnly `breatic_session`
- * cookie attached to the WebSocket upgrade request (the browser
- * sends the cookie automatically because the WS endpoint is
- * same-origin under `/ws`).
- */
-const COOKIE_AUTH_PLACEHOLDER = '__cookie_auth__';
+import {
+  acquireDocProvider,
+  releaseDocProvider,
+  useCollabSocketContext,
+} from '@web/data/yjs/collab-socket';
 
 interface UseSocketOptions {
   /** Document name (e.g. `project-abc/meta`). */
   name: string;
   /** The Y.Doc to bind to the provider. */
   doc: Y.Doc;
-  /** WebSocket URL to the Hocuspocus server. */
-  url?: string;
 }
 
 /**
@@ -60,31 +51,28 @@ interface SocketState {
 }
 
 /**
- * StrictMode-safe Hocuspocus provider hook.
+ * Subscribe a component to one Yjs document's connection on the SHARED collab
+ * socket. The provider + socket themselves live in the module-level
+ * reference-counted registry (see `collab-socket`); this hook only
+ * acquires / releases the document and mirrors its connection lifecycle into
+ * React state for the banner UI.
  *
- * CRITICAL: `new HocuspocusProvider()` opens a WebSocket. In React 18
- * StrictMode, every `useEffect` runs twice on mount in dev — so naive
- * `useMemo(() => new Provider(), [])` + separate cleanup leaks one
- * socket per mount. The cleanup runs against the FIRST instance, but
- * the second instance (created by the second mount) is never closed.
+ * Gated on the shared-socket readiness (`useCollabSocketContext().ready`, which
+ * is the userId gate — the #1381 boot-race fix): until a session is resolved no
+ * document is acquired and the hook stays `connecting`.
  *
- * The safe pattern: ALWAYS create the provider + register cleanup
- * inside the SAME `useEffect`. React guarantees cleanup runs before
- * the next effect, so the first socket is properly destroyed before
- * the second is created.
- *
- * (Lesson from PR #99 — see memory `feedback_strictmode_resource_hook`.)
+ * StrictMode-safe by construction: the registry's deferred reference-counted
+ * teardown means this hook's mount→unmount→mount in StrictMode does NOT detach
+ * the document or re-auth it (which would trip a duplicate-auth "Forbidden").
+ * Here we only add / remove event listeners, which is side-effect-free on the
+ * shared provider.
  * @param root0 - Socket binding options.
- * @param root0.name - Document name to open on the Hocuspocus server (e.g. `project-abc/meta`).
+ * @param root0.name - Document name to attach (e.g. `project-abc/meta`).
  * @param root0.doc - The Y.Doc instance to bind to the provider.
- * @param root0.url - WebSocket URL or path to the Hocuspocus server; defaults to `/ws`.
  * @returns The live provider plus sync flag, connection status, and any auth-failure reason.
  */
-export function useSocket({
-  name,
-  doc,
-  url = '/ws',
-}: UseSocketOptions): SocketState {
+export function useSocket({ name, doc }: UseSocketOptions): SocketState {
+  const { ready, url } = useCollabSocketContext();
   const [synced, setSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
   const [authFailedReason, setAuthFailedReason] = React.useState<
@@ -93,71 +81,85 @@ export function useSocket({
   const providerRef = React.useRef<HocuspocusProvider | null>(null);
 
   React.useEffect(() => {
-    // Per-run flag so this provider's own teardown close (unmount / doc
-    // swap) isn't mis-reported as a connection failure. Captured in the
-    // effect closure (not a ref) so the async onClose that fires AFTER
-    // destroy() reads THIS run's value — immune to a re-mount resetting it.
-    let closing = false;
+    // Gated: the shared socket may not be dialed until userId resolves. Acquire
+    // nothing and stay `connecting`; the context re-renders `ready` once userId
+    // lands, re-running this effect to acquire.
+    if (!ready) {
+      setStatus('connecting');
+      setSynced(false);
+      setAuthFailedReason(null);
+      providerRef.current = null;
+      return;
+    }
 
-    // Reset state on (re)mount so a doc swap starts from a clean
-    // lifecycle, not a stale `connected` / `authFailed`.
-    setStatus('connecting');
-    setSynced(false);
-    setAuthFailedReason(null);
-
-    const fullUrl = url.startsWith('ws')
-      ? url
-      : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${url}`;
-
-    const provider = new HocuspocusProvider({
-      url: fullUrl,
-      name,
-      document: doc,
-      token: COOKIE_AUTH_PLACEHOLDER,
-      onSynced: () => {
-        setSynced(true);
-        setStatus('connected');
-      },
-      onAuthenticationFailed: (data: { reason?: string } | undefined) => {
-        const reason = data?.reason ?? 'unknown';
-        setStatus('authFailed');
-        setAuthFailedReason(reason);
-        // Always report — an auth rejection is a genuine failure (the
-        // stuck-banner bug). console for dev, Sentry for prod oncall.
-        reportCollabFailure({ kind: 'auth', docName: name, reason });
-      },
-      onClose: (data: { event?: { code?: number } } | undefined) => {
-        // 4401 / 4403 means auth was rejected — `onAuthenticationFailed`
-        // has already moved us to `authFailed`; don't downgrade to
-        // `disconnected` here or the banner would mask the real cause.
-        const code = data?.event?.code;
-        if (code === 4401 || code === 4403) return;
-        // Keep an existing authFailed sticky across the close that
-        // follows it. For everything else, surface a soft disconnect.
-        setSynced(false);
-        setStatus((prev) => (prev === 'authFailed' ? prev : 'disconnected'));
-        // Report genuine drops (network / server crash) — but NOT our own
-        // teardown close, which sets `closing` in the cleanup below.
-        if (!closing) {
-          reportCollabFailure({ kind: 'disconnect', docName: name, code });
-        }
-      },
-    });
+    const provider = acquireDocProvider(name, doc, url);
     providerRef.current = provider;
 
+    // Initialise from the provider's CURRENT state — acquiring an already-synced
+    // shared provider won't re-emit `synced`.
+    if (provider.synced) {
+      setSynced(true);
+      setStatus('connected');
+    } else {
+      setSynced(false);
+      setStatus('connecting');
+    }
+    setAuthFailedReason(null);
+
+    /**
+     * First sync landed → steady-state happy.
+     */
+    const onSynced = (): void => {
+      setSynced(true);
+      setStatus('connected');
+    };
+    /**
+     * Server rejected token / membership → surface a sticky auth banner.
+     * @param data - Auth-failure payload carrying the server reason.
+     */
+    const onAuthFailed = (data: { reason?: string } | undefined): void => {
+      const reason = data?.reason ?? 'unknown';
+      setStatus('authFailed');
+      setAuthFailedReason(reason);
+      // Always report — an auth rejection is a genuine failure (the
+      // stuck-banner bug). console for dev, Sentry for prod oncall.
+      reportCollabFailure({ kind: 'auth', docName: name, reason });
+    };
+    /**
+     * Socket closed for a non-auth reason → soft disconnect (auto-reconnects).
+     * @param data - Close payload carrying the WebSocket close code.
+     */
+    const onClose = (data: { event?: { code?: number } } | undefined): void => {
+      // 4401 / 4403 means auth was rejected — `authenticationFailed` has
+      // already moved us to `authFailed`; don't downgrade to `disconnected`
+      // here or the banner would mask the real cause.
+      const code = data?.event?.code;
+      if (code === 4401 || code === 4403) return;
+      // Keep an existing authFailed sticky across the close that follows it.
+      // For everything else, surface a soft disconnect (the shared socket
+      // auto-reconnects and re-syncs every attached doc).
+      setSynced(false);
+      setStatus((prev) => (prev === 'authFailed' ? prev : 'disconnected'));
+      reportCollabFailure({ kind: 'disconnect', docName: name, code });
+    };
+
+    provider.on('synced', onSynced);
+    provider.on('authenticationFailed', onAuthFailed);
+    provider.on('close', onClose);
+
     return () => {
-      closing = true;
-      provider.destroy();
+      // Remove our listeners BEFORE releasing — so the deferred teardown's
+      // destroy() close never reaches this hook (no false disconnect report).
+      provider.off('synced', onSynced);
+      provider.off('authenticationFailed', onAuthFailed);
+      provider.off('close', onClose);
       providerRef.current = null;
+      releaseDocProvider(name);
       setSynced(false);
       setStatus('connecting');
       setAuthFailedReason(null);
     };
-    // Doc / name change implies a new document binding so also
-    // re-create the provider. Auth lives in the cookie now and
-    // rotates server-side, so there is no `token` dependency to
-    // tear the socket down on.
-  }, [name, doc, url]);
+  }, [ready, name, doc, url]);
 
   return {
     provider: providerRef.current,
