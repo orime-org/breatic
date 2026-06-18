@@ -28,6 +28,7 @@ function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthPr
     pingPostgres: vi.fn(async () => true),
     pingYjsPostgres: vi.fn(async () => true),
     isHocuspocusListening: vi.fn(() => true),
+    probeWsProcessing: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -43,7 +44,7 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("redis_general");
   });
 
-  it("probes exactly the five critical dependencies (both Redis DBs + both PG + ws socket)", () => {
+  it("probes exactly the six critical dependencies (both Redis DBs + both PG + ws socket + end-to-end processing)", () => {
     const checks = buildCollabHealthChecks(makeProbes());
     expect(checks.map((c) => c.name).sort()).toEqual([
       "hocuspocus_listening",
@@ -51,7 +52,15 @@ describe("buildCollabHealthChecks", () => {
       "postgres_yjs",
       "redis_general",
       "redis_stream",
+      "ws_processing",
     ]);
+  });
+
+  it("probes ws_processing — alive-but-not-serving (throttle ban / doc wedge) MUST flip healthz red", async () => {
+    const probes = makeProbes({ probeWsProcessing: vi.fn(async () => false) });
+    const p = buildCollabHealthChecks(probes).find((c) => c.name === "ws_processing")!;
+    expect(await p.check()).toBe(false);
+    expect(probes.probeWsProcessing).toHaveBeenCalledOnce();
   });
 
   it("the redis_general check is wired to the pingRedisGeneral probe (DB0 session/auth store)", async () => {

@@ -48,6 +48,19 @@ const logger = createLogger("main");
 const SHUTDOWN_DEADLINE_MS = 4000;
 
 /**
+ * Sentinel document the healthz end-to-end probe loads. Deliberately NOT a
+ * project doc name so `parseDocName` rejects it and the auth / disconnect-cleanup
+ * hooks skip it.
+ */
+const HEALTHZ_PROBE_DOC = "__healthz_probe__";
+
+/**
+ * Max time the healthz end-to-end probe waits for a sentinel round-trip before
+ * declaring the WS processing path wedged.
+ */
+const HEALTHZ_PROBE_TIMEOUT_MS = 2000;
+
+/**
  * Flush the pino transport's worker-thread buffer before an explicit
  * `process.exit`, so the shutdown / fatal trace oncall needs isn't
  * dropped (pino #1338). Best-effort and time-bounded: resolves on flush
@@ -69,6 +82,22 @@ function flushLogger(): Promise<void> {
     }
   });
 }
+
+// Last-resort process handlers. A realtime server's worst failure mode is
+// "alive but no longer serving" (the throttle-ban incident): the process stays
+// up, healthz can stay green, yet nothing works. An uncaught exception leaves
+// the process in an undefined state, and an unhandled rejection is always a bug
+// here — in both cases we log with full context, flush, and exit(1) so the
+// supervisor (tsx watch / docker) restarts a clean process rather than letting
+// it limp on silently. Registered at module load so they cover startup too.
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "uncaught_exception");
+  void flushLogger().then(() => process.exit(1));
+});
+process.on("unhandledRejection", (reason) => {
+  logger.fatal({ err: reason }, "unhandled_rejection");
+  void flushLogger().then(() => process.exit(1));
+});
 
 // All from the validated config (injected by bootstrap-config's
 // initCore). REDIS_STREAM_URL / ENV / health port carry schema
@@ -114,6 +143,44 @@ async function main(): Promise<void> {
     streamRedisUrl: REDIS_STREAM_URL,
     envPrefix: ENV_PREFIX,
   });
+
+  /**
+   * End-to-end "can collab actually process a document" health probe. Opens a
+   * server-side direct connection to a sentinel doc (a non-project name, so the
+   * disconnect-cleanup / auth hooks skip it), loads it, and tears it down within
+   * a timeout. The infra probes (PG / Redis / listen socket) all stay green when
+   * the process is alive but has stopped serving connections (throttle-ban /
+   * doc-pipeline wedge); this walks the real load-and-process path, so such a
+   * wedge makes it hang past the timeout → false → healthz red → LB recycles the
+   * process. Resolves false (never throws) so one stuck probe can't crash the
+   * health handler.
+   * @returns True when the sentinel round-trip completed within the timeout.
+   */
+  const probeDocProcessing = async (): Promise<boolean> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const connection = await Promise.race([
+        hocuspocus.openDirectConnection(HEALTHZ_PROBE_DOC),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("healthz_probe_timeout")),
+            HEALTHZ_PROBE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      // The document loaded → the load-and-process pipeline is alive, which is
+      // exactly what this probe verifies. Tear the sentinel connection down
+      // best-effort; a hiccup while UNLOADING it (e.g. the store on
+      // unload_immediately) must NOT flip the probe red — the pipeline already
+      // proved healthy by loading.
+      void connection.disconnect().catch(() => undefined);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
 
   // Surface a WS listen-bind failure (EADDRINUSE etc.) cleanly instead of
   // letting Node crash on the unhandled `'error'` event; the app entry logs
@@ -226,6 +293,10 @@ async function main(): Promise<void> {
       // (graceful shutdown or crash) - a dead hocuspocus with a live
       // healthz is the worst possible state for the LB.
       isHocuspocusListening: () => server.httpServer.listening,
+      // End-to-end "can collab actually process a doc" probe — the only check
+      // that catches "alive but not serving" (the throttle-ban / doc-wedge
+      // failure mode that the infra probes above all miss).
+      probeWsProcessing: probeDocProcessing,
     }),
   });
 

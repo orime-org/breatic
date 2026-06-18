@@ -26,10 +26,12 @@ const collabConfigSchema = z.object({
   // Connection limits
   max_connections_per_document: z.number().int().min(0).default(50),
 
-  // Throttle
+  // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),
-  throttle_max_attempts: z.number().int().positive().default(15),
-  throttle_ban_time: z.number().int().positive().default(60000),
+  throttle_max_attempts: z.number().int().positive().default(200),
+  // ban length in MINUTES — the throttle extension multiplies by 60*1000, so
+  // this is NOT milliseconds (the 60000-read-as-ms bug = a 41.7-day ban).
+  throttle_ban_time: z.number().int().positive().default(1),
 
   // Logging
   quiet: z.boolean().default(true),

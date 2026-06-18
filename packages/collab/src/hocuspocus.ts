@@ -17,7 +17,7 @@ import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import { createLogger, createRedisClient, getRedis } from "@breatic/core";
-import { Throttle } from "@hocuspocus/extension-throttle";
+import { createLoopbackExemptThrottle } from "@collab/infra/loopback-exempt-throttle.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -82,10 +82,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   ];
 
-  // Throttle extension (optional)
+  // Throttle extension (optional) — loopback-exempt so a developer's own
+  // machine / health probes are never rate-banned (every dev tab shares the
+  // loopback IP and trips the threshold in seconds). Real client IPs (carried
+  // via x-forwarded-for behind a load balancer) are still throttled.
   if (cfg.throttle_enabled) {
     extensions.push(
-      new Throttle({
+      createLoopbackExemptThrottle({
         throttle: cfg.throttle_max_attempts,
         banTime: cfg.throttle_ban_time,
       }),
