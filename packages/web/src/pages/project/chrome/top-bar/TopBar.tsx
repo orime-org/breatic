@@ -18,6 +18,7 @@ import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import type { ProjectRole } from '@web/stores';
+import type { Member } from '@web/data/api/members';
 
 interface TopBarProps {
   projectId: string;
@@ -26,6 +27,13 @@ interface TopBarProps {
   credits: number;
   onRename: (next: string) => void;
   onAddCredits?: () => void;
+  /**
+   * Real project members for the MembersStack. Omitted in tests so the
+   * stack falls back to its STUB_MEMBERS default.
+   */
+  members?: ReadonlyArray<Member>;
+  /** Current user's id, used by MembersStack to mark the "me" row. */
+  currentUserId?: string;
 }
 
 /**
@@ -48,6 +56,8 @@ interface TopBarProps {
  * @param root0.credits - Current credit balance shown in the credits pill.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.onAddCredits - Called when the user clicks the add-credits button on the credits pill.
+ * @param root0.members - Real project members for the MembersStack; omitted in tests for the stub fallback.
+ * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */
 export function TopBar({
@@ -57,6 +67,8 @@ export function TopBar({
   credits,
   onRename,
   onAddCredits,
+  members,
+  currentUserId,
 }: TopBarProps): React.JSX.Element {
   return (
     <header
@@ -71,7 +83,11 @@ export function TopBar({
       >
         <Logo28 />
         <BackLink />
-        <TitleEditable value={projectName} onChange={onRename} />
+        <TitleEditable
+          value={projectName}
+          onChange={onRename}
+          editable={role !== 'viewer'}
+        />
         <RoleTag role={role} projectId={projectId} />
       </div>
       <div className='flex items-center' style={{ gap: 'var(--space-2)' }}>
@@ -80,7 +96,12 @@ export function TopBar({
           style={{ gap: 'var(--space-2)' }}
           data-testid='topbar-group-text-icon'
         >
-          <MembersStack projectId={projectId} />
+          <MembersStack
+            projectId={projectId}
+            members={members}
+            currentUserId={currentUserId}
+            currentUserRole={role}
+          />
           <LangSwitcher />
           <ThemeToggle />
           <CreditsPill credits={credits} onAdd={onAddCredits} />
@@ -91,7 +112,10 @@ export function TopBar({
           data-testid='topbar-group-icon-only'
         >
           <ExportMenu />
-          <ShareDialog projectId={projectId} />
+          {/* Share is an owner-only affordance (B model — hidden, not
+              disabled, for non-owners). Backend `requireRole` enforces
+              the real boundary; this hide is UX only. */}
+          {role === 'owner' ? <ShareDialog projectId={projectId} /> : null}
           <BellMenu />
         </div>
       </div>

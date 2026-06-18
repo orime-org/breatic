@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
+import { useProjectMembers } from '@web/data/use-project-members';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
@@ -115,11 +116,15 @@ export default function ProjectPage(): React.JSX.Element {
   useRecordProjectOpen(projectId, projectQuery.isSuccess);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
-  const role = projectQuery.data?.myRole ?? 'owner';
-  // Viewer flag drives the disabled state on the chat panel + left
-  // floating menu per 2026-05-28 spec § 6.2 (every editing affordance
-  // is rendered but disabled with a tooltip; the upgrade entry lives
-  // on the top-bar RoleTag).
+  // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
+  // treat the caller as the most-restrictive 'viewer' so chrome affordances
+  // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
+  const role = projectQuery.data?.myRole ?? 'viewer';
+  // Viewer affordance model (access-permission § 6.2, option B): the canvas
+  // left creation menu stays visible + disabled (LeftFloatingMenu) and the
+  // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
+  // do is HIDDEN (Agent column, share, manage, new-space, title edit). The
+  // upgrade entry lives on the top-bar RoleTag.
   const isViewer = role === 'viewer';
   const credits = 0;
 
@@ -127,6 +132,14 @@ export default function ProjectPage(): React.JSX.Element {
   // to `useRenameProject` so the cross-query invalidation (#1068) is unit-tested
   // in isolation rather than buried in this heavy page component.
   const renameMutation = useRenameProject(projectId);
+
+  // ---- Project members (TopBar MembersStack) ----
+  // Real member list backing the top-bar avatar stack + popover. The roster
+  // is split across two endpoints (role relation + profiles) and merged into
+  // the `Member` shape by `useProjectMembers`. The backend
+  // `GET /projects/:id/members` is membership-gated; viewers can still read
+  // the roster (the gating is on *mutations*, not the list).
+  const { members } = useProjectMembers(projectId);
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
@@ -466,9 +479,14 @@ export default function ProjectPage(): React.JSX.Element {
           role={role}
           credits={credits}
           onRename={(next) => renameMutation.mutate(next)}
+          members={members}
+          currentUserId={userId}
         />
         <div className='flex min-h-0 flex-1'>
-          {collapsed ? null : (
+          {/* Agent column is hidden for viewers (B model — not rendered,
+              not just disabled) AND when the user has collapsed it. The
+              backend gates agent chat on role; this hide is UX only. */}
+          {collapsed || isViewer ? null : (
             <aside
               data-testid='agent-column'
               className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'

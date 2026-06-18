@@ -419,21 +419,30 @@ export function SpaceTabBar({
         }}
         data-testid='space-header-right'
       >
-        <NewSpaceDialog
-          onCreate={onCreate}
-          tooltip={t('chrome.tooltip.newSpace')}
-          trigger={
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={t('chrome.tooltip.newSpace')}
-              data-testid='new-space-button'
-              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-            >
-              <Plus className='h-[18px] w-[18px]' />
-            </Button>
-          }
-        />
+        {/* New-space create is hidden for viewers (B model — hidden, not
+            disabled). Editors + owners can create spaces; the all-spaces
+            drawer + project-messages buttons stay visible for everyone.
+            Backend `requireRole` on `space:create` is the real boundary. */}
+        {currentUserRole === 'viewer' ? null : (
+          <NewSpaceDialog
+            onCreate={onCreate}
+            tooltip={t('chrome.tooltip.newSpace')}
+            trigger={
+              <Button
+                variant='chrome-ghost'
+                size='chrome'
+                aria-label={t('chrome.tooltip.newSpace')}
+                data-testid='new-space-button'
+                style={{
+                  height: 'var(--btn-chrome)',
+                  width: 'var(--btn-chrome)',
+                }}
+              >
+                <Plus className='h-[18px] w-[18px]' />
+              </Button>
+            }
+          />
+        )}
         <SpaceDrawer
           spaces={allSpaces}
           openTabIds={openTabIds}

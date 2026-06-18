@@ -13,6 +13,14 @@ interface TitleEditableProps {
    * pass a smaller value so truncation kicks in at the right boundary.
    */
   maxWidth?: number;
+  /**
+   * Whether the title is editable (default true). When false the title is
+   * a plain read-only span — no double-click-to-edit, no keyboard edit
+   * affordance, not exposed as a focusable textbox. Used to gate the
+   * project rename for non-owner roles (viewer); the backend `requireRole`
+   * is the real enforcement, this is UX only.
+   */
+  editable?: boolean;
 }
 
 /** Project title length cap — system-wide limit, enforced on backend too. */
@@ -55,12 +63,14 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
  * @param root0.maxWidth - Visible width cap in pixels; defaults to the Agent column width.
+ * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
  * @returns the static truncated title span, or the editing input while in edit mode.
  */
 export function TitleEditable({
   value,
   onChange,
   maxWidth = DEFAULT_TITLE_MAX_WIDTH,
+  editable = true,
 }: TitleEditableProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
@@ -136,6 +146,23 @@ export function TitleEditable({
         style={sharedStyle}
         data-testid='title-input'
       />
+    );
+  }
+
+  // Read-only mode (editable=false): a plain truncating span with no edit
+  // affordance — not a focusable textbox, no double-click / Enter / Space
+  // edit trigger, no hover background. Used to gate the project rename for
+  // non-owner roles; the backend `requireRole` is the real enforcement.
+  if (!editable) {
+    return (
+      <span
+        className='inline-block min-w-0 truncate align-middle text-sm font-medium'
+        style={sharedStyle}
+        data-testid='title-display'
+        title={value}
+      >
+        {value}
+      </span>
     );
   }
 

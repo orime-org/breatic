@@ -110,6 +110,29 @@ describe('SpaceTabBar', () => {
     expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
   });
 
+  describe('role-based affordance gating (B model — hide)', () => {
+    it('owner sees the new-space "+" create button', () => {
+      setup({ currentUserRole: 'owner' });
+      expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
+    });
+
+    it('editor sees the new-space "+" create button', () => {
+      setup({ currentUserRole: 'editor' });
+      expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
+    });
+
+    it('viewer does NOT see the new-space "+" create button', () => {
+      setup({ currentUserRole: 'viewer' });
+      expect(screen.queryByTestId('new-space-button')).toBeNull();
+    });
+
+    it('viewer still sees the all-spaces drawer + project-messages buttons', () => {
+      setup({ currentUserRole: 'viewer' });
+      expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
+      expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
+    });
+  });
+
   // PR #140 (2026-05-25): scroll arrows use point-and-scroll (one tab per
   // click via `scrollIntoView`), not fixed `scrollBy(±120)`. A fixed delta
   // under-shoots long-name tabs (took 2–3 clicks to fully reveal). These

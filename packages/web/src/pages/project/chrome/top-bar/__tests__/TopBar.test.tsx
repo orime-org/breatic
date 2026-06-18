@@ -107,4 +107,58 @@ describe('TopBar', () => {
     expect(screen.getByTestId('topbar-group-text-icon')).toBeInTheDocument();
     expect(screen.getByTestId('topbar-group-icon-only')).toBeInTheDocument();
   });
+
+  describe('role-based affordance gating (B model — hide)', () => {
+    it('owner sees the Share button', () => {
+      setup({ role: 'owner' });
+      expect(
+        screen.getByRole('button', { name: 'Share' }),
+      ).toBeInTheDocument();
+    });
+
+    it('editor does NOT see the Share button', () => {
+      setup({ role: 'editor' });
+      expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+    });
+
+    it('viewer does NOT see the Share button', () => {
+      setup({ role: 'viewer' });
+      expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+    });
+
+    it('owner can double-click the title into edit mode', async () => {
+      const user = userEvent.setup();
+      setup({ role: 'owner', projectName: 'Old' });
+      await user.dblClick(screen.getByTestId('title-display'));
+      expect(await screen.findByTestId('title-input')).toBeInTheDocument();
+    });
+
+    it('editor can double-click the title into edit mode', async () => {
+      const user = userEvent.setup();
+      setup({ role: 'editor', projectName: 'Old' });
+      await user.dblClick(screen.getByTestId('title-display'));
+      expect(await screen.findByTestId('title-input')).toBeInTheDocument();
+    });
+
+    it('viewer double-clicking the title does NOT enter edit mode (read-only)', async () => {
+      const user = userEvent.setup();
+      setup({ role: 'viewer', projectName: 'Old' });
+      await user.dblClick(screen.getByTestId('title-display'));
+      expect(screen.queryByTestId('title-input')).toBeNull();
+    });
+
+    it('owner sees the Manage collaborators button inside the members popover', async () => {
+      const user = userEvent.setup();
+      setup({ role: 'owner' });
+      await user.click(screen.getByTestId('members-trigger'));
+      expect(screen.getByTestId('members-manage-trigger')).toBeInTheDocument();
+    });
+
+    it('viewer does NOT see the Manage collaborators button', async () => {
+      const user = userEvent.setup();
+      setup({ role: 'viewer' });
+      await user.click(screen.getByTestId('members-trigger'));
+      expect(screen.queryByTestId('members-manage-trigger')).toBeNull();
+    });
+  });
 });
