@@ -1016,7 +1016,9 @@
       "removeSuccess": "멤버를 제거했습니다.",
       "removeFailed": "멤버를 제거하지 못했습니다. 다시 시도해 주세요.",
       "isMe": "(나)",
-      "remove": "제거"
+      "remove": "제거",
+      "removeConfirmTitle": "공동작업자를 제거할까요?",
+      "removeConfirmBody": "{name} 님은 이 Project에 대한 접근 권한을 잃게 됩니다. 이 작업은 되돌릴 수 없습니다."
     },
     "stack": {
       "triggerAria": "Project 멤버({count})",

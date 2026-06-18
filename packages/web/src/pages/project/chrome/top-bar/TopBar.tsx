@@ -97,7 +97,6 @@ export function TopBar({
           data-testid='topbar-group-text-icon'
         >
           <MembersStack
-            projectId={projectId}
             members={members}
             currentUserId={currentUserId}
             currentUserRole={role}
@@ -119,7 +118,11 @@ export function TopBar({
           <BellMenu />
         </div>
       </div>
-      <MembersModal />
+      <MembersModal
+        projectId={projectId}
+        members={members}
+        currentUserId={currentUserId}
+      />
     </header>
   );
 }

@@ -1016,7 +1016,9 @@
       "removeSuccess": "Member removed.",
       "removeFailed": "Could not remove the member. Please try again.",
       "isMe": "(you)",
-      "remove": "Remove"
+      "remove": "Remove",
+      "removeConfirmTitle": "Remove collaborator?",
+      "removeConfirmBody": "{name} will lose access to this project. This cannot be undone."
     },
     "stack": {
       "triggerAria": "Project members ({count})",
