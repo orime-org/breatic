@@ -38,9 +38,9 @@ packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
-│              db/(schema.ts 23 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
+│              db/(schema.ts 25 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
 ├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(loader/skills/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/invite-links/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:auth〔含 user.repo + recovery-code〕/conversation/memory/notification/payment/project〔含 projectMembers〕/share〔含 share-invite-mail〕/role-upgrade-request/studio/skill/text-tool/yjs-doc,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools)(healthz 走独立 :3001 进程,见 DEPLOY.md)
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment) + middleware/(路由层=接线员,不写业务) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:auth〔含 user.repo + recovery-code〕/conversation/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/role-upgrade-request/studio/skill/text-tool/yjs-doc,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools)(healthz 走独立 :3001 进程,见 DEPLOY.md)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=5 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/before-handle-message/awareness/disconnect) + services/(persistence/event-stream/space-rpc/task-listener/members-sync) + infra/(logger/health/connectivity) + 根(index/hocuspocus 装配/config)
 └── web/      # React app — see the [Frontend](#frontend) part
@@ -254,7 +254,7 @@ lib/        工具(cn / format / env / analytics)
 - `/project/:projectId` — 项目页(Agent 列 + Space outlet;Space 是 Project 内的 type / 模板,**不是**路由段)
 - `/project/:projectId/access` — 无权限落地页(NoAccessPage)
 - `/choose-slug` — 注册第二步:选 slug → 建个人 studio(已登录但豁免个人-studio 闸门;显示文案仍叫「网址标识 / Handle」,只 URL 路径改名)
-- `/login`、`/register`、`/forgot-password`、`/reset-password`、`/verify-email`、`/invite/:token` — auth + 邀请流程
+- `/login`、`/register`、`/forgot-password`、`/reset-password`、`/verify-email`、`/studio-invite`、`/project-invite` — auth + 邀请落地页(`?token=`,均需登录;project 邀请三通道汇聚此页)
 
 ### Source layout
 

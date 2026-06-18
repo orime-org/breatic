@@ -128,6 +128,10 @@ route.post("/:id/action", async (c) => {
       }
       break;
     }
+    // NOTE: `project.invite_request` is intentionally NOT actionable here. Unlike
+    // studio (which confirms inline in the bell), the project bell row links OUT
+    // to the `/project-invite?token=` landing page where confirm/decline happen,
+    // so it never reaches this dispatch — it collapses to the `default` 404.
     default:
       // Not an actionable type — nothing to confirm/cancel.
       throw new NotFoundError(t("server.error.not_found"));

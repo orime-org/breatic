@@ -216,23 +216,6 @@ export const mocks = {
     upsertMember: vi.fn().mockResolvedValue(undefined),
     softDelete: vi.fn().mockResolvedValue(true),
   },
-  shareLinkService: {
-    generateToken: vi.fn().mockReturnValue("token-mock"),
-    createLink: vi.fn().mockResolvedValue({
-      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
-      token: "token-mock", role: "viewer", kind: "link", boundEmail: null,
-      consumedAt: null, expiresAt: null,
-      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
-    }),
-    listByProject: vi.fn().mockResolvedValue([]),
-    revokeLink: vi.fn().mockResolvedValue(undefined),
-    consumeLink: vi.fn().mockResolvedValue({
-      id: "sl-1", projectId: "p-1", createdByUserId: "u-owner",
-      token: "token-mock", role: "viewer", kind: "link", boundEmail: null,
-      consumedAt: new Date(), expiresAt: null,
-      createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
-    }),
-  },
   notificationService: {
     getById: vi.fn().mockResolvedValue(null),
     listUnread: vi.fn().mockResolvedValue([]),
@@ -249,7 +232,6 @@ export const mocks = {
     }),
     createRoleUpgradeApproved: vi.fn().mockResolvedValue({}),
     createRoleUpgradeRejected: vi.fn().mockResolvedValue({}),
-    createMemberJoined: vi.fn().mockResolvedValue({}),
   },
   notificationRepo: {
     findById: vi.fn().mockResolvedValue(null),
@@ -270,11 +252,6 @@ export const mocks = {
     }),
     approve: vi.fn().mockResolvedValue(undefined),
     reject: vi.fn().mockResolvedValue(undefined),
-  },
-  shareInviteMail: {
-    buildShareInviteMail: vi.fn().mockReturnValue({
-      to: "invitee@example.com", subject: "test", html: "<p>test</p>",
-    }),
   },
   // sendMail spy lives in `mocks` so tests can mockRejectedValueOnce
   // to verify dispatch try/catch graceful degradation, and assert
@@ -418,7 +395,7 @@ export const mailerMock = () => ({ sendMail: mocks.sendMail });
 
 /**
  * Mock for `@server/modules` — the server-private domain (auth /
- * project / conversation / notification / share-link / ...) that moved
+ * project / conversation / notification / ...) that moved
  * out of @breatic/core in the modular-monolith convergence (ADR 后端收敛
  * 为模块化单体). Route tests pair this with coreMock:
  *
@@ -442,11 +419,9 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     // projectAuthService + projectMembersRepo moved to @breatic/core
     // (auth-unification PR) — they now live in coreMock, not here.
     projectMembersService: mocks.projectMembersService,
-    shareLinkService: mocks.shareLinkService,
     notificationService: mocks.notificationService,
     notificationRepo: mocks.notificationRepo,
     roleUpgradeRequestService: mocks.roleUpgradeRequestService,
-    shareInviteMail: mocks.shareInviteMail,
     studioService: mocks.studioService,
   };
 };

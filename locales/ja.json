@@ -37,8 +37,13 @@
       "already_member": "そのユーザーはすでにメンバーです。",
       "already_invited": "そのユーザーには保留中の招待があります。",
       "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
-      "remove_last_admin": "削除する前に管理者権限を譲渡してください。",
-      "cannot_change_admin_role": "管理者ロールは譲渡によってのみ変更できます。"
+      "remove_last_admin": "削除する前に Admin 権限を譲渡してください。",
+      "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。"
+    },
+    "project": {
+      "email_not_registered": "そのメールアドレスは登録されていません。",
+      "already_member": "そのユーザーはすでにアクセス権を持っています。",
+      "already_invited": "そのユーザーには保留中の招待があります。"
     },
     "payment": {
       "checkout_created": "決済セッションが作成されました",
@@ -388,14 +393,14 @@
   },
   "roleTag": {
     "upgradeRequest": {
-      "ariaLabel": "編集者権限をリクエスト",
-      "title": "編集者権限をリクエスト",
-      "description": "現在この Project の閲覧者です。Project オーナーにメッセージを送り、編集者権限をリクエストできます。",
-      "placeholder": "Project オーナーへのメッセージ(任意)…",
+      "ariaLabel": "Editor 権限をリクエスト",
+      "title": "Editor 権限をリクエスト",
+      "description": "現在この Project の Viewer です。Project Owner にメッセージを送り、Editor 権限をリクエストできます。",
+      "placeholder": "Project Owner へのメッセージ(任意)…",
       "submit": "リクエストを送信",
       "sending": "送信中…",
       "toast": {
-        "sent": "リクエストを送信しました — オーナーに通知が表示されます。",
+        "sent": "リクエストを送信しました — Owner に通知が表示されます。",
         "failed": "リクエストの送信に失敗しました。再試行してください。"
       }
     }
@@ -977,7 +982,6 @@
   "members": {
     "popover": {
       "title": "Project メンバー",
-      "invite": "新しいメンバーを招待",
       "manage": "コラボレーターを管理",
       "remove": "削除",
       "removeSuccess": "メンバーを削除しました。",
@@ -992,27 +996,20 @@
       "invite_placeholder": "メールまたはユーザー ID",
       "invite_button": "招待",
       "list_count": "メンバー ({count})",
-      "list_note": "オーナーは作成者に固定",
+      "list_note": "Owner は Creator に固定",
       "confirm_remove": "このメンバーを削除しますか?",
       "done": "完了"
     },
     "role": {
-      "owner": "オーナー",
+      "owner": "Owner",
       "edit": "編集",
       "view": "閲覧"
     },
     "modal": {
       "title": "コラボレーター管理",
       "description": "Project メンバーと権限を管理",
-      "inviteSection": "新しいコラボレーターを招待",
-      "invitePlaceholder": "メールアドレス",
-      "inviteButton": "招待",
-      "inviteSending": "送信中…",
-      "inviteSent": "招待を送信しました。",
-      "inviteFailed": "招待を送信できませんでした。再試行してください。",
-      "invalidEmail": "有効なメールアドレスを入力してください。",
       "membersSection": "メンバー ({count})",
-      "ownerNote": "オーナーは Project 作成者に永久に紐づきます",
+      "ownerNote": "Owner は Project Creator に永久に紐づきます",
       "roleSelectAria": "{name} のロールを変更",
       "roleChanged": "ロールを更新しました。",
       "roleChangeFailed": "ロールを更新できませんでした。再試行してください。",
@@ -1078,7 +1075,7 @@
         "delete": "削除",
         "deleteLocked": "ロックされた Spaces は削除できません",
         "deleteConfirmTitle": "Space「{name}」を削除しますか？",
-        "deleteConfirmDescription": "この Space と内容はソフト削除されます。オーナーは Project メッセージチャンネルから復元できます。",
+        "deleteConfirmDescription": "この Space と内容はソフト削除されます。Owner は Project メッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
         "operationFail": "操作に失敗しました",
@@ -1222,7 +1219,7 @@
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
     },
-    "disabledTooltip": "編集者権限が必要です"
+    "disabledTooltip": "Editor 権限が必要です"
   },
   "viewportToolbar": {
     "aria": "ビューポートツール",
@@ -1283,38 +1280,14 @@
     "inviteSent": "招待を送信しました。",
     "inviteFailed": "招待を送信できませんでした。再試行してください。",
     "invalidEmail": "有効なメールアドレスを入力してください。",
-    "linkSection": "リンクを生成",
-    "linkDefaultRole": "デフォルトの権限",
-    "linkGenerate": "リンクを生成",
-    "linkGenerating": "生成中…",
-    "linkAccess": "リンクを知っている全員がアクセス可",
-    "generateFailed": "リンクを生成できませんでした。再試行してください。",
-    "copyFallback": "このブラウザではコピーできません。URL を手動で選択してください。",
-    "emailDisabledHint": "このサーバーではメールが無効です。代わりに『リンクを生成』を使って URL を自分で共有してください。",
-    "viewAllLinks": "生成したすべてのリンクを表示({count, plural, =0 {なし} one {1 件} other {# 件}})",
+    "inviteLinkLabel": "招待リンク",
+    "copyInviteLink": "招待リンクをコピー",
+    "inviteLinkCopied": "招待リンクをコピーしました。",
+    "inviteLinkCopyFailed": "リンクをコピーできませんでした。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    },
-    "linksList": {
-      "title": "生成済みの招待リンク",
-      "description": "この Project の有効な招待リンク一覧。任意のリンクを取り消すと即座に無効になります。",
-      "empty": "まだ招待リンクを生成していません。",
-      "emailBadge": "メール招待",
-      "copyAria": "URL をコピー",
-      "revokeAria": "リンクを取り消す",
-      "copied": "URL をコピーしました。",
-      "revokeSuccess": "リンクを取り消しました。",
-      "revokeFailed": "リンクを取り消せませんでした。再試行してください。"
-    },
-    "relativeTime": {
-      "justNow": "たった今",
-      "minutes": "{n} 分前",
-      "hours": "{n} 時間前",
-      "days": "{n} 日前"
-    },
-    "copyLinkAria": "リンクをコピー",
-    "copiedAria": "コピーしました"
+    }
   },
   "notifications": {
     "title": "アクセス申請",
@@ -1335,25 +1308,28 @@
     "rejectedToast": "リクエストを拒否しました。",
     "decideFailed": "処理に失敗しました。再試行してください。",
     "headline": {
-      "roleUpgradeRequest": "{project} の編集者権限のリクエストがあります",
-      "roleUpgradeApproved": "{project} の編集者権限が承認されました",
-      "roleUpgradeRejected": "{project} の編集者権限のリクエストが拒否されました",
-      "memberJoined": "{project} に新しいメンバーが参加しました",
+      "roleUpgradeRequest": "{project} の Editor 権限のリクエストがあります",
+      "roleUpgradeApproved": "{project} の Editor 権限が承認されました",
+      "roleUpgradeRejected": "{project} の Editor 権限のリクエストが拒否されました",
       "studioMemberInvited": "{studio} に追加されました",
       "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
-      "studioTransferApproved": "{studio} の管理者委譲が承認されました",
+      "studioTransferApproved": "{studio} の Admin 委譲が承認されました",
       "studioInviteRequest": "{studio} への参加に招待されました",
-      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました"
+      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました",
+      "projectInviteRequest": "{project} への参加に招待されました",
+      "projectInviteAccepted": "{invitee} さんが {project} への招待を承認しました"
     },
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
-    "transferConfirmedToast": "あなたが Studio の管理者になりました。",
+    "transferConfirmedToast": "あなたが Studio の Admin になりました。",
     "transferCancelledToast": "委譲を辞退しました。",
     "transferAccept": "承認",
     "transferDecline": "辞退",
     "subtitle": {
-      "invitedAsCreator": "クリエイターとして参加",
-      "invitedAsMember": "メンバーとして参加",
-      "transferHint": "承認すると Studio の管理者になります"
+      "invitedAsCreator": "Creator として参加",
+      "invitedAsMember": "Member として参加",
+      "transferHint": "承認すると Studio の Admin になります",
+      "invitedAsEditor": "Editor として参加",
+      "invitedAsViewer": "Viewer として参加"
     },
     "expiresLabel": {
       "expired": "期限切れ",
@@ -1364,7 +1340,8 @@
     "inviteAccept": "承認",
     "inviteDecline": "辞退",
     "inviteConfirmedToast": "Studio に参加しました。",
-    "inviteDeclinedToast": "招待を辞退しました。"
+    "inviteDeclinedToast": "招待を辞退しました。",
+    "viewProjectInvite": "招待を表示"
   },
   "connection": {
     "banner": {
@@ -1521,9 +1498,9 @@
         "cannotInvitePersonal": "個人 Studios はメンバーを招待できません — あなただけです。",
         "roleCreator": "Creator",
         "rowMenu": "メンバー操作",
-        "promoteToCreator": "クリエイターにする",
-        "demoteToMember": "メンバーにする",
-        "transferAdmin": "管理者を委譲…",
+        "promoteToCreator": "Creator にする",
+        "demoteToMember": "Member にする",
+        "transferAdmin": "Admin を委譲…",
         "inviteTitle": "メンバーを招待",
         "inviteEmailLabel": "メールアドレス",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1535,8 +1512,8 @@
         "removeConfirmBody": "{name} はこの Studio のすべての Project へのアクセスを失い、所有していた Project はあなたに移ります。この操作は元に戻せません。",
         "removeConfirmAction": "削除",
         "removeSuccess": "メンバーを削除しました。",
-        "transferConfirmTitle": "管理者を委譲しますか？",
-        "transferConfirmBody": "{name} が通知で委譲を承認するまで管理者になりません。承認されるまではあなたが管理者のままです。",
+        "transferConfirmTitle": "Admin を委譲しますか？",
+        "transferConfirmBody": "{name} が通知で委譲を承認するまで Admin になりません。承認されるまではあなたが Admin のままです。",
         "transferConfirmAction": "リクエストを送信",
         "transferRequested": "委譲リクエストを送信しました。",
         "actionFailed": "エラーが発生しました。もう一度お試しください。",
@@ -1556,7 +1533,7 @@
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
         "delete": "Studio を削除",
-        "dangerHint": "譲渡はすべての Projects ・ Collections ・ウォレットを新しいオーナーに移します;削除は元に戻せません。オーナーのみ可能です。"
+        "dangerHint": "譲渡はすべての Projects ・ Collections ・ウォレットを新しい Owner に移します;削除は元に戻せません。Owner のみ可能です。"
       },
       "dialog": {
         "newProjectTitle": "Project を新規作成",
@@ -1611,22 +1588,42 @@
       "loadingTitle": "招待を開いています…",
       "loadingBody": "招待を読み込んでいます。少々お待ちください。",
       "title": "招待が届いています",
-      "body": "{inviter} さんがあなたを{role, select, creator {クリエイター} member {メンバー} other {メンバー}}として {studio} に招待しました。",
+      "body": "{inviter} さんがあなたを{role, select, creator {Creator} member {Member} other {Member}}として {studio} に招待しました。",
       "confirm": "承認して参加",
       "decline": "辞退",
       "invalidTitle": "この招待は無効です",
-      "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Studio の管理者に新しい招待を依頼してください。",
+      "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Studio の Admin に新しい招待を依頼してください。",
       "expiredTitle": "この招待は期限切れです",
-      "expiredBody": "{studio} への招待は 7 日間の有効期限を過ぎています。Studio の管理者に再送を依頼してください。",
+      "expiredBody": "{studio} への招待は 7 日間の有効期限を過ぎています。Studio の Admin に再送を依頼してください。",
       "notInviteeTitle": "この招待はこのアカウント宛てではありません",
       "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
       "declinedTitle": "招待を辞退しました",
-      "declinedBody": "{studio} への招待を辞退しました。あとで管理者に再度招待を依頼できます。",
+      "declinedBody": "{studio} への招待を辞退しました。あとで Admin に再度招待を依頼できます。",
       "joinedToast": "Studio に参加しました。",
       "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
       "backToStudio": "Studio に戻る",
       "signIn": "サインイン"
     }
+  },
+  "projectInvite": {
+    "loadingTitle": "招待を開いています…",
+    "loadingBody": "招待を読み込んでいます。少々お待ちください。",
+    "title": "招待が届いています",
+    "body": "{inviter} さんがあなたを{role, select, editor {Editor} viewer {Viewer} other {Member}}として {project} に招待しました。",
+    "confirm": "承認して参加",
+    "decline": "辞退",
+    "invalidTitle": "この招待は無効です",
+    "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Project の Owner に新しい招待を依頼してください。",
+    "expiredTitle": "この招待は期限切れです",
+    "expiredBody": "{project} への招待は 7 日間の有効期限を過ぎています。Project の Owner に再送を依頼してください。",
+    "notInviteeTitle": "この招待はこのアカウント宛てではありません",
+    "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
+    "declinedTitle": "招待を辞退しました",
+    "declinedBody": "{project} への招待を辞退しました。あとで Owner に再度招待を依頼できます。",
+    "joinedToast": "Project に参加しました。",
+    "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
+    "backToStudio": "Studio に戻る",
+    "signIn": "サインイン"
   },
   "chrome": {
     "tooltip": {
@@ -1660,21 +1657,9 @@
       "json": "JSON(生データ)"
     }
   },
-  "invite": {
-    "consume": {
-      "loadingTitle": "Project に参加中…",
-      "loadingBody": "招待リンクを確認しています。少々お待ちください。",
-      "errorTitle": "招待を受諾できませんでした",
-      "errorBody": "リンクをもう一度開くか、Project オーナーに新しいリンクを依頼してください。",
-      "invalidToken": "招待リンクの形式が正しくありません。",
-      "expiredOrInvalid": "この招待リンクはもう有効ではありません。Project オーナーに新しいリンクを依頼してください。",
-      "failed": "招待の受諾でエラーが発生しました。",
-      "backToStudio": "Studio に戻る"
-    }
-  },
   "noAccess": {
     "title": "この Project へのアクセス権がありません",
-    "description": "Project オーナーに連絡してアクセスを依頼してください。新しい招待リンクを共有してもらえます。",
+    "description": "Project Owner に連絡してアクセスを依頼してください。メールで招待してもらえます。",
     "backToStudio": "Studio に戻る"
   }
 }

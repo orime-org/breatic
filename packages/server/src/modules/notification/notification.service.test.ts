@@ -121,37 +121,6 @@ describe("createRoleUpgradeApproved / Rejected", () => {
   });
 });
 
-describe("createMemberJoined", () => {
-  it("notification targets the owner with the new member's id in payload", async () => {
-    const newMember = "u-newcomer";
-    vi.mocked(notificationRepo.create).mockResolvedValueOnce({
-      id: NID,
-      userId: OWNER,
-      type: "access.member_joined",
-      payload: { newMemberUserId: newMember },
-      projectId: PID,
-      readAt: null,
-      expiresAt: null,
-      deletedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    await notificationService.createMemberJoined({
-      ownerUserId: OWNER,
-      projectId: PID,
-      payload: {
-        newMemberUserId: newMember,
-        projectName: "Demo",
-        role: "viewer",
-      },
-    });
-    const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
-    expect(args?.userId).toBe(OWNER);
-    expect(args?.type).toBe("access.member_joined");
-    expect(args?.payload).toMatchObject({ newMemberUserId: newMember });
-  });
-});
-
 describe("markRead", () => {
   it("delegates to repo + does not throw when repo returns true", async () => {
     vi.mocked(notificationRepo.markRead).mockResolvedValueOnce(true);

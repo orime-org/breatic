@@ -25,8 +25,6 @@ export * as projectMembersService from "@server/modules/project/projectMembers.s
 export * as recentService from "@server/modules/recent/recent.service.js";
 export * as roleUpgradeRequestService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 export * as notificationService from "@server/modules/notification/notification.service.js";
-export * as shareLinkService from "@server/modules/share/shareLink.service.js";
-export * as shareInviteMail from "@server/modules/share/share-invite-mail.js";
 export * as skillService from "@server/modules/skill/skill.service.js";
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";

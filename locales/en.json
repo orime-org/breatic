@@ -40,6 +40,11 @@
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it."
     },
+    "project": {
+      "email_not_registered": "No account is registered with that email.",
+      "already_member": "That user already has access.",
+      "already_invited": "That user already has a pending invitation."
+    },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
     },
@@ -977,7 +982,6 @@
   "members": {
     "popover": {
       "title": "Project members",
-      "invite": "Invite new member",
       "manage": "Manage collaborators",
       "remove": "Remove",
       "removeSuccess": "Member removed.",
@@ -1004,13 +1008,6 @@
     "modal": {
       "title": "Collaborators",
       "description": "Manage project members and their roles",
-      "inviteSection": "Invite a new collaborator",
-      "invitePlaceholder": "Email address",
-      "inviteButton": "Invite",
-      "inviteSending": "Sending…",
-      "inviteSent": "Invite sent.",
-      "inviteFailed": "Could not send the invite. Please try again.",
-      "invalidEmail": "Please enter a valid email address.",
       "membersSection": "Members ({count})",
       "ownerNote": "Owner is permanently bound to the project creator",
       "roleSelectAria": "Change role for {name}",
@@ -1283,38 +1280,14 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
-    "linkSection": "Generate link",
-    "linkDefaultRole": "Default role",
-    "linkGenerate": "Generate link",
-    "linkGenerating": "Generating…",
-    "linkAccess": "Anyone with the link can access",
-    "generateFailed": "Could not create the link. Please try again.",
-    "copyFallback": "Copy isn't available in this browser — please select the URL manually.",
-    "emailDisabledHint": "Email is disabled for this server. Use Generate link instead and share the URL yourself.",
-    "viewAllLinks": "View all generated links ({count, plural, =0 {none} one {1} other {#}})",
+    "inviteLinkLabel": "Invite link",
+    "copyInviteLink": "Copy invite link",
+    "inviteLinkCopied": "Invite link copied.",
+    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    },
-    "linksList": {
-      "title": "Generated invite links",
-      "description": "All active invite links on this project. Revoke any link to invalidate it immediately.",
-      "empty": "You haven't generated any invite links yet.",
-      "emailBadge": "Email invite",
-      "copyAria": "Copy URL",
-      "revokeAria": "Revoke link",
-      "copied": "URL copied.",
-      "revokeSuccess": "Link revoked.",
-      "revokeFailed": "Could not revoke the link. Please try again."
-    },
-    "relativeTime": {
-      "justNow": "just now",
-      "minutes": "{n}m ago",
-      "hours": "{n}h ago",
-      "days": "{n}d ago"
-    },
-    "copyLinkAria": "Copy link",
-    "copiedAria": "Copied"
+    }
   },
   "notifications": {
     "title": "Access requests",
@@ -1338,12 +1311,13 @@
       "roleUpgradeRequest": "Someone wants editor access on {project}",
       "roleUpgradeApproved": "Your editor access on {project} was approved",
       "roleUpgradeRejected": "Your editor access on {project} was rejected",
-      "memberJoined": "Someone joined {project}",
       "studioMemberInvited": "You were added to {studio}",
       "studioTransferRequest": "You were asked to take over {studio}",
       "studioTransferApproved": "Your admin transfer for {studio} was accepted",
       "studioInviteRequest": "You were invited to join {studio}",
-      "studioInviteAccepted": "{invitee} accepted your invite to {studio}"
+      "studioInviteAccepted": "{invitee} accepted your invite to {studio}",
+      "projectInviteRequest": "You were invited to join {project}",
+      "projectInviteAccepted": "{invitee} accepted your invite to {project}"
     },
     "actionFailed": "Could not complete the action. Please try again.",
     "transferConfirmedToast": "You are now the studio admin.",
@@ -1353,7 +1327,9 @@
     "subtitle": {
       "invitedAsCreator": "Joined as a creator",
       "invitedAsMember": "Joined as a member",
-      "transferHint": "Accept to become the studio admin"
+      "transferHint": "Accept to become the studio admin",
+      "invitedAsEditor": "Joined as an editor",
+      "invitedAsViewer": "Joined as a viewer"
     },
     "expiresLabel": {
       "expired": "expired",
@@ -1364,7 +1340,8 @@
     "inviteAccept": "Accept",
     "inviteDecline": "Decline",
     "inviteConfirmedToast": "You've joined the studio.",
-    "inviteDeclinedToast": "Invitation declined."
+    "inviteDeclinedToast": "Invitation declined.",
+    "viewProjectInvite": "View invite"
   },
   "connection": {
     "banner": {
@@ -1628,6 +1605,26 @@
       "signIn": "Sign in"
     }
   },
+  "projectInvite": {
+    "loadingTitle": "Opening your invitation…",
+    "loadingBody": "One moment while we load the invite.",
+    "title": "You've been invited",
+    "body": "{inviter} invited you to join {project} as {role, select, editor {an editor} viewer {a viewer} other {a member}}.",
+    "confirm": "Accept & join",
+    "decline": "Decline",
+    "invalidTitle": "This invitation is no longer valid",
+    "invalidBody": "The link may have expired or already been used. Ask the Project owner to send a new invite.",
+    "expiredTitle": "This invitation has expired",
+    "expiredBody": "Your invite to {project} is past its 7-day window. Ask the Project owner to send a new one.",
+    "notInviteeTitle": "This invitation isn't for this account",
+    "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
+    "declinedTitle": "Invitation declined",
+    "declinedBody": "You declined the invite to {project}. You can ask the owner to invite you again later.",
+    "joinedToast": "You've joined the project.",
+    "actionFailed": "Could not complete that. Please try again.",
+    "backToStudio": "Back to Studio",
+    "signIn": "Sign in"
+  },
   "chrome": {
     "tooltip": {
       "export": "Export",
@@ -1660,21 +1657,9 @@
       "json": "JSON (raw data)"
     }
   },
-  "invite": {
-    "consume": {
-      "loadingTitle": "Joining project…",
-      "loadingBody": "We're verifying your invite link. This only takes a moment.",
-      "errorTitle": "Couldn't accept this invite",
-      "errorBody": "Try opening the link again, or ask the project owner for a fresh one.",
-      "invalidToken": "This invite link is malformed.",
-      "expiredOrInvalid": "This invite link is no longer valid. Please contact the project owner for a fresh one.",
-      "failed": "Something went wrong accepting this invite.",
-      "backToStudio": "Back to Studio"
-    }
-  },
   "noAccess": {
     "title": "You don't have access to this project",
-    "description": "Please contact the project owner to request access. They can share a fresh invite link with you.",
+    "description": "Please contact the project owner to request access. They can invite you by email.",
     "backToStudio": "Back to Studio"
   }
 }

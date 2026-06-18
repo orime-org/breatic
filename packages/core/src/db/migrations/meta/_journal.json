@@ -218,6 +218,20 @@
       "when": 1780700500000,
       "tag": "0030_project_last_opened",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780700600000,
+      "tag": "0031_project_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1780700700000,
+      "tag": "0032_drop_share_links",
+      "breakpoints": true
     }
   ]
 }

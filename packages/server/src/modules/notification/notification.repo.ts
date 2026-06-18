@@ -4,8 +4,8 @@
 /**
  * Notifications repository — `notifications` table CRUD.
  *
- * Per-user inbox for role-upgrade requests / approvals / member-joined
- * events. PG is the source of truth; collab broadcasts a stateless
+ * Per-user inbox for role-upgrade requests / approvals + studio / project
+ * invite-confirm events. PG is the source of truth; collab broadcasts a stateless
  * invalidate signal so attached clients refetch via REST (~150ms total
  * delay, per `2026-05-09-permissions.md` § 7.2.5 pattern).
  *
@@ -31,12 +31,13 @@ export type NotificationType =
   | "access.role_upgrade_request"
   | "access.role_upgrade_approved"
   | "access.role_upgrade_rejected"
-  | "access.member_joined"
   | "studio.member_invited"
   | "studio.transfer_request"
   | "studio.transfer_approved"
   | "studio.invite_request"
-  | "studio.invite_accepted";
+  | "studio.invite_accepted"
+  | "project.invite_request"
+  | "project.invite_accepted";
 
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 

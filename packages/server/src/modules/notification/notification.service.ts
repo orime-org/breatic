@@ -52,17 +52,6 @@ export interface RoleUpgradeDecisionPayload {
   reason?: string | null;
 }
 
-/**
- * Member-joined payload — someone consumed a link and joined the
- * project. Stored on `access.member_joined` notifications in the
- * owner's inbox.
- */
-export interface MemberJoinedPayload {
-  newMemberUserId: string;
-  projectName: string;
-  role: "editor" | "viewer";
-}
-
 // ── Constructors ────────────────────────────────────────────────────
 
 /**
@@ -140,33 +129,6 @@ export async function createRoleUpgradeRejected(input: {
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_rejected",
-      payload: input.payload as unknown as Record<string, unknown>,
-      projectId: input.projectId,
-    },
-    input.tx,
-  );
-}
-
-/**
- * Create a notification for the owner that a new member joined via
- * consume link.
- * @param input - Owner inbox, project scope, payload, and optional transaction
- * @param input.ownerUserId - Project owner who receives the join notice in their inbox
- * @param input.projectId - Project the new member joined
- * @param input.payload - New member, project name, and the role they joined with
- * @param input.tx - Optional transaction to bundle with the member insert
- * @returns The inserted `access.member_joined` notification
- */
-export async function createMemberJoined(input: {
-  ownerUserId: string;
-  projectId: string;
-  payload: MemberJoinedPayload;
-  tx?: DbTx;
-}): Promise<NotificationEntity> {
-  return notificationRepo.create(
-    {
-      userId: input.ownerUserId,
-      type: "access.member_joined",
       payload: input.payload as unknown as Record<string, unknown>,
       projectId: input.projectId,
     },
@@ -318,6 +280,95 @@ export async function createStudioInviteAccepted(input: {
       userId: input.userId,
       type: "studio.invite_accepted",
       payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Project invite-request payload — an owner invites a registered user to join a
+ * project (invite-confirm handshake, 2026-06-18, #1337). Stored on the
+ * actionable `project.invite_request` notification in the invitee's inbox.
+ * `invitationId` is the `project_invitations` row the confirm step CAS-accepts
+ * (source of truth). Unlike studio (which confirms inline in the bell), the
+ * project bell row links OUT to the `/project-invite?token=` landing page, so
+ * the one-time `token` rides in the payload too — the same token returned to the
+ * inviting owner and embedded in the email, so all three channels resolve to one
+ * invite. The rest is for rendering the bell entry.
+ */
+export interface ProjectInviteRequestPayload {
+  invitationId: string;
+  projectId: string;
+  projectName: string;
+  inviterName: string;
+  role: "editor" | "viewer";
+  /** One-time email-link token; the bell row navigates to `?token=` with it. */
+  token: string;
+}
+
+/**
+ * Project invite-accepted payload — the invitee accepted; stored on the
+ * `project.invite_accepted` notification in the inviting owner's inbox.
+ */
+export interface ProjectInviteAcceptedPayload {
+  projectName: string;
+  inviteeName: string;
+}
+
+/**
+ * Notify a user that an owner invited them to join a project (invite-confirm
+ * handshake, 2026-06-18, #1337) — actionable (confirm/cancel), expires after the
+ * given TTL. The invite's source of truth is the `project_invitations` row whose
+ * id rides in the payload; this notice is just the bell entry point.
+ * @param input - Invitee inbox, project scope, payload, expiry, and optional transaction
+ * @param input.userId - The invited user who receives the request in their inbox
+ * @param input.projectId - The project the invite is into (stamped on the notification)
+ * @param input.payload - Invitation id, project id/name, inviter name, granted role
+ * @param input.expiresAt - When the invite times out (matches the invitation row)
+ * @param input.tx - Optional transaction to bundle with the invitation insert
+ * @returns The inserted `project.invite_request` notification
+ */
+export async function createProjectInviteRequest(input: {
+  userId: string;
+  projectId: string;
+  payload: ProjectInviteRequestPayload;
+  expiresAt: Date;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "project.invite_request",
+      payload: input.payload as unknown as Record<string, unknown>,
+      projectId: input.projectId,
+      expiresAt: input.expiresAt,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify the inviting owner that the invitee accepted (invite-confirm handshake,
+ * 2026-06-18, #1337) — informational, no action, no TTL.
+ * @param input - Inviting-owner inbox, project scope, payload, and optional transaction
+ * @param input.userId - The inviting owner who receives the confirmation
+ * @param input.projectId - The project the invitee joined (stamped on the notification)
+ * @param input.payload - The project name and the invitee's display name
+ * @param input.tx - Optional transaction to bundle with the accept writes
+ * @returns The inserted `project.invite_accepted` notification
+ */
+export async function createProjectInviteAccepted(input: {
+  userId: string;
+  projectId: string;
+  payload: ProjectInviteAcceptedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "project.invite_accepted",
+      payload: input.payload as unknown as Record<string, unknown>,
+      projectId: input.projectId,
     },
     input.tx,
   );

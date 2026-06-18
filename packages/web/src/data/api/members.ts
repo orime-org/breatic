@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch } from '@web/data/api/request';
 
 export type MemberRole = 'owner' | 'editor' | 'viewer';
 
@@ -17,12 +17,6 @@ export interface Member {
 export const membersApi = {
   list(projectId: string) {
     return apiGet<{ members: Member[] }>(`/projects/${projectId}/members`);
-  },
-  invite(projectId: string, body: { email: string; role: MemberRole }) {
-    return apiPost<{ invite: { url: string; expiresAt: string } }>(
-      `/projects/${projectId}/members/invite`,
-      body,
-    );
   },
   setRole(projectId: string, memberId: string, role: MemberRole) {
     return apiPatch<Member>(`/projects/${projectId}/members/${memberId}`, {
