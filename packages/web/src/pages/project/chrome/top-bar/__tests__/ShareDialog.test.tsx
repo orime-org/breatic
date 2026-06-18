@@ -108,13 +108,6 @@ describe('ShareDialog — invite by email flow', () => {
 
     expect(await screen.findByText(/Already a member/)).toBeInTheDocument();
   });
-
-  it('disables the invite section when emailEnabled=false + shows hint', async () => {
-    setup({ emailEnabled: false });
-    expect(screen.getByTestId('share-email-disabled-hint')).toBeInTheDocument();
-    expect(screen.getByTestId('share-invite-input')).toBeDisabled();
-    expect(screen.getByTestId('share-send-invite')).toBeDisabled();
-  });
 });
 
 describe('ShareDialog — no public / copy-link control', () => {
@@ -125,5 +118,14 @@ describe('ShareDialog — no public / copy-link control', () => {
     expect(screen.queryByTestId('share-copy-link')).toBeNull();
     expect(screen.queryByTestId('share-invite-url')).toBeNull();
     expect(screen.queryByTestId('share-view-all-links')).toBeNull();
+    expect(screen.queryByTestId('share-email-disabled-hint')).toBeNull();
+  });
+
+  it('keeps the invite section enabled regardless of SMTP config', () => {
+    // The bell notification is the always-delivered path; email is best-effort,
+    // so the invite controls are never disabled by an email-config flag.
+    setup();
+    expect(screen.getByTestId('share-invite-input')).not.toBeDisabled();
+    expect(screen.getByTestId('share-invite-input')).toHaveValue('');
   });
 });

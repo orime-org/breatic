@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Send } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -15,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@web/components/ui/dialog';
-import { Input } from '@web/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -23,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@web/components/ui/select';
-import { Separator } from '@web/components/ui/separator';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import { membersApi } from '@web/data/api/members';
@@ -51,8 +48,6 @@ const ROLE_OPTIONS: ReadonlyArray<{
   { value: 'viewer', labelKey: 'role.viewer' },
 ];
 
-const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
  * Derives up-to-two uppercase initials from a member's display name.
  * @param name - Member display name to abbreviate.
@@ -69,21 +64,18 @@ function initialsOf(name: string): string {
  * Members management modal — opened by the "Manage collaborators" button
  * inside `<MembersStack>`'s popover.
  *
- * 2026-05-28 spec § 5 wires this dialog to the backend:
- *   - Invite input takes a plain email (the previous "Email or user ID"
- *     copy is gone; user IDs were never a stable invite identifier).
+ * Manage-only: inviting collaborators lives in the ShareDialog (email-only
+ * invite-confirm handshake). This dialog manages the EXISTING roster:
  *   - Role select on each non-owner row calls membersApi.setRole.
  *   - Remove button on each non-owner row calls membersApi.remove.
- *   - Subtitle below each member name shows their email (previously
- *     showed lowercased initials, which user 2026-05-28 explicitly
- *     called out as wrong).
+ *   - Subtitle below each member name shows their email.
  *
  * Spec: access-permission design (2026-05-28) § 5.
  * @param root0 - Members modal props.
- * @param root0.projectId - Id of the project whose membership is managed; invite/role/remove calls target it.
+ * @param root0.projectId - Id of the project whose membership is managed; role/remove calls target it.
  * @param root0.members - Members to list; defaults to stub data when not supplied.
  * @param root0.currentUserId - Viewer's user id, used to mark and protect their own row.
- * @returns the collaborator management dialog with invite, role and remove controls.
+ * @returns the collaborator management dialog with role and remove controls.
  */
 export function MembersModal({
   projectId,
@@ -92,33 +84,7 @@ export function MembersModal({
 }: MembersModalProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('members-modal');
-  const [invite, setInvite] = React.useState('');
-  const [inviteError, setInviteError] = React.useState<string | null>(null);
-  const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [pendingRowId, setPendingRowId] = React.useState<string | null>(null);
-
-  /**
-   * Validates the invite email and sends an invitation, showing a success or error toast.
-   */
-  async function handleInvite(): Promise<void> {
-    if (!projectId || inviteSubmitting) return;
-    const trimmed = invite.trim();
-    if (!EMAIL_RX.test(trimmed)) {
-      setInviteError(t('members.modal.invalidEmail'));
-      return;
-    }
-    setInviteError(null);
-    setInviteSubmitting(true);
-    try {
-      await membersApi.invite(projectId, { email: trimmed, role: 'viewer' });
-      toast.success(t('members.modal.inviteSent'));
-      setInvite('');
-    } catch {
-      toast.error(t('members.modal.inviteFailed'));
-    } finally {
-      setInviteSubmitting(false);
-    }
-  }
 
   /**
    * Changes a member's role on the backend, showing a success or error toast.
@@ -165,48 +131,6 @@ export function MembersModal({
           <DialogTitle>{t('members.modal.title')}</DialogTitle>
           <DialogDescription>{t('members.modal.description')}</DialogDescription>
         </DialogHeader>
-
-        <DialogBody>
-          <div className='flex flex-col gap-2'>
-            <div className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
-              {t('members.modal.inviteSection')}
-            </div>
-            <div className='flex items-center gap-2'>
-              <Input
-                type='email'
-                autoComplete='email'
-                value={invite}
-                onChange={(e) => {
-                  setInvite(e.target.value);
-                  if (inviteError) setInviteError(null);
-                }}
-                placeholder={t('members.modal.invitePlaceholder')}
-                className='h-9 flex-1 text-sm'
-                data-testid='members-modal-invite-input'
-                disabled={inviteSubmitting}
-                aria-invalid={!!inviteError || undefined}
-              />
-              <Button
-                size='form'
-                disabled={invite.trim().length === 0 || inviteSubmitting}
-                onClick={handleInvite}
-                data-testid='members-modal-invite-send'
-              >
-                <Send className='h-4 w-4' />
-                {inviteSubmitting
-                  ? t('members.modal.inviteSending')
-                  : t('members.modal.inviteButton')}
-              </Button>
-            </div>
-            {inviteError ? (
-              <p className='text-xs text-status-error-foreground' role='alert'>
-                {inviteError}
-              </p>
-            ) : null}
-          </div>
-        </DialogBody>
-
-        <Separator />
 
         <DialogBody>
           <div className='flex items-center justify-between'>

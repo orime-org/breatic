@@ -4,8 +4,8 @@
 /**
  * Studio invitation email template (invite-confirm handshake, 2026-06-14).
  *
- * Pure HTML builder mirroring `share-invite-mail`: escape every user-supplied
- * field (XSS) and return `SendMailOptions` for the route to hand to `sendMail`.
+ * Pure HTML builder: escape every user-supplied field (XSS) and return
+ * `SendMailOptions` for the route to hand to `sendMail`.
  * The email is an OPTIONAL enhancement — the bell notification is the always-
  * delivered path; this only fires when an SMTP backend is configured.
  */

@@ -34,10 +34,6 @@ import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { studioInvitationsRoute } from "@server/routes/studio-invitations.js";
 import {
-  projectInviteLinksRoute,
-  consumeInviteLinkRoute,
-} from "@server/routes/invite-links.js";
-import {
   projectInvitationsRoute,
   projectInvitesRoute,
 } from "@server/routes/project-invitations.js";
@@ -77,8 +73,6 @@ export function createApp(): Hono {
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
-  app.route("/api/v1/projects/:pid/invite-links", projectInviteLinksRoute);
-  app.route("/api/v1/invite-links", consumeInviteLinkRoute);
   app.route("/api/v1/projects/:pid/invitations", projectInvitesRoute);
   app.route("/api/v1/project-invitations", projectInvitationsRoute);
   app.route("/api/v1/users/me/notifications", notificationsRoute);

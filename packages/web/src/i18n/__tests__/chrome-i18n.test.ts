@@ -39,8 +39,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.export.json', 'JSON (raw data)'],
   ['spaces.lockedAria', 'Locked'],
   ['spaces.tab.closeAria', 'Close space tab'],
-  ['share.copyLinkAria', 'Copy link'],
-  ['share.copiedAria', 'Copied'],
   ['members.stack.triggerAria', 'Project members ({count})'],
   ['members.stack.removeAria', 'Remove {name}'],
 ];
@@ -51,7 +49,6 @@ const TRANSLATED_ZH_CN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.aria.home', '首页'],
   ['chrome.export.png', 'PNG（当前视图）'],
   ['spaces.lockedAria', '已锁定'],
-  ['share.copyLinkAria', '复制链接'],
 ];
 
 /**

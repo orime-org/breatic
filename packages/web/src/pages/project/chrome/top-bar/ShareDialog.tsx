@@ -32,14 +32,6 @@ import type { InvitableProjectRole } from '@breatic/shared';
 
 interface ShareDialogProps {
   projectId: string;
-  /**
-   * Whether the SMTP backend is configured. When `false`, the invite section is
-   * disabled and the user sees a hint. The bell notification is the always-
-   * delivered path (the email is best-effort), so an invite still works without
-   * SMTP — but the hint keeps the UX honest about the email link not arriving.
-   * Defaults to `true`.
-   */
-  emailEnabled?: boolean;
 }
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,12 +50,10 @@ const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * stable invite identifier, and only already-registered users can be invited.
  * @param root0 - Share dialog props.
  * @param root0.projectId - Id of the project being shared; the invite call targets it.
- * @param root0.emailEnabled - Whether the invite section is enabled; defaults to `true`.
  * @returns the share trigger button and its email-only invite popover.
  */
 export function ShareDialog({
   projectId,
-  emailEnabled = true,
 }: ShareDialogProps): React.JSX.Element {
   const t = useTranslation();
   const open = useUIStore((s) => s.shareOpen);
@@ -128,14 +118,6 @@ export function ShareDialog({
         data-testid='share-popover'
       >
         <SectionTitle>{t('share.inviteSection')}</SectionTitle>
-        {!emailEnabled ? (
-          <p
-            className='px-2 pb-2 text-xs text-muted-foreground'
-            data-testid='share-email-disabled-hint'
-          >
-            {t('share.emailDisabledHint')}
-          </p>
-        ) : null}
         <div className='flex items-center gap-2 px-2 pb-2'>
           <Input
             type='email'
@@ -148,13 +130,13 @@ export function ShareDialog({
             placeholder={t('share.invitePlaceholder')}
             className='h-8 flex-1 text-sm'
             data-testid='share-invite-input'
-            disabled={!emailEnabled || inviteSubmitting}
+            disabled={inviteSubmitting}
             aria-invalid={!!inviteError || undefined}
           />
           <RoleSelect
             value={inviteRole}
             onChange={setInviteRole}
-            disabled={!emailEnabled || inviteSubmitting}
+            disabled={inviteSubmitting}
             testId='share-invite-role'
           />
         </div>
@@ -170,9 +152,7 @@ export function ShareDialog({
           <Button
             size='form'
             className='w-full'
-            disabled={
-              !emailEnabled || invite.trim().length === 0 || inviteSubmitting
-            }
+            disabled={invite.trim().length === 0 || inviteSubmitting}
             onClick={handleSendInvite}
             data-testid='share-send-invite'
           >

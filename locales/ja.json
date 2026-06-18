@@ -982,7 +982,6 @@
   "members": {
     "popover": {
       "title": "Project メンバー",
-      "invite": "新しいメンバーを招待",
       "manage": "コラボレーターを管理",
       "remove": "削除",
       "removeSuccess": "メンバーを削除しました。",
@@ -1009,13 +1008,6 @@
     "modal": {
       "title": "コラボレーター管理",
       "description": "Project メンバーと権限を管理",
-      "inviteSection": "新しいコラボレーターを招待",
-      "invitePlaceholder": "メールアドレス",
-      "inviteButton": "招待",
-      "inviteSending": "送信中…",
-      "inviteSent": "招待を送信しました。",
-      "inviteFailed": "招待を送信できませんでした。再試行してください。",
-      "invalidEmail": "有効なメールアドレスを入力してください。",
       "membersSection": "メンバー ({count})",
       "ownerNote": "オーナーは Project 作成者に永久に紐づきます",
       "roleSelectAria": "{name} のロールを変更",
@@ -1288,38 +1280,10 @@
     "inviteSent": "招待を送信しました。",
     "inviteFailed": "招待を送信できませんでした。再試行してください。",
     "invalidEmail": "有効なメールアドレスを入力してください。",
-    "linkSection": "リンクを生成",
-    "linkDefaultRole": "デフォルトの権限",
-    "linkGenerate": "リンクを生成",
-    "linkGenerating": "生成中…",
-    "linkAccess": "リンクを知っている全員がアクセス可",
-    "generateFailed": "リンクを生成できませんでした。再試行してください。",
-    "copyFallback": "このブラウザではコピーできません。URL を手動で選択してください。",
-    "emailDisabledHint": "このサーバーではメールが無効です。代わりに『リンクを生成』を使って URL を自分で共有してください。",
-    "viewAllLinks": "生成したすべてのリンクを表示({count, plural, =0 {なし} one {1 件} other {# 件}})",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    },
-    "linksList": {
-      "title": "生成済みの招待リンク",
-      "description": "この Project の有効な招待リンク一覧。任意のリンクを取り消すと即座に無効になります。",
-      "empty": "まだ招待リンクを生成していません。",
-      "emailBadge": "メール招待",
-      "copyAria": "URL をコピー",
-      "revokeAria": "リンクを取り消す",
-      "copied": "URL をコピーしました。",
-      "revokeSuccess": "リンクを取り消しました。",
-      "revokeFailed": "リンクを取り消せませんでした。再試行してください。"
-    },
-    "relativeTime": {
-      "justNow": "たった今",
-      "minutes": "{n} 分前",
-      "hours": "{n} 時間前",
-      "days": "{n} 日前"
-    },
-    "copyLinkAria": "リンクをコピー",
-    "copiedAria": "コピーしました"
+    }
   },
   "notifications": {
     "title": "アクセス申請",
@@ -1343,7 +1307,6 @@
       "roleUpgradeRequest": "{project} の編集者権限のリクエストがあります",
       "roleUpgradeApproved": "{project} の編集者権限が承認されました",
       "roleUpgradeRejected": "{project} の編集者権限のリクエストが拒否されました",
-      "memberJoined": "{project} に新しいメンバーが参加しました",
       "studioMemberInvited": "{studio} に追加されました",
       "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
       "studioTransferApproved": "{studio} の管理者委譲が承認されました",
@@ -1691,21 +1654,9 @@
       "json": "JSON(生データ)"
     }
   },
-  "invite": {
-    "consume": {
-      "loadingTitle": "Project に参加中…",
-      "loadingBody": "招待リンクを確認しています。少々お待ちください。",
-      "errorTitle": "招待を受諾できませんでした",
-      "errorBody": "リンクをもう一度開くか、Project オーナーに新しいリンクを依頼してください。",
-      "invalidToken": "招待リンクの形式が正しくありません。",
-      "expiredOrInvalid": "この招待リンクはもう有効ではありません。Project オーナーに新しいリンクを依頼してください。",
-      "failed": "招待の受諾でエラーが発生しました。",
-      "backToStudio": "Studio に戻る"
-    }
-  },
   "noAccess": {
     "title": "この Project へのアクセス権がありません",
-    "description": "Project オーナーに連絡してアクセスを依頼してください。新しい招待リンクを共有してもらえます。",
+    "description": "Project オーナーに連絡してアクセスを依頼してください。メールで招待してもらえます。",
     "backToStudio": "Studio に戻る"
   }
 }

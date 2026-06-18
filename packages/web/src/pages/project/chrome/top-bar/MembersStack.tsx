@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Plus, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -76,19 +76,11 @@ export const MembersStack = React.forwardRef<
   const visible = members.slice(0, 2);
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
-  const setShareOpen = useUIStore((s) => s.setShareOpen);
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
   const [pendingRemoveId, setPendingRemoveId] = React.useState<string | null>(
     null,
   );
 
-  /**
-   * Closes the popover and opens the share dialog to invite collaborators.
-   */
-  const openInvite = (): void => {
-    setOpen(false);
-    setShareOpen(true);
-  };
   /**
    * Closes the popover and opens the members-management modal.
    */
@@ -181,16 +173,6 @@ export const MembersStack = React.forwardRef<
         </ul>
         <Separator className='my-1' />
         <div className='flex flex-col gap-2 p-2'>
-          <Button
-            variant='outline'
-            size='form'
-            className='w-full justify-center gap-2 text-sm'
-            onClick={openInvite}
-            data-testid='members-invite-trigger'
-          >
-            <Plus className='h-4 w-4' />
-            {t('members.popover.invite')}
-          </Button>
           <Button
             variant='outline'
             size='form'

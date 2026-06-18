@@ -81,8 +81,8 @@ route.post("/respond", zValidator("json", respondSchema), async (c) => {
 
 // ── Per-project endpoints (owner CRUD) ──────────────────────────────
 //
-// Mounted at `/api/v1/projects/:pid/invitations`. Owner-only (mirrors the old
-// invite-links owner gate), via the `requireRole('owner')` middleware on `:pid`.
+// Mounted at `/api/v1/projects/:pid/invitations`. Owner-only, via the
+// `requireRole('owner')` middleware on `:pid`.
 
 const projectInvites = new Hono<{ Variables: AuthRoleVariables }>();
 

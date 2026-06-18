@@ -40,13 +40,12 @@ describe('MembersStack', () => {
     expect(screen.getByText('Owner')).toBeInTheDocument();
   });
 
-  it('clicking Invite new member closes popover + opens shareOpen', async () => {
+  it('has no Invite new member button (invite lives in ShareDialog)', async () => {
     const user = userEvent.setup();
     render(<MembersStack projectId='p1' />);
     await user.click(screen.getByTestId('members-trigger'));
-    await user.click(screen.getByTestId('members-invite-trigger'));
-    expect(useUIStore.getState().shareOpen).toBe(true);
-    expect(useUIStore.getState().activeOverlayId).toBeNull();
+    expect(screen.queryByTestId('members-invite-trigger')).toBeNull();
+    expect(useUIStore.getState().shareOpen).toBe(false);
   });
 
   it('clicking Manage collaborators closes popover + opens members-modal overlay', async () => {

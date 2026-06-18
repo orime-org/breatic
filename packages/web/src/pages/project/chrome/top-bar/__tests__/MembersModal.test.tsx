@@ -27,7 +27,7 @@ describe('MembersModal', () => {
     await expectNoA11yViolations(document.body);
   });
 
-  it('renders header / invite input / 5 stub member rows when open', () => {
+  it('renders header / 5 stub member rows when open', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
@@ -38,14 +38,24 @@ describe('MembersModal', () => {
       screen.getByText('Manage project members and their roles'),
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId('members-modal-invite-input'),
-    ).toBeInTheDocument();
-    expect(
       screen.getByTestId('members-modal-row-me'),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId('members-modal-row-pl'),
     ).toBeInTheDocument();
+  });
+
+  it('is manage-only — no invite input / send button (invite lives in ShareDialog)', () => {
+    act(() => {
+      useUIStore.getState().setActiveOverlayId('members-modal');
+    });
+    render(<MembersModal />);
+    expect(
+      screen.queryByTestId('members-modal-invite-input'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('members-modal-invite-send'),
+    ).not.toBeInTheDocument();
   });
 
   it('owner row has Owner label, non-owner rows have role select', () => {

@@ -124,7 +124,6 @@ function toastKeyFor(kind: ActionKind, action: NotificationAction): string {
  *   - access.role_upgrade_request   → owner inbox; inline approve / reject
  *   - access.role_upgrade_approved  → viewer (now editor) inbox; read-on-click
  *   - access.role_upgrade_rejected  → viewer inbox; read-on-click
- *   - access.member_joined          → owner inbox; read-on-click
  *   - studio.member_invited         → invitee inbox; read-on-click (slice 3)
  *   - studio.transfer_request       → proposed admin inbox; inline confirm /
  *                                     cancel + a TTL countdown (slice 3)
@@ -486,8 +485,6 @@ function iconForType(type: NotificationType): string {
       return '✓';
     case 'access.role_upgrade_rejected':
       return '✕';
-    case 'access.member_joined':
-      return initialsFromString('NJ');
     case 'studio.member_invited':
       return initialsFromString('ST');
     case 'studio.transfer_request':
@@ -528,10 +525,6 @@ function headlineFor(
       });
     case 'access.role_upgrade_rejected':
       return t('notifications.headline.roleUpgradeRejected', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'access.member_joined':
-      return t('notifications.headline.memberJoined', {
         project: String((n.payload as Record<string, unknown>).projectName ?? ''),
       });
     case 'studio.member_invited':

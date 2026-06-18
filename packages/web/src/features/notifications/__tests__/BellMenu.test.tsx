@@ -70,7 +70,6 @@ type NotifType =
   | 'access.role_upgrade_request'
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
-  | 'access.member_joined'
   | 'studio.member_invited'
   | 'studio.transfer_request'
   | 'studio.transfer_approved'
@@ -147,10 +146,10 @@ describe('BellMenu — 4 notification types render', () => {
         projectName: 'Q1 Sprint',
         message: 'Need editor for review',
       }),
-      fakeNotification(N2, 'access.member_joined', {
-        projectName: 'Q1 Sprint',
-        newMemberUserId: 'u-newcomer',
-        role: 'editor',
+      fakeNotification(N2, 'studio.member_invited', {
+        studioName: 'Acme',
+        inviterName: 'Alex',
+        role: 'member',
       }),
     ]);
     setup();
@@ -248,10 +247,10 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
   it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce([
-      fakeNotification(N2, 'access.member_joined', {
-        projectName: 'Demo',
-        newMemberUserId: 'u-x',
-        role: 'viewer',
+      fakeNotification(N2, 'studio.member_invited', {
+        studioName: 'Demo',
+        inviterName: 'Alex',
+        role: 'member',
       }),
     ]);
     vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });

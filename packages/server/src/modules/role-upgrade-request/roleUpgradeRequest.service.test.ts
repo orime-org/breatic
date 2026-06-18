@@ -202,7 +202,7 @@ describe("approve", () => {
 
   it("throws Validation when the notification is not a role-upgrade-request type", async () => {
     vi.mocked(notificationRepo.findById).mockResolvedValueOnce(
-      fakeRequest({ type: "access.member_joined" }),
+      fakeRequest({ type: "studio.member_invited" }),
     );
     await expect(
       roleUpgradeRequestService.approve({

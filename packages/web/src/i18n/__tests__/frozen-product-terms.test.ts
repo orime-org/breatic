@@ -49,7 +49,7 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['studio.container.members.roleAdmin', 'Admin'],
   ['studio.container.members.roleCreator', 'Creator'],
   ['studio.container.members.roleMember', 'Member'],
-  // Share-link role labels (key name is edit/view, semantics editor/viewer).
+  // Project-invite role labels (key name is edit/view, semantics editor/viewer).
   ['share.role.edit', 'Editor'],
   ['share.role.view', 'Viewer'],
   // Entity + space-type nouns — Title Case English.

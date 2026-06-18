@@ -16,7 +16,6 @@ export type NotificationType =
   | 'access.role_upgrade_request'
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
-  | 'access.member_joined'
   | 'studio.member_invited'
   | 'studio.transfer_request'
   | 'studio.transfer_approved'

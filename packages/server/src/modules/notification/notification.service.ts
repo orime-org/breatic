@@ -52,17 +52,6 @@ export interface RoleUpgradeDecisionPayload {
   reason?: string | null;
 }
 
-/**
- * Member-joined payload — someone consumed a link and joined the
- * project. Stored on `access.member_joined` notifications in the
- * owner's inbox.
- */
-export interface MemberJoinedPayload {
-  newMemberUserId: string;
-  projectName: string;
-  role: "editor" | "viewer";
-}
-
 // ── Constructors ────────────────────────────────────────────────────
 
 /**
@@ -140,33 +129,6 @@ export async function createRoleUpgradeRejected(input: {
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_rejected",
-      payload: input.payload as unknown as Record<string, unknown>,
-      projectId: input.projectId,
-    },
-    input.tx,
-  );
-}
-
-/**
- * Create a notification for the owner that a new member joined via
- * consume link.
- * @param input - Owner inbox, project scope, payload, and optional transaction
- * @param input.ownerUserId - Project owner who receives the join notice in their inbox
- * @param input.projectId - Project the new member joined
- * @param input.payload - New member, project name, and the role they joined with
- * @param input.tx - Optional transaction to bundle with the member insert
- * @returns The inserted `access.member_joined` notification
- */
-export async function createMemberJoined(input: {
-  ownerUserId: string;
-  projectId: string;
-  payload: MemberJoinedPayload;
-  tx?: DbTx;
-}): Promise<NotificationEntity> {
-  return notificationRepo.create(
-    {
-      userId: input.ownerUserId,
-      type: "access.member_joined",
       payload: input.payload as unknown as Record<string, unknown>,
       projectId: input.projectId,
     },

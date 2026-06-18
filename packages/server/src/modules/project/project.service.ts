@@ -165,10 +165,9 @@ export async function get(projectId: string, userId: string): Promise<ProjectEnt
  * (slice 2) and materializing a viewer row on first entry.
  *
  * This is the project-load path `GET /projects/:id` uses — deliberately
- * distinct from {@link get}, which other callers (role-upgrade approval,
- * invite-link resolution) use to fetch a project the caller ALREADY has a
- * row on. Those must never materialize a membership as a side effect, so the
- * baseline grant lives here, not in `get`.
+ * distinct from {@link get}, which other callers (role-upgrade approval) use to
+ * fetch a project the caller ALREADY has a row on. Those must never materialize
+ * a membership as a side effect, so the baseline grant lives here, not in `get`.
  *
  * Access ladder:
  *   1. The caller already has a `project_members` role → return it unchanged.

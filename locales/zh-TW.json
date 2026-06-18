@@ -982,7 +982,6 @@
   "members": {
     "popover": {
       "title": "Project 成員",
-      "invite": "邀請新成員",
       "manage": "管理協作者",
       "remove": "移除",
       "removeSuccess": "已移除成員。",
@@ -1009,13 +1008,6 @@
     "modal": {
       "title": "協作者管理",
       "description": "管理 Project 成員及其權限",
-      "inviteSection": "邀請新協作者",
-      "invitePlaceholder": "電子郵件地址",
-      "inviteButton": "邀請",
-      "inviteSending": "傳送中…",
-      "inviteSent": "邀請已傳送。",
-      "inviteFailed": "邀請傳送失敗,請重試。",
-      "invalidEmail": "請輸入有效的電子郵件地址。",
       "membersSection": "成員 ({count})",
       "ownerNote": "擁有者永久綁定 Project 建立者",
       "roleSelectAria": "修改 {name} 的角色",
@@ -1288,38 +1280,10 @@
     "inviteSent": "邀請已傳送。",
     "inviteFailed": "邀請傳送失敗,請重試。",
     "invalidEmail": "請輸入有效的電子郵件地址。",
-    "linkSection": "產生連結",
-    "linkDefaultRole": "預設角色",
-    "linkGenerate": "產生連結",
-    "linkGenerating": "產生中…",
-    "linkAccess": "任何人憑連結可存取",
-    "generateFailed": "連結產生失敗,請重試。",
-    "copyFallback": "目前瀏覽器無法複製,請手動選擇 URL。",
-    "emailDisabledHint": "本伺服器未設定郵件發送,請使用『產生連結』複製 URL 自行傳送。",
-    "viewAllLinks": "檢視所有已產生的連結({count, plural, =0 {無} one {1 個} other {# 個}})",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    },
-    "linksList": {
-      "title": "已產生的邀請連結",
-      "description": "本 Project 下所有有效的邀請連結。撤銷任一連結將立即失效。",
-      "empty": "你尚未產生任何邀請連結。",
-      "emailBadge": "電子郵件邀請",
-      "copyAria": "複製 URL",
-      "revokeAria": "撤銷連結",
-      "copied": "URL 已複製。",
-      "revokeSuccess": "連結已撤銷。",
-      "revokeFailed": "連結撤銷失敗,請重試。"
-    },
-    "relativeTime": {
-      "justNow": "剛剛",
-      "minutes": "{n} 分鐘前",
-      "hours": "{n} 小時前",
-      "days": "{n} 天前"
-    },
-    "copyLinkAria": "複製連結",
-    "copiedAria": "已複製"
+    }
   },
   "notifications": {
     "title": "存取申請",
@@ -1343,7 +1307,6 @@
       "roleUpgradeRequest": "有人申請 {project} 的編輯者權限",
       "roleUpgradeApproved": "你在 {project} 的編輯者權限已通過",
       "roleUpgradeRejected": "你在 {project} 的編輯者權限申請被拒絕",
-      "memberJoined": "有人加入了 {project}",
       "studioMemberInvited": "你已被加入 {studio}",
       "studioTransferRequest": "有人邀請你接管 {studio}",
       "studioTransferApproved": "你對 {studio} 的管理員轉讓已被接受",
@@ -1691,21 +1654,9 @@
       "json": "JSON（原始資料）"
     }
   },
-  "invite": {
-    "consume": {
-      "loadingTitle": "正在加入 Project…",
-      "loadingBody": "正在驗證邀請連結,請稍候。",
-      "errorTitle": "無法接受邀請",
-      "errorBody": "請重新開啟連結,或向 Project 所有者索取新的邀請連結。",
-      "invalidToken": "邀請連結格式錯誤。",
-      "expiredOrInvalid": "邀請連結已失效。請聯絡 Project 所有者取得新的連結。",
-      "failed": "接受邀請時發生錯誤。",
-      "backToStudio": "返回 Studio"
-    }
-  },
   "noAccess": {
     "title": "你沒有存取此 Project 的權限",
-    "description": "請聯絡 Project 所有者申請存取,他們可以給你一個新的邀請連結。",
+    "description": "請聯絡 Project 所有者申請存取,他們可以透過電子郵件邀請你。",
     "backToStudio": "返回 Studio"
   }
 }
