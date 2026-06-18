@@ -16,10 +16,10 @@
  *      `project-{pid}` and pre-v10 `project-{pid}/canvas` /
  *      `/node/{id}` forms are rejected outright.
  *   3. The user has an active role on the doc's project (delegated to
- *      core `projectAuthService.loadProjectRole`). The role is returned
- *      so Hocuspocus can apply `connection.readOnly = true` for
- *      view-only members (writes are blocked at the protocol level -
- *      no UI trust).
+ *      core `projectAuthService.loadProjectRole`). For view-only members
+ *      the hook MUTATES `connectionConfig.readOnly = true` (the field
+ *      Hocuspocus reads when it builds the Connection), so every incoming
+ *      Yjs sync-update is rejected at the protocol level — no UI trust.
  *
  * Cross-tenant probing is impossible by design: any doc whose
  * projectId the caller is not a member of is rejected with the
@@ -86,15 +86,31 @@ function readCookie(header: string | undefined, name: string): string | null {
   return null;
 }
 
-/** Resolved user context returned to Hocuspocus. */
+/**
+ * Resolved user context returned to Hocuspocus. The return value is
+ * merged into the connection `context` (read downstream via
+ * `context.user` by onStateless / beforeHandleMessage / awareness).
+ *
+ * Read-only is NOT carried here: it is applied by mutating the passed-in
+ * `connectionConfig.readOnly` (see the hook body), because Hocuspocus
+ * reads `connectionConfig` — not the returned context — when it builds
+ * the Connection.
+ */
 export interface AuthContext {
   user: {
     id: string;
     role: ProjectRole;
   };
-  connection: {
-    readOnly: boolean;
-  };
+}
+
+/**
+ * Minimal shape of Hocuspocus's mutable per-connection config
+ * (`onAuthenticatePayload.connectionConfig`). The auth hook flips
+ * `readOnly` on it as a side effect. Declared locally so this module
+ * does not depend on hocuspocus types.
+ */
+interface MutableConnectionConfig {
+  readOnly: boolean;
 }
 
 /**
@@ -157,7 +173,7 @@ async function loadProjectSpaceIds(
  * consumers.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves and returns the authenticated user + read-only flag, or throws to reject the connection.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members, and returns the user context — or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
@@ -165,10 +181,12 @@ export function createAuthHook({
   return async ({
     documentName,
     requestHeaders,
+    connectionConfig,
   }: {
     token: string;
     documentName: string;
     requestHeaders: IncomingHttpHeaders;
+    connectionConfig: MutableConnectionConfig;
   }): Promise<AuthContext> => {
     // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
@@ -270,11 +288,23 @@ export function createAuthHook({
         }
       }
 
+      // Apply role-level read-only at the PROTOCOL level by MUTATING the
+      // passed-in connectionConfig. Hocuspocus reads
+      // `connectionConfig.readOnly` when it constructs the Connection and
+      // then rejects every incoming sync-update on a read-only connection
+      // (hocuspocus-server messageYjsUpdate / syncStep2 handlers reply
+      // syncStatus:false and drop the update). This MUST be a mutation,
+      // not a returned value: the hook's return is merged into `context`
+      // only, and Hocuspocus never reads `context` for read-only
+      // enforcement. Returning `{ connection: { readOnly } }` (the prior
+      // bug) left every viewer connection writable — viewers could drag
+      // canvas nodes and tamper meta.projectMeta (name / description)
+      // directly via raw Yjs, bypassing the stateless-RPC + requireRole
+      // server path entirely.
+      connectionConfig.readOnly = role === "viewer";
+
       return {
         user: { id: userId, role },
-        connection: {
-          readOnly: role === "viewer",
-        },
       };
     } catch (err) {
       // The walks above log + throw on auth-policy rejections

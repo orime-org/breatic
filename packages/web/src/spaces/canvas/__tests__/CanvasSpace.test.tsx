@@ -157,6 +157,51 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(screen.queryByTestId('canvas-empty')).not.toBeInTheDocument();
   });
 
+  // Viewer drag backstop (#1377). A read-only viewer must not be able to drag
+  // nodes: ReactFlow gates dragging via `nodesDraggable`, and when false it
+  // omits the `draggable` class from the node wrapper (the drag handler is
+  // disabled too). The real security boundary is the collab server — a
+  // read-only connection rejects the viewer's Yjs update — but gating the UI
+  // here stops the confusing "move locally then snap back" once the server
+  // rejects, and stops accidental edits.
+  it('readOnly canvas renders nodes as non-draggable (ReactFlow omits the draggable class)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    const node = document.querySelector('.react-flow__node');
+    expect(node).not.toBeNull();
+    expect(node?.className).not.toContain('draggable');
+  });
+
+  it('editor canvas renders nodes as draggable', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const node = document.querySelector('.react-flow__node');
+    expect(node).not.toBeNull();
+    expect(node?.className).toContain('draggable');
+  });
+
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):
   // a read-only canvas must drop a library create intent without ever
   // writing to Yjs. The `consumed` assertion proves the effect actually ran
