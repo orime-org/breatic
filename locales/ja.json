@@ -1348,7 +1348,9 @@
       "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
       "studioTransferApproved": "{studio} の管理者委譲が承認されました",
       "studioInviteRequest": "{studio} への参加に招待されました",
-      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました"
+      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました",
+      "projectInviteRequest": "{project} への参加に招待されました",
+      "projectInviteAccepted": "{invitee} さんが {project} への招待を承認しました"
     },
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
     "transferConfirmedToast": "あなたが Studio の管理者になりました。",
@@ -1358,7 +1360,9 @@
     "subtitle": {
       "invitedAsCreator": "クリエイターとして参加",
       "invitedAsMember": "メンバーとして参加",
-      "transferHint": "承認すると Studio の管理者になります"
+      "transferHint": "承認すると Studio の管理者になります",
+      "invitedAsEditor": "エディターとして参加",
+      "invitedAsViewer": "ビューワーとして参加"
     },
     "expiresLabel": {
       "expired": "期限切れ",
@@ -1369,7 +1373,9 @@
     "inviteAccept": "承認",
     "inviteDecline": "辞退",
     "inviteConfirmedToast": "Studio に参加しました。",
-    "inviteDeclinedToast": "招待を辞退しました。"
+    "inviteDeclinedToast": "招待を辞退しました。",
+    "projectInviteConfirmedToast": "Project に参加しました。",
+    "projectInviteDeclinedToast": "招待を辞退しました。"
   },
   "connection": {
     "banner": {
@@ -1632,6 +1638,26 @@
       "backToStudio": "Studio に戻る",
       "signIn": "サインイン"
     }
+  },
+  "projectInvite": {
+    "loadingTitle": "招待を開いています…",
+    "loadingBody": "招待を読み込んでいます。少々お待ちください。",
+    "title": "招待が届いています",
+    "body": "{inviter} さんがあなたを{role, select, editor {エディター} viewer {ビューワー} other {メンバー}}として {project} に招待しました。",
+    "confirm": "承認して参加",
+    "decline": "辞退",
+    "invalidTitle": "この招待は無効です",
+    "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Project の所有者に新しい招待を依頼してください。",
+    "expiredTitle": "この招待は期限切れです",
+    "expiredBody": "{project} への招待は 7 日間の有効期限を過ぎています。Project の所有者に再送を依頼してください。",
+    "notInviteeTitle": "この招待はこのアカウント宛てではありません",
+    "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
+    "declinedTitle": "招待を辞退しました",
+    "declinedBody": "{project} への招待を辞退しました。あとで所有者に再度招待を依頼できます。",
+    "joinedToast": "Project に参加しました。",
+    "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
+    "backToStudio": "Studio に戻る",
+    "signIn": "サインイン"
   },
   "chrome": {
     "tooltip": {

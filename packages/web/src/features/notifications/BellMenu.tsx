@@ -78,6 +78,46 @@ function expiresInLabel(
   return t('notifications.expiresLabel.days', { count: days });
 }
 
+/** The actionable handshake an actionable notification type drives. */
+type ActionKind = 'transfer' | 'studioInvite' | 'projectInvite';
+
+/**
+ * Maps an actionable notification type to its handshake kind, so the
+ * confirm/cancel mutation can pick the matching success toast (the single
+ * respondAction endpoint serves all three).
+ * @param type - The actionable notification type.
+ * @returns the handshake kind for that type (`transfer` as the safe default).
+ */
+function actionKindFor(type: NotificationType): ActionKind {
+  if (type === 'studio.invite_request') return 'studioInvite';
+  if (type === 'project.invite_request') return 'projectInvite';
+  return 'transfer';
+}
+
+/**
+ * Picks the success-toast i18n key for a confirmed/cancelled handshake. A
+ * studio invitee joins a studio, a project invitee joins a project, and a
+ * transfer recipient becomes the studio admin — each gets its own copy.
+ * @param kind - The handshake kind being acted on.
+ * @param action - `confirm` to accept, `cancel` to decline.
+ * @returns the i18n key for the matching success toast.
+ */
+function toastKeyFor(kind: ActionKind, action: NotificationAction): string {
+  if (kind === 'studioInvite') {
+    return action === 'confirm'
+      ? 'notifications.inviteConfirmedToast'
+      : 'notifications.inviteDeclinedToast';
+  }
+  if (kind === 'projectInvite') {
+    return action === 'confirm'
+      ? 'notifications.projectInviteConfirmedToast'
+      : 'notifications.projectInviteDeclinedToast';
+  }
+  return action === 'confirm'
+    ? 'notifications.transferConfirmedToast'
+    : 'notifications.transferCancelledToast';
+}
+
 /**
  * Bell notification menu — the per-user inbox shared by the project chrome and
  * the studio chrome. Surfaces every notification type:
@@ -89,10 +129,17 @@ function expiresInLabel(
  *   - studio.transfer_request       → proposed admin inbox; inline confirm /
  *                                     cancel + a TTL countdown (slice 3)
  *   - studio.transfer_approved      → old-admin inbox; read-on-click (slice 3)
+ *   - studio.invite_request         → invitee inbox; inline confirm / cancel +
+ *                                     a TTL countdown (slice 3)
+ *   - studio.invite_accepted        → inviting-admin inbox; read-on-click
+ *   - project.invite_request        → invitee inbox; inline confirm / cancel +
+ *                                     a TTL countdown (#1337)
+ *   - project.invite_accepted       → inviting-owner inbox; read-on-click
  *
  * The unread count drives the red-dot badge. Clicking a row opens the
  * row-specific affordance: upgrade-request rows show inline approve / reject,
- * transfer-request rows show inline confirm / cancel, the rest mark-read.
+ * transfer / invite-request rows show inline confirm / cancel, the rest
+ * mark-read.
  *
  * The React Query refetch is triggered both on popover open and a 30s
  * background interval (the collab stateless invalidate broadcast lands in a
@@ -159,29 +206,25 @@ export function BellMenu(): React.JSX.Element {
     },
   });
 
-  // Confirm / cancel an actionable notification (studio transfer request).
-  // The studios list is also invalidated so the rail's "My / Joined studios"
-  // split reflects the new admin role immediately after a confirm.
+  // Confirm / cancel an actionable notification (studio transfer request,
+  // studio invite request, or project invite request). The studios list is also
+  // invalidated so the rail's "My / Joined studios" split reflects the new admin
+  // role immediately after a transfer confirm.
   const actionMutation = useMutation({
     mutationFn: (input: {
       id: string;
       action: NotificationAction;
-      isInvite: boolean;
+      kind: 'transfer' | 'studioInvite' | 'projectInvite';
     }) => notificationsApi.respondAction(input.id, input.action),
     onSuccess: async (_data, vars) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] }),
         queryClient.invalidateQueries({ queryKey: ['studios', 'user'] }),
       ]);
-      // The same respondAction endpoint serves both handshakes; the toast must
-      // match the notification kind (an invitee joins as a member, NOT as admin).
-      const toastKey = vars.isInvite
-        ? vars.action === 'confirm'
-          ? 'notifications.inviteConfirmedToast'
-          : 'notifications.inviteDeclinedToast'
-        : vars.action === 'confirm'
-          ? 'notifications.transferConfirmedToast'
-          : 'notifications.transferCancelledToast';
+      // The same respondAction endpoint serves all three handshakes; the toast
+      // must match the notification kind (a studio invitee joins a studio, a
+      // project invitee joins a project, a transfer recipient becomes admin).
+      const toastKey = toastKeyFor(vars.kind, vars.action);
       toast.success(t(toastKey));
     },
     onError: (err) => {
@@ -268,14 +311,14 @@ export function BellMenu(): React.JSX.Element {
                     actionMutation.mutate({
                       id: n.id,
                       action: 'confirm',
-                      isInvite: n.type === 'studio.invite_request',
+                      kind: actionKindFor(n.type),
                     })
                   }
                   onCancel={() =>
                     actionMutation.mutate({
                       id: n.id,
                       action: 'cancel',
-                      isInvite: n.type === 'studio.invite_request',
+                      kind: actionKindFor(n.type),
                     })
                   }
                   onMarkRead={() => markReadMutation.mutate(n.id)}
@@ -330,10 +373,13 @@ function NotificationItem({
     notification.type === 'access.role_upgrade_request';
   const isTransferRequest =
     notification.type === 'studio.transfer_request';
-  const isInviteRequest = notification.type === 'studio.invite_request';
-  // Both actionable studio handshakes render the same confirm/cancel controls
-  // (the backend dispatches on the notification type).
-  const isActionableStudio = isTransferRequest || isInviteRequest;
+  const isInviteRequest =
+    notification.type === 'studio.invite_request' ||
+    notification.type === 'project.invite_request';
+  // All three actionable handshakes (studio transfer, studio invite, project
+  // invite) render the same confirm/cancel controls; the backend dispatches on
+  // the notification type. Invites use Accept/Decline labels; transfer too.
+  const isActionable = isTransferRequest || isInviteRequest;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
@@ -359,7 +405,7 @@ function NotificationItem({
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-2xs text-muted-foreground'>
-          {isActionableStudio && notification.expiresAt
+          {isActionable && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
             : timeAgoLabel(notification.createdAt)}
         </span>
@@ -385,7 +431,7 @@ function NotificationItem({
               {t('notifications.approve')}
             </Button>
           </div>
-        ) : isActionableStudio ? (
+        ) : isActionable ? (
           <div className='flex items-center gap-2'>
             <Button
               variant='outline'
@@ -452,6 +498,10 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('IN');
     case 'studio.invite_accepted':
       return '✓';
+    case 'project.invite_request':
+      return initialsFromString('PI');
+    case 'project.invite_accepted':
+      return '✓';
     default:
       return '?';
   }
@@ -505,6 +555,15 @@ function headlineFor(
         invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
         studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
       });
+    case 'project.invite_request':
+      return t('notifications.headline.projectInviteRequest', {
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
+    case 'project.invite_accepted':
+      return t('notifications.headline.projectInviteAccepted', {
+        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
+        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
+      });
     default:
       return n.type;
   }
@@ -514,6 +573,12 @@ function headlineFor(
 const STUDIO_ROLE_KEY: Record<string, string> = {
   creator: 'notifications.subtitle.invitedAsCreator',
   member: 'notifications.subtitle.invitedAsMember',
+};
+
+/** Maps a project role payload value to its localized member-role label. */
+const PROJECT_ROLE_KEY: Record<string, string> = {
+  editor: 'notifications.subtitle.invitedAsEditor',
+  viewer: 'notifications.subtitle.invitedAsViewer',
 };
 
 /**
@@ -543,6 +608,10 @@ function subtitleFor(
   }
   if (n.type === 'studio.invite_request') {
     const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;
+    return roleKey ? t(roleKey) : null;
+  }
+  if (n.type === 'project.invite_request') {
+    const roleKey = typeof p.role === 'string' ? PROJECT_ROLE_KEY[p.role] : null;
     return roleKey ? t(roleKey) : null;
   }
   if (n.type === 'studio.transfer_request') {

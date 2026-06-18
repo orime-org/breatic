@@ -9,6 +9,7 @@ import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
 import StudioInvitePage from '@web/pages/studio/StudioInvitePage';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
+import ProjectInvitePage from '@web/pages/project/ProjectInvitePage';
 import NoAccessPage from '@web/pages/project/access/NoAccessPage';
 import InviteConsumePage from '@web/pages/invite/InviteConsumePage';
 import LoginPage from '@web/pages/auth/LoginPage';
@@ -122,6 +123,22 @@ const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <StudioInvitePage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // Project invitation landing — `/project-invite?token=xxx`, the OPTIONAL
+    // email-link path of the project invite-confirm handshake (the always-
+    // delivered path is the bell notification). The direct mirror of
+    // `/studio-invite`. Wrapped in ProtectedRoute because both backend
+    // endpoints (`GET /project-invitations/:token`, `POST
+    // /project-invitations/respond`) are auth-only; an unauthenticated click
+    // bounces to /login and returns here after sign-in. The page peeks the
+    // invite then confirms/declines — it does NOT auto-accept.
+    path: '/project-invite',
+    element: (
+      <ProtectedRoute>
+        <ProjectInvitePage />
       </ProtectedRoute>
     ),
   },

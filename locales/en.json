@@ -1348,7 +1348,9 @@
       "studioTransferRequest": "You were asked to take over {studio}",
       "studioTransferApproved": "Your admin transfer for {studio} was accepted",
       "studioInviteRequest": "You were invited to join {studio}",
-      "studioInviteAccepted": "{invitee} accepted your invite to {studio}"
+      "studioInviteAccepted": "{invitee} accepted your invite to {studio}",
+      "projectInviteRequest": "You were invited to join {project}",
+      "projectInviteAccepted": "{invitee} accepted your invite to {project}"
     },
     "actionFailed": "Could not complete the action. Please try again.",
     "transferConfirmedToast": "You are now the studio admin.",
@@ -1358,7 +1360,9 @@
     "subtitle": {
       "invitedAsCreator": "Joined as a creator",
       "invitedAsMember": "Joined as a member",
-      "transferHint": "Accept to become the studio admin"
+      "transferHint": "Accept to become the studio admin",
+      "invitedAsEditor": "Joined as an editor",
+      "invitedAsViewer": "Joined as a viewer"
     },
     "expiresLabel": {
       "expired": "expired",
@@ -1369,7 +1373,9 @@
     "inviteAccept": "Accept",
     "inviteDecline": "Decline",
     "inviteConfirmedToast": "You've joined the studio.",
-    "inviteDeclinedToast": "Invitation declined."
+    "inviteDeclinedToast": "Invitation declined.",
+    "projectInviteConfirmedToast": "You've joined the project.",
+    "projectInviteDeclinedToast": "Invitation declined."
   },
   "connection": {
     "banner": {
@@ -1632,6 +1638,26 @@
       "backToStudio": "Back to Studio",
       "signIn": "Sign in"
     }
+  },
+  "projectInvite": {
+    "loadingTitle": "Opening your invitation…",
+    "loadingBody": "One moment while we load the invite.",
+    "title": "You've been invited",
+    "body": "{inviter} invited you to join {project} as {role, select, editor {an editor} viewer {a viewer} other {a member}}.",
+    "confirm": "Accept & join",
+    "decline": "Decline",
+    "invalidTitle": "This invitation is no longer valid",
+    "invalidBody": "The link may have expired or already been used. Ask the Project owner to send a new invite.",
+    "expiredTitle": "This invitation has expired",
+    "expiredBody": "Your invite to {project} is past its 7-day window. Ask the Project owner to send a new one.",
+    "notInviteeTitle": "This invitation isn't for this account",
+    "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
+    "declinedTitle": "Invitation declined",
+    "declinedBody": "You declined the invite to {project}. You can ask the owner to invite you again later.",
+    "joinedToast": "You've joined the project.",
+    "actionFailed": "Could not complete that. Please try again.",
+    "backToStudio": "Back to Studio",
+    "signIn": "Sign in"
   },
   "chrome": {
     "tooltip": {

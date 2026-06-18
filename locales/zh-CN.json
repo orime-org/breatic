@@ -1348,7 +1348,9 @@
       "studioTransferRequest": "有人邀请你接管 {studio}",
       "studioTransferApproved": "你对 {studio} 的管理员转让已被接受",
       "studioInviteRequest": "你被邀请加入 {studio}",
-      "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请"
+      "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请",
+      "projectInviteRequest": "你被邀请加入 {project}",
+      "projectInviteAccepted": "{invitee} 接受了你对 {project} 的邀请"
     },
     "actionFailed": "无法完成操作，请重试。",
     "transferConfirmedToast": "你现在是该 Studio 的管理员了。",
@@ -1358,7 +1360,9 @@
     "subtitle": {
       "invitedAsCreator": "以创建者身份加入",
       "invitedAsMember": "以成员身份加入",
-      "transferHint": "接受后即成为该 Studio 的管理员"
+      "transferHint": "接受后即成为该 Studio 的管理员",
+      "invitedAsEditor": "以编辑者身份加入",
+      "invitedAsViewer": "以查看者身份加入"
     },
     "expiresLabel": {
       "expired": "已过期",
@@ -1369,7 +1373,9 @@
     "inviteAccept": "接受",
     "inviteDecline": "拒绝",
     "inviteConfirmedToast": "你已加入该 Studio。",
-    "inviteDeclinedToast": "已拒绝邀请。"
+    "inviteDeclinedToast": "已拒绝邀请。",
+    "projectInviteConfirmedToast": "你已加入该 Project。",
+    "projectInviteDeclinedToast": "已拒绝邀请。"
   },
   "connection": {
     "banner": {
@@ -1632,6 +1638,26 @@
       "backToStudio": "返回 Studio",
       "signIn": "登录"
     }
+  },
+  "projectInvite": {
+    "loadingTitle": "正在打开邀请…",
+    "loadingBody": "稍等，正在加载邀请。",
+    "title": "你收到一份邀请",
+    "body": "{inviter} 邀请你以{role, select, editor {编辑者} viewer {查看者} other {成员}}身份加入 {project}。",
+    "confirm": "接受并加入",
+    "decline": "拒绝",
+    "invalidTitle": "邀请已失效",
+    "invalidBody": "链接可能已过期或被使用过。请让 Project 所有者重新发送邀请。",
+    "expiredTitle": "邀请已过期",
+    "expiredBody": "你对 {project} 的邀请已超过 7 天有效期。请让 Project 所有者重新发送。",
+    "notInviteeTitle": "此邀请不属于当前账号",
+    "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
+    "declinedTitle": "已拒绝邀请",
+    "declinedBody": "你拒绝了对 {project} 的邀请。之后可以让所有者重新邀请你。",
+    "joinedToast": "你已加入该 Project。",
+    "actionFailed": "操作未能完成，请重试。",
+    "backToStudio": "返回 Studio",
+    "signIn": "登录"
   },
   "chrome": {
     "tooltip": {

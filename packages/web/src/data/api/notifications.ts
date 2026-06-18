@@ -7,9 +7,10 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * Notification types — must match the backend `NotificationType` union
  * (`notification.repo.ts`). The `access.*` types are project access-permission
  * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer /
- * invite notifications. `studio.transfer_request` and `studio.invite_request`
- * are the actionable types (confirm / cancel + a TTL); the rest are
- * informational (read-on-click).
+ * invite notifications; the `project.*` types are the project invite-confirm
+ * handshake (#1337). `studio.transfer_request`, `studio.invite_request` and
+ * `project.invite_request` are the actionable types (confirm / cancel + a TTL);
+ * the rest are informational (read-on-click).
  */
 export type NotificationType =
   | 'access.role_upgrade_request'
@@ -20,7 +21,9 @@ export type NotificationType =
   | 'studio.transfer_request'
   | 'studio.transfer_approved'
   | 'studio.invite_request'
-  | 'studio.invite_accepted';
+  | 'studio.invite_accepted'
+  | 'project.invite_request'
+  | 'project.invite_accepted';
 
 /** Action on an actionable notification (e.g. a studio transfer request). */
 export type NotificationAction = 'confirm' | 'cancel';

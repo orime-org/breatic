@@ -14,11 +14,11 @@ import { ApiException } from '@web/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 
-vi.mock('@web/data/api/invite-links', () => ({
-  inviteLinksApi: {
-    create: vi.fn(),
-    listByProject: vi.fn().mockResolvedValue([]),
-    revoke: vi.fn(),
+vi.mock('@web/data/api/project-invitations', () => ({
+  projectInvitationsApi: {
+    getInvitation: vi.fn(),
+    respondInvitation: vi.fn(),
+    inviteMember: vi.fn(),
   },
 }));
 
@@ -29,7 +29,7 @@ vi.mock('sonner', () => ({
   }),
 }));
 
-import { inviteLinksApi } from '@web/data/api/invite-links';
+import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { toast } from 'sonner';
 
 function AllProviders({ children }: { children: React.ReactNode }) {
@@ -57,7 +57,6 @@ function setup(props: Partial<React.ComponentProps<typeof ShareDialog>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(inviteLinksApi.listByProject).mockResolvedValue([]);
 });
 
 describe('ShareDialog — invite by email flow', () => {
@@ -66,13 +65,15 @@ describe('ShareDialog — invite by email flow', () => {
     setup();
     await user.type(screen.getByTestId('share-invite-input'), 'not-an-email');
     await user.click(screen.getByTestId('share-send-invite'));
-    expect(inviteLinksApi.create).not.toHaveBeenCalled();
+    expect(projectInvitationsApi.inviteMember).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('sends a valid email + role=view (default) to the API', async () => {
+  it('sends a valid email + role=viewer (default) to the new invitations endpoint', async () => {
     const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'email', boundEmail: 'new@example.com', role: 'viewer' }));
+    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
+      ok: true,
+    });
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -81,18 +82,17 @@ describe('ShareDialog — invite by email flow', () => {
     await user.click(screen.getByTestId('share-send-invite'));
 
     await waitFor(() => {
-      expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
-        kind: 'email',
-        invitee_email: 'new@example.com',
+      expect(projectInvitationsApi.inviteMember).toHaveBeenCalledWith(PID, {
+        email: 'new@example.com',
         role: 'viewer',
       });
     });
     expect(toast.success).toHaveBeenCalled();
   });
 
-  it('shows ApiException.message inline when send invite is rejected', async () => {
+  it('shows ApiException.message inline when the invite is rejected', async () => {
     const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockRejectedValueOnce(
+    vi.mocked(projectInvitationsApi.inviteMember).mockRejectedValueOnce(
       new ApiException({
         status: 409,
         code: 'CONFLICT',
@@ -117,96 +117,13 @@ describe('ShareDialog — invite by email flow', () => {
   });
 });
 
-describe('ShareDialog — Generate link flow', () => {
-  it('Generate button calls API with kind=link + no invitee_email', async () => {
-    const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'link', boundEmail: null }));
+describe('ShareDialog — no public / copy-link control', () => {
+  it('does not render the public-link generate / copy / view-all controls', () => {
     setup();
-    await user.click(screen.getByTestId('share-generate-link'));
-
-    await waitFor(() => {
-      expect(inviteLinksApi.create).toHaveBeenCalledWith(PID, {
-        kind: 'link',
-        role: 'viewer',
-      });
-    });
-  });
-
-  it('renders generated URL after link creation + copy button is enabled', async () => {
-    const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockResolvedValueOnce(makeFakeLink({ kind: 'link', token: 'abc-token-123', boundEmail: null }));
-    setup();
-    // URL/copy not visible before generate
-    expect(screen.queryByTestId('share-invite-url')).not.toBeInTheDocument();
-    await user.click(screen.getByTestId('share-generate-link'));
-
-    await waitFor(() => {
-      const url = screen.getByTestId('share-invite-url') as HTMLInputElement;
-      expect(url.value).toContain('/invite/abc-token-123');
-    });
-    expect(screen.getByTestId('share-copy-link')).not.toBeDisabled();
-  });
-
-  it('toasts error when Generate link rejects', async () => {
-    const user = userEvent.setup();
-    vi.mocked(inviteLinksApi.create).mockRejectedValueOnce(
-      new ApiException({
-        status: 500,
-        code: 'INTERNAL',
-        message: 'oops',
-      }),
-    );
-    setup();
-    await user.click(screen.getByTestId('share-generate-link'));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('oops');
-    });
+    // The whole public-link mode was removed (#1337): the dialog is invite-only.
+    expect(screen.queryByTestId('share-generate-link')).toBeNull();
+    expect(screen.queryByTestId('share-copy-link')).toBeNull();
+    expect(screen.queryByTestId('share-invite-url')).toBeNull();
+    expect(screen.queryByTestId('share-view-all-links')).toBeNull();
   });
 });
-
-describe('ShareDialog — view all links entry', () => {
-  it('renders the "View all generated links" button', () => {
-    setup();
-    expect(screen.getByTestId('share-view-all-links')).toBeInTheDocument();
-  });
-
-  it('reflects the count from listByProject in the button label', async () => {
-    vi.mocked(inviteLinksApi.listByProject).mockResolvedValueOnce([makeFakeLink({}), makeFakeLink({ token: 'b' })]);
-    setup();
-    const button = screen.getByTestId('share-view-all-links');
-    await waitFor(() => {
-      expect(button.textContent).toMatch(/2/);
-    });
-  });
-});
-
-// ── helpers ────────────────────────────────────────────────────────
-
-interface FakeLinkOverrides {
-  token?: string;
-  role?: string;
-  kind?: 'email' | 'link';
-  boundEmail?: string | null;
-}
-
-function makeFakeLink(o: FakeLinkOverrides = {}) {
-  // Default to a kind consistent with the boundEmail override so each
-  // test doesn't have to spell out both.
-  const boundEmail = o.boundEmail ?? null;
-  const kind = o.kind ?? (boundEmail !== null ? 'email' : 'link');
-  return {
-    id: 'sl-1',
-    projectId: PID,
-    createdByUserId: 'u-owner',
-    token: o.token ?? 'token-mock',
-    role: o.role ?? 'viewer',
-    kind,
-    boundEmail,
-    consumedAt: null,
-    expiresAt: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    deletedAt: null,
-  };
-}

@@ -75,7 +75,9 @@ type NotifType =
   | 'studio.transfer_request'
   | 'studio.transfer_approved'
   | 'studio.invite_request'
-  | 'studio.invite_accepted';
+  | 'studio.invite_accepted'
+  | 'project.invite_request'
+  | 'project.invite_accepted';
 
 function fakeNotification(
   id: string,
@@ -477,6 +479,101 @@ describe('BellMenu — studio invite-confirm handshake', () => {
 
     expect(
       await screen.findByText(/Dee accepted your invite to Acme/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
+  });
+});
+
+describe('BellMenu — project invite-confirm handshake (#1337)', () => {
+  it('renders project.invite_request with confirm/cancel + role subtitle + TTL countdown', async () => {
+    const user = userEvent.setup();
+    const expiresAt = new Date(
+      Date.now() + 3 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'project.invite_request',
+        {
+          invitationId: 'inv-1',
+          projectId: 'p1',
+          projectName: 'Q1 Sprint',
+          inviterName: 'Alex',
+          role: 'editor',
+        },
+        { expiresAt },
+      ),
+    ]);
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/You were invited to join Q1 Sprint/i),
+    ).toBeInTheDocument();
+    // Subtitle reuses the granted-role label (invitedAsEditor).
+    expect(screen.getByText(/Joined as an editor/i)).toBeInTheDocument();
+    // Actionable like the studio invite handshake: confirm / cancel + countdown.
+    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
+    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
+  });
+
+  it('confirm calls respondAction(id, confirm) + project-join success toast', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'project.invite_request',
+        { invitationId: 'inv-1', projectName: 'Q1 Sprint', role: 'viewer' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
+    });
+    // A project invite confirm joins the project — the project-join toast, NOT
+    // the studio one.
+    expect(toast.success).toHaveBeenCalledWith('You\'ve joined the project.');
+  });
+
+  it('cancel calls respondAction(id, cancel)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(
+        N1,
+        'project.invite_request',
+        { invitationId: 'inv-1', projectName: 'Q1 Sprint', role: 'viewer' },
+        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      ),
+    ]);
+    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
+
+    await waitFor(() => {
+      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
+    });
+  });
+
+  it('renders project.invite_accepted as a read-on-click row', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N2, 'project.invite_accepted', {
+        projectName: 'Q1 Sprint',
+        inviteeName: 'Dee',
+      }),
+    ]);
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(
+      await screen.findByText(/Dee accepted your invite to Q1 Sprint/i),
     ).toBeInTheDocument();
     expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });

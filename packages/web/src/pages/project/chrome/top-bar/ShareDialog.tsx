@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Copy, Send, Share2 } from 'lucide-react';
+import { Send, Share2 } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
@@ -20,11 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@web/components/ui/select';
-import { Separator } from '@web/components/ui/separator';
-import {
-  inviteLinksApi,
-  type InviteLink,
-} from '@web/data/api/invite-links';
+import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { ApiException } from '@web/data/api/types';
 import { useUIStore } from '@web/stores';
 import {
@@ -33,61 +28,38 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { ShareLinksListDialog } from '@web/pages/project/chrome/top-bar/ShareLinksListDialog';
+import type { InvitableProjectRole } from '@breatic/shared';
 
 interface ShareDialogProps {
   projectId: string;
   /**
-   * Whether the SMTP backend is configured. When `false`, the "Invite
-   * by email" section is disabled and the user sees a hint to use
-   * Generate link instead. Defaults to `true` (we surface SMTP
-   * disconnection from outside via the `useEmailEnabled` hook in
-   * Phase 9 — for now, callers can omit this prop and the section
-   * stays enabled).
+   * Whether the SMTP backend is configured. When `false`, the invite section is
+   * disabled and the user sees a hint. The bell notification is the always-
+   * delivered path (the email is best-effort), so an invite still works without
+   * SMTP — but the hint keeps the UX honest about the email link not arriving.
+   * Defaults to `true`.
    */
   emailEnabled?: boolean;
 }
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-type GrantableRole = 'viewer' | 'editor';
 
 /**
- * Builds the public invite URL for a link token, preferring the current origin.
- * @param token - Invite link token to embed in the URL path.
- * @returns the absolute `/invite/:token` URL.
- */
-function inviteUrlFor(token: string): string {
-  if (typeof window !== 'undefined' && window.location.origin) {
-    return `${window.location.origin}/invite/${token}`;
-  }
-  return `https://breatic.ai/invite/${token}`;
-}
-
-/**
- * Share popover — two independent flows per spec § 4 (2026-05-28):
+ * Share popover — invite-by-email only (project invite-confirm handshake,
+ * 2026-06-18, #1337). The owner types a registered user's email + picks a role
+ * (`editor` / `viewer`); clicking Invite asks the server to create a PENDING
+ * project invite, which drops an actionable bell notification in the invitee's
+ * inbox (and best-effort an email link to the `/project-invite` landing page).
+ * The invitee becomes a member only after they confirm — no immediate access,
+ * no public/copy link (the old `share_links` public-link mode was removed so
+ * every project invite goes through the same confirm handshake as studio).
  *
- *   1. Invite by email — single-use, bound to recipient, 7-day TTL.
- *      Owner types the address + picks a role; clicking Invite asks
- *      the server to create the link AND dispatch the share-invite
- *      mail. The popover input clears + toasts success when the
- *      server returns 201.
- *
- *   2. Generate link — multi-use, unbound, no expiry. Owner picks the
- *      default role + clicks Generate; the resulting URL is shown
- *      with a copy button. The link stays valid until the owner
- *      revokes it from the ShareLinksListDialog.
- *
- * Below the two sections, a "View all generated links (N)" entry
- * opens a sibling dialog (ShareLinksListDialog) showing every
- * non-revoked link on the project, with per-row Copy + Revoke. N is
- * the count returned by `inviteLinksApi.listByProject`.
- *
- * Invite address is email-only (per user 2026-05-28 decision):
- * usernames are mutable and can't serve as a stable invite identifier.
+ * Invite address is email-only: usernames are mutable and can't serve as a
+ * stable invite identifier, and only already-registered users can be invited.
  * @param root0 - Share dialog props.
- * @param root0.projectId - Id of the project being shared; all invite/link calls target it.
- * @param root0.emailEnabled - Whether the email-invite section is enabled; defaults to `true`.
- * @returns the share trigger button, its popover with the invite/link flows, and the links list dialog.
+ * @param root0.projectId - Id of the project being shared; the invite call targets it.
+ * @param root0.emailEnabled - Whether the invite section is enabled; defaults to `true`.
+ * @returns the share trigger button and its email-only invite popover.
  */
 export function ShareDialog({
   projectId,
@@ -98,49 +70,16 @@ export function ShareDialog({
   const setOpen = useUIStore((s) => s.setShareOpen);
 
   const [invite, setInvite] = React.useState('');
-  const [inviteRole, setInviteRole] = React.useState<GrantableRole>('viewer');
+  const [inviteRole, setInviteRole] =
+    React.useState<InvitableProjectRole>('viewer');
   const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
 
-  const [generateRole, setGenerateRole] = React.useState<GrantableRole>('viewer');
-  const [generatedLink, setGeneratedLink] = React.useState<InviteLink | null>(
-    null,
-  );
-  const [generating, setGenerating] = React.useState(false);
-
-  const [copied, setCopied] = React.useState(false);
-  const [listDialogOpen, setListDialogOpen] = React.useState(false);
-
-  // Count of active links on this project. Drives the "View all (N)"
-  // entry copy. Queries lazily — only when the popover opens — so
-  // mounting BellMenu / ShareDialog inside a hot canvas doesn't fire
-  // the network on every render.
-  const linksQuery = useQuery({
-    queryKey: ['invite-links', projectId],
-    queryFn: () => inviteLinksApi.listByProject(projectId),
-    enabled: open,
-    refetchOnWindowFocus: false,
-  });
-  const linkCount = (linksQuery.data ?? []).length;
-
-  const inviteUrl = generatedLink ? inviteUrlFor(generatedLink.token) : '';
-
   /**
-   * Copies the generated invite URL to the clipboard, flashing a copied state.
-   */
-  const copy = async (): Promise<void> => {
-    if (!inviteUrl) return;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast(t('share.copyFallback'));
-    }
-  };
-
-  /**
-   * Validates the address and creates a single-use email invite, surfacing errors inline.
+   * Validates the address and creates a pending project invite, surfacing
+   * errors inline. On success the input clears and a toast confirms the invite
+   * was sent (the invitee gets a bell notification + best-effort email).
+   * @returns once the invite has been created (or the error surfaced inline).
    */
   async function handleSendInvite(): Promise<void> {
     if (inviteSubmitting) return;
@@ -152,14 +91,12 @@ export function ShareDialog({
     setInviteError(null);
     setInviteSubmitting(true);
     try {
-      await inviteLinksApi.create(projectId, {
-        kind: 'email',
-        invitee_email: trimmed,
+      await projectInvitationsApi.inviteMember(projectId, {
+        email: trimmed,
         role: inviteRole,
       });
       toast.success(t('share.inviteSent'));
       setInvite('');
-      linksQuery.refetch();
     } catch (err) {
       const msg =
         err instanceof ApiException ? err.message : t('share.inviteFailed');
@@ -169,175 +106,89 @@ export function ShareDialog({
     }
   }
 
-  /**
-   * Creates a reusable invite link with the chosen default role and shows it for copying.
-   */
-  async function handleGenerateLink(): Promise<void> {
-    if (generating) return;
-    setGenerating(true);
-    try {
-      const res = await inviteLinksApi.create(projectId, {
-        kind: 'link',
-        role: generateRole,
-      });
-      setGeneratedLink(res);
-      linksQuery.refetch();
-    } catch (err) {
-      const msg =
-        err instanceof ApiException ? err.message : t('share.generateFailed');
-      toast.error(msg);
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button variant='chrome-ghost' size='chrome' aria-label={t('chrome.tooltip.share')}>
-                <Share2 className='h-[18px] w-[18px]' />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent side='bottom'>{t('chrome.tooltip.share')}</TooltipContent>
-        </Tooltip>
-        <PopoverContent
-          align='end'
-          className='w-80 p-1'
-          data-testid='share-popover'
-        >
-          <SectionTitle>{t('share.inviteSection')}</SectionTitle>
-          {!emailEnabled ? (
-            <p
-              className='px-2 pb-2 text-xs text-muted-foreground'
-              data-testid='share-email-disabled-hint'
-            >
-              {t('share.emailDisabledHint')}
-            </p>
-          ) : null}
-          <div className='flex items-center gap-2 px-2 pb-2'>
-            <Input
-              type='email'
-              autoComplete='email'
-              value={invite}
-              onChange={(e) => {
-                setInvite(e.target.value);
-                if (inviteError) setInviteError(null);
-              }}
-              placeholder={t('share.invitePlaceholder')}
-              className='h-8 flex-1 text-sm'
-              data-testid='share-invite-input'
-              disabled={!emailEnabled || inviteSubmitting}
-              aria-invalid={!!inviteError || undefined}
-            />
-            <RoleSelect
-              value={inviteRole}
-              onChange={setInviteRole}
-              disabled={!emailEnabled || inviteSubmitting}
-              testId='share-invite-role'
-            />
-          </div>
-          {inviteError ? (
-            <p className='px-2 pb-1 text-xs text-status-error-foreground' role='alert'>
-              {inviteError}
-            </p>
-          ) : null}
-          <div className='px-2 pb-2'>
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
             <Button
-              size='form'
-              className='w-full'
-              disabled={
-                !emailEnabled ||
-                invite.trim().length === 0 ||
-                inviteSubmitting
-              }
-              onClick={handleSendInvite}
-              data-testid='share-send-invite'
+              variant='chrome-ghost'
+              size='chrome'
+              aria-label={t('chrome.tooltip.share')}
             >
-              <Send className='h-4 w-4' />
-              {inviteSubmitting
-                ? t('share.inviteSending')
-                : t('share.inviteButton')}
+              <Share2 className='h-[18px] w-[18px]' />
             </Button>
-          </div>
-
-          <Separator className='my-1' />
-
-          <SectionTitle>{t('share.linkSection')}</SectionTitle>
-          <div className='flex items-center justify-between gap-2 px-2 pb-2'>
-            <span className='text-xs text-muted-foreground'>
-              {t('share.linkDefaultRole')}
-            </span>
-            <RoleSelect
-              value={generateRole}
-              onChange={setGenerateRole}
-              disabled={generating}
-              testId='share-generate-role'
-            />
-          </div>
-          <div className='px-2 pb-2'>
-            <Button
-              size='form'
-              variant='outline'
-              className='w-full'
-              onClick={handleGenerateLink}
-              disabled={generating}
-              data-testid='share-generate-link'
-            >
-              {generating
-                ? t('share.linkGenerating')
-                : t('share.linkGenerate')}
-            </Button>
-          </div>
-          {generatedLink ? (
-            <div className='flex items-center gap-2 px-2 pb-2'>
-              <Input
-                readOnly
-                value={inviteUrl}
-                className='h-8 flex-1 text-sm'
-                data-testid='share-invite-url'
-              />
-              <Button
-                variant='chrome-ghost'
-                size='chrome'
-                onClick={copy}
-                disabled={!inviteUrl}
-                aria-label={copied ? t('share.copiedAria') : t('share.copyLinkAria')}
-                data-testid='share-copy-link'
-              >
-                <Copy className='h-[16px] w-[16px]' />
-              </Button>
-            </div>
-          ) : null}
-
-          <Separator className='my-1' />
-
-          <div className='px-2 py-2'>
-            <button
-              type='button'
-              className='w-full text-left text-xs text-primary underline-offset-2 hover:underline'
-              onClick={() => setListDialogOpen(true)}
-              data-testid='share-view-all-links'
-            >
-              {t('share.viewAllLinks', { count: linkCount })}
-            </button>
-          </div>
-        </PopoverContent>
-      </Popover>
-      <ShareLinksListDialog
-        projectId={projectId}
-        open={listDialogOpen}
-        onOpenChange={setListDialogOpen}
-      />
-    </>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>{t('chrome.tooltip.share')}</TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        align='end'
+        className='w-80 p-1'
+        data-testid='share-popover'
+      >
+        <SectionTitle>{t('share.inviteSection')}</SectionTitle>
+        {!emailEnabled ? (
+          <p
+            className='px-2 pb-2 text-xs text-muted-foreground'
+            data-testid='share-email-disabled-hint'
+          >
+            {t('share.emailDisabledHint')}
+          </p>
+        ) : null}
+        <div className='flex items-center gap-2 px-2 pb-2'>
+          <Input
+            type='email'
+            autoComplete='email'
+            value={invite}
+            onChange={(e) => {
+              setInvite(e.target.value);
+              if (inviteError) setInviteError(null);
+            }}
+            placeholder={t('share.invitePlaceholder')}
+            className='h-8 flex-1 text-sm'
+            data-testid='share-invite-input'
+            disabled={!emailEnabled || inviteSubmitting}
+            aria-invalid={!!inviteError || undefined}
+          />
+          <RoleSelect
+            value={inviteRole}
+            onChange={setInviteRole}
+            disabled={!emailEnabled || inviteSubmitting}
+            testId='share-invite-role'
+          />
+        </div>
+        {inviteError ? (
+          <p
+            className='px-2 pb-1 text-xs text-status-error-foreground'
+            role='alert'
+          >
+            {inviteError}
+          </p>
+        ) : null}
+        <div className='px-2 pb-2'>
+          <Button
+            size='form'
+            className='w-full'
+            disabled={
+              !emailEnabled || invite.trim().length === 0 || inviteSubmitting
+            }
+            onClick={handleSendInvite}
+            data-testid='share-send-invite'
+          >
+            <Send className='h-4 w-4' />
+            {inviteSubmitting
+              ? t('share.inviteSending')
+              : t('share.inviteButton')}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 /**
- * Uppercase section heading used to separate the invite and link flows.
+ * Uppercase section heading for the invite flow.
  * @param root0 - Section title props.
  * @param root0.children - Heading text to render.
  * @returns the styled section heading.
@@ -355,20 +206,20 @@ function SectionTitle({
 }
 
 interface RoleSelectProps {
-  value: GrantableRole;
-  onChange: (next: GrantableRole) => void;
+  value: InvitableProjectRole;
+  onChange: (next: InvitableProjectRole) => void;
   disabled?: boolean;
   testId: string;
 }
 
 /**
- * Role picker (view/edit) shared by the invite and generate-link flows.
+ * Role picker (viewer/editor) for the invite flow.
  * @param root0 - Role select props.
  * @param root0.value - Currently selected grantable role.
  * @param root0.onChange - Called with the new role when the selection changes.
  * @param root0.disabled - Whether the select is disabled.
  * @param root0.testId - Test id applied to the select trigger.
- * @returns the view/edit role select control.
+ * @returns the viewer/editor role select control.
  */
 function RoleSelect({
   value,
@@ -380,13 +231,10 @@ function RoleSelect({
   return (
     <Select
       value={value}
-      onValueChange={(v) => onChange(v as GrantableRole)}
+      onValueChange={(v) => onChange(v as InvitableProjectRole)}
       disabled={disabled}
     >
-      <SelectTrigger
-        className='h-8 w-[88px] text-xs'
-        data-testid={testId}
-      >
+      <SelectTrigger className='h-8 w-[88px] text-xs' data-testid={testId}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

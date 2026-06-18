@@ -1348,7 +1348,9 @@
       "studioTransferRequest": "{studio} 인수를 요청받았습니다",
       "studioTransferApproved": "{studio}의 관리자 이전이 수락되었습니다",
       "studioInviteRequest": "{studio}에 참여하도록 초대받았습니다",
-      "studioInviteAccepted": "{invitee}님이 {studio} 초대를 수락했습니다"
+      "studioInviteAccepted": "{invitee}님이 {studio} 초대를 수락했습니다",
+      "projectInviteRequest": "{project}에 참여하도록 초대받았습니다",
+      "projectInviteAccepted": "{invitee}님이 {project} 초대를 수락했습니다"
     },
     "actionFailed": "작업을 완료할 수 없습니다. 다시 시도해 주세요.",
     "transferConfirmedToast": "이제 Studio 관리자입니다.",
@@ -1358,7 +1360,9 @@
     "subtitle": {
       "invitedAsCreator": "크리에이터로 참여",
       "invitedAsMember": "멤버로 참여",
-      "transferHint": "수락하면 Studio 관리자가 됩니다"
+      "transferHint": "수락하면 Studio 관리자가 됩니다",
+      "invitedAsEditor": "편집자로 참여",
+      "invitedAsViewer": "뷰어로 참여"
     },
     "expiresLabel": {
       "expired": "만료됨",
@@ -1369,7 +1373,9 @@
     "inviteAccept": "수락",
     "inviteDecline": "거절",
     "inviteConfirmedToast": "Studio에 참여했습니다.",
-    "inviteDeclinedToast": "초대를 거절했습니다."
+    "inviteDeclinedToast": "초대를 거절했습니다.",
+    "projectInviteConfirmedToast": "Project에 참여했습니다.",
+    "projectInviteDeclinedToast": "초대를 거절했습니다."
   },
   "connection": {
     "banner": {
@@ -1632,6 +1638,26 @@
       "backToStudio": "Studio로 돌아가기",
       "signIn": "로그인"
     }
+  },
+  "projectInvite": {
+    "loadingTitle": "초대를 여는 중…",
+    "loadingBody": "초대를 불러오는 동안 잠시 기다려 주세요.",
+    "title": "초대를 받았습니다",
+    "body": "{inviter}님이 회원님을 {role, select, editor {편집자} viewer {뷰어} other {멤버}}(으)로 {project}에 초대했습니다.",
+    "confirm": "수락하고 참여",
+    "decline": "거절",
+    "invalidTitle": "더 이상 유효하지 않은 초대입니다",
+    "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Project 소유자에게 새 초대를 요청하세요.",
+    "expiredTitle": "초대가 만료되었습니다",
+    "expiredBody": "{project} 초대가 7일 유효 기간을 지났습니다. Project 소유자에게 재발송을 요청하세요.",
+    "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
+    "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
+    "declinedTitle": "초대를 거절했습니다",
+    "declinedBody": "{project} 초대를 거절했습니다. 나중에 소유자에게 다시 초대를 요청할 수 있습니다.",
+    "joinedToast": "Project에 참여했습니다.",
+    "actionFailed": "완료하지 못했습니다. 다시 시도해 주세요.",
+    "backToStudio": "Studio로 돌아가기",
+    "signIn": "로그인"
   },
   "chrome": {
     "tooltip": {
