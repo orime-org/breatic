@@ -15,8 +15,12 @@
  *      `project-{pid}` and the pre-v6 `project-{pid}/canvas` /
  *      `/node/{id}` sub-paths
  *   4. A valid session for an active member is accepted, with the
- *      member's role echoed back; viewer → readOnly:true, others →
- *      readOnly:false
+ *      member's role echoed back, and the connection's read-only flag
+ *      applied by MUTATING the passed-in `connectionConfig.readOnly`
+ *      (viewer → true, others → false) — the property Hocuspocus reads
+ *      when it builds the Connection. Returning `readOnly` in the hook's
+ *      result does NOT work: that value lands in `context`, which
+ *      Hocuspocus ignores for read-only enforcement.
  *
  * Auth is cookie-based since 2026-05-26: the Hocuspocus client sends
  * a placeholder `token` solely to trip the hook, and the real session
@@ -123,7 +127,23 @@ describe("createAuthHook", () => {
     loggerError.mockReset();
   });
 
-  const buildHook = () => createAuthHook({ redis: mockRedis });
+  // Wrap the real hook so tests may omit `connectionConfig` (Hocuspocus
+  // always supplies one — defaulted to readOnly:false here). Tests asserting
+  // the read-only side effect pass their OWN connectionConfig object and check
+  // it was mutated. The production hook type keeps connectionConfig required,
+  // so the protocol-level read-only contract stays enforced.
+  const buildHook = () => {
+    const hook = createAuthHook({ redis: mockRedis });
+    type HookArgs = Parameters<typeof hook>[0];
+    return (
+      args: Omit<HookArgs, "connectionConfig"> &
+        Partial<Pick<HookArgs, "connectionConfig">>,
+    ): ReturnType<typeof hook> =>
+      hook({
+        ...args,
+        connectionConfig: args.connectionConfig ?? { readOnly: false },
+      });
+  };
 
   it("rejects when the session cookie is missing", async () => {
     const hook = buildHook();
@@ -224,61 +244,71 @@ describe("createAuthHook", () => {
     expect(loadProjectRoleMock).toHaveBeenCalledWith("attacker", PID);
   });
 
-  it("accepts an active owner; readOnly = false", async () => {
+  it("accepts an active owner; connection stays writable (readOnly = false)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
     // The space-existence read is the only `yjs_documents` access the
     // hook makes — staged through the core repo mock.
     fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
+    // Hocuspocus passes a mutable connectionConfig (default readOnly:false).
+    // The hook flips it as a SIDE EFFECT; Hocuspocus reads THIS — not the
+    // hook's return value — when it builds the Connection.
+    const connectionConfig = { readOnly: false };
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/canvas-${SID}`,
       requestHeaders: withCookie("tok"),
+      connectionConfig,
     });
 
-    expect(ctx).toEqual({
-      user: { id: "user-1", role: "owner" },
-      connection: { readOnly: false },
-    });
+    expect(ctx).toEqual({ user: { id: "user-1", role: "owner" } });
+    expect(connectionConfig.readOnly).toBe(false);
   });
 
-  it("accepts an active editor on the meta doc; readOnly = false (no space-exists fetch needed)", async () => {
+  it("accepts an active editor on the meta doc; connection stays writable (readOnly = false, no space-exists fetch needed)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook();
+    const connectionConfig = { readOnly: false };
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/meta`,
       requestHeaders: withCookie("tok"),
+      connectionConfig,
     });
 
-    expect(ctx).toEqual({
-      user: { id: "user-1", role: "editor" },
-      connection: { readOnly: false },
-    });
+    expect(ctx).toEqual({ user: { id: "user-1", role: "editor" } });
+    expect(connectionConfig.readOnly).toBe(false);
     // The meta doc never triggers the space-exists read.
     expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
-  it("accepts an active viewer; readOnly = true", async () => {
+  it("accepts an active viewer; connection forced read-only (connectionConfig.readOnly mutated — the property Hocuspocus enforces)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
     fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
+    const connectionConfig = { readOnly: false };
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/canvas-${SID}`,
       requestHeaders: withCookie("tok"),
+      connectionConfig,
     });
 
-    expect(ctx).toEqual({
-      user: { id: "user-1", role: "viewer" },
-      connection: { readOnly: true },
-    });
+    expect(ctx).toEqual({ user: { id: "user-1", role: "viewer" } });
+    // SECURITY INVARIANT (root-caused 2026-06-18). The hook MUST mutate
+    // connectionConfig.readOnly: Hocuspocus reads THIS when constructing
+    // the Connection and rejects every incoming sync-update on a read-only
+    // connection (hocuspocus-server messageYjsUpdate / syncStep2 handlers).
+    // The prior bug returned `{ connection: { readOnly } }`, which only
+    // populated `context` — a value Hocuspocus never reads — so viewers
+    // could drag canvas nodes + tamper meta.projectMeta via raw Yjs.
+    expect(connectionConfig.readOnly).toBe(true);
   });
 
   // ── Space-exists check (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5) ──
@@ -325,6 +355,7 @@ describe("createAuthHook", () => {
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/meta`,
       requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
     });
     expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
@@ -342,6 +373,7 @@ describe("createAuthHook", () => {
       requestHeaders: {
         cookie: "first=1; breatic_session=real-token; third=3",
       },
+      connectionConfig: { readOnly: false },
     });
 
     expect(ctx.user.id).toBe("user-1");

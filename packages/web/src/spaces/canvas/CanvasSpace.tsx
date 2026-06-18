@@ -566,6 +566,14 @@ function CanvasSpaceInner({
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
+          // Viewer backstop (#1377): a read-only viewer must not move nodes or
+          // draw edges. The real boundary is the collab server (a read-only
+          // connection rejects the viewer's Yjs sync-update), but gating these
+          // here prevents the UI from optimistically moving a node only to have
+          // the server reject it and snap it back. elementsSelectable stays on
+          // so viewers can still click a node to inspect it.
+          nodesDraggable={!readOnly}
+          nodesConnectable={!readOnly}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
