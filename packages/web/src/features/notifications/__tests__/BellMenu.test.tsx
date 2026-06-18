@@ -5,11 +5,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
+
+// The project invite bell row navigates to the `/project-invite` landing page
+// instead of confirming inline; spy on react-router's navigate to assert it.
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual =
+    await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => navigateMock };
+});
 
 const SELF = {
   id: 'u-self',
@@ -58,11 +68,13 @@ function setup() {
     },
   });
   return render(
-    <QueryClientProvider client={qc}>
-      <TooltipProvider>
-        <BellMenu />
-      </TooltipProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <TooltipProvider>
+          <BellMenu />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -483,8 +495,8 @@ describe('BellMenu — studio invite-confirm handshake', () => {
   });
 });
 
-describe('BellMenu — project invite-confirm handshake (#1337)', () => {
-  it('renders project.invite_request with confirm/cancel + role subtitle + TTL countdown', async () => {
+describe('BellMenu — project invite navigates to the landing page (#1337)', () => {
+  it('renders project.invite_request as a clickable row (no inline confirm/cancel) + role subtitle + TTL countdown', async () => {
     const user = userEvent.setup();
     const expiresAt = new Date(
       Date.now() + 3 * 24 * 60 * 60 * 1000,
@@ -499,6 +511,7 @@ describe('BellMenu — project invite-confirm handshake (#1337)', () => {
           projectName: 'Q1 Sprint',
           inviterName: 'Alex',
           role: 'editor',
+          token: 'tok-abc',
         },
         { expiresAt },
       ),
@@ -511,53 +524,42 @@ describe('BellMenu — project invite-confirm handshake (#1337)', () => {
     ).toBeInTheDocument();
     // Subtitle reuses the granted-role label (invitedAsEditor).
     expect(screen.getByText(/Joined as an editor/i)).toBeInTheDocument();
-    // Actionable like the studio invite handshake: confirm / cancel + countdown.
-    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
+    // The TTL countdown still shows for the live invite.
     expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
+    // Diverges from studio: the row links OUT to the landing page, so there is
+    // NO inline confirm/cancel (confirm/decline happen on `/project-invite`).
+    expect(screen.queryByTestId(`bell-confirm-${N1}`)).toBeNull();
+    expect(screen.queryByTestId(`bell-cancel-${N1}`)).toBeNull();
+    // It exposes a single open-invite affordance instead.
+    expect(screen.getByTestId(`bell-open-invite-${N1}`)).toBeInTheDocument();
   });
 
-  it('confirm calls respondAction(id, confirm) + project-join success toast', async () => {
+  it('clicking the row navigates to /project-invite?token=… and closes the popover', async () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce([
       fakeNotification(
         N1,
         'project.invite_request',
-        { invitationId: 'inv-1', projectName: 'Q1 Sprint', role: 'viewer' },
+        {
+          invitationId: 'inv-1',
+          projectName: 'Q1 Sprint',
+          role: 'viewer',
+          token: 'tok-xyz',
+        },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
     ]);
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
+    await user.click(await screen.findByTestId(`bell-open-invite-${N1}`));
 
     await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
+      expect(navigateMock).toHaveBeenCalledWith(
+        '/project-invite?token=tok-xyz',
+      );
     });
-    // A project invite confirm joins the project — the project-join toast, NOT
-    // the studio one.
-    expect(toast.success).toHaveBeenCalledWith('You\'ve joined the project.');
-  });
-
-  it('cancel calls respondAction(id, cancel)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
-      fakeNotification(
-        N1,
-        'project.invite_request',
-        { invitationId: 'inv-1', projectName: 'Q1 Sprint', role: 'viewer' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ]);
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
-    });
+    // It must NOT route through the inline confirm/cancel endpoint.
+    expect(notificationsApi.respondAction).not.toHaveBeenCalled();
   });
 
   it('renders project.invite_accepted as a read-on-click row', async () => {

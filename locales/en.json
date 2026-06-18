@@ -1280,6 +1280,10 @@
     "inviteSent": "Invite sent.",
     "inviteFailed": "Could not send the invite. Please try again.",
     "invalidEmail": "Please enter a valid email address.",
+    "inviteLinkLabel": "Invite link",
+    "copyInviteLink": "Copy invite link",
+    "inviteLinkCopied": "Invite link copied.",
+    "inviteLinkCopyFailed": "Could not copy the link.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1337,8 +1341,7 @@
     "inviteDecline": "Decline",
     "inviteConfirmedToast": "You've joined the studio.",
     "inviteDeclinedToast": "Invitation declined.",
-    "projectInviteConfirmedToast": "You've joined the project.",
-    "projectInviteDeclinedToast": "Invitation declined."
+    "viewProjectInvite": "View invite"
   },
   "connection": {
     "banner": {

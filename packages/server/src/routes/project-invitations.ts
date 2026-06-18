@@ -93,7 +93,13 @@ projectInvites.use(requireAuth);
  * email) to the project. Owner-only; creates a PENDING invite + an actionable
  * bell notification, and (best-effort) sends an email link. The invitee becomes
  * a member only on confirm (invite-confirm handshake).
- * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
+ *
+ * Returns the `/project-invite?token=` URL so the owner can copy it directly:
+ * the project invite funnels all three channels (this copyable URL, the bell,
+ * the email) through the same landing page (the divergence from studio's inline
+ * bell confirm). `createInvite` mints the shared token; the route reuses it for
+ * both the email link and the returned URL.
+ * @returns `201` with `{ data: { inviteLink } }`; `404` unregistered email,
  *   `403` caller not owner, `409` already has access or already invited
  */
 projectInvites.post(
@@ -110,21 +116,19 @@ projectInvites.post(
       body.email,
       body.role,
     );
+    const origin = c.req.header("Origin") ?? "http://localhost:8000";
+    const inviteLink = `${origin}/project-invite?token=${invite.token}`;
     // Email is an OPTIONAL enhancement — the bell notification is the always-
     // delivered path. A send failure must NOT fail the request (the invite +
     // bell already landed); best-effort, logged at the application boundary.
     try {
-      const token = await projectInviteService.issueInviteToken(
-        invite.invitationId,
-      );
-      const origin = c.req.header("Origin") ?? "http://localhost:8000";
       const result = await sendMail(
         buildProjectInvitationMail({
           inviteeEmail: invite.inviteeEmail,
           inviterName: invite.inviterName,
           projectName: invite.projectName,
           role: invite.role,
-          inviteLink: `${origin}/project-invite?token=${token}`,
+          inviteLink,
         }),
       );
       logMailResult(result, { userId: user.id, subject: "project_invite" });
@@ -134,7 +138,7 @@ projectInvites.post(
         "project_invite_email_failed",
       );
     }
-    return c.json({ data: { ok: true } }, 201);
+    return c.json({ data: { inviteLink } }, 201);
   },
 );
 

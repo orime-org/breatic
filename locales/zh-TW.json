@@ -37,8 +37,8 @@
       "already_member": "該使用者已是成員。",
       "already_invited": "該使用者已有一個待確認的邀請。",
       "cannot_modify_personal": "個人 Studio 無法管理成員。",
-      "remove_last_admin": "移除前請先轉讓管理員。",
-      "cannot_change_admin_role": "管理員角色只能透過轉讓變更。"
+      "remove_last_admin": "移除前請先轉讓 Admin。",
+      "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。"
     },
     "project": {
       "email_not_registered": "該信箱尚未註冊。",
@@ -393,14 +393,14 @@
   },
   "roleTag": {
     "upgradeRequest": {
-      "ariaLabel": "申請編輯者權限",
-      "title": "申請編輯者權限",
-      "description": "你目前是該 Project 的檢視者。給 Project 所有者發送訊息,申請編輯者權限。",
-      "placeholder": "給 Project 所有者的留言(可選)…",
+      "ariaLabel": "申請 Editor 權限",
+      "title": "申請 Editor 權限",
+      "description": "你目前是該 Project 的 Viewer。給 Project Owner 發送訊息,申請 Editor 權限。",
+      "placeholder": "給 Project Owner 的留言(可選)…",
       "submit": "發送申請",
       "sending": "發送中…",
       "toast": {
-        "sent": "申請已發送 — Project 所有者會在通知中看到。",
+        "sent": "申請已發送 — Project Owner 會在通知中看到。",
         "failed": "申請發送失敗,請重試。"
       }
     }
@@ -996,12 +996,12 @@
       "invite_placeholder": "電子郵件或使用者 ID",
       "invite_button": "邀請",
       "list_count": "成員 ({count})",
-      "list_note": "所有者永久綁定 Project 建立者",
+      "list_note": "Owner 永久綁定 Project Creator",
       "confirm_remove": "確認移除此協作者?",
       "done": "完成"
     },
     "role": {
-      "owner": "所有者",
+      "owner": "Owner",
       "edit": "編輯",
       "view": "檢視"
     },
@@ -1009,7 +1009,7 @@
       "title": "協作者管理",
       "description": "管理 Project 成員及其權限",
       "membersSection": "成員 ({count})",
-      "ownerNote": "擁有者永久綁定 Project 建立者",
+      "ownerNote": "Owner 永久綁定 Project Creator",
       "roleSelectAria": "修改 {name} 的角色",
       "roleChanged": "角色已更新。",
       "roleChangeFailed": "角色更新失敗,請重試。",
@@ -1219,7 +1219,7 @@
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
     },
-    "disabledTooltip": "需要編輯者權限"
+    "disabledTooltip": "需要 Editor 權限"
   },
   "viewportToolbar": {
     "aria": "視口工具",
@@ -1280,6 +1280,10 @@
     "inviteSent": "邀請已傳送。",
     "inviteFailed": "邀請傳送失敗,請重試。",
     "invalidEmail": "請輸入有效的電子郵件地址。",
+    "inviteLinkLabel": "邀請連結",
+    "copyInviteLink": "複製邀請連結",
+    "inviteLinkCopied": "邀請連結已複製。",
+    "inviteLinkCopyFailed": "無法複製連結。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1304,28 +1308,28 @@
     "rejectedToast": "已拒絕升級申請。",
     "decideFailed": "處理失敗,請重試。",
     "headline": {
-      "roleUpgradeRequest": "有人申請 {project} 的編輯者權限",
-      "roleUpgradeApproved": "你在 {project} 的編輯者權限已通過",
-      "roleUpgradeRejected": "你在 {project} 的編輯者權限申請被拒絕",
+      "roleUpgradeRequest": "有人申請 {project} 的 Editor 權限",
+      "roleUpgradeApproved": "你在 {project} 的 Editor 權限已通過",
+      "roleUpgradeRejected": "你在 {project} 的 Editor 權限申請被拒絕",
       "studioMemberInvited": "你已被加入 {studio}",
       "studioTransferRequest": "有人邀請你接管 {studio}",
-      "studioTransferApproved": "你對 {studio} 的管理員轉讓已被接受",
+      "studioTransferApproved": "你對 {studio} 的 Admin 轉讓已被接受",
       "studioInviteRequest": "你被邀請加入 {studio}",
       "studioInviteAccepted": "{invitee} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "你被邀請加入 {project}",
       "projectInviteAccepted": "{invitee} 接受了你對 {project} 的邀請"
     },
     "actionFailed": "無法完成操作，請重試。",
-    "transferConfirmedToast": "你現在是該 Studio 的管理員了。",
+    "transferConfirmedToast": "你現在是該 Studio 的 Admin 了。",
     "transferCancelledToast": "已拒絕轉讓。",
     "transferAccept": "接受",
     "transferDecline": "拒絕",
     "subtitle": {
-      "invitedAsCreator": "以建立者身分加入",
-      "invitedAsMember": "以成員身分加入",
-      "transferHint": "接受後即成為該 Studio 的管理員",
-      "invitedAsEditor": "以編輯者身分加入",
-      "invitedAsViewer": "以檢視者身分加入"
+      "invitedAsCreator": "以 Creator 身分加入",
+      "invitedAsMember": "以 Member 身分加入",
+      "transferHint": "接受後即成為該 Studio 的 Admin",
+      "invitedAsEditor": "以 Editor 身分加入",
+      "invitedAsViewer": "以 Viewer 身分加入"
     },
     "expiresLabel": {
       "expired": "已過期",
@@ -1337,8 +1341,7 @@
     "inviteDecline": "拒絕",
     "inviteConfirmedToast": "你已加入該 Studio。",
     "inviteDeclinedToast": "已拒絕邀請。",
-    "projectInviteConfirmedToast": "你已加入該 Project。",
-    "projectInviteDeclinedToast": "已拒絕邀請。"
+    "viewProjectInvite": "查看邀請"
   },
   "connection": {
     "banner": {
@@ -1495,9 +1498,9 @@
         "cannotInvitePersonal": "個人 Studios 無法邀請成員 —— 只有你自己。",
         "roleCreator": "Creator",
         "rowMenu": "成員操作",
-        "promoteToCreator": "設為建立者",
-        "demoteToMember": "設為成員",
-        "transferAdmin": "轉讓管理員…",
+        "promoteToCreator": "設為 Creator",
+        "demoteToMember": "設為 Member",
+        "transferAdmin": "轉讓 Admin…",
         "inviteTitle": "邀請成員",
         "inviteEmailLabel": "電子郵件",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1509,8 +1512,8 @@
         "removeConfirmBody": "{name} 將失去本 Studio 所有 Project 的存取權限，其擁有的 Project 會轉移給你。此操作無法復原。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成員。",
-        "transferConfirmTitle": "轉讓管理員？",
-        "transferConfirmBody": "{name} 需在通知中接受轉讓後才能成為管理員。在對方接受之前，你仍是管理員。",
+        "transferConfirmTitle": "轉讓 Admin？",
+        "transferConfirmBody": "{name} 需在通知中接受轉讓後才能成為 Admin。在對方接受之前，你仍是 Admin。",
         "transferConfirmAction": "傳送請求",
         "transferRequested": "轉讓請求已傳送。",
         "actionFailed": "發生錯誤，請重試。",
@@ -1530,7 +1533,7 @@
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
         "delete": "刪除 Studio",
-        "dangerHint": "轉讓會把所有 Projects、素材集與錢包整體過戶;刪除無法復原。僅擁有者可操作。"
+        "dangerHint": "轉讓會把所有 Projects、素材集與錢包整體過戶給新 Owner;刪除無法復原。僅 Owner 可操作。"
       },
       "dialog": {
         "newProjectTitle": "新增 Project",
@@ -1585,17 +1588,17 @@
       "loadingTitle": "正在開啟邀請…",
       "loadingBody": "稍候，正在載入邀請。",
       "title": "你收到一份邀請",
-      "body": "{inviter} 邀請你以{role, select, creator {建立者} member {成員} other {成員}}身分加入 {studio}。",
+      "body": "{inviter} 邀請你以{role, select, creator {Creator} member {Member} other {Member}}身分加入 {studio}。",
       "confirm": "接受並加入",
       "decline": "拒絕",
       "invalidTitle": "邀請已失效",
-      "invalidBody": "連結可能已過期或被使用過。請讓 Studio 管理員重新傳送邀請。",
+      "invalidBody": "連結可能已過期或被使用過。請讓 Studio Admin 重新傳送邀請。",
       "expiredTitle": "邀請已過期",
-      "expiredBody": "你對 {studio} 的邀請已超過 7 天有效期。請讓 Studio 管理員重新傳送。",
+      "expiredBody": "你對 {studio} 的邀請已超過 7 天有效期。請讓 Studio Admin 重新傳送。",
       "notInviteeTitle": "此邀請不屬於目前帳號",
       "notInviteeBody": "你目前登入的是另一個帳號。請用收到此邀請的帳號登入。",
       "declinedTitle": "已拒絕邀請",
-      "declinedBody": "你拒絕了對 {studio} 的邀請。之後可以請管理員重新邀請你。",
+      "declinedBody": "你拒絕了對 {studio} 的邀請。之後可以請 Admin 重新邀請你。",
       "joinedToast": "你已加入該 Studio。",
       "actionFailed": "操作未能完成，請重試。",
       "backToStudio": "返回 Studio",
@@ -1606,17 +1609,17 @@
     "loadingTitle": "正在開啟邀請…",
     "loadingBody": "稍候，正在載入邀請。",
     "title": "你收到一份邀請",
-    "body": "{inviter} 邀請你以{role, select, editor {編輯者} viewer {檢視者} other {成員}}身分加入 {project}。",
+    "body": "{inviter} 邀請你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身分加入 {project}。",
     "confirm": "接受並加入",
     "decline": "拒絕",
     "invalidTitle": "邀請已失效",
-    "invalidBody": "連結可能已過期或被使用過。請讓 Project 擁有者重新傳送邀請。",
+    "invalidBody": "連結可能已過期或被使用過。請讓 Project Owner 重新傳送邀請。",
     "expiredTitle": "邀請已過期",
-    "expiredBody": "你對 {project} 的邀請已超過 7 天有效期。請讓 Project 擁有者重新傳送。",
+    "expiredBody": "你對 {project} 的邀請已超過 7 天有效期。請讓 Project Owner 重新傳送。",
     "notInviteeTitle": "此邀請不屬於目前帳號",
     "notInviteeBody": "你目前登入的是另一個帳號。請用收到此邀請的帳號登入。",
     "declinedTitle": "已拒絕邀請",
-    "declinedBody": "你拒絕了對 {project} 的邀請。之後可以請擁有者重新邀請你。",
+    "declinedBody": "你拒絕了對 {project} 的邀請。之後可以請 Owner 重新邀請你。",
     "joinedToast": "你已加入該 Project。",
     "actionFailed": "操作未能完成，請重試。",
     "backToStudio": "返回 Studio",
@@ -1656,7 +1659,7 @@
   },
   "noAccess": {
     "title": "你沒有存取此 Project 的權限",
-    "description": "請聯絡 Project 所有者申請存取,他們可以透過電子郵件邀請你。",
+    "description": "請聯絡 Project Owner 申請存取,他們可以透過電子郵件邀請你。",
     "backToStudio": "返回 Studio"
   }
 }

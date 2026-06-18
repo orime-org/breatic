@@ -288,10 +288,13 @@ export async function createStudioInviteAccepted(input: {
 /**
  * Project invite-request payload — an owner invites a registered user to join a
  * project (invite-confirm handshake, 2026-06-18, #1337). Stored on the
- * actionable `project.invite_request` notification in the invitee's inbox
- * (confirm/decline; expires after a TTL). `invitationId` is the
- * `project_invitations` row the confirm step CAS-accepts (source of truth); the
- * rest is for rendering the bell entry.
+ * actionable `project.invite_request` notification in the invitee's inbox.
+ * `invitationId` is the `project_invitations` row the confirm step CAS-accepts
+ * (source of truth). Unlike studio (which confirms inline in the bell), the
+ * project bell row links OUT to the `/project-invite?token=` landing page, so
+ * the one-time `token` rides in the payload too — the same token returned to the
+ * inviting owner and embedded in the email, so all three channels resolve to one
+ * invite. The rest is for rendering the bell entry.
  */
 export interface ProjectInviteRequestPayload {
   invitationId: string;
@@ -299,6 +302,8 @@ export interface ProjectInviteRequestPayload {
   projectName: string;
   inviterName: string;
   role: "editor" | "viewer";
+  /** One-time email-link token; the bell row navigates to `?token=` with it. */
+  token: string;
 }
 
 /**

@@ -40,8 +40,8 @@
       "already_member": "该用户已是成员。",
       "already_invited": "该用户已有一个待确认的邀请。",
       "cannot_modify_personal": "个人 Studio 不能管理成员。",
-      "remove_last_admin": "移除前请先转让管理员。",
-      "cannot_change_admin_role": "管理员角色只能通过转让变更。"
+      "remove_last_admin": "移除前请先转让 Admin。",
+      "cannot_change_admin_role": "Admin 角色只能通过转让变更。"
     },
     "project": {
       "email_not_registered": "该邮箱未注册。",
@@ -393,14 +393,14 @@
   },
   "roleTag": {
     "upgradeRequest": {
-      "ariaLabel": "申请编辑者权限",
-      "title": "申请编辑者权限",
-      "description": "你当前是该 Project 的观察者。给 Project 所有者发送一条消息,申请编辑者权限。",
-      "placeholder": "给 Project 所有者的留言(可选)…",
+      "ariaLabel": "申请 Editor 权限",
+      "title": "申请 Editor 权限",
+      "description": "你当前是该 Project 的 Viewer。给 Project Owner 发送一条消息,申请 Editor 权限。",
+      "placeholder": "给 Project Owner 的留言(可选)…",
       "submit": "发送申请",
       "sending": "发送中…",
       "toast": {
-        "sent": "申请已发送 — Project 所有者会在通知中看到。",
+        "sent": "申请已发送 — Project Owner 会在通知中看到。",
         "failed": "申请发送失败,请重试。"
       }
     }
@@ -996,12 +996,12 @@
       "invite_placeholder": "邮箱或用户 ID",
       "invite_button": "邀请",
       "list_count": "成员 ({count})",
-      "list_note": "所有者永久绑定 Project 创建者",
+      "list_note": "Owner 永久绑定 Project Creator",
       "confirm_remove": "确认移除此协作者?",
       "done": "完成"
     },
     "role": {
-      "owner": "所有者",
+      "owner": "Owner",
       "edit": "编辑",
       "view": "只读"
     },
@@ -1009,7 +1009,7 @@
       "title": "协作者管理",
       "description": "管理 Project 成员及其权限",
       "membersSection": "成员 ({count})",
-      "ownerNote": "所有者永久绑定 Project 创建者",
+      "ownerNote": "Owner 永久绑定 Project Creator",
       "roleSelectAria": "修改 {name} 的角色",
       "roleChanged": "角色已更新。",
       "roleChangeFailed": "角色更新失败,请重试。",
@@ -1219,7 +1219,7 @@
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
     },
-    "disabledTooltip": "需要编辑者权限"
+    "disabledTooltip": "需要 Editor 权限"
   },
   "viewportToolbar": {
     "aria": "视口工具",
@@ -1280,6 +1280,10 @@
     "inviteSent": "邀请已发送。",
     "inviteFailed": "邀请发送失败,请重试。",
     "invalidEmail": "请输入有效的邮箱地址。",
+    "inviteLinkLabel": "邀请链接",
+    "copyInviteLink": "复制邀请链接",
+    "inviteLinkCopied": "邀请链接已复制。",
+    "inviteLinkCopyFailed": "无法复制链接。",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1304,28 +1308,28 @@
     "rejectedToast": "已拒绝升级申请。",
     "decideFailed": "处理失败,请重试。",
     "headline": {
-      "roleUpgradeRequest": "有人申请 {project} 的编辑者权限",
-      "roleUpgradeApproved": "你在 {project} 的编辑者权限已通过",
-      "roleUpgradeRejected": "你在 {project} 的编辑者权限申请被拒绝",
+      "roleUpgradeRequest": "有人申请 {project} 的 Editor 权限",
+      "roleUpgradeApproved": "你在 {project} 的 Editor 权限已通过",
+      "roleUpgradeRejected": "你在 {project} 的 Editor 权限申请被拒绝",
       "studioMemberInvited": "你已被加入 {studio}",
       "studioTransferRequest": "有人邀请你接管 {studio}",
-      "studioTransferApproved": "你对 {studio} 的管理员转让已被接受",
+      "studioTransferApproved": "你对 {studio} 的 Admin 转让已被接受",
       "studioInviteRequest": "你被邀请加入 {studio}",
       "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "你被邀请加入 {project}",
       "projectInviteAccepted": "{invitee} 接受了你对 {project} 的邀请"
     },
     "actionFailed": "无法完成操作，请重试。",
-    "transferConfirmedToast": "你现在是该 Studio 的管理员了。",
+    "transferConfirmedToast": "你现在是该 Studio 的 Admin 了。",
     "transferCancelledToast": "已拒绝转让。",
     "transferAccept": "接受",
     "transferDecline": "拒绝",
     "subtitle": {
-      "invitedAsCreator": "以创建者身份加入",
-      "invitedAsMember": "以成员身份加入",
-      "transferHint": "接受后即成为该 Studio 的管理员",
-      "invitedAsEditor": "以编辑者身份加入",
-      "invitedAsViewer": "以查看者身份加入"
+      "invitedAsCreator": "以 Creator 身份加入",
+      "invitedAsMember": "以 Member 身份加入",
+      "transferHint": "接受后即成为该 Studio 的 Admin",
+      "invitedAsEditor": "以 Editor 身份加入",
+      "invitedAsViewer": "以 Viewer 身份加入"
     },
     "expiresLabel": {
       "expired": "已过期",
@@ -1337,8 +1341,7 @@
     "inviteDecline": "拒绝",
     "inviteConfirmedToast": "你已加入该 Studio。",
     "inviteDeclinedToast": "已拒绝邀请。",
-    "projectInviteConfirmedToast": "你已加入该 Project。",
-    "projectInviteDeclinedToast": "已拒绝邀请。"
+    "viewProjectInvite": "查看邀请"
   },
   "connection": {
     "banner": {
@@ -1495,9 +1498,9 @@
         "cannotInvitePersonal": "个人 Studios 无法邀请成员 —— 只有你自己。",
         "roleCreator": "Creator",
         "rowMenu": "成员操作",
-        "promoteToCreator": "设为创建者",
-        "demoteToMember": "设为成员",
-        "transferAdmin": "转让管理员…",
+        "promoteToCreator": "设为 Creator",
+        "demoteToMember": "设为 Member",
+        "transferAdmin": "转让 Admin…",
         "inviteTitle": "邀请成员",
         "inviteEmailLabel": "邮箱",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1509,8 +1512,8 @@
         "removeConfirmBody": "{name} 将失去对本 Studio 所有 Project 的访问权限，其拥有的 Project 会转移给你。此操作不可撤销。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成员。",
-        "transferConfirmTitle": "转让管理员？",
-        "transferConfirmBody": "{name} 需要在通知中接受转让后才能成为管理员。在对方接受之前，你仍是管理员。",
+        "transferConfirmTitle": "转让 Admin？",
+        "transferConfirmBody": "{name} 需要在通知中接受转让后才能成为 Admin。在对方接受之前，你仍是 Admin。",
         "transferConfirmAction": "发送请求",
         "transferRequested": "转让请求已发送。",
         "actionFailed": "出错了，请重试。",
@@ -1530,7 +1533,7 @@
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
         "delete": "删除 Studio",
-        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户;删除不可恢复。仅所有者可操作。"
+        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户给新 Owner;删除不可恢复。仅 Owner 可操作。"
       },
       "dialog": {
         "newProjectTitle": "新建 Project",
@@ -1585,17 +1588,17 @@
       "loadingTitle": "正在打开邀请…",
       "loadingBody": "稍等，正在加载邀请。",
       "title": "你收到一份邀请",
-      "body": "{inviter} 邀请你以{role, select, creator {创建者} member {成员} other {成员}}身份加入 {studio}。",
+      "body": "{inviter} 邀请你以{role, select, creator {Creator} member {Member} other {Member}}身份加入 {studio}。",
       "confirm": "接受并加入",
       "decline": "拒绝",
       "invalidTitle": "邀请已失效",
-      "invalidBody": "链接可能已过期或被使用过。请让 Studio 管理员重新发送邀请。",
+      "invalidBody": "链接可能已过期或被使用过。请让 Studio Admin 重新发送邀请。",
       "expiredTitle": "邀请已过期",
-      "expiredBody": "你对 {studio} 的邀请已超过 7 天有效期。请让 Studio 管理员重新发送。",
+      "expiredBody": "你对 {studio} 的邀请已超过 7 天有效期。请让 Studio Admin 重新发送。",
       "notInviteeTitle": "此邀请不属于当前账号",
       "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
       "declinedTitle": "已拒绝邀请",
-      "declinedBody": "你拒绝了对 {studio} 的邀请。之后可以让管理员重新邀请你。",
+      "declinedBody": "你拒绝了对 {studio} 的邀请。之后可以让 Admin 重新邀请你。",
       "joinedToast": "你已加入该 Studio。",
       "actionFailed": "操作未能完成，请重试。",
       "backToStudio": "返回 Studio",
@@ -1606,17 +1609,17 @@
     "loadingTitle": "正在打开邀请…",
     "loadingBody": "稍等，正在加载邀请。",
     "title": "你收到一份邀请",
-    "body": "{inviter} 邀请你以{role, select, editor {编辑者} viewer {查看者} other {成员}}身份加入 {project}。",
+    "body": "{inviter} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份加入 {project}。",
     "confirm": "接受并加入",
     "decline": "拒绝",
     "invalidTitle": "邀请已失效",
-    "invalidBody": "链接可能已过期或被使用过。请让 Project 所有者重新发送邀请。",
+    "invalidBody": "链接可能已过期或被使用过。请让 Project Owner 重新发送邀请。",
     "expiredTitle": "邀请已过期",
-    "expiredBody": "你对 {project} 的邀请已超过 7 天有效期。请让 Project 所有者重新发送。",
+    "expiredBody": "你对 {project} 的邀请已超过 7 天有效期。请让 Project Owner 重新发送。",
     "notInviteeTitle": "此邀请不属于当前账号",
     "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
     "declinedTitle": "已拒绝邀请",
-    "declinedBody": "你拒绝了对 {project} 的邀请。之后可以让所有者重新邀请你。",
+    "declinedBody": "你拒绝了对 {project} 的邀请。之后可以让 Owner 重新邀请你。",
     "joinedToast": "你已加入该 Project。",
     "actionFailed": "操作未能完成，请重试。",
     "backToStudio": "返回 Studio",
@@ -1656,7 +1659,7 @@
   },
   "noAccess": {
     "title": "你没有访问该 Project 的权限",
-    "description": "请联系 Project 所有者申请访问,他们可以通过邮箱邀请你。",
+    "description": "请联系 Project Owner 申请访问,他们可以通过邮箱邀请你。",
     "backToStudio": "返回 Studio"
   }
 }

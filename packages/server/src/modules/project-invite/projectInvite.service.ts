@@ -61,16 +61,22 @@ const INVITE_TTL_DAYS = 7;
  *
  * Resolves the project by id, looks the invitee up by email (unregistered →
  * NotFound), and refuses re-inviting a user who already has an active
- * `project_members` row (owner / editor / viewer). Returns the invitee + the
- * new invitation id so the route layer can dispatch the optional email link.
- * The `project_invitations_one_pending` partial unique maps a duplicate LIVE
- * pending to a ConflictError.
+ * `project_members` row (owner / editor / viewer). Mints the one-time email-link
+ * token here — the project invite diverges from studio in that ALL three channels
+ * (the owner's copyable URL, the bell, the email) funnel through the SAME
+ * `/project-invite?token=` landing page, so the token is shared: it is returned
+ * to the caller (route surfaces the copyable URL + email link) AND embedded in
+ * the notification payload (so the bell can build the same link). The token
+ * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
+ * that self-expires in 7 days. The `project_invitations_one_pending` partial
+ * unique maps a duplicate LIVE pending to a ConflictError.
  * @param projectId - The project the user is being invited into
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
  * @param role - The granted project role (editor | viewer; never owner)
- * @returns The new invitation id, the invitee's id + email, and the project /
- *   inviter names + role (so the route can compose the invite email)
+ * @returns The new invitation id + email-link token, the invitee's id + email,
+ *   and the project / inviter names + role (so the route can compose the
+ *   copyable invite URL + email)
  * @throws {NotFoundError} project not found, or no user with that email
  * @throws {ConflictError} the user already has access to the project, or already
  *   has a live pending invite to it
@@ -82,6 +88,7 @@ export async function createInvite(
   role: InvitableProjectRole,
 ): Promise<{
   invitationId: string;
+  token: string;
   inviteeUserId: string;
   inviteeEmail: string;
   projectName: string;
@@ -100,6 +107,7 @@ export async function createInvite(
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   let invitationId = "";
+  let token = "";
   try {
     await db.transaction(async (tx) => {
       invitationId = await invitesRepo.createPending({
@@ -110,6 +118,10 @@ export async function createInvite(
         expiresAt,
         tx,
       });
+      // The shared landing-page token. Redis write, outside the PG tx semantics
+      // (a rollback leaves an orphan token that self-expires); the token rides
+      // in the bell payload so all three channels resolve to the same invite.
+      token = await issueInviteToken(invitationId);
       const notif = await notificationService.createProjectInviteRequest({
         userId: invitee.id,
         projectId,
@@ -119,6 +131,7 @@ export async function createInvite(
           projectName: project.name,
           inviterName,
           role,
+          token,
         },
         expiresAt,
         tx,
@@ -134,6 +147,7 @@ export async function createInvite(
 
   return {
     invitationId,
+    token,
     inviteeUserId: invitee.id,
     inviteeEmail: email,
     projectName: project.name,

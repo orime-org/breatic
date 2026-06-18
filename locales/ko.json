@@ -37,8 +37,8 @@
       "already_member": "해당 사용자는 이미 멤버입니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
       "cannot_modify_personal": "개인 Studio는 멤버를 관리할 수 없습니다.",
-      "remove_last_admin": "제거하기 전에 먼저 관리자를 이전하세요.",
-      "cannot_change_admin_role": "관리자 역할은 이전을 통해서만 변경할 수 있습니다."
+      "remove_last_admin": "제거하기 전에 먼저 Admin을 이전하세요.",
+      "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다."
     },
     "project": {
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
@@ -393,14 +393,14 @@
   },
   "roleTag": {
     "upgradeRequest": {
-      "ariaLabel": "편집자 권한 요청",
-      "title": "편집자 권한 요청",
-      "description": "현재 이 Project의 뷰어입니다. 소유자에게 메시지를 보내 편집자 권한을 요청하세요.",
-      "placeholder": "소유자에게 보낼 메시지(선택)…",
+      "ariaLabel": "Editor 권한 요청",
+      "title": "Editor 권한 요청",
+      "description": "현재 이 Project의 Viewer입니다. Owner에게 메시지를 보내 Editor 권한을 요청하세요.",
+      "placeholder": "Owner에게 보낼 메시지(선택)…",
       "submit": "요청 보내기",
       "sending": "보내는 중…",
       "toast": {
-        "sent": "요청을 보냈습니다 — 소유자의 알림에 표시됩니다.",
+        "sent": "요청을 보냈습니다 — Owner의 알림에 표시됩니다.",
         "failed": "요청을 보내지 못했습니다. 다시 시도해 주세요."
       }
     }
@@ -996,20 +996,20 @@
       "invite_placeholder": "이메일 또는 사용자 ID",
       "invite_button": "초대",
       "list_count": "멤버 ({count})",
-      "list_note": "소유자는 Project 생성자에게 영구적으로 고정됩니다",
+      "list_note": "Owner는 Project Creator에게 영구적으로 고정됩니다",
       "confirm_remove": "이 공동 작업자를 제거하시겠습니까?",
       "done": "완료"
     },
     "role": {
-      "owner": "소유자",
-      "edit": "편집자",
-      "view": "뷰어"
+      "owner": "Owner",
+      "edit": "Editor",
+      "view": "Viewer"
     },
     "modal": {
       "title": "공동 작업자",
       "description": "Project 멤버와 역할을 관리합니다",
       "membersSection": "멤버 ({count})",
-      "ownerNote": "소유자는 Project 생성자에게 영구적으로 고정됩니다",
+      "ownerNote": "Owner는 Project Creator에게 영구적으로 고정됩니다",
       "roleSelectAria": "{name}의 역할 변경",
       "roleChanged": "역할을 업데이트했습니다.",
       "roleChangeFailed": "역할을 업데이트하지 못했습니다. 다시 시도해 주세요.",
@@ -1075,7 +1075,7 @@
         "delete": "삭제",
         "deleteLocked": "잠긴 Spaces는 삭제할 수 없습니다",
         "deleteConfirmTitle": "Space \"{name}\"을(를) 삭제하시겠습니까?",
-        "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. 소유자는 Project 메시지 채널에서 복원할 수 있습니다.",
+        "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. Owner는 Project 메시지 채널에서 복원할 수 있습니다.",
         "lockFail": "잠금에 실패했습니다",
         "unlockFail": "잠금 해제에 실패했습니다",
         "operationFail": "작업에 실패했습니다",
@@ -1219,7 +1219,7 @@
       "help": "도움말 (출시 예정)",
       "feedback": "피드백 / 지원 (출시 예정)"
     },
-    "disabledTooltip": "편집자 권한이 필요합니다"
+    "disabledTooltip": "Editor 권한이 필요합니다"
   },
   "viewportToolbar": {
     "aria": "뷰포트 도구",
@@ -1280,6 +1280,10 @@
     "inviteSent": "초대를 보냈습니다.",
     "inviteFailed": "초대를 보낼 수 없습니다. 다시 시도해 주세요.",
     "invalidEmail": "유효한 이메일 주소를 입력해 주세요.",
+    "inviteLinkLabel": "초대 링크",
+    "copyInviteLink": "초대 링크 복사",
+    "inviteLinkCopied": "초대 링크를 복사했습니다.",
+    "inviteLinkCopyFailed": "링크를 복사할 수 없습니다.",
     "role": {
       "view": "Viewer",
       "edit": "Editor"
@@ -1304,28 +1308,28 @@
     "rejectedToast": "요청을 거절했습니다.",
     "decideFailed": "결정을 처리하지 못했습니다. 다시 시도해 주세요.",
     "headline": {
-      "roleUpgradeRequest": "{project}의 편집자 액세스를 요청한 사용자가 있습니다",
-      "roleUpgradeApproved": "{project}의 편집자 액세스가 승인되었습니다",
-      "roleUpgradeRejected": "{project}의 편집자 액세스가 거절되었습니다",
+      "roleUpgradeRequest": "{project}의 Editor 액세스를 요청한 사용자가 있습니다",
+      "roleUpgradeApproved": "{project}의 Editor 액세스가 승인되었습니다",
+      "roleUpgradeRejected": "{project}의 Editor 액세스가 거절되었습니다",
       "studioMemberInvited": "{studio}에 추가되었습니다",
       "studioTransferRequest": "{studio} 인수를 요청받았습니다",
-      "studioTransferApproved": "{studio}의 관리자 이전이 수락되었습니다",
+      "studioTransferApproved": "{studio}의 Admin 이전이 수락되었습니다",
       "studioInviteRequest": "{studio}에 참여하도록 초대받았습니다",
       "studioInviteAccepted": "{invitee}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{project}에 참여하도록 초대받았습니다",
       "projectInviteAccepted": "{invitee}님이 {project} 초대를 수락했습니다"
     },
     "actionFailed": "작업을 완료할 수 없습니다. 다시 시도해 주세요.",
-    "transferConfirmedToast": "이제 Studio 관리자입니다.",
+    "transferConfirmedToast": "이제 Studio Admin입니다.",
     "transferCancelledToast": "이전을 거절했습니다.",
     "transferAccept": "수락",
     "transferDecline": "거절",
     "subtitle": {
-      "invitedAsCreator": "크리에이터로 참여",
-      "invitedAsMember": "멤버로 참여",
-      "transferHint": "수락하면 Studio 관리자가 됩니다",
-      "invitedAsEditor": "편집자로 참여",
-      "invitedAsViewer": "뷰어로 참여"
+      "invitedAsCreator": "Creator로 참여",
+      "invitedAsMember": "Member로 참여",
+      "transferHint": "수락하면 Studio Admin이 됩니다",
+      "invitedAsEditor": "Editor로 참여",
+      "invitedAsViewer": "Viewer로 참여"
     },
     "expiresLabel": {
       "expired": "만료됨",
@@ -1337,8 +1341,7 @@
     "inviteDecline": "거절",
     "inviteConfirmedToast": "Studio에 참여했습니다.",
     "inviteDeclinedToast": "초대를 거절했습니다.",
-    "projectInviteConfirmedToast": "Project에 참여했습니다.",
-    "projectInviteDeclinedToast": "초대를 거절했습니다."
+    "viewProjectInvite": "초대 보기"
   },
   "connection": {
     "banner": {
@@ -1495,9 +1498,9 @@
         "cannotInvitePersonal": "개인 Studios는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
         "roleCreator": "Creator",
         "rowMenu": "멤버 작업",
-        "promoteToCreator": "크리에이터로 지정",
-        "demoteToMember": "멤버로 지정",
-        "transferAdmin": "관리자 이전…",
+        "promoteToCreator": "Creator로 지정",
+        "demoteToMember": "Member로 지정",
+        "transferAdmin": "Admin 이전…",
         "inviteTitle": "멤버 초대",
         "inviteEmailLabel": "이메일",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1509,8 +1512,8 @@
         "removeConfirmBody": "{name} 님은 이 Studio의 모든 Project에 대한 접근 권한을 잃고, 소유한 Project는 회원님에게 이전됩니다. 이 작업은 되돌릴 수 없습니다.",
         "removeConfirmAction": "삭제",
         "removeSuccess": "멤버를 삭제했습니다.",
-        "transferConfirmTitle": "관리자를 이전할까요?",
-        "transferConfirmBody": "{name} 님이 알림에서 이전을 수락해야 관리자가 됩니다. 상대방이 수락하기 전까지는 회원님이 관리자입니다.",
+        "transferConfirmTitle": "Admin을 이전할까요?",
+        "transferConfirmBody": "{name} 님이 알림에서 이전을 수락해야 Admin이 됩니다. 상대방이 수락하기 전까지는 회원님이 Admin입니다.",
         "transferConfirmAction": "요청 보내기",
         "transferRequested": "이전 요청을 보냈습니다.",
         "actionFailed": "문제가 발생했습니다. 다시 시도해 주세요.",
@@ -1530,7 +1533,7 @@
         "dangerTitle": "위험 영역",
         "transfer": "Studio 양도",
         "delete": "Studio 삭제",
-        "dangerHint": "양도하면 모든 Projects, 에셋 모음, 지갑이 새 소유자에게 이전됩니다; 삭제는 되돌릴 수 없습니다. 소유자만 가능합니다."
+        "dangerHint": "양도하면 모든 Projects, 에셋 모음, 지갑이 새 Owner에게 이전됩니다; 삭제는 되돌릴 수 없습니다. Owner만 가능합니다."
       },
       "dialog": {
         "newProjectTitle": "새 Project",
@@ -1585,17 +1588,17 @@
       "loadingTitle": "초대를 여는 중…",
       "loadingBody": "초대를 불러오는 동안 잠시 기다려 주세요.",
       "title": "초대를 받았습니다",
-      "body": "{inviter}님이 회원님을 {role, select, creator {크리에이터} member {멤버} other {멤버}}(으)로 {studio}에 초대했습니다.",
+      "body": "{inviter}님이 회원님을 {role, select, creator {Creator} member {Member} other {Member}}(으)로 {studio}에 초대했습니다.",
       "confirm": "수락하고 참여",
       "decline": "거절",
       "invalidTitle": "더 이상 유효하지 않은 초대입니다",
-      "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Studio 관리자에게 새 초대를 요청하세요.",
+      "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Studio Admin에게 새 초대를 요청하세요.",
       "expiredTitle": "초대가 만료되었습니다",
-      "expiredBody": "{studio} 초대가 7일 유효 기간을 지났습니다. Studio 관리자에게 재발송을 요청하세요.",
+      "expiredBody": "{studio} 초대가 7일 유효 기간을 지났습니다. Studio Admin에게 재발송을 요청하세요.",
       "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
       "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
       "declinedTitle": "초대를 거절했습니다",
-      "declinedBody": "{studio} 초대를 거절했습니다. 나중에 관리자에게 다시 초대를 요청할 수 있습니다.",
+      "declinedBody": "{studio} 초대를 거절했습니다. 나중에 Admin에게 다시 초대를 요청할 수 있습니다.",
       "joinedToast": "Studio에 참여했습니다.",
       "actionFailed": "완료하지 못했습니다. 다시 시도해 주세요.",
       "backToStudio": "Studio로 돌아가기",
@@ -1606,17 +1609,17 @@
     "loadingTitle": "초대를 여는 중…",
     "loadingBody": "초대를 불러오는 동안 잠시 기다려 주세요.",
     "title": "초대를 받았습니다",
-    "body": "{inviter}님이 회원님을 {role, select, editor {편집자} viewer {뷰어} other {멤버}}(으)로 {project}에 초대했습니다.",
+    "body": "{inviter}님이 회원님을 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 {project}에 초대했습니다.",
     "confirm": "수락하고 참여",
     "decline": "거절",
     "invalidTitle": "더 이상 유효하지 않은 초대입니다",
-    "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Project 소유자에게 새 초대를 요청하세요.",
+    "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Project Owner에게 새 초대를 요청하세요.",
     "expiredTitle": "초대가 만료되었습니다",
-    "expiredBody": "{project} 초대가 7일 유효 기간을 지났습니다. Project 소유자에게 재발송을 요청하세요.",
+    "expiredBody": "{project} 초대가 7일 유효 기간을 지났습니다. Project Owner에게 재발송을 요청하세요.",
     "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
     "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
     "declinedTitle": "초대를 거절했습니다",
-    "declinedBody": "{project} 초대를 거절했습니다. 나중에 소유자에게 다시 초대를 요청할 수 있습니다.",
+    "declinedBody": "{project} 초대를 거절했습니다. 나중에 Owner에게 다시 초대를 요청할 수 있습니다.",
     "joinedToast": "Project에 참여했습니다.",
     "actionFailed": "완료하지 못했습니다. 다시 시도해 주세요.",
     "backToStudio": "Studio로 돌아가기",
@@ -1656,7 +1659,7 @@
   },
   "noAccess": {
     "title": "이 Project에 대한 접근 권한이 없습니다",
-    "description": "Project 소유자에게 연락하여 접근을 요청해 주세요. 이메일로 초대해 줄 수 있습니다.",
+    "description": "Project Owner에게 연락하여 접근을 요청해 주세요. 이메일로 초대해 줄 수 있습니다.",
     "backToStudio": "Studio로 돌아가기"
   }
 }

@@ -199,6 +199,34 @@ describe("createInvite", () => {
     expect(linked[0]?.notificationId).toBe(notices[0]?.id);
   });
 
+  it("returns a usable email-link token + carries it in the bell payload (single token, three channels)", async () => {
+    // The project invite diverges from studio: all three channels (copy URL,
+    // bell, email) funnel through the SAME landing page, so the token is minted
+    // inside createInvite — returned to the caller (the route surfaces it as the
+    // copyable URL + the email link) AND embedded in the notification payload
+    // (so the bell can build the same `/project-invite?token=` link).
+    const result = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "viewer",
+    );
+
+    // The returned token resolves to this invitation (peek does not consume it).
+    expect(result.token).toMatch(/^[0-9a-f]{64}$/);
+    expect(await inviteService.peekInviteToken(result.token)).toBe(
+      result.invitationId,
+    );
+
+    // The bell payload carries the SAME token.
+    const notices = await db
+      .select({ payload: schema.notifications.payload })
+      .from(schema.notifications)
+      .where(eq(schema.notifications.userId, INVITEE));
+    const payload = notices[0]?.payload as { token?: unknown };
+    expect(payload.token).toBe(result.token);
+  });
+
   it("rejects an unregistered email with NotFound", async () => {
     await expect(
       inviteService.createInvite(PROJECT, OWNER, "nobody@proj-test.dev", "editor"),
