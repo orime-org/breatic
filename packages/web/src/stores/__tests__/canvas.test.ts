@@ -13,6 +13,7 @@ describe('useCanvasStore', () => {
       minimapVisible: false,
       showLockedOverlay: false,
       pendingNodeCreate: null,
+      pendingUploadFiles: null,
       pendingViewportCommand: null,
       pendingHistoryCommand: null,
       canUndo: false,
@@ -53,6 +54,15 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pendingNodeCreate).toBe('image');
     useCanvasStore.getState().consumePendingNodeCreate();
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
+  });
+
+  it('requestUpload queues picked files that consume clears (chrome → canvas upload mailbox)', () => {
+    expect(useCanvasStore.getState().pendingUploadFiles).toBeNull();
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    useCanvasStore.getState().requestUpload([file]);
+    expect(useCanvasStore.getState().pendingUploadFiles).toEqual([file]);
+    useCanvasStore.getState().consumePendingUpload();
+    expect(useCanvasStore.getState().pendingUploadFiles).toBeNull();
   });
 
   it('requestViewportCommand queues a zoom command that consume clears (chrome → canvas mailbox)', () => {
