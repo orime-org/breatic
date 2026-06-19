@@ -21,7 +21,7 @@ import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
 /** Roles an admin may grant by change-role; admin is excluded. */
-type GrantableRole = "creator" | "member";
+type GrantableRole = "maintainer" | "guest";
 
 /**
  * Remove (kick) a member from a studio — one atomic transaction that revokes
@@ -73,14 +73,14 @@ export async function removeMember(
 }
 
 /**
- * Change an existing member's role (creator ↔ member) — admin grant/demote is
+ * Change an existing member's role (maintainer ↔ guest) — admin grant/demote is
  * NOT here (that goes through transfer-admin).
  *
  * Refuses personal studios, a non-member (NotFound), and any attempt to change
  * the admin's role (Conflict — the admin demotes only by transferring).
  * @param slug - The studio's URL handle
  * @param targetUserId - The member whose role changes
- * @param role - The new role (creator | member)
+ * @param role - The new role (maintainer | guest)
  * @throws {NotFoundError} studio not found, or target is not a member
  * @throws {ForbiddenError} the studio is personal
  * @throws {ConflictError} the target is the admin (demote via transfer)

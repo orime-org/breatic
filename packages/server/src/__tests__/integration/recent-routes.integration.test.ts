@@ -95,7 +95,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertStudioMember(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, ${role})
@@ -191,7 +191,7 @@ describe("GET /api/v1/studios/recent — landing feed (real PG + Redis)", () => 
     const user = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, user, "member");
+    await insertStudioMember(studioId, user, "guest");
 
     // The user opens a studio-visible project through the real endpoint.
     const pVisible = await insertProject(studioId, owner, "studio");

@@ -41,7 +41,7 @@ interface MembersTabProps {
    * Rendered in a separate "invited" section with a revoke action.
    */
   pendingInvitations: readonly PendingInvitationSummary[];
-  /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = guest. */
+  /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = non-member. */
   studioRole: StudioRole | null;
   /**
    * Personal studios are permanently single-member (decision A, 2026-06-08): the tab
@@ -263,7 +263,9 @@ export function MembersTab({
                           roleMutation.mutate({
                             userId: m.id,
                             role:
-                              m.studioRole === 'creator' ? 'member' : 'creator',
+                              m.studioRole === 'maintainer'
+                                ? 'guest'
+                                : 'maintainer',
                           })
                         }
                         onRemove={(m) =>
@@ -418,10 +420,10 @@ function roleLabel(
   switch (role) {
     case 'admin':
       return t('studio.container.members.roleAdmin');
-    case 'creator':
-      return t('studio.container.members.roleCreator');
+    case 'maintainer':
+      return t('studio.container.members.roleMaintainer');
     default:
-      return t('studio.container.members.roleMember');
+      return t('studio.container.members.roleGuest');
   }
 }
 

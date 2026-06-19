@@ -36,7 +36,7 @@ beforeEach(() => {
       name: 'Acme Studio',
       type: 'team',
       memberCount: 4,
-      myStudioRole: 'member',
+      myStudioRole: 'guest',
     },
   ]);
 });

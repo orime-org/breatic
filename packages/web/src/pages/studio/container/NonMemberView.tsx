@@ -8,7 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 
 /**
- * The non-member center view (spec §6.3) — what a guest (`myStudioRole ===
+ * The non-member center view (spec §6.3) — what a non-member (`myStudioRole ===
  * null`, decision A: the studio is a public façade returning 200 + null) sees
  * inside someone else's studio: a "Works" section title and a "no published
  * works" empty state, with **no tabs at all**. It has zero backend dependency

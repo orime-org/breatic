@@ -38,20 +38,20 @@ const ADMIN: StudioMember = {
   studioRole: 'admin',
   joinedAt: '2026-04-01T00:00:00.000Z',
 };
-const MEMBER: StudioMember = {
+const GUEST: StudioMember = {
   id: 'u-bob',
   name: 'Bob',
   email: 'bob@x.example',
   avatarUrl: null,
-  studioRole: 'member',
+  studioRole: 'guest',
   joinedAt: '2026-04-02T00:00:00.000Z',
 };
-const CREATOR: StudioMember = {
+const MAINTAINER: StudioMember = {
   id: 'u-cara',
   name: 'Cara',
   email: 'cara@x.example',
   avatarUrl: null,
-  studioRole: 'creator',
+  studioRole: 'maintainer',
   joinedAt: '2026-04-03T00:00:00.000Z',
 };
 const PENDING: PendingInvitationSummary = {
@@ -60,7 +60,7 @@ const PENDING: PendingInvitationSummary = {
   name: 'Dee',
   email: 'dee@x.example',
   avatarUrl: null,
-  role: 'member',
+  role: 'guest',
   invitedByName: 'Admin Ada',
   expiresAt: '2026-06-21T00:00:00.000Z',
 };
@@ -84,13 +84,13 @@ describe('MembersTab — row menu visibility', () => {
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER, CREATOR]}
+        members={[ADMIN, GUEST, MAINTAINER]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    expect(screen.getByTestId(`member-row-menu-${MEMBER.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`member-row-menu-${CREATOR.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`member-row-menu-${GUEST.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`member-row-menu-${MAINTAINER.id}`)).toBeInTheDocument();
     // The admin manages others, not themselves.
     expect(screen.queryByTestId(`member-row-menu-${ADMIN.id}`)).toBeNull();
   });
@@ -99,12 +99,12 @@ describe('MembersTab — row menu visibility', () => {
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER]}
-        studioRole='member'
+        members={[ADMIN, GUEST]}
+        studioRole='guest'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    expect(screen.queryByTestId(`member-row-menu-${MEMBER.id}`)).toBeNull();
+    expect(screen.queryByTestId(`member-row-menu-${GUEST.id}`)).toBeNull();
   });
 });
 
@@ -124,7 +124,7 @@ describe('MembersTab — invite flow', () => {
     await waitFor(() => {
       expect(studiosApi.inviteMember).toHaveBeenCalledWith('acme', {
         email: 'new@x.example',
-        role: 'member',
+        role: 'guest',
       });
     });
   });
@@ -155,44 +155,44 @@ describe('MembersTab — invite flow', () => {
 });
 
 describe('MembersTab — change role', () => {
-  it('promotes a member to creator via the row menu', async () => {
+  it('promotes a guest to maintainer via the row menu', async () => {
     const user = userEvent.setup();
     vi.mocked(studiosApi.updateMemberRole).mockResolvedValueOnce({ ok: true });
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER]}
+        members={[ADMIN, GUEST]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
-    await user.click(await screen.findByTestId(`member-toggle-role-${MEMBER.id}`));
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
+    await user.click(await screen.findByTestId(`member-toggle-role-${GUEST.id}`));
 
     await waitFor(() => {
-      expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', MEMBER.id, {
-        role: 'creator',
+      expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', GUEST.id, {
+        role: 'maintainer',
       });
     });
   });
 
-  it('demotes a creator to member via the row menu', async () => {
+  it('demotes a maintainer to guest via the row menu', async () => {
     const user = userEvent.setup();
     vi.mocked(studiosApi.updateMemberRole).mockResolvedValueOnce({ ok: true });
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, CREATOR]}
+        members={[ADMIN, MAINTAINER]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    await user.click(screen.getByTestId(`member-row-menu-${CREATOR.id}`));
-    await user.click(await screen.findByTestId(`member-toggle-role-${CREATOR.id}`));
+    await user.click(screen.getByTestId(`member-row-menu-${MAINTAINER.id}`));
+    await user.click(await screen.findByTestId(`member-toggle-role-${MAINTAINER.id}`));
 
     await waitFor(() => {
-      expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', CREATOR.id, {
-        role: 'member',
+      expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', MAINTAINER.id, {
+        role: 'guest',
       });
     });
   });
@@ -205,13 +205,13 @@ describe('MembersTab — remove member (confirm gate)', () => {
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER]}
+        members={[ADMIN, GUEST]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
-    await user.click(await screen.findByTestId(`member-remove-${MEMBER.id}`));
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${GUEST.id}`));
 
     // Opening the menu item does not call the API — a confirm dialog gates it.
     expect(studiosApi.removeMember).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe('MembersTab — remove member (confirm gate)', () => {
     await user.click(within(dialog).getByTestId('member-confirm-action'));
 
     await waitFor(() => {
-      expect(studiosApi.removeMember).toHaveBeenCalledWith('acme', MEMBER.id);
+      expect(studiosApi.removeMember).toHaveBeenCalledWith('acme', GUEST.id);
     });
   });
 });
@@ -231,14 +231,14 @@ describe('MembersTab — transfer admin (confirm gate)', () => {
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER]}
+        members={[ADMIN, GUEST]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,
     );
-    await user.click(screen.getByTestId(`member-row-menu-${MEMBER.id}`));
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
     await user.click(
-      await screen.findByTestId(`member-transfer-admin-${MEMBER.id}`),
+      await screen.findByTestId(`member-transfer-admin-${GUEST.id}`),
     );
 
     expect(studiosApi.requestTransfer).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe('MembersTab — transfer admin (confirm gate)', () => {
 
     await waitFor(() => {
       expect(studiosApi.requestTransfer).toHaveBeenCalledWith('acme', {
-        toUserId: MEMBER.id,
+        toUserId: GUEST.id,
       });
     });
     expect(toast.success).toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe('MembersTab — pending invitations', () => {
     expect(screen.getByText(PENDING.name)).toBeInTheDocument();
     expect(screen.getByText(PENDING.email)).toBeInTheDocument();
     // pendingBadge = "{role} · pending" with the localized role label.
-    expect(screen.getByText(/Member · pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/Guest · pending/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument();
   });
 
@@ -277,8 +277,8 @@ describe('MembersTab — pending invitations', () => {
     renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER]}
-        studioRole='member'
+        members={[ADMIN, GUEST]}
+        studioRole='guest'
         studioType='team'
         pendingInvitations={[PENDING]}
       />,
@@ -316,7 +316,7 @@ describe('MembersTab — a11y', () => {
     const { container } = renderTab(
       <MembersTab
         slug='acme'
-        members={[ADMIN, MEMBER, CREATOR]}
+        members={[ADMIN, GUEST, MAINTAINER]}
         studioRole='admin'
         studioType='team' pendingInvitations={[]}
       />,

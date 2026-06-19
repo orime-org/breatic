@@ -188,13 +188,13 @@ export async function getStudioBySlug(slug: string): Promise<Studio | null> {
  *
  * The shell is visible to **any** authenticated user (decision A — a
  * studio's `/studio/{slug}` page is its front door, like a profile page):
- * a non-member gets a `200` with `myStudioRole: null` (a guest), NOT a
+ * a non-member gets a `200` with `myStudioRole: null`, NOT a
  * `403`. Private content inside the studio's tabs is gated by role in later
  * slices. `memberCount` is the active member count (a personal studio has
  * 1: its creator/admin).
  * @param slug - The studio's URL handle
  * @param userId - The viewing user's UUID (resolves their role on this studio)
- * @returns The studio detail, with the viewer's role (`null` = guest)
+ * @returns The studio detail, with the viewer's role (`null` = non-member)
  * @throws {NotFoundError} when no active studio has that slug
  */
 export async function getStudioDetail(

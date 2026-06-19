@@ -13,7 +13,7 @@
  *
  * The shell is visible to any authenticated user (decision A — a studio's
  * `/studio/{slug}` page is its front door): a non-member gets a `200` with
- * `myStudioRole: null` (a guest), NOT a `403`. A slug with no active studio
+ * `myStudioRole: null`, NOT a `403`. A slug with no active studio
  * surfaces as `NotFoundError` → `404` via the global error handler.
  *
  * Translation layer only (prohibition #1): map the request to a
@@ -39,12 +39,12 @@ import { logger } from "@breatic/core";
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
   email: z.string().email(),
-  role: z.enum(["creator", "member"]),
+  role: z.enum(["maintainer", "guest"]),
 });
 
-/** Change-role body — creator ↔ member only. */
+/** Change-role body — maintainer ↔ guest only. */
 const changeRoleSchema = z.object({
-  role: z.enum(["creator", "member"]),
+  role: z.enum(["maintainer", "guest"]),
 });
 
 /** Transfer-admin body — the member proposed as the new studio admin. */
@@ -130,7 +130,7 @@ studio.use(requireAuth);
 
 /**
  * `GET /api/v1/studio/:slug` — one studio's public-facing shell, with the
- * viewing user's role (`admin` / `member` / `null` = guest).
+ * viewing user's role (`admin` / `maintainer` / `guest` / `null` = non-member).
  * @returns `200` with `{ data: StudioDetail }`; `404` when no active studio
  *   has that slug (service throws `NotFoundError`)
  */
@@ -147,7 +147,7 @@ studio.get("/:slug", async (c) => {
  *
  * Server-side filtered (`projectService.listByStudioSlug`): a studio member
  * sees studio-visible projects + their own private ones; an admin sees all;
- * a non-member gets `[]` (the guest shell shows no projects). A slug with no
+ * a non-member gets `[]` (the non-member shell shows no projects). A slug with no
  * active studio surfaces as `404`.
  * @returns `200` with `{ data: ProjectSummary[] }`
  */
@@ -231,7 +231,7 @@ studio.delete("/:slug/members/:userId", requireStudioRole("admin"), async (c) =>
 
 /**
  * `PATCH /api/v1/studio/:slug/members/:userId` — change a member's role
- * (creator ↔ member). Admin-only; admin grant/demote goes through
+ * (maintainer ↔ guest). Admin-only; admin grant/demote goes through
  * transfer-admin, not here.
  * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` not a member, `409` target is the admin (demote via transfer)

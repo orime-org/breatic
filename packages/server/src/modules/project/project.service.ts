@@ -81,7 +81,7 @@ export async function assertAccess(
  * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param studioId - Studio the project is created in (the gate checks the
- *   caller's role on it — only an `admin` or `creator` may create)
+ *   caller's role on it — only an `admin` or `maintainer` may create)
  * @param name - Project name
  * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
  *   app-side, NOT unique)
@@ -91,8 +91,8 @@ export async function assertAccess(
  *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
  * @returns The newly created project entity
- * @throws {ForbiddenError} if the caller is not an `admin` or `creator`
- *   of `studioId` (studio credits are shared, so a plain member may not
+ * @throws {ForbiddenError} if the caller is not an `admin` or `maintainer`
+ *   of `studioId` (studio credits are shared, so a plain guest may not
  *   spend them by creating a project)
  */
 export async function create(
@@ -123,21 +123,21 @@ export async function create(
 /**
  * Authorize the caller to create a project in the target studio.
  *
- * Only a studio `admin` or `creator` may create (3-role model, spec §0.2):
- * a studio's credits are shared, so a plain `member` (or a non-member,
+ * Only a studio `admin` or `maintainer` may create (3-role model, spec §0.2):
+ * a studio's credits are shared, so a plain `guest` (or a non-member,
  * role `null`) must not be able to spend them by creating projects. Today
  * only personal studios exist (single admin), so only `admin` is exercised
- * against real data; the `creator` branch activates with team studios.
+ * against real data; the `maintainer` branch activates with team studios.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
- * @throws {ForbiddenError} if the caller is not an admin/creator of the studio
+ * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
  */
 async function requireStudioCreateAccess(
   userId: string,
   studioId: string,
 ): Promise<void> {
   const role = await studioAuthService.loadStudioRole(userId, studioId);
-  if (role !== "admin" && role !== "creator") {
+  if (role !== "admin" && role !== "maintainer") {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
 }
@@ -214,7 +214,7 @@ export async function loadForViewer(
  * "projects" tab (slice 2 — replaces the old personal-Studio project list).
  *
  * Resolves the viewer's studio role and applies open-baseline visibility:
- *   - non-member → `[]` (the guest shell shows no projects, IA #267);
+ *   - non-member → `[]` (the non-member shell shows no projects, IA #267);
  *   - member → studio-visible projects + the private ones they have a role on;
  *   - admin → every project in the studio (governance).
  *

@@ -147,11 +147,11 @@ export async function listByStudio(
  * deleted_at IS NOT NULL`); an ALREADY-active row does not match `setWhere`,
  * so the UPDATE is skipped, RETURNING is empty → returns false (caller maps to
  * ConflictError; no silent role overwrite). `role` is expected to be
- * 'creator' | 'member' — admin is granted via transfer, never invite; the
+ * 'maintainer' | 'guest' — admin is granted via transfer, never invite; the
  * caller enforces that. Mirrors `materializeBaselineViewer`'s revive pattern.
  * @param studioId - Studio UUID
  * @param userId - The invitee's user UUID
- * @param role - Granted studio role (creator | member)
+ * @param role - Granted studio role (maintainer | guest)
  * @param addedBy - The inviting admin's user UUID
  * @param tx - Optional drizzle transaction handle
  * @returns true if a row was inserted or revived; false if already active
@@ -209,7 +209,7 @@ export async function softDelete(
 }
 
 /**
- * Update an active member's role — backs change-role (creator↔member) and the
+ * Update an active member's role — backs change-role (maintainer↔guest) and the
  * two same-tx steps of transfer-admin (demote old admin, promote new).
  *
  * Only touches the active row. Bumping to 'admin' while another active admin

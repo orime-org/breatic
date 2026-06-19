@@ -119,7 +119,7 @@ async function inviteeMemberRows(): Promise<number> {
 
 describe("createInvite", () => {
   it("creates a pending invite WITHOUT making the invitee a member (auth invariant)", async () => {
-    await inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "member");
+    await inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest");
 
     // The invitee shows up as pending…
     expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(1);
@@ -130,30 +130,30 @@ describe("createInvite", () => {
 
   it("rejects an unregistered email with NotFound", async () => {
     await expect(
-      inviteService.createInvite("svc-team", INVITER, "nobody@svc-test.dev", "member"),
+      inviteService.createInvite("svc-team", INVITER, "nobody@svc-test.dev", "guest"),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rejects inviting an already-active member with Conflict", async () => {
     await db
       .insert(schema.studioMembers)
-      .values({ studioId: TEAM, userId: INVITEE, role: "member", addedBy: INVITER });
+      .values({ studioId: TEAM, userId: INVITEE, role: "guest", addedBy: INVITER });
 
     await expect(
-      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "member"),
+      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest"),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("rejects a duplicate live pending with Conflict", async () => {
-    await inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "member");
+    await inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest");
     await expect(
-      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "creator"),
+      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "maintainer"),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("refuses to invite into a personal studio (Forbidden)", async () => {
     await expect(
-      inviteService.createInvite("svc-personal", STRANGER, INVITEE_EMAIL, "member"),
+      inviteService.createInvite("svc-personal", STRANGER, INVITEE_EMAIL, "guest"),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
@@ -164,12 +164,12 @@ describe("confirmInvite", () => {
       "svc-team",
       INVITER,
       INVITEE_EMAIL,
-      "creator",
+      "maintainer",
     );
 
     await inviteService.confirmInvite(invitationId, INVITEE);
 
-    expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBe("creator");
+    expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBe("maintainer");
     expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(0);
     // The inviting admin gets a studio.invite_accepted notice.
     const adminNotices = await db
@@ -189,7 +189,7 @@ describe("confirmInvite", () => {
       "svc-team",
       INVITER,
       INVITEE_EMAIL,
-      "member",
+      "guest",
     );
 
     const results = await Promise.allSettled([
@@ -198,7 +198,7 @@ describe("confirmInvite", () => {
     ]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBe("member");
+    expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBe("guest");
     expect(await inviteeMemberRows()).toBe(1);
   });
 
@@ -207,7 +207,7 @@ describe("confirmInvite", () => {
       "svc-team",
       INVITER,
       INVITEE_EMAIL,
-      "member",
+      "guest",
     );
 
     await expect(
@@ -224,7 +224,7 @@ describe("declineInvite / revokeInvite", () => {
       "svc-team",
       INVITER,
       INVITEE_EMAIL,
-      "member",
+      "guest",
     );
 
     await inviteService.declineInvite(invitationId, INVITEE);
@@ -238,7 +238,7 @@ describe("declineInvite / revokeInvite", () => {
       "svc-team",
       INVITER,
       INVITEE_EMAIL,
-      "member",
+      "guest",
     );
 
     await inviteService.revokeInvite("svc-team", invitationId);

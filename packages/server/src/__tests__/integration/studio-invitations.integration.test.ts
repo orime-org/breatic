@@ -112,7 +112,7 @@ describe("createPending + listPendingByStudio", () => {
     await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -124,7 +124,7 @@ describe("createPending + listPendingByStudio", () => {
       invitedUserId: INVITEE,
       name: "Invitee Name",
       email: "invitee@invite-test.dev",
-      role: "member",
+      role: "guest",
       invitedByName: "Inviter Name",
     });
   });
@@ -133,7 +133,7 @@ describe("createPending + listPendingByStudio", () => {
     await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -145,7 +145,7 @@ describe("createPending + listPendingByStudio", () => {
       invitesRepo.createPending({
         studioId: TEAM_STUDIO,
         invitedUserId: INVITEE,
-        role: "creator",
+        role: "maintainer",
         invitedBy: INVITER,
         expiresAt: future(),
       }),
@@ -156,14 +156,14 @@ describe("createPending + listPendingByStudio", () => {
     await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
     await invitesRepo.createPending({
       studioId: OTHER_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: STRANGER,
       expiresAt: future(),
     });
@@ -178,7 +178,7 @@ describe("acceptIfPending (CAS)", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "creator",
+      role: "maintainer",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -188,7 +188,7 @@ describe("acceptIfPending (CAS)", () => {
     expect(accepted).toMatchObject({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "creator",
+      role: "maintainer",
       invitedBy: INVITER,
     });
     // No longer pending → leaves the list.
@@ -199,7 +199,7 @@ describe("acceptIfPending (CAS)", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -212,7 +212,7 @@ describe("acceptIfPending (CAS)", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -229,7 +229,7 @@ describe("acceptIfPending (CAS)", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -243,7 +243,7 @@ describe("acceptIfPending (CAS)", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: new Date(Date.now() - 1000),
     });
@@ -259,7 +259,7 @@ describe("declineIfPending / revokeIfPending", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -274,7 +274,7 @@ describe("declineIfPending / revokeIfPending", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -286,7 +286,7 @@ describe("declineIfPending / revokeIfPending", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -301,7 +301,7 @@ describe("declineIfPending / revokeIfPending", () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -316,7 +316,7 @@ describe("re-invite after a terminal outcome", () => {
     const first = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "member",
+      role: "guest",
       invitedBy: INVITER,
       expiresAt: future(),
     });
@@ -326,7 +326,7 @@ describe("re-invite after a terminal outcome", () => {
     const second = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
-      role: "creator",
+      role: "maintainer",
       invitedBy: INVITER,
       expiresAt: future(),
     });

@@ -11,9 +11,9 @@
  * Postgres (a mocked query builder returns whatever the test stages,
  * regardless of the JOIN / soft-delete / grouped-count clauses):
  *
- *   1. getStudioDetail.myStudioRole — `admin` / `member` for active members,
- *      `null` for a non-member. Decision A: a non-member gets the shell
- *      (200 + guest), NOT a 403; a missing slug is a 404.
+ *   1. getStudioDetail.myStudioRole — `admin` / `maintainer` / `guest` for active
+ *      members, `null` for a non-member. Decision A: a non-member gets the shell
+ *      (200 + non-member), NOT a 403; a missing slug is a 404.
  *   2. memberCount — the grouped count over `studio_members` excludes
  *      soft-deleted members.
  *   3. listUserStudios — every active membership (personal + team), with
@@ -106,7 +106,7 @@ async function insertStudio(
 async function insertMemberRaw(
   studioId: string,
   userId: string,
-  role: "admin" | "member",
+  role: "admin" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -122,13 +122,13 @@ async function softDeleteMember(studioId: string, userId: string): Promise<void>
 }
 
 describe("getStudioDetail — public shell + viewer role (decision A)", () => {
-  it("resolves admin / member for active members and null (guest) for a non-member, with memberCount", async () => {
+  it("resolves admin / guest for active members and null (non-member) for a non-member, with memberCount", async () => {
     const owner = await insertUser();
     const member = await insertUser();
     const stranger = await insertUser();
     const studio = await insertStudio(owner, "team");
     await insertMemberRaw(studio.id, owner, "admin");
-    await insertMemberRaw(studio.id, member, "member");
+    await insertMemberRaw(studio.id, member, "guest");
 
     const asAdmin = await studioService.getStudioDetail(studio.slug, owner);
     expect(asAdmin.myStudioRole).toBe("admin");
@@ -138,9 +138,9 @@ describe("getStudioDetail — public shell + viewer role (decision A)", () => {
     expect(asAdmin.memberCount).toBe(2);
 
     expect((await studioService.getStudioDetail(studio.slug, member)).myStudioRole).toBe(
-      "member",
+      "guest",
     );
-    // Non-member gets the shell (200 + guest), NOT a 403 — decision A.
+    // Non-member gets the shell (200 + non-member), NOT a 403 — decision A.
     expect(
       (await studioService.getStudioDetail(studio.slug, stranger)).myStudioRole,
     ).toBeNull();
@@ -158,7 +158,7 @@ describe("getStudioDetail — public shell + viewer role (decision A)", () => {
     const member = await insertUser();
     const studio = await insertStudio(owner, "team");
     await insertMemberRaw(studio.id, owner, "admin");
-    await insertMemberRaw(studio.id, member, "member");
+    await insertMemberRaw(studio.id, member, "guest");
     expect((await studioService.getStudioDetail(studio.slug, owner)).memberCount).toBe(2);
 
     await softDeleteMember(studio.id, member);
@@ -177,7 +177,7 @@ describe("listUserStudios — switcher list, personal-first", () => {
     const team = await insertStudio(teammate, "team");
     await insertMemberRaw(personal.id, user, "admin");
     await insertMemberRaw(team.id, teammate, "admin");
-    await insertMemberRaw(team.id, user, "member");
+    await insertMemberRaw(team.id, user, "guest");
 
     const list = await studioService.listUserStudios(user);
     const byId = new Map(list.map((s) => [s.id, s]));
@@ -195,7 +195,7 @@ describe("listUserStudios — switcher list, personal-first", () => {
     const team = await insertStudio(teammate, "team");
     const personal = await insertStudio(user, "personal");
     await insertMemberRaw(team.id, teammate, "admin");
-    await insertMemberRaw(team.id, user, "member");
+    await insertMemberRaw(team.id, user, "guest");
     await insertMemberRaw(personal.id, user, "admin");
 
     const list = await studioService.listUserStudios(user);
@@ -210,7 +210,7 @@ describe("listUserStudios — switcher list, personal-first", () => {
     const teammate = await insertUser();
     const team = await insertStudio(teammate, "team");
     await insertMemberRaw(team.id, teammate, "admin");
-    await insertMemberRaw(team.id, user, "member");
+    await insertMemberRaw(team.id, user, "guest");
     expect((await studioService.listUserStudios(user)).map((s) => s.id)).toContain(team.id);
 
     await softDeleteMember(team.id, user);
@@ -232,17 +232,17 @@ describe("getStudioMembers — member roster (display name from personal studio)
     await insertMemberRaw(memberPersonal.id, member, "admin");
     const team = await insertStudio(owner, "team");
     await insertMemberRaw(team.id, owner, "admin");
-    await insertMemberRaw(team.id, member, "member");
+    await insertMemberRaw(team.id, member, "guest");
 
     const members = (await studioService.getStudioMembers(team.slug, owner))
       .members;
     expect(members).toHaveLength(2);
     const byRole = new Map(members.map((m) => [m.role, m]));
     expect(byRole.get("admin")!.userId).toBe(owner);
-    expect(byRole.get("member")!.userId).toBe(member);
+    expect(byRole.get("guest")!.userId).toBe(member);
     // Display name comes from each member's personal studio name.
     expect(byRole.get("admin")!.name).toBe(`Studio ${ownerPersonal.slug}`);
-    expect(byRole.get("member")!.name).toBe(`Studio ${memberPersonal.slug}`);
+    expect(byRole.get("guest")!.name).toBe(`Studio ${memberPersonal.slug}`);
     // joinedAt is serialized to an ISO-8601 string.
     expect(byRole.get("admin")!.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
@@ -252,7 +252,7 @@ describe("getStudioMembers — member roster (display name from personal studio)
     const member = await insertUser();
     const team = await insertStudio(owner, "team");
     await insertMemberRaw(team.id, owner, "admin");
-    await insertMemberRaw(team.id, member, "member");
+    await insertMemberRaw(team.id, member, "guest");
     expect(
       (await studioService.getStudioMembers(team.slug, owner)).members,
     ).toHaveLength(2);

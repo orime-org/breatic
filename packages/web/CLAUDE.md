@@ -25,7 +25,7 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 | 类 | 词(永远英文) |
 |---|---|
 | 实体 / 类型名 | `Studio` · `Project` · `Collection` · `Space` · `Work` · `Canvas` · `Document` · `Timeline` |
-| 角色名 | `Owner` · `Editor` · `Viewer` · `Admin` · `Creator` · `Member` |
+| 角色名 | `Owner` · `Editor` · `Viewer` · `Admin` · `Maintainer` · `Guest` |
 
 **三条规则**:
 

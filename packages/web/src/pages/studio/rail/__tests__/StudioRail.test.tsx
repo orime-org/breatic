@@ -23,8 +23,8 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     const studios = [
       s('me', 'My Personal', 'admin'),
       s('myteam', 'My Team', 'admin'),
-      s('grant', 'Granted', 'creator'),
-      s('join', 'Joined', 'member'),
+      s('grant', 'Granted', 'maintainer'),
+      s('join', 'Joined', 'guest'),
     ];
     render(
       <MemoryRouter>

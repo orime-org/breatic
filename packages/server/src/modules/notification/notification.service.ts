@@ -169,7 +169,7 @@ export interface StudioInviteRequestPayload {
   studioId: string;
   studioName: string;
   inviterName: string;
-  role: "creator" | "member";
+  role: "maintainer" | "guest";
 }
 
 /**

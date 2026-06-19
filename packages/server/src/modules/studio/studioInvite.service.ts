@@ -43,7 +43,7 @@ import { t } from "@breatic/shared";
 import type { InvitationLandingView } from "@breatic/shared";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
-type InvitableRole = "creator" | "member";
+type InvitableRole = "maintainer" | "guest";
 
 /** Days a pending invite stays actionable before it self-voids. */
 const INVITE_TTL_DAYS = 7;
@@ -61,7 +61,7 @@ const INVITE_TTL_DAYS = 7;
  * @param slug - The studio's URL handle
  * @param inviterUserId - The acting admin (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
- * @param role - The granted studio role (creator | member; never admin)
+ * @param role - The granted studio role (maintainer | guest; never admin)
  * @returns The new invitation id, the invitee's id + email, and the studio /
  *   inviter names + role (so the route can compose the invite email)
  * @throws {NotFoundError} studio not found, or no user with that email

@@ -15,7 +15,7 @@
  * builder cannot reproduce them, so they are proven here:
  *
  *   - requestTransfer lands an actionable notification with a future expiry.
- *   - confirm demotes the old admin to member, promotes the recipient to
+ *   - confirm demotes the old admin to guest, promotes the recipient to
  *     admin, and notifies the old admin — leaving EXACTLY ONE active admin.
  *   - an expired request cannot be confirmed (Conflict).
  *   - two concurrent confirms apply the transfer EXACTLY ONCE.
@@ -99,7 +99,7 @@ async function insertStudioWithAdmin(
 async function insertMemberRaw(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -157,7 +157,7 @@ async function seedStudio(): Promise<Seeded> {
   const adminId = await insertUser();
   const memberId = await insertUser();
   const studio = await insertStudioWithAdmin(adminId);
-  await insertMemberRaw(studio.id, memberId, "member");
+  await insertMemberRaw(studio.id, memberId, "guest");
   return { studioId: studio.id, slug: studio.slug, adminId, memberId };
 }
 
@@ -193,7 +193,7 @@ describe("requestTransfer", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin, "personal");
-    await insertMemberRaw(studio.id, member, "member");
+    await insertMemberRaw(studio.id, member, "guest");
     await expect(
       studioTransferService.requestTransfer(studio.slug, admin, member),
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -208,7 +208,7 @@ describe("confirmTransfer", () => {
 
     await studioTransferService.confirmTransfer(req!.id, memberId);
 
-    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("member");
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("guest");
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
     // The invariant: the studio has exactly one active admin after the swap.
     expect(await activeAdminCount(studioId)).toBe(1);
@@ -228,7 +228,7 @@ describe("confirmTransfer", () => {
 
     // The whole transaction rolled back — roles are unchanged.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
-    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("member");
+    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("guest");
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
@@ -248,7 +248,7 @@ describe("confirmTransfer", () => {
     expect(fulfilled).toBe(1);
     expect(rejected).toBe(1);
     // The swap landed once: one active admin, one approved notification.
-    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("member");
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("guest");
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
     expect(await activeAdminCount(studioId)).toBe(1);
     expect(await countByType(adminId, "studio.transfer_approved")).toBe(1);
@@ -265,7 +265,7 @@ describe("cancelTransfer", () => {
 
     // No role swap.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
-    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("member");
+    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("guest");
     expect(await activeAdminCount(studioId)).toBe(1);
     // No approved notification was sent.
     expect(await countByType(adminId, "studio.transfer_approved")).toBe(0);

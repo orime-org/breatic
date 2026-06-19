@@ -90,7 +90,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertStudioMember(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -158,7 +158,7 @@ async function storedSpaceType(projectId: string): Promise<string> {
   return rows[0]!.t;
 }
 
-describe("projectService.create — studio admin/creator gate (critical path 鉴权 + §0.2)", () => {
+describe("projectService.create — studio admin/maintainer gate (critical path 鉴权 + §0.2)", () => {
   it("admin creates in the target studio: project lands there + one owner row for the caller", async () => {
     const admin = await insertUser();
     const studioId = await insertStudio(admin);
@@ -180,15 +180,15 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     expect(await storedSpaceType(project.id)).toBe("canvas");
   });
 
-  it("a creator may create (admin + creator can spend shared studio credits)", async () => {
+  it("a maintainer may create (admin + maintainer can spend shared studio credits)", async () => {
     const admin = await insertUser();
-    const creator = await insertUser();
+    const maintainer = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, creator, "creator");
+    await insertStudioMember(studioId, maintainer, "maintainer");
 
     const project = await projectService.create(
-      creator,
+      maintainer,
       studioId,
       "Creator Project",
       "creator-gate-project",
@@ -197,18 +197,18 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     );
 
     expect(project.studioId).toBe(studioId);
-    expect(project.createdByUserId).toBe(creator);
+    expect(project.createdByUserId).toBe(maintainer);
     // A non-default type persists end-to-end (B.2 plumbing — even though
     // document is disabled in the picker, the column stores any SpaceType).
     expect(await storedSpaceType(project.id)).toBe("document");
   });
 
-  it("a plain member is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {
+  it("a plain guest is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
 
     await expect(
       projectService.create(member, studioId, "Member Project", "member-gate-project", "studio", "canvas"),
@@ -234,7 +234,7 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     const stranger = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
 
     const pStudio = await insertProject(studioId, admin, "studio");
     const pPrivateMember = await insertProject(studioId, member, "private");
@@ -258,7 +258,7 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     expect(adminIds.has(pPrivateAdmin)).toBe(true);
     expect(asAdmin.find((p) => p.id === pPrivateMember)!.myRole).toBeNull();
 
-    // Non-member: no projects (guest shell).
+    // Non-member: no projects (non-member shell).
     expect(await projectService.listByStudioForViewer(studioId, stranger)).toEqual([]);
   });
 
@@ -302,7 +302,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
 
     // #2 — not a project member before entry.
@@ -326,7 +326,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
 
     const results = await Promise.allSettled([
@@ -344,7 +344,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
     // Member was invited then removed → a soft-deleted row exists.
     await insertProjectMember(pid, member, "viewer", true);
@@ -380,7 +380,7 @@ describe("loadForViewer — access denial hides existence (404)", () => {
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "private");
 
     await expect(projectService.loadForViewer(pid, member)).rejects.toBeInstanceOf(

@@ -17,7 +17,7 @@ interface MemberRowMenuProps {
   member: StudioMember;
   /** Whether any mutation targeting this row is in flight (disables the items). */
   pending: boolean;
-  /** Promote a member to creator / demote a creator to member (creator ↔ member). */
+  /** Promote a member to maintainer / demote a maintainer to guest (maintainer ↔ guest). */
   onToggleRole: (member: StudioMember) => void;
   /** Remove (kick) the member from the studio. */
   onRemove: (member: StudioMember) => void;
@@ -28,7 +28,7 @@ interface MemberRowMenuProps {
 /**
  * The per-member row action menu (spec §3.7), Admin-only. A `⋯` trigger opens a
  * popover (the project-wide menu pattern, matching `StudioAccountMenu`) with:
- * change role (creator ↔ member), remove member, and transfer admin. The admin
+ * change role (maintainer ↔ guest), remove member, and transfer admin. The admin
  * row never renders a menu (handled by the caller — an admin manages others,
  * not themselves), so every item here is safe for a non-admin target. Each item
  * closes the popover before invoking its handler so the focus returns to the
@@ -36,7 +36,7 @@ interface MemberRowMenuProps {
  * @param props the member, pending flag and the three action callbacks.
  * @param props.member the member this row's menu acts on.
  * @param props.pending whether a mutation for this row is in flight.
- * @param props.onToggleRole called to flip the member's role (creator ↔ member).
+ * @param props.onToggleRole called to flip the member's role (maintainer ↔ guest).
  * @param props.onRemove called to remove the member.
  * @param props.onTransferAdmin called to start the transfer-admin handshake.
  * @returns the row action menu.
@@ -50,7 +50,7 @@ export function MemberRowMenu({
 }: MemberRowMenuProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const isCreator = member.studioRole === 'creator';
+  const isMaintainer = member.studioRole === 'maintainer';
 
   /**
    * Close the popover, then run the given action on the member.
@@ -87,9 +87,9 @@ export function MemberRowMenu({
           data-testid={`member-toggle-role-${member.id}`}
         >
           <ArrowUpDown className='h-4 w-4' />
-          {isCreator
-            ? t('studio.container.members.demoteToMember')
-            : t('studio.container.members.promoteToCreator')}
+          {isMaintainer
+            ? t('studio.container.members.demoteToGuest')
+            : t('studio.container.members.promoteToMaintainer')}
         </Button>
         <Button
           variant='ghost'

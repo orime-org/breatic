@@ -28,27 +28,27 @@ const teamAdmin: StudioSummary = {
   memberCount: 3,
   myStudioRole: 'admin',
 };
-const teamCreator: StudioSummary = {
+const teamMaintainer: StudioSummary = {
   id: 's-c',
   slug: 'team-c',
   name: 'Team C',
   type: 'team',
   memberCount: 5,
-  myStudioRole: 'creator',
+  myStudioRole: 'maintainer',
 };
-const teamMember: StudioSummary = {
+const teamGuest: StudioSummary = {
   id: 's-m',
   slug: 'team-m',
   name: 'Team M',
   type: 'team',
   memberCount: 8,
-  myStudioRole: 'member',
+  myStudioRole: 'guest',
 };
 
-const ALL = [personal, teamAdmin, teamCreator, teamMember];
+const ALL = [personal, teamAdmin, teamMaintainer, teamGuest];
 
-describe('creatableStudios (spec §8.2 — admin or creator may create)', () => {
-  it('keeps admin and creator studios, drops member studios', () => {
+describe('creatableStudios (spec §8.2 — admin or maintainer may create)', () => {
+  it('keeps admin and maintainer studios, drops guest studios', () => {
     expect(creatableStudios(ALL).map((s) => s.id)).toEqual([
       's-me',
       's-a',
@@ -56,8 +56,8 @@ describe('creatableStudios (spec §8.2 — admin or creator may create)', () => 
     ]);
   });
 
-  it('returns an empty list when the viewer is only a member', () => {
-    expect(creatableStudios([teamMember])).toEqual([]);
+  it('returns an empty list when the viewer is only a guest', () => {
+    expect(creatableStudios([teamGuest])).toEqual([]);
   });
 });
 
@@ -79,17 +79,17 @@ describe('defaultCreateStudioId (spec §7.1 — default selection)', () => {
     expect(defaultCreateStudioId(ALL, asDetail(teamAdmin))).toBe('s-a');
   });
 
-  it('falls back to the personal studio when the viewer is only a member of the current studio', () => {
-    expect(defaultCreateStudioId(ALL, asDetail(teamMember))).toBe('s-me');
+  it('falls back to the personal studio when the viewer is only a guest of the current studio', () => {
+    expect(defaultCreateStudioId(ALL, asDetail(teamGuest))).toBe('s-me');
   });
 
-  it('falls back to the personal studio when the viewer is a creator (not admin) of the current studio', () => {
-    // Spec §7.1: defaulting to the current studio requires admin; a creator can
+  it('falls back to the personal studio when the viewer is a maintainer (not admin) of the current studio', () => {
+    // Spec §7.1: defaulting to the current studio requires admin; a maintainer can
     // still create there (it stays in the selector), but the default is personal.
-    expect(defaultCreateStudioId(ALL, asDetail(teamCreator))).toBe('s-me');
+    expect(defaultCreateStudioId(ALL, asDetail(teamMaintainer))).toBe('s-me');
   });
 
   it('returns undefined when no creatable studio exists', () => {
-    expect(defaultCreateStudioId([teamMember])).toBeUndefined();
+    expect(defaultCreateStudioId([teamGuest])).toBeUndefined();
   });
 });

@@ -30,7 +30,7 @@ import type { DbTx } from "@breatic/core";
 import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
-type InvitableRole = "creator" | "member";
+type InvitableRole = "maintainer" | "guest";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by
@@ -57,7 +57,7 @@ export interface AcceptedInvite {
  * @param input - Studio, invitee, granted role, inviting admin, TTL, optional tx
  * @param input.studioId - The studio the invite is into
  * @param input.invitedUserId - The registered user being invited
- * @param input.role - Granted studio role (creator | member)
+ * @param input.role - Granted studio role (maintainer | guest)
  * @param input.invitedBy - The inviting admin's user id
  * @param input.expiresAt - When the invite times out (matches the notification TTL)
  * @param input.tx - Optional drizzle transaction handle

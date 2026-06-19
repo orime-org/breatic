@@ -864,7 +864,7 @@ export const studioInvitations = pgTable(
     invitedUserId: uuid("invited_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Granted studio role — 'creator' | 'member' (admin is never invited). */
+    /** Granted studio role — 'maintainer' | 'guest' (admin is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
       .notNull()

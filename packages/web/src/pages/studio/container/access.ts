@@ -25,11 +25,12 @@ export interface ItemAccess {
  * Whether a project / collection card should render for the viewer
  * (spec §4 invariant 1). Studio-visible items are baseline-visible to every
  * studio member; private items render only for studio Admins or for members
- * who actually have a role on them (owner / invited). A plain Member never
- * sees a private item they are not part of, and a guest (`null` studio role —
+ * who actually have a role on them (owner / invited). A plain Guest never
+ * sees a private item they are not part of, and a non-member (`null` studio
+ * role —
  * a non-member viewing the public shell, decision A) sees only studio-visible
  * items.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @param item the item's visibility + the viewer's role on it.
  * @returns whether the card should be rendered.
  */
@@ -46,9 +47,9 @@ export function canRenderItemCard(
 /**
  * Whether the viewer may run governance actions (delete / transfer / change
  * visibility) on an item (spec §4 invariant 2). Only the item Owner or a
- * studio Admin may; a non-owner Member and a guest (`null` studio role) never
+ * studio Admin may; a non-owner Guest and a non-member (`null` studio role) never
  * see governance controls.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @param isOwner whether the viewer owns the item.
  * @returns whether governance controls should be shown.
  */
@@ -61,16 +62,16 @@ export function canManageItem(
 
 /**
  * Whether the viewer may create projects in a studio (spec §0.2 / §8.2): only
- * an `admin` or `creator` may — a plain `member` and a guest (`null` studio
- * role) may not, because studio credits are shared and creating a project can
+ * an `admin` or `maintainer` may — a plain `guest` role and a non-member
+ * (`null` studio role) may not, because studio credits are shared and creating a project can
  * spend them. Gates the create entry in the rail (§4.1) and the Projects tab
  * (§7.1); the server re-checks the same rule on create (`requireStudioCreate
  * Access`), so this is a UX gate, not the security boundary.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @returns whether the viewer may create in the studio.
  */
 export function canCreateInStudio(studioRole: StudioRole | null): boolean {
-  return studioRole === 'admin' || studioRole === 'creator';
+  return studioRole === 'admin' || studioRole === 'maintainer';
 }
 
 /**

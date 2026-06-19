@@ -111,7 +111,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertMemberRaw(
   studioId: string,
   userId: string,
-  role: "admin" | "member",
+  role: "admin" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -140,16 +140,16 @@ async function rawRole(studioId: string, userId: string): Promise<string | null>
 }
 
 describe("getRole — resolves studio role, hides soft-deleted (state-only)", () => {
-  it("returns 'admin' / 'member' for active members and null for a non-member", async () => {
+  it("returns 'admin' / 'guest' for active members and null for a non-member", async () => {
     const owner = await insertUser();
     const member = await insertUser();
     const stranger = await insertUser();
     const studio = await insertStudio(owner);
     await insertMemberRaw(studio, owner, "admin");
-    await insertMemberRaw(studio, member, "member");
+    await insertMemberRaw(studio, member, "guest");
 
     expect(await studioMembersRepo.getRole(studio, owner)).toBe("admin");
-    expect(await studioMembersRepo.getRole(studio, member)).toBe("member");
+    expect(await studioMembersRepo.getRole(studio, member)).toBe("guest");
     expect(await studioMembersRepo.getRole(studio, stranger)).toBeNull();
   });
 

@@ -66,7 +66,7 @@ describe("notifications — studio types + expiry filter", () => {
     const n = await notificationRepo.create({
       userId: user,
       type: "studio.member_invited",
-      payload: { studioName: "Acme", inviterName: "Al", role: "member" },
+      payload: { studioName: "Acme", inviterName: "Al", role: "guest" },
     });
     expect(n.type).toBe("studio.member_invited");
     const list = await notificationRepo.listUnreadByUser(user);
@@ -93,7 +93,7 @@ describe("notifications — studio types + expiry filter", () => {
     const evergreen = await notificationRepo.create({
       userId: user,
       type: "studio.member_invited",
-      payload: { studioName: "Acme", inviterName: "Al", role: "member" },
+      payload: { studioName: "Acme", inviterName: "Al", role: "guest" },
     });
 
     expect(pending.expiresAt).not.toBeNull(); // persisted

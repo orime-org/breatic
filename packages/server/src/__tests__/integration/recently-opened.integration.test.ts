@@ -91,7 +91,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertStudioMember(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -274,7 +274,7 @@ describe("listRecent — access filter (C3, CRITICAL: never leak inaccessible pr
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, user, "member");
+    await insertStudioMember(studioId, user, "guest");
 
     // (a) studio-visible project the user opened (materialized viewer row) → IN.
     const pVisible = await insertProject(studioId, owner, "studio");
@@ -327,7 +327,7 @@ describe("listRecent — access filter (C3, CRITICAL: never leak inaccessible pr
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, user, "member");
+    await insertStudioMember(studioId, user, "guest");
     const pVisibleNoRow = await insertProject(studioId, owner, "studio");
     await seedOpen(user, pVisibleNoRow, "2026-05-02T00:00:00Z");
 
