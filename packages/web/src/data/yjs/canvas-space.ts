@@ -416,6 +416,70 @@ export function removeFromGroup(
 }
 
 /**
+ * Set (or clear) a group's background tint — frontend-owned. Passing
+ * `undefined` clears the field (无色 → neutral dashed frame). No-op when the
+ * group does not exist.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the group.
+ * @param groupId - Id of the group to tint.
+ * @param color - The new background token, or `undefined` to clear it.
+ */
+export function setGroupBackground(
+  projectId: string,
+  spaceId: string,
+  groupId: string,
+  color: string | undefined,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const group = nodesMap.get(groupId);
+  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
+  const data = group.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    if (color === undefined) data.delete('backgroundColor');
+    else data.set('backgroundColor', color);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Move a whole group — frontend-owned. Shifts every member node's position by
+ * `delta` in one transaction; the group's own geometry is derived from its
+ * children at render, so it follows automatically (the group node carries no
+ * authoritative position). Child ids that are not real nodes are skipped.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the group.
+ * @param groupId - Id of the group being dragged.
+ * @param delta - The canvas-space offset to add to every member's position.
+ * @param delta.x - X offset.
+ * @param delta.y - Y offset.
+ */
+export function moveGroup(
+  projectId: string,
+  spaceId: string,
+  groupId: string,
+  delta: { x: number; y: number },
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const group = nodesMap.get(groupId);
+  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
+  const data = group.get('data');
+  if (!(data instanceof Y.Map)) return;
+  const ids = data.get('childIds');
+  if (!Array.isArray(ids)) return;
+  doc.transact(() => {
+    (ids as string[]).forEach((childId) => {
+      const child = nodesMap.get(childId);
+      if (!(child instanceof Y.Map)) return;
+      const p = child.get('position') as { x: number; y: number } | undefined;
+      if (!p) return;
+      child.set('position', { x: p.x + delta.x, y: p.y + delta.y });
+    });
+  }, CANVAS_UNDO);
+}
+
+/**
  * Add an edge (e.g. mini-tool primary edge).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the edge to.

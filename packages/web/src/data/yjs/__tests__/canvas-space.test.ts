@@ -10,11 +10,13 @@ import {
   addEdge,
   addNode,
   addToGroup,
+  moveGroup,
   readEdges,
   readNodes,
   removeEdge,
   removeFromGroup,
   removeNode,
+  setGroupBackground,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -257,6 +259,52 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'g1' }));
       removeFromGroup(PID, SID, 'g1', 'only');
       expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+    });
+  });
+
+  describe('group background + move — setGroupBackground / moveGroup', () => {
+    /** Read a group's backgroundColor off the wire data Y.Map. */
+    function bg(groupId: string): unknown {
+      const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
+      const data = g?.get('data');
+      return data instanceof Y.Map ? data.get('backgroundColor') : undefined;
+    }
+    /** Read a node's position off the wire node Y.Map. */
+    function pos(nodeId: string): { x: number; y: number } | undefined {
+      const n = doc().getMap('nodesMap').get(nodeId) as Y.Map<unknown> | undefined;
+      return n?.get('position') as { x: number; y: number } | undefined;
+    }
+
+    it('setGroupBackground sets the group backgroundColor', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      setGroupBackground(PID, SID, 'g1', 'var(--color-status-info-bg)');
+      expect(bg('g1')).toBe('var(--color-status-info-bg)');
+    });
+
+    it('setGroupBackground with undefined clears the color (无色)', () => {
+      addNode(
+        PID,
+        SID,
+        sampleFields('group', { childIds: ['n1'], backgroundColor: 'x' }, { id: 'g1' }),
+      );
+      setGroupBackground(PID, SID, 'g1', undefined);
+      expect(bg('g1')).toBeUndefined();
+    });
+
+    it('moveGroup shifts every child node by the delta (group follows via derived geometry)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 10, y: 20 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c2', position: { x: 30, y: 40 } }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'c2'] }, { id: 'g1' }));
+      moveGroup(PID, SID, 'g1', { x: 5, y: -3 });
+      expect(pos('c1')).toEqual({ x: 15, y: 17 });
+      expect(pos('c2')).toEqual({ x: 35, y: 37 });
+    });
+
+    it('moveGroup skips child ids that are not real nodes (robust)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 0, y: 0 } }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'ghost'] }, { id: 'g1' }));
+      expect(() => moveGroup(PID, SID, 'g1', { x: 1, y: 1 })).not.toThrow();
+      expect(pos('c1')).toEqual({ x: 1, y: 1 });
     });
   });
 });
