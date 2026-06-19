@@ -211,7 +211,13 @@
     },
     "group": {
       "group": "グループ化",
-      "ungroup": "グループ解除"
+      "ungroup": "グループ解除",
+      "background": "背景色",
+      "backgroundNone": "なし",
+      "backgroundInfo": "青",
+      "backgroundSuccess": "緑",
+      "backgroundWarning": "オレンジ",
+      "backgroundError": "コーラル"
     },
     "comment": {
       "composerPlaceholder": "コメントを入力...",

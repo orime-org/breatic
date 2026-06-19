@@ -211,7 +211,13 @@
     },
     "group": {
       "group": "群組",
-      "ungroup": "取消群組"
+      "ungroup": "取消群組",
+      "background": "背景顏色",
+      "backgroundNone": "無色",
+      "backgroundInfo": "藍色",
+      "backgroundSuccess": "綠色",
+      "backgroundWarning": "橙色",
+      "backgroundError": "珊瑚色"
     },
     "comment": {
       "composerPlaceholder": "輸入你的評論...",

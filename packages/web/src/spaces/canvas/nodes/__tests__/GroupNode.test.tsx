@@ -12,14 +12,14 @@ describe('GroupNode', () => {
     expect(screen.getByTestId('group-node')).toBeInTheDocument();
   });
 
-  it('applies the backgroundColor tint', () => {
+  it('applies the backgroundColor tint via var() from the stored token', () => {
     render(
       <GroupNode
-        data={{ kind: 'group', backgroundColor: 'rgb(238, 238, 255)' }}
+        data={{ kind: 'group', backgroundColor: '--color-status-info-bg' }}
       />,
     );
     expect(screen.getByTestId('group-node')).toHaveStyle({
-      backgroundColor: 'rgb(238, 238, 255)',
+      backgroundColor: 'var(--color-status-info-bg)',
     });
   });
 

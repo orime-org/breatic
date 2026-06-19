@@ -211,7 +211,13 @@
     },
     "group": {
       "group": "그룹화",
-      "ungroup": "그룹 해제"
+      "ungroup": "그룹 해제",
+      "background": "배경색",
+      "backgroundNone": "없음",
+      "backgroundInfo": "파랑",
+      "backgroundSuccess": "초록",
+      "backgroundWarning": "주황",
+      "backgroundError": "코랄"
     },
     "comment": {
       "composerPlaceholder": "댓글을 입력하세요...",

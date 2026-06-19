@@ -211,7 +211,13 @@
     },
     "group": {
       "group": "Group",
-      "ungroup": "Ungroup"
+      "ungroup": "Ungroup",
+      "background": "Background color",
+      "backgroundNone": "No color",
+      "backgroundInfo": "Blue",
+      "backgroundSuccess": "Green",
+      "backgroundWarning": "Orange",
+      "backgroundError": "Coral"
     },
     "comment": {
       "composerPlaceholder": "Enter your comment...",

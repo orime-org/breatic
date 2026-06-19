@@ -4,6 +4,7 @@
 import type * as React from 'react';
 
 import { cn } from '@web/lib/utils';
+import { groupBackgroundStyle } from '@web/spaces/canvas/group-background';
 import {
   MAX_NODE_NAME_LEN,
   useInlineRename,
@@ -46,6 +47,7 @@ export function GroupNode({
 }: GroupNodeProps): React.JSX.Element {
   const display =
     data.name && data.name.length > 0 ? data.name : GROUP_DEFAULT_NAME;
+  const background = groupBackgroundStyle(data.backgroundColor);
   const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
     useInlineRename({
       current: display,
@@ -57,11 +59,7 @@ export function GroupNode({
     <div
       data-testid='group-node'
       data-selected={selected ? 'true' : 'false'}
-      style={
-        data.backgroundColor
-          ? { backgroundColor: data.backgroundColor }
-          : undefined
-      }
+      style={background ? { backgroundColor: background } : undefined}
       className={cn(
         'relative min-h-[80px] min-w-[160px] rounded-lg border border-dashed transition-colors',
         selected ? 'border-status-selected' : 'border-border',

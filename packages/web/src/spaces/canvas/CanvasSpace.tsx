@@ -28,6 +28,7 @@ import {
   removeEdge,
   removeElements,
   removeNode,
+  setGroupBackground,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -53,6 +54,7 @@ import {
 } from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { GroupBackgroundPicker } from '@web/spaces/canvas/GroupBackgroundPicker';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import {
   mergeMirroredEdgeSelection,
@@ -591,6 +593,25 @@ function CanvasSpaceInner({
     removeNode(projectId, spaceId, groupOffer.groupId);
   }, [readOnly, groupOffer, projectId, spaceId]);
 
+  // Background-color picker for the selected group (only the ungroup offer has
+  // a single group). Its current tint seeds the picker; a pick writes through
+  // to Yjs.
+  const [bgMenuOpen, setBgMenuOpen] = React.useState(false);
+  const selectedGroupBg = React.useMemo<string | undefined>(() => {
+    if (groupOffer.kind !== 'ungroup') return undefined;
+    const group = flowNodes.find((node) => node.id === groupOffer.groupId);
+    return (group?.data as { backgroundColor?: string } | undefined)
+      ?.backgroundColor;
+  }, [groupOffer, flowNodes]);
+  const pickGroupBackground = React.useCallback(
+    (color: string | undefined): void => {
+      if (readOnly || groupOffer.kind !== 'ungroup') return;
+      setGroupBackground(projectId, spaceId, groupOffer.groupId, color);
+      setBgMenuOpen(false);
+    },
+    [readOnly, groupOffer, projectId, spaceId],
+  );
+
   // Keyboard grouping — double-platform (Cmd on mac, Ctrl on windows; see
   // matchGroupShortcut). Gated like undo/redo: no-op while editing a field or
   // read-only, and only swallows the browser shortcut when the action applies.
@@ -708,14 +729,22 @@ function CanvasSpaceInner({
           >
             <div className='flex items-center gap-1 rounded-md border border-border bg-popover p-1 shadow-md'>
               {groupOffer.kind === 'ungroup' ? (
-                <button
-                  type='button'
-                  data-testid='group-toolbar-ungroup'
-                  onClick={ungroupSelection}
-                  className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
-                >
-                  {t('canvas.group.ungroup')}
-                </button>
+                <>
+                  <button
+                    type='button'
+                    data-testid='group-toolbar-ungroup'
+                    onClick={ungroupSelection}
+                    className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                  >
+                    {t('canvas.group.ungroup')}
+                  </button>
+                  <GroupBackgroundPicker
+                    open={bgMenuOpen}
+                    onOpenChange={setBgMenuOpen}
+                    value={selectedGroupBg}
+                    onPick={pickGroupBackground}
+                  />
+                </>
               ) : (
                 <button
                   type='button'
