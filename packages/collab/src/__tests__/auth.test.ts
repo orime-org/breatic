@@ -132,8 +132,15 @@ describe("createAuthHook", () => {
   // the read-only side effect pass their OWN connectionConfig object and check
   // it was mutated. The production hook type keeps connectionConfig required,
   // so the protocol-level read-only contract stays enforced.
-  const buildHook = () => {
-    const hook = createAuthHook({ redis: mockRedis });
+  const buildHook = (capacity?: {
+    maxConnectionsPerDoc?: number;
+    countConnections?: (documentName: string) => number;
+  }) => {
+    const hook = createAuthHook({
+      redis: mockRedis,
+      maxConnectionsPerDoc: capacity?.maxConnectionsPerDoc ?? 100,
+      countConnections: capacity?.countConnections ?? (() => 0),
+    });
     type HookArgs = Parameters<typeof hook>[0];
     return (
       args: Omit<HookArgs, "connectionConfig"> &
@@ -284,6 +291,41 @@ describe("createAuthHook", () => {
     expect(connectionConfig.readOnly).toBe(false);
     // The meta doc never triggers the space-exists read.
     expect(fetchDocDataMock).not.toHaveBeenCalled();
+  });
+
+  it("degrades an at-capacity document to read-only even for an editor", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    // The document already holds 2 connections (this one excluded) and
+    // the cap is 2 → the connection is degraded to read-only instead of
+    // being rejected. The editor would otherwise be writable.
+    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: () => 2 });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("keeps an editor writable when the document is below its connection cap", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: () => 1 });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(false);
   });
 
   it("accepts an active viewer; connection forced read-only (connectionConfig.readOnly mutated — the property Hocuspocus enforces)", async () => {

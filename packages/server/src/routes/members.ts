@@ -39,38 +39,6 @@ members.get("/", requireRole("viewer"), async (c) => {
   return c.json({ data: list });
 });
 
-const inviteBodySchema = z.object({
-  user_id: z.string().uuid(),
-  // Owner cannot be invited directly — owner promotion is the
-  // transfer-owner endpoint, deferred to V2.
-  role: z.enum(["viewer", "editor"]),
-});
-
-/**
- * `POST /api/v1/projects/:pid/members` — invite a user.
- *
- * Owner only. If the target was previously removed, the existing
- * row is revived with the new role.
- * @returns `201` with `{ data: { ok: true } }`
- */
-members.post(
-  "/",
-  requireRole("owner"),
-  zValidator("json", inviteBodySchema),
-  async (c) => {
-    const inviter = c.get("user");
-    const projectId = c.get("projectId");
-    const body = c.req.valid("json");
-    await projectMembersService.invite(
-      projectId,
-      body.user_id,
-      body.role,
-      inviter.id,
-    );
-    return c.json({ data: { ok: true } }, 201);
-  },
-);
-
 const patchBodySchema = z.object({
   role: z.enum(["viewer", "editor"]),
 });

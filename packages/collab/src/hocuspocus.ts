@@ -108,26 +108,26 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // ownership. See packages/collab/src/auth.ts.
     onAuthenticate: createAuthHook({
       redis: authRedis,
+      maxConnectionsPerDoc: cfg.max_connections_per_document,
+      // Explicit `: number` return type breaks the self-reference cycle:
+      // this closure reads `wsServer` inside `wsServer`'s own initializer,
+      // so TS cannot infer its return type through `wsServer` (TS7022/7023).
+      countConnections: (documentName: string): number =>
+        wsServer.hocuspocus.documents.get(documentName)?.getConnectionsCount() ??
+        0,
     }),
 
     // Extensions
     // Cast: pnpm hoisting causes duplicate @hocuspocus/server types
     extensions: extensions as never[],
 
-    // Connection limit per document
     onConnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
-
-      // Check max connections per document
-      if (cfg.max_connections_per_document > 0) {
-        const doc = wsServer.hocuspocus.documents.get(documentName);
-        if (doc && doc.getConnectionsCount() >= cfg.max_connections_per_document) {
-          throw new Error(
-            `Document "${documentName}" has reached the maximum of ${cfg.max_connections_per_document} connections`,
-          );
-        }
-      }
-
+      // The per-document connection cap is no longer enforced by
+      // REJECTING here. It is applied in onAuthenticate, which degrades
+      // an at-capacity connection to read-only instead of dropping it
+      // (see createAuthHook's `maxConnectionsPerDoc` / `countConnections`).
+      // onConnect only logs the connection.
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
     },
 

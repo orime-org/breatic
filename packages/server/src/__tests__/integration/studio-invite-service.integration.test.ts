@@ -39,7 +39,16 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-import { eq, and, isNull } from "drizzle-orm";
+// Member caps come from config/limits.yaml; mock them so a small cap can be
+// forced per test. Default 100 keeps every other test (tiny member counts)
+// unaffected; the member-cap tests below lower it.
+const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
+vi.mock("@server/config/limits.js", () => ({
+  getStudioMemberCap: () => capRefs.studio,
+  getProjectCollaboratorCap: () => capRefs.project,
+}));
+
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { NotFoundError, ConflictError, ForbiddenError } from "@breatic/core";
 
@@ -92,14 +101,16 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  capRefs.studio = 100;
+  capRefs.project = 100;
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
   await db.delete(schema.studioInvitations);
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
   await db.delete(schema.notifications);
-  // Drop any membership the invitee gained in a prior test (keep the admin).
+  // Drop any membership the invitee / stranger gained in a prior test (keep the admin).
   await db
     .delete(schema.studioMembers)
-    .where(eq(schema.studioMembers.userId, INVITEE));
+    .where(inArray(schema.studioMembers.userId, [INVITEE, STRANGER]));
 });
 
 /** Count the invitee's ACTIVE membership rows in the team studio. */
@@ -245,5 +256,44 @@ describe("declineInvite / revokeInvite", () => {
 
     expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(0);
     expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBeNull();
+  });
+});
+
+describe("member cap (config/limits.yaml)", () => {
+  it("createInvite rejects when the studio is already at the member cap", async () => {
+    capRefs.studio = 1; // the admin alone already fills a cap of 1
+    await expect(
+      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest"),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("confirmInvite rejects when the studio filled up after the invite was sent", async () => {
+    capRefs.studio = 2; // admin (1) → one seat free when the invite is created
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    // The last seat is taken by someone else before the invitee confirms.
+    await db
+      .insert(schema.studioMembers)
+      .values({ studioId: TEAM, userId: STRANGER, role: "guest" });
+    await expect(
+      inviteService.confirmInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(ConflictError);
+    // The invitee never became a member.
+    expect(await inviteeMemberRows()).toBe(0);
+  });
+
+  it("createInvite succeeds when the studio is below the member cap", async () => {
+    capRefs.studio = 5;
+    const res = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    expect(res.invitationId).toBeTruthy();
   });
 });

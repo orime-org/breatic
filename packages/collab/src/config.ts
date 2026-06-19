@@ -24,7 +24,7 @@ const collabConfigSchema = z.object({
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
 
   // Connection limits
-  max_connections_per_document: z.number().int().min(0).default(50),
+  max_connections_per_document: z.number().int().min(0).default(100),
 
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),

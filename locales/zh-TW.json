@@ -38,12 +38,14 @@
       "already_invited": "該使用者已有一個待確認的邀請。",
       "cannot_modify_personal": "個人 Studio 無法管理成員。",
       "remove_last_admin": "移除前請先轉讓 Admin。",
-      "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。"
+      "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
+      "member_limit_reached": "該 Studio 已達到成員數上限。"
     },
     "project": {
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已有存取權限。",
-      "already_invited": "該使用者已有一個待確認的邀請。"
+      "already_invited": "該使用者已有一個待確認的邀請。",
+      "collaborator_limit_reached": "該 Project 已達到協作者數上限。"
     },
     "payment": {
       "checkout_created": "支付工作階段已建立",

@@ -157,6 +157,8 @@
 - ✅ `/healthz` 三 service 都 expose（PR #155 commit `2b4fb95` worker + collab；2026-05-28 PR server 也加了，全 `主+1` port）
 - ✅ docker-compose `healthcheck:` 接线（2026-05-28 PR）— 自愈链路闭环
 
+**2026-06-02 DB 统一后续**：collab 不再自建 postgres 池——`packages/collab/src/auth.ts` 已不存在（现为 `hooks/auth.ts`），PG 访问改走 core 的 `db` / `yjsDb` 延迟单例，连接回收配置（`idle_timeout` / `max_lifetime`）集中到 core 的 `createPgClient` 池工厂。上面计划 bullet 里的 `collab/src/auth.ts` 路径是当时旧落点、已失效。注：这条记的是 2026-05 的连接 drift 事件（已闭环）；`登录已失效` banner 若后续复发，根因未必是连接 drift，按当时实证另查、别直接套这条。
+
 ### Observability —— Prometheus `/metrics` + Grafana dashboard 待办
 
 **Why 现在不做**：CLAUDE.md "服务器端工业级标准" 7 件套中的「安全监控（生产 metrics 看 trend 提前预警）」当前只落地了结构化 log，没有 metrics 时序数值。endpoint 在 (`/healthz` 200/503 + `lint:no-library-logger` clean) 后已经是工业级最小集，但 metrics 上报 + dashboard 需要 backend monitoring sprint 单独规划（Prometheus 自托管 vs Grafana Cloud / managed Mimir 选型 + docker-compose 加 prometheus + grafana service + 各 service 加 `prom-client` 暴露 `/metrics`）。

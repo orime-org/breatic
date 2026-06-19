@@ -14,7 +14,7 @@
  * partial unique index treats `deleted_at IS NOT NULL` rows as gone).
  */
 
-import { and, eq, isNull, inArray, sql } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects } from "@core/db/schema.js";
@@ -127,6 +127,30 @@ export async function listByProjectId(
       ),
     );
   return rows.map(toEntity);
+}
+
+/**
+ * Count a project's EXPLICITLY invited members (`added_by IS NOT NULL`):
+ * editors / viewers added via an invite. The creator-owner row and the
+ * auto-materialized baseline viewers (open baseline) BOTH have
+ * `added_by = null` and are intentionally EXCLUDED — the project
+ * collaborator cap bounds the explicit invite roster only, and must never
+ * block open-baseline viewing access.
+ * @param projectId - Project UUID
+ * @returns Count of active explicitly-invited members.
+ */
+export async function countExplicitMembers(projectId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        isNull(projectMembers.deletedAt),
+        isNotNull(projectMembers.addedBy),
+      ),
+    );
+  return rows[0]?.count ?? 0;
 }
 
 /**
