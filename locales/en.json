@@ -287,6 +287,9 @@
     },
     "edge": {
       "delete": "Delete connection"
+    },
+    "upload": {
+      "unsupportedType": "This file type isn't supported yet."
     }
   },
   "editor": {

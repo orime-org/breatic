@@ -287,6 +287,9 @@
     },
     "edge": {
       "delete": "연결 삭제"
+    },
+    "upload": {
+      "unsupportedType": "이 파일 형식은 아직 지원되지 않습니다."
     }
   },
   "editor": {

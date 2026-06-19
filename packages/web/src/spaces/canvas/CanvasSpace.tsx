@@ -21,7 +21,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as React from 'react';
+import { toast } from 'sonner';
 
+import { assetsApi } from '@web/data/api';
 import {
   addEdge,
   addNode,
@@ -32,6 +34,8 @@ import {
   removeFromGroup,
   removeNode,
   setGroupBackground,
+  setNodeContent,
+  setNodeError,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -47,6 +51,10 @@ import {
 } from '@web/spaces/canvas/canvas-actions';
 import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import {
+  fileToNodeSpec,
+  runMediaUpload,
+} from '@web/spaces/canvas/canvas-upload';
 import {
   applyGroupGeometry,
   computeGroupRect,
@@ -319,10 +327,8 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
 
-  const { createNodeAt, pasteTextAt, pasteNodesAt } = useNodeCreation(
-    projectId,
-    spaceId,
-  );
+  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
+    useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -519,6 +525,114 @@ function CanvasSpaceInner({
     [createNodeAt],
   );
 
+  // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
+  // All three entries funnel here: classify each file, drop a node at a
+  // staggered offset from `origin` (flow coords), then either upload a media
+  // file (handling node → presign → PUT → content / error, every step written
+  // to Yjs so collaborators see the whole lifecycle) or inline a text file's
+  // body. Unsupported files (pdf / arbitrary binary) have no canvas node form —
+  // one toast, no node. Created nodes are batch-selected once mirrored back.
+  const processFiles = React.useCallback(
+    async (files: File[], origin: { x: number; y: number }): Promise<void> => {
+      if (readOnly || files.length === 0) return;
+      const created: string[] = [];
+      let rejected = false;
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const spec = fileToNodeSpec(file);
+        const position = {
+          x: origin.x + i * STAGGER_STEP_PX,
+          y: origin.y + i * STAGGER_STEP_PX,
+        };
+        if (!spec) {
+          rejected = true;
+          continue;
+        }
+        if (!spec.needsUpload) {
+          // Text file: read its body locally and inline it (no upload), like a
+          // text paste. `await` is sub-ms; it serializes the small batch loop.
+          created.push(pasteTextAt(await file.text(), position));
+          continue;
+        }
+        const nodeId = createUploadNodeAt(spec.nodeType, position);
+        created.push(nodeId);
+        void runMediaUpload(file, projectId, {
+          presign: assetsApi.presign,
+          putFile: assetsApi.putFile,
+          onSuccess: (fileUrl) =>
+            setNodeContent(projectId, spaceId, nodeId, fileUrl),
+          // Fixed-English wire string — like AIGC failure messages and the
+          // group default name. errorMessage is written to Yjs and rendered
+          // raw to every collaborator, so it must not freeze the uploader's
+          // locale into the shared doc. The filename is the locale-free part
+          // the user needs to know which file failed.
+          onFailure: () =>
+            setNodeError(
+              projectId,
+              spaceId,
+              nodeId,
+              `Upload failed: ${file.name}`,
+            ),
+        });
+      }
+      if (created.length > 0) setSelectAfterCreate(created);
+      if (rejected) toast.warning(t('canvas.upload.unsupportedType'));
+    },
+    [readOnly, projectId, spaceId, createUploadNodeAt, pasteTextAt, t],
+  );
+
+  // Upload-button path: chrome posted picked files (the picker must open
+  // synchronously inside the button click to keep user-activation, so it
+  // lives in chrome and posts here). Drop them at the viewport centre; the
+  // canvas owns the viewport. Always clear the mailbox afterward.
+  const pendingUploadFiles = useCanvasStore((s) => s.pendingUploadFiles);
+  const consumePendingUpload = useCanvasStore((s) => s.consumePendingUpload);
+  React.useEffect(() => {
+    if (!pendingUploadFiles) return;
+    const files = pendingUploadFiles;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect && !readOnly) {
+      const center = screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+      void processFiles(files, center);
+    }
+    consumePendingUpload();
+  }, [
+    pendingUploadFiles,
+    readOnly,
+    screenToFlowPosition,
+    processFiles,
+    consumePendingUpload,
+  ]);
+
+  // Drag-drop path: dropping OS files onto the canvas creates nodes at the
+  // cursor. onDragOver must preventDefault (and only for file drags) so the
+  // browser allows the drop; a node drag inside the canvas carries no Files.
+  const onDragOver = React.useCallback(
+    (event: React.DragEvent): void => {
+      if (readOnly || !event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    },
+    [readOnly],
+  );
+  const onDrop = React.useCallback(
+    (event: React.DragEvent): void => {
+      if (readOnly) return;
+      const files = event.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      event.preventDefault();
+      const point = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      void processFiles([...files], point);
+    },
+    [readOnly, screenToFlowPosition, processFiles],
+  );
+
   // Library path: chrome posted a create intent. Drop the node at the
   // viewport centre (the chrome button has no viewport), staggering repeats
   // so they don't stack exactly. Always clear the mailbox afterward.
@@ -631,6 +745,25 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
+
+      // File paste (screenshot / copied file) carries binary in
+      // `clipboardData.files` — route it through the upload flow, dropped at
+      // the viewport centre like a text paste. Checked first: a real file
+      // paste also has these files (a plain-text paste does not).
+      const files = event.clipboardData?.files;
+      if (files && files.length > 0) {
+        event.preventDefault();
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const center = screenToFlowPosition({
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          });
+          void processFiles([...files], center);
+        }
+        return;
+      }
+
       const text = event.clipboardData?.getData('text/plain') ?? '';
 
       const clipboardNodes = parseClipboardNodes(text);
@@ -657,7 +790,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition]);
+  }, [readOnly, pasteNodesAt, pasteTextAt, screenToFlowPosition, processFiles]);
 
   React.useEffect(() => {
     /**
@@ -804,6 +937,8 @@ function CanvasSpaceInner({
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
         className='relative h-full w-full bg-canvas'
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         <ReactFlow
           nodes={renderNodes}
