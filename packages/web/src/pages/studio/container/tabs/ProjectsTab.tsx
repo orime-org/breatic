@@ -22,7 +22,7 @@ import type {
 
 interface ProjectsTabProps {
   projects: readonly ContainerProject[];
-  /** The viewer's studio role (`null` = guest) — drives the visibility filter (invariant 1). */
+  /** The viewer's studio role (`null` = non-member) — drives the visibility filter (invariant 1). */
   studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;
@@ -60,9 +60,9 @@ export function ProjectsTab({
 }: ProjectsTabProps): React.JSX.Element {
   const t = useTranslation();
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  // Only an admin/creator of THIS studio sees the create entry (spec §7.1):
-  // studio credits are shared, so a plain member must not be able to spend them
-  // by creating. A guest (`null`) never sees it either. The dialog's selector
+  // Only an admin/maintainer of THIS studio sees the create entry (spec §7.1):
+  // studio credits are shared, so a plain guest must not be able to spend them
+  // by creating. A non-member (`null`) never sees it either. The dialog's selector
   // can still target a different studio the viewer may create in.
   const canCreate = canCreateInStudio(studioRole);
   const visible = projects.filter((project) =>

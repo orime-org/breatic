@@ -30,7 +30,7 @@ export interface ItemAccess {
  * role —
  * a non-member viewing the public shell, decision A) sees only studio-visible
  * items.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @param item the item's visibility + the viewer's role on it.
  * @returns whether the card should be rendered.
  */
@@ -49,7 +49,7 @@ export function canRenderItemCard(
  * visibility) on an item (spec §4 invariant 2). Only the item Owner or a
  * studio Admin may; a non-owner Guest and a non-member (`null` studio role) never
  * see governance controls.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @param isOwner whether the viewer owns the item.
  * @returns whether governance controls should be shown.
  */
@@ -67,7 +67,7 @@ export function canManageItem(
  * spend them. Gates the create entry in the rail (§4.1) and the Projects tab
  * (§7.1); the server re-checks the same rule on create (`requireStudioCreate
  * Access`), so this is a UX gate, not the security boundary.
- * @param studioRole the viewer's studio-level role, or `null` for a guest.
+ * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @returns whether the viewer may create in the studio.
  */
 export function canCreateInStudio(studioRole: StudioRole | null): boolean {

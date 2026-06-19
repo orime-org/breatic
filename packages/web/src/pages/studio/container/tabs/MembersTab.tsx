@@ -41,7 +41,7 @@ interface MembersTabProps {
    * Rendered in a separate "invited" section with a revoke action.
    */
   pendingInvitations: readonly PendingInvitationSummary[];
-  /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = guest. */
+  /** Invite / remove / role changes are Admin-only (DD §5.2); `null` = non-member. */
   studioRole: StudioRole | null;
   /**
    * Personal studios are permanently single-member (decision A, 2026-06-08): the tab

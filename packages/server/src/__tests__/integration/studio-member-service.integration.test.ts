@@ -11,7 +11,7 @@
  *   - removeMember: in one tx clears the kicked member's access across ALL the
  *     studio's projects AND transfers each project they own to the acting
  *     admin; refuses to remove the sole admin (Conflict) and a personal studio.
- *   - updateMemberRole: creator↔member only; refuses admin and personal studio.
+ *   - updateMemberRole: maintainer↔guest only; refuses admin and personal studio.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -131,7 +131,7 @@ describe("removeMember", () => {
 });
 
 describe("updateMemberRole", () => {
-  it("changes a member to creator", async () => {
+  it("changes a member to maintainer", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);

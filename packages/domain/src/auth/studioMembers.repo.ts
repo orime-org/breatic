@@ -209,7 +209,7 @@ export async function softDelete(
 }
 
 /**
- * Update an active member's role — backs change-role (creator↔member) and the
+ * Update an active member's role — backs change-role (maintainer↔guest) and the
  * two same-tx steps of transfer-admin (demote old admin, promote new).
  *
  * Only touches the active row. Bumping to 'admin' while another active admin

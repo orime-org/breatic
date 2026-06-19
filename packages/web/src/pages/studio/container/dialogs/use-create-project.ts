@@ -14,7 +14,7 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 /**
  * The create-project flow shared by the rail (a global entry) and the container
  * Projects tab (spec §7 / §8.2). It creates the project in the studio the user
- * selected — the server checks the caller is that studio's `admin`/`creator`
+ * selected — the server checks the caller is that studio's `admin`/`maintainer`
  * and rejects otherwise (§8.2) — then refreshes that studio's projects and
  * navigates straight INTO the new project (decision B): the creator lands in
  * the canvas, and the project page records the open so the project also surfaces

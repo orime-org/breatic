@@ -175,7 +175,7 @@ describe("getStudioDetail", () => {
     expect(mockLoadStudioRole).toHaveBeenCalledWith("user-1", "studio-1");
   });
 
-  it("returns myStudioRole null for a non-member — the public shell (decision A: 200 + guest, not 403)", async () => {
+  it("returns myStudioRole null for a non-member — the public shell (decision A: 200 + non-member, not 403)", async () => {
     vi.mocked(studioRepo.getBySlug).mockResolvedValueOnce(STUDIO);
     vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
       new Map([["studio-1", 1]]),
@@ -249,7 +249,7 @@ describe("listUserStudios", () => {
 
   it("carries each studio's myStudioRole through for the rail ④⑤ split", async () => {
     // user-1 is admin of their personal STUDIO and only a member of TEAM_STUDIO
-    // — the rail splits 我的 (admin) vs 我加入的 (creator/member) on this role.
+    // — the rail splits 我的 (admin) vs 我加入的 (maintainer/guest) on this role.
     vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
       { ...STUDIO, myStudioRole: "admin" },
       { ...TEAM_STUDIO, myStudioRole: "guest" },

@@ -180,7 +180,7 @@ describe("softDelete — remove member (state-only)", () => {
 });
 
 describe("updateRole — change role / transfer steps", () => {
-  it("changes an active member's role (member→creator), returns true", async () => {
+  it("changes an active member's role (guest→maintainer), returns true", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudio(admin);

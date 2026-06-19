@@ -5,9 +5,9 @@
  * project.service.create unit test (3-role studio-scoped create).
  *
  * `create` takes a target `studioId` and authorizes the caller's CURRENT
- * studio role (spec §0.2 / §8.2): only `admin` or `creator` may create a
- * project — `member` and non-members (role `null`) are rejected, because a
- * studio's credits are shared and a plain member must not be able to spend
+ * studio role (spec §0.2 / §8.2): only `admin` or `maintainer` may create a
+ * project — `guest` and non-members (role `null`) are rejected, because a
+ * studio's credits are shared and a plain guest must not be able to spend
  * them by creating projects. The create still writes ONLY the business rows
  * (projects + project_members) inside one transaction — the Yjs meta doc is
  * lazy-seeded by collab on first load (after the two-DB cutover).
@@ -59,7 +59,7 @@ vi.mock("@breatic/shared", async (importActual: () => Promise<Record<string, unk
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { create } from "@server/modules/project/project.service.js";
 
-describe("project.service.create — studio-scoped, admin/creator gate (spec §0.2/§8.2)", () => {
+describe("project.service.create — studio-scoped, admin/maintainer gate (spec §0.2/§8.2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(projectRepo.createProject).mockResolvedValue({
@@ -96,7 +96,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
   });
 
-  it("allows a creator to create (admin + creator may spend studio credits)", async () => {
+  it("allows a maintainer to create (admin + maintainer may spend studio credits)", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("maintainer");
 
     await create("u-1", "studio-9", "P", "p", "studio", "canvas");
@@ -104,7 +104,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a plain member with ForbiddenError (cannot burn shared studio credits)", async () => {
+  it("rejects a plain guest with ForbiddenError (cannot burn shared studio credits)", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("guest");
 
     await expect(

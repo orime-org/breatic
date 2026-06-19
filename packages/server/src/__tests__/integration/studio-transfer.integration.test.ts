@@ -15,7 +15,7 @@
  * builder cannot reproduce them, so they are proven here:
  *
  *   - requestTransfer lands an actionable notification with a future expiry.
- *   - confirm demotes the old admin to member, promotes the recipient to
+ *   - confirm demotes the old admin to guest, promotes the recipient to
  *     admin, and notifies the old admin — leaving EXACTLY ONE active admin.
  *   - an expired request cannot be confirmed (Conflict).
  *   - two concurrent confirms apply the transfer EXACTLY ONCE.

@@ -91,10 +91,10 @@ describe('studio access — effectiveItemRole', () => {
   });
 });
 
-// Decision A: the studio shell is public, so a guest (`null` studio role — a
-// non-member viewing) can reach the tabs. A non-member sees only studio-visible
+// Decision A: the studio shell is public, so a non-member (`null` studio role)
+// can reach the tabs. A non-member sees only studio-visible
 // items and manages nothing. Exhaustive over (visibility × myRole).
-const GUEST_RENDER_MATRIX: ReadonlyArray<
+const NON_MEMBER_RENDER_MATRIX: ReadonlyArray<
   [ItemVisibility, ItemRole | null, boolean]
 > = [
   ['studio', 'owner', true],
@@ -104,18 +104,18 @@ const GUEST_RENDER_MATRIX: ReadonlyArray<
   ['private', 'owner', true],
   ['private', 'editor', true],
   ['private', 'viewer', true],
-  ['private', null, false], // guest, private, no role → hidden
+  ['private', null, false], // non-member, private, no role → hidden
 ];
 
-describe('studio access — guest (null studio role, decision A)', () => {
-  it.each(GUEST_RENDER_MATRIX)(
-    'guest / vis=%s / role=%s → render=%s',
+describe('studio access — non-member (null studio role, decision A)', () => {
+  it.each(NON_MEMBER_RENDER_MATRIX)(
+    'non-member / vis=%s / role=%s → render=%s',
     (visibility, myRole, expected) => {
       expect(canRenderItemCard(null, { visibility, myRole })).toBe(expected);
     },
   );
 
-  it('a guest sees a studio-visible item but never a private item they have no role on', () => {
+  it('a non-member sees a studio-visible item but never a private item they have no role on', () => {
     expect(canRenderItemCard(null, { visibility: 'studio', myRole: null })).toBe(
       true,
     );
@@ -124,7 +124,7 @@ describe('studio access — guest (null studio role, decision A)', () => {
     ).toBe(false);
   });
 
-  it('a guest never gets governance controls', () => {
+  it('a non-member never gets governance controls', () => {
     expect(canManageItem(null, false)).toBe(false);
   });
 });

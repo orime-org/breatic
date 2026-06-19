@@ -92,7 +92,7 @@ export interface StudioSummary {
   memberCount: number;
   /**
    * The viewing user's CURRENT role in this studio (`studio_members.role`),
-   * or `null` when they are not a member (a guest viewing the front door).
+   * or `null` when they are not a member (a non-member viewing the front door).
    * Transfer-safe — reflects the current admin, NOT the immutable
    * `createdByUserId`. Drives the rail's "My studios" (`admin`) vs "Joined
    * studios" (`maintainer`/`guest`) split, and the create gate
@@ -107,7 +107,7 @@ export interface StudioSummary {
  * `GET /studio/:slug`. Structurally identical to `StudioSummary`; the
  * difference is semantic — the front door is visible to any authenticated
  * user (a studio's `/studio/{slug}` page is its front door, like a profile
- * page), so `myStudioRole` is `null` for a guest (non-member). Private
+ * page), so `myStudioRole` is `null` for a non-member. Private
  * content inside the studio's tabs is gated by this role (later slices).
  */
 export type StudioDetail = StudioSummary;

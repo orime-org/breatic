@@ -11,9 +11,9 @@
  * Postgres (a mocked query builder returns whatever the test stages,
  * regardless of the JOIN / soft-delete / grouped-count clauses):
  *
- *   1. getStudioDetail.myStudioRole — `admin` / `member` for active members,
- *      `null` for a non-member. Decision A: a non-member gets the shell
- *      (200 + guest), NOT a 403; a missing slug is a 404.
+ *   1. getStudioDetail.myStudioRole — `admin` / `maintainer` / `guest` for active
+ *      members, `null` for a non-member. Decision A: a non-member gets the shell
+ *      (200 + non-member), NOT a 403; a missing slug is a 404.
  *   2. memberCount — the grouped count over `studio_members` excludes
  *      soft-deleted members.
  *   3. listUserStudios — every active membership (personal + team), with
@@ -122,7 +122,7 @@ async function softDeleteMember(studioId: string, userId: string): Promise<void>
 }
 
 describe("getStudioDetail — public shell + viewer role (decision A)", () => {
-  it("resolves admin / member for active members and null (guest) for a non-member, with memberCount", async () => {
+  it("resolves admin / guest for active members and null (non-member) for a non-member, with memberCount", async () => {
     const owner = await insertUser();
     const member = await insertUser();
     const stranger = await insertUser();
@@ -140,7 +140,7 @@ describe("getStudioDetail — public shell + viewer role (decision A)", () => {
     expect((await studioService.getStudioDetail(studio.slug, member)).myStudioRole).toBe(
       "guest",
     );
-    // Non-member gets the shell (200 + guest), NOT a 403 — decision A.
+    // Non-member gets the shell (200 + non-member), NOT a 403 — decision A.
     expect(
       (await studioService.getStudioDetail(studio.slug, stranger)).myStudioRole,
     ).toBeNull();

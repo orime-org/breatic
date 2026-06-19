@@ -123,7 +123,7 @@ export const studiosApi = {
    * `GET /api/v1/studio/:slug/projects` — the studio's projects the viewer may
    * see (slice 2 open-baseline visibility, server-side filtered): a member
    * sees studio-visible projects + their own-role private ones, an admin sees
-   * all, a guest gets an empty list. Each row carries the viewer's `myRole`
+   * all, a non-member gets an empty list. Each row carries the viewer's `myRole`
    * (`null` for a studio-visible project not yet entered).
    * @param slug the studio's URL handle.
    * @returns the visible project summaries.

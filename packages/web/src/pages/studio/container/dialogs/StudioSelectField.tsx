@@ -19,7 +19,7 @@ export interface StudioOption {
 }
 
 interface StudioSelectFieldProps {
-  /** The studios the viewer may create in (already filtered to admin/creator). */
+  /** The studios the viewer may create in (already filtered to admin/maintainer). */
   studios: readonly StudioOption[];
   /** The currently selected studio id. */
   value: string;
@@ -34,7 +34,7 @@ interface StudioSelectFieldProps {
 /**
  * The create-project studio selector (spec §7.1, GitHub-owner style) — picks
  * which studio a new project is created in. It lists only the studios the
- * viewer may create projects in (admin/creator, computed by the caller via
+ * viewer may create projects in (admin/maintainer, computed by the caller via
  * `creatableStudios`). Today that is usually one option (the personal studio),
  * but the control is rendered regardless so it is forward-correct once team
  * studios land — no rework needed.

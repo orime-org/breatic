@@ -158,7 +158,7 @@ async function storedSpaceType(projectId: string): Promise<string> {
   return rows[0]!.t;
 }
 
-describe("projectService.create — studio admin/creator gate (critical path 鉴权 + §0.2)", () => {
+describe("projectService.create — studio admin/maintainer gate (critical path 鉴权 + §0.2)", () => {
   it("admin creates in the target studio: project lands there + one owner row for the caller", async () => {
     const admin = await insertUser();
     const studioId = await insertStudio(admin);
@@ -180,15 +180,15 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     expect(await storedSpaceType(project.id)).toBe("canvas");
   });
 
-  it("a creator may create (admin + creator can spend shared studio credits)", async () => {
+  it("a maintainer may create (admin + maintainer can spend shared studio credits)", async () => {
     const admin = await insertUser();
-    const creator = await insertUser();
+    const maintainer = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, creator, "maintainer");
+    await insertStudioMember(studioId, maintainer, "maintainer");
 
     const project = await projectService.create(
-      creator,
+      maintainer,
       studioId,
       "Creator Project",
       "creator-gate-project",
@@ -197,13 +197,13 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     );
 
     expect(project.studioId).toBe(studioId);
-    expect(project.createdByUserId).toBe(creator);
+    expect(project.createdByUserId).toBe(maintainer);
     // A non-default type persists end-to-end (B.2 plumbing — even though
     // document is disabled in the picker, the column stores any SpaceType).
     expect(await storedSpaceType(project.id)).toBe("document");
   });
 
-  it("a plain member is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {
+  it("a plain guest is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studioId = await insertStudio(admin);
@@ -258,7 +258,7 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     expect(adminIds.has(pPrivateAdmin)).toBe(true);
     expect(asAdmin.find((p) => p.id === pPrivateMember)!.myRole).toBeNull();
 
-    // Non-member: no projects (guest shell).
+    // Non-member: no projects (non-member shell).
     expect(await projectService.listByStudioForViewer(studioId, stranger)).toEqual([]);
   });
 

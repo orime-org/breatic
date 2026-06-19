@@ -13,7 +13,7 @@
  *     7 days.
  *   - `confirmTransfer`: the recipient accepts. In ONE db.transaction: mark
  *     the request read (the CAS serialization point), then demote the old
- *     admin to member FIRST and promote the recipient to admin SECOND (order
+ *     admin to guest FIRST and promote the recipient to admin SECOND (order
  *     is load-bearing — promoting first would collide with the
  *     `studio_members_one_admin_per_studio` partial unique), then notify the
  *     old admin via `studio.transfer_approved`.
@@ -99,7 +99,7 @@ export async function requestTransfer(
  *
  * In one transaction: (1) mark-read CAS on the request (serialization point),
  * (2) re-read + gate the notification (right type, still within its TTL),
- * (3) demote the old admin to member FIRST, (4) promote the recipient to admin
+ * (3) demote the old admin to guest FIRST, (4) promote the recipient to admin
  * SECOND (order avoids the one-admin partial unique), (5) notify the old admin
  * with `studio.transfer_approved`.
  * @param notificationId - The `studio.transfer_request` notification id

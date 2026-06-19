@@ -40,11 +40,11 @@ interface InviteMemberDialogProps {
 
 /**
  * The invite-member dialog (spec §3.7) — a small form (registered email + a
- * `creator` / `member` role) that an admin uses to add someone to a team
+ * `maintainer` / `guest` role) that an admin uses to add someone to a team
  * studio. On a valid submit it reports the values to the parent (which runs the
  * mutation) and keeps the dialog open until the parent closes it on success, so
  * a server error (`404` email not registered / `409` already a member) can be
- * shown inline without losing the typed input. The role defaults to `member`.
+ * shown inline without losing the typed input. The role defaults to `guest`.
  * @param props the open state, submit callback, pending flag and inline error.
  * @param props.open whether the dialog is open.
  * @param props.onOpenChange called when the open state should change.

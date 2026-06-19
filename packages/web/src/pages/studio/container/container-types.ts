@@ -16,7 +16,7 @@ import type {
 } from '@web/pages/studio/shared/studio-types';
 
 // `StudioDetail` is the shared API contract (`GET /studio/:slug`): the studio
-// shell + the viewer's role (`myStudioRole`, `null` = guest). Re-exported so
+// shell + the viewer's role (`myStudioRole`, `null` = non-member). Re-exported so
 // the header / settings tab keep importing it from the container module.
 export type { StudioDetail };
 

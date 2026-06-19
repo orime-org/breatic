@@ -15,7 +15,7 @@ function studio(
 }
 
 describe('splitStudios (rail ④⑤ — spec §0.2 / §4.2, current-role split)', () => {
-  it('puts admin studios in owned (④我的), creator + member in joined (⑤我加入的)', () => {
+  it('puts admin studios in owned (④我的), maintainer + guest in joined (⑤我加入的)', () => {
     const { owned, joined } = splitStudios([
       studio('personal', 'admin', 'personal'),
       studio('myteam', 'admin'),
@@ -38,7 +38,7 @@ describe('splitStudios (rail ④⑤ — spec §0.2 / §4.2, current-role split)'
     expect(joined.map((s) => s.id)).toEqual(['a', 'c']);
   });
 
-  it('treats a null role (a guest — never present in the studios list) as neither group', () => {
+  it('treats a null role (a non-member — never present in the studios list) as neither group', () => {
     const { owned, joined } = splitStudios([studio('x', null)]);
 
     expect(owned).toEqual([]);

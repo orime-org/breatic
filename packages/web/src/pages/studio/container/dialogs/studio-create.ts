@@ -8,9 +8,10 @@ import type {
 
 /**
  * The studios the viewer may create projects in (spec §8.2 / §0.2): only an
- * `admin` or `creator` may create — a `member` cannot (studio credits are
- * shared, so a plain member must not be able to spend them by creating). Guest
- * studios never reach here (`GET /studios` filters to active memberships).
+ * `admin` or `maintainer` may create — a `guest` cannot (studio credits are
+ * shared, so a plain guest must not be able to spend them by creating). Studios
+ * the viewer is not a member of never reach here (`GET /studios` filters to
+ * active memberships).
  * @param studios the viewer's studios, each with its current `myStudioRole`.
  * @returns the subset the viewer may create projects in, order preserved.
  */
@@ -25,7 +26,7 @@ export function creatableStudios(
 /**
  * The studio to pre-select in the create-project selector (spec §7.1): inside a
  * container where the viewer is the **admin** → that studio; otherwise (a
- * global/rail entry, or a studio the viewer is only a member/creator of) → the
+ * global/rail entry, or a studio the viewer is only a guest/maintainer of) → the
  * personal studio (the viewer is always its admin). The result is always one of
  * the `creatableStudios` options; `undefined` only when none exists (never in
  * practice — the personal studio always exists and the viewer is its admin).

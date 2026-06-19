@@ -57,7 +57,7 @@ export interface AcceptedInvite {
  * @param input - Studio, invitee, granted role, inviting admin, TTL, optional tx
  * @param input.studioId - The studio the invite is into
  * @param input.invitedUserId - The registered user being invited
- * @param input.role - Granted studio role (creator | member)
+ * @param input.role - Granted studio role (maintainer | guest)
  * @param input.invitedBy - The inviting admin's user id
  * @param input.expiresAt - When the invite times out (matches the notification TTL)
  * @param input.tx - Optional drizzle transaction handle

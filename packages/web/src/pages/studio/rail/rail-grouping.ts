@@ -7,7 +7,7 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 export interface RailStudioGroups {
   /** ④ "My studios" — studios I currently administer (`myStudioRole === 'admin'`). */
   owned: readonly StudioSummary[];
-  /** ⑤ "Joined studios" — studios I'm in but don't own (`creator` / `member`). */
+  /** ⑤ "Joined studios" — studios I'm in but don't own (`maintainer` / `guest`). */
   joined: readonly StudioSummary[];
 }
 
