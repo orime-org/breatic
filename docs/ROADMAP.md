@@ -83,7 +83,7 @@
 - [x] **节点模型契约修订（PR #235）**：删 `generative`/`outputType`/`isPrimary`，把 Generate 输入（`prompt`/`model`/`references`/`params`/`kind`）relocate 进节点 data；group 节点加 `backgroundColor`；生成子模式 = `kind` 字段（wire `kind`→view `generateMode` 避撞）
 - [x] **节点创建入口（PR #236）+ 剪贴板（PR #238）**：左节点库下拉 + 画布右键菜单建 4 模态空节点（视口中心 / 光标落点 + 阶梯防重叠 + 建后选中）· 节点名字头双击改名 · viewer 只读拦截 · 复制/粘贴节点（系统剪贴板单一真相源，marker JSON）+ 纯文本粘贴建文本节点
 - [x] **画布分组（PR #257）**：框选/Cmd·Ctrl+G 打组 → 容器由成员 bbox+padding 派生几何（不用 ReactFlow `parentId`，绝对坐标 + 拖组自定义位移带子节点）· 4 status 底色 + 无色 · 双击组名改名（共用 `useInlineRename` hook）· 拖单节点进/出组（drag-end 碰撞判定）· 删组放回子节点 · 不嵌套、组无 lock
-- [x] **画布级文件上传**：三入口（左「上传素材」按钮 / 拖拽落画布 / 图片·文件粘贴）→ 按 MIME 分流 → 媒体走 presign 直传建对应媒体节点（即刻建 `handling` 节点写 Yjs → 成功写 `content` / 失败写 `errorMessage`〔含文件名、固定英文进 Yjs 协作端可见〕，全程前端独占写、复用已有节点状态机）· 文本文件本地读不上传 · 不支持类型 toast 提示不建节点；后端 presign 零改动
+- [x] **画布级文件上传（PR #258）**：三入口（左「上传素材」按钮 / 拖拽落画布 / 图片·文件粘贴）→ 按 MIME 分流 → 媒体走 presign 直传建对应媒体节点（即刻建 `handling` 节点写 Yjs → 成功写 `content` / 失败写 `errorMessage`〔含文件名、固定英文进 Yjs 协作端可见〕，全程前端独占写、复用已有节点状态机）· 文本文件本地读不上传 · 不支持类型 toast 提示不建节点；后端 presign 零改动
 - [x] **文档权限控制（PR #251）**：collab `onAuthenticate` 按 project 成员关系定 `connectionConfig.readOnly`（viewer 只读连接拒写 Yjs sync），前端 `nodesDraggable`/chrome 角色 gate 双层
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
