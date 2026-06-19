@@ -9,9 +9,11 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
   addNode,
+  addToGroup,
   readEdges,
   readNodes,
   removeEdge,
+  removeFromGroup,
   removeNode,
   setNodeLocked,
   setNodeName,
@@ -203,5 +205,58 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
     removeEdge(PID, SID, 'e1');
     expect(readEdges(doc())).toHaveLength(0);
+  });
+
+  describe('group membership — addToGroup / removeFromGroup', () => {
+    /** Read a group's childIds straight off the wire data Y.Map. */
+    function childIds(groupId: string): string[] | undefined {
+      const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
+      const data = g?.get('data');
+      return data instanceof Y.Map ? (data.get('childIds') as string[]) : undefined;
+    }
+
+    it('addToGroup appends a node to childIds, idempotent (no duplicate)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      addToGroup(PID, SID, 'g1', 'n2');
+      expect(childIds('g1')).toEqual(['n1', 'n2']);
+      addToGroup(PID, SID, 'g1', 'n2');
+      expect(childIds('g1')).toEqual(['n1', 'n2']);
+    });
+
+    it('addToGroup refuses to nest a group (a group is never a member — 不嵌套)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['n2'] }, { id: 'g2' }));
+      addToGroup(PID, SID, 'g1', 'g2');
+      expect(childIds('g1')).toEqual(['n1']);
+    });
+
+    it('addToGroup moves a node from its old group to the new one (成员不相交)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['nc'] }, { id: 'gB' }));
+      addToGroup(PID, SID, 'gB', 'na');
+      expect(childIds('gA')).toEqual(['nb']);
+      expect(childIds('gB')).toEqual(['nc', 'na']);
+    });
+
+    it('addToGroup deletes the old group when the moved node was its last child (删空组)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['x'] }, { id: 'gB' }));
+      addToGroup(PID, SID, 'gB', 'only');
+      expect(doc().getMap('nodesMap').get('gA')).toBeUndefined();
+      expect(childIds('gB')).toEqual(['x', 'only']);
+    });
+
+    it('removeFromGroup removes a member; the group survives while others remain', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2'] }, { id: 'g1' }));
+      removeFromGroup(PID, SID, 'g1', 'n1');
+      expect(childIds('g1')).toEqual(['n2']);
+    });
+
+    it('removeFromGroup deletes the group when its last member leaves (不变量 1)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'g1' }));
+      removeFromGroup(PID, SID, 'g1', 'only');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+    });
   });
 });
