@@ -7,10 +7,11 @@ import {
   MODALITY_ICONS,
   MODALITY_LABEL,
 } from '@web/spaces/canvas/nodes/_shared/modality';
+import {
+  MAX_NODE_NAME_LEN,
+  useInlineRename,
+} from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
-
-/** Node name length cap — over-long names are clipped on commit + ellipsised. */
-const MAX_NODE_NAME_LEN = 30;
 
 interface NodeHeaderProps {
   modality: Modality;
@@ -40,54 +41,15 @@ export function NodeHeader({
   readOnly = false,
   onRename,
 }: NodeHeaderProps): React.JSX.Element {
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState('');
-  // Guards Enter + blur from double-firing the commit (and stops a stale
-  // blur from committing after Escape) — a ref so the check is synchronous.
-  const editingRef = React.useRef(false);
-  const inputRef = React.useRef<HTMLInputElement>(null);
   const Icon = MODALITY_ICONS[modality];
   const display = name && name.length > 0 ? name : MODALITY_LABEL[modality];
-
-  // Match the project-title editor: on entering edit, focus AND select the
-  // whole name so a keystroke replaces it immediately.
-  React.useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  /**
-   * Enter edit mode (unless read-only), seeding the draft with the display name.
-   */
-  const startEdit = (): void => {
-    if (readOnly) return;
-    setDraft(display);
-    editingRef.current = true;
-    setEditing(true);
-  };
-
-  /**
-   * Commit the trimmed draft as the new name and leave edit mode. Blank
-   * drafts leave the name unchanged. Guarded so Enter + the unmount blur
-   * fire at most one rename.
-   */
-  const commit = (): void => {
-    if (!editingRef.current) return;
-    editingRef.current = false;
-    const next = draft.trim().slice(0, MAX_NODE_NAME_LEN);
-    if (next.length > 0) onRename?.(next);
-    setEditing(false);
-  };
-
-  /**
-   * Leave edit mode discarding the draft (Escape).
-   */
-  const cancel = (): void => {
-    editingRef.current = false;
-    setEditing(false);
-  };
+  const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
+    useInlineRename({
+      current: display,
+      readOnly,
+      maxLength: MAX_NODE_NAME_LEN,
+      onRename,
+    });
 
   return (
     <div

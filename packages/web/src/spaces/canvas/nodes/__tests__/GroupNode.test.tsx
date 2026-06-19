@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { GroupNode } from '@web/spaces/canvas/nodes/GroupNode';
 
@@ -38,5 +38,44 @@ describe('GroupNode', () => {
       <GroupNode data={{ kind: 'group', name: 'My Group', childIds: ['a'] }} />,
     );
     expect(screen.getByTestId('group-name')).toHaveTextContent('My Group');
+  });
+
+  it('enters edit mode when the name is double-clicked', () => {
+    render(
+      <GroupNode data={{ kind: 'group', childIds: ['a'] }} onRename={vi.fn()} />,
+    );
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    expect(screen.getByTestId('group-name-input')).toBeInTheDocument();
+  });
+
+  it('commits the new name on Enter', () => {
+    const onRename = vi.fn();
+    render(
+      <GroupNode
+        data={{ kind: 'group', name: 'Group', childIds: ['a'] }}
+        onRename={onRename}
+      />,
+    );
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    const input = screen.getByTestId('group-name-input');
+    fireEvent.change(input, { target: { value: 'Scenes' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledExactlyOnceWith('Scenes');
+  });
+
+  it('cancels on Escape without renaming', () => {
+    const onRename = vi.fn();
+    render(
+      <GroupNode
+        data={{ kind: 'group', name: 'Group', childIds: ['a'] }}
+        onRename={onRename}
+      />,
+    );
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    const input = screen.getByTestId('group-name-input');
+    fireEvent.change(input, { target: { value: 'Scenes' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('group-name-input')).toBeNull();
   });
 });
