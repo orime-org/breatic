@@ -23,8 +23,20 @@ describe('GroupNode', () => {
     });
   });
 
-  it('shows the lock indicator when locked', () => {
-    render(<GroupNode data={{ kind: 'group' }} locked />);
-    expect(screen.getByTestId('node-lock-indicator')).toBeInTheDocument();
+  it('does not render a lock indicator — a group has no lock (§1.1)', () => {
+    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} locked />);
+    expect(screen.queryByTestId('node-lock-indicator')).toBeNull();
+  });
+
+  it('renders the group name header, defaulting to "Group"', () => {
+    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    expect(screen.getByTestId('group-name')).toHaveTextContent('Group');
+  });
+
+  it('shows a custom group name in the header', () => {
+    render(
+      <GroupNode data={{ kind: 'group', name: 'My Group', childIds: ['a'] }} />,
+    );
+    expect(screen.getByTestId('group-name')).toHaveTextContent('My Group');
   });
 });

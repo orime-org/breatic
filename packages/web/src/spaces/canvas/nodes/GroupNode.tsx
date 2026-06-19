@@ -9,31 +9,33 @@ import type { GroupNodeView } from '@web/spaces/canvas/types/node-view';
 interface GroupNodeProps {
   data: GroupNodeView;
   selected?: boolean;
+  /**
+   * Generic node prop carried by the registry. A group has **no lock**
+   * (§1.1 — grouping is the organizational dimension; content editability is
+   * each node's own lock), so this is intentionally ignored.
+   */
   locked?: boolean;
 }
 
 /**
  * Group container node — a canvas region that holds other nodes (model
- * revision 2026-06-15: group is a core feature). This is the minimal
- * placeholder: a dashed, optionally tinted container so the group renders
- * cleanly. The full grouping interactions (marquee-group, lock-move, child
- * containment via ReactFlow `parentId`) land in the dedicated group slice.
+ * revision 2026-06-15: group is a core feature). A dashed, optionally tinted
+ * container with a name label above it. Geometry is derived from the group's
+ * children at render (no manual resize); members are independent nodes drawn
+ * on top, not re-rendered here.
  * @param root0 - Group node props.
- * @param root0.data - Group view (container tint + child ids).
+ * @param root0.data - Group view (name + container tint + child ids).
  * @param root0.selected - Whether the group is selected, tinting its border.
- * @param root0.locked - Whether the group is locked, showing the lock indicator.
  * @returns The group container element.
  */
 export function GroupNode({
   data,
   selected,
-  locked,
 }: GroupNodeProps): React.JSX.Element {
   return (
     <div
       data-testid='group-node'
       data-selected={selected ? 'true' : 'false'}
-      data-locked={locked ? 'true' : 'false'}
       style={
         data.backgroundColor
           ? { backgroundColor: data.backgroundColor }
@@ -44,15 +46,12 @@ export function GroupNode({
         selected ? 'border-status-selected' : 'border-border',
       )}
     >
-      {locked ? (
-        <div
-          aria-hidden='true'
-          data-testid='node-lock-indicator'
-          className='absolute right-1 top-1 rounded-full bg-muted px-1 text-2xs text-muted-foreground'
-        >
-          lock
-        </div>
-      ) : null}
+      <div
+        data-testid='group-name'
+        className='absolute -top-5 left-0 max-w-[180px] truncate text-xs text-muted-foreground'
+      >
+        {data.name ?? 'Group'}
+      </div>
     </div>
   );
 }
