@@ -25,8 +25,11 @@ import * as React from 'react';
 import {
   addEdge,
   addNode,
+  addToGroup,
+  moveGroup,
   removeEdge,
   removeElements,
+  removeFromGroup,
   removeNode,
   setGroupBackground,
   setNodeLocked,
@@ -48,6 +51,10 @@ import {
   applyGroupGeometry,
   computeGroupRect,
 } from '@web/spaces/canvas/group-geometry';
+import {
+  resolveGroupDrop,
+  type GroupBox,
+} from '@web/spaces/canvas/group-membership';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -140,6 +147,50 @@ function toFlowNode(node: CanvasNodeView): Node {
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
+}
+
+/** Fallback footprint for an unmeasured node when hit-testing its center. */
+const NODE_FALLBACK_W = 160;
+const NODE_FALLBACK_H = 96;
+
+/**
+ * A node's center in flow coordinates, from its measured size (or a default
+ * before ReactFlow has measured it).
+ * @param node - The flow node.
+ * @returns The node's center point.
+ */
+function nodeCenter(node: Node): { x: number; y: number } {
+  const width = node.measured?.width ?? NODE_FALLBACK_W;
+  const height = node.measured?.height ?? NODE_FALLBACK_H;
+  return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
+}
+
+/**
+ * Build the hit-test boxes for every group, excluding the dragged node from
+ * each group's bounds so a member dragged out of its own group reads as
+ * "outside" (the group's rect is its *other* members' bounds). A group with
+ * no remaining members is skipped (its sole member following it is a move,
+ * not a leave). `childIds` keeps the dragged node so its current group is
+ * still detectable.
+ * @param flowNodes - The current flow nodes.
+ * @param draggedId - The node being dropped (excluded from each rect).
+ * @returns One {@link GroupBox} per group with a resolvable rect.
+ */
+function groupBoxesFor(
+  flowNodes: ReadonlyArray<Node>,
+  draggedId: string,
+): GroupBox[] {
+  const boxes: GroupBox[] = [];
+  for (const node of flowNodes) {
+    if (node.type !== 'group') continue;
+    const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
+    const members = flowNodes.filter(
+      (member) => childIds.includes(member.id) && member.id !== draggedId,
+    );
+    const rect = computeGroupRect(members);
+    if (rect) boxes.push({ id: node.id, rect, childIds });
+  }
+  return boxes;
 }
 
 /**
@@ -308,11 +359,89 @@ function CanvasSpaceInner({
     setFlowEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
+  // Group drag carries its members: a group node has no authoritative position
+  // (geometry is derived from its members), so dragging it translates every
+  // member instead. We track the drag delta and move members locally each
+  // frame (smooth, no Yjs churn); the final delta is persisted once on stop
+  // (one moveGroup = one undo entry). Members keep their real positions.
+  const groupDragRef = React.useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    childIds: string[];
+  } | null>(null);
+
+  const onNodeDragStart = React.useCallback(
+    (_event: React.MouseEvent, node: Node): void => {
+      if (node.type !== 'group') return;
+      const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
+      groupDragRef.current = {
+        id: node.id,
+        startX: node.position.x,
+        startY: node.position.y,
+        lastX: node.position.x,
+        lastY: node.position.y,
+        childIds,
+      };
+    },
+    [],
+  );
+
+  const onNodeDrag = React.useCallback(
+    (_event: React.MouseEvent, node: Node): void => {
+      const drag = groupDragRef.current;
+      if (!drag || drag.id !== node.id) return;
+      const dx = node.position.x - drag.lastX;
+      const dy = node.position.y - drag.lastY;
+      if (dx === 0 && dy === 0) return;
+      drag.lastX = node.position.x;
+      drag.lastY = node.position.y;
+      setFlowNodes((current) =>
+        current.map((flowNode) =>
+          drag.childIds.includes(flowNode.id)
+            ? {
+              ...flowNode,
+              position: {
+                x: flowNode.position.x + dx,
+                y: flowNode.position.y + dy,
+              },
+            }
+            : flowNode,
+        ),
+      );
+    },
+    [],
+  );
+
   const onNodeDragStop = React.useCallback(
     (_event: React.MouseEvent, node: Node): void => {
+      const drag = groupDragRef.current;
+      if (node.type === 'group' && drag && drag.id === node.id) {
+        groupDragRef.current = null;
+        const dx = node.position.x - drag.startX;
+        const dy = node.position.y - drag.startY;
+        if (dx !== 0 || dy !== 0) {
+          moveGroup(projectId, spaceId, node.id, { x: dx, y: dy });
+        }
+        return;
+      }
+      // A single (non-group) node: persist its new position, then resolve
+      // whether the drop changed its group membership (§7.5 drag in / out).
       setNodePosition(projectId, spaceId, node.id, node.position);
+      const drop = resolveGroupDrop(
+        node.id,
+        nodeCenter(node),
+        groupBoxesFor(flowNodes, node.id),
+      );
+      if (drop.action === 'add') {
+        addToGroup(projectId, spaceId, drop.groupId, node.id);
+      } else if (drop.action === 'remove') {
+        removeFromGroup(projectId, spaceId, drop.groupId, node.id);
+      }
     },
-    [projectId, spaceId],
+    [projectId, spaceId, flowNodes],
   );
 
   // Persist deletions to Yjs. ReactFlow's onDelete fires ONCE with both the
@@ -652,19 +781,19 @@ function CanvasSpaceInner({
 
   // Group nodes carry no authoritative size: derive each group's container
   // from its members' bounding box (+ padding) at render. Groups render
-  // *behind* their members (painted first) and aren't independently draggable
-  // — dragging a group moves its members instead (onNodeDragStop). Members
-  // keep their own real positions, so a member drag reflows the group on the
-  // next mirror.
+  // *behind* their members (painted first; grab them by the frame padding) and
+  // dragging one moves its members instead of the (position-less) group node
+  // itself (onNodeDragStart / onNodeDrag / onNodeDragStop). Members keep their
+  // own real positions, so a member drag reflows the group on the next mirror.
   const renderNodes = React.useMemo<Node[]>(() => {
     const sized = applyGroupGeometry(flowNodes);
     const groups = sized.filter((node) => node.type === 'group');
     const rest = sized.filter((node) => node.type !== 'group');
     return [
-      ...groups.map((node) => ({ ...node, draggable: false, zIndex: 0 })),
+      ...groups.map((node) => ({ ...node, draggable: !readOnly, zIndex: 0 })),
       ...rest,
     ];
-  }, [flowNodes]);
+  }, [flowNodes, readOnly]);
 
   return (
     <CanvasActionsContext.Provider value={actions}>
@@ -691,6 +820,8 @@ function CanvasSpaceInner({
           nodesConnectable={!readOnly}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onConnect={onConnect}
