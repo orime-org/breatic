@@ -42,7 +42,11 @@ interface UseInlineRenameOptions {
  * commits a trimmed non-blank value, Escape cancels. Owning the editing /
  * draft state + the double-fire guard here keeps the one rule in one place;
  * each consumer renders its own input + label markup around it.
- * @param options - The current value, length cap, read-only flag, and commit callback.
+ * @param root0 - The current value, length cap, read-only flag, and commit callback.
+ * @param root0.current - Display value seeded into the draft when editing starts.
+ * @param root0.readOnly - Viewer mode — editing is disabled (`startEdit` no-ops).
+ * @param root0.maxLength - Name length cap applied (with a trim) on commit.
+ * @param root0.onRename - Called with the committed, non-blank name.
  * @returns The inline-rename controller (state + handlers + input ref).
  */
 export function useInlineRename({

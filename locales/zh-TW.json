@@ -209,6 +209,10 @@
       "redoTooltip": "重做 (Shift+Ctrl+Z)",
       "fitToView": "符合視窗"
     },
+    "group": {
+      "group": "群組",
+      "ungroup": "取消群組"
+    },
     "comment": {
       "composerPlaceholder": "輸入你的評論...",
       "replyPlaceholder": "回覆討論...",

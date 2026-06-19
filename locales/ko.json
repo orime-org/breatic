@@ -209,6 +209,10 @@
       "redoTooltip": "다시 실행 (Shift+Ctrl+Z)",
       "fitToView": "화면에 맞추기"
     },
+    "group": {
+      "group": "그룹화",
+      "ungroup": "그룹 해제"
+    },
     "comment": {
       "composerPlaceholder": "댓글을 입력하세요...",
       "replyPlaceholder": "토론에 답글 달기...",

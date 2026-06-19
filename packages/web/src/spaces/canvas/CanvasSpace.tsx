@@ -4,7 +4,9 @@
 import {
   Background,
   BackgroundVariant,
+  NodeToolbar,
   PanOnScrollMode,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   applyEdgeChanges,
@@ -22,8 +24,10 @@ import * as React from 'react';
 
 import {
   addEdge,
+  addNode,
   removeEdge,
   removeElements,
+  removeNode,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -37,8 +41,16 @@ import {
   CanvasActionsContext,
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
+import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
-import { applyGroupGeometry } from '@web/spaces/canvas/group-geometry';
+import {
+  applyGroupGeometry,
+  computeGroupRect,
+} from '@web/spaces/canvas/group-geometry';
+import {
+  computeGroupToolbar,
+  type NodeGroupInfo,
+} from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
@@ -52,12 +64,14 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  createEmptyGroup,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Steps repeated centre-drops apart so library creations don't stack exactly. */
 const STAGGER_STEP_PX = 24;
@@ -537,6 +551,69 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('copy', onCopy);
   }, [readOnly]);
 
+  // ---- Grouping (selection → group / ungroup) ----
+  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+  const selectedIds = React.useMemo(
+    () => flowNodes.filter((node) => node.selected).map((node) => node.id),
+    [flowNodes],
+  );
+  const groupInfos = React.useMemo<NodeGroupInfo[]>(
+    () =>
+      flowNodes.map((node) => ({
+        id: node.id,
+        isGroup: node.type === 'group',
+        childIds: (node.data as { childIds?: string[] }).childIds,
+      })),
+    [flowNodes],
+  );
+  const groupOffer = React.useMemo(
+    () => computeGroupToolbar(selectedIds, groupInfos),
+    [selectedIds, groupInfos],
+  );
+
+  // Group the loose selection into a new group node. Its stored position is
+  // the members' padded top-left (real geometry is derived at render); the
+  // new group is selected so its toolbar / color picker is immediately usable.
+  const groupSelection = React.useCallback((): void => {
+    if (readOnly || groupOffer.kind !== 'group') return;
+    const members = flowNodes.filter((node) => selectedIds.includes(node.id));
+    const rect = computeGroupRect(members);
+    const position = rect ? { x: rect.x, y: rect.y } : { x: 0, y: 0 };
+    const group = createEmptyGroup(selectedIds, position, userId);
+    addNode(projectId, spaceId, group);
+    setSelectAfterCreate([group.id]);
+  }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
+
+  // Dissolve the selected group — delete the group node only; its members are
+  // untouched and stay on the canvas (delete-group = release children).
+  const ungroupSelection = React.useCallback((): void => {
+    if (readOnly || groupOffer.kind !== 'ungroup') return;
+    removeNode(projectId, spaceId, groupOffer.groupId);
+  }, [readOnly, groupOffer, projectId, spaceId]);
+
+  // Keyboard grouping — double-platform (Cmd on mac, Ctrl on windows; see
+  // matchGroupShortcut). Gated like undo/redo: no-op while editing a field or
+  // read-only, and only swallows the browser shortcut when the action applies.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: route group / ungroup shortcuts.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      const action = matchGroupShortcut(event);
+      if (action === 'group' && groupOffer.kind === 'group') {
+        event.preventDefault();
+        groupSelection();
+      } else if (action === 'ungroup' && groupOffer.kind === 'ungroup') {
+        event.preventDefault();
+        ungroupSelection();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, groupOffer, groupSelection, ungroupSelection]);
+
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The
   // ReactFlow wrapper pre-binds this to each node's id.
@@ -622,6 +699,35 @@ function CanvasSpaceInner({
             size={DOT_SIZE_PX}
             color='var(--color-canvas-grid)'
           />
+          {/* Floating selection toolbar: group a fresh selection, or ungroup
+              a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
+          <NodeToolbar
+            nodeId={selectedIds}
+            isVisible={groupOffer.kind !== 'none' && !readOnly}
+            position={Position.Top}
+          >
+            <div className='flex items-center gap-1 rounded-md border border-border bg-popover p-1 shadow-md'>
+              {groupOffer.kind === 'ungroup' ? (
+                <button
+                  type='button'
+                  data-testid='group-toolbar-ungroup'
+                  onClick={ungroupSelection}
+                  className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                >
+                  {t('canvas.group.ungroup')}
+                </button>
+              ) : (
+                <button
+                  type='button'
+                  data-testid='group-toolbar-group'
+                  onClick={groupSelection}
+                  className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                >
+                  {t('canvas.group.group')}
+                </button>
+              )}
+            </div>
+          </NodeToolbar>
         </ReactFlow>
         {flowNodes.length === 0 ? (
           <div

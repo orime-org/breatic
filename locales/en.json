@@ -209,6 +209,10 @@
       "redoTooltip": "Redo (Shift+Ctrl+Z)",
       "fitToView": "Fit to view"
     },
+    "group": {
+      "group": "Group",
+      "ungroup": "Ungroup"
+    },
     "comment": {
       "composerPlaceholder": "Enter your comment...",
       "replyPlaceholder": "Reply to discussion...",
