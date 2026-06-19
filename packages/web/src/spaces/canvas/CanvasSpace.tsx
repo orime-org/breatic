@@ -38,6 +38,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import { applyGroupGeometry } from '@web/spaces/canvas/group-geometry';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
@@ -551,6 +552,22 @@ function CanvasSpaceInner({
     [projectId, spaceId, readOnly],
   );
 
+  // Group nodes carry no authoritative size: derive each group's container
+  // from its members' bounding box (+ padding) at render. Groups render
+  // *behind* their members (painted first) and aren't independently draggable
+  // — dragging a group moves its members instead (onNodeDragStop). Members
+  // keep their own real positions, so a member drag reflows the group on the
+  // next mirror.
+  const renderNodes = React.useMemo<Node[]>(() => {
+    const sized = applyGroupGeometry(flowNodes);
+    const groups = sized.filter((node) => node.type === 'group');
+    const rest = sized.filter((node) => node.type !== 'group');
+    return [
+      ...groups.map((node) => ({ ...node, draggable: false, zIndex: 0 })),
+      ...rest,
+    ];
+  }, [flowNodes]);
+
   return (
     <CanvasActionsContext.Provider value={actions}>
       <div
@@ -562,7 +579,7 @@ function CanvasSpaceInner({
         className='relative h-full w-full bg-canvas'
       >
         <ReactFlow
-          nodes={flowNodes}
+          nodes={renderNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
