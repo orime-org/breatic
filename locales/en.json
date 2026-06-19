@@ -38,12 +38,14 @@
       "already_invited": "That user already has a pending invitation.",
       "cannot_modify_personal": "A personal studio cannot have its members managed.",
       "remove_last_admin": "Transfer the admin role before removing this member.",
-      "cannot_change_admin_role": "The admin role can only be changed by transferring it."
+      "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
+      "member_limit_reached": "This studio has reached its member limit."
     },
     "project": {
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
-      "already_invited": "That user already has a pending invitation."
+      "already_invited": "That user already has a pending invitation.",
+      "collaborator_limit_reached": "This project has reached its collaborator limit."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."

@@ -124,6 +124,16 @@ interface MutableConnectionConfig {
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
+  /** Max concurrent connections per document (0 = unlimited). */
+  maxConnectionsPerDoc: number;
+  /**
+   * Count the document's CURRENT connections (this connection is NOT yet
+   * included — the same timing the old onConnect capacity check relied
+   * on). When the count is already at the cap, this connection is
+   * degraded to read-only instead of being rejected (mirrors Figma /
+   * Google Docs "the file is full → you can view but not edit").
+   */
+  countConnections: (documentName: string) => number;
 }
 
 /**
@@ -173,10 +183,14 @@ async function loadProjectSpaceIds(
  * consumers.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members, and returns the user context — or throws to reject the connection.
+ * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only.
+ * @param root0.countConnections - Counts a document's current connections (this connection excluded) to evaluate the cap.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
+  maxConnectionsPerDoc,
+  countConnections,
 }: CreateAuthHookOptions) {
   return async ({
     documentName,
@@ -301,7 +315,18 @@ export function createAuthHook({
       // canvas nodes and tamper meta.projectMeta (name / description)
       // directly via raw Yjs, bypassing the stateless-RPC + requireRole
       // server path entirely.
-      connectionConfig.readOnly = role === "viewer";
+      // A connection is read-only when EITHER the viewer role forbids
+      // writes OR the document is already at its connection cap — in the
+      // latter case we degrade the extra connection to read-only rather
+      // than rejecting it (mirrors Figma / Google Docs "the file is full
+      // → you can view but not edit"). `countConnections` sees existing
+      // connections only (this one is not added to the document until it
+      // loads, AFTER onAuthenticate) — the same timing the old onConnect
+      // capacity check relied on, so `>=` keeps the original boundary.
+      const atCapacity =
+        maxConnectionsPerDoc > 0 &&
+        countConnections(documentName) >= maxConnectionsPerDoc;
+      connectionConfig.readOnly = role === "viewer" || atCapacity;
 
       return {
         user: { id: userId, role },

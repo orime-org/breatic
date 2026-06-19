@@ -41,12 +41,14 @@
       "already_invited": "该用户已有一个待确认的邀请。",
       "cannot_modify_personal": "个人 Studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让 Admin。",
-      "cannot_change_admin_role": "Admin 角色只能通过转让变更。"
+      "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
+      "member_limit_reached": "该 Studio 已达到成员数上限。"
     },
     "project": {
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
-      "already_invited": "该用户已有一个待确认的邀请。"
+      "already_invited": "该用户已有一个待确认的邀请。",
+      "collaborator_limit_reached": "该 Project 已达到协作者数上限。"
     },
     "payment": {
       "checkout_created": "支付会话已创建",

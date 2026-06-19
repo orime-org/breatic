@@ -40,6 +40,7 @@ import * as invitesRepo from "@server/modules/project-invite/projectInvitations.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { getProjectCollaboratorCap } from "@server/config/limits.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
@@ -101,6 +102,15 @@ export async function createInvite(
   if (!invitee) throw new NotFoundError(t("server.project.email_not_registered"));
   const existingRole = await projectMembersRepo.getRole(projectId, invitee.id);
   if (existingRole) throw new ConflictError(t("server.project.already_member"));
+
+  // Soft collaborator cap (config/limits.yaml). Counts EXPLICITLY invited
+  // members (`added_by IS NOT NULL`); the creator-owner and auto-materialized
+  // baseline viewers are exempt, so open-baseline viewing is never blocked.
+  // Fail EARLY here; the real guard is in confirmInvite.
+  const collaboratorCount = await projectMembersRepo.countExplicitMembers(projectId);
+  if (collaboratorCount >= getProjectCollaboratorCap()) {
+    throw new ConflictError(t("server.project.collaborator_limit_reached"));
+  }
 
   const names = await studioRepo.getPersonalNamesByCreators([inviterUserId]);
   const inviterName = names.get(inviterUserId) ?? "";
@@ -184,6 +194,18 @@ export async function confirmInvite(
       tx,
     );
     if (!accepted) throw new NotFoundError(t("server.error.not_found"));
+
+    // Soft collaborator cap — the REAL guard: the project may have filled up
+    // between sending and accepting. Counts committed explicit members (a
+    // 1-off race under simultaneous confirms is acceptable for a soft business
+    // cap; concurrency isn't a data-integrity invariant here). Auto-viewers
+    // and the owner are exempt (`added_by` null).
+    const collaboratorCount = await projectMembersRepo.countExplicitMembers(
+      accepted.projectId,
+    );
+    if (collaboratorCount >= getProjectCollaboratorCap()) {
+      throw new ConflictError(t("server.project.collaborator_limit_reached"));
+    }
 
     await projectMembersRepo.upsertMember(
       accepted.projectId,

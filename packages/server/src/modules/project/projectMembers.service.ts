@@ -46,38 +46,6 @@ export async function getOwner(projectId: string): Promise<string | null> {
 }
 
 /**
- * Invite a user to a project (or revive a previously-removed member).
- *
- * Constraints:
- *   - role must be `'editor'` or `'viewer'` (owner promotion is the
- *     transfer-owner endpoint, V1-deferred — route layer Zod also
- *     enforces this).
- *   - inviting the existing active owner is rejected as Conflict.
- * @param projectId - Project UUID
- * @param targetUserId - User being invited
- * @param role - 'editor' or 'viewer'
- * @param inviterId - The owner performing the invite
- * @throws {ConflictError} if the target is already the owner
- */
-export async function invite(
-  projectId: string,
-  targetUserId: string,
-  role: Exclude<ProjectRole, "owner">,
-  inviterId: string,
-): Promise<void> {
-  const existing = await projectMembersRepo.getRole(projectId, targetUserId);
-  if (existing === "owner") {
-    throw new ConflictError(t("server.error.conflict"));
-  }
-  await projectMembersRepo.upsertMember(projectId, targetUserId, role, inviterId);
-  await publishMembersChanged(projectId, {
-    affectedUserId: targetUserId,
-    action: "invite",
-    newRole: role,
-  });
-}
-
-/**
  * Change a member's role (editor ↔ viewer; owner cannot be PATCH'd).
  * @param projectId - Project UUID
  * @param targetUserId - Member whose role is changing

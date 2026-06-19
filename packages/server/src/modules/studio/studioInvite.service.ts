@@ -35,6 +35,7 @@ import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { getStudioMemberCap } from "@server/config/limits.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
@@ -91,6 +92,15 @@ export async function createInvite(
   if (!invitee) throw new NotFoundError(t("server.studio.email_not_registered"));
   const existingRole = await studioMembersRepo.getRole(studio.id, invitee.id);
   if (existingRole) throw new ConflictError(t("server.studio.already_member"));
+
+  // Soft member cap (config/limits.yaml). Fail EARLY at invite time for a
+  // good UX. The real guard is in confirmInvite — the studio may fill up
+  // between sending and accepting. Counts active members (admin included).
+  const memberCount =
+    (await studioRepo.countMembersByStudioIds([studio.id])).get(studio.id) ?? 0;
+  if (memberCount >= getStudioMemberCap()) {
+    throw new ConflictError(t("server.studio.member_limit_reached"));
+  }
 
   const names = await studioRepo.getPersonalNamesByCreators([inviterUserId]);
   const inviterName = names.get(inviterUserId) ?? "";
@@ -167,6 +177,18 @@ export async function confirmInvite(
       tx,
     );
     if (!accepted) throw new NotFoundError(t("server.error.not_found"));
+
+    // Soft member cap — the REAL guard: between sending and accepting, the
+    // studio may have filled up (other confirms). Counts committed active
+    // members (a 1-off race under simultaneous confirms is acceptable for a
+    // soft business cap; concurrency isn't a data-integrity invariant here).
+    const memberCount =
+      (await studioRepo.countMembersByStudioIds([accepted.studioId])).get(
+        accepted.studioId,
+      ) ?? 0;
+    if (memberCount >= getStudioMemberCap()) {
+      throw new ConflictError(t("server.studio.member_limit_reached"));
+    }
 
     const inserted = await studioMembersRepo.upsertMember(
       accepted.studioId,

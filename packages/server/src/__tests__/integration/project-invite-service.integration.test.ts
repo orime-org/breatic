@@ -45,6 +45,15 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// Member caps come from config/limits.yaml; mock them so a small cap can be
+// forced per test. Default 100 keeps every other test (tiny member counts)
+// unaffected; the collaborator-cap tests below lower it.
+const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
+vi.mock("@server/config/limits.js", () => ({
+  getStudioMemberCap: () => capRefs.studio,
+  getProjectCollaboratorCap: () => capRefs.project,
+}));
+
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   initCore,
@@ -115,6 +124,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  capRefs.studio = 100;
+  capRefs.project = 100;
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
   await db.delete(schema.projectInvitations);
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
@@ -463,5 +474,94 @@ describe("email-link token (Redis round-trip)", () => {
 
     const landing = await inviteService.getInviteForLanding(token, STRANGER);
     expect(landing?.isInvitee).toBe(false);
+  });
+});
+
+describe("collaborator cap (config/limits.yaml)", () => {
+  it("createInvite rejects with Conflict once the explicit-collaborator cap is reached", async () => {
+    capRefs.project = 1;
+    // Fill the explicit roster: one invited member (addedBy non-null = counted).
+    await db.insert(schema.projectMembers).values({
+      projectId: PROJECT,
+      userId: STRANGER,
+      role: "editor",
+      addedBy: OWNER,
+    });
+    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
+
+    await expect(
+      inviteService.createInvite(PROJECT, OWNER, INVITEE_EMAIL, "editor"),
+    ).rejects.toBeInstanceOf(ConflictError);
+    // The early guard fired — no pending invite was created.
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(0);
+  });
+
+  it("confirmInvite rejects with Conflict (the REAL guard) when the cap filled after the invite was sent", async () => {
+    capRefs.project = 1;
+    // Invite goes out while there is still room (explicit count 0 < 1).
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    // Someone else fills the last slot before the invitee accepts.
+    await db.insert(schema.projectMembers).values({
+      projectId: PROJECT,
+      userId: STRANGER,
+      role: "editor",
+      addedBy: OWNER,
+    });
+
+    await expect(
+      inviteService.confirmInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(ConflictError);
+    // The invitee did NOT become a member…
+    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBeNull();
+    expect(await inviteeMemberRows()).toBe(0);
+    // …and the failed confirm rolled back the accept CAS — the invite is still
+    // live (the slot did not get burned by the rejected attempt).
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
+  });
+
+  it("createInvite succeeds while below the cap (boundary: count < cap)", async () => {
+    capRefs.project = 5;
+    await db.insert(schema.projectMembers).values({
+      projectId: PROJECT,
+      userId: STRANGER,
+      role: "viewer",
+      addedBy: OWNER,
+    });
+    // explicit count 1 < 5 → allowed.
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    expect(invitationId).toBeTruthy();
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
+  });
+
+  it("INVARIANT: a baseline viewer materializes even at cap and is NOT counted (open baseline never blocked)", async () => {
+    capRefs.project = 1;
+    // The explicit collaborator roster is full.
+    await db.insert(schema.projectMembers).values({
+      projectId: PROJECT,
+      userId: STRANGER,
+      role: "editor",
+      addedBy: OWNER,
+    });
+    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
+
+    // A studio member opening the project auto-materializes as a baseline viewer
+    // (addedBy null). Even with the cap full, this MUST succeed — open-baseline
+    // viewing access is never gated by the collaborator cap.
+    await projectMembersRepo.materializeBaselineViewer(PROJECT, INVITEE);
+
+    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("viewer");
+    // …and the auto-viewer does NOT consume cap budget — the explicit count is
+    // still 1 (only STRANGER), proving baseline viewers are exempt.
+    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
   });
 });

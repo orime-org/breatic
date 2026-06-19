@@ -24,7 +24,7 @@ max_document_bytes: 10485760     # 10 MB
 
 # ── Connection Limits ─────────────────────────────
 # Max WebSocket connections per document (0 = unlimited).
-max_connections_per_document: 50
+max_connections_per_document: 100
 
 # ── Throttle ──────────────────────────────────────
 # Coarse per-IP DoS backstop (loopback is exempt — see loopback-exempt-throttle.ts).

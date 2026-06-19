@@ -1,0 +1,16 @@
+# ── Member capacity limits ─────────────────────────
+# Soft business caps, tunable without a redeploy. NOT a perf limit —
+# concurrency is bounded separately by collab.yaml's
+# `max_connections_per_document`.
+#
+# studio_member_cap: max active members in one studio. A studio is a
+#   shared-credit team, so this bounds how many people can spend from
+#   one wallet (abuse guard). Raise it for larger teams.
+#
+# project_collaborator_cap: max people EXPLICITLY invited to one project
+#   (any role: editor / viewer). Auto-materialized baseline viewers —
+#   studio members who just opened the project (open baseline) — are
+#   EXEMPT and never counted, so this never blocks viewing access; it
+#   only bounds the explicit invite roster.
+studio_member_cap: 100
+project_collaborator_cap: 100

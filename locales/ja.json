@@ -38,12 +38,14 @@
       "already_invited": "そのユーザーには保留中の招待があります。",
       "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
       "remove_last_admin": "削除する前に Admin 権限を譲渡してください。",
-      "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。"
+      "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
+      "member_limit_reached": "この Studio はメンバー数の上限に達しています。"
     },
     "project": {
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
-      "already_invited": "そのユーザーには保留中の招待があります。"
+      "already_invited": "そのユーザーには保留中の招待があります。",
+      "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。"
     },
     "payment": {
       "checkout_created": "決済セッションが作成されました",

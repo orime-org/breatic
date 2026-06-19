@@ -72,56 +72,6 @@ describe("GET /projects/:pid/members", () => {
   });
 });
 
-describe("POST /projects/:pid/members — invite", () => {
-  it("owner can invite a new editor member; returns 201", async () => {
-    const app = createApp();
-    const res = await app.request(`/api/v1/projects/${PID}/members`, {
-      method: "POST",
-      headers: AUTH,
-      body: JSON.stringify({ user_id: TARGET, role: "editor" }),
-    });
-
-    expect(res.status).toBe(201);
-    expect(mocks.projectMembersService.invite).toHaveBeenCalledWith(PID, TARGET, "editor", "user-1");
-  });
-
-  it("non-owner (editor) cannot invite — 403", async () => {
-    mocks.projectAuthService.loadProjectRole.mockResolvedValue("editor");
-
-    const app = createApp();
-    const res = await app.request(`/api/v1/projects/${PID}/members`, {
-      method: "POST",
-      headers: AUTH,
-      body: JSON.stringify({ user_id: TARGET, role: "viewer" }),
-    });
-
-    expect(res.status).toBe(403);
-    expect(mocks.projectMembersService.invite).not.toHaveBeenCalled();
-  });
-
-  it("rejects role='owner' in invite body with 400 (transfer-owner is V2)", async () => {
-    const app = createApp();
-    const res = await app.request(`/api/v1/projects/${PID}/members`, {
-      method: "POST",
-      headers: AUTH,
-      body: JSON.stringify({ user_id: TARGET, role: "owner" }),
-    });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects malformed user_id with 400", async () => {
-    const app = createApp();
-    const res = await app.request(`/api/v1/projects/${PID}/members`, {
-      method: "POST",
-      headers: AUTH,
-      body: JSON.stringify({ user_id: "not-a-uuid", role: "viewer" }),
-    });
-
-    expect(res.status).toBe(400);
-  });
-});
-
 describe("PATCH /projects/:pid/members/:userId — change role", () => {
   it("owner can change a member's role; returns 200", async () => {
     const app = createApp();

@@ -45,7 +45,6 @@ vi.mock("@breatic/core", () => {
 
 import { projectMembersRepo, ConflictError, NotFoundError } from "@breatic/core";
 import {
-  invite,
   changeRole,
   remove,
 } from "./projectMembers.service.js";
@@ -54,28 +53,6 @@ const PID = "p1";
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe("invite", () => {
-  it("rejects inviting an existing owner with Conflict", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
-    await expect(invite(PID, "u-owner", "editor", "u-owner")).rejects.toBeInstanceOf(
-      ConflictError,
-    );
-    expect(projectMembersRepo.upsertMember).not.toHaveBeenCalled();
-  });
-
-  it("upserts a new member when target is not the owner", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null);
-    await invite(PID, "u-target", "editor", "u-inviter");
-    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "editor", "u-inviter");
-  });
-
-  it("revives a previously-removed member (repo upsert handles deletedAt clear)", async () => {
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce(null); // soft-deleted = no active role
-    await invite(PID, "u-target", "viewer", "u-inviter");
-    expect(projectMembersRepo.upsertMember).toHaveBeenCalledWith(PID, "u-target", "viewer", "u-inviter");
-  });
 });
 
 describe("changeRole", () => {
