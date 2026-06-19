@@ -47,7 +47,7 @@ export function rectContains(
 /**
  * Resolve the membership change for dropping node `draggedId` at `center`:
  * - lands inside a group it is not already in → **add** (the binding's
- *   成员不相交 invariant detaches it from any previous group);
+ *   disjoint-membership invariant detaches it from any previous group);
  * - was a member but now sits outside that group → **remove**;
  * - stayed inside its own group, or dropped on empty canvas while loose →
  *   **none**.

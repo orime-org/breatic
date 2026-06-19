@@ -33,7 +33,7 @@ export type GroupToolbar =
  * - Exactly one selected node that is a group → **ungroup** (with its id).
  * - Two or more selected nodes that are ALL loose content (not a group, not
  *   already a member of any group) → **group**. The all-loose guard keeps the
- *   组不嵌套 + 只组散节点 invariants: a group node or an already-grouped node in
+ *   no-nesting + only-loose-nodes invariants: a group node or an already-grouped node in
  *   the selection makes grouping unavailable.
  * - Anything else → **none**.
  * @param selectedIds - Ids of the currently selected nodes.

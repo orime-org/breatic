@@ -21,7 +21,7 @@ interface GroupBackgroundPickerProps {
   open: boolean;
   /** Open-state change (Escape / outside click). */
   onOpenChange: (open: boolean) => void;
-  /** The group's current stored token, or `undefined` for 无色. */
+  /** The group's current stored token, or `undefined` for no color. */
   value: string | undefined;
   /** Apply a tint token, or `undefined` to clear it. */
   onPick: (value: string | undefined) => void;
@@ -29,13 +29,13 @@ interface GroupBackgroundPickerProps {
 
 /**
  * The group background tint picker — a swatch button showing the current tint
- * that opens a row of choices (无色 + the 4 status colors). Lives in the
+ * that opens a row of choices (no color + the 4 status colors). Lives in the
  * group's floating selection toolbar; the parent owns the open state + wires
  * `onPick` to the Yjs `setGroupBackground` write.
  * @param root0 - Component props.
  * @param root0.open - Whether the dropdown is open.
  * @param root0.onOpenChange - Open-state change callback.
- * @param root0.value - The group's current tint token (or undefined for 无色).
+ * @param root0.value - The group's current tint token (or undefined for no color).
  * @param root0.onPick - Apply / clear the tint.
  * @returns The background-color picker control.
  */

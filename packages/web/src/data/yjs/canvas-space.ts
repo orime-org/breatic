@@ -251,8 +251,8 @@ export function addNode(
 /**
  * Within an open transaction, drop `nodeId` from any group's `childIds` so a
  * deleted member never lingers as a stale child reference; a group left empty
- * is deleted too (不变量 1: 组至少一个子节点). A group id is never a member
- * (不嵌套), so deleting a group node is a no-op here — its children stay.
+ * is deleted too (invariant 1: a group always keeps at least one member). A group id is never a member
+ * (no nesting), so deleting a group node is a no-op here — its children stay.
  * @param nodesMap - The canvas-space `nodesMap` (call inside a transaction).
  * @param nodeId - The node id being deleted.
  */
@@ -365,10 +365,10 @@ export function setNodeLocked(
 /**
  * Add a node to a group's `childIds` — frontend-owned. Enforces the group
  * invariants in one transaction:
- *   - 不嵌套: a group node is never added as a member (no-op if `nodeId` is a
+ *   - no nesting: a group node is never added as a member (no-op if `nodeId` is a
  *     group);
- *   - 成员不相交: `nodeId` is first removed from every OTHER group's `childIds`,
- *     and if that empties one of those groups it is deleted (不变量 1);
+ *   - disjoint membership: `nodeId` is first removed from every OTHER group's `childIds`,
+ *     and if that empties one of those groups it is deleted (invariant 1);
  *   - idempotent: an already-present member is not duplicated.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the group + node.
@@ -385,12 +385,12 @@ export function addToGroup(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const target = nodesMap.get(groupId);
   if (!(target instanceof Y.Map) || target.get('type') !== 'group') return;
-  // 不嵌套 — only reject when the candidate actually exists AND is a group;
+  // no nesting — only reject when the candidate actually exists AND is a group;
   // a not-yet-materialised member id is fine to add (it cannot be a group).
   const candidate = nodesMap.get(nodeId);
   if (candidate instanceof Y.Map && candidate.get('type') === 'group') return;
   doc.transact(() => {
-    // 成员不相交 — drop nodeId from every other group first.
+    // disjoint membership — drop nodeId from every other group first.
     nodesMap.forEach((node, id) => {
       if (id === groupId || !(node instanceof Y.Map)) return;
       if (node.get('type') !== 'group') return;
@@ -412,7 +412,7 @@ export function addToGroup(
 
 /**
  * Remove a node from a group's `childIds` — frontend-owned. If the group is
- * left with no members it is deleted (不变量 1: 组至少一个子节点). No-op when
+ * left with no members it is deleted (invariant 1: a group always keeps at least one member). No-op when
  * the group / member does not exist.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the group.
@@ -443,7 +443,7 @@ export function removeFromGroup(
 
 /**
  * Set (or clear) a group's background tint — frontend-owned. Passing
- * `undefined` clears the field (无色 → neutral dashed frame). No-op when the
+ * `undefined` clears the field (no color → neutral dashed frame). No-op when the
  * group does not exist.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the group.
