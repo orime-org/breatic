@@ -62,14 +62,14 @@ export function InviteMemberDialog({
 }: InviteMemberDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [email, setEmail] = React.useState('');
-  const [role, setRole] = React.useState<GrantableStudioRole>('member');
+  const [role, setRole] = React.useState<GrantableStudioRole>('guest');
 
   // Reset the form whenever the dialog opens, so a re-open starts clean (the
   // parent owns the server error, which it clears on open).
   React.useEffect(() => {
     if (open) {
       setEmail('');
-      setRole('member');
+      setRole('guest');
     }
   }, [open]);
 
@@ -130,11 +130,11 @@ export function InviteMemberDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value='member'>
-                    {t('studio.container.members.roleMember')}
+                  <SelectItem value='guest'>
+                    {t('studio.container.members.roleGuest')}
                   </SelectItem>
-                  <SelectItem value='creator'>
-                    {t('studio.container.members.roleCreator')}
+                  <SelectItem value='maintainer'>
+                    {t('studio.container.members.roleMaintainer')}
                   </SelectItem>
                 </SelectContent>
               </Select>

@@ -50,7 +50,7 @@ export function MemberRowMenu({
 }: MemberRowMenuProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const isCreator = member.studioRole === 'creator';
+  const isMaintainer = member.studioRole === 'maintainer';
 
   /**
    * Close the popover, then run the given action on the member.
@@ -87,9 +87,9 @@ export function MemberRowMenu({
           data-testid={`member-toggle-role-${member.id}`}
         >
           <ArrowUpDown className='h-4 w-4' />
-          {isCreator
-            ? t('studio.container.members.demoteToMember')
-            : t('studio.container.members.promoteToCreator')}
+          {isMaintainer
+            ? t('studio.container.members.demoteToGuest')
+            : t('studio.container.members.promoteToMaintainer')}
         </Button>
         <Button
           variant='ghost'

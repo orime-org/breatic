@@ -18,7 +18,7 @@ export function creatableStudios(
   studios: readonly StudioSummary[],
 ): readonly StudioSummary[] {
   return studios.filter(
-    (s) => s.myStudioRole === 'admin' || s.myStudioRole === 'creator',
+    (s) => s.myStudioRole === 'admin' || s.myStudioRole === 'maintainer',
   );
 }
 

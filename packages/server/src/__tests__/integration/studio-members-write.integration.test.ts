@@ -86,7 +86,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertMemberRaw(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -122,36 +122,36 @@ describe("upsertMember — invite (insert / active-collision / revive)", () => {
     const invitee = await insertUser();
     const studio = await insertStudio(admin);
 
-    const ok = await studioMembersRepo.upsertMember(studio, invitee, "member", admin);
+    const ok = await studioMembersRepo.upsertMember(studio, invitee, "guest", admin);
 
     expect(ok).toBe(true);
-    expect(await studioMembersRepo.getRole(studio, invitee)).toBe("member");
+    expect(await studioMembersRepo.getRole(studio, invitee)).toBe("guest");
   });
 
   it("returns false when the user is ALREADY an active member (no silent role overwrite)", async () => {
     const admin = await insertUser();
     const invitee = await insertUser();
     const studio = await insertStudio(admin);
-    await insertMemberRaw(studio, invitee, "member");
+    await insertMemberRaw(studio, invitee, "guest");
 
-    const ok = await studioMembersRepo.upsertMember(studio, invitee, "creator", admin);
+    const ok = await studioMembersRepo.upsertMember(studio, invitee, "maintainer", admin);
 
     expect(ok).toBe(false);
-    expect(await rawRole(studio, invitee)).toBe("member"); // rejected upsert left role untouched
+    expect(await rawRole(studio, invitee)).toBe("guest"); // rejected upsert left role untouched
   });
 
   it("revives a soft-deleted (previously kicked) member with the new role, returns true", async () => {
     const admin = await insertUser();
     const invitee = await insertUser();
     const studio = await insertStudio(admin);
-    await insertMemberRaw(studio, invitee, "member");
+    await insertMemberRaw(studio, invitee, "guest");
     await softDeleteMemberRaw(studio, invitee);
     expect(await studioMembersRepo.getRole(studio, invitee)).toBeNull();
 
-    const ok = await studioMembersRepo.upsertMember(studio, invitee, "creator", admin);
+    const ok = await studioMembersRepo.upsertMember(studio, invitee, "maintainer", admin);
 
     expect(ok).toBe(true);
-    expect(await studioMembersRepo.getRole(studio, invitee)).toBe("creator");
+    expect(await studioMembersRepo.getRole(studio, invitee)).toBe("maintainer");
     expect(await rawDeletedAt(studio, invitee)).toBeNull(); // revived, deleted_at cleared
   });
 });
@@ -161,13 +161,13 @@ describe("softDelete — remove member (state-only)", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudio(admin);
-    await insertMemberRaw(studio, member, "member");
+    await insertMemberRaw(studio, member, "guest");
 
     const ok = await studioMembersRepo.softDelete(studio, member);
 
     expect(ok).toBe(true);
     expect(await studioMembersRepo.getRole(studio, member)).toBeNull();
-    expect(await rawRole(studio, member)).toBe("member"); // not destroyed
+    expect(await rawRole(studio, member)).toBe("guest"); // not destroyed
   });
 
   it("returns false for a non-member / already-removed user", async () => {
@@ -184,12 +184,12 @@ describe("updateRole — change role / transfer steps", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudio(admin);
-    await insertMemberRaw(studio, member, "member");
+    await insertMemberRaw(studio, member, "guest");
 
-    const ok = await studioMembersRepo.updateRole(studio, member, "creator");
+    const ok = await studioMembersRepo.updateRole(studio, member, "maintainer");
 
     expect(ok).toBe(true);
-    expect(await studioMembersRepo.getRole(studio, member)).toBe("creator");
+    expect(await studioMembersRepo.getRole(studio, member)).toBe("maintainer");
   });
 
   it("returns false for a non-member", async () => {
@@ -197,7 +197,7 @@ describe("updateRole — change role / transfer steps", () => {
     const stranger = await insertUser();
     const studio = await insertStudio(admin);
 
-    expect(await studioMembersRepo.updateRole(studio, stranger, "creator")).toBe(false);
+    expect(await studioMembersRepo.updateRole(studio, stranger, "maintainer")).toBe(false);
   });
 
   it("rejects bumping a member to admin while an active admin exists (one-admin partial unique guards transfer ordering)", async () => {
@@ -205,7 +205,7 @@ describe("updateRole — change role / transfer steps", () => {
     const member = await insertUser();
     const studio = await insertStudio(admin);
     await insertMemberRaw(studio, admin, "admin");
-    await insertMemberRaw(studio, member, "member");
+    await insertMemberRaw(studio, member, "guest");
 
     // Transfer demotes the old admin FIRST in the same tx; a bare bump to a
     // second active admin must hit studio_members_one_admin_per_studio.

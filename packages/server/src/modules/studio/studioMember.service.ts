@@ -21,7 +21,7 @@ import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
 /** Roles an admin may grant by change-role; admin is excluded. */
-type GrantableRole = "creator" | "member";
+type GrantableRole = "maintainer" | "guest";
 
 /**
  * Remove (kick) a member from a studio — one atomic transaction that revokes

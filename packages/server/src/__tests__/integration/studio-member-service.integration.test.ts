@@ -106,7 +106,7 @@ describe("removeMember", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
-    await insertMember(studio.id, member.id, "member");
+    await insertMember(studio.id, member.id, "guest");
     const ownedByMember = await insertProject(studio.id, member.id); // member owns this
     const adminProject = await insertProject(studio.id, admin.id); // admin owns this
 
@@ -135,18 +135,18 @@ describe("updateMemberRole", () => {
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
-    await insertMember(studio.id, member.id, "member");
+    await insertMember(studio.id, member.id, "guest");
 
-    await studioMemberService.updateMemberRole(studio.slug, member.id, "creator");
+    await studioMemberService.updateMemberRole(studio.slug, member.id, "maintainer");
 
-    expect(await studioMembersRepo.getRole(studio.id, member.id)).toBe("creator");
+    expect(await studioMembersRepo.getRole(studio.id, member.id)).toBe("maintainer");
   });
 
   it("refuses to change the admin's role (admin demotion goes through transfer)", async () => {
     const admin = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
     await expect(
-      studioMemberService.updateMemberRole(studio.slug, admin.id, "member"),
+      studioMemberService.updateMemberRole(studio.slug, admin.id, "guest"),
     ).rejects.toMatchObject({ statusCode:409 });
   });
 });

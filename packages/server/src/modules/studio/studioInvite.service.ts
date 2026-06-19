@@ -43,7 +43,7 @@ import { t } from "@breatic/shared";
 import type { InvitationLandingView } from "@breatic/shared";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
-type InvitableRole = "creator" | "member";
+type InvitableRole = "maintainer" | "guest";
 
 /** Days a pending invite stays actionable before it self-voids. */
 const INVITE_TTL_DAYS = 7;

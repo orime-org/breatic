@@ -25,7 +25,7 @@ describe('InviteMemberDialog', () => {
 
     expect(onInvite).toHaveBeenCalledWith({
       email: 'new@x.example',
-      role: 'member',
+      role: 'guest',
     });
   });
 

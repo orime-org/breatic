@@ -45,7 +45,7 @@ const MORE = { name: 'More actions' };
 
 describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   it('renders name + badges and links to /project/{slug}-{uuid}', () => {
-    renderProject(SHARED_STUDIO, 'member');
+    renderProject(SHARED_STUDIO, 'guest');
     expect(screen.getByText('Shared Project')).toBeInTheDocument();
     expect(screen.getByText('Studio-visible')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
@@ -55,12 +55,12 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   });
 
   it('shows the governance menu to the project owner', () => {
-    renderProject(OWNED_PRIVATE, 'member');
+    renderProject(OWNED_PRIVATE, 'guest');
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
   it('hides the governance menu from a non-owner member', () => {
-    renderProject(SHARED_STUDIO, 'member');
+    renderProject(SHARED_STUDIO, 'guest');
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 
@@ -70,12 +70,12 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   });
 
   it('renders the baseline viewer role when myRole is null', () => {
-    renderProject({ ...SHARED_STUDIO, myRole: null }, 'member');
+    renderProject({ ...SHARED_STUDIO, myRole: null }, 'guest');
     expect(screen.getByText('Viewer')).toBeInTheDocument();
   });
 
   it('cardmenu overlay matches the neutral mock (chrome radius, 7px inset, 70% black hover)', () => {
-    renderProject(OWNED_PRIVATE, 'member');
+    renderProject(OWNED_PRIVATE, 'guest');
     const menu = screen.getByRole('button', MORE);
     // Neutral mock `.cardmenu` was 2px; the design-system rebuild's unified
     // radius scale conforms all chrome affordances to --radius-chrome (6px) via
@@ -105,7 +105,7 @@ describe('CollectionCard (spec §3.4)', () => {
   it('renders name + asset count (no kind tag, per定稿) and links to /collection/{slug}-{uuid}', () => {
     render(
       <MemoryRouter>
-        <CollectionCard collection={MOODBOARD} studioRole='member' />
+        <CollectionCard collection={MOODBOARD} studioRole='guest' />
       </MemoryRouter>,
     );
     expect(screen.getByText('Moodboard')).toBeInTheDocument();

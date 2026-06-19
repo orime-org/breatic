@@ -190,7 +190,7 @@ export default function StudioInvitePage(): React.JSX.Element {
         {t('studio.invite.body', {
           inviter: view?.inviterName ?? '',
           studio: view?.studioName ?? '',
-          role: view?.role ?? 'member',
+          role: view?.role ?? 'guest',
         })}
       </p>
       <div className='mt-5 flex gap-3'>

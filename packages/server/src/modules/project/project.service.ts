@@ -130,14 +130,14 @@ export async function create(
  * against real data; the `creator` branch activates with team studios.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
- * @throws {ForbiddenError} if the caller is not an admin/creator of the studio
+ * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
  */
 async function requireStudioCreateAccess(
   userId: string,
   studioId: string,
 ): Promise<void> {
   const role = await studioAuthService.loadStudioRole(userId, studioId);
-  if (role !== "admin" && role !== "creator") {
+  if (role !== "admin" && role !== "maintainer") {
     throw new ForbiddenError(t("server.error.forbidden"));
   }
 }

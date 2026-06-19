@@ -42,10 +42,10 @@ describe("loadStudioRole", () => {
     expect(studioMembersRepo.getRole).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 'member' for a plain studio member", async () => {
-    vi.mocked(studioMembersRepo.getRole).mockResolvedValueOnce("member");
+  it("returns 'guest' for a plain studio member", async () => {
+    vi.mocked(studioMembersRepo.getRole).mockResolvedValueOnce("guest");
 
-    await expect(loadStudioRole("u-member", "s-acme")).resolves.toBe("member");
+    await expect(loadStudioRole("u-member", "s-acme")).resolves.toBe("guest");
   });
 
   it("returns null when the user is not a member (or the studio is missing/deleted)", async () => {

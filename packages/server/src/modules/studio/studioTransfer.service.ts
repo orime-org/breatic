@@ -153,7 +153,7 @@ export async function confirmTransfer(
     const demoted = await studioMembersRepo.updateRole(
       studioId,
       fromUserId,
-      "member",
+      "guest",
       tx,
     );
     if (!demoted) throw new NotFoundError(t("server.error.not_found"));

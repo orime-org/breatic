@@ -263,7 +263,9 @@ export function MembersTab({
                           roleMutation.mutate({
                             userId: m.id,
                             role:
-                              m.studioRole === 'creator' ? 'member' : 'creator',
+                              m.studioRole === 'maintainer'
+                                ? 'guest'
+                                : 'maintainer',
                           })
                         }
                         onRemove={(m) =>
@@ -418,10 +420,10 @@ function roleLabel(
   switch (role) {
     case 'admin':
       return t('studio.container.members.roleAdmin');
-    case 'creator':
-      return t('studio.container.members.roleCreator');
+    case 'maintainer':
+      return t('studio.container.members.roleMaintainer');
     default:
-      return t('studio.container.members.roleMember');
+      return t('studio.container.members.roleGuest');
   }
 }
 

@@ -606,8 +606,8 @@ function headlineFor(
 
 /** Maps a studio role payload value to its localized member-role label. */
 const STUDIO_ROLE_KEY: Record<string, string> = {
-  creator: 'notifications.subtitle.invitedAsCreator',
-  member: 'notifications.subtitle.invitedAsMember',
+  maintainer: 'notifications.subtitle.invitedAsMaintainer',
+  guest: 'notifications.subtitle.invitedAsGuest',
 };
 
 /** Maps a project role payload value to its localized member-role label. */

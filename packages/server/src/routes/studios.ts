@@ -39,12 +39,12 @@ import { logger } from "@breatic/core";
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
   email: z.string().email(),
-  role: z.enum(["creator", "member"]),
+  role: z.enum(["maintainer", "guest"]),
 });
 
-/** Change-role body — creator ↔ member only. */
+/** Change-role body — maintainer ↔ guest only. */
 const changeRoleSchema = z.object({
-  role: z.enum(["creator", "member"]),
+  role: z.enum(["maintainer", "guest"]),
 });
 
 /** Transfer-admin body — the member proposed as the new studio admin. */

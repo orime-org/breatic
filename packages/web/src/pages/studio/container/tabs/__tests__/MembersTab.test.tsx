@@ -43,7 +43,7 @@ const MEMBER: StudioMember = {
   name: 'Bob',
   email: 'bob@x.example',
   avatarUrl: null,
-  studioRole: 'member',
+  studioRole: 'guest',
   joinedAt: '2026-04-02T00:00:00.000Z',
 };
 const CREATOR: StudioMember = {
@@ -51,7 +51,7 @@ const CREATOR: StudioMember = {
   name: 'Cara',
   email: 'cara@x.example',
   avatarUrl: null,
-  studioRole: 'creator',
+  studioRole: 'maintainer',
   joinedAt: '2026-04-03T00:00:00.000Z',
 };
 const PENDING: PendingInvitationSummary = {
@@ -60,7 +60,7 @@ const PENDING: PendingInvitationSummary = {
   name: 'Dee',
   email: 'dee@x.example',
   avatarUrl: null,
-  role: 'member',
+  role: 'guest',
   invitedByName: 'Admin Ada',
   expiresAt: '2026-06-21T00:00:00.000Z',
 };
@@ -100,7 +100,7 @@ describe('MembersTab — row menu visibility', () => {
       <MembersTab
         slug='acme'
         members={[ADMIN, MEMBER]}
-        studioRole='member'
+        studioRole='guest'
         studioType='team' pendingInvitations={[]}
       />,
     );
@@ -124,7 +124,7 @@ describe('MembersTab — invite flow', () => {
     await waitFor(() => {
       expect(studiosApi.inviteMember).toHaveBeenCalledWith('acme', {
         email: 'new@x.example',
-        role: 'member',
+        role: 'guest',
       });
     });
   });
@@ -171,7 +171,7 @@ describe('MembersTab — change role', () => {
 
     await waitFor(() => {
       expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', MEMBER.id, {
-        role: 'creator',
+        role: 'maintainer',
       });
     });
   });
@@ -192,7 +192,7 @@ describe('MembersTab — change role', () => {
 
     await waitFor(() => {
       expect(studiosApi.updateMemberRole).toHaveBeenCalledWith('acme', CREATOR.id, {
-        role: 'member',
+        role: 'guest',
       });
     });
   });
@@ -269,7 +269,7 @@ describe('MembersTab — pending invitations', () => {
     expect(screen.getByText(PENDING.name)).toBeInTheDocument();
     expect(screen.getByText(PENDING.email)).toBeInTheDocument();
     // pendingBadge = "{role} · pending" with the localized role label.
-    expect(screen.getByText(/Member · pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/Guest · pending/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument();
   });
 
@@ -278,7 +278,7 @@ describe('MembersTab — pending invitations', () => {
       <MembersTab
         slug='acme'
         members={[ADMIN, MEMBER]}
-        studioRole='member'
+        studioRole='guest'
         studioType='team'
         pendingInvitations={[PENDING]}
       />,

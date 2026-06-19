@@ -14,7 +14,7 @@ import ko from '../../../../../locales/ko.json';
 /**
  * Frozen product terms (#1336): a fixed set of product vocabulary that must
  * render as the SAME English string in every locale — roles as Title Case
- * (Owner / Editor / Viewer / Admin / Creator / Member), entity + space-type
+ * (Owner / Editor / Viewer / Admin / Maintainer / Guest), entity + space-type
  * nouns as Title Case (Studio / Project / Space / Canvas / Document /
  * Timeline). These are deliberate brand-vocabulary terms, never localized.
  *
@@ -47,8 +47,8 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['studio.recent.role.viewer', 'Viewer'],
   // Studio member roles.
   ['studio.container.members.roleAdmin', 'Admin'],
-  ['studio.container.members.roleCreator', 'Creator'],
-  ['studio.container.members.roleMember', 'Member'],
+  ['studio.container.members.roleMaintainer', 'Maintainer'],
+  ['studio.container.members.roleGuest', 'Guest'],
   // Project-invite role labels (key name is edit/view, semantics editor/viewer).
   ['share.role.edit', 'Editor'],
   ['share.role.view', 'Viewer'],
@@ -185,16 +185,15 @@ describe('frozen product terms (#1336)', () => {
    *     role-only kanji/hangul (編集者 / 편집자) is denied; the role uses in
    *     these keys must not reintroduce the tool's katakana/hangul form.
    *   - Viewer: ko 뷰어 also names the read-only viewer plugin.
-   *   - Creator: ja/ko クリエイター / 크리에이터 doubles as the generic word.
    * `t(key)` with no args returns the raw ICU message, so the select-branch
    * literals (editor {Editor} …) are asserted directly on the raw string.
    */
   const EDITOR_COLLISION = ['エディタ', 'エディター', '에디터'];
   const VIEWER_COLLISION = ['뷰어'];
-  const CREATOR_COLLISION = ['クリエイター', '크리에이터'];
-  // Member: 成员 / 成員 / メンバー / 멤버 all double as the generic "member count"
-  // word, so the blanket guard cannot deny them; the role-label spots are frozen
-  // per-key here. (Generic count usages like "成员 (5)" / "移除成员" stay localized.)
+  // projectInvite.body's `other {Member}` fallback is the PROJECT member role
+  // (unrelated to the studio creator/member → maintainer/guest rename); its
+  // 成员 / メンバー / 멤버 forms double as the generic "member count" word, so this
+  // one stays a per-key freeze here.
   const MEMBER_COLLISION = ['成员', '成員', 'メンバー', '멤버'];
 
   /** Each role-collision key paired with its English term + the localized forms that must be absent. */
@@ -202,18 +201,10 @@ describe('frozen product terms (#1336)', () => {
     readonly [key: string, term: string, forbidden: readonly string[]]
   > = [
     // Bell "invited as …" subtitles.
-    ['notifications.subtitle.invitedAsCreator', 'Creator', CREATOR_COLLISION],
     ['notifications.subtitle.invitedAsEditor', 'Editor', EDITOR_COLLISION],
-    // Studio member-action menu.
-    ['studio.container.members.promoteToCreator', 'Creator', CREATOR_COLLISION],
     // Invite-confirm ICU bodies (raw message asserts the frozen branch literal).
-    ['studio.invite.body', 'Creator', CREATOR_COLLISION],
     ['projectInvite.body', 'Editor', EDITOR_COLLISION],
     ['projectInvite.body', 'Viewer', VIEWER_COLLISION],
-    // Member role-label spots (sibling to invitedAsCreator/Editor/Viewer etc.).
-    ['notifications.subtitle.invitedAsMember', 'Member', MEMBER_COLLISION],
-    ['studio.container.members.demoteToMember', 'Member', MEMBER_COLLISION],
-    ['studio.invite.body', 'Member', MEMBER_COLLISION],
     ['projectInvite.body', 'Member', MEMBER_COLLISION],
   ];
 
@@ -225,6 +216,33 @@ describe('frozen product terms (#1336)', () => {
           const value = t(key);
           expect(value).toContain(term);
           for (const form of forbidden) expect(value).not.toContain(form);
+        });
+      }
+    }
+  });
+
+  /**
+   * Maintainer / Guest (the renamed studio roles, #1374) keep their English
+   * label inside still-translated sentences. Unlike Creator/Member's
+   * クリエイター / 成员, their localized forms (维护者 / 访客 / ゲスト / …) are NOT
+   * genuine common words used elsewhere in the product, so there is nothing to
+   * exclude — a plain "contains the English term" freeze is enough.
+   */
+  const ROLE_SENTENCE_FROZEN: ReadonlyArray<readonly [key: string, term: string]> = [
+    ['notifications.subtitle.invitedAsMaintainer', 'Maintainer'],
+    ['studio.container.members.promoteToMaintainer', 'Maintainer'],
+    ['studio.invite.body', 'Maintainer'],
+    ['notifications.subtitle.invitedAsGuest', 'Guest'],
+    ['studio.container.members.demoteToGuest', 'Guest'],
+    ['studio.invite.body', 'Guest'],
+  ];
+
+  describe('renamed maintainer/guest role sentences keep English in every non-English locale', () => {
+    for (const [locale] of NON_EN_CATALOGS) {
+      for (const [key, term] of ROLE_SENTENCE_FROZEN) {
+        it(`${locale}: ${key} keeps "${term}" English`, () => {
+          setLocale(locale);
+          expect(t(key)).toContain(term);
         });
       }
     }

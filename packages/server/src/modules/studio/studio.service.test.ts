@@ -232,7 +232,7 @@ describe("listUserStudios", () => {
 
   it("returns the personal studio first even when the repo lists a team studio earlier", async () => {
     vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
-      { ...TEAM_STUDIO, myStudioRole: "member" },
+      { ...TEAM_STUDIO, myStudioRole: "guest" },
       { ...STUDIO, myStudioRole: "admin" },
     ]);
     vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
@@ -252,7 +252,7 @@ describe("listUserStudios", () => {
     // — the rail splits 我的 (admin) vs 我加入的 (creator/member) on this role.
     vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
       { ...STUDIO, myStudioRole: "admin" },
-      { ...TEAM_STUDIO, myStudioRole: "member" },
+      { ...TEAM_STUDIO, myStudioRole: "guest" },
     ]);
     vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
       new Map([
@@ -265,7 +265,7 @@ describe("listUserStudios", () => {
     const roleById = new Map(result.map((s) => [s.id, s.myStudioRole]));
 
     expect(roleById.get("studio-1")).toBe("admin");
-    expect(roleById.get("studio-team")).toBe("member");
+    expect(roleById.get("studio-team")).toBe("guest");
   });
 
   it("returns [] (no count query) when the user belongs to no studios", async () => {

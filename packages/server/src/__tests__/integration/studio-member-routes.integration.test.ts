@@ -28,7 +28,7 @@
  *   3b. end-to-end       invitee CONFIRMS the bell invite → becomes a member
  *   3c. admin            DELETE /invitations/:id → 200, the pending invite is revoked
  *   4. admin             DELETE → 200, and the target is no longer a member
- *   5. admin             PATCH {role:"creator"} → 200, role flipped
+ *   5. admin             PATCH {role:"maintainer"} → 200, role flipped
  *
  * Auth is real: each caller gets a Redis session token (the same store
  * `requireAuth` reads), passed as the `breatic_session` cookie. Seeding uses a
@@ -133,7 +133,7 @@ async function insertTeamStudio(createdByUserId: string): Promise<{ id: string; 
 async function insertMemberRaw(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -164,7 +164,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     const res = await app.request(`/api/v1/studio/${studio.slug}/members`, {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(stranger) },
-      body: JSON.stringify({ email: invitee.email, role: "member" }),
+      body: JSON.stringify({ email: invitee.email, role: "guest" }),
     });
 
     expect(res.status).toBe(403);
@@ -177,13 +177,13 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     const studio = await insertTeamStudio(admin);
     await insertMemberRaw(studio.id, admin, "admin");
     const member = await insertUser();
-    await insertMemberRaw(studio.id, member, "member");
+    await insertMemberRaw(studio.id, member, "guest");
     const invitee = await insertUserWithEmail();
 
     const res = await app.request(`/api/v1/studio/${studio.slug}/members`, {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(member) },
-      body: JSON.stringify({ email: invitee.email, role: "member" }),
+      body: JSON.stringify({ email: invitee.email, role: "guest" }),
     });
 
     expect(res.status).toBe(403);
@@ -199,7 +199,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     const res = await app.request(`/api/v1/studio/${studio.slug}/members`, {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
-      body: JSON.stringify({ email: invitee.email, role: "member" }),
+      body: JSON.stringify({ email: invitee.email, role: "guest" }),
     });
 
     expect(res.status).toBe(201);
@@ -224,7 +224,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     const inviteRes = await app.request(`/api/v1/studio/${studio.slug}/members`, {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
-      body: JSON.stringify({ email: invitee.email, role: "creator" }),
+      body: JSON.stringify({ email: invitee.email, role: "maintainer" }),
     });
     expect(inviteRes.status).toBe(201);
     expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBeNull();
@@ -246,7 +246,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
       },
     );
     expect(confirmRes.status).toBe(200);
-    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("creator");
+    expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("maintainer");
   });
 
   it("DELETE /studio/:slug/invitations/:id → 200 for the ADMIN, revoking a pending invite", async () => {
@@ -257,7 +257,7 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     await app.request(`/api/v1/studio/${studio.slug}/members`, {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
-      body: JSON.stringify({ email: invitee.email, role: "member" }),
+      body: JSON.stringify({ email: invitee.email, role: "guest" }),
     });
     const rows = await sql<{ id: string }[]>`
       SELECT id FROM studio_invitations
@@ -282,8 +282,8 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     const studio = await insertTeamStudio(admin);
     await insertMemberRaw(studio.id, admin, "admin");
     const member = await insertUser();
-    await insertMemberRaw(studio.id, member, "member");
-    expect(await studioMembersRepo.getRole(studio.id, member)).toBe("member");
+    await insertMemberRaw(studio.id, member, "guest");
+    expect(await studioMembersRepo.getRole(studio.id, member)).toBe("guest");
 
     const res = await app.request(`/api/v1/studio/${studio.slug}/members/${member}`, {
       method: "DELETE",
@@ -296,22 +296,22 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     expect(await studioMembersRepo.getRole(studio.id, member)).toBeNull();
   });
 
-  it("PATCH /studio/:slug/members/:userId {role:'creator'} → 200 for the ADMIN, and the role flips", async () => {
+  it("PATCH /studio/:slug/members/:userId {role:'maintainer'} → 200 for the ADMIN, and the role flips", async () => {
     const admin = await insertUser();
     const studio = await insertTeamStudio(admin);
     await insertMemberRaw(studio.id, admin, "admin");
     const member = await insertUser();
-    await insertMemberRaw(studio.id, member, "member");
+    await insertMemberRaw(studio.id, member, "guest");
 
     const res = await app.request(`/api/v1/studio/${studio.slug}/members/${member}`, {
       method: "PATCH",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(admin) },
-      body: JSON.stringify({ role: "creator" }),
+      body: JSON.stringify({ role: "maintainer" }),
     });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { ok: boolean } };
     expect(body.data.ok).toBe(true);
-    expect(await studioMembersRepo.getRole(studio.id, member)).toBe("creator");
+    expect(await studioMembersRepo.getRole(studio.id, member)).toBe("maintainer");
   });
 });

@@ -107,7 +107,7 @@ describe("project.service.loadForViewer — open-baseline access + materialize",
   it("grants + materializes a viewer row for a studio member on a studio-visible project", async () => {
     loadProjectRole.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject({ visibility: "studio", studioId: "s-9" }));
-    loadStudioRole.mockResolvedValue("member");
+    loadStudioRole.mockResolvedValue("guest");
 
     const result = await loadForViewer("p-1", "u-1");
 
@@ -166,7 +166,7 @@ describe("project.service.listByStudioForViewer — visibility short-circuits", 
   });
 
   it("queries with isStudioAdmin=false for a studio member", async () => {
-    loadStudioRole.mockResolvedValue("member");
+    loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
     await listByStudioForViewer("s-1", "u-1");
@@ -187,7 +187,7 @@ describe("project.service.listByStudioForViewer — visibility short-circuits", 
 describe("project.service.listByStudioSlug — slug resolution", () => {
   it("resolves the slug then lists for the viewer", async () => {
     getStudioBySlug.mockResolvedValue({ id: "s-7" } as never);
-    loadStudioRole.mockResolvedValue("member");
+    loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
     await listByStudioSlug("acme", "u-1");

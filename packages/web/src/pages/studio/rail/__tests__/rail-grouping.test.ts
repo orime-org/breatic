@@ -19,8 +19,8 @@ describe('splitStudios (rail ④⑤ — spec §0.2 / §4.2, current-role split)'
     const { owned, joined } = splitStudios([
       studio('personal', 'admin', 'personal'),
       studio('myteam', 'admin'),
-      studio('granted', 'creator'),
-      studio('joined', 'member'),
+      studio('granted', 'maintainer'),
+      studio('joined', 'guest'),
     ]);
 
     expect(owned.map((s) => s.id)).toEqual(['personal', 'myteam']);
@@ -29,9 +29,9 @@ describe('splitStudios (rail ④⑤ — spec §0.2 / §4.2, current-role split)'
 
   it('preserves input order within each group (the list arrives personal-first)', () => {
     const { owned, joined } = splitStudios([
-      studio('a', 'member'),
+      studio('a', 'guest'),
       studio('b', 'admin'),
-      studio('c', 'creator'),
+      studio('c', 'maintainer'),
     ]);
 
     expect(owned.map((s) => s.id)).toEqual(['b']);

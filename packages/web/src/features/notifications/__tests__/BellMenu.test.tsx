@@ -161,7 +161,7 @@ describe('BellMenu — 4 notification types render', () => {
       fakeNotification(N2, 'studio.member_invited', {
         studioName: 'Acme',
         inviterName: 'Alex',
-        role: 'member',
+        role: 'guest',
       }),
     ]);
     setup();
@@ -262,7 +262,7 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
       fakeNotification(N2, 'studio.member_invited', {
         studioName: 'Demo',
         inviterName: 'Alex',
-        role: 'member',
+        role: 'guest',
       }),
     ]);
     vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });
@@ -283,7 +283,7 @@ describe('BellMenu — studio notification types (slice 3)', () => {
       fakeNotification(N1, 'studio.member_invited', {
         studioName: 'Acme',
         inviterName: 'Alex',
-        role: 'creator',
+        role: 'maintainer',
       }),
     ]);
     setup();
@@ -293,7 +293,7 @@ describe('BellMenu — studio notification types (slice 3)', () => {
       await screen.findByTestId(`bell-notification-${N1}`),
     ).toBeInTheDocument();
     expect(screen.getByText(/You were added to Acme/i)).toBeInTheDocument();
-    expect(screen.getByText(/Joined as a creator/i)).toBeInTheDocument();
+    expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
     // Informational — mark-read affordance, not confirm/cancel.
     expect(screen.getByTestId(`bell-mark-read-${N1}`)).toBeInTheDocument();
     expect(screen.queryByTestId(`bell-confirm-${N1}`)).toBeNull();
@@ -416,7 +416,7 @@ describe('BellMenu — studio invite-confirm handshake', () => {
           studioId: 's1',
           studioName: 'Acme',
           inviterName: 'Alex',
-          role: 'creator',
+          role: 'maintainer',
         },
         { expiresAt },
       ),
@@ -427,8 +427,8 @@ describe('BellMenu — studio invite-confirm handshake', () => {
     expect(
       await screen.findByText(/You were invited to join Acme/i),
     ).toBeInTheDocument();
-    // Subtitle reuses the granted-role label (invitedAsCreator).
-    expect(screen.getByText(/Joined as a creator/i)).toBeInTheDocument();
+    // Subtitle reuses the granted-role label (invitedAsMaintainer).
+    expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
     // Actionable like the transfer handshake: confirm / cancel + a countdown.
     expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
     expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
@@ -441,7 +441,7 @@ describe('BellMenu — studio invite-confirm handshake', () => {
       fakeNotification(
         N1,
         'studio.invite_request',
-        { invitationId: 'inv-1', studioName: 'Acme', role: 'member' },
+        { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
     ]);
@@ -463,7 +463,7 @@ describe('BellMenu — studio invite-confirm handshake', () => {
       fakeNotification(
         N1,
         'studio.invite_request',
-        { invitationId: 'inv-1', studioName: 'Acme', role: 'member' },
+        { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
     ]);

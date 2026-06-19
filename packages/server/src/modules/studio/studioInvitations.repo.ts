@@ -30,7 +30,7 @@ import type { DbTx } from "@breatic/core";
 import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
-type InvitableRole = "creator" | "member";
+type InvitableRole = "maintainer" | "guest";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by

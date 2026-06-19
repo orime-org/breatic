@@ -45,7 +45,7 @@ export interface SlugAvailability {
 }
 
 /** A studio role an admin may grant by invite or change-role (never admin). */
-export type GrantableStudioRole = 'creator' | 'member';
+export type GrantableStudioRole = 'maintainer' | 'guest';
 
 /** Body for `POST /studio/:slug/members` — a registered email + granted role. */
 export interface InviteMemberBody {
@@ -53,7 +53,7 @@ export interface InviteMemberBody {
   role: GrantableStudioRole;
 }
 
-/** Body for `PATCH /studio/:slug/members/:userId` — creator ↔ member only. */
+/** Body for `PATCH /studio/:slug/members/:userId` — maintainer ↔ guest only. */
 export interface ChangeMemberRoleBody {
   role: GrantableStudioRole;
 }
@@ -110,7 +110,8 @@ export const studiosApi = {
   },
   /**
    * `GET /api/v1/studio/:slug` — one studio's public-facing shell, with the
-   * viewer's role (`admin` / `member` / `null` = guest). Rejects with a 404
+   * viewer's role (`admin` / `maintainer` / `guest` / `null` = non-member).
+   * Rejects with a 404
    * `ApiException` when no active studio has that slug.
    * @param slug the studio's URL handle.
    * @returns the studio detail.
@@ -142,7 +143,7 @@ export const studiosApi = {
   },
   /**
    * `POST /api/v1/studio/:slug/members` — invite a registered user (by email)
-   * with a `creator` / `member` role. Admin-only; creates a PENDING invite + an
+   * with a `maintainer` / `guest` role. Admin-only; creates a PENDING invite + an
    * actionable bell notification (and best-effort an email link). The invitee
    * becomes a member only on confirm. Rejects: `404` unregistered email, `409`
    * already a member / already invited, `403` personal / not admin, `422` body.
@@ -182,7 +183,7 @@ export const studiosApi = {
   },
   /**
    * `PATCH /api/v1/studio/:slug/members/:userId` — change a member's role
-   * (creator ↔ member). Admin-only; admin grant/demote goes through
+   * (maintainer ↔ guest). Admin-only; admin grant/demote goes through
    * transfer-admin, not here. Rejects with `403`, `404`, or `409` (target is
    * the admin).
    * @param slug the studio's URL handle.

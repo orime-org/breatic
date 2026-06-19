@@ -97,7 +97,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
   });
 
   it("allows a creator to create (admin + creator may spend studio credits)", async () => {
-    mockLoadStudioRole.mockResolvedValueOnce("creator");
+    mockLoadStudioRole.mockResolvedValueOnce("maintainer");
 
     await create("u-1", "studio-9", "P", "p", "studio", "canvas");
 
@@ -105,7 +105,7 @@ describe("project.service.create — studio-scoped, admin/creator gate (spec §0
   });
 
   it("rejects a plain member with ForbiddenError (cannot burn shared studio credits)", async () => {
-    mockLoadStudioRole.mockResolvedValueOnce("member");
+    mockLoadStudioRole.mockResolvedValueOnce("guest");
 
     await expect(
       create("u-1", "studio-9", "P", "p", "studio", "canvas"),

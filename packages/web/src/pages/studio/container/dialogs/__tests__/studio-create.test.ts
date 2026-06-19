@@ -34,7 +34,7 @@ const teamCreator: StudioSummary = {
   name: 'Team C',
   type: 'team',
   memberCount: 5,
-  myStudioRole: 'creator',
+  myStudioRole: 'maintainer',
 };
 const teamMember: StudioSummary = {
   id: 's-m',
@@ -42,7 +42,7 @@ const teamMember: StudioSummary = {
   name: 'Team M',
   type: 'team',
   memberCount: 8,
-  myStudioRole: 'member',
+  myStudioRole: 'guest',
 };
 
 const ALL = [personal, teamAdmin, teamCreator, teamMember];

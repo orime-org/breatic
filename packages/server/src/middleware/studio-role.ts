@@ -20,8 +20,8 @@ import type { StudioRole } from "@breatic/shared";
 
 const STUDIO_ROLE_RANK: Record<StudioRole, number> = {
   admin: 3,
-  creator: 2,
-  member: 1,
+  maintainer: 2,
+  guest: 1,
 };
 
 /**

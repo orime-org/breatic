@@ -47,7 +47,7 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     withRouter(
       <ProjectsTab
         projects={[STUDIO_VISIBLE, PRIVATE_UNINVOLVED]}
-        studioRole='member'
+        studioRole='guest'
       />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     expect(screen.getByText('Hidden Project')).toBeInTheDocument();
   });
 
-  it('offers create to an admin/creator, never to a member or guest (spec §7.1)', () => {
+  it('offers create to an admin/maintainer, never to a guest or non-member (spec §7.1)', () => {
     const admin = withRouter(
       <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' />,
     );
@@ -74,23 +74,23 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     ).toBeInTheDocument();
     admin.unmount();
 
-    const creator = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='creator' />,
+    const maintainer = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
     ).toBeInTheDocument();
-    creator.unmount();
+    maintainer.unmount();
 
-    // A plain member cannot create — studio credits are shared, so creating is
-    // limited to admin/creator (spec §0.2 / §8.2).
-    const member = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='member' />,
+    // A plain guest cannot create — studio credits are shared, so creating is
+    // limited to admin/maintainer (spec §0.2 / §8.2).
+    const guest = withRouter(
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
     );
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
-    member.unmount();
+    guest.unmount();
 
-    // A guest viewing the public shell never sees the create entry.
+    // A non-member viewing the public shell never sees the create entry.
     withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });
@@ -161,7 +161,7 @@ describe('CreditsTab (spec §4 invariant 4: read-only cached balance)', () => {
     expect(
       screen.getByRole('button', { name: 'Request refund' }),
     ).toBeInTheDocument();
-    rerender(<CreditsTab wallet={TEAM_WALLET} studioRole='member' now={NOW} />);
+    rerender(<CreditsTab wallet={TEAM_WALLET} studioRole='guest' now={NOW} />);
     expect(screen.queryByRole('button', { name: 'Request refund' })).toBeNull();
   });
 });
@@ -200,7 +200,7 @@ describe('MembersTab (spec §3.7)', () => {
 
   it('hides the invite button from a Member', () => {
     withQuery(
-      <MembersTab slug='acme' members={MEMBERS} studioRole='member' studioType='team' pendingInvitations={[]} />,
+      <MembersTab slug='acme' members={MEMBERS} studioRole='guest' studioType='team' pendingInvitations={[]} />,
     );
     expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
   });
@@ -236,7 +236,7 @@ describe('SettingsTab (spec §3.11 danger zone)', () => {
   });
 
   it('hides the danger zone from a team Member', () => {
-    render(<SettingsTab studio={{ ...TEAM, myStudioRole: 'member' }} />);
+    render(<SettingsTab studio={{ ...TEAM, myStudioRole: 'guest' }} />);
     expect(screen.queryByText('Danger zone')).toBeNull();
   });
 });

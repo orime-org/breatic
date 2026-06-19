@@ -29,14 +29,14 @@ const RENDER_MATRIX: ReadonlyArray<
   ['admin', 'private', 'editor', true],
   ['admin', 'private', 'viewer', true],
   ['admin', 'private', null, true],
-  ['member', 'studio', 'owner', true],
-  ['member', 'studio', 'editor', true],
-  ['member', 'studio', 'viewer', true],
-  ['member', 'studio', null, true],
-  ['member', 'private', 'owner', true],
-  ['member', 'private', 'editor', true],
-  ['member', 'private', 'viewer', true],
-  ['member', 'private', null, false], // the ONLY hidden case
+  ['guest', 'studio', 'owner', true],
+  ['guest', 'studio', 'editor', true],
+  ['guest', 'studio', 'viewer', true],
+  ['guest', 'studio', null, true],
+  ['guest', 'private', 'owner', true],
+  ['guest', 'private', 'editor', true],
+  ['guest', 'private', 'viewer', true],
+  ['guest', 'private', null, false], // the ONLY hidden case
 ];
 
 describe('studio access — canRenderItemCard (invariant 1: visibility filter)', () => {
@@ -53,9 +53,9 @@ describe('studio access — canRenderItemCard (invariant 1: visibility filter)',
     expect(RENDER_MATRIX).toHaveLength(2 * 2 * 4);
   });
 
-  it('a plain Member never sees a private item they have no role on', () => {
+  it('a plain Guest never sees a private item they have no role on', () => {
     expect(
-      canRenderItemCard('member', { visibility: 'private', myRole: null }),
+      canRenderItemCard('guest', { visibility: 'private', myRole: null }),
     ).toBe(false);
   });
 });
@@ -64,8 +64,8 @@ describe('studio access — canRenderItemCard (invariant 1: visibility filter)',
 const MANAGE_MATRIX: ReadonlyArray<[StudioRole, boolean, boolean]> = [
   ['admin', true, true],
   ['admin', false, true],
-  ['member', true, true],
-  ['member', false, false], // non-owner Member: no governance
+  ['guest', true, true],
+  ['guest', false, false], // non-owner Guest: no governance
 ];
 
 describe('studio access — canManageItem (invariant 2: governance buttons)', () => {
@@ -76,8 +76,8 @@ describe('studio access — canManageItem (invariant 2: governance buttons)', ()
     },
   );
 
-  it('a non-owner Member never gets governance controls', () => {
-    expect(canManageItem('member', false)).toBe(false);
+  it('a non-owner Guest never gets governance controls', () => {
+    expect(canManageItem('guest', false)).toBe(false);
   });
 });
 
@@ -92,7 +92,7 @@ describe('studio access — effectiveItemRole', () => {
 });
 
 // Decision A: the studio shell is public, so a guest (`null` studio role — a
-// non-member viewing) can reach the tabs. A guest sees only studio-visible
+// non-member viewing) can reach the tabs. A non-member sees only studio-visible
 // items and manages nothing. Exhaustive over (visibility × myRole).
 const GUEST_RENDER_MATRIX: ReadonlyArray<
   [ItemVisibility, ItemRole | null, boolean]
@@ -132,8 +132,8 @@ describe('studio access — guest (null studio role, decision A)', () => {
 describe('studio access — canCreateInStudio (spec §0.2/§8.2 create gate)', () => {
   const MATRIX: ReadonlyArray<[StudioRole | null, boolean]> = [
     ['admin', true],
-    ['creator', true],
-    ['member', false],
+    ['maintainer', true],
+    ['guest', false],
     [null, false],
   ];
   it.each(MATRIX)('role=%s → canCreate=%s', (role, expected) => {

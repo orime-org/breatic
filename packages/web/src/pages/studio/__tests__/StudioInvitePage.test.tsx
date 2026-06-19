@@ -33,7 +33,7 @@ function makeView(o: Partial<InvitationLandingView> = {}): InvitationLandingView
     studioName: 'Pixel Lab',
     studioSlug: 'pixel-lab',
     inviterName: 'Ana',
-    role: 'member',
+    role: 'guest',
     expired: false,
     isInvitee: true,
     ...o,
@@ -73,11 +73,11 @@ describe('StudioInvitePage', () => {
 
   it('renders the confirm card for the invitee with studio + inviter + role', async () => {
     vi.mocked(studiosApi.getInvitation).mockResolvedValueOnce(
-      makeView({ role: 'creator' }),
+      makeView({ role: 'maintainer' }),
     );
     setup();
     expect(
-      await screen.findByText(/Ana invited you to join Pixel Lab as a creator/i),
+      await screen.findByText(/Ana invited you to join Pixel Lab as a Maintainer/i),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Accept & join' }),

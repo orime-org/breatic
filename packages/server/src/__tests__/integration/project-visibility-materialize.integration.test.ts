@@ -90,7 +90,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
 async function insertStudioMember(
   studioId: string,
   userId: string,
-  role: "admin" | "creator" | "member",
+  role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
@@ -185,7 +185,7 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     const creator = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, creator, "creator");
+    await insertStudioMember(studioId, creator, "maintainer");
 
     const project = await projectService.create(
       creator,
@@ -208,7 +208,7 @@ describe("projectService.create — studio admin/creator gate (critical path 鉴
     const member = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
 
     await expect(
       projectService.create(member, studioId, "Member Project", "member-gate-project", "studio", "canvas"),
@@ -234,7 +234,7 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     const stranger = await insertUser();
     const studioId = await insertStudio(admin);
     await insertStudioMember(studioId, admin, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
 
     const pStudio = await insertProject(studioId, admin, "studio");
     const pPrivateMember = await insertProject(studioId, member, "private");
@@ -302,7 +302,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
 
     // #2 — not a project member before entry.
@@ -326,7 +326,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
 
     const results = await Promise.allSettled([
@@ -344,7 +344,7 @@ describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)"
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "studio");
     // Member was invited then removed → a soft-deleted row exists.
     await insertProjectMember(pid, member, "viewer", true);
@@ -380,7 +380,7 @@ describe("loadForViewer — access denial hides existence (404)", () => {
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "member");
+    await insertStudioMember(studioId, member, "guest");
     const pid = await insertProject(studioId, owner, "private");
 
     await expect(projectService.loadForViewer(pid, member)).rejects.toBeInstanceOf(
