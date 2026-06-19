@@ -260,6 +260,29 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       removeFromGroup(PID, SID, 'g1', 'only');
       expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
     });
+
+    it('deleting a member node detaches it from its group (no stale childId)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm2' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1', 'm2'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'm1');
+      expect(childIds('g1')).toEqual(['m2']);
+    });
+
+    it('deleting a group last member deletes the empty group too (不变量 1)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'm1');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+    });
+
+    it('deleting the group node itself leaves its children intact (删组放回子节点)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'g1');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+      expect(doc().getMap('nodesMap').get('m1')).toBeInstanceOf(Y.Map);
+    });
   });
 
   describe('group background + move — setGroupBackground / moveGroup', () => {

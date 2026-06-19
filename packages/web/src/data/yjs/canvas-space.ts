@@ -249,7 +249,32 @@ export function addNode(
 }
 
 /**
- * Delete a node by id — frontend-owned operation.
+ * Within an open transaction, drop `nodeId` from any group's `childIds` so a
+ * deleted member never lingers as a stale child reference; a group left empty
+ * is deleted too (不变量 1: 组至少一个子节点). A group id is never a member
+ * (不嵌套), so deleting a group node is a no-op here — its children stay.
+ * @param nodesMap - The canvas-space `nodesMap` (call inside a transaction).
+ * @param nodeId - The node id being deleted.
+ */
+function detachFromGroups(
+  nodesMap: Y.Map<Y.Map<unknown>>,
+  nodeId: string,
+): void {
+  nodesMap.forEach((node, id) => {
+    if (!(node instanceof Y.Map) || node.get('type') !== 'group') return;
+    const data = node.get('data');
+    if (!(data instanceof Y.Map)) return;
+    const ids = data.get('childIds');
+    if (!Array.isArray(ids) || !ids.includes(nodeId)) return;
+    const next = (ids as string[]).filter((x) => x !== nodeId);
+    if (next.length === 0) nodesMap.delete(id);
+    else data.set('childIds', next);
+  });
+}
+
+/**
+ * Delete a node by id — frontend-owned operation. Also detaches the node from
+ * any group it belonged to (deleting the group if it becomes empty).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to remove the node from.
  * @param nodeId - Id of the node to delete.
@@ -262,6 +287,7 @@ export function removeNode(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   doc.transact(() => {
+    detachFromGroups(nodesMap, nodeId);
     nodesMap.delete(nodeId);
   }, CANVAS_UNDO);
 }
@@ -542,7 +568,10 @@ export function removeElements(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   doc.transact(() => {
-    nodeIds.forEach((id) => nodesMap.delete(id));
+    nodeIds.forEach((id) => {
+      detachFromGroups(nodesMap, id);
+      nodesMap.delete(id);
+    });
     edgeIds.forEach((id) => edgesMap.delete(id));
   }, CANVAS_UNDO);
 }
