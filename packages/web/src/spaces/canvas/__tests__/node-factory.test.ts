@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  createEmptyGroup,
   createEmptyNode,
   CREATABLE_NODE_TYPES,
   isCreatableNodeType,
@@ -45,6 +46,46 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.data.coverUrl).toBeUndefined();
     expect(node.data.prompt).toBeUndefined();
     expect(node.data.model).toBeUndefined();
+  });
+});
+
+describe('createEmptyGroup — group node factory', () => {
+  const pos = { x: 5, y: 6 };
+
+  it('builds a group CanvasNodeFields wrapping the given child ids', () => {
+    const g = createEmptyGroup(['a', 'b'], pos, 'user-1');
+    expect(g.type).toBe('group');
+    expect(g.position).toEqual(pos);
+    expect(g.data.childIds).toEqual(['a', 'b']);
+    expect(g.data.createdBy).toBe('user-1');
+    expect(g.data.locked).toBe(false);
+    expect(g.data.operationLocks).toEqual([]);
+    expect(g.data.state).toBe('idle');
+    expect(g.data.attachments).toEqual([]);
+    expect(typeof g.data.createdAt).toBe('number');
+    expect(g.data.createdAt).toBeGreaterThan(0);
+  });
+
+  it('defaults the name to the fixed English "Group" (not a localized label)', () => {
+    expect(createEmptyGroup(['a'], pos, 'u').data.name).toBe('Group');
+  });
+
+  it('leaves backgroundColor unset by default (no color = neutral dashed frame)', () => {
+    expect(createEmptyGroup(['a'], pos, 'u').data.backgroundColor).toBeUndefined();
+  });
+
+  it('generates a unique non-empty id per call', () => {
+    const a = createEmptyGroup(['x'], pos, 'u');
+    const b = createEmptyGroup(['x'], pos, 'u');
+    expect(a.id).toBeTruthy();
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it('copies childIds — later mutation of the caller array does not leak in', () => {
+    const src = ['a', 'b'];
+    const g = createEmptyGroup(src, pos, 'u');
+    src.push('c');
+    expect(g.data.childIds).toEqual(['a', 'b']);
   });
 });
 

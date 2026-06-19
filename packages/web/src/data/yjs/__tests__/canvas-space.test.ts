@@ -9,10 +9,14 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
   addNode,
+  addToGroup,
+  moveGroup,
   readEdges,
   readNodes,
   removeEdge,
+  removeFromGroup,
   removeNode,
+  setGroupBackground,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -203,5 +207,127 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
     removeEdge(PID, SID, 'e1');
     expect(readEdges(doc())).toHaveLength(0);
+  });
+
+  describe('group membership — addToGroup / removeFromGroup', () => {
+    /** Read a group's childIds straight off the wire data Y.Map. */
+    function childIds(groupId: string): string[] | undefined {
+      const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
+      const data = g?.get('data');
+      return data instanceof Y.Map ? (data.get('childIds') as string[]) : undefined;
+    }
+
+    it('addToGroup appends a node to childIds, idempotent (no duplicate)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      addToGroup(PID, SID, 'g1', 'n2');
+      expect(childIds('g1')).toEqual(['n1', 'n2']);
+      addToGroup(PID, SID, 'g1', 'n2');
+      expect(childIds('g1')).toEqual(['n1', 'n2']);
+    });
+
+    it('addToGroup refuses to nest a group (a group is never a member — 不嵌套)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['n2'] }, { id: 'g2' }));
+      addToGroup(PID, SID, 'g1', 'g2');
+      expect(childIds('g1')).toEqual(['n1']);
+    });
+
+    it('addToGroup moves a node from its old group to the new one (成员不相交)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['nc'] }, { id: 'gB' }));
+      addToGroup(PID, SID, 'gB', 'na');
+      expect(childIds('gA')).toEqual(['nb']);
+      expect(childIds('gB')).toEqual(['nc', 'na']);
+    });
+
+    it('addToGroup deletes the old group when the moved node was its last child (删空组)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['x'] }, { id: 'gB' }));
+      addToGroup(PID, SID, 'gB', 'only');
+      expect(doc().getMap('nodesMap').get('gA')).toBeUndefined();
+      expect(childIds('gB')).toEqual(['x', 'only']);
+    });
+
+    it('removeFromGroup removes a member; the group survives while others remain', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2'] }, { id: 'g1' }));
+      removeFromGroup(PID, SID, 'g1', 'n1');
+      expect(childIds('g1')).toEqual(['n2']);
+    });
+
+    it('removeFromGroup deletes the group when its last member leaves (不变量 1)', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'g1' }));
+      removeFromGroup(PID, SID, 'g1', 'only');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+    });
+
+    it('deleting a member node detaches it from its group (no stale childId)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm2' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1', 'm2'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'm1');
+      expect(childIds('g1')).toEqual(['m2']);
+    });
+
+    it('deleting a group last member deletes the empty group too (不变量 1)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'm1');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+    });
+
+    it('deleting the group node itself leaves its children intact (删组放回子节点)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
+      removeNode(PID, SID, 'g1');
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
+      expect(doc().getMap('nodesMap').get('m1')).toBeInstanceOf(Y.Map);
+    });
+  });
+
+  describe('group background + move — setGroupBackground / moveGroup', () => {
+    /** Read a group's backgroundColor off the wire data Y.Map. */
+    function bg(groupId: string): unknown {
+      const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
+      const data = g?.get('data');
+      return data instanceof Y.Map ? data.get('backgroundColor') : undefined;
+    }
+    /** Read a node's position off the wire node Y.Map. */
+    function pos(nodeId: string): { x: number; y: number } | undefined {
+      const n = doc().getMap('nodesMap').get(nodeId) as Y.Map<unknown> | undefined;
+      return n?.get('position') as { x: number; y: number } | undefined;
+    }
+
+    it('setGroupBackground sets the group backgroundColor', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      setGroupBackground(PID, SID, 'g1', 'var(--color-status-info-bg)');
+      expect(bg('g1')).toBe('var(--color-status-info-bg)');
+    });
+
+    it('setGroupBackground with undefined clears the color (无色)', () => {
+      addNode(
+        PID,
+        SID,
+        sampleFields('group', { childIds: ['n1'], backgroundColor: 'x' }, { id: 'g1' }),
+      );
+      setGroupBackground(PID, SID, 'g1', undefined);
+      expect(bg('g1')).toBeUndefined();
+    });
+
+    it('moveGroup shifts every child node by the delta (group follows via derived geometry)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 10, y: 20 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c2', position: { x: 30, y: 40 } }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'c2'] }, { id: 'g1' }));
+      moveGroup(PID, SID, 'g1', { x: 5, y: -3 });
+      expect(pos('c1')).toEqual({ x: 15, y: 17 });
+      expect(pos('c2')).toEqual({ x: 35, y: 37 });
+    });
+
+    it('moveGroup skips child ids that are not real nodes (robust)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 0, y: 0 } }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'ghost'] }, { id: 'g1' }));
+      expect(() => moveGroup(PID, SID, 'g1', { x: 1, y: 1 })).not.toThrow();
+      expect(pos('c1')).toEqual({ x: 1, y: 1 });
+    });
   });
 });

@@ -209,6 +209,16 @@
       "redoTooltip": "やり直し (Shift+Ctrl+Z)",
       "fitToView": "ビューに合わせる"
     },
+    "group": {
+      "group": "グループ化",
+      "ungroup": "グループ解除",
+      "background": "背景色",
+      "backgroundNone": "なし",
+      "backgroundInfo": "青",
+      "backgroundSuccess": "緑",
+      "backgroundWarning": "オレンジ",
+      "backgroundError": "コーラル"
+    },
     "comment": {
       "composerPlaceholder": "コメントを入力...",
       "replyPlaceholder": "ディスカッションに返信...",

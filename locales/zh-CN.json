@@ -209,6 +209,16 @@
       "redoTooltip": "重做 (Shift+Ctrl+Z)",
       "fitToView": "适合窗口"
     },
+    "group": {
+      "group": "编组",
+      "ungroup": "取消编组",
+      "background": "背景颜色",
+      "backgroundNone": "无色",
+      "backgroundInfo": "蓝色",
+      "backgroundSuccess": "绿色",
+      "backgroundWarning": "橙色",
+      "backgroundError": "珊瑚色"
+    },
     "comment": {
       "composerPlaceholder": "输入你的评论...",
       "replyPlaceholder": "回复讨论...",

@@ -66,3 +66,48 @@ export function createEmptyNode(
     },
   };
 }
+
+/** Fixed English default name for a new group (not localized — see below). */
+const GROUP_DEFAULT_NAME = 'Group';
+
+/**
+ * Builds a fresh group node wrapping the given child node ids, in the shared
+ * wire shape. Pure (like {@link createEmptyNode}): `createdBy` is injected by
+ * the caller so the factory stays free of React / store access.
+ *
+ * The default name is the fixed English `Group` — a data value, NOT a
+ * localized label — for the same reason content-node default names are fixed
+ * English: a localized default would freeze the creating client's locale into
+ * the shared Yjs doc for every collaborator. `backgroundColor` stays unset
+ * (neutral dashed frame) until the user picks one; the group has no lock and
+ * no manual size (geometry is derived from children at render).
+ * @param childIds - Ids of the nodes this group wraps. Copied, not aliased, so
+ *   later mutation of the caller's array cannot leak into the node.
+ * @param position - Canvas coordinates the group is placed at. Group geometry
+ *   is derived from its children at render; this is only an initial value.
+ * @param position.x - X coordinate.
+ * @param position.y - Y coordinate.
+ * @param createdBy - User id of the creator (caller injects from the store).
+ * @returns A complete {@link CanvasNodeFields} for a group node.
+ */
+export function createEmptyGroup(
+  childIds: ReadonlyArray<string>,
+  position: { x: number; y: number },
+  createdBy: string,
+): CanvasNodeFields {
+  return {
+    id: newId(),
+    type: 'group',
+    position,
+    data: {
+      name: GROUP_DEFAULT_NAME,
+      createdAt: Date.now(),
+      createdBy,
+      locked: false,
+      operationLocks: [],
+      state: 'idle',
+      attachments: [],
+      childIds: [...childIds],
+    },
+  };
+}

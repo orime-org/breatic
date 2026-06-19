@@ -4,7 +4,9 @@
 import {
   Background,
   BackgroundVariant,
+  NodeToolbar,
   PanOnScrollMode,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   applyEdgeChanges,
@@ -22,8 +24,14 @@ import * as React from 'react';
 
 import {
   addEdge,
+  addNode,
+  addToGroup,
+  moveGroup,
   removeEdge,
   removeElements,
+  removeFromGroup,
+  removeNode,
+  setGroupBackground,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -37,9 +45,23 @@ import {
   CanvasActionsContext,
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
+import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import {
+  applyGroupGeometry,
+  computeGroupRect,
+} from '@web/spaces/canvas/group-geometry';
+import {
+  resolveGroupDrop,
+  type GroupBox,
+} from '@web/spaces/canvas/group-membership';
+import {
+  computeGroupToolbar,
+  type NodeGroupInfo,
+} from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { GroupBackgroundPicker } from '@web/spaces/canvas/GroupBackgroundPicker';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import {
   mergeMirroredEdgeSelection,
@@ -51,12 +73,14 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  createEmptyGroup,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Steps repeated centre-drops apart so library creations don't stack exactly. */
 const STAGGER_STEP_PX = 24;
@@ -123,6 +147,50 @@ function toFlowNode(node: CanvasNodeView): Node {
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
+}
+
+/** Fallback footprint for an unmeasured node when hit-testing its center. */
+const NODE_FALLBACK_W = 160;
+const NODE_FALLBACK_H = 96;
+
+/**
+ * A node's center in flow coordinates, from its measured size (or a default
+ * before ReactFlow has measured it).
+ * @param node - The flow node.
+ * @returns The node's center point.
+ */
+function nodeCenter(node: Node): { x: number; y: number } {
+  const width = node.measured?.width ?? NODE_FALLBACK_W;
+  const height = node.measured?.height ?? NODE_FALLBACK_H;
+  return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
+}
+
+/**
+ * Build the hit-test boxes for every group, excluding the dragged node from
+ * each group's bounds so a member dragged out of its own group reads as
+ * "outside" (the group's rect is its *other* members' bounds). A group with
+ * no remaining members is skipped (its sole member following it is a move,
+ * not a leave). `childIds` keeps the dragged node so its current group is
+ * still detectable.
+ * @param flowNodes - The current flow nodes.
+ * @param draggedId - The node being dropped (excluded from each rect).
+ * @returns One {@link GroupBox} per group with a resolvable rect.
+ */
+function groupBoxesFor(
+  flowNodes: ReadonlyArray<Node>,
+  draggedId: string,
+): GroupBox[] {
+  const boxes: GroupBox[] = [];
+  for (const node of flowNodes) {
+    if (node.type !== 'group') continue;
+    const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
+    const members = flowNodes.filter(
+      (member) => childIds.includes(member.id) && member.id !== draggedId,
+    );
+    const rect = computeGroupRect(members);
+    if (rect) boxes.push({ id: node.id, rect, childIds });
+  }
+  return boxes;
 }
 
 /**
@@ -291,11 +359,89 @@ function CanvasSpaceInner({
     setFlowEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
+  // Group drag carries its members: a group node has no authoritative position
+  // (geometry is derived from its members), so dragging it translates every
+  // member instead. We track the drag delta and move members locally each
+  // frame (smooth, no Yjs churn); the final delta is persisted once on stop
+  // (one moveGroup = one undo entry). Members keep their real positions.
+  const groupDragRef = React.useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    childIds: string[];
+  } | null>(null);
+
+  const onNodeDragStart = React.useCallback(
+    (_event: React.MouseEvent, node: Node): void => {
+      if (node.type !== 'group') return;
+      const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
+      groupDragRef.current = {
+        id: node.id,
+        startX: node.position.x,
+        startY: node.position.y,
+        lastX: node.position.x,
+        lastY: node.position.y,
+        childIds,
+      };
+    },
+    [],
+  );
+
+  const onNodeDrag = React.useCallback(
+    (_event: React.MouseEvent, node: Node): void => {
+      const drag = groupDragRef.current;
+      if (!drag || drag.id !== node.id) return;
+      const dx = node.position.x - drag.lastX;
+      const dy = node.position.y - drag.lastY;
+      if (dx === 0 && dy === 0) return;
+      drag.lastX = node.position.x;
+      drag.lastY = node.position.y;
+      setFlowNodes((current) =>
+        current.map((flowNode) =>
+          drag.childIds.includes(flowNode.id)
+            ? {
+              ...flowNode,
+              position: {
+                x: flowNode.position.x + dx,
+                y: flowNode.position.y + dy,
+              },
+            }
+            : flowNode,
+        ),
+      );
+    },
+    [],
+  );
+
   const onNodeDragStop = React.useCallback(
     (_event: React.MouseEvent, node: Node): void => {
+      const drag = groupDragRef.current;
+      if (node.type === 'group' && drag && drag.id === node.id) {
+        groupDragRef.current = null;
+        const dx = node.position.x - drag.startX;
+        const dy = node.position.y - drag.startY;
+        if (dx !== 0 || dy !== 0) {
+          moveGroup(projectId, spaceId, node.id, { x: dx, y: dy });
+        }
+        return;
+      }
+      // A single (non-group) node: persist its new position, then resolve
+      // whether the drop changed its group membership (§7.5 drag in / out).
       setNodePosition(projectId, spaceId, node.id, node.position);
+      const drop = resolveGroupDrop(
+        node.id,
+        nodeCenter(node),
+        groupBoxesFor(flowNodes, node.id),
+      );
+      if (drop.action === 'add') {
+        addToGroup(projectId, spaceId, drop.groupId, node.id);
+      } else if (drop.action === 'remove') {
+        removeFromGroup(projectId, spaceId, drop.groupId, node.id);
+      }
     },
-    [projectId, spaceId],
+    [projectId, spaceId, flowNodes],
   );
 
   // Persist deletions to Yjs. ReactFlow's onDelete fires ONCE with both the
@@ -536,6 +682,88 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('copy', onCopy);
   }, [readOnly]);
 
+  // ---- Grouping (selection → group / ungroup) ----
+  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+  const selectedIds = React.useMemo(
+    () => flowNodes.filter((node) => node.selected).map((node) => node.id),
+    [flowNodes],
+  );
+  const groupInfos = React.useMemo<NodeGroupInfo[]>(
+    () =>
+      flowNodes.map((node) => ({
+        id: node.id,
+        isGroup: node.type === 'group',
+        childIds: (node.data as { childIds?: string[] }).childIds,
+      })),
+    [flowNodes],
+  );
+  const groupOffer = React.useMemo(
+    () => computeGroupToolbar(selectedIds, groupInfos),
+    [selectedIds, groupInfos],
+  );
+
+  // Group the loose selection into a new group node. Its stored position is
+  // the members' padded top-left (real geometry is derived at render); the
+  // new group is selected so its toolbar / color picker is immediately usable.
+  const groupSelection = React.useCallback((): void => {
+    if (readOnly || groupOffer.kind !== 'group') return;
+    const members = flowNodes.filter((node) => selectedIds.includes(node.id));
+    const rect = computeGroupRect(members);
+    const position = rect ? { x: rect.x, y: rect.y } : { x: 0, y: 0 };
+    const group = createEmptyGroup(selectedIds, position, userId);
+    addNode(projectId, spaceId, group);
+    setSelectAfterCreate([group.id]);
+  }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
+
+  // Dissolve the selected group — delete the group node only; its members are
+  // untouched and stay on the canvas (delete-group = release children).
+  const ungroupSelection = React.useCallback((): void => {
+    if (readOnly || groupOffer.kind !== 'ungroup') return;
+    removeNode(projectId, spaceId, groupOffer.groupId);
+  }, [readOnly, groupOffer, projectId, spaceId]);
+
+  // Background-color picker for the selected group (only the ungroup offer has
+  // a single group). Its current tint seeds the picker; a pick writes through
+  // to Yjs.
+  const [bgMenuOpen, setBgMenuOpen] = React.useState(false);
+  const selectedGroupBg = React.useMemo<string | undefined>(() => {
+    if (groupOffer.kind !== 'ungroup') return undefined;
+    const group = flowNodes.find((node) => node.id === groupOffer.groupId);
+    return (group?.data as { backgroundColor?: string } | undefined)
+      ?.backgroundColor;
+  }, [groupOffer, flowNodes]);
+  const pickGroupBackground = React.useCallback(
+    (color: string | undefined): void => {
+      if (readOnly || groupOffer.kind !== 'ungroup') return;
+      setGroupBackground(projectId, spaceId, groupOffer.groupId, color);
+      setBgMenuOpen(false);
+    },
+    [readOnly, groupOffer, projectId, spaceId],
+  );
+
+  // Keyboard grouping — double-platform (Cmd on mac, Ctrl on windows; see
+  // matchGroupShortcut). Gated like undo/redo: no-op while editing a field or
+  // read-only, and only swallows the browser shortcut when the action applies.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: route group / ungroup shortcuts.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      const action = matchGroupShortcut(event);
+      if (action === 'group' && groupOffer.kind === 'group') {
+        event.preventDefault();
+        groupSelection();
+      } else if (action === 'ungroup' && groupOffer.kind === 'ungroup') {
+        event.preventDefault();
+        ungroupSelection();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, groupOffer, groupSelection, ungroupSelection]);
+
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The
   // ReactFlow wrapper pre-binds this to each node's id.
@@ -551,6 +779,22 @@ function CanvasSpaceInner({
     [projectId, spaceId, readOnly],
   );
 
+  // Group nodes carry no authoritative size: derive each group's container
+  // from its members' bounding box (+ padding) at render. Groups render
+  // *behind* their members (painted first; grab them by the frame padding) and
+  // dragging one moves its members instead of the (position-less) group node
+  // itself (onNodeDragStart / onNodeDrag / onNodeDragStop). Members keep their
+  // own real positions, so a member drag reflows the group on the next mirror.
+  const renderNodes = React.useMemo<Node[]>(() => {
+    const sized = applyGroupGeometry(flowNodes);
+    const groups = sized.filter((node) => node.type === 'group');
+    const rest = sized.filter((node) => node.type !== 'group');
+    return [
+      ...groups.map((node) => ({ ...node, draggable: !readOnly, zIndex: 0 })),
+      ...rest,
+    ];
+  }, [flowNodes, readOnly]);
+
   return (
     <CanvasActionsContext.Provider value={actions}>
       <div
@@ -562,7 +806,7 @@ function CanvasSpaceInner({
         className='relative h-full w-full bg-canvas'
       >
         <ReactFlow
-          nodes={flowNodes}
+          nodes={renderNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
@@ -576,6 +820,8 @@ function CanvasSpaceInner({
           nodesConnectable={!readOnly}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onConnect={onConnect}
@@ -605,6 +851,43 @@ function CanvasSpaceInner({
             size={DOT_SIZE_PX}
             color='var(--color-canvas-grid)'
           />
+          {/* Floating selection toolbar: group a fresh selection, or ungroup
+              a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
+          <NodeToolbar
+            nodeId={selectedIds}
+            isVisible={groupOffer.kind !== 'none' && !readOnly}
+            position={Position.Top}
+          >
+            <div className='flex items-center gap-1 rounded-md border border-border bg-popover p-1 shadow-md'>
+              {groupOffer.kind === 'ungroup' ? (
+                <>
+                  <button
+                    type='button'
+                    data-testid='group-toolbar-ungroup'
+                    onClick={ungroupSelection}
+                    className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                  >
+                    {t('canvas.group.ungroup')}
+                  </button>
+                  <GroupBackgroundPicker
+                    open={bgMenuOpen}
+                    onOpenChange={setBgMenuOpen}
+                    value={selectedGroupBg}
+                    onPick={pickGroupBackground}
+                  />
+                </>
+              ) : (
+                <button
+                  type='button'
+                  data-testid='group-toolbar-group'
+                  onClick={groupSelection}
+                  className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                >
+                  {t('canvas.group.group')}
+                </button>
+              )}
+            </div>
+          </NodeToolbar>
         </ReactFlow>
         {flowNodes.length === 0 ? (
           <div
