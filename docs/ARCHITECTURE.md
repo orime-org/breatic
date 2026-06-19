@@ -134,8 +134,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、memory Turn 窗口(20)、Turn 压缩(3) |
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
-| `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制 |
+| `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、单文档连接数上限(`max_connections_per_document`,默认 100;满了**降级只读**非拒绝) |
 | `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
+| `config/limits.yaml` | 成员容量**业务软上限**(`studio_member_cap` / `project_collaborator_cap`,默认各 100;project 只数显式邀请的成员,owner + 自动 viewer 豁免)。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)|
 | `config/models/*.yaml` | AI 模型路由(46 文件,model-centric) |
 
 ### Logging
