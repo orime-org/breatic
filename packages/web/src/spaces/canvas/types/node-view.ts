@@ -141,6 +141,8 @@ export interface AnnotationNodeView extends NodeViewCommon {
  */
 export interface GroupNodeView extends NodeViewCommon {
   kind: 'group';
+  /** Group display name shown in the group header (default "Group"). */
+  name?: string;
   /** Ids of the nodes contained in the group. */
   childIds?: string[];
   /** Group container tint. */
@@ -234,6 +236,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     case 'group':
       return {
         kind: 'group',
+        name: data.name,
         childIds: data.childIds,
         backgroundColor: data.backgroundColor,
         locked,

@@ -143,14 +143,19 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('returns a group view for group nodes (backgroundColor / childIds)', () => {
+  it('returns a group view for group nodes (name / backgroundColor / childIds)', () => {
     // Model revision 2026-06-15: group is rendered (core feature), so it now
-    // has a view instead of being skipped.
+    // has a view instead of being skipped. The group header shows `name`.
     const v = toNodeView(
-      fields('group', { backgroundColor: '#eef', childIds: ['a', 'b'] }),
+      fields('group', {
+        name: 'My Group',
+        backgroundColor: '#eef',
+        childIds: ['a', 'b'],
+      }),
     );
     expect(v).toMatchObject({
       kind: 'group',
+      name: 'My Group',
       backgroundColor: '#eef',
       childIds: ['a', 'b'],
     });
