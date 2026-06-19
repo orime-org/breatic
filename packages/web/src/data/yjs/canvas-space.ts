@@ -363,6 +363,63 @@ export function setNodeLocked(
 }
 
 /**
+ * Write a node's content + mark it idle — the "content arrived" transition
+ * (frontend-owned upload completion). Sets `content`, flips `state` to `'idle'`
+ * and clears any prior `errorMessage`, all in one transaction so collaborators
+ * see the node go from handling → content in a single update.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to fill.
+ * @param content - The node's content (an asset URL, or text body).
+ */
+export function setNodeContent(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  content: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('content', content);
+    data.set('state', 'idle');
+    data.delete('errorMessage');
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Mark a node as failed with an inline error message (frontend-owned upload
+ * failure). Sets `errorMessage` and ensures `state` is `'idle'` so the derived
+ * status is `error` (a lingering `handling` would mask it). Collaborators see
+ * the inline error on the node.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the failed node.
+ * @param errorMessage - The error text shown on the node (include the filename).
+ */
+export function setNodeError(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  errorMessage: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('errorMessage', errorMessage);
+    data.set('state', 'idle');
+  }, CANVAS_UNDO);
+}
+
+/**
  * Add a node to a group's `childIds` — frontend-owned. Enforces the group
  * invariants in one transaction:
  *   - no nesting: a group node is never added as a member (no-op if `nodeId` is a

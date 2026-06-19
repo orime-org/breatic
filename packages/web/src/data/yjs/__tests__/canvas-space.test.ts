@@ -17,6 +17,8 @@ import {
   removeFromGroup,
   removeNode,
   setGroupBackground,
+  setNodeContent,
+  setNodeError,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -190,6 +192,40 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readNodes(doc())[0].data).toMatchObject({ locked: true });
     setNodeLocked(PID, SID, 'n1', false);
     expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
+  });
+
+  it('setNodeContent writes content + flips handling → idle (upload done)', () => {
+    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
+    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('content')).toBe('https://cdn/photo.png');
+    expect(data.get('state')).toBe('idle');
+    expect(data.get('errorMessage')).toBeUndefined();
+  });
+
+  it('setNodeContent clears any prior errorMessage', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { state: 'idle', errorMessage: 'old fail' }),
+    );
+    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('errorMessage')).toBeUndefined();
+  });
+
+  it('setNodeError writes errorMessage + idle so deriveStatus shows error (upload fail)', () => {
+    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
+    setNodeError(PID, SID, 'n1', 'Upload failed: photo.png');
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('errorMessage')).toBe('Upload failed: photo.png');
+    expect(data.get('state')).toBe('idle');
   });
 
   it('addEdge / removeEdge round-trip under the edgesMap', () => {
