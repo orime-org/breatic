@@ -77,15 +77,30 @@ describe('TextNode', () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it('caps the body height and scrolls long content (max-h-108 + overflow)', () => {
-    // A long text node must not stretch the whole canvas — the body caps at a
-    // max height and scrolls inside; reading the rest is an in-node scroll, not
-    // a whole-canvas pan.
+  it('display state caps at 576 (max-h-144) and truncates with a line-clamp ellipsis, no scroll (#1445)', () => {
+    // Not editing: the body shares the 576px cap (max-h-144 = width 288 × 2)
+    // with edit mode, but overflow is truncated with a line-clamp ellipsis so
+    // the user sees there is more content — it does NOT scroll in display mode.
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
     const body = screen.getByTestId('text-node-body');
-    expect(body.className).toContain('max-h-108');
+    expect(body.className).toContain('max-h-144');
+    expect(body.className).toContain('line-clamp');
+    expect(body.className).not.toContain('overflow-y-auto');
+  });
+
+  it('edit state caps at 576 (max-h-144) and scrolls long content (#1445)', async () => {
+    // Double-click → editing: same 576px cap, but overflow scrolls so the full
+    // content is reachable while editing (no ellipsis truncation).
+    const user = userEvent.setup();
+    render(
+      <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
+    );
+    const body = screen.getByTestId('text-node-body');
+    await user.dblClick(body);
+    expect(body.className).toContain('max-h-144');
     expect(body.className).toContain('overflow-y-auto');
+    expect(body.className).not.toContain('line-clamp');
   });
 });
