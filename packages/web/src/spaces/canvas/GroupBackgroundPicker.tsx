@@ -54,7 +54,7 @@ export function GroupBackgroundPicker({
           type='button'
           data-testid='group-bg-trigger'
           aria-label={t('canvas.group.background')}
-          className='flex h-6 w-6 items-center justify-center rounded-content-xs hover:bg-accent'
+          className='flex h-6 w-6 items-center justify-center rounded-chrome hover:bg-accent'
         >
           <span
             className='h-3.5 w-3.5 rounded-full border border-border'
@@ -62,7 +62,11 @@ export function GroupBackgroundPicker({
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='start' className='flex gap-1 p-1'>
+      <DropdownMenuContent
+        align='start'
+        data-testid='group-bg-list'
+        className='flex flex-col gap-1 p-1'
+      >
         {GROUP_BACKGROUND_OPTIONS.map((opt) => {
           const dot = groupBackgroundStyle(opt.value);
           return (
@@ -72,7 +76,7 @@ export function GroupBackgroundPicker({
               aria-label={t(opt.labelKey)}
               onSelect={() => onPick(opt.value)}
               className={cn(
-                'h-6 w-6 justify-center p-0',
+                'h-6 w-6 justify-center rounded-chrome p-0',
                 opt.value === value ? 'ring-1 ring-status-selected' : '',
               )}
             >

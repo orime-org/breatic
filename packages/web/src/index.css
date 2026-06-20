@@ -72,6 +72,25 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* Group node — strip ReactFlow's built-in `group` node styling. Our group is a
+   custom node registered as `type: 'group'`, which collides with ReactFlow's
+   reserved built-in group type: its base stylesheet forces a solid border,
+   a grey fill, 10px padding, a border radius, and a selected box-shadow onto
+   the wrapper, all of which fight the GroupNode component (it draws its own
+   dashed, node-coloured border + the user-chosen tint, filling the wrapper).
+   Zero them so only the component renders. */
+.react-flow__node-group {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+}
+.react-flow__node-group.selectable.selected,
+.react-flow__node-group.selectable:focus,
+.react-flow__node-group.selectable:focus-visible {
+  box-shadow: none;
+}
+
 /* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
    (set only when you pass colorMode="dark"), which never matches our
    `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /

@@ -61,8 +61,17 @@ export function GroupNode({
       data-selected={selected ? 'true' : 'false'}
       style={background ? { backgroundColor: background } : undefined}
       className={cn(
-        'relative min-h-[80px] min-w-[160px] rounded-lg border border-dashed transition-colors',
-        selected ? 'border-status-selected' : 'border-border',
+        // Fill the ReactFlow wrapper (sized to the derived rect) so the tint
+        // + border cover the whole group, not just the min box. The border
+        // reuses the node shell's treatment (NodeShell): node radius + the
+        // same 3-state colours, kept dashed to read as a container — the group
+        // does not invent its own border line / radius. ReactFlow's built-in
+        // `.react-flow__node-group` border / background / padding is suppressed
+        // in index.css so only this renders.
+        'relative size-full min-h-[80px] min-w-[160px] rounded-sm border border-dashed transition-colors',
+        selected
+          ? 'border-status-selected'
+          : 'border-border hover:border-foreground-disabled',
       )}
     >
       {editing ? (
