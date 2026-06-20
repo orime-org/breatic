@@ -1,0 +1,79 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import { describe, it, expect } from 'vitest';
+import type { Node } from '@xyflow/react';
+
+import { planDragStop } from '@web/spaces/canvas/drag-persist';
+
+/**
+ * Build a minimal measured flow node for the drag-stop planner.
+ * @param id - Node id.
+ * @param x - Position x.
+ * @param y - Position y.
+ * @param type - Node type (default 'text').
+ * @param data - Node data bag (e.g. a group's childIds).
+ * @returns A flow node with a measured 100x60 footprint.
+ */
+function node(
+  id: string,
+  x: number,
+  y: number,
+  type = 'text',
+  data: Record<string, unknown> = {},
+): Node {
+  return {
+    id,
+    type,
+    position: { x, y },
+    data,
+    measured: { width: 100, height: 60 },
+  } as Node;
+}
+
+describe('planDragStop (multi-select drag persistence — #1432)', () => {
+  it('persists EVERY dragged node, not just the first (the bug)', () => {
+    // ReactFlow hands onNodeDragStop all co-dragged nodes; the old code only
+    // persisted the grabbed one, so the rest snapped back. Every node must
+    // appear in the plan with its new position.
+    const dragged = [node('a', 0, 0), node('b', 100, 0), node('c', 200, 50)];
+    const plan = planDragStop(dragged, dragged);
+    expect(plan.positions.map((p) => p.id).sort()).toEqual(['a', 'b', 'c']);
+    expect(plan.positions).toContainEqual({
+      id: 'b',
+      position: { x: 100, y: 0 },
+    });
+    expect(plan.positions).toContainEqual({
+      id: 'c',
+      position: { x: 200, y: 50 },
+    });
+  });
+
+  it('a single dragged node still persists (single-drag back-compat)', () => {
+    const plan = planDragStop([node('a', 5, 7)], [node('a', 5, 7)]);
+    expect(plan.positions).toEqual([{ id: 'a', position: { x: 5, y: 7 } }]);
+  });
+
+  it('skips group nodes — a group position is derived, moved via groupDragRef', () => {
+    const dragged = [
+      node('g', 0, 0, 'group', { childIds: [] }),
+      node('a', 10, 10),
+    ];
+    const plan = planDragStop(dragged, dragged);
+    expect(plan.positions.map((p) => p.id)).toEqual(['a']);
+  });
+
+  it('resolves per-node group drop independently (drop into a group → add)', () => {
+    // group 'g' wraps member 'm' at (0,0); 'a' dropped with its center inside
+    // g's padded rect, and not already a member, must yield an `add` op.
+    const m = node('m', 0, 0);
+    const g = node('g', 0, 0, 'group', { childIds: ['m'] });
+    const a = node('a', 10, 10); // center (60,40) inside g's padded rect
+    const plan = planDragStop([a], [g, m, a]);
+    expect(plan.groupOps).toContainEqual({
+      action: 'add',
+      groupId: 'g',
+      nodeId: 'a',
+    });
+  });
+});

@@ -59,10 +59,7 @@ import {
   applyGroupGeometry,
   computeGroupRect,
 } from '@web/spaces/canvas/group-geometry';
-import {
-  resolveGroupDrop,
-  type GroupBox,
-} from '@web/spaces/canvas/group-membership';
+import { planDragStop } from '@web/spaces/canvas/drag-persist';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -155,50 +152,6 @@ function toFlowNode(node: CanvasNodeView): Node {
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
-}
-
-/** Fallback footprint for an unmeasured node when hit-testing its center. */
-const NODE_FALLBACK_W = 160;
-const NODE_FALLBACK_H = 96;
-
-/**
- * A node's center in flow coordinates, from its measured size (or a default
- * before ReactFlow has measured it).
- * @param node - The flow node.
- * @returns The node's center point.
- */
-function nodeCenter(node: Node): { x: number; y: number } {
-  const width = node.measured?.width ?? NODE_FALLBACK_W;
-  const height = node.measured?.height ?? NODE_FALLBACK_H;
-  return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
-}
-
-/**
- * Build the hit-test boxes for every group, excluding the dragged node from
- * each group's bounds so a member dragged out of its own group reads as
- * "outside" (the group's rect is its *other* members' bounds). A group with
- * no remaining members is skipped (its sole member following it is a move,
- * not a leave). `childIds` keeps the dragged node so its current group is
- * still detectable.
- * @param flowNodes - The current flow nodes.
- * @param draggedId - The node being dropped (excluded from each rect).
- * @returns One {@link GroupBox} per group with a resolvable rect.
- */
-function groupBoxesFor(
-  flowNodes: ReadonlyArray<Node>,
-  draggedId: string,
-): GroupBox[] {
-  const boxes: GroupBox[] = [];
-  for (const node of flowNodes) {
-    if (node.type !== 'group') continue;
-    const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
-    const members = flowNodes.filter(
-      (member) => childIds.includes(member.id) && member.id !== draggedId,
-    );
-    const rect = computeGroupRect(members);
-    if (rect) boxes.push({ id: node.id, rect, childIds });
-  }
-  return boxes;
 }
 
 /**
@@ -422,7 +375,7 @@ function CanvasSpaceInner({
   );
 
   const onNodeDragStop = React.useCallback(
-    (_event: React.MouseEvent, node: Node): void => {
+    (_event: React.MouseEvent, node: Node, nodes: Node[]): void => {
       const drag = groupDragRef.current;
       if (node.type === 'group' && drag && drag.id === node.id) {
         groupDragRef.current = null;
@@ -433,18 +386,21 @@ function CanvasSpaceInner({
         }
         return;
       }
-      // A single (non-group) node: persist its new position, then resolve
-      // whether the drop changed its group membership (§7.5 drag in / out).
-      setNodePosition(projectId, spaceId, node.id, node.position);
-      const drop = resolveGroupDrop(
-        node.id,
-        nodeCenter(node),
-        groupBoxesFor(flowNodes, node.id),
-      );
-      if (drop.action === 'add') {
-        addToGroup(projectId, spaceId, drop.groupId, node.id);
-      } else if (drop.action === 'remove') {
-        removeFromGroup(projectId, spaceId, drop.groupId, node.id);
+      // Persist EVERY co-dragged node — ReactFlow's third arg carries them all.
+      // A marquee multi-select drag moves them together; persisting only the
+      // grabbed one (the old bug) left the rest to snap back when the next Yjs
+      // mirror re-applied their stale positions. Each non-group node also
+      // resolves its own drag in / out of a group (§7.5). See planDragStop.
+      const plan = planDragStop(nodes, flowNodes);
+      for (const { id, position } of plan.positions) {
+        setNodePosition(projectId, spaceId, id, position);
+      }
+      for (const op of plan.groupOps) {
+        if (op.action === 'add') {
+          addToGroup(projectId, spaceId, op.groupId, op.nodeId);
+        } else {
+          removeFromGroup(projectId, spaceId, op.groupId, op.nodeId);
+        }
       }
     },
     [projectId, spaceId, flowNodes],
