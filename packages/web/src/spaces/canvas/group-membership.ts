@@ -110,15 +110,16 @@ export function lockedGroupMemberIds(
 }
 
 /**
- * Partition a requested deletion so a locked group's structure survives: locked
- * group nodes, their members, AND every edge touching a protected node are kept
- * OUT of the deletion. Wire into ReactFlow's `onBeforeDelete` (the pre-delete
- * veto) — the post-hoc `onDelete` can't stop ReactFlow from removing nodes/edges
- * from the local buffer first, nor from cascading a protected node's edges into
- * the deletion (edges are part of the frozen structure too).
+ * Partition a requested deletion so locked structure survives: any locked node
+ * (a locked group OR a locked standalone node), a locked group's members, AND
+ * every edge touching a protected node are kept OUT of the deletion. Wire into
+ * ReactFlow's `onBeforeDelete` (the pre-delete veto) — the post-hoc `onDelete`
+ * can't stop ReactFlow from removing nodes/edges from the local buffer first,
+ * nor from cascading a protected node's edges into the deletion (edges are part
+ * of the frozen structure too).
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
- * @param allNodes - All canvas nodes, to resolve which groups are locked.
+ * @param allNodes - All canvas nodes, to resolve which nodes / groups are locked.
  * @returns The subset safe to delete (protected nodes + their edges removed).
  */
 export function filterLockedDeletion<
@@ -130,11 +131,11 @@ export function filterLockedDeletion<
   allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
 ): { nodes: N[]; edges: E[] } {
   const protectedIds = lockedGroupMemberIds(allNodes);
+  // Every locked node is protected — a locked group OR a locked standalone node
+  // (node lock now blocks delete, decision 2026-06-20). A locked group also
+  // protects its members via lockedGroupMemberIds above.
   for (const node of allNodes) {
-    if (
-      node.type === 'group' &&
-      (node.data as { locked?: boolean } | undefined)?.locked
-    ) {
+    if ((node.data as { locked?: boolean } | undefined)?.locked) {
       protectedIds.add(node.id);
     }
   }

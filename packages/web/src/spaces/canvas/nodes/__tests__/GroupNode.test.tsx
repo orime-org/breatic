@@ -57,7 +57,7 @@ describe('GroupNode', () => {
     );
   });
 
-  it('does not render a lock indicator — a group has no lock (§1.1)', () => {
+  it('renders no content-node lock badge — the group shows its own group-lock-indicator', () => {
     render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} locked />);
     expect(screen.queryByTestId('node-lock-indicator')).toBeNull();
   });
@@ -80,6 +80,19 @@ describe('GroupNode', () => {
     );
     fireEvent.doubleClick(screen.getByTestId('group-name'));
     expect(screen.getByTestId('group-name-input')).toBeInTheDocument();
+  });
+
+  it('does NOT enter edit mode when a locked group name is double-clicked', () => {
+    render(
+      <GroupNode
+        data={{ kind: 'group', childIds: ['a'], locked: true }}
+        onRename={vi.fn()}
+      />,
+    );
+    // Group lock now gates rename (decision 2026-06-20): a locked group's name
+    // is frozen like its structure — double-click must NOT open the editor.
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    expect(screen.queryByTestId('group-name-input')).toBeNull();
   });
 
   it('commits the new name on Enter', () => {

@@ -32,6 +32,14 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(result.current.editing).toBe(false);
   });
 
+  it('startEdit is a no-op when locked (lock gates rename)', () => {
+    const { result } = renderHook(() =>
+      useInlineRename({ current: 'Group', maxLength: 30, locked: true }),
+    );
+    act(() => result.current.startEdit());
+    expect(result.current.editing).toBe(false);
+  });
+
   it('commit reports the trimmed draft and closes the editor', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>

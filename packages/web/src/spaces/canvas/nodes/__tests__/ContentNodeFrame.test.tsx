@@ -49,7 +49,7 @@ describe('ContentNodeFrame', () => {
     );
   });
 
-  it('a locked node name is still editable (lock does not lock rename)', () => {
+  it('a locked node name is NOT editable (lock gates rename)', () => {
     render(
       <ContentNodeFrame
         modality='text'
@@ -61,10 +61,12 @@ describe('ContentNodeFrame', () => {
         <div>body</div>
       </ContentNodeFrame>,
     );
-    // Lock only restricts move / delete; the name is metadata and stays
-    // editable — double-click the name must enter inline edit mode.
+    // Decision 2026-06-20: the node name is on-canvas content (a header label
+    // edited inline), so lock gates rename like every content/whiteboard tool
+    // (tldraw / Miro / FigJam). Double-click on a locked node's name must NOT
+    // enter inline edit mode.
     fireEvent.doubleClick(screen.getByTestId('node-header-name'));
-    expect(screen.getByTestId('node-header-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('node-header-input')).toBeNull();
   });
 
   it('defaults the shell to the unified w-72 content-node width', () => {

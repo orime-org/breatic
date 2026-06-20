@@ -20,9 +20,9 @@ interface GroupNodeProps {
   data: GroupNodeView;
   selected?: boolean;
   /**
-   * Generic node prop carried by the registry. A group has **no lock**
-   * (§1.1 — grouping is the organizational dimension; content editability is
-   * each node's own lock), so this is intentionally ignored.
+   * Generic node prop carried by the registry — the same value as `data.locked`
+   * for a group. The group reads `data.locked` directly (lock indicator + name
+   * freeze), so this duplicate prop is unused here.
    */
   locked?: boolean;
   /** Commit a rename, pre-bound to this group's id by the ReactFlow wrapper. */
@@ -56,6 +56,8 @@ export function GroupNode({
   const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
     useInlineRename({
       current: display,
+      // A locked group's name is frozen with its structure (decision 2026-06-20).
+      locked: data.locked,
       maxLength: MAX_NODE_NAME_LEN,
       onRename,
     });

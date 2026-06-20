@@ -123,6 +123,23 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
     expect(out.nodes.map((n) => n.id)).toEqual(['g', 'm']);
     expect(out.edges.map((e) => e.id)).toEqual(['e']);
   });
+
+  it('keeps a locked STANDALONE node (not a group) AND its edges out of the deletion', () => {
+    const nodes = [
+      { id: 'a', type: 'text', data: { locked: true } },
+      { id: 'b', type: 'text', data: {} },
+    ];
+    const out = filterLockedDeletion(
+      [{ id: 'a' }, { id: 'b' }],
+      [
+        { id: 'e1', source: 'a', target: 'b' }, // touches locked a
+        { id: 'e2', source: 'b', target: 'c' }, // safe (no locked endpoint)
+      ],
+      nodes,
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a protected
+    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ a) protected
+  });
 });
 
 describe('lockedGroupMemberIds — frozen member positions', () => {
