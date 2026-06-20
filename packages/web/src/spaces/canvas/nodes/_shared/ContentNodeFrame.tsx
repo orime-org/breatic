@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { cn } from '@web/lib/utils';
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
@@ -88,7 +89,7 @@ export function ContentNodeFrame({
         status={status}
         selected={selected}
         locked={locked}
-        className={className}
+        className={cn('w-72', className)}
         testId={testId}
       >
         {children}

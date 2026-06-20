@@ -45,7 +45,6 @@ export function WebNode({
       selected={selected}
       locked={locked}
       onRename={onRename}
-      className='w-72'
       testId='web-node'
     >
       <NodeContent

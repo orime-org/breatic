@@ -76,4 +76,16 @@ describe('TextNode', () => {
     body.blur();
     expect(onChange).toHaveBeenCalled();
   });
+
+  it('caps the body height and scrolls long content (max-h-108 + overflow)', () => {
+    // A long text node must not stretch the whole canvas — the body caps at a
+    // max height and scrolls inside; reading the rest is an in-node scroll, not
+    // a whole-canvas pan.
+    render(
+      <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
+    );
+    const body = screen.getByTestId('text-node-body');
+    expect(body.className).toContain('max-h-108');
+    expect(body.className).toContain('overflow-y-auto');
+  });
 });

@@ -44,7 +44,6 @@ export function ImageNode({
       selected={selected}
       locked={locked}
       onRename={onRename}
-      className='w-56'
       testId='image-node'
     >
       <NodeContent

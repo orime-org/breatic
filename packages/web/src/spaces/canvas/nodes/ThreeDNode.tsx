@@ -46,7 +46,6 @@ export function ThreeDNode({
       selected={selected}
       locked={locked}
       onRename={onRename}
-      className='w-64'
       testId='three-d-node'
     >
       <NodeContent
