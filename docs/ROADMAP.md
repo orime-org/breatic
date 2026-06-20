@@ -85,6 +85,7 @@
 - [x] **画布分组（PR #257）**：框选/Cmd·Ctrl+G 打组 → 容器由成员 bbox+padding 派生几何（不用 ReactFlow `parentId`，绝对坐标 + 拖组自定义位移带子节点）· 4 status 底色 + 无色 · 双击组名改名（共用 `useInlineRename` hook）· 拖单节点进/出组（drag-end 碰撞判定）· 删组放回子节点 · 不嵌套、组无 lock
 - [x] **画布级文件上传（PR #258）**：三入口（左「上传素材」按钮 / 拖拽落画布 / 图片·文件粘贴）→ 按 MIME 分流，统一走「即刻建 `handling` 节点写 Yjs → 填内容 / 失败写 `errorMessage`〔含文件名、固定英文进 Yjs 协作端可见〕」一条状态机（全程前端独占写、复用已有节点状态机）。**媒体**（image/video/audio）走 presign 直传建对应媒体节点（content = URL）；**非媒体一律文本节点 + 前端提取文字**（`text/*` 本地直接读 · pdf 用 pdf.js · docx 用 mammoth · xlsx 用 SheetJS，均浏览器内提取、按需动态 import；无提取器/畸形 → 节点显示「Extraction failed」）—— 删掉旧的「不支持类型 toast」，错误一律在节点上。后端零改动
 - [x] **文档权限控制（PR #251）**：collab `onAuthenticate` 按 project 成员关系定 `connectionConfig.readOnly`（viewer 只读连接拒写 Yjs sync），前端 `nodesDraggable`/chrome 角色 gate 双层
+- [x] **画布锁语义（PR #263 组锁 C + PR #264 完整锁）**：统一 `data.locked` 一个标记，节点锁 + 组锁同一套。**组锁 C（#263）**＝冻结组结构（成员关系 + 成员相对位置 + 禁解组，组能整体拖）+ 右键菜单按 group / node 分流。**完整锁（#264）**＝节点锁也拦删除（`filterLockedDeletion` 保护任何 `data.locked` 节点 + 触及的边）· 节点 + 组锁拦改名（`useInlineRename` 的 `locked` 闸，节点头与组名同一套）· 删除守卫从 `onDelete` 挪到 `onBeforeDelete` pre-veto 层（修掉 #263 旧守卫拦不住删除的 bug）。**撤销不被锁挡**——per-user `Y.UndoManager` 在锁守卫之下，创建者能撤销自己的创建（哪怕别人锁了）；后端不检测（前端 gating）。反转 PR #245 的「锁不锁名称」（名字画在节点上＝内容，按画布品类 norm 该锁；两轮工业级调研对比 tldraw/Miro/FigJam 源码 + 文档定）
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
 ### AI 能力
