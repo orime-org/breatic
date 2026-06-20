@@ -19,6 +19,8 @@ export interface NodeGroupInfo {
   isGroup: boolean;
   /** The group's member ids (only meaningful when `isGroup`). */
   childIds?: string[];
+  /** Whether the group is locked — a locked group cannot be ungrouped. */
+  locked?: boolean;
 }
 
 /** What the floating toolbar offers for the current selection. */
@@ -48,7 +50,10 @@ export function computeGroupToolbar(
 
   if (selectedIds.length === 1) {
     const only = byId.get(selectedIds[0]);
-    if (only?.isGroup) return { kind: 'ungroup', groupId: only.id };
+    // A locked group's structure is frozen — no ungroup offer.
+    if (only?.isGroup && !only.locked) {
+      return { kind: 'ungroup', groupId: only.id };
+    }
   }
 
   if (selectedIds.length >= 2) {

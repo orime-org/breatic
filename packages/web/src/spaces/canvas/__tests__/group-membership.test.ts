@@ -69,4 +69,13 @@ describe('resolveGroupDrop — drag-end membership change', () => {
       groupId: 'g2',
     });
   });
+
+  it('does NOT add a node dropped into a LOCKED group (frozen membership)', () => {
+    const groups: GroupBox[] = [
+      { id: 'g1', rect: RECT, childIds: ['x'], locked: true },
+    ];
+    expect(resolveGroupDrop('n', { x: 50, y: 50 }, groups)).toEqual({
+      action: 'none',
+    });
+  });
 });
