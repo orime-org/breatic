@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  lockedGroupMemberIds,
   rectContains,
   resolveGroupDrop,
   type GroupBox,
@@ -77,5 +78,21 @@ describe('resolveGroupDrop — drag-end membership change', () => {
     expect(resolveGroupDrop('n', { x: 50, y: 50 }, groups)).toEqual({
       action: 'none',
     });
+  });
+});
+
+describe('lockedGroupMemberIds — frozen member positions', () => {
+  it('returns the members of locked groups only', () => {
+    const nodes = [
+      { id: 'g1', type: 'group', data: { childIds: ['a', 'b'], locked: true } },
+      { id: 'g2', type: 'group', data: { childIds: ['c'], locked: false } },
+      { id: 'a', type: 'text', data: {} },
+    ];
+    expect(lockedGroupMemberIds(nodes)).toEqual(new Set(['a', 'b']));
+  });
+
+  it('is empty when no group is locked', () => {
+    const nodes = [{ id: 'g', type: 'group', data: { childIds: ['a'] } }];
+    expect(lockedGroupMemberIds(nodes)).toEqual(new Set());
   });
 });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Lock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import { groupBackgroundStyle } from '@web/spaces/canvas/group-background';
@@ -78,6 +79,17 @@ export function GroupNode({
           : 'border-border hover:border-foreground-disabled',
       )}
     >
+      {/* A locked group shows a lock badge so the frozen structure reads at a
+          glance (the group-lock menu toggles it). */}
+      {data.locked ? (
+        <div
+          aria-hidden='true'
+          data-testid='group-lock-indicator'
+          className='absolute right-1 top-1 rounded-full bg-muted p-0.5 text-muted-foreground'
+        >
+          <Lock className='h-3 w-3' />
+        </div>
+      ) : null}
       {/* Name floats above the group's top-left, counter-scaled by zoom so it
           stays a constant screen size — mirrors the node name header. */}
       <div

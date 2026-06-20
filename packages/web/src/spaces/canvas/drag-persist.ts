@@ -76,7 +76,14 @@ function groupBoxesFor(
       (member) => childIds.includes(member.id) && member.id !== draggedId,
     );
     const rect = computeGroupRect(members);
-    if (rect) boxes.push({ id: node.id, rect, childIds });
+    if (rect) {
+      boxes.push({
+        id: node.id,
+        rect,
+        childIds,
+        locked: (node.data as { locked?: boolean }).locked,
+      });
+    }
   }
   return boxes;
 }

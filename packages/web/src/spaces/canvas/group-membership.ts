@@ -86,3 +86,25 @@ export function resolveGroupDrop(
   }
   return { action: 'none' };
 }
+
+/**
+ * Ids of every node that is a member of a *locked* group — their position is
+ * frozen, so the canvas renders them `draggable=false`. A locked group keeps
+ * its members fixed in place; the group as a whole can still be dragged.
+ * @param nodes - All canvas nodes (only group nodes with `data.locked` matter).
+ * @returns The set of member ids belonging to locked groups.
+ */
+export function lockedGroupMemberIds(
+  nodes: ReadonlyArray<{ type?: string; data?: unknown }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== 'group') continue;
+    const data = node.data as
+      | { locked?: boolean; childIds?: string[] }
+      | undefined;
+    if (!data?.locked) continue;
+    for (const childId of data.childIds ?? []) ids.add(childId);
+  }
+  return ids;
+}
