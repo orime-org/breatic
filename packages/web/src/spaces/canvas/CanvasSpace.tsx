@@ -60,7 +60,10 @@ import {
   computeGroupRect,
 } from '@web/spaces/canvas/group-geometry';
 import { planDragStop } from '@web/spaces/canvas/drag-persist';
-import { lockedGroupMemberIds } from '@web/spaces/canvas/group-membership';
+import {
+  filterLockedDeletion,
+  lockedNodeIds,
+} from '@web/spaces/canvas/group-membership';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -407,13 +410,34 @@ function CanvasSpaceInner({
     [projectId, spaceId, flowNodes],
   );
 
-  // Persist deletions to Yjs. ReactFlow's onDelete fires ONCE with both the
-  // deleted nodes and their cascaded (connected) edges — and for a standalone
-  // edge delete (select + Delete key). Persisting them in one removeElements
-  // transaction makes node + edge deletion a single undo entry, so one undo
-  // restores BOTH the node and its edges (the reported bug: node came back but
-  // the edge did not). Without this, a deletion only left ReactFlow's local
-  // buffer and reappeared on the next Yjs sync. Read-only viewers can't delete.
+  // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
+  // structure is frozen, so the group node, its members, AND every edge touching
+  // them are protected. onBeforeDelete is the only layer that can stop removal at
+  // the source — onDelete fires AFTER ReactFlow has already dropped nodes/edges
+  // locally and cascaded a protected node's edges into the deletion. Read-only
+  // viewers delete nothing.
+  const onBeforeDelete = React.useCallback(
+    async ({
+      nodes: toDelete,
+      edges: edgesToDelete,
+    }: {
+      nodes: Node[];
+      edges: Edge[];
+    }): Promise<boolean | { nodes: Node[]; edges: Edge[] }> => {
+      if (readOnly) return false;
+      const survivors = filterLockedDeletion(toDelete, edgesToDelete, flowNodes);
+      if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
+        return false;
+      }
+      return survivors;
+    },
+    [readOnly, flowNodes],
+  );
+
+  // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
+  // deletion to Yjs in ONE removeElements transaction — node + edge deletion is a
+  // single undo entry, so one undo restores BOTH (the reported bug: node came
+  // back but the edge did not).
   const onDelete = React.useCallback(
     ({
       nodes: deletedNodes,
@@ -422,31 +446,14 @@ function CanvasSpaceInner({
       nodes: Node[];
       edges: Edge[];
     }): void => {
-      if (readOnly) return;
-      // A locked group's structure is frozen: the group node can't be deleted,
-      // and neither can its members (deleting one would change the frozen member
-      // set). Drop them from the deletion.
-      const lockedMembers = lockedGroupMemberIds(flowNodes);
-      const lockedGroups = new Set(
-        flowNodes
-          .filter(
-            (node) =>
-              node.type === 'group' &&
-              (node.data as { locked?: boolean }).locked,
-          )
-          .map((node) => node.id),
-      );
-      const deletable = deletedNodes.filter(
-        (node) => !lockedGroups.has(node.id) && !lockedMembers.has(node.id),
-      );
       removeElements(
         projectId,
         spaceId,
-        deletable.map((node) => node.id),
+        deletedNodes.map((node) => node.id),
         deletedEdges.map((edge) => edge.id),
       );
     },
-    [projectId, spaceId, readOnly, flowNodes],
+    [projectId, spaceId],
   );
 
   const onConnect = React.useCallback(
@@ -901,14 +908,18 @@ function CanvasSpaceInner({
     const sized = applyGroupGeometry(flowNodes);
     const groups = sized.filter((node) => node.type === 'group');
     const rest = sized.filter((node) => node.type !== 'group');
-    // A locked group freezes its members in place: they render non-draggable so
-    // they can't be moved individually. The group node itself stays draggable,
-    // so the whole block can still be dragged together.
-    const lockedMembers = lockedGroupMemberIds(sized);
+    // Locked nodes are frozen in place: any locked node (incl. a locked group as
+    // a whole) and the members of a locked group render non-draggable, so they
+    // can't be moved. An unlocked group still drags as a unit (carrying members).
+    const frozen = lockedNodeIds(sized);
     return [
-      ...groups.map((node) => ({ ...node, draggable: !readOnly, zIndex: 0 })),
+      ...groups.map((node) => ({
+        ...node,
+        draggable: !readOnly && !frozen.has(node.id),
+        zIndex: 0,
+      })),
       ...rest.map((node) =>
-        lockedMembers.has(node.id) ? { ...node, draggable: false } : node,
+        frozen.has(node.id) ? { ...node, draggable: false } : node,
       ),
     ];
   }, [flowNodes, readOnly]);
@@ -944,6 +955,7 @@ function CanvasSpaceInner({
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
+          onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}

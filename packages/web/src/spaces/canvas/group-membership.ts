@@ -108,3 +108,56 @@ export function lockedGroupMemberIds(
   }
   return ids;
 }
+
+/**
+ * Ids of every node frozen by a lock — any node with `data.locked`, OR a member
+ * of a locked group. A frozen node can be neither moved (rendered
+ * `draggable=false`) nor deleted ({@link filterLockedDeletion}); both reuse this
+ * one set so they stay in lockstep. A locked group's OWN id is included, so the
+ * whole group is frozen in place — it cannot be dragged as a unit (reverses
+ * group-lock-C's whole-group drag, decision 2026-06-20).
+ * @param nodes - All canvas nodes (the `locked` flag is read from each `data`).
+ * @returns The set of node ids frozen by a lock.
+ */
+export function lockedNodeIds(
+  nodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+): Set<string> {
+  const ids = lockedGroupMemberIds(nodes);
+  for (const node of nodes) {
+    if ((node.data as { locked?: boolean } | undefined)?.locked) ids.add(node.id);
+  }
+  return ids;
+}
+
+/**
+ * Partition a requested deletion so locked structure survives: any locked node
+ * (a locked group OR a locked standalone node), a locked group's members, AND
+ * every edge touching a protected node are kept OUT of the deletion. Wire into
+ * ReactFlow's `onBeforeDelete` (the pre-delete veto) — the post-hoc `onDelete`
+ * can't stop ReactFlow from removing nodes/edges from the local buffer first,
+ * nor from cascading a protected node's edges into the deletion (edges are part
+ * of the frozen structure too).
+ * @param nodes - The nodes ReactFlow is about to delete.
+ * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
+ * @param allNodes - All canvas nodes, to resolve which nodes / groups are locked.
+ * @returns The subset safe to delete (protected nodes + their edges removed).
+ */
+export function filterLockedDeletion<
+  N extends { id: string },
+  E extends { id: string; source: string; target: string },
+>(
+  nodes: ReadonlyArray<N>,
+  edges: ReadonlyArray<E>,
+  allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+): { nodes: N[]; edges: E[] } {
+  // The frozen-by-lock set (any locked node + locked group members) is exactly
+  // what can't be deleted — the same set the move-freeze path uses.
+  const protectedIds = lockedNodeIds(allNodes);
+  return {
+    nodes: nodes.filter((node) => !protectedIds.has(node.id)),
+    edges: edges.filter(
+      (edge) =>
+        !protectedIds.has(edge.source) && !protectedIds.has(edge.target),
+    ),
+  };
+}

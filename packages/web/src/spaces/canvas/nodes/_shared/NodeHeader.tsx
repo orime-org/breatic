@@ -19,6 +19,8 @@ interface NodeHeaderProps {
   name?: string;
   /** Viewer mode — the name is read-only. */
   readOnly?: boolean;
+  /** Locked — the node is locked, so the name is frozen (no inline edit). */
+  locked?: boolean;
   /** Commit a rename (Enter / blur with a non-blank value); omit for a display-only header. */
   onRename?: (name: string) => void;
 }
@@ -32,6 +34,7 @@ interface NodeHeaderProps {
  * @param root0.modality - The node modality (selects the icon).
  * @param root0.name - The current node name (blank → modality label).
  * @param root0.readOnly - Viewer mode; disables editing.
+ * @param root0.locked - Whether the node is locked; freezes the name (no inline edit).
  * @param root0.onRename - Called with the new name on commit.
  * @returns The node name header element.
  */
@@ -39,6 +42,7 @@ export function NodeHeader({
   modality,
   name,
   readOnly = false,
+  locked = false,
   onRename,
 }: NodeHeaderProps): React.JSX.Element {
   const Icon = MODALITY_ICONS[modality];
@@ -47,6 +51,7 @@ export function NodeHeader({
     useInlineRename({
       current: display,
       readOnly,
+      locked,
       maxLength: MAX_NODE_NAME_LEN,
       onRename,
     });

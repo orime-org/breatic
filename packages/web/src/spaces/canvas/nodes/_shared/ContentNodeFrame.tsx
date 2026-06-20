@@ -37,17 +37,17 @@ interface ContentNodeFrameProps {
  * same way and the rename plumbing lives in one place. The annotation
  * sticky (its own header) and the group container do not use this frame.
  *
- * A locked node's name stays editable: lock only restricts structural ops
- * (move / delete); the name is metadata so renaming is never gated by lock
- * (decision 2026-06-17 — else the locker can't fix a name an editor can still
- * undo). Canvas-wide viewer-role read-only is a separate, not-yet-plumbed
- * concern (no role context in the canvas body).
+ * A locked node's name is frozen: the name is on-canvas content (a header
+ * label edited inline), so lock gates rename like every canvas/whiteboard tool
+ * (tldraw / Miro / FigJam) — decision 2026-06-20, reversing the 2026-06-17
+ * "name is metadata" carve-out. Canvas-wide viewer-role read-only is a
+ * separate, not-yet-plumbed concern (no role context in the canvas body).
  * @param root0 - Content node frame props.
  * @param root0.modality - Node modality, selecting the header icon + label.
  * @param root0.name - Current node name (blank → modality label fallback).
  * @param root0.status - Node status, tinting the shell's 1px state border.
  * @param root0.selected - Whether the node is selected, tinting the shell border.
- * @param root0.locked - Whether the node is locked (drives the shell lock indicator only; does NOT lock the name).
+ * @param root0.locked - Whether the node is locked; drives the shell lock indicator AND freezes the name.
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
  * @param root0.className - Extra classes merged onto the shell (sizing).
  * @param root0.testId - Stable test id for the shell root.
@@ -82,6 +82,7 @@ export function ContentNodeFrame({
         <NodeHeader
           modality={modality}
           name={name}
+          locked={locked}
           onRename={onRename}
         />
       </div>
