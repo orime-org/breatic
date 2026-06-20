@@ -56,6 +56,24 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
+  it('createUploadNodeAt writes a media node already in handling state and returns its id', () => {
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+
+    const id = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
+
+    expect(addNode).toHaveBeenCalledTimes(1);
+    const [, , node] = addNode.mock.calls[0];
+    expect(node.id).toBe(id);
+    expect(node.type).toBe('image');
+    expect(node.position).toEqual({ x: 7, y: 8 });
+    expect(node.data.state).toBe('handling');
+    expect(node.data.createdBy).toBe('u-9');
+    addNode.mockRestore();
+  });
+
   it('pasteNodesAt clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')

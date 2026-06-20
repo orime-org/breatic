@@ -49,6 +49,14 @@ interface CanvasState {
   showLockedOverlay: boolean;
   /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
+  /**
+   * Chrome → canvas mailbox: files picked from the left "upload assets" button
+   * for the canvas to turn into nodes at the viewport centre. The picker lives
+   * in chrome (it must open synchronously inside the button's click to keep the
+   * browser's user-activation), so it posts the `File[]` here and the canvas
+   * (which owns the viewport + Yjs writes) fulfils them.
+   */
+  pendingUploadFiles: File[] | null;
   /** Chrome → canvas mailbox: a zoom-toolbar command for the canvas to run. */
   pendingViewportCommand: ViewportCommand | null;
   /** Chrome → canvas mailbox: an undo/redo command for the canvas to run. */
@@ -69,6 +77,10 @@ interface CanvasState {
   requestNodeCreate: (type: CreateIntent) => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
+  /** Post picked upload files from chrome (left "upload assets" button). */
+  requestUpload: (files: File[]) => void;
+  /** Clear the upload mailbox once the canvas has fulfilled it. */
+  consumePendingUpload: () => void;
   /** Post a viewport command from the chrome zoom toolbar. */
   requestViewportCommand: (command: ViewportCommand) => void;
   /** Clear the mailbox once the canvas has run the command. */
@@ -89,6 +101,7 @@ export const useCanvasStore = create<CanvasState>()(
     minimapVisible: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
+    pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
     canUndo: false,
@@ -132,6 +145,14 @@ export const useCanvasStore = create<CanvasState>()(
     consumePendingNodeCreate: () =>
       set((s) => {
         s.pendingNodeCreate = null;
+      }),
+    requestUpload: (files) =>
+      set((s) => {
+        s.pendingUploadFiles = files;
+      }),
+    consumePendingUpload: () =>
+      set((s) => {
+        s.pendingUploadFiles = null;
       }),
     requestViewportCommand: (command) =>
       set((s) => {

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { CanvasNodeFields } from '@breatic/shared';
+import type { CanvasNodeFields, NodeState } from '@breatic/shared';
 import { newId } from '@breatic/shared';
 
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
@@ -39,17 +39,24 @@ export function isCreatableNodeType(type: string): type is CreatableNodeType {
  * the factory stays free of React / store access and is trivially testable.
  * Only the always-present fields are set; content / coverUrl / Generate
  * inputs stay absent until the node is filled.
+ *
+ * `initialState` defaults to `idle`; an upload entry passes `handling` so the
+ * node is created already in the uploading state — written to Yjs in a single
+ * `addNode` so collaborators see it as `handling` immediately (no idle flash).
  * @param type - The content modality to create (text / image / audio / video).
  * @param position - Canvas coordinates the node is placed at.
  * @param position.x - X coordinate.
  * @param position.y - Y coordinate.
  * @param createdBy - User id of the creator (caller injects from the store).
+ * @param initialState - Initial node state (`idle` default; `handling` for an
+ *   upload node that fills its content asynchronously).
  * @returns A complete {@link CanvasNodeFields} for an empty content node.
  */
 export function createEmptyNode(
   type: CreatableNodeType,
   position: { x: number; y: number },
   createdBy: string,
+  initialState: NodeState = 'idle',
 ): CanvasNodeFields {
   return {
     id: newId(),
@@ -61,7 +68,7 @@ export function createEmptyNode(
       createdBy,
       locked: false,
       operationLocks: [],
-      state: 'idle',
+      state: initialState,
       attachments: [],
     },
   };

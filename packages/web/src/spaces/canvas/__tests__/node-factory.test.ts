@@ -47,6 +47,13 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.data.prompt).toBeUndefined();
     expect(node.data.model).toBeUndefined();
   });
+
+  it('defaults state to idle, but accepts an initial handling state (upload node)', () => {
+    expect(createEmptyNode('image', pos, 'u').data.state).toBe('idle');
+    expect(createEmptyNode('image', pos, 'u', 'handling').data.state).toBe(
+      'handling',
+    );
+  });
 });
 
 describe('createEmptyGroup — group node factory', () => {

@@ -174,6 +174,11 @@ function ProjectWorkspace({
   // Chrome → canvas mailbox: the node-library dropdown posts the picked type
   // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
+  // Upload-button path: chrome owns the hidden file picker (it must open
+  // synchronously inside the button click to keep the browser's user-
+  // activation) and posts the picked files to the canvas via this mailbox.
+  const requestUpload = useCanvasStore((s) => s.requestUpload);
+  const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
     openTabIds,
@@ -590,18 +595,36 @@ function ProjectWorkspace({
               )}
               {activeSpace?.type === 'canvas' ? (
                 <>
+                  <input
+                    ref={uploadInputRef}
+                    type='file'
+                    multiple
+                    accept='image/*,video/*,audio/*,text/*'
+                    hidden
+                    data-testid='canvas-upload-input'
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files && files.length > 0) {
+                        requestUpload([...files]);
+                      }
+                      // Reset so picking the same file again re-fires change.
+                      e.target.value = '';
+                    }}
+                  />
                   <LeftFloatingMenu
                     disabled={isViewer}
                     onCreateNode={requestNodeCreate}
-                    onPick={(_tool) => {
-                    // TODO: dispatch per-button actions
-                    //   upload       - open file picker (presigned URL upload)
-                    //   comment      - enter annotation mode
-                    //   collection  - placeholder (M1+)
-                    //   help         - placeholder (M1+)
-                    //   feedback     - placeholder (M1+)
-                    // Buttons never store a "selected" state - they fire and forget.
-                    // The node-library (`nodes`) button owns its own dropdown.
+                    onPick={(tool) => {
+                      // Open the file picker synchronously inside the click so
+                      // the browser keeps user-activation; the canvas fulfils
+                      // the picked files via the upload mailbox.
+                      if (tool === 'upload') uploadInputRef.current?.click();
+                      // comment    - enter annotation mode (later slice)
+                      // collection - placeholder (M1+)
+                      // help       - placeholder (M1+)
+                      // feedback   - placeholder (M1+)
+                      // Buttons never store a "selected" state - fire and forget.
+                      // The node-library (`nodes`) button owns its own dropdown.
                     }}
                   />
                   <ViewportToolbar

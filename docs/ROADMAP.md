@@ -79,7 +79,12 @@
 - [x] **Phase 2: canvas-native 架构前向修复（PR #13 后端 + PR #14 前端）**：单项目 Yjs 文档（`project-{id}`），取消 per-node 编辑器子文档；NodeStateUpdateEvent 统一事件形态（替代 handling/completed/failed 三事件）；节点状态机 idle/handling（Yjs）+ localPending（本地）；后端不再持有 per-node Redis 锁；操作产生新兄弟节点；1:N 支持（targetNodeIds）
 - [x] **画布撤销/重做（PR #243）**：per-space `Y.UndoManager`（每个 space 一个），追踪本客户端的结构 / 元数据 / 名称写入（建/删/移动/锁/改名节点 + 建/删边），后端内容写（`node-state-update` origin）与视口操作不进栈；per-client 隔离、深度 50、刷新清栈；工具栏按钮 + 键盘双平台（Cmd/Ctrl+Z、Cmd+Shift+Z、Ctrl+Y）
 - [x] **画布边剪刀删除 + canvas 撤销/边/锁 bug 修复（PR #245）**：选中边 → 边中点浮剪刀（不随缩放变大小）→ 点击删边（走 `removeEdge`，进撤销栈）；边改本地 buffer + `onEdgesChange` 让边可选中。附带四修：节点锁定不再锁名称（lock 仅约束内容）· 删带边节点的撤销原子还原节点+边（`removeElements` 单事务）· 选中边 `Delete` 键可删 · 协作者删本地撤销栈中节点后撤销按钮不再卡死（undo/redo 后重读 `canUndo`）
-- [ ] 文档权限控制：onAuthenticate 中按 project 成员关系校验，支持 readOnly
+- [x] **画布空间地基（PR #234）**：前端契约对齐 shared 权威 `CanvasNodeFields`（`cover_url→coverUrl` 全栈 + 派生视图层 `node-view.ts`〔`toNodeView`/`deriveStatus`〕）；Yjs binding 改 `nodesMap`/`edgesMap` + 节点 data 嵌套 Y.Map；画布渲染接 ReactFlow（三事件桥：拖动持久化位置 / 删除 / 连边）
+- [x] **节点模型契约修订（PR #235）**：删 `generative`/`outputType`/`isPrimary`，把 Generate 输入（`prompt`/`model`/`references`/`params`/`kind`）relocate 进节点 data；group 节点加 `backgroundColor`；生成子模式 = `kind` 字段（wire `kind`→view `generateMode` 避撞）
+- [x] **节点创建入口（PR #236）+ 剪贴板（PR #238）**：左节点库下拉 + 画布右键菜单建 4 模态空节点（视口中心 / 光标落点 + 阶梯防重叠 + 建后选中）· 节点名字头双击改名 · viewer 只读拦截 · 复制/粘贴节点（系统剪贴板单一真相源，marker JSON）+ 纯文本粘贴建文本节点
+- [x] **画布分组（PR #257）**：框选/Cmd·Ctrl+G 打组 → 容器由成员 bbox+padding 派生几何（不用 ReactFlow `parentId`，绝对坐标 + 拖组自定义位移带子节点）· 4 status 底色 + 无色 · 双击组名改名（共用 `useInlineRename` hook）· 拖单节点进/出组（drag-end 碰撞判定）· 删组放回子节点 · 不嵌套、组无 lock
+- [x] **画布级文件上传（PR #258）**：三入口（左「上传素材」按钮 / 拖拽落画布 / 图片·文件粘贴）→ 按 MIME 分流，统一走「即刻建 `handling` 节点写 Yjs → 填内容 / 失败写 `errorMessage`〔含文件名、固定英文进 Yjs 协作端可见〕」一条状态机（全程前端独占写、复用已有节点状态机）。**媒体**（image/video/audio）走 presign 直传建对应媒体节点（content = URL）；**非媒体一律文本节点 + 前端提取文字**（`text/*` 本地直接读 · pdf 用 pdf.js · docx 用 mammoth · xlsx 用 SheetJS，均浏览器内提取、按需动态 import；无提取器/畸形 → 节点显示「Extraction failed」）—— 删掉旧的「不支持类型 toast」，错误一律在节点上。后端零改动
+- [x] **文档权限控制（PR #251）**：collab `onAuthenticate` 按 project 成员关系定 `connectionConfig.readOnly`（viewer 只读连接拒写 Yjs sync），前端 `nodesDraggable`/chrome 角色 gate 双层
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
 ### AI 能力

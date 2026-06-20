@@ -26,6 +26,15 @@ export interface NodeCreation {
     position: { x: number; y: number },
   ) => string;
   /**
+   * Create a media node already in `handling` state for an in-flight upload
+   * and return its id. The caller fills the node's content once the upload
+   * resolves (`setNodeContent`) or writes an error (`setNodeError`).
+   */
+  createUploadNodeAt: (
+    type: CreatableNodeType,
+    position: { x: number; y: number },
+  ) => string;
+  /**
    * Paste plain text as a new text node at a position; returns its id.
    * The pasted text becomes the node's content.
    */
@@ -63,6 +72,14 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
+  const createUploadNodeAt = React.useCallback(
+    (type: CreatableNodeType, position: { x: number; y: number }): string => {
+      const node = createEmptyNode(type, position, userId, 'handling');
+      addNode(projectId, spaceId, node);
+      return node.id;
+    },
+    [projectId, spaceId, userId],
+  );
   const pasteTextAt = React.useCallback(
     (text: string, position: { x: number; y: number }): string => {
       const node = textToNode(text, position, userId);
@@ -82,5 +99,5 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
-  return { createNodeAt, pasteTextAt, pasteNodesAt };
+  return { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt };
 }
