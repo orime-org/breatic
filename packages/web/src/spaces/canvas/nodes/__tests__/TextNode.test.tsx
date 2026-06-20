@@ -45,6 +45,22 @@ describe('TextNode', () => {
     expect(screen.getByTestId('node-content-error')).toHaveTextContent('Boom');
   });
 
+  it('does not expose editable affordances on the body when not editing', () => {
+    // Root-cause invariant: ReactFlow's isInputDOMNode treats ANY element
+    // carrying a `contenteditable` attribute as an input — the value ("false")
+    // is ignored — and swallows the Delete key. A focusable body also steals
+    // the click focus away from node selection. So a non-editing, content-filled
+    // text node must NOT advertise contenteditable / tabindex / a textbox role,
+    // otherwise the node cannot be deleted by keyboard (the reported bug).
+    render(
+      <TextNode data={{ kind: 'text', content: 'Hello', status: 'idle' }} />,
+    );
+    const body = screen.getByTestId('text-node-body');
+    expect(body.hasAttribute('contenteditable')).toBe(false);
+    expect(body.hasAttribute('tabindex')).toBe(false);
+    expect(body.getAttribute('role')).not.toBe('textbox');
+  });
+
   it('double-clicking the body enters edit mode and commit fires onChange', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
