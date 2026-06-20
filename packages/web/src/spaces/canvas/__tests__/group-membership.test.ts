@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  filterLockedDeletion,
   lockedGroupMemberIds,
   rectContains,
   resolveGroupDrop,
@@ -78,6 +79,49 @@ describe('resolveGroupDrop — drag-end membership change', () => {
     expect(resolveGroupDrop('n', { x: 50, y: 50 }, groups)).toEqual({
       action: 'none',
     });
+  });
+
+  it('does NOT remove a member dragged out of its own LOCKED group', () => {
+    const groups: GroupBox[] = [
+      { id: 'g1', rect: RECT, childIds: ['n', 'x'], locked: true },
+    ];
+    // n is a member of locked g1, dragged outside → must NOT leave.
+    expect(resolveGroupDrop('n', { x: 999, y: 999 }, groups)).toEqual({
+      action: 'none',
+    });
+  });
+});
+
+describe('filterLockedDeletion — locked structure (nodes + edges) survives delete', () => {
+  const allNodes = [
+    { id: 'g', type: 'group', data: { childIds: ['m'], locked: true } },
+    { id: 'm', type: 'text', data: {} },
+    { id: 'x', type: 'text', data: {} },
+  ];
+
+  it('keeps a locked group, its members, AND their edges out of the deletion', () => {
+    const reqNodes = [{ id: 'g' }, { id: 'm' }, { id: 'x' }];
+    const reqEdges = [
+      { id: 'e1', source: 'm', target: 'x' }, // touches protected member m
+      { id: 'e2', source: 'x', target: 'y' }, // safe (no protected endpoint)
+    ];
+    const out = filterLockedDeletion(reqNodes, reqEdges, allNodes);
+    expect(out.nodes.map((n) => n.id)).toEqual(['x']); // g + m protected
+    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ m) protected
+  });
+
+  it('deletes freely when no group is locked', () => {
+    const unlocked = [
+      { id: 'g', type: 'group', data: { childIds: ['m'] } },
+      { id: 'm', type: 'text', data: {} },
+    ];
+    const out = filterLockedDeletion(
+      [{ id: 'g' }, { id: 'm' }],
+      [{ id: 'e', source: 'm', target: 'm' }],
+      unlocked,
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual(['g', 'm']);
+    expect(out.edges.map((e) => e.id)).toEqual(['e']);
   });
 });
 

@@ -76,4 +76,16 @@ describe('planDragStop (multi-select drag persistence — #1432)', () => {
       nodeId: 'a',
     });
   });
+
+  it('does NOT add a node dropped onto a LOCKED group (full plan integration)', () => {
+    const m = node('m', 0, 0);
+    const g = node('g', 0, 0, 'group', { childIds: ['m'], locked: true });
+    const a = node('a', 10, 10); // center inside g's padded rect
+    const plan = planDragStop([a], [g, m, a]);
+    expect(plan.groupOps).toEqual([]); // locked target group refuses the add
+    expect(plan.positions).toContainEqual({
+      id: 'a',
+      position: { x: 10, y: 10 },
+    });
+  });
 });

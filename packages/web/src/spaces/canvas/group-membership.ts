@@ -108,3 +108,41 @@ export function lockedGroupMemberIds(
   }
   return ids;
 }
+
+/**
+ * Partition a requested deletion so a locked group's structure survives: locked
+ * group nodes, their members, AND every edge touching a protected node are kept
+ * OUT of the deletion. Wire into ReactFlow's `onBeforeDelete` (the pre-delete
+ * veto) — the post-hoc `onDelete` can't stop ReactFlow from removing nodes/edges
+ * from the local buffer first, nor from cascading a protected node's edges into
+ * the deletion (edges are part of the frozen structure too).
+ * @param nodes - The nodes ReactFlow is about to delete.
+ * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
+ * @param allNodes - All canvas nodes, to resolve which groups are locked.
+ * @returns The subset safe to delete (protected nodes + their edges removed).
+ */
+export function filterLockedDeletion<
+  N extends { id: string },
+  E extends { id: string; source: string; target: string },
+>(
+  nodes: ReadonlyArray<N>,
+  edges: ReadonlyArray<E>,
+  allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+): { nodes: N[]; edges: E[] } {
+  const protectedIds = lockedGroupMemberIds(allNodes);
+  for (const node of allNodes) {
+    if (
+      node.type === 'group' &&
+      (node.data as { locked?: boolean } | undefined)?.locked
+    ) {
+      protectedIds.add(node.id);
+    }
+  }
+  return {
+    nodes: nodes.filter((node) => !protectedIds.has(node.id)),
+    edges: edges.filter(
+      (edge) =>
+        !protectedIds.has(edge.source) && !protectedIds.has(edge.target),
+    ),
+  };
+}
