@@ -27,7 +27,7 @@ describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
     });
   });
 
-  it('routes text files to a text node read locally (no upload)', () => {
+  it('routes text files to a text node (no upload — content read/extracted locally)', () => {
     expect(fileToNodeSpec({ type: 'text/plain' })).toEqual({
       nodeType: 'text',
       needsUpload: false,
@@ -38,10 +38,21 @@ describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
     });
   });
 
-  it('returns null for unsupported types (no canvas node form)', () => {
-    expect(fileToNodeSpec({ type: 'application/pdf' })).toBeNull();
-    expect(fileToNodeSpec({ type: 'application/octet-stream' })).toBeNull();
-    expect(fileToNodeSpec({ type: '' })).toBeNull();
+  it('routes EVERY non-media file to a text node (pdf/docx/xlsx/binary — extracted, never rejected)', () => {
+    const text = { nodeType: 'text', needsUpload: false };
+    expect(fileToNodeSpec({ type: 'application/pdf' })).toEqual(text);
+    expect(
+      fileToNodeSpec({
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    ).toEqual(text);
+    expect(
+      fileToNodeSpec({
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    ).toEqual(text);
+    expect(fileToNodeSpec({ type: 'application/octet-stream' })).toEqual(text);
+    expect(fileToNodeSpec({ type: '' })).toEqual(text);
   });
 });
 

@@ -287,9 +287,6 @@
     },
     "edge": {
       "delete": "删除连线"
-    },
-    "upload": {
-      "unsupportedType": "暂不支持该文件类型。"
     }
   },
   "editor": {

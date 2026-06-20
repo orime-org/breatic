@@ -9,9 +9,9 @@ import type { PresignResult } from '@web/data/api/assets';
  * presign → PUT and reports success (public URL) or failure through injected
  * callbacks (kept dependency-injected so the async flow is unit-tested without
  * the network or Yjs). Media files (image / audio / video) become a media node
- * whose content is the uploaded URL; text files become a text node whose
- * content is read locally (no upload); anything else has no canvas node form
- * and is rejected.
+ * whose content is the uploaded URL; every non-media file becomes a text node
+ * whose content is read or extracted locally (see `text-extract`), so no file
+ * is ever rejected.
  */
 
 /** How an uploaded file maps onto the canvas. */
@@ -26,18 +26,23 @@ export interface UploadNodeSpec {
 }
 
 /**
- * Classify a file by MIME type into the canvas node it becomes, or `null`
- * when the canvas has no node form for it (pdf / arbitrary binary).
+ * Classify a file by MIME type into the canvas node it becomes. Image / video
+ * / audio become their media node (uploaded to storage). EVERYTHING else —
+ * text, pdf, docx, xlsx, arbitrary binary — becomes a text node whose content
+ * is read or extracted locally (see {@link extractText}); a file with no
+ * extractor simply lands as a text node showing an extraction error, so this
+ * never rejects a file.
  * @param file - The file (only its `type` MIME string is read).
- * @returns The node spec, or `null` for an unsupported type.
+ * @returns The node spec the file becomes.
  */
-export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec | null {
+export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
   const mime = file.type;
   if (mime.startsWith('image/')) return { nodeType: 'image', needsUpload: true };
   if (mime.startsWith('video/')) return { nodeType: 'video', needsUpload: true };
   if (mime.startsWith('audio/')) return { nodeType: 'audio', needsUpload: true };
-  if (mime.startsWith('text/')) return { nodeType: 'text', needsUpload: false };
-  return null;
+  // Every non-media file → a text node; its content is filled by extractText
+  // (text/* read directly; pdf / docx / xlsx parsed; no extractor → error).
+  return { nodeType: 'text', needsUpload: false };
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */

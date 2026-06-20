@@ -21,7 +21,6 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as React from 'react';
-import { toast } from 'sonner';
 
 import { assetsApi } from '@web/data/api';
 import {
@@ -55,6 +54,7 @@ import {
   fileToNodeSpec,
   runMediaUpload,
 } from '@web/spaces/canvas/canvas-upload';
+import { extractText } from '@web/spaces/canvas/text-extract';
 import {
   applyGroupGeometry,
   computeGroupRect,
@@ -526,17 +526,18 @@ function CanvasSpaceInner({
   );
 
   // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
-  // All three entries funnel here: classify each file, drop a node at a
-  // staggered offset from `origin` (flow coords), then either upload a media
-  // file (handling node → presign → PUT → content / error, every step written
-  // to Yjs so collaborators see the whole lifecycle) or inline a text file's
-  // body. Unsupported files (pdf / arbitrary binary) have no canvas node form —
-  // one toast, no node. Created nodes are batch-selected once mirrored back.
+  // All three entries funnel here: classify each file, drop a `handling` node
+  // at a staggered offset from `origin` (flow coords), then fill its content.
+  // Media (image/video/audio) → presign → PUT → content URL. Everything else →
+  // a text node whose content is read or extracted locally (text/* read
+  // directly; pdf/docx/xlsx parsed in-browser). Both paths write every step
+  // to Yjs so collaborators see the whole lifecycle, and both write a
+  // fixed-English error onto the node on failure (never a toast). No file is
+  // rejected. Created nodes are batch-selected once mirrored back.
   const processFiles = React.useCallback(
-    async (files: File[], origin: { x: number; y: number }): Promise<void> => {
+    (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
       const created: string[] = [];
-      let rejected = false;
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i];
         const spec = fileToNodeSpec(file);
@@ -544,41 +545,43 @@ function CanvasSpaceInner({
           x: origin.x + i * STAGGER_STEP_PX,
           y: origin.y + i * STAGGER_STEP_PX,
         };
-        if (!spec) {
-          rejected = true;
-          continue;
-        }
-        if (!spec.needsUpload) {
-          // Text file: read its body locally and inline it (no upload), like a
-          // text paste. `await` is sub-ms; it serializes the small batch loop.
-          created.push(pasteTextAt(await file.text(), position));
-          continue;
-        }
         const nodeId = createUploadNodeAt(spec.nodeType, position);
         created.push(nodeId);
-        void runMediaUpload(file, projectId, {
-          presign: assetsApi.presign,
-          putFile: assetsApi.putFile,
-          onSuccess: (fileUrl) =>
-            setNodeContent(projectId, spaceId, nodeId, fileUrl),
-          // Fixed-English wire string — like AIGC failure messages and the
-          // group default name. errorMessage is written to Yjs and rendered
-          // raw to every collaborator, so it must not freeze the uploader's
-          // locale into the shared doc. The filename is the locale-free part
-          // the user needs to know which file failed.
-          onFailure: () =>
-            setNodeError(
-              projectId,
-              spaceId,
-              nodeId,
-              `Upload failed: ${file.name}`,
-            ),
-        });
+        if (spec.needsUpload) {
+          void runMediaUpload(file, projectId, {
+            presign: assetsApi.presign,
+            putFile: assetsApi.putFile,
+            onSuccess: (fileUrl) =>
+              setNodeContent(projectId, spaceId, nodeId, fileUrl),
+            // Fixed-English wire string — like AIGC failure messages and the
+            // group default name. errorMessage is written to Yjs and rendered
+            // raw to every collaborator, so it must not freeze the uploader's
+            // locale into the shared doc. The filename is the locale-free part
+            // telling the user which file failed.
+            onFailure: () =>
+              setNodeError(
+                projectId,
+                spaceId,
+                nodeId,
+                `Upload failed: ${file.name}`,
+              ),
+          });
+        } else {
+          void extractText(file)
+            .then((text) => setNodeContent(projectId, spaceId, nodeId, text))
+            .catch(() =>
+              setNodeError(
+                projectId,
+                spaceId,
+                nodeId,
+                `Extraction failed: ${file.name}`,
+              ),
+            );
+        }
       }
       if (created.length > 0) setSelectAfterCreate(created);
-      if (rejected) toast.warning(t('canvas.upload.unsupportedType'));
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt, pasteTextAt, t],
+    [readOnly, projectId, spaceId, createUploadNodeAt],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open
@@ -596,7 +599,7 @@ function CanvasSpaceInner({
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       });
-      void processFiles(files, center);
+      processFiles(files, center);
     }
     consumePendingUpload();
   }, [
@@ -628,7 +631,7 @@ function CanvasSpaceInner({
         x: event.clientX,
         y: event.clientY,
       });
-      void processFiles([...files], point);
+      processFiles([...files], point);
     },
     [readOnly, screenToFlowPosition, processFiles],
   );
@@ -759,7 +762,7 @@ function CanvasSpaceInner({
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2,
           });
-          void processFiles([...files], center);
+          processFiles([...files], center);
         }
         return;
       }
