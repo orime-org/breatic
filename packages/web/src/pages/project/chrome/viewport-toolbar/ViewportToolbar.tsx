@@ -69,7 +69,10 @@ interface ViewportToolbarProps {
  *     optional).
  *   - 32px (`--btn-chrome`) hit areas; the bar frame + its buttons use the
  *     12px `rounded-md` radius (2026-06-18 — softer than the 6px chrome
- *     default the rest of the chrome uses).
+ *     default the rest of the chrome uses). The container uses `py-1` (not
+ *     `p-1`) so the end buttons' hover-fill insets stay even — `p-1` plus each
+ *     Group's `px-1` would give 8px sides vs 4px top (2026-06-20, #1435: the
+ *     "match LeftFloatingMenu" resize was reverted, only this inset fix kept).
  *   - `bg-popover` elevated surface + `shadow` so it floats above the
  *     dot-grid canvas.
  *   - No viewport-lock button (lock is space-level, surfaced in the
@@ -111,7 +114,7 @@ export function ViewportToolbar({
       data-testid='viewport-toolbar'
       role='toolbar'
       aria-label={t('viewportToolbar.aria')}
-      className='absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover p-1 shadow'
+      className='absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover py-1 shadow'
     >
       <Group>
         <VtButton

@@ -43,6 +43,25 @@ describe('ViewportToolbar', () => {
     expect(screen.getByTestId('viewport-toolbar')).toBeInTheDocument();
   });
 
+  it('keeps original 32px sizing, with only the even-margin py-1 inset (#1435)', () => {
+    setup();
+    // The "align to LeftFloatingMenu" resize was reverted (2026-06-20). The bar
+    // keeps its original 32px buttons / 14px icons / rounded-md frame; the ONE
+    // thing kept is the container `py-1` (not `p-1`), which evens the end-button
+    // hover-fill insets — `p-1` + each Group's `px-1` gave 8px sides / 4px top.
+    const toolbar = screen.getByTestId('viewport-toolbar');
+    expect(toolbar.className).toContain('py-1');
+    expect(toolbar.className).not.toContain('p-1');
+    expect(toolbar.className).toContain('rounded-md');
+    // Buttons back to 32px (h-8 w-8) + rounded-md.
+    const undo = screen.getByLabelText('Undo');
+    expect(undo.className).toContain('h-8');
+    expect(undo.className).toContain('rounded-md');
+    // Icons back to 14px (h-3.5).
+    const icon = undo.querySelector('svg');
+    expect(icon?.getAttribute('class') ?? '').toContain('h-3.5');
+  });
+
   it('has no a11y violations', async () => {
     setup();
     await expectNoA11yViolations(document.body);
