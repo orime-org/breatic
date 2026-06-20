@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import * as XLSX from 'xlsx';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import {
   pickExtractor,
   extractText,
+  defaultExtractDeps,
   type ExtractDeps,
 } from '@web/spaces/canvas/text-extract';
 
@@ -85,5 +87,29 @@ describe('extractText — dispatch + delegation (libs injected)', () => {
       type: 'application/zip',
     });
     await expect(extractText(file, deps)).rejects.toThrow();
+  });
+});
+
+describe('defaultExtractDeps.xlsx — real SheetJS extraction', () => {
+  it('renders every sheet as CSV from real .xlsx bytes', async () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ['Name', 'Score'],
+        ['Ada', '47.2'],
+      ]),
+      'Sheet1',
+    );
+    // SheetJS `type: 'array'` returns an ArrayBuffer directly.
+    const buffer = XLSX.write(wb, {
+      type: 'array',
+      bookType: 'xlsx',
+    }) as ArrayBuffer;
+
+    const text = await defaultExtractDeps.xlsx(buffer);
+
+    expect(text).toContain('Name,Score');
+    expect(text).toContain('Ada,47.2');
   });
 });
