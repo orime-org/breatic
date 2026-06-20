@@ -104,7 +104,17 @@ export function TextNode({
             // While editing, `nodrag` lets a pointer press select text instead
             // of dragging the node; when not editing, the body stays a drag
             // handle so the node can be moved by its content.
-            className={`${editing ? 'nodrag ' : ''}max-h-108 min-h-[3rem] overflow-y-auto whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30`}
+            //
+            // Both states share the 576px cap (`max-h-144` = width 288 × 2).
+            // They differ only in how overflow is handled: the display body
+            // truncates with a `line-clamp` ellipsis (the reader sees there is
+            // more, the canvas stays compact), while the editing body scrolls
+            // (`overflow-y-auto`) so the full text is reachable while typing.
+            className={`${
+              editing
+                ? 'nodrag max-h-144 overflow-y-auto'
+                : 'max-h-144 line-clamp-[30]'
+            } min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30`}
           >
             {data.content}
           </div>
