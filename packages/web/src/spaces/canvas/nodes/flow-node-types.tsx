@@ -58,9 +58,14 @@ function makeFlowNode(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
     );
+    // A group node is sized by ReactFlow to its derived bounds; this wrapper
+    // must fill that height so the GroupNode's own `size-full` resolves to the
+    // full rect (a percentage height needs a definite-height parent chain).
+    // Content nodes size to their body, so they keep the auto-height wrapper.
+    const isGroup = data.kind === 'group';
     return (
       <NodeScaleContext.Provider value={headerScale}>
-        <div className='relative'>
+        <div className={isGroup ? 'relative size-full' : 'relative'}>
           <Handle
             type='target'
             position={Position.Left}

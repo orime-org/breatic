@@ -23,6 +23,26 @@ describe('GroupNode', () => {
     });
   });
 
+  it('uses the node-shell border treatment — dashed line, 6px radius, fills the wrapper, 3-state colors', () => {
+    const { rerender } = render(
+      <GroupNode data={{ kind: 'group', childIds: ['a'] }} />,
+    );
+    const node = screen.getByTestId('group-node');
+    // Node radius (6px) + fills the ReactFlow wrapper + keeps the dashed line.
+    expect(node).toHaveClass('rounded-sm', 'size-full', 'border-dashed');
+    expect(node).not.toHaveClass('rounded-lg');
+    // Idle uses the node's border colour + hover, exactly like NodeShell.
+    expect(node).toHaveClass(
+      'border-border',
+      'hover:border-foreground-disabled',
+    );
+    // Selected uses the node's selected colour.
+    rerender(<GroupNode data={{ kind: 'group', childIds: ['a'] }} selected />);
+    expect(screen.getByTestId('group-node')).toHaveClass(
+      'border-status-selected',
+    );
+  });
+
   it('does not render a lock indicator — a group has no lock (§1.1)', () => {
     render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} locked />);
     expect(screen.queryByTestId('node-lock-indicator')).toBeNull();

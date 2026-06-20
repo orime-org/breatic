@@ -996,30 +996,31 @@ function CanvasSpaceInner({
             isVisible={groupOffer.kind !== 'none' && !readOnly}
             position={Position.Top}
           >
-            <div className='flex items-center gap-1 rounded-md border border-border bg-popover p-1 shadow-md'>
+            <div className='flex items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow-md'>
               {groupOffer.kind === 'ungroup' ? (
                 <>
-                  <button
-                    type='button'
-                    data-testid='group-toolbar-ungroup'
-                    onClick={ungroupSelection}
-                    className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
-                  >
-                    {t('canvas.group.ungroup')}
-                  </button>
+                  {/* Color picker sits to the LEFT of ungroup. */}
                   <GroupBackgroundPicker
                     open={bgMenuOpen}
                     onOpenChange={setBgMenuOpen}
                     value={selectedGroupBg}
                     onPick={pickGroupBackground}
                   />
+                  <button
+                    type='button'
+                    data-testid='group-toolbar-ungroup'
+                    onClick={ungroupSelection}
+                    className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                  >
+                    {t('canvas.group.ungroup')}
+                  </button>
                 </>
               ) : (
                 <button
                   type='button'
                   data-testid='group-toolbar-group'
                   onClick={groupSelection}
-                  className='rounded-content-xs px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
+                  className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
                 >
                   {t('canvas.group.group')}
                 </button>

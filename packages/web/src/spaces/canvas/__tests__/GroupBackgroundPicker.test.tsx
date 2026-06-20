@@ -36,6 +36,12 @@ describe('GroupBackgroundPicker', () => {
     expect(screen.getByTestId('group-bg-error')).toBeInTheDocument();
   });
 
+  it('uses the 6px button radius on the trigger and lays swatches out vertically', () => {
+    setup();
+    expect(screen.getByTestId('group-bg-trigger')).toHaveClass('rounded-chrome');
+    expect(screen.getByTestId('group-bg-list')).toHaveClass('flex-col');
+  });
+
   it('applies a tint token when a swatch is chosen', () => {
     const onPick = vi.fn();
     setup({ onPick });
