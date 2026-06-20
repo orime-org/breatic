@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   filterLockedDeletion,
   lockedGroupMemberIds,
+  lockedNodeIds,
   rectContains,
   resolveGroupDrop,
   type GroupBox,
@@ -155,5 +156,27 @@ describe('lockedGroupMemberIds — frozen member positions', () => {
   it('is empty when no group is locked', () => {
     const nodes = [{ id: 'g', type: 'group', data: { childIds: ['a'] } }];
     expect(lockedGroupMemberIds(nodes)).toEqual(new Set());
+  });
+});
+
+describe('lockedNodeIds — frozen-by-lock set (no move, no delete)', () => {
+  it('includes any locked node (standalone OR group itself) + members of locked groups', () => {
+    const nodes = [
+      { id: 'lockedNode', type: 'text', data: { locked: true } },
+      { id: 'g', type: 'group', data: { childIds: ['m'], locked: true } },
+      { id: 'm', type: 'text', data: {} },
+      { id: 'free', type: 'text', data: {} },
+    ];
+    // locked standalone node + the locked group's OWN id (so the whole group is
+    // frozen in place) + the locked group's member.
+    expect(lockedNodeIds(nodes)).toEqual(new Set(['lockedNode', 'g', 'm']));
+  });
+
+  it('is empty when nothing is locked', () => {
+    const nodes = [
+      { id: 'a', type: 'text', data: {} },
+      { id: 'g', type: 'group', data: { childIds: ['a'] } },
+    ];
+    expect(lockedNodeIds(nodes)).toEqual(new Set());
   });
 });

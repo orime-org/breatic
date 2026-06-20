@@ -62,7 +62,7 @@ import {
 import { planDragStop } from '@web/spaces/canvas/drag-persist';
 import {
   filterLockedDeletion,
-  lockedGroupMemberIds,
+  lockedNodeIds,
 } from '@web/spaces/canvas/group-membership';
 import {
   computeGroupToolbar,
@@ -908,14 +908,18 @@ function CanvasSpaceInner({
     const sized = applyGroupGeometry(flowNodes);
     const groups = sized.filter((node) => node.type === 'group');
     const rest = sized.filter((node) => node.type !== 'group');
-    // A locked group freezes its members in place: they render non-draggable so
-    // they can't be moved individually. The group node itself stays draggable,
-    // so the whole block can still be dragged together.
-    const lockedMembers = lockedGroupMemberIds(sized);
+    // Locked nodes are frozen in place: any locked node (incl. a locked group as
+    // a whole) and the members of a locked group render non-draggable, so they
+    // can't be moved. An unlocked group still drags as a unit (carrying members).
+    const frozen = lockedNodeIds(sized);
     return [
-      ...groups.map((node) => ({ ...node, draggable: !readOnly, zIndex: 0 })),
+      ...groups.map((node) => ({
+        ...node,
+        draggable: !readOnly && !frozen.has(node.id),
+        zIndex: 0,
+      })),
       ...rest.map((node) =>
-        lockedMembers.has(node.id) ? { ...node, draggable: false } : node,
+        frozen.has(node.id) ? { ...node, draggable: false } : node,
       ),
     ];
   }, [flowNodes, readOnly]);

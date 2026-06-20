@@ -110,6 +110,26 @@ export function lockedGroupMemberIds(
 }
 
 /**
+ * Ids of every node frozen by a lock — any node with `data.locked`, OR a member
+ * of a locked group. A frozen node can be neither moved (rendered
+ * `draggable=false`) nor deleted ({@link filterLockedDeletion}); both reuse this
+ * one set so they stay in lockstep. A locked group's OWN id is included, so the
+ * whole group is frozen in place — it cannot be dragged as a unit (reverses
+ * group-lock-C's whole-group drag, decision 2026-06-20).
+ * @param nodes - All canvas nodes (the `locked` flag is read from each `data`).
+ * @returns The set of node ids frozen by a lock.
+ */
+export function lockedNodeIds(
+  nodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+): Set<string> {
+  const ids = lockedGroupMemberIds(nodes);
+  for (const node of nodes) {
+    if ((node.data as { locked?: boolean } | undefined)?.locked) ids.add(node.id);
+  }
+  return ids;
+}
+
+/**
  * Partition a requested deletion so locked structure survives: any locked node
  * (a locked group OR a locked standalone node), a locked group's members, AND
  * every edge touching a protected node are kept OUT of the deletion. Wire into
@@ -130,15 +150,9 @@ export function filterLockedDeletion<
   edges: ReadonlyArray<E>,
   allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
 ): { nodes: N[]; edges: E[] } {
-  const protectedIds = lockedGroupMemberIds(allNodes);
-  // Every locked node is protected — a locked group OR a locked standalone node
-  // (node lock now blocks delete, decision 2026-06-20). A locked group also
-  // protects its members via lockedGroupMemberIds above.
-  for (const node of allNodes) {
-    if ((node.data as { locked?: boolean } | undefined)?.locked) {
-      protectedIds.add(node.id);
-    }
-  }
+  // The frozen-by-lock set (any locked node + locked group members) is exactly
+  // what can't be deleted — the same set the move-freeze path uses.
+  const protectedIds = lockedNodeIds(allNodes);
   return {
     nodes: nodes.filter((node) => !protectedIds.has(node.id)),
     edges: edges.filter(
