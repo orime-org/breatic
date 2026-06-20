@@ -25,6 +25,8 @@ interface NodeContextMenuProps {
   onOpenChange: (open: boolean) => void;
   /** Toggle the node's lock state. */
   onToggleLock: () => void;
+  /** Whether the right-clicked target is a node or a group — picks the wording. */
+  target?: 'node' | 'group';
 }
 
 /**
@@ -40,6 +42,7 @@ interface NodeContextMenuProps {
  * @param root0.locked - Current lock state, selecting the lock / unlock label + icon.
  * @param root0.onOpenChange - Open-state change callback.
  * @param root0.onToggleLock - Toggle the node's lock state.
+ * @param root0.target - Whether the menu targets a node or a group (picks wording).
  * @returns The cursor-anchored node action menu.
  */
 export function NodeContextMenu({
@@ -47,6 +50,7 @@ export function NodeContextMenu({
   x,
   y,
   locked,
+  target = 'node',
   onOpenChange,
   onToggleLock,
 }: NodeContextMenuProps): React.JSX.Element {
@@ -70,7 +74,17 @@ export function NodeContextMenu({
           ) : (
             <Lock className='mr-2 h-4 w-4' aria-hidden='true' />
           )}
-          {locked ? t('canvas.nodeMenu.unlock') : t('canvas.nodeMenu.lock')}
+          {locked
+            ? t(
+              target === 'group'
+                ? 'canvas.group.unlock'
+                : 'canvas.nodeMenu.unlock',
+            )
+            : t(
+              target === 'group'
+                ? 'canvas.group.lock'
+                : 'canvas.nodeMenu.lock',
+            )}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

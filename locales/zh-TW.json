@@ -212,6 +212,8 @@
     "group": {
       "group": "群組",
       "ungroup": "取消群組",
+      "lock": "鎖定群組",
+      "unlock": "解鎖群組",
       "background": "背景顏色",
       "backgroundNone": "無色",
       "backgroundInfo": "藍色",
@@ -282,8 +284,8 @@
       "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
     },
     "nodeMenu": {
-      "lock": "鎖定",
-      "unlock": "解鎖"
+      "lock": "鎖定節點",
+      "unlock": "解鎖節點"
     },
     "edge": {
       "delete": "刪除連線"

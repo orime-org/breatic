@@ -487,6 +487,7 @@ function CanvasSpaceInner({
     y: 0,
     nodeId: '',
     locked: false,
+    isGroup: false,
   });
 
   // Create a node at a flow position and flag it for auto-selection once the
@@ -674,6 +675,7 @@ function CanvasSpaceInner({
         y: event.clientY,
         nodeId: node.id,
         locked,
+        isGroup: node.type === 'group',
       });
     },
     [readOnly],
@@ -1037,6 +1039,7 @@ function CanvasSpaceInner({
           x={nodeMenu.x}
           y={nodeMenu.y}
           locked={nodeMenu.locked}
+          target={nodeMenu.isGroup ? 'group' : 'node'}
           onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
           onToggleLock={onToggleNodeLock}
         />

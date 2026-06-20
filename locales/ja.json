@@ -212,6 +212,8 @@
     "group": {
       "group": "グループ化",
       "ungroup": "グループ解除",
+      "lock": "グループをロック",
+      "unlock": "グループのロック解除",
       "background": "背景色",
       "backgroundNone": "なし",
       "backgroundInfo": "青",
@@ -282,8 +284,8 @@
       "hint": "素材をキャンバスにドラッグするか、左メニューからノードタイプを選んで作成してください。"
     },
     "nodeMenu": {
-      "lock": "ロック",
-      "unlock": "ロック解除"
+      "lock": "ノードをロック",
+      "unlock": "ノードのロック解除"
     },
     "edge": {
       "delete": "接続を削除"
