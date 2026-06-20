@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
 import { groupBackgroundStyle } from '@web/spaces/canvas/group-background';
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import {
   MAX_NODE_NAME_LEN,
   useInlineRename,
@@ -48,6 +49,9 @@ export function GroupNode({
   const display =
     data.name && data.name.length > 0 ? data.name : GROUP_DEFAULT_NAME;
   const background = groupBackgroundStyle(data.backgroundColor);
+  // Counter-scale the name with the canvas zoom so it keeps a constant screen
+  // size — the same treatment node names get (ContentNodeFrame).
+  const headerScale = React.useContext(NodeScaleContext);
   const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
     useInlineRename({
       current: display,
@@ -74,31 +78,38 @@ export function GroupNode({
           : 'border-border hover:border-foreground-disabled',
       )}
     >
-      {editing ? (
-        <input
-          ref={inputRef}
-          data-testid='group-name-input'
-          value={draft}
-          maxLength={MAX_NODE_NAME_LEN}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            else if (e.key === 'Escape') cancel();
-          }}
-          // `nodrag` lets a pointer press select text instead of dragging the
-          // group; the input only renders while editing, so it's always safe.
-          className='nodrag absolute -top-5 left-0 max-w-[180px] rounded-content-xs border-0 bg-muted px-1 text-xs text-foreground outline-none [field-sizing:content]'
-        />
-      ) : (
-        <div
-          data-testid='group-name'
-          onDoubleClick={startEdit}
-          className='absolute -top-5 left-0 max-w-[180px] truncate text-xs text-muted-foreground'
-        >
-          {display}
-        </div>
-      )}
+      {/* Name floats above the group's top-left, counter-scaled by zoom so it
+          stays a constant screen size — mirrors the node name header. */}
+      <div
+        className='absolute bottom-full left-0 origin-bottom-left pb-1'
+        style={{ transform: `scale(${headerScale})` }}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            data-testid='group-name-input'
+            value={draft}
+            maxLength={MAX_NODE_NAME_LEN}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              else if (e.key === 'Escape') cancel();
+            }}
+            // `nodrag` lets a pointer press select text instead of dragging the
+            // group; the input only renders while editing, so it's always safe.
+            className='nodrag block max-w-[180px] rounded-content-xs border-0 bg-muted px-1 text-xs text-foreground outline-none [field-sizing:content]'
+          />
+        ) : (
+          <div
+            data-testid='group-name'
+            onDoubleClick={startEdit}
+            className='block max-w-[180px] truncate text-xs text-muted-foreground'
+          >
+            {display}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

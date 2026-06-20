@@ -65,7 +65,9 @@ export function GroupBackgroundPicker({
       <DropdownMenuContent
         align='start'
         data-testid='group-bg-list'
-        className='flex flex-col gap-1 p-1'
+        // `w-fit min-w-0` overrides shadcn's default `min-w-[8rem]` so the
+        // list hugs the single column of swatches instead of a wide box.
+        className='flex w-fit min-w-0 flex-col gap-1 p-1'
       >
         {GROUP_BACKGROUND_OPTIONS.map((opt) => {
           const dot = groupBackgroundStyle(opt.value);
