@@ -12,6 +12,20 @@ describe('GroupNode', () => {
     expect(screen.getByTestId('group-node')).toBeInTheDocument();
   });
 
+  it('shows a lock indicator when the group is locked', () => {
+    render(
+      <GroupNode data={{ kind: 'group', childIds: ['a'], locked: true }} />,
+    );
+    expect(screen.getByTestId('group-lock-indicator')).toBeInTheDocument();
+  });
+
+  it('shows no lock indicator when the group is unlocked', () => {
+    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    expect(
+      screen.queryByTestId('group-lock-indicator'),
+    ).not.toBeInTheDocument();
+  });
+
   it('applies the backgroundColor tint via var() from the stored token', () => {
     render(
       <GroupNode

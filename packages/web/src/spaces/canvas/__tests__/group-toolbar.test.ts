@@ -47,4 +47,13 @@ describe('computeGroupToolbar — selection → floating-toolbar offer', () => {
   it('offers nothing for an empty selection', () => {
     expect(computeGroupToolbar([], [loose('a')])).toEqual({ kind: 'none' });
   });
+
+  it('offers no ungroup for a LOCKED group — a locked group cannot be ungrouped', () => {
+    const nodes: NodeGroupInfo[] = [
+      { id: 'g1', isGroup: true, childIds: ['a', 'b'], locked: true },
+      loose('a'),
+      loose('b'),
+    ];
+    expect(computeGroupToolbar(['g1'], nodes)).toEqual({ kind: 'none' });
+  });
 });

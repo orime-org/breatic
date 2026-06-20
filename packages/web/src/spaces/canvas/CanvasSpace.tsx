@@ -60,6 +60,7 @@ import {
   computeGroupRect,
 } from '@web/spaces/canvas/group-geometry';
 import { planDragStop } from '@web/spaces/canvas/drag-persist';
+import { lockedGroupMemberIds } from '@web/spaces/canvas/group-membership';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -422,14 +423,30 @@ function CanvasSpaceInner({
       edges: Edge[];
     }): void => {
       if (readOnly) return;
+      // A locked group's structure is frozen: the group node can't be deleted,
+      // and neither can its members (deleting one would change the frozen member
+      // set). Drop them from the deletion.
+      const lockedMembers = lockedGroupMemberIds(flowNodes);
+      const lockedGroups = new Set(
+        flowNodes
+          .filter(
+            (node) =>
+              node.type === 'group' &&
+              (node.data as { locked?: boolean }).locked,
+          )
+          .map((node) => node.id),
+      );
+      const deletable = deletedNodes.filter(
+        (node) => !lockedGroups.has(node.id) && !lockedMembers.has(node.id),
+      );
       removeElements(
         projectId,
         spaceId,
-        deletedNodes.map((node) => node.id),
+        deletable.map((node) => node.id),
         deletedEdges.map((edge) => edge.id),
       );
     },
-    [projectId, spaceId, readOnly],
+    [projectId, spaceId, readOnly, flowNodes],
   );
 
   const onConnect = React.useCallback(
@@ -470,6 +487,7 @@ function CanvasSpaceInner({
     y: 0,
     nodeId: '',
     locked: false,
+    isGroup: false,
   });
 
   // Create a node at a flow position and flag it for auto-selection once the
@@ -657,6 +675,7 @@ function CanvasSpaceInner({
         y: event.clientY,
         nodeId: node.id,
         locked,
+        isGroup: node.type === 'group',
       });
     },
     [readOnly],
@@ -786,6 +805,7 @@ function CanvasSpaceInner({
         id: node.id,
         isGroup: node.type === 'group',
         childIds: (node.data as { childIds?: string[] }).childIds,
+        locked: (node.data as { locked?: boolean }).locked,
       })),
     [flowNodes],
   );
@@ -881,9 +901,15 @@ function CanvasSpaceInner({
     const sized = applyGroupGeometry(flowNodes);
     const groups = sized.filter((node) => node.type === 'group');
     const rest = sized.filter((node) => node.type !== 'group');
+    // A locked group freezes its members in place: they render non-draggable so
+    // they can't be moved individually. The group node itself stays draggable,
+    // so the whole block can still be dragged together.
+    const lockedMembers = lockedGroupMemberIds(sized);
     return [
       ...groups.map((node) => ({ ...node, draggable: !readOnly, zIndex: 0 })),
-      ...rest,
+      ...rest.map((node) =>
+        lockedMembers.has(node.id) ? { ...node, draggable: false } : node,
+      ),
     ];
   }, [flowNodes, readOnly]);
 
@@ -1013,6 +1039,7 @@ function CanvasSpaceInner({
           x={nodeMenu.x}
           y={nodeMenu.y}
           locked={nodeMenu.locked}
+          target={nodeMenu.isGroup ? 'group' : 'node'}
           onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
           onToggleLock={onToggleNodeLock}
         />

@@ -212,6 +212,8 @@
     "group": {
       "group": "그룹화",
       "ungroup": "그룹 해제",
+      "lock": "그룹 잠금",
+      "unlock": "그룹 잠금 해제",
       "background": "배경색",
       "backgroundNone": "없음",
       "backgroundInfo": "파랑",
@@ -282,8 +284,8 @@
       "hint": "에셋을 캔버스로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
     },
     "nodeMenu": {
-      "lock": "잠금",
-      "unlock": "잠금 해제"
+      "lock": "노드 잠금",
+      "unlock": "노드 잠금 해제"
     },
     "edge": {
       "delete": "연결 삭제"

@@ -16,6 +16,8 @@ export interface GroupBox {
   id: string;
   rect: GroupRect;
   childIds: string[];
+  /** Whether the group is locked — a locked group's membership is frozen. */
+  locked?: boolean;
 }
 
 /** The membership change a drop implies. */
@@ -71,6 +73,11 @@ export function resolveGroupDrop(
   const hit = groups.find(
     (group) => group.id !== draggedId && rectContains(group.rect, center),
   );
+  // A locked group freezes its membership: nothing can join it, and its members
+  // can't leave (members render draggable=false, so a leave rarely reaches here
+  // — guard anyway).
+  if (hit?.locked) return { action: 'none' };
+  if (currentGroup?.locked) return { action: 'none' };
   if (hit && hit.id !== currentGroup?.id) {
     return { action: 'add', groupId: hit.id };
   }
@@ -78,4 +85,26 @@ export function resolveGroupDrop(
     return { action: 'remove', groupId: currentGroup.id };
   }
   return { action: 'none' };
+}
+
+/**
+ * Ids of every node that is a member of a *locked* group — their position is
+ * frozen, so the canvas renders them `draggable=false`. A locked group keeps
+ * its members fixed in place; the group as a whole can still be dragged.
+ * @param nodes - All canvas nodes (only group nodes with `data.locked` matter).
+ * @returns The set of member ids belonging to locked groups.
+ */
+export function lockedGroupMemberIds(
+  nodes: ReadonlyArray<{ type?: string; data?: unknown }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== 'group') continue;
+    const data = node.data as
+      | { locked?: boolean; childIds?: string[] }
+      | undefined;
+    if (!data?.locked) continue;
+    for (const childId of data.childIds ?? []) ids.add(childId);
+  }
+  return ids;
 }

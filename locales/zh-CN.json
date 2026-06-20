@@ -212,6 +212,8 @@
     "group": {
       "group": "编组",
       "ungroup": "取消编组",
+      "lock": "锁定编组",
+      "unlock": "解锁编组",
       "background": "背景颜色",
       "backgroundNone": "无色",
       "backgroundInfo": "蓝色",
@@ -282,8 +284,8 @@
       "hint": "拖入素材到画布,或从左侧菜单选择节点类型创建"
     },
     "nodeMenu": {
-      "lock": "锁定",
-      "unlock": "解锁"
+      "lock": "锁定节点",
+      "unlock": "解锁节点"
     },
     "edge": {
       "delete": "删除连线"
