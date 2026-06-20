@@ -86,12 +86,19 @@ export function TextNode({
         content={
           <div
             ref={ref}
-            role='textbox'
-            tabIndex={0}
-            aria-multiline='true'
-            aria-readonly={!editing}
             data-testid='text-node-body'
-            contentEditable={editing}
+            // Editable affordances are mounted ONLY while editing. A non-editing
+            // body must carry neither `contenteditable` (React renders even
+            // `={false}` as the literal attribute `contenteditable="false"`) nor
+            // a tabindex: ReactFlow's isInputDOMNode flags ANY element that has a
+            // `contenteditable` attribute as an input — the value is ignored —
+            // and swallows the Delete key, while a focusable body steals the
+            // click focus from node selection. Either one blocks deleting a
+            // content-filled text node, so both are gated behind `editing`.
+            role={editing ? 'textbox' : undefined}
+            tabIndex={editing ? 0 : undefined}
+            aria-multiline={editing ? 'true' : undefined}
+            contentEditable={editing || undefined}
             suppressContentEditableWarning
             onDoubleClick={startEdit}
             onBlur={commit}
