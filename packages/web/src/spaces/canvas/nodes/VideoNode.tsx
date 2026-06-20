@@ -44,7 +44,6 @@ export function VideoNode({
       selected={selected}
       locked={locked}
       onRename={onRename}
-      className='w-72'
       testId='video-node'
     >
       <NodeContent

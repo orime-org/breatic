@@ -66,4 +66,15 @@ describe('ContentNodeFrame', () => {
     fireEvent.doubleClick(screen.getByTestId('node-header-name'));
     expect(screen.getByTestId('node-header-input')).toBeInTheDocument();
   });
+
+  it('defaults the shell to the unified w-72 content-node width', () => {
+    // Every content node shares one width (set here, not per-node) so the
+    // canvas reads as a uniform grid. Per-node `w-XX` overrides are removed.
+    render(
+      <ContentNodeFrame modality='text' name='A' testId='text-node'>
+        <div>body</div>
+      </ContentNodeFrame>,
+    );
+    expect(screen.getByTestId('text-node').className).toContain('w-72');
+  });
 });

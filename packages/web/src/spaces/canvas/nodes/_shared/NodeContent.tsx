@@ -35,12 +35,15 @@ export function NodeContent({
   content,
 }: NodeContentProps): React.JSX.Element {
   if (status === 'handling') {
+    // The skeleton fills the fixed empty-state box (288 x 192) so a node that is
+    // generating keeps the footprint it had while empty, then grows to its real
+    // size once content arrives — no tiny centered bar, no collapse.
     return (
-      <div
-        data-testid='node-content-handling'
-        className='flex h-full w-full items-center justify-center p-3'
-      >
-        <Skeleton className='h-16 w-full' />
+      <div data-testid='node-content-handling' className='h-48 w-full p-2'>
+        <Skeleton
+          data-testid='node-content-skeleton'
+          className='h-full w-full'
+        />
       </div>
     );
   }
@@ -54,5 +57,13 @@ export function NodeContent({
       </div>
     );
   }
-  return hasContent ? <>{content}</> : <>{placeholder}</>;
+  // An empty node fills a fixed h-48 box so every empty node is the same size
+  // regardless of modality; a filled node grows to its content's real height.
+  return hasContent ? (
+    <>{content}</>
+  ) : (
+    <div data-testid='node-content-empty' className='h-48'>
+      {placeholder}
+    </div>
+  );
 }

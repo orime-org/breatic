@@ -69,4 +69,32 @@ describe('NodeContent', () => {
       /something went wrong/i,
     );
   });
+
+  it('the empty state fills a fixed h-48 box so every empty node is the same size', () => {
+    render(
+      <NodeContent
+        status='idle'
+        hasContent={false}
+        placeholder={<div data-testid='ph'>P</div>}
+        content={<div>C</div>}
+      />,
+    );
+    expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
+  });
+
+  it('the handling skeleton fills the fixed h-48 box, not a small centered bar', () => {
+    render(
+      <NodeContent
+        status='handling'
+        hasContent
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+      />,
+    );
+    const box = screen.getByTestId('node-content-handling');
+    expect(box.className).toContain('h-48');
+    expect(
+      box.querySelector('[data-testid="node-content-skeleton"]')?.className,
+    ).toContain('h-full');
+  });
 });

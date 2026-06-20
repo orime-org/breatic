@@ -44,7 +44,6 @@ export function AudioNode({
       selected={selected}
       locked={locked}
       onRename={onRename}
-      className='w-64'
       testId='audio-node'
     >
       <NodeContent
