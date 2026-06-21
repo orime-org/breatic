@@ -13,13 +13,14 @@ beforeAll(() => {
 });
 
 describe('MediaPlayer', () => {
-  it('audio: waveform (seek) + play + volume button; NO seek slider / fullscreen', () => {
+  it('audio: decorative waveform + play + seek slider + volume; NO fullscreen', () => {
     render(<MediaPlayer modality='audio' src='/a.mp3' />);
     expect(screen.getByTestId('media-element').tagName).toBe('AUDIO');
     expect(screen.getByTestId('waveform')).toBeInTheDocument();
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
+    // seek now lives in the control row (the waveform is decorative, drag = move node)
+    expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.getByTestId('volume-button')).toBeInTheDocument();
-    expect(screen.queryByTestId('seek')).not.toBeInTheDocument();
     expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
@@ -88,7 +89,9 @@ describe('MediaPlayer', () => {
     render(<MediaPlayer modality='video' src='/v.mp4' />);
     await user.click(screen.getByTestId('volume-button'));
     const pct = screen.getByTestId('volume-pct');
-    expect(pct.className).toContain('w-8');
+    // fixed-width box that fits the widest value ("100") so 2- vs 3-digit
+    // values don't reflow the popover (kept tight — not over-wide).
+    expect(pct.className).toContain('w-6');
     expect(pct.className).toContain('text-center');
   });
 });

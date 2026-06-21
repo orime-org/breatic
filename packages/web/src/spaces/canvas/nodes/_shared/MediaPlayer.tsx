@@ -95,11 +95,11 @@ export function MediaPlayer({
       </PopoverTrigger>
       <PopoverContent
         side='top'
-        className='nodrag flex w-auto min-w-0 flex-col items-center gap-2 p-3'
+        className='nodrag flex w-auto min-w-0 flex-col items-center gap-2 p-2'
       >
         <span
           data-testid='volume-pct'
-          className='w-8 text-center text-2xs tabular-nums text-muted-foreground'
+          className='w-6 text-center text-2xs tabular-nums text-muted-foreground'
         >
           {volumePct}
         </span>
@@ -181,23 +181,35 @@ export function MediaPlayer({
         data-testid='media-element'
         className='sr-only'
       />
-      <Waveform
-        progress={p.progress}
-        onSeek={p.seekFraction}
-        ariaLabel='Audio progress'
-      />
+      <Waveform progress={p.progress} />
       <div
         data-testid='controls'
         className='nodrag flex items-center gap-2 text-popover-foreground'
       >
         {playButton}
         <span
-          data-testid='time'
-          className='text-2xs tabular-nums text-muted-foreground'
+          data-testid='time-current'
+          className='shrink-0 text-2xs tabular-nums text-muted-foreground'
         >
-          {formatTime(p.currentTime)} / {formatTime(p.duration)}
+          {formatTime(p.currentTime)}
         </span>
-        <div className='ml-auto'>{volumeControl}</div>
+        <Slider
+          data-testid='seek'
+          aria-label='Seek'
+          min={0}
+          max={100}
+          step={0.1}
+          value={[p.progress * 100]}
+          onValueChange={([v]) => p.seekFraction(v / 100)}
+          className='min-w-0 flex-1'
+        />
+        <span
+          data-testid='time-total'
+          className='shrink-0 text-2xs tabular-nums text-muted-foreground'
+        >
+          {formatTime(p.duration)}
+        </span>
+        {volumeControl}
       </div>
     </div>
   );
