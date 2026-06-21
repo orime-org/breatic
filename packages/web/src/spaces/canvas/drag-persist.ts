@@ -127,3 +127,49 @@ export function planDragStop(
   }
   return { positions, groupOps };
 }
+
+/** A group's translation to persist, when the grabbed node is a group. */
+export interface GroupMove {
+  groupId: string;
+  delta: { x: number; y: number };
+}
+
+/** Every Yjs write a drag-stop implies, across the group + loose nodes. */
+export interface DragStopAllPlan {
+  groupMove: GroupMove | null;
+  positions: NodePosition[];
+  groupOps: GroupOp[];
+}
+
+/**
+ * Plan every Yjs write for one drag-stop, covering the mixed marquee case
+ * where a group AND loose nodes are dragged together (#6). When the grabbed
+ * node is the actively-dragged group, its translation is returned as
+ * `groupMove`; independently, every loose (non-group) node in the selection
+ * persists its position and resolves its own group-membership change via
+ * {@link planDragStop}. The old `onNodeDragStop` returned right after moving
+ * the group, dropping the loose nodes' positions so they snapped back when the
+ * next Yjs mirror re-applied their stale positions.
+ * @param grabbed - The node ReactFlow reports as grabbed (drives the group-move branch).
+ * @param draggedNodes - Every co-dragged node (1 for a single drag, N for a marquee multi-select).
+ * @param allNodes - All current flow nodes, for group hit-testing.
+ * @param groupDrag - The active group-drag ref (id + drag-start origin), or null when no group drag is in flight.
+ * @returns The group move (or null) plus the loose-node positions and membership ops.
+ */
+export function planDragStopAll(
+  grabbed: Node,
+  draggedNodes: ReadonlyArray<Node>,
+  allNodes: ReadonlyArray<Node>,
+  groupDrag: { id: string; startX: number; startY: number } | null,
+): DragStopAllPlan {
+  let groupMove: GroupMove | null = null;
+  if (grabbed.type === 'group' && groupDrag && groupDrag.id === grabbed.id) {
+    const dx = grabbed.position.x - groupDrag.startX;
+    const dy = grabbed.position.y - groupDrag.startY;
+    if (dx !== 0 || dy !== 0) {
+      groupMove = { groupId: grabbed.id, delta: { x: dx, y: dy } };
+    }
+  }
+  const { positions, groupOps } = planDragStop(draggedNodes, allNodes);
+  return { groupMove, positions, groupOps };
+}

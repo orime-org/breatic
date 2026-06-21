@@ -75,6 +75,15 @@ const EDGES_KEY = 'edgesMap';
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 
+/**
+ * Origin for frontend content writes (upload completion / failure). Excluded
+ * from the undo manager's `trackedOrigins` so a content arrival does NOT enter
+ * the undo stack (spec §5: node content is NOT canvas-undo-tracked). Undoing an
+ * upload removes the node itself (its `addNode` IS tracked), and never strands
+ * it back in `handling` with no content — the stuck-skeleton bug (#8).
+ */
+export const CONTENT_WRITE = Symbol('content-write');
+
 /** Max canvas undo stack depth — oldest entries are dropped past this. */
 export const MAX_UNDO_DEPTH = 50;
 
@@ -388,7 +397,7 @@ export function setNodeContent(
     data.set('content', content);
     data.set('state', 'idle');
     data.delete('errorMessage');
-  }, CANVAS_UNDO);
+  }, CONTENT_WRITE);
 }
 
 /**
@@ -416,7 +425,7 @@ export function setNodeError(
   doc.transact(() => {
     data.set('errorMessage', errorMessage);
     data.set('state', 'idle');
-  }, CANVAS_UNDO);
+  }, CONTENT_WRITE);
 }
 
 /**
@@ -456,7 +465,9 @@ export function addToGroup(
       const ids = data.get('childIds');
       if (!Array.isArray(ids) || !ids.includes(nodeId)) return;
       const next = (ids as string[]).filter((x) => x !== nodeId);
-      if (next.length === 0) nodesMap.delete(id);
+      // ≥2-member invariant: moving a node out can leave the old group with one
+      // (or zero) members → dissolve it (#7).
+      if (next.length <= 1) nodesMap.delete(id);
       else data.set('childIds', next);
     });
     const data = target.get('data');
@@ -468,9 +479,11 @@ export function addToGroup(
 }
 
 /**
- * Remove a node from a group's `childIds` — frontend-owned. If the group is
- * left with no members it is deleted (invariant 1: a group always keeps at least one member). No-op when
- * the group / member does not exist.
+ * Remove a node from a group's `childIds` — frontend-owned. A group needs ≥2
+ * members to be meaningful, so it is deleted once a removal would leave it with
+ * one or zero members (invariant: a group always keeps at least two members);
+ * the lone survivor becomes a free node (it holds no back-reference to the
+ * group). No-op when the group / member does not exist.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the group.
  * @param groupId - Id of the group to remove a member from.
@@ -493,7 +506,7 @@ export function removeFromGroup(
   if (!current.includes(nodeId)) return;
   doc.transact(() => {
     const next = current.filter((x) => x !== nodeId);
-    if (next.length === 0) nodesMap.delete(groupId);
+    if (next.length <= 1) nodesMap.delete(groupId);
     else data.set('childIds', next);
   }, CANVAS_UNDO);
 }

@@ -71,7 +71,7 @@ function makeFlowNode(
             <Handle
               type='target'
               position={Position.Left}
-              className='!h-2 !w-2 !border-border !bg-muted'
+              className='!h-2.5 !w-2.5 !border-muted-foreground !bg-background'
             />
             <Inner
               data={data}
@@ -82,7 +82,7 @@ function makeFlowNode(
             <Handle
               type='source'
               position={Position.Right}
-              className='!h-2 !w-2 !border-border !bg-muted'
+              className='!h-2.5 !w-2.5 !border-muted-foreground !bg-background'
             />
           </div>
         </NodeScaleContext.Provider>

@@ -39,10 +39,10 @@ export function NodeContent({
     // generating keeps the footprint it had while empty, then grows to its real
     // size once content arrives — no tiny centered bar, no collapse.
     return (
-      <div data-testid='node-content-handling' className='h-48 w-full p-2'>
+      <div data-testid='node-content-handling' className='h-48 w-full'>
         <Skeleton
           data-testid='node-content-skeleton'
-          className='h-full w-full'
+          className='h-full w-full rounded-sm'
         />
       </div>
     );

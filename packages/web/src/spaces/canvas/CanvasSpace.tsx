@@ -61,7 +61,7 @@ import {
   applyGroupGeometry,
   computeGroupRect,
 } from '@web/spaces/canvas/group-geometry';
-import { planDragStop } from '@web/spaces/canvas/drag-persist';
+import { planDragStopAll } from '@web/spaces/canvas/drag-persist';
 import {
   lockBlockedDeletion,
   lockedNodeIds,
@@ -389,22 +389,22 @@ function CanvasSpaceInner({
 
   const onNodeDragStop = React.useCallback(
     (_event: React.MouseEvent, node: Node, nodes: Node[]): void => {
-      const drag = groupDragRef.current;
-      if (node.type === 'group' && drag && drag.id === node.id) {
+      // A marquee can co-drag a group AND loose nodes. The grabbed group (if
+      // any) moves via groupMove; EVERY loose node still persists its position +
+      // group-membership change. The old code returned right after moveGroup,
+      // dropping the loose nodes so they snapped back (#6). See planDragStopAll.
+      const plan = planDragStopAll(node, nodes, flowNodes, groupDragRef.current);
+      if (node.type === 'group' && groupDragRef.current?.id === node.id) {
         groupDragRef.current = null;
-        const dx = node.position.x - drag.startX;
-        const dy = node.position.y - drag.startY;
-        if (dx !== 0 || dy !== 0) {
-          moveGroup(projectId, spaceId, node.id, { x: dx, y: dy });
-        }
-        return;
       }
-      // Persist EVERY co-dragged node — ReactFlow's third arg carries them all.
-      // A marquee multi-select drag moves them together; persisting only the
-      // grabbed one (the old bug) left the rest to snap back when the next Yjs
-      // mirror re-applied their stale positions. Each non-group node also
-      // resolves its own drag in / out of a group (§7.5). See planDragStop.
-      const plan = planDragStop(nodes, flowNodes);
+      if (plan.groupMove) {
+        moveGroup(
+          projectId,
+          spaceId,
+          plan.groupMove.groupId,
+          plan.groupMove.delta,
+        );
+      }
       for (const { id, position } of plan.positions) {
         setNodePosition(projectId, spaceId, id, position);
       }
@@ -1198,6 +1198,11 @@ function CanvasSpaceInner({
           panOnDrag={false}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
+          // Double-click on the empty canvas must NOT zoom (#4): an accidental
+          // zoom-in on a misclick is jarring, and the gesture is reserved for a
+          // future use. Zoom stays on the viewport-toolbar buttons / Cmd-+/- /
+          // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
+          zoomOnDoubleClick={false}
         >
           <Background
             variant={BackgroundVariant.Dots}

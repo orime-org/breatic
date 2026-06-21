@@ -77,17 +77,19 @@ describe('TextNode', () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it('display state caps at 576 (max-h-144) and truncates with a line-clamp ellipsis, no scroll (#1445)', () => {
-    // Not editing: the body shares the 576px cap (max-h-144 = width 288 × 2)
-    // with edit mode, but overflow is truncated with a line-clamp ellipsis so
-    // the user sees there is more content — it does NOT scroll in display mode.
+  it('display state caps at 576 (max-h-144) and scrolls long content, NO line-clamp ellipsis (#5, supersedes #1445)', () => {
+    // Not editing: the body keeps the 576px cap (max-h-144 = width 288 × 2) but
+    // no longer truncates — the user reads the full text by scrolling (they know
+    // double-click edits), with a slim custom scrollbar, not the OS default.
+    // Reverses the #1445 line-clamp ellipsis.
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
     const body = screen.getByTestId('text-node-body');
     expect(body.className).toContain('max-h-144');
-    expect(body.className).toContain('line-clamp');
-    expect(body.className).not.toContain('overflow-y-auto');
+    expect(body.className).toContain('overflow-y-auto');
+    expect(body.className).not.toContain('line-clamp');
+    expect(body.className).toMatch(/scrollbar/);
   });
 
   it('edit state caps at 576 (max-h-144) and scrolls long content (#1445)', async () => {
@@ -102,5 +104,6 @@ describe('TextNode', () => {
     expect(body.className).toContain('max-h-144');
     expect(body.className).toContain('overflow-y-auto');
     expect(body.className).not.toContain('line-clamp');
+    expect(body.className).toMatch(/scrollbar/);
   });
 });
