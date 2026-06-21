@@ -21,6 +21,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { assetsApi } from '@web/data/api';
 import {
@@ -48,6 +49,7 @@ import {
   CanvasActionsContext,
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
+import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
 import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import {
@@ -61,7 +63,7 @@ import {
 } from '@web/spaces/canvas/group-geometry';
 import { planDragStop } from '@web/spaces/canvas/drag-persist';
 import {
-  filterLockedDeletion,
+  lockBlockedDeletion,
   lockedNodeIds,
 } from '@web/spaces/canvas/group-membership';
 import {
@@ -70,8 +72,10 @@ import {
 } from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
+import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
   mergeMirroredSelection,
@@ -284,8 +288,13 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
 
-  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
-    useNodeCreation(projectId, spaceId);
+  const {
+    createNodeAt,
+    createUploadNodeAt,
+    pasteTextAt,
+    pasteNodesAt,
+    duplicateNodes,
+  } = useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -425,13 +434,24 @@ function CanvasSpaceInner({
       edges: Edge[];
     }): Promise<boolean | { nodes: Node[]; edges: Edge[] }> => {
       if (readOnly) return false;
-      const survivors = filterLockedDeletion(toDelete, edgesToDelete, flowNodes);
+      const { survivors, blocked } = lockBlockedDeletion(
+        toDelete,
+        edgesToDelete,
+        flowNodes,
+      );
+      // A lock vetoed part (or all) of the deletion — tell the user instead of
+      // silently dropping it (the silent-fail from when lock first shipped).
+      // This path covers ReactFlow-initiated deletes (keyboard Delete); the
+      // right-click menu Delete shares the same `lockBlockedDeletion` guard via
+      // `commitGuardedDelete`, so the lock protection + toast are one rule, not
+      // duplicated per entry point.
+      if (blocked) toast(t('canvas.contextMenu.lockedDeleteBlocked'));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
       return survivors;
     },
-    [readOnly, flowNodes],
+    [readOnly, flowNodes, t],
   );
 
   // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
@@ -495,6 +515,17 @@ function CanvasSpaceInner({
     nodeId: '',
     locked: false,
     isGroup: false,
+  });
+  const [selectionMenu, setSelectionMenu] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+  });
+  const [edgeMenu, setEdgeMenu] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+    edgeId: '',
   });
 
   // Create a node at a flow position and flag it for auto-selection once the
@@ -673,6 +704,10 @@ function CanvasSpaceInner({
   // menu — locking is a shared-state edit gated like node creation.
   const onNodeContextMenu = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
+      // R2: a right-click inside an editing text node or an open rename input
+      // keeps the browser's native menu (copy / paste / spellcheck) — don't
+      // hijack it. Every other canvas surface suppresses it (R1).
+      if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (readOnly) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
@@ -683,6 +718,32 @@ function CanvasSpaceInner({
         nodeId: node.id,
         locked,
         isGroup: node.type === 'group',
+      });
+    },
+    [readOnly],
+  );
+
+  // Selection / edge right-click: ReactFlow leaked the browser menu on these two
+  // surfaces (the reported bug). Suppress it + open the matching custom menu at
+  // the cursor; viewers get neither (the readOnly gate — no mutating items).
+  const onSelectionContextMenu = React.useCallback(
+    (event: React.MouseEvent): void => {
+      event.preventDefault();
+      if (readOnly) return;
+      setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
+    },
+    [readOnly],
+  );
+
+  const onEdgeContextMenu = React.useCallback(
+    (event: React.MouseEvent, edge: Edge): void => {
+      event.preventDefault();
+      if (readOnly) return;
+      setEdgeMenu({
+        open: true,
+        x: event.clientX,
+        y: event.clientY,
+        edgeId: edge.id,
       });
     },
     [readOnly],
@@ -883,6 +944,165 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, groupOffer, groupSelection, ungroupSelection]);
 
+  // ---- Right-click menu actions (context-menu slice) ----
+  const requestRename = useCanvasStore((s) => s.requestRename);
+
+  // Every delete entry point (keyboard, node / group / selection / edge menu)
+  // funnels through this one guard so the lock protection + read-only gate can't
+  // be bypassed by a new menu item (spec R3). It mirrors onBeforeDelete: lock-
+  // filter, toast if anything was vetoed (R4), then persist the survivors in one
+  // removeElements transaction. Reads the latest nodes through the ref so the
+  // callback need not re-create on every mirror.
+  const commitGuardedDelete = React.useCallback(
+    (nodesToDelete: Node[], edgesToDelete: Edge[]): void => {
+      if (readOnly) return;
+      const { survivors, blocked } = lockBlockedDeletion(
+        nodesToDelete,
+        edgesToDelete,
+        flowNodesRef.current,
+      );
+      if (blocked) toast(t('canvas.contextMenu.lockedDeleteBlocked'));
+      if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
+      removeElements(
+        projectId,
+        spaceId,
+        survivors.nodes.map((node) => node.id),
+        survivors.edges.map((edge) => edge.id),
+      );
+    },
+    [readOnly, projectId, spaceId, t],
+  );
+
+  // The clipboard-portable subset of the current selection (groups / annotations
+  // aren't copyable, so they drop out). Shared by copy + duplicate.
+  const collectSelectedClipboard = React.useCallback(
+    (): ClipboardNode[] =>
+      flowNodesRef.current
+        .filter((node) => node.selected)
+        .map(flowNodeToClipboard)
+        .filter((node): node is ClipboardNode => node !== null),
+    [],
+  );
+
+  // The clipboard-portable form of the right-clicked node (empty for a group /
+  // non-copyable node). Shared by the node menu's copy + duplicate.
+  const nodeMenuClipboard = React.useCallback((): ClipboardNode[] => {
+    const node = flowNodesRef.current.find((item) => item.id === nodeMenu.nodeId);
+    const clip = node ? flowNodeToClipboard(node) : null;
+    return clip ? [clip] : [];
+  }, [nodeMenu.nodeId]);
+
+  // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
+  // with paste here and elsewhere; a permission / browser failure (e.g. Firefox)
+  // surfaces a toast rather than failing silently.
+  const writeNodesToClipboard = React.useCallback(
+    (clipboardNodes: ClipboardNode[]): void => {
+      if (clipboardNodes.length === 0) return;
+      void navigator.clipboard
+        .writeText(serializeNodes(clipboardNodes))
+        .catch(() => toast(t('canvas.contextMenu.clipboardError')));
+    },
+    [t],
+  );
+
+  // Duplicate clones in place (fixed offset) WITHOUT touching the clipboard; the
+  // new nodes are selected once mirrored back. Shared by node + selection menus.
+  const duplicateClipboard = React.useCallback(
+    (clipboardNodes: ClipboardNode[]): void => {
+      if (readOnly || clipboardNodes.length === 0) return;
+      setSelectAfterCreate(duplicateNodes(clipboardNodes));
+    },
+    [readOnly, duplicateNodes],
+  );
+
+  const copySelection = React.useCallback((): void => {
+    writeNodesToClipboard(collectSelectedClipboard());
+  }, [writeNodesToClipboard, collectSelectedClipboard]);
+
+  const duplicateSelection = React.useCallback((): void => {
+    duplicateClipboard(collectSelectedClipboard());
+  }, [duplicateClipboard, collectSelectedClipboard]);
+
+  // Keyboard duplicate — double-platform (Cmd+D on mac, Ctrl+D on windows; see
+  // matchDuplicateShortcut). Backs the menu's ⌘D / Ctrl+D hint so the shortcut
+  // is real, not decorative. Gated like the other canvas shortcuts: no-op while
+  // editing a field / node body or read-only.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: duplicate the current selection in place.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (!matchDuplicateShortcut(event)) return;
+      event.preventDefault();
+      duplicateSelection();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, duplicateSelection]);
+
+  const deleteSelection = React.useCallback((): void => {
+    const selected = flowNodesRef.current.filter((node) => node.selected);
+    if (selected.length === 0) return;
+    const selectedIds = new Set(selected.map((node) => node.id));
+    const connected = flowEdges.filter(
+      (edge) => selectedIds.has(edge.source) || selectedIds.has(edge.target),
+    );
+    commitGuardedDelete(selected, connected);
+  }, [flowEdges, commitGuardedDelete]);
+
+  // Node menu delete: the node plus every edge touching it (the same cascade
+  // ReactFlow's keyboard delete performs), routed through the lock guard.
+  const deleteNodeFromMenu = React.useCallback((): void => {
+    const node = flowNodesRef.current.find((item) => item.id === nodeMenu.nodeId);
+    if (!node) return;
+    const connected = flowEdges.filter(
+      (edge) =>
+        edge.source === nodeMenu.nodeId || edge.target === nodeMenu.nodeId,
+    );
+    commitGuardedDelete([node], connected);
+  }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete]);
+
+  const deleteEdgeFromMenu = React.useCallback((): void => {
+    const edge = flowEdges.find((item) => item.id === edgeMenu.edgeId);
+    if (edge) commitGuardedDelete([], [edge]);
+  }, [flowEdges, edgeMenu.edgeId, commitGuardedDelete]);
+
+  // Pane-menu Paste: reads the SYSTEM clipboard (async, needs the menu click's
+  // user-activation), then mirrors the Cmd+V handler but anchored at the right-
+  // click point — a marked node payload clones nodes with the first one landing
+  // at the cursor, plain text makes a text node there.
+  const pasteAtCursor = React.useCallback((): void => {
+    if (readOnly) return;
+    const point = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y });
+    void navigator.clipboard
+      .readText()
+      .then((text) => {
+        const clipboardNodes = parseClipboardNodes(text);
+        if (clipboardNodes && clipboardNodes.length > 0) {
+          const anchor = clipboardNodes[0].position;
+          setSelectAfterCreate(
+            pasteNodesAt(clipboardNodes, {
+              dx: point.x - anchor.x,
+              dy: point.y - anchor.y,
+            }),
+          );
+        } else if (text.trim().length > 0) {
+          setSelectAfterCreate([pasteTextAt(text, point)]);
+        }
+      })
+      .catch(() => toast(t('canvas.contextMenu.clipboardError')));
+  }, [
+    readOnly,
+    screenToFlowPosition,
+    contextMenu.x,
+    contextMenu.y,
+    pasteNodesAt,
+    pasteTextAt,
+    t,
+  ]);
+
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The
   // ReactFlow wrapper pre-binds this to each node's id.
@@ -959,6 +1179,8 @@ function CanvasSpaceInner({
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
+          onSelectionContextMenu={onSelectionContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
@@ -1024,6 +1246,7 @@ function CanvasSpaceInner({
             setContextMenu((prev) => ({ ...prev, open }))
           }
           onPick={onContextMenuPick}
+          onPaste={pasteAtCursor}
         />
         <NodeContextMenu
           open={nodeMenu.open}
@@ -1033,6 +1256,51 @@ function CanvasSpaceInner({
           target={nodeMenu.isGroup ? 'group' : 'node'}
           onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
           onToggleLock={onToggleNodeLock}
+          // Rename is frozen on a locked node / group (the name is on-canvas
+          // content); hide it rather than offer a silent no-op.
+          onRename={
+            nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)
+          }
+          onDelete={deleteNodeFromMenu}
+          // Copy / duplicate are node-only (groups / annotations aren't
+          // clipboard-portable).
+          onCopy={
+            nodeMenu.isGroup
+              ? undefined
+              : () => writeNodesToClipboard(nodeMenuClipboard())
+          }
+          onDuplicate={
+            nodeMenu.isGroup
+              ? undefined
+              : () => duplicateClipboard(nodeMenuClipboard())
+          }
+          // Ungroup releases a group's members; a locked group is frozen.
+          onUngroup={
+            nodeMenu.isGroup && !nodeMenu.locked
+              ? () => removeNode(projectId, spaceId, nodeMenu.nodeId)
+              : undefined
+          }
+        />
+        <SelectionContextMenu
+          open={selectionMenu.open}
+          x={selectionMenu.x}
+          y={selectionMenu.y}
+          onOpenChange={(open) =>
+            setSelectionMenu((prev) => ({ ...prev, open }))
+          }
+          // Group is offered only for an all-loose 2+ selection (same rule as
+          // the floating toolbar + Cmd/Ctrl+G).
+          onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
+          onCopy={copySelection}
+          onDuplicate={duplicateSelection}
+          onDelete={deleteSelection}
+        />
+        <EdgeContextMenu
+          open={edgeMenu.open}
+          x={edgeMenu.x}
+          y={edgeMenu.y}
+          onOpenChange={(open) => setEdgeMenu((prev) => ({ ...prev, open }))}
+          onDelete={deleteEdgeFromMenu}
         />
       </div>
     </CanvasActionsContext.Provider>

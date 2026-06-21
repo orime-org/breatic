@@ -15,6 +15,13 @@ import {
 } from '@web/spaces/canvas/node-factory';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
+/**
+ * Fixed offset a duplicated node is shifted from its source so the copy sits
+ * just beside the original rather than fully covering it (matches the paste
+ * offset; a duplicate lands one nudge away from its source).
+ */
+const DUPLICATE_OFFSET_PX = 24;
+
 export interface NodeCreation {
   /**
    * Create an empty node of `type` at a canvas position and return its id.
@@ -47,6 +54,13 @@ export interface NodeCreation {
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
+  /**
+   * Duplicate the given nodes in place: clone them at a fixed
+   * {@link DUPLICATE_OFFSET_PX} nudge and write them straight to Yjs, never
+   * touching the system clipboard (that is the distinct copy path). Shared by
+   * the single-node and multi-selection right-click menus; returns the new ids.
+   */
+  duplicateNodes: (nodes: ReadonlyArray<ClipboardNode>) => string[];
 }
 
 /**
@@ -99,5 +113,16 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
-  return { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt };
+  const duplicateNodes = React.useCallback(
+    (nodes: ReadonlyArray<ClipboardNode>): string[] =>
+      pasteNodesAt(nodes, { dx: DUPLICATE_OFFSET_PX, dy: DUPLICATE_OFFSET_PX }),
+    [pasteNodesAt],
+  );
+  return {
+    createNodeAt,
+    createUploadNodeAt,
+    pasteTextAt,
+    pasteNodesAt,
+    duplicateNodes,
+  };
 }

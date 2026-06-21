@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
@@ -64,26 +65,28 @@ function makeFlowNode(
     // Content nodes size to their body, so they keep the auto-height wrapper.
     const isGroup = data.kind === 'group';
     return (
-      <NodeScaleContext.Provider value={headerScale}>
-        <div className={isGroup ? 'relative size-full' : 'relative'}>
-          <Handle
-            type='target'
-            position={Position.Left}
-            className='!h-2 !w-2 !border-border !bg-muted'
-          />
-          <Inner
-            data={data}
-            selected={props.selected}
-            locked={data.locked}
-            onRename={onRename}
-          />
-          <Handle
-            type='source'
-            position={Position.Right}
-            className='!h-2 !w-2 !border-border !bg-muted'
-          />
-        </div>
-      </NodeScaleContext.Provider>
+      <NodeIdContext.Provider value={props.id}>
+        <NodeScaleContext.Provider value={headerScale}>
+          <div className={isGroup ? 'relative size-full' : 'relative'}>
+            <Handle
+              type='target'
+              position={Position.Left}
+              className='!h-2 !w-2 !border-border !bg-muted'
+            />
+            <Inner
+              data={data}
+              selected={props.selected}
+              locked={data.locked}
+              onRename={onRename}
+            />
+            <Handle
+              type='source'
+              position={Position.Right}
+              className='!h-2 !w-2 !border-border !bg-muted'
+            />
+          </div>
+        </NodeScaleContext.Provider>
+      </NodeIdContext.Provider>
     );
   }
   return FlowNode;

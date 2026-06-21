@@ -61,6 +61,8 @@ interface CanvasState {
   pendingViewportCommand: ViewportCommand | null;
   /** Chrome → canvas mailbox: an undo/redo command for the canvas to run. */
   pendingHistoryCommand: HistoryCommand | null;
+  /** Canvas-internal mailbox: a node / group id the menu asked to inline-rename. */
+  pendingRename: string | null;
   /** Canvas → chrome mirror: whether an undo is currently available. */
   canUndo: boolean;
   /** Canvas → chrome mirror: whether a redo is currently available. */
@@ -89,6 +91,10 @@ interface CanvasState {
   requestHistoryCommand: (command: HistoryCommand) => void;
   /** Clear the mailbox once the canvas has run the history command. */
   consumeHistoryCommand: () => void;
+  /** Post a request to inline-rename a node / group (from the right-click menu). */
+  requestRename: (nodeId: string) => void;
+  /** Clear the rename mailbox once the node / group has entered edit mode. */
+  consumePendingRename: () => void;
   /** Mirror the canvas undo manager's availability flags for the toolbar. */
   setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
 }
@@ -104,6 +110,7 @@ export const useCanvasStore = create<CanvasState>()(
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
+    pendingRename: null,
     canUndo: false,
     canRedo: false,
     setSelectedNodeIds: (ids) =>
@@ -145,6 +152,14 @@ export const useCanvasStore = create<CanvasState>()(
     consumePendingNodeCreate: () =>
       set((s) => {
         s.pendingNodeCreate = null;
+      }),
+    requestRename: (nodeId) =>
+      set((s) => {
+        s.pendingRename = nodeId;
+      }),
+    consumePendingRename: () =>
+      set((s) => {
+        s.pendingRename = null;
       }),
     requestUpload: (files) =>
       set((s) => {

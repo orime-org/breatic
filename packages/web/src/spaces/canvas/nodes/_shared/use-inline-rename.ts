@@ -3,6 +3,9 @@
 
 import * as React from 'react';
 
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useCanvasStore } from '@web/stores';
+
 /** Node name length cap — over-long names are clipped on commit + ellipsised. */
 export const MAX_NODE_NAME_LEN = 30;
 
@@ -94,6 +97,23 @@ export function useInlineRename({
     editingRef.current = false;
     setEditing(false);
   }, []);
+
+  // External rename trigger: the right-click menu's "Rename" lives at the canvas
+  // level and can't reach this node's edit state directly, so it posts this
+  // node's id to the store's `pendingRename` mailbox. The matching node picks it
+  // up here, enters edit (no-op if locked / read-only — `startEdit` guards), and
+  // clears the mailbox either way so it never gets stuck. The id comes from the
+  // wrapper-provided NodeIdContext (null outside the canvas → the watch no-ops).
+  const nodeId = React.useContext(NodeIdContext);
+  const isRenameTarget = useCanvasStore(
+    (s) => nodeId != null && s.pendingRename === nodeId,
+  );
+  const consumePendingRename = useCanvasStore((s) => s.consumePendingRename);
+  React.useEffect(() => {
+    if (!isRenameTarget) return;
+    startEdit();
+    consumePendingRename();
+  }, [isRenameTarget, startEdit, consumePendingRename]);
 
   return { editing, draft, inputRef, startEdit, setDraft, commit, cancel };
 }

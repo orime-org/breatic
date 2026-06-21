@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   filterLockedDeletion,
+  lockBlockedDeletion,
   lockedGroupMemberIds,
   lockedNodeIds,
   rectContains,
@@ -140,6 +141,36 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
     );
     expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a protected
     expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ a) protected
+  });
+});
+
+describe('lockBlockedDeletion — flags when a lock vetoed part of the deletion', () => {
+  it('blocked=true; survivors exclude the locked node', () => {
+    const allNodes = [
+      { id: 'a', type: 'text', data: { locked: true } },
+      { id: 'b', type: 'text', data: {} },
+    ];
+    const out = lockBlockedDeletion([{ id: 'a' }, { id: 'b' }], [], allNodes);
+    expect(out.blocked).toBe(true);
+    expect(out.survivors.nodes.map((n) => n.id)).toEqual(['b']);
+  });
+
+  it('blocked=false when nothing requested is locked', () => {
+    const allNodes = [{ id: 'a', type: 'text', data: {} }];
+    const out = lockBlockedDeletion([{ id: 'a' }], [], allNodes);
+    expect(out.blocked).toBe(false);
+    expect(out.survivors.nodes.map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('blocked=true when a locked node protects an edge', () => {
+    const allNodes = [{ id: 'a', type: 'text', data: { locked: true } }];
+    const out = lockBlockedDeletion(
+      [],
+      [{ id: 'e1', source: 'a', target: 'b' }],
+      allNodes,
+    );
+    expect(out.blocked).toBe(true);
+    expect(out.survivors.edges).toHaveLength(0);
   });
 });
 

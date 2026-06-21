@@ -283,6 +283,15 @@
       "title": "The canvas is empty",
       "hint": "Drag assets onto the canvas, or pick a node type from the left menu to create one."
     },
+    "contextMenu": {
+      "paste": "Paste",
+      "copy": "Copy",
+      "duplicate": "Duplicate",
+      "rename": "Rename",
+      "delete": "Delete",
+      "lockedDeleteBlocked": "Locked items can't be deleted — unlock them first.",
+      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
+    },
     "nodeMenu": {
       "lock": "Lock node",
       "unlock": "Unlock node"

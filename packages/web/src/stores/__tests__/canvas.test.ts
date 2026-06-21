@@ -42,6 +42,13 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().minimapVisible).toBe(false);
   });
 
+  it('requestRename posts a node id; consumePendingRename clears it', () => {
+    useCanvasStore.getState().requestRename('n-7');
+    expect(useCanvasStore.getState().pendingRename).toBe('n-7');
+    useCanvasStore.getState().consumePendingRename();
+    expect(useCanvasStore.getState().pendingRename).toBeNull();
+  });
+
   it('clearSelection empties the array', () => {
     useCanvasStore.getState().setSelectedNodeIds(['a', 'b']);
     useCanvasStore.getState().clearSelection();

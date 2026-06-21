@@ -74,6 +74,32 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
+  it('duplicateNodes clones the given nodes at a fixed in-place offset and returns their ids (never touches the system clipboard)', () => {
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+
+    const ids = result.current.duplicateNodes([
+      { type: 'image', position: { x: 10, y: 20 }, name: 'Hero', content: 'a.png' },
+      { type: 'text', position: { x: 30, y: 40 }, content: 'note' },
+    ]);
+
+    // Duplicate writes the clones straight through addNode — it is the in-place
+    // path, distinct from copy (which serializes to the system clipboard).
+    expect(addNode).toHaveBeenCalledTimes(2);
+    expect(ids).toHaveLength(2);
+    const first = addNode.mock.calls[0][2];
+    expect(first.id).toBe(ids[0]);
+    expect(first.type).toBe('image');
+    // Fixed duplicate offset (24,24) applied to the original position so the
+    // copy sits just beside the source rather than fully covering it.
+    expect(first.position).toEqual({ x: 34, y: 44 });
+    expect(first.data.content).toBe('a.png');
+    expect(first.data.name).toBe('Hero');
+    addNode.mockRestore();
+  });
+
   it('pasteNodesAt clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
