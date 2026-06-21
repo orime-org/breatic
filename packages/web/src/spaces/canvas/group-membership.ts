@@ -161,3 +161,28 @@ export function filterLockedDeletion<
     ),
   };
 }
+
+/**
+ * Like {@link filterLockedDeletion}, but also reports whether a lock vetoed any
+ * of the requested deletion — so the caller can tell the user (a toast) instead
+ * of silently dropping the locked items. `blocked` is true when fewer nodes or
+ * edges survive than were requested.
+ * @param nodes - The nodes ReactFlow is about to delete.
+ * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
+ * @param allNodes - All canvas nodes, to resolve which nodes / groups are locked.
+ * @returns The safe-to-delete subset plus a `blocked` flag.
+ */
+export function lockBlockedDeletion<
+  N extends { id: string },
+  E extends { id: string; source: string; target: string },
+>(
+  nodes: ReadonlyArray<N>,
+  edges: ReadonlyArray<E>,
+  allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+): { survivors: { nodes: N[]; edges: E[] }; blocked: boolean } {
+  const survivors = filterLockedDeletion(nodes, edges, allNodes);
+  const blocked =
+    survivors.nodes.length < nodes.length ||
+    survivors.edges.length < edges.length;
+  return { survivors, blocked };
+}

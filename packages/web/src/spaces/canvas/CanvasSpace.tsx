@@ -21,6 +21,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { assetsApi } from '@web/data/api';
 import {
@@ -61,7 +62,7 @@ import {
 } from '@web/spaces/canvas/group-geometry';
 import { planDragStop } from '@web/spaces/canvas/drag-persist';
 import {
-  filterLockedDeletion,
+  lockBlockedDeletion,
   lockedNodeIds,
 } from '@web/spaces/canvas/group-membership';
 import {
@@ -425,13 +426,22 @@ function CanvasSpaceInner({
       edges: Edge[];
     }): Promise<boolean | { nodes: Node[]; edges: Edge[] }> => {
       if (readOnly) return false;
-      const survivors = filterLockedDeletion(toDelete, edgesToDelete, flowNodes);
+      const { survivors, blocked } = lockBlockedDeletion(
+        toDelete,
+        edgesToDelete,
+        flowNodes,
+      );
+      // A lock vetoed part (or all) of the deletion — tell the user instead of
+      // silently dropping it (the silent-fail from when lock first shipped).
+      // Fires for keyboard Delete AND the right-click menu Delete (both route
+      // through this guard), so the toast lives here, not at each entry point.
+      if (blocked) toast(t('canvas.contextMenu.lockedDeleteBlocked'));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
       return survivors;
     },
-    [readOnly, flowNodes],
+    [readOnly, flowNodes, t],
   );
 
   // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
