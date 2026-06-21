@@ -86,7 +86,7 @@ describe('useNodeCreation', () => {
     ]);
 
     // Duplicate writes the clones straight through addNode — it is the in-place
-    // "复制副本" path, distinct from copy (which serializes to the clipboard).
+    // path, distinct from copy (which serializes to the system clipboard).
     expect(addNode).toHaveBeenCalledTimes(2);
     expect(ids).toHaveLength(2);
     const first = addNode.mock.calls[0][2];
