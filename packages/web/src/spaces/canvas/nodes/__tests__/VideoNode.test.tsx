@@ -23,9 +23,12 @@ describe('VideoNode', () => {
         }}
       />,
     );
-    const v = screen.getByTestId('video-node-video') as HTMLVideoElement;
+    const v = screen.getByTestId('media-element') as HTMLVideoElement;
+    expect(v.tagName).toBe('VIDEO');
     expect(v.getAttribute('src')).toBe('https://e.com/v.mp4');
     expect(v.getAttribute('poster')).toBe('https://e.com/c.jpg');
+    // the unified player adds a fullscreen control
+    expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
   });
 
   it('error status shows the error message', () => {
