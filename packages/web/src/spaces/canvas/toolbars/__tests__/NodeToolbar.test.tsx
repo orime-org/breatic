@@ -37,4 +37,14 @@ describe('NodeToolbar', () => {
       screen.getByTestId('node-toolbar').getAttribute('data-node-id'),
     ).toBe('node-42');
   });
+
+  // #1450: ReactFlow portals the toolbar outside the canvas node, so it escapes
+  // the node's user-select:none — without select-none a stray marquee/drag
+  // selects the toolbar's text and the chrome reads as "selected".
+  it('carries select-none so its chrome text cannot be drag-selected', () => {
+    render(<NodeToolbar nodeId='n1' modality='image' />);
+    expect(screen.getByTestId('node-toolbar').className).toContain(
+      'select-none',
+    );
+  });
 });

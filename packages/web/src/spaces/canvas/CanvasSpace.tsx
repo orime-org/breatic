@@ -70,7 +70,7 @@ import {
 } from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
-import { GroupBackgroundPicker } from '@web/spaces/canvas/GroupBackgroundPicker';
+import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import {
   mergeMirroredEdgeSelection,
@@ -990,36 +990,15 @@ function CanvasSpaceInner({
             isVisible={groupOffer.kind !== 'none' && !readOnly}
             position={Position.Top}
           >
-            <div className='flex items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow-md'>
-              {groupOffer.kind === 'ungroup' ? (
-                <>
-                  {/* Color picker sits to the LEFT of ungroup. */}
-                  <GroupBackgroundPicker
-                    open={bgMenuOpen}
-                    onOpenChange={setBgMenuOpen}
-                    value={selectedGroupBg}
-                    onPick={pickGroupBackground}
-                  />
-                  <button
-                    type='button'
-                    data-testid='group-toolbar-ungroup'
-                    onClick={ungroupSelection}
-                    className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
-                  >
-                    {t('canvas.group.ungroup')}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type='button'
-                  data-testid='group-toolbar-group'
-                  onClick={groupSelection}
-                  className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
-                >
-                  {t('canvas.group.group')}
-                </button>
-              )}
-            </div>
+            <GroupSelectionToolbar
+              offer={groupOffer.kind === 'ungroup' ? 'ungroup' : 'group'}
+              onGroup={groupSelection}
+              onUngroup={ungroupSelection}
+              bgOpen={bgMenuOpen}
+              onBgOpenChange={setBgMenuOpen}
+              bgValue={selectedGroupBg}
+              onPickBg={pickGroupBackground}
+            />
           </NodeToolbar>
         </ReactFlow>
         {flowNodes.length === 0 ? (
