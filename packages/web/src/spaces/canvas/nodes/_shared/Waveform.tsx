@@ -63,7 +63,7 @@ export function Waveform({
           onSeek(Math.max(0, progress - SEEK_STEP));
         }
       }}
-      className='flex h-12 cursor-pointer items-center gap-px outline-none focus-visible:ring-2 focus-visible:ring-ring'
+      className='flex h-12 cursor-pointer items-center gap-px outline-none focus-visible:ring-1 focus-visible:ring-ring'
     >
       {BARS.map((h, i) => (
         <span
