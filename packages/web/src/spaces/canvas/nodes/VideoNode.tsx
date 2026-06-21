@@ -7,6 +7,7 @@ import type { VideoNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
+import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 interface VideoNodeProps {
   data: VideoNodeView;
@@ -17,9 +18,9 @@ interface VideoNodeProps {
 }
 
 /**
- * Video node — native <video> element with a cover poster. Heavier
- * playback affordances (scrub, hot-key, picture-in-picture trigger)
- * arrive in a later polish PR.
+ * Video node — renders the unified {@link MediaPlayer} (native `<video>` +
+ * cover poster + a scrubber, volume and fullscreen control bar, zero
+ * third-party player dependency).
  * @param root0 - Video node props.
  * @param root0.data - Video node payload (asset URL, cover poster, status, optional error message).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
@@ -54,14 +55,13 @@ export function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
-          // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video asset; the upload flow does not produce a caption track. Add a <track> when caption authoring lands.
-          <video
-            controls
-            src={data.content}
-            poster={data.coverUrl}
-            data-testid='video-node-video'
-            className='block w-full rounded-[var(--radius-content-sm)]'
-          />
+          <div className='p-3'>
+            <MediaPlayer
+              modality='video'
+              src={data.content ?? ''}
+              poster={data.coverUrl}
+            />
+          </div>
         }
       />
     </ContentNodeFrame>

@@ -12,15 +12,17 @@ describe('AudioNode', () => {
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
-  it('renders audio element when url is present', () => {
+  it('renders the media player audio element when url is present', () => {
     render(
       <AudioNode
         data={{ kind: 'audio', content: 'https://e.com/a.mp3', status: 'idle' }}
       />,
     );
-    expect(
-      screen.getByTestId('audio-node-audio').getAttribute('src'),
-    ).toBe('https://e.com/a.mp3');
+    const el = screen.getByTestId('media-element');
+    expect(el.tagName).toBe('AUDIO');
+    expect(el.getAttribute('src')).toBe('https://e.com/a.mp3');
+    // the unified player surfaces a waveform + transport, not native controls
+    expect(screen.getByTestId('waveform')).toBeInTheDocument();
   });
 
   it('handling status shows skeleton', () => {

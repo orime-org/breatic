@@ -39,7 +39,6 @@ export interface MediaPlayerApi {
  * nor double-binds them.
  * @param ref - Ref to the media element this player drives.
  * @returns Reactive player state plus transport actions.
- * @throws Never — `play()` autoplay-policy rejections are swallowed.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
@@ -61,32 +60,37 @@ export function useMediaPlayer(
     setMuted(el.muted);
     setPlaying(!el.paused);
 
-    const onPlay = (): void => setPlaying(true);
-    const onStop = (): void => setPlaying(false);
-    const onTime = (): void => setCurrentTime(el.currentTime);
-    const onMeta = (): void =>
+    /** Mirror time / duration / volume / muted from the element into state. */
+    const sync = (): void => {
+      setCurrentTime(el.currentTime);
       setDuration(Number.isFinite(el.duration) ? el.duration : 0);
-    const onVolume = (): void => {
       setVolume(el.volume);
       setMuted(el.muted);
     };
+    /**
+     * Flip the playing flag from whichever transport event fired.
+     * @param e - The `play` / `pause` / `ended` event.
+     */
+    const onTransport = (e: Event): void => {
+      setPlaying(e.type === 'play');
+    };
 
-    el.addEventListener('play', onPlay);
-    el.addEventListener('pause', onStop);
-    el.addEventListener('ended', onStop);
-    el.addEventListener('timeupdate', onTime);
-    el.addEventListener('loadedmetadata', onMeta);
-    el.addEventListener('durationchange', onMeta);
-    el.addEventListener('volumechange', onVolume);
+    el.addEventListener('play', onTransport);
+    el.addEventListener('pause', onTransport);
+    el.addEventListener('ended', onTransport);
+    el.addEventListener('timeupdate', sync);
+    el.addEventListener('loadedmetadata', sync);
+    el.addEventListener('durationchange', sync);
+    el.addEventListener('volumechange', sync);
 
     return () => {
-      el.removeEventListener('play', onPlay);
-      el.removeEventListener('pause', onStop);
-      el.removeEventListener('ended', onStop);
-      el.removeEventListener('timeupdate', onTime);
-      el.removeEventListener('loadedmetadata', onMeta);
-      el.removeEventListener('durationchange', onMeta);
-      el.removeEventListener('volumechange', onVolume);
+      el.removeEventListener('play', onTransport);
+      el.removeEventListener('pause', onTransport);
+      el.removeEventListener('ended', onTransport);
+      el.removeEventListener('timeupdate', sync);
+      el.removeEventListener('loadedmetadata', sync);
+      el.removeEventListener('durationchange', sync);
+      el.removeEventListener('volumechange', sync);
     };
   }, [ref]);
 
