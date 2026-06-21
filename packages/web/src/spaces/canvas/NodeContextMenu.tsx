@@ -10,7 +10,7 @@ import {
   Ungroup,
   Unlock,
 } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import {
   DropdownMenu,
@@ -90,6 +90,14 @@ export function NodeContextMenu({
 }: NodeContextMenuProps): React.JSX.Element {
   const t = useTranslation();
   const isGroup = target === 'group';
+  // Rename opens the node's inline editor, which must take the caret. If we
+  // fired `onRename` from the item's `onSelect`, the editor would focus WHILE
+  // the menu is still closing — its focus trap (held through the exit
+  // animation) yanks the caret back, and on unmount it lands on <body>. So the
+  // item only flags the intent; we run `onRename` from `onCloseAutoFocus`,
+  // which fires after the menu has fully closed and its focus scope released,
+  // preventing the default focus-restore so the editor keeps the caret.
+  const renamePending = React.useRef(false);
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -99,7 +107,15 @@ export function NodeContextMenu({
           style={{ position: 'fixed', left: x, top: y, height: 0, width: 0 }}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='start'>
+      <DropdownMenuContent
+        align='start'
+        onCloseAutoFocus={(event) => {
+          if (!renamePending.current) return;
+          renamePending.current = false;
+          event.preventDefault();
+          onRename?.();
+        }}
+      >
         {!isGroup && (onCopy || onDuplicate) ? (
           <>
             {onCopy ? (
@@ -142,7 +158,12 @@ export function NodeContextMenu({
           </>
         ) : null}
         {onRename ? (
-          <DropdownMenuItem data-testid='node-menu-rename' onSelect={onRename}>
+          <DropdownMenuItem
+            data-testid='node-menu-rename'
+            onSelect={() => {
+              renamePending.current = true;
+            }}
+          >
             <Pencil className='mr-2 h-4 w-4' aria-hidden='true' />
             {t('canvas.contextMenu.rename')}
           </DropdownMenuItem>
