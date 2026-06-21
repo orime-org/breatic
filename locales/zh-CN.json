@@ -289,7 +289,8 @@
       "duplicate": "复制副本",
       "rename": "重命名",
       "delete": "删除",
-      "lockedDeleteBlocked": "锁定的内容不能删除，请先解锁。"
+      "lockedDeleteBlocked": "锁定的内容不能删除，请先解锁。",
+      "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
     },
     "nodeMenu": {
       "lock": "锁定节点",

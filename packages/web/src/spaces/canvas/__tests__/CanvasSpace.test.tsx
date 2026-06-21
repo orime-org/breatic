@@ -302,6 +302,48 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
+  // ---- Right-click menu (context menu) ----
+  // The reported bug: canvas surfaces leaked the browser's native menu. Right-
+  // clicking the pane must suppress it (preventDefault) and open our custom menu
+  // (the Paste item proves it mounted).
+  it('right-clicking the pane suppresses the native menu and opens the custom menu', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const pane = document.querySelector('.react-flow__pane');
+    expect(pane).not.toBeNull();
+
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      pane?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByTestId('canvas-menu-paste')).toBeInTheDocument();
+  });
+
+  // Viewer (read-only) still gets the native menu suppressed on the canvas
+  // surface, but no custom menu opens — there are no mutating items to offer
+  // (spec R5).
+  it('readOnly pane right-click suppresses the native menu but opens no custom menu', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    const pane = document.querySelector('.react-flow__pane');
+
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      pane?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByTestId('canvas-menu-paste')).not.toBeInTheDocument();
+  });
+
   // ---- History bridge (undo / redo) ----
 
   it('mirrors the hook undo availability into the canvas store (canvas → chrome)', () => {

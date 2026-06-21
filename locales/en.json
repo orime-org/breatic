@@ -289,7 +289,8 @@
       "duplicate": "Duplicate",
       "rename": "Rename",
       "delete": "Delete",
-      "lockedDeleteBlocked": "Locked items can't be deleted — unlock them first."
+      "lockedDeleteBlocked": "Locked items can't be deleted — unlock them first.",
+      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
     },
     "nodeMenu": {
       "lock": "Lock node",

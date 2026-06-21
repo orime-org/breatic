@@ -289,7 +289,8 @@
       "duplicate": "複製副本",
       "rename": "重新命名",
       "delete": "刪除",
-      "lockedDeleteBlocked": "鎖定的內容無法刪除，請先解鎖。"
+      "lockedDeleteBlocked": "鎖定的內容無法刪除，請先解鎖。",
+      "clipboardError": "無法存取剪貼簿，請改用鍵盤快速鍵。"
     },
     "nodeMenu": {
       "lock": "鎖定節點",
