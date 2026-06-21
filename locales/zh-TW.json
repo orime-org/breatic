@@ -283,6 +283,14 @@
       "title": "畫布是空的",
       "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
     },
+    "contextMenu": {
+      "paste": "貼上",
+      "copy": "複製",
+      "duplicate": "複製副本",
+      "rename": "重新命名",
+      "delete": "刪除",
+      "lockedDeleteBlocked": "鎖定的內容無法刪除，請先解鎖。"
+    },
     "nodeMenu": {
       "lock": "鎖定節點",
       "unlock": "解鎖節點"
