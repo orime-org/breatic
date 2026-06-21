@@ -118,7 +118,13 @@ export function GroupNode({
           <div
             data-testid='group-name'
             onDoubleClick={startEdit}
-            className='block max-w-[180px] truncate text-xs text-muted-foreground'
+            // Selected groups deepen/brighten their name (same rule as node
+            // names, canvas-nodes design §5.1) so the active group reads at a
+            // glance when its dashed border is zoom-thinned.
+            className={cn(
+              'block max-w-[180px] truncate text-xs',
+              selected ? 'text-foreground' : 'text-muted-foreground',
+            )}
           >
             {display}
           </div>

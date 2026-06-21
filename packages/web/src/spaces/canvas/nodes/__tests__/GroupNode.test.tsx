@@ -125,4 +125,22 @@ describe('GroupNode', () => {
     expect(onRename).not.toHaveBeenCalled();
     expect(screen.queryByTestId('group-name-input')).toBeNull();
   });
+
+  // #1449: the group name deepens/brightens with selection — the same rule as
+  // node names — so the active group reads at a glance when its dashed selection
+  // border is zoom-thinned. Selected → text-foreground; unselected →
+  // text-muted-foreground.
+  it('unselected: the group name uses the muted foreground colour', () => {
+    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    const name = screen.getByTestId('group-name');
+    expect(name).toHaveClass('text-muted-foreground');
+    expect(name).not.toHaveClass('text-foreground');
+  });
+
+  it('selected: the group name uses the strong foreground colour', () => {
+    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} selected />);
+    const name = screen.getByTestId('group-name');
+    expect(name).toHaveClass('text-foreground');
+    expect(name).not.toHaveClass('text-muted-foreground');
+  });
 });

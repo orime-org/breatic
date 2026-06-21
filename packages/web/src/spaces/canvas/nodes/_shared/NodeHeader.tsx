@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { cn } from '@web/lib/utils';
 import {
   MODALITY_ICONS,
   MODALITY_LABEL,
@@ -17,6 +18,8 @@ interface NodeHeaderProps {
   modality: Modality;
   /** Current node name; blank falls back to the modality label. */
   name?: string;
+  /** Selected — the name (and icon) deepen/brighten to mark the active node. */
+  selected?: boolean;
   /** Viewer mode — the name is read-only. */
   readOnly?: boolean;
   /** Locked — the node is locked, so the name is frozen (no inline edit). */
@@ -33,6 +36,7 @@ interface NodeHeaderProps {
  * @param root0 - Node header props.
  * @param root0.modality - The node modality (selects the icon).
  * @param root0.name - The current node name (blank → modality label).
+ * @param root0.selected - Whether the node is selected; deepens/brightens the name + icon.
  * @param root0.readOnly - Viewer mode; disables editing.
  * @param root0.locked - Whether the node is locked; freezes the name (no inline edit).
  * @param root0.onRename - Called with the new name on commit.
@@ -41,6 +45,7 @@ interface NodeHeaderProps {
 export function NodeHeader({
   modality,
   name,
+  selected = false,
   readOnly = false,
   locked = false,
   onRename,
@@ -59,7 +64,14 @@ export function NodeHeader({
   return (
     <div
       data-testid='node-header'
-      className='flex max-w-[16rem] items-center gap-1.5 px-1 text-xs text-foreground'
+      // Selected names deepen (light) / brighten (dark) to mark the active node;
+      // the icon follows via `currentColor`. Unselected names dim to mid grey so
+      // only the active one stands out — a cue that survives low zoom where the
+      // selection border is thinned (canvas-nodes design §5.1).
+      className={cn(
+        'flex max-w-[16rem] items-center gap-1.5 px-1 text-xs',
+        selected ? 'text-foreground' : 'text-muted-foreground',
+      )}
     >
       <Icon className='h-4 w-4 shrink-0 opacity-70' aria-hidden='true' />
       {editing ? (
