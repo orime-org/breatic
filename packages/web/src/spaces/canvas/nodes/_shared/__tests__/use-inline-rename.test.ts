@@ -3,8 +3,24 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import * as React from 'react';
 
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { useCanvasStore } from '@web/stores';
+
+/**
+ * Wrap the hook in a {@link NodeIdContext} provider so it can match the store's
+ * rename mailbox against a known node id (the node wrapper does this in prod).
+ * @param nodeId - The node id this rendered hook should answer to.
+ * @returns A renderHook `wrapper` component supplying the node id.
+ */
+function nodeIdWrapper(
+  nodeId: string,
+): (props: { children: React.ReactNode }) => React.ReactElement {
+  return ({ children }) =>
+    React.createElement(NodeIdContext.Provider, { value: nodeId }, children);
+}
 
 describe('useInlineRename — inline name-edit state machine', () => {
   it('starts not editing with a blank draft', () => {
@@ -85,6 +101,46 @@ describe('useInlineRename — inline name-edit state machine', () => {
     act(() => result.current.commit());
     act(() => result.current.commit());
     expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  it('enters edit when the rename mailbox targets this node id, then clears it', () => {
+    useCanvasStore.setState({ pendingRename: null });
+    const { result } = renderHook(
+      () => useInlineRename({ current: 'Group', maxLength: 30 }),
+      { wrapper: nodeIdWrapper('n-7') },
+    );
+    expect(result.current.editing).toBe(false);
+    act(() => {
+      useCanvasStore.getState().requestRename('n-7');
+    });
+    expect(result.current.editing).toBe(true);
+    expect(useCanvasStore.getState().pendingRename).toBeNull();
+  });
+
+  it('ignores a rename mailbox targeting a different node id', () => {
+    useCanvasStore.setState({ pendingRename: null });
+    const { result } = renderHook(
+      () => useInlineRename({ current: 'Group', maxLength: 30 }),
+      { wrapper: nodeIdWrapper('n-7') },
+    );
+    act(() => {
+      useCanvasStore.getState().requestRename('other');
+    });
+    expect(result.current.editing).toBe(false);
+    expect(useCanvasStore.getState().pendingRename).toBe('other');
+  });
+
+  it('does not enter edit when the targeted node is locked (rename frozen), but still clears the mailbox', () => {
+    useCanvasStore.setState({ pendingRename: null });
+    const { result } = renderHook(
+      () => useInlineRename({ current: 'Group', maxLength: 30, locked: true }),
+      { wrapper: nodeIdWrapper('n-7') },
+    );
+    act(() => {
+      useCanvasStore.getState().requestRename('n-7');
+    });
+    expect(result.current.editing).toBe(false);
+    expect(useCanvasStore.getState().pendingRename).toBeNull();
   });
 
   it('cancel closes the editor without reporting a rename', () => {
