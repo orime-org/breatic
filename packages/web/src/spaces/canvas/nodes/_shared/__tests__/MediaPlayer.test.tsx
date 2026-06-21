@@ -82,4 +82,13 @@ describe('MediaPlayer', () => {
     expect(seek.querySelector('input[type="range"]')).toBeNull();
     expect(seek.querySelector('[role="slider"]')).not.toBeNull();
   });
+
+  it('volume percentage has a fixed-width centered box so the popover does not reflow between 2- and 3-digit values', async () => {
+    const user = userEvent.setup();
+    render(<MediaPlayer modality='video' src='/v.mp4' />);
+    await user.click(screen.getByTestId('volume-button'));
+    const pct = screen.getByTestId('volume-pct');
+    expect(pct.className).toContain('w-8');
+    expect(pct.className).toContain('text-center');
+  });
 });

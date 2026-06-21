@@ -99,7 +99,7 @@ export function MediaPlayer({
       >
         <span
           data-testid='volume-pct'
-          className='text-2xs tabular-nums text-muted-foreground'
+          className='w-8 text-center text-2xs tabular-nums text-muted-foreground'
         >
           {volumePct}
         </span>
