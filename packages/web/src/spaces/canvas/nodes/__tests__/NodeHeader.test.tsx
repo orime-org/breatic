@@ -135,4 +135,24 @@ describe('NodeHeader', () => {
     render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
     expect(screen.getByTestId('node-header').className).not.toContain('pb-1');
   });
+
+  // #1449: the name (and the icon, via currentColor) deepens/brightens with
+  // selection so the active node reads at a glance even when the zoom-thinned
+  // selection border is faint. Selected → text-foreground (deep in light,
+  // bright in dark); unselected → text-muted-foreground (mid grey).
+  it('selected: the name uses the strong foreground colour', () => {
+    render(
+      <NodeHeader modality='image' name='Old' selected onRename={() => {}} />,
+    );
+    const header = screen.getByTestId('node-header');
+    expect(header).toHaveClass('text-foreground');
+    expect(header).not.toHaveClass('text-muted-foreground');
+  });
+
+  it('unselected: the name dims to the muted foreground colour', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={() => {}} />);
+    const header = screen.getByTestId('node-header');
+    expect(header).toHaveClass('text-muted-foreground');
+    expect(header).not.toHaveClass('text-foreground');
+  });
 });

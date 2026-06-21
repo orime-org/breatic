@@ -82,6 +82,7 @@ export function ContentNodeFrame({
         <NodeHeader
           modality={modality}
           name={name}
+          selected={selected}
           locked={locked}
           onRename={onRename}
         />
