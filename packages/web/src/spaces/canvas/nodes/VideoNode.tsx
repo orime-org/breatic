@@ -46,6 +46,9 @@ export function VideoNode({
       locked={locked}
       onRename={onRename}
       testId='video-node'
+      // The video fills the card edge-to-edge (controls overlay its bottom);
+      // `overflow-hidden` clips the video to the shell's rounded corners.
+      className={hasContent ? 'overflow-hidden' : undefined}
     >
       <NodeContent
         status={data.status}
@@ -55,13 +58,11 @@ export function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
-          <div className='p-3'>
-            <MediaPlayer
-              modality='video'
-              src={data.content ?? ''}
-              poster={data.coverUrl}
-            />
-          </div>
+          <MediaPlayer
+            modality='video'
+            src={data.content ?? ''}
+            poster={data.coverUrl}
+          />
         }
       />
     </ContentNodeFrame>

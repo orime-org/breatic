@@ -1,57 +1,42 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
 describe('Waveform', () => {
-  it('renders a static set of bars and exposes progress as a slider', () => {
-    render(<Waveform progress={0.5} onSeek={vi.fn()} ariaLabel='audio progress' />);
-    const slider = screen.getByRole('slider', { name: 'audio progress' });
-    expect(slider).toBeInTheDocument();
-    expect(slider).toHaveAttribute('aria-valuenow', '50');
+  it('renders a static decorative set of bars', () => {
+    render(<Waveform progress={0.5} />);
     // a fixed decorative shape — many bars, same for every audio node
     expect(screen.getAllByTestId('waveform-bar').length).toBeGreaterThan(8);
   });
 
-  it('colors bars left-of-progress as played and the rest as unplayed', () => {
-    render(<Waveform progress={0.5} onSeek={vi.fn()} ariaLabel='p' />);
+  it('fills played bars left-to-right with a mid-grey, never the harsh foreground extreme', () => {
+    render(<Waveform progress={0.5} />);
     const bars = screen.getAllByTestId('waveform-bar');
-    const played = bars.filter((b) => b.className.includes('bg-foreground'));
-    const unplayed = bars.filter((b) =>
-      b.className.includes('bg-muted-foreground'),
+    const played = bars.filter((b) => b.className.includes('bg-muted-foreground'));
+    // played uses muted-foreground (mid grey, moderate in both colour modes),
+    // NOT bg-foreground (the near-black / near-white extreme).
+    expect(bars.some((b) => b.className.includes('bg-foreground'))).toBe(false);
+    // at progress 0.5 roughly half are filled (full mid-grey), half are the
+    // dimmer unplayed tint — left-to-right.
+    const fullyPlayed = bars.filter(
+      (b) =>
+        b.className.includes('bg-muted-foreground') &&
+        !b.className.includes('bg-muted-foreground/30'),
     );
-    // at progress 0.5 roughly half are played, half unplayed (left-to-right fill)
-    expect(played.length).toBeGreaterThan(0);
-    expect(unplayed.length).toBeGreaterThan(0);
-    expect(played.length + unplayed.length).toBe(bars.length);
+    expect(fullyPlayed.length).toBeGreaterThan(0);
+    expect(played.length).toBe(bars.length); // every bar is some muted-foreground tint
   });
 
-  it('click seeks to the clicked fraction', async () => {
-    const onSeek = vi.fn();
-    const user = userEvent.setup();
-    render(<Waveform progress={0} onSeek={onSeek} ariaLabel='p' />);
-    const slider = screen.getByRole('slider');
-    // jsdom gives 0-size rects; assert onSeek fired with a clamped fraction.
-    await user.click(slider);
-    expect(onSeek).toHaveBeenCalledTimes(1);
-    const f = onSeek.mock.calls[0][0] as number;
-    expect(f).toBeGreaterThanOrEqual(0);
-    expect(f).toBeLessThanOrEqual(1);
-  });
-
-  it('ArrowRight / ArrowLeft seek by a step', async () => {
-    const onSeek = vi.fn();
-    const user = userEvent.setup();
-    render(<Waveform progress={0.5} onSeek={onSeek} ariaLabel='p' />);
-    const slider = screen.getByRole('slider');
-    slider.focus();
-    await user.keyboard('{ArrowRight}');
-    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(0.55, 5));
-    await user.keyboard('{ArrowLeft}');
-    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(0.45, 5));
+  it('is purely decorative — no seek role / no `nodrag`, so dragging it moves the node', () => {
+    render(<Waveform progress={0} />);
+    const wave = screen.getByTestId('waveform');
+    expect(wave.getAttribute('role')).not.toBe('slider');
+    // no `nodrag` → ReactFlow treats a drag here as a node move (seek lives in
+    // the control row's slider instead).
+    expect(wave.className).not.toContain('nodrag');
   });
 });
