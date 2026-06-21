@@ -28,8 +28,8 @@ interface CanvasContextMenuProps {
   onOpenChange: (open: boolean) => void;
   /** Called with the chosen creatable node type. */
   onPick: (type: CreatableNodeType) => void;
-  /** Paste clipboard nodes / text at the cursor. */
-  onPaste: () => void;
+  /** Paste clipboard nodes / text at the cursor. Omit to hide the Paste item. */
+  onPaste?: () => void;
 }
 
 /**
@@ -68,14 +68,21 @@ export function CanvasContextMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start'>
         <CreatableNodeMenuItems onPick={onPick} />
-        <DropdownMenuSeparator />
-        <DropdownMenuItem data-testid='canvas-menu-paste' onSelect={onPaste}>
-          <ClipboardPaste className='mr-2 h-4 w-4' aria-hidden='true' />
-          {t('canvas.contextMenu.paste')}
-          <DropdownMenuShortcut>
-            {formatShortcut({ mod: true, key: 'V' })}
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+        {onPaste ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid='canvas-menu-paste'
+              onSelect={onPaste}
+            >
+              <ClipboardPaste className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.contextMenu.paste')}
+              <DropdownMenuShortcut>
+                {formatShortcut({ mod: true, key: 'V' })}
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
