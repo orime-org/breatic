@@ -10,6 +10,7 @@ import {
   addEdge,
   addNode,
   addToGroup,
+  createCanvasUndoManager,
   moveGroup,
   readEdges,
   readNodes,
@@ -270,11 +271,21 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
     it('addToGroup moves a node from its old group to the new one (成员不相交)', () => {
       addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb'] }, { id: 'gA' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['nc'] }, { id: 'gB' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb', 'nc'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['nd'] }, { id: 'gB' }));
       addToGroup(PID, SID, 'gB', 'na');
-      expect(childIds('gA')).toEqual(['nb']);
-      expect(childIds('gB')).toEqual(['nc', 'na']);
+      expect(childIds('gA')).toEqual(['nb', 'nc']);
+      expect(childIds('gB')).toEqual(['nd', 'na']);
+    });
+
+    it('addToGroup dissolves the old group if the move leaves it with one member (≥2 invariant — #7)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb'] }, { id: 'gA' }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['nd'] }, { id: 'gB' }));
+      addToGroup(PID, SID, 'gB', 'na');
+      // gA had 2 members; moving na out leaves only nb → gA auto-dissolves
+      expect(doc().getMap('nodesMap').get('gA')).toBeUndefined();
+      expect(childIds('gB')).toEqual(['nd', 'na']);
     });
 
     it('addToGroup deletes the old group when the moved node was its last child (删空组)', () => {
@@ -285,10 +296,20 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       expect(childIds('gB')).toEqual(['x', 'only']);
     });
 
-    it('removeFromGroup removes a member; the group survives while others remain', () => {
+    it('removeFromGroup removes a member; the group survives while ≥2 remain', () => {
+      addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2', 'n3'] }, { id: 'g1' }));
+      removeFromGroup(PID, SID, 'g1', 'n1');
+      expect(childIds('g1')).toEqual(['n2', 'n3']);
+    });
+
+    it('removeFromGroup dissolves a group left with a single member (≥2-member invariant — #7)', () => {
+      // A group needs ≥2 members to mean anything; dragging one out of a
+      // 2-member group leaves a lone node, so the group auto-dissolves. The
+      // survivor carries no back-reference to the group, so deleting the group
+      // node alone frees it.
       addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2'] }, { id: 'g1' }));
       removeFromGroup(PID, SID, 'g1', 'n1');
-      expect(childIds('g1')).toEqual(['n2']);
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
     });
 
     it('removeFromGroup deletes the group when its last member leaves (不变量 1)', () => {
@@ -318,6 +339,32 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       removeNode(PID, SID, 'g1');
       expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
       expect(doc().getMap('nodesMap').get('m1')).toBeInstanceOf(Y.Map);
+    });
+  });
+
+  describe('undo tracking — content / error writes excluded (spec §5, #8)', () => {
+    it('setNodeContent does NOT push an undo entry (else undo strands the node in handling)', () => {
+      const undo = createCanvasUndoManager(doc());
+      addNode(PID, SID, sampleFields('image', { state: 'handling' }, { id: 'img1' }));
+      const depth = undo.undoStack.length;
+      setNodeContent(PID, SID, 'img1', 'https://cdn/x.png');
+      expect(undo.undoStack.length).toBe(depth);
+    });
+
+    it('setNodeError does NOT push an undo entry', () => {
+      const undo = createCanvasUndoManager(doc());
+      addNode(PID, SID, sampleFields('image', { state: 'handling' }, { id: 'img1' }));
+      const depth = undo.undoStack.length;
+      setNodeError(PID, SID, 'img1', 'upload failed: pic.png');
+      expect(undo.undoStack.length).toBe(depth);
+    });
+
+    it('structural writes (setNodePosition) STILL push an undo entry (regression guard)', () => {
+      const undo = createCanvasUndoManager(doc());
+      addNode(PID, SID, sampleFields('image', {}, { id: 'img1' }));
+      const depth = undo.undoStack.length;
+      setNodePosition(PID, SID, 'img1', { x: 99, y: 99 });
+      expect(undo.undoStack.length).toBe(depth + 1);
     });
   });
 

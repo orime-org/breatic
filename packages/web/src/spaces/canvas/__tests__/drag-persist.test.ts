@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import { planDragStop } from '@web/spaces/canvas/drag-persist';
+import { planDragStop, planDragStopAll } from '@web/spaces/canvas/drag-persist';
 
 /**
  * Build a minimal measured flow node for the drag-stop planner.
@@ -87,5 +87,51 @@ describe('planDragStop (multi-select drag persistence — #1432)', () => {
       id: 'a',
       position: { x: 10, y: 10 },
     });
+  });
+});
+
+describe('planDragStopAll (mixed group + loose marquee drag — #6)', () => {
+  it('persists loose node positions even when a group is co-dragged (the bug)', () => {
+    // Marquee selects a group AND a loose node, user grabs the group. The old
+    // onNodeDragStop returned right after moveGroup, so the loose node's new
+    // position never reached Yjs and it snapped back on the next mirror. Every
+    // loose node must still be in the plan; the group moves via groupMove.
+    const g = node('g', 100, 100, 'group', { childIds: ['m'] });
+    const m = node('m', 100, 100);
+    const loose = node('a', 300, 300);
+    const groupDrag = { id: 'g', startX: 50, startY: 50 };
+    const plan = planDragStopAll(g, [g, loose], [g, m, loose], groupDrag);
+    expect(plan.positions).toContainEqual({
+      id: 'a',
+      position: { x: 300, y: 300 },
+    });
+    expect(plan.groupMove).toEqual({ groupId: 'g', delta: { x: 50, y: 50 } });
+    expect(plan.positions.map((p) => p.id)).not.toContain('g');
+  });
+
+  it('grabbed loose node (no group drag) → groupMove null, all loose persisted', () => {
+    const a = node('a', 10, 10);
+    const b = node('b', 20, 20);
+    const plan = planDragStopAll(a, [a, b], [a, b], null);
+    expect(plan.groupMove).toBeNull();
+    expect(plan.positions.map((p) => p.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('grabbed group with zero delta → no-op groupMove', () => {
+    const g = node('g', 50, 50, 'group', { childIds: [] });
+    const plan = planDragStopAll(g, [g], [g], {
+      id: 'g',
+      startX: 50,
+      startY: 50,
+    });
+    expect(plan.groupMove).toBeNull();
+  });
+
+  it('group grabbed but groupDrag ref mismatched → no groupMove, loose still persist', () => {
+    const g = node('g', 100, 100, 'group', { childIds: [] });
+    const loose = node('a', 5, 5);
+    const plan = planDragStopAll(g, [g, loose], [g, loose], null);
+    expect(plan.groupMove).toBeNull();
+    expect(plan.positions.map((p) => p.id)).toEqual(['a']);
   });
 });

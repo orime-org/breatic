@@ -105,16 +105,13 @@ export function TextNode({
             // of dragging the node; when not editing, the body stays a drag
             // handle so the node can be moved by its content.
             //
-            // Both states share the 576px cap (`max-h-144` = width 288 × 2).
-            // They differ only in how overflow is handled: the display body
-            // truncates with a `line-clamp` ellipsis (the reader sees there is
-            // more, the canvas stays compact), while the editing body scrolls
-            // (`overflow-y-auto`) so the full text is reachable while typing.
+            // Both states cap at 576px (`max-h-144` = width 288 × 2) and scroll
+            // past it (`overflow-y-auto`) — no `line-clamp` ellipsis: the user
+            // reads the full text by scrolling (double-click edits), with a slim
+            // neutral custom scrollbar instead of the OS default (#5).
             className={`${
-              editing
-                ? 'nodrag max-h-144 overflow-y-auto'
-                : 'max-h-144 line-clamp-[30]'
-            } min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30`}
+              editing ? 'nodrag ' : ''
+            }max-h-144 overflow-y-auto min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent`}
           >
             {data.content}
           </div>

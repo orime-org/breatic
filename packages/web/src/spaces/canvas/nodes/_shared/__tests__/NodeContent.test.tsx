@@ -82,7 +82,7 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
   });
 
-  it('the handling skeleton fills the fixed h-48 box, not a small centered bar', () => {
+  it('the handling skeleton fills the h-48 box to its edges, no inset padding (#2)', () => {
     render(
       <NodeContent
         status='handling'
@@ -93,6 +93,10 @@ describe('NodeContent', () => {
     );
     const box = screen.getByTestId('node-content-handling');
     expect(box.className).toContain('h-48');
+    // The skeleton must reach the node body's edges — the old `p-2` left an 8px
+    // ring of empty card around it, which read as "skeleton doesn't fill the
+    // node" (#2). No inset padding on the box.
+    expect(box.className).not.toMatch(/\bp-2\b/);
     expect(
       box.querySelector('[data-testid="node-content-skeleton"]')?.className,
     ).toContain('h-full');
