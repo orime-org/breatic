@@ -18,6 +18,7 @@ describe('CanvasContextMenu', () => {
         y={240}
         onOpenChange={() => {}}
         onPick={onPick}
+        onPaste={() => {}}
       />,
     );
     expect(await screen.findByTestId('create-node-text')).toBeInTheDocument();
@@ -36,8 +37,28 @@ describe('CanvasContextMenu', () => {
         y={0}
         onOpenChange={() => {}}
         onPick={() => {}}
+        onPaste={() => {}}
       />,
     );
     expect(screen.queryByTestId('create-node-text')).toBeNull();
+  });
+
+  it('shows a Paste item (with shortcut hint) that fires onPaste', async () => {
+    const user = userEvent.setup();
+    const onPaste = vi.fn();
+    render(
+      <CanvasContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onPick={() => {}}
+        onPaste={onPaste}
+      />,
+    );
+    const item = await screen.findByTestId('canvas-menu-paste');
+    expect(item.textContent).toMatch(/⌘V|Ctrl\+V/);
+    await user.click(item);
+    expect(onPaste).toHaveBeenCalledTimes(1);
   });
 });
