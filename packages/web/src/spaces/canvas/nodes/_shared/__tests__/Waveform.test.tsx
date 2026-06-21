@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
@@ -53,5 +53,27 @@ describe('Waveform', () => {
     expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(0.55, 5));
     await user.keyboard('{ArrowLeft}');
     expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(0.45, 5));
+  });
+
+  // --- 2026-06-21 4-bug revision (acceptance items 14-15) ---
+
+  it('item 14: carries `nodrag` so ReactFlow does not hijack the scrub drag', () => {
+    render(<Waveform progress={0} onSeek={vi.fn()} ariaLabel='p' />);
+    expect(screen.getByRole('slider').className).toContain('nodrag');
+  });
+
+  it('item 15: pointer drag (down → move) scrubs, not just a click', () => {
+    const onSeek = vi.fn();
+    render(<Waveform progress={0} onSeek={onSeek} ariaLabel='p' />);
+    const slider = screen.getByRole('slider');
+    fireEvent.pointerDown(slider, { clientX: 5, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 30, pointerId: 1 });
+    fireEvent.pointerUp(slider, { clientX: 30, pointerId: 1 });
+    // dragging fires onSeek on down AND on move (scrub), each a clamped fraction
+    expect(onSeek.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const [f] of onSeek.mock.calls) {
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThanOrEqual(1);
+    }
   });
 });

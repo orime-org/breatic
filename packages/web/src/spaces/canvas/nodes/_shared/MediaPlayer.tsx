@@ -4,6 +4,12 @@
 import * as React from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
+import { Slider } from '@web/components/ui/slider';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@web/components/ui/popover';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
@@ -30,10 +36,13 @@ function formatTime(seconds: number): string {
 
 /**
  * Unified canvas media player built on a native `<audio>`/`<video>` element +
- * {@link useMediaPlayer}, with a Tailwind control bar. Audio nodes show a
- * decorative {@link Waveform} that doubles as the seek surface; video nodes
- * show the element plus a linear scrubber and a fullscreen button. Zero
- * third-party player dependency.
+ * {@link useMediaPlayer}. Sliders are div-based {@link Slider} (Radix) so they
+ * render identically across browsers; volume lives in a click-popover vertical
+ * slider so it never eats the control-bar width. Video controls overlay the
+ * picture bottom (the video fills the node); audio controls sit below the
+ * decorative {@link Waveform}, which doubles as the seek surface. Every
+ * interactive control carries `nodrag` so ReactFlow does not hijack drags.
+ * Zero third-party player dependency.
  * @param root0 - Component props.
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
@@ -49,78 +58,33 @@ export function MediaPlayer({
   const p = useMediaPlayer(ref);
   const isVideo = modality === 'video';
 
-  return (
-    <div className='flex flex-col gap-2' data-testid='media-player'>
-      {isVideo ? (
-        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
-        <video
-          ref={ref as React.RefObject<HTMLVideoElement>}
-          src={src}
-          poster={poster}
-          playsInline
-          data-testid='media-element'
-          className='block w-full rounded-[var(--radius-content-sm)]'
-        />
-      ) : (
-        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
-        <audio
-          ref={ref as React.RefObject<HTMLAudioElement>}
-          src={src}
-          data-testid='media-element'
-          className='sr-only'
-        />
-      )}
+  // Video controls sit on a dark scrim (light-on-video); audio controls sit on
+  // the themed node surface.
+  const btnCls = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome ${
+    isVideo ? 'hover:bg-white/20' : 'hover:bg-accent hover:text-accent-foreground'
+  }`;
+  const volumePct = Math.round((p.muted ? 0 : p.volume) * 100);
 
-      {!isVideo && (
-        <Waveform
-          progress={p.progress}
-          onSeek={p.seekFraction}
-          ariaLabel='Audio progress'
-        />
-      )}
+  const playButton = (
+    <button
+      type='button'
+      onClick={p.togglePlay}
+      aria-label={p.playing ? 'Pause' : 'Play'}
+      data-testid='play-toggle'
+      className={btnCls}
+    >
+      {p.playing ? <Pause className='h-4 w-4' /> : <Play className='h-4 w-4' />}
+    </button>
+  );
 
-      <div className='flex items-center gap-2 text-popover-foreground'>
+  const volumeControl = (
+    <Popover>
+      <PopoverTrigger asChild>
         <button
           type='button'
-          onClick={p.togglePlay}
-          aria-label={p.playing ? 'Pause' : 'Play'}
-          data-testid='play-toggle'
-          className='inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome hover:bg-accent'
-        >
-          {p.playing ? (
-            <Pause className='h-4 w-4' />
-          ) : (
-            <Play className='h-4 w-4' />
-          )}
-        </button>
-
-        <span
-          data-testid='time'
-          className='shrink-0 text-2xs tabular-nums text-muted-foreground'
-        >
-          {formatTime(p.currentTime)} / {formatTime(p.duration)}
-        </span>
-
-        {isVideo && (
-          <input
-            type='range'
-            min={0}
-            max={1}
-            step={0.001}
-            value={p.progress}
-            onChange={(e) => p.seekFraction(Number(e.target.value))}
-            aria-label='Seek'
-            data-testid='seek'
-            className='h-1 flex-1 cursor-pointer accent-foreground'
-          />
-        )}
-
-        <button
-          type='button'
-          onClick={p.toggleMute}
           aria-label={p.muted ? 'Unmute' : 'Mute'}
-          data-testid='mute-toggle'
-          className='inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome hover:bg-accent'
+          data-testid='volume-button'
+          className={btnCls}
         >
           {p.muted ? (
             <VolumeX className='h-4 w-4' />
@@ -128,30 +92,112 @@ export function MediaPlayer({
             <Volume2 className='h-4 w-4' />
           )}
         </button>
-
-        <input
-          type='range'
-          min={0}
-          max={1}
-          step={0.01}
-          value={p.muted ? 0 : p.volume}
-          onChange={(e) => p.setVolumeLevel(Number(e.target.value))}
-          aria-label='Volume'
+      </PopoverTrigger>
+      <PopoverContent
+        side='top'
+        className='nodrag flex w-auto min-w-0 flex-col items-center gap-2 p-3'
+      >
+        <span
+          data-testid='volume-pct'
+          className='text-2xs tabular-nums text-muted-foreground'
+        >
+          {volumePct}
+        </span>
+        <Slider
+          orientation='vertical'
           data-testid='volume'
-          className='h-1 w-16 shrink-0 cursor-pointer accent-foreground'
+          aria-label='Volume'
+          min={0}
+          max={100}
+          step={1}
+          value={[volumePct]}
+          onValueChange={([v]) => p.setVolumeLevel(v / 100)}
+          className='h-24 text-foreground'
         />
+      </PopoverContent>
+    </Popover>
+  );
 
-        {isVideo && (
+  if (isVideo) {
+    return (
+      <div className='relative' data-testid='media-player'>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}
+        <video
+          ref={ref as React.RefObject<HTMLVideoElement>}
+          src={src}
+          poster={poster}
+          playsInline
+          data-testid='media-element'
+          className='block w-full'
+        />
+        <div
+          data-testid='controls'
+          className='nodrag absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white'
+        >
+          {playButton}
+          <span
+            data-testid='time-current'
+            className='shrink-0 text-2xs tabular-nums'
+          >
+            {formatTime(p.currentTime)}
+          </span>
+          <Slider
+            data-testid='seek'
+            aria-label='Seek'
+            min={0}
+            max={100}
+            step={0.1}
+            value={[p.progress * 100]}
+            onValueChange={([v]) => p.seekFraction(v / 100)}
+            className='min-w-0 flex-1'
+          />
+          <span
+            data-testid='time-total'
+            className='shrink-0 text-2xs tabular-nums'
+          >
+            {formatTime(p.duration)}
+          </span>
+          {volumeControl}
           <button
             type='button'
             onClick={p.requestFullscreen}
             aria-label='Fullscreen'
             data-testid='fullscreen'
-            className='inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome hover:bg-accent'
+            className={btnCls}
           >
             <Maximize className='h-4 w-4' />
           </button>
-        )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className='flex flex-col gap-2' data-testid='media-player'>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}
+      <audio
+        ref={ref as React.RefObject<HTMLAudioElement>}
+        src={src}
+        data-testid='media-element'
+        className='sr-only'
+      />
+      <Waveform
+        progress={p.progress}
+        onSeek={p.seekFraction}
+        ariaLabel='Audio progress'
+      />
+      <div
+        data-testid='controls'
+        className='nodrag flex items-center gap-2 text-popover-foreground'
+      >
+        {playButton}
+        <span
+          data-testid='time'
+          className='text-2xs tabular-nums text-muted-foreground'
+        >
+          {formatTime(p.currentTime)} / {formatTime(p.duration)}
+        </span>
+        <div className='ml-auto'>{volumeControl}</div>
       </div>
     </div>
   );

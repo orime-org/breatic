@@ -13,21 +13,22 @@ beforeAll(() => {
 });
 
 describe('MediaPlayer', () => {
-  it('audio: renders a waveform, play + volume, and NO seek / fullscreen', () => {
+  it('audio: waveform (seek) + play + volume button; NO seek slider / fullscreen', () => {
     render(<MediaPlayer modality='audio' src='/a.mp3' />);
     expect(screen.getByTestId('media-element').tagName).toBe('AUDIO');
     expect(screen.getByTestId('waveform')).toBeInTheDocument();
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
-    expect(screen.getByTestId('volume')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-button')).toBeInTheDocument();
     expect(screen.queryByTestId('seek')).not.toBeInTheDocument();
     expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
-  it('video: renders the video, a seek scrubber + a fullscreen button, NO waveform', () => {
+  it('video: seek slider + fullscreen + volume button, NO waveform', () => {
     render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' />);
     expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-button')).toBeInTheDocument();
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
 
@@ -46,5 +47,39 @@ describe('MediaPlayer', () => {
     render(<MediaPlayer modality='video' src='/v.mp4' />);
     await user.click(screen.getByTestId('fullscreen'));
     expect(fs).toHaveBeenCalledTimes(1);
+  });
+
+  // --- final layout (acceptance items 12-17) ---
+
+  it('item 12: video controls overlay the video bottom (absolute); audio controls sit below (not absolute)', () => {
+    const { unmount } = render(<MediaPlayer modality='video' src='/v.mp4' />);
+    expect(screen.getByTestId('controls').className).toContain('absolute');
+    unmount();
+    render(<MediaPlayer modality='audio' src='/a.mp3' />);
+    expect(screen.getByTestId('controls').className).not.toContain('absolute');
+  });
+
+  it('item 16: control bar carries `nodrag` so ReactFlow does not hijack slider drags', () => {
+    const { unmount } = render(<MediaPlayer modality='video' src='/v.mp4' />);
+    expect(screen.getByTestId('controls').className).toContain('nodrag');
+    unmount();
+    render(<MediaPlayer modality='audio' src='/a.mp3' />);
+    expect(screen.getByTestId('controls').className).toContain('nodrag');
+  });
+
+  it('item 13: volume button opens a popover with the volume slider (not inline)', async () => {
+    const user = userEvent.setup();
+    render(<MediaPlayer modality='video' src='/v.mp4' />);
+    // closed by default → no inline volume slider eating bar width
+    expect(screen.queryByTestId('volume')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('volume-button'));
+    expect(screen.getByTestId('volume')).toBeInTheDocument();
+  });
+
+  it('item: seek is a div-based Radix slider (role=slider), not a native range input', () => {
+    render(<MediaPlayer modality='video' src='/v.mp4' />);
+    const seek = screen.getByTestId('seek');
+    expect(seek.querySelector('input[type="range"]')).toBeNull();
+    expect(seek.querySelector('[role="slider"]')).not.toBeNull();
   });
 });

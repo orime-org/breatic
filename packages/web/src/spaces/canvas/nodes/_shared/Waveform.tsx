@@ -40,6 +40,20 @@ export function Waveform({
   onSeek,
   ariaLabel,
 }: WaveformProps): React.JSX.Element {
+  // Drag-to-scrub: seek on pointer-down and keep seeking while the pointer
+  // moves with the button held. `nodrag` (below) stops ReactFlow from treating
+  // the gesture as a node drag.
+  const dragging = React.useRef(false);
+  /**
+   * Seek to the pointer's horizontal fraction within the bar.
+   * @param e - The pointer event over the waveform.
+   */
+  const seekToPointer = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const f = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+    onSeek(Math.min(1, Math.max(0, f)));
+  };
+
   return (
     <div
       role='slider'
@@ -49,10 +63,20 @@ export function Waveform({
       aria-valuemax={100}
       aria-valuenow={Math.round(progress * 100)}
       data-testid='waveform'
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const f = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
-        onSeek(Math.min(1, Math.max(0, f)));
+      onPointerDown={(e) => {
+        dragging.current = true;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        seekToPointer(e);
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) seekToPointer(e);
+      }}
+      onPointerUp={(e) => {
+        dragging.current = false;
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      }}
+      onPointerCancel={() => {
+        dragging.current = false;
       }}
       onKeyDown={(e) => {
         if (e.key === 'ArrowRight') {
@@ -63,7 +87,7 @@ export function Waveform({
           onSeek(Math.max(0, progress - SEEK_STEP));
         }
       }}
-      className='flex h-12 cursor-pointer items-center gap-px outline-none focus-visible:ring-1 focus-visible:ring-ring'
+      className='nodrag flex h-12 cursor-pointer touch-none items-center gap-px outline-none focus-visible:ring-1 focus-visible:ring-ring'
     >
       {BARS.map((h, i) => (
         <span
