@@ -62,8 +62,11 @@ export function NodeToolbar({
       data-testid='node-toolbar'
       data-node-id={nodeId}
       aria-hidden={!visible}
+      // `select-none`: ReactFlow portals this toolbar outside the canvas node,
+      // so it escapes the node's user-select:none — without it a stray
+      // marquee/drag selects the toolbar's text (reads as "selected").
       className={cn(
-        'absolute -top-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow transition-opacity',
+        'absolute -top-12 left-1/2 z-10 flex -translate-x-1/2 select-none items-center gap-1 rounded-chrome border border-border bg-popover p-1 shadow transition-opacity',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
