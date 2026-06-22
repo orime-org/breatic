@@ -153,8 +153,13 @@ export async function createRoleUpgradeRejected(input: {
  */
 export interface StudioTransferRequestPayload {
   fromUserId: string;
+  /** Initiating admin's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  fromName: string;
+  fromHandle: string;
   studioId: string;
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
 }
 
 /**
@@ -163,6 +168,11 @@ export interface StudioTransferRequestPayload {
  */
 export interface StudioTransferApprovedPayload {
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
+  /** Accepting recipient's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  accepterName: string;
+  accepterHandle: string;
 }
 
 /**

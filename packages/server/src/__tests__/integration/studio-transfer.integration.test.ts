@@ -78,6 +78,20 @@ async function insertUser(): Promise<string> {
   return rows[0]!.id;
 }
 
+let personalSeq = 0;
+/** Give a user a personal studio (display name + slug) — the bell's actor-identity source. */
+async function insertPersonalStudio(
+  userId: string,
+  name: string,
+): Promise<string> {
+  const slug = `st-personal-${personalSeq++}`;
+  await sql`
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${userId}, ${slug}, 'personal', ${name})
+  `;
+  return slug;
+}
+
 let studioSeq = 0;
 /** Insert a team studio + the creator's admin member row; returns id + slug. */
 async function insertStudioWithAdmin(
@@ -150,20 +164,37 @@ interface Seeded {
   slug: string;
   adminId: string;
   memberId: string;
+  adminName: string;
+  adminSlug: string;
+  memberName: string;
+  memberSlug: string;
 }
 
-/** A team studio with one admin + one ordinary member. */
+/** A team studio with one admin + one ordinary member, each with a personal studio. */
 async function seedStudio(): Promise<Seeded> {
   const adminId = await insertUser();
   const memberId = await insertUser();
+  const adminName = "Admin Display";
+  const memberName = "Member Display";
+  const adminSlug = await insertPersonalStudio(adminId, adminName);
+  const memberSlug = await insertPersonalStudio(memberId, memberName);
   const studio = await insertStudioWithAdmin(adminId);
   await insertMemberRaw(studio.id, memberId, "guest");
-  return { studioId: studio.id, slug: studio.slug, adminId, memberId };
+  return {
+    studioId: studio.id,
+    slug: studio.slug,
+    adminId,
+    memberId,
+    adminName,
+    adminSlug,
+    memberName,
+    memberSlug,
+  };
 }
 
 describe("requestTransfer", () => {
-  it("lands an actionable transfer-request notification with a future expiry", async () => {
-    const { slug, adminId, memberId } = await seedStudio();
+  it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
+    const { slug, adminId, memberId, adminName, adminSlug } = await seedStudio();
 
     await studioTransferService.requestTransfer(slug, adminId, memberId);
 
@@ -172,6 +203,18 @@ describe("requestTransfer", () => {
     expect(reqs[0]!.type).toBe("studio.transfer_request");
     expect(reqs[0]!.expires_at).not.toBeNull();
     expect(reqs[0]!.expires_at!.getTime()).toBeGreaterThan(Date.now());
+
+    // The bell payload carries the initiating admin's identity (name + @handle)
+    // + the studio slug, so the row renders "[Admin] asked you to take over
+    // [studio]" with both clickable.
+    const [reqPayload] = await sql<{ payload: Record<string, unknown> }[]>`
+      SELECT payload FROM notifications WHERE id = ${reqs[0]!.id}
+    `;
+    expect(reqPayload!.payload).toMatchObject({
+      fromName: adminName,
+      fromHandle: adminSlug,
+      studioSlug: slug,
+    });
   });
 
   it("rejects transferring to a non-member with NotFound", async () => {
@@ -201,8 +244,9 @@ describe("requestTransfer", () => {
 });
 
 describe("confirmTransfer", () => {
-  it("demotes the old admin, promotes the recipient, notifies the old admin — exactly one active admin", async () => {
-    const { studioId, slug, adminId, memberId } = await seedStudio();
+  it("demotes the old admin, promotes the recipient, notifies the old admin (accepter identity) — exactly one active admin", async () => {
+    const { studioId, slug, adminId, memberId, memberName, memberSlug } =
+      await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);
 
@@ -212,8 +256,19 @@ describe("confirmTransfer", () => {
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
     // The invariant: the studio has exactly one active admin after the swap.
     expect(await activeAdminCount(studioId)).toBe(1);
-    // The old admin receives the approved notification.
-    expect(await countByType(adminId, "studio.transfer_approved")).toBe(1);
+    // The old admin receives the approved notification carrying the accepter's
+    // identity (name + @handle) + the studio slug.
+    const approved = await sql<{ payload: Record<string, unknown> }[]>`
+      SELECT payload FROM notifications
+      WHERE user_id = ${adminId} AND type = 'studio.transfer_approved'
+        AND deleted_at IS NULL
+    `;
+    expect(approved).toHaveLength(1);
+    expect(approved[0]!.payload).toMatchObject({
+      accepterName: memberName,
+      accepterHandle: memberSlug,
+      studioSlug: slug,
+    });
   });
 
   it("refuses to confirm an expired request with Conflict (roles unchanged)", async () => {
