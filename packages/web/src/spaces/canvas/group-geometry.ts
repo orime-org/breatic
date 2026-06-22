@@ -27,9 +27,12 @@ export interface GroupRect {
 }
 
 /**
- * A group container rect frozen at drag-start (#1478): the stable full box used
- * while a member is dragged, so both the dissolve hit-test and the render stop
- * reacting to the member's mid-drag position (no reflow, no false dissolve).
+ * A group container rect frozen at drag-start (#1478): the stable full box that
+ * outlives a member's mid-drag motion. Two consumers at two DIFFERENT times: the
+ * render (`applyGroupGeometry`) reads it every frame DURING the drag to hold the
+ * border steady; the dissolve hit-test (`groupBoxesFor`) reads it ONCE on
+ * drag-stop to decide leave/keep. There is no per-frame membership decision —
+ * dissolve is evaluated a single time, on release.
  */
 export interface FrozenGroupRect {
   groupId: string;

@@ -365,9 +365,12 @@ function CanvasSpaceInner({
     childIds: string[];
   } | null>(null);
   // #1478: while a lone member is dragged, its group's container is frozen to
-  // the drag-start full box (all members + padding). Both the dissolve hit-test
-  // (onNodeDragStop) and the render (applyGroupGeometry) read this snapshot, so a
-  // small in-group nudge neither reflows the border nor dissolves the group.
+  // the drag-start full box (all members + padding). The snapshot has two
+  // consumers at DIFFERENT times: the render (applyGroupGeometry) reads it every
+  // frame DURING the drag to hold the border steady; the dissolve hit-test
+  // (groupBoxesFor, via onNodeDragStop) reads it ONCE on drag-stop to decide
+  // leave/keep. No mid-drag membership decision runs, so a small in-group nudge
+  // neither reflows the border nor (falsely) dissolves the group.
   const frozenGroupRef = React.useRef<FrozenGroupRect | null>(null);
 
   const onNodeDragStart = React.useCallback(
