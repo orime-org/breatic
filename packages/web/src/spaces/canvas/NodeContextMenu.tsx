@@ -6,9 +6,12 @@ import {
   CopyPlus,
   Lock,
   Pencil,
+  Sparkles,
   Trash2,
   Ungroup,
   Unlock,
+  Upload,
+  Wrench,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -42,6 +45,12 @@ interface NodeContextMenuProps {
   onRename?: () => void;
   /** Delete the node / group (routed through the guarded delete path). */
   onDelete?: () => void;
+  /**
+   * Open the file picker to fill / replace this node's content (node target
+   * only). Its presence also gates the Generate / Upload / Tools block — a
+   * read-only viewer passes none, so the block hides.
+   */
+  onUpload?: () => void;
   /** Copy the node to the clipboard (node target only). */
   onCopy?: () => void;
   /** Duplicate the node in place (node target only). */
@@ -54,9 +63,11 @@ interface NodeContextMenuProps {
  * The right-click menu for a single canvas node or group. A controlled
  * `DropdownMenu` anchored to a zero-size element pinned at the cursor
  * (ReactFlow's `onNodeContextMenu` gives a point, not an element Radix can
- * anchor to). A node offers copy / duplicate / rename / lock / delete; a group
- * offers ungroup / rename / lock / delete. Each action item renders only when
- * its handler is supplied, so the parent controls availability (e.g. read-only
+ * anchor to). A node offers generate / upload / tools (top block) then copy /
+ * duplicate / rename / lock / delete; a group offers ungroup / rename / lock /
+ * delete. Generate / Tools are disabled placeholders (coming soon); Upload is
+ * the only live action of the top block. Each action item renders only when its
+ * handler is supplied, so the parent controls availability (e.g. read-only
  * passes none); lock / unlock is always present. Shortcut hints are
  * platform-aware via {@link formatShortcut}.
  * @param root0 - Component props.
@@ -69,6 +80,7 @@ interface NodeContextMenuProps {
  * @param root0.target - Whether the menu targets a node or a group (picks items + wording).
  * @param root0.onRename - Enter inline rename.
  * @param root0.onDelete - Delete the node / group.
+ * @param root0.onUpload - Fill / replace the node's content via the file picker (node target only).
  * @param root0.onCopy - Copy the node (node target only).
  * @param root0.onDuplicate - Duplicate the node (node target only).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -84,6 +96,7 @@ export function NodeContextMenu({
   onToggleLock,
   onRename,
   onDelete,
+  onUpload,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -116,6 +129,26 @@ export function NodeContextMenu({
           onRename?.();
         }}
       >
+        {!isGroup && onUpload ? (
+          <>
+            {/* Generate / Tools are disabled placeholders (coming soon — no
+                AIGC / mini-tool wired yet); Upload is the only live action.
+                Disabled items have no side effect when clicked. */}
+            <DropdownMenuItem disabled data-testid='node-menu-generate'>
+              <Sparkles className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.generate')}
+            </DropdownMenuItem>
+            <DropdownMenuItem data-testid='node-menu-upload' onSelect={onUpload}>
+              <Upload className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.upload')}
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled data-testid='node-menu-tools'>
+              <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.tools')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {!isGroup && (onCopy || onDuplicate) ? (
           <>
             {onCopy ? (

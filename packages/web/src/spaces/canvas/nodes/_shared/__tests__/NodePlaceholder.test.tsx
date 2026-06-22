@@ -8,18 +8,21 @@ import userEvent from '@testing-library/user-event';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 describe('NodePlaceholder', () => {
-  it('renders for text modality with default hint', () => {
+  it('text modality: two lines — "write" action + the shared right-click hint', () => {
     render(<NodePlaceholder modality='text' />);
-    expect(screen.getByTestId('node-placeholder')).toHaveTextContent(
-      /write or generate text/i,
-    );
+    const ph = screen.getByTestId('node-placeholder');
+    expect(ph).toHaveTextContent(/double-click to write/i);
+    expect(ph).toHaveTextContent(/right-click to generate & more/i);
   });
 
-  it('renders for image modality with default hint', () => {
+  it('image modality: two lines — "upload" action + right-click hint, NOT "or generate"', () => {
     render(<NodePlaceholder modality='image' />);
-    expect(screen.getByTestId('node-placeholder')).toHaveTextContent(
-      /upload or generate an image/i,
-    );
+    const ph = screen.getByTestId('node-placeholder');
+    expect(ph).toHaveTextContent(/double-click to upload/i);
+    expect(ph).toHaveTextContent(/right-click to generate & more/i);
+    // The old copy conflated upload + generate on one line ("...or generate an
+    // image"); the new model splits them — generate moved to the right-click menu.
+    expect(ph.textContent).not.toMatch(/or generate/i);
   });
 
   it('renders custom hint when provided', () => {
@@ -27,11 +30,14 @@ describe('NodePlaceholder', () => {
     expect(screen.getByText('Recording…')).toBeInTheDocument();
   });
 
-  it('clicking calls onActivate', async () => {
+  it('DOUBLE-click calls onActivate; a single click does NOT (single click selects the node)', async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();
     render(<NodePlaceholder modality='video' onActivate={onActivate} />);
-    await user.click(screen.getByTestId('node-placeholder'));
+    const ph = screen.getByTestId('node-placeholder');
+    await user.click(ph);
+    expect(onActivate).not.toHaveBeenCalled();
+    await user.dblClick(ph);
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 

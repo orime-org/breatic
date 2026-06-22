@@ -98,4 +98,45 @@ describe('NodeContextMenu', () => {
     expect(screen.queryByTestId('node-menu-delete')).toBeNull();
     expect(screen.getByTestId('node-menu-lock-toggle')).toBeInTheDocument();
   });
+
+  it('node target: shows generate / upload / tools at the top', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId('node-menu-generate')).toBeInTheDocument();
+    expect(screen.getByTestId('node-menu-upload')).toBeInTheDocument();
+    expect(screen.getByTestId('node-menu-tools')).toBeInTheDocument();
+  });
+
+  it('generate / tools are disabled placeholders; upload is active', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId('node-menu-generate')).toHaveAttribute(
+      'data-disabled',
+    );
+    expect(screen.getByTestId('node-menu-tools')).toHaveAttribute(
+      'data-disabled',
+    );
+    expect(screen.getByTestId('node-menu-upload')).not.toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  it('fires onUpload when the upload item is chosen', () => {
+    const onUpload = vi.fn();
+    setup({ target: 'node', onUpload });
+    fireEvent.click(screen.getByTestId('node-menu-upload'));
+    expect(onUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('group target: never shows generate / upload / tools', () => {
+    setup({ target: 'group', onUpload: () => {}, onUngroup: () => {} });
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
+    expect(screen.queryByTestId('node-menu-upload')).toBeNull();
+    expect(screen.queryByTestId('node-menu-tools')).toBeNull();
+  });
+
+  it('node target: omits generate / upload / tools without onUpload (viewer)', () => {
+    setup({ target: 'node' });
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
+    expect(screen.queryByTestId('node-menu-upload')).toBeNull();
+    expect(screen.queryByTestId('node-menu-tools')).toBeNull();
+  });
 });

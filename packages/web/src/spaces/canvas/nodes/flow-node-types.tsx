@@ -19,6 +19,11 @@ interface InnerNodeProps {
   locked?: boolean;
   /** Commit a rename, pre-bound to this node's id (content nodes only). */
   onRename?: (name: string) => void;
+  /**
+   * Empty-state activation, pre-bound to this node's id + modality: opens a
+   * file picker and fills this node (media nodes). Text handles its own edit.
+   */
+  onActivate?: () => void;
 }
 
 /**
@@ -48,7 +53,7 @@ function makeFlowNode(
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
-    const { renameNode } = useCanvasActions();
+    const { renameNode, activateNodeUpload } = useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
     // shrinks with the canvas (see `overlayCounterScale`). The scissors button
@@ -59,6 +64,16 @@ function makeFlowNode(
       (name: string): void => renameNode(props.id, name),
       [renameNode, props.id],
     );
+    // Empty-state double-click on a media node: open a file picker + fill THIS
+    // node (the canvas owns the picker + upload). Only image / video / audio
+    // upload this way; text enters inline edit (handled in-body), and group /
+    // annotation / web have no empty-state file upload.
+    const onActivate = React.useCallback((): void => {
+      const kind = data.kind;
+      if (kind === 'image' || kind === 'video' || kind === 'audio') {
+        activateNodeUpload(props.id, kind);
+      }
+    }, [activateNodeUpload, props.id, data.kind]);
     // A group node is sized by ReactFlow to its derived bounds; this wrapper
     // must fill that height so the GroupNode's own `size-full` resolves to the
     // full rect (a percentage height needs a definite-height parent chain).
@@ -73,6 +88,7 @@ function makeFlowNode(
               selected={props.selected}
               locked={data.locked}
               onRename={onRename}
+              onActivate={onActivate}
             />
             {/* Both handles render AFTER the body. Absolutely-positioned siblings
                 paint in DOM order, so a handle placed BEFORE the body has its

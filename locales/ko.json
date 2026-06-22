@@ -283,6 +283,15 @@
       "title": "캔버스가 비어 있습니다",
       "hint": "에셋을 캔버스로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
     },
+    "nodePlaceholder": {
+      "text": "더블클릭하여 작성",
+      "image": "더블클릭하여 업로드",
+      "video": "더블클릭하여 업로드",
+      "audio": "더블클릭하여 업로드",
+      "3d": "더블클릭하여 3D 모델 업로드",
+      "web": "더블클릭하여 URL 삽입",
+      "rightClickHint": "우클릭으로 생성 등"
+    },
     "contextMenu": {
       "paste": "붙여넣기",
       "copy": "복사",
@@ -293,6 +302,9 @@
       "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요."
     },
     "nodeMenu": {
+      "generate": "생성",
+      "upload": "업로드",
+      "tools": "도구",
       "lock": "노드 잠금",
       "unlock": "노드 잠금 해제"
     },
@@ -502,10 +514,6 @@
       "loadingAudio": "오디오를 불러오는 중...",
       "textNode": "텍스트",
       "imageNode": "이미지",
-      "textNodePlaceholder": "더블 클릭하여 텍스트를 입력하거나\n에이전트로 텍스트를 생성하세요",
-      "imageNodePlaceholder": "더블 클릭하여 이미지 파일을 업로드하거나\n에이전트로 이미지를 생성하세요",
-      "videoNodePlaceholder": "더블 클릭하여 동영상 파일을 업로드하거나\n에이전트로 동영상을 생성하세요",
-      "audioNodePlaceholder": "더블 클릭하여 오디오 파일을 업로드하거나\n에이전트로 오디오를 생성하세요",
       "wrapUngroup": "그룹화 / 그룹 해제",
       "group": "그룹화",
       "ungroup": "그룹 해제",

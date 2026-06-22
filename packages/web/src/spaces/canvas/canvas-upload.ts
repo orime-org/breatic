@@ -87,3 +87,55 @@ export async function runMediaUpload(
     deps.onFailure();
   }
 }
+
+/** Injected dependencies for {@link fillNodeFromFile} (upload network + Yjs sinks). */
+export interface FillNodeDeps {
+  /** Request a presigned upload URL (media path). */
+  presign: MediaUploadDeps['presign'];
+  /** PUT the file to its presigned URL (media path). */
+  putFile: MediaUploadDeps['putFile'];
+  /** Read / extract a non-media file's text locally (the text path). */
+  extractText: (file: File) => Promise<string>;
+  /** Mark the node in-flight (`handling`) before the upload / extraction. */
+  setHandling: (nodeId: string) => void;
+  /** Fill the node's content (media URL or extracted text). */
+  setContent: (nodeId: string, content: string) => void;
+  /** Write a fixed-English error onto the node (never a toast — it is shared). */
+  setError: (nodeId: string, message: string) => void;
+}
+
+/**
+ * Fill an **existing** (empty) node from a picked file — the double-click /
+ * Upload-menu path. Unlike {@link runMediaUpload}'s caller in `processFiles`
+ * (which CREATES a node), this writes into a node that already exists: mark it
+ * `handling`, then media files (image / video / audio) presign → PUT and fill
+ * the public URL, while every other file is read / extracted locally and fills
+ * the text. Failures write a fixed-English error onto the node (shared doc, so
+ * never a locale-frozen toast), matching the create-on-drop path's wire strings.
+ * @param nodeId - The existing node to fill.
+ * @param file - The picked file.
+ * @param projectId - Owning project (authorizes the presign).
+ * @param deps - Injected upload network + content / error sinks.
+ */
+export async function fillNodeFromFile(
+  nodeId: string,
+  file: File,
+  projectId: string,
+  deps: FillNodeDeps,
+): Promise<void> {
+  deps.setHandling(nodeId);
+  if (fileToNodeSpec(file).needsUpload) {
+    await runMediaUpload(file, projectId, {
+      presign: deps.presign,
+      putFile: deps.putFile,
+      onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl),
+      onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`),
+    });
+    return;
+  }
+  try {
+    deps.setContent(nodeId, await deps.extractText(file));
+  } catch {
+    deps.setError(nodeId, `Extraction failed: ${file.name}`);
+  }
+}

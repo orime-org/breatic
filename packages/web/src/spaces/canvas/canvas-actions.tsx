@@ -3,6 +3,8 @@
 
 import * as React from 'react';
 
+import type { Modality } from '@web/spaces/canvas/types/node-view';
+
 /**
  * Canvas mutations a node body can trigger but cannot perform itself: the
  * node component knows *what* changed, only the canvas container holds the
@@ -21,6 +23,14 @@ export interface CanvasActions {
    * scissors affordance on a selected edge; a no-op for read-only viewers.
    */
   deleteEdge: (edgeId: string) => void;
+  /**
+   * Open a file picker for an empty media node and fill THAT node with the
+   * upload — the double-click / Upload-menu path. The canvas holds the file
+   * input + project context; the wrapper binds each node's id + modality (the
+   * accept filter). A no-op for read-only viewers / text nodes (text edits in
+   * place instead).
+   */
+  activateNodeUpload: (nodeId: string, modality: Modality) => void;
 }
 
 /**
@@ -31,6 +41,7 @@ export interface CanvasActions {
 const NOOP_ACTIONS: CanvasActions = {
   renameNode: () => undefined,
   deleteEdge: () => undefined,
+  activateNodeUpload: () => undefined,
 };
 
 export const CanvasActionsContext =

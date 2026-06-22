@@ -37,7 +37,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -65,7 +65,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn() }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -100,12 +100,38 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn() }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn() }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
     const anchor = screen.getByTestId('node-header-anchor');
     expect(anchor.style.transform).toContain('scale(');
+  });
+
+  // Empty media node double-click = open the canvas file picker for THIS node.
+  // The wrapper is the only layer that knows the node id + modality, so it binds
+  // onActivate to activateNodeUpload(id, modality) — proves the upload entry is
+  // wired (the canvas owns the picker; only image / video / audio upload here).
+  it('media node empty-state double-click triggers the canvas upload for THIS node + modality', () => {
+    const activateNodeUpload = vi.fn();
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload }}
+        >
+          <Image
+            {...({
+              id: 'n1',
+              data: { kind: 'image', content: '', status: 'idle', name: 'N' },
+              selected: false,
+            } as unknown as NodeProps)}
+          />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
+    expect(activateNodeUpload).toHaveBeenCalledWith('n1', 'image');
   });
 });
