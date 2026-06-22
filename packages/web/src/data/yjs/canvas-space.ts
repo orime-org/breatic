@@ -429,6 +429,32 @@ export function setNodeContent(
 }
 
 /**
+ * Mark an existing node `handling` — the start of a fill-from-file (double-click
+ * / Upload-menu) on a node that already exists. Like content / error writes it
+ * uses the `CONTENT_WRITE` origin so it stays OUT of the undo stack (a transient
+ * in-flight state must never become an undo entry, #8). Clears any prior error.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to mark in-flight.
+ */
+export function setNodeHandling(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('state', 'handling');
+    data.delete('errorMessage');
+  }, CONTENT_WRITE);
+}
+
+/**
  * Mark a node as failed with an inline error message (frontend-owned upload
  * failure). Sets `errorMessage` and ensures `state` is `'idle'` so the derived
  * status is `error` (a lingering `handling` would mask it). Collaborators see

@@ -28,7 +28,6 @@ interface TextNodeProps {
  * @param root0.data - Text node payload (content string, status, optional error message).
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, blocking inline editing and showing the lock indicator.
- * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onChange - Called with the new text when an inline edit is committed on blur.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The text node element (placeholder or inline-editable body).
@@ -37,7 +36,6 @@ export function TextNode({
   data,
   selected,
   locked,
-  onActivate,
   onChange,
   onRename,
 }: TextNodeProps): React.JSX.Element {
@@ -78,9 +76,12 @@ export function TextNode({
       <NodeContent
         status={data.status}
         errorMessage={data.errorMessage}
-        hasContent={hasContent}
+        // While editing, show the editable body even when empty — a fresh text
+        // node entered from the placeholder double-click has no content yet but
+        // must render the contenteditable body so the user can start writing.
+        hasContent={hasContent || editing}
         placeholder={
-          <NodePlaceholder modality='text' onActivate={onActivate} />
+          <NodePlaceholder modality='text' onActivate={startEdit} />
         }
         content={
           <div

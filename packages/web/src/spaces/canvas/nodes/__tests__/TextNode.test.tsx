@@ -92,6 +92,18 @@ describe('TextNode', () => {
     expect(body.className).toMatch(/scrollbar/);
   });
 
+  it('empty text node: double-clicking the placeholder enters edit mode (write), showing the editable body', async () => {
+    const user = userEvent.setup();
+    render(<TextNode data={{ kind: 'text', content: '', status: 'idle' }} />);
+    // Empty → placeholder is shown first.
+    await user.dblClick(screen.getByTestId('node-placeholder'));
+    // Now editing: the contenteditable body renders even though there is no
+    // content yet, so the user can start writing.
+    expect(
+      screen.getByTestId('text-node-body').getAttribute('contenteditable'),
+    ).toBe('true');
+  });
+
   it('the scrollable body carries ReactFlow `nowheel` so the wheel scrolls the text, not the canvas', () => {
     // Without `nowheel`, a wheel/two-finger scroll over the body is captured by
     // ReactFlow's panOnScroll and pans the canvas instead of scrolling the

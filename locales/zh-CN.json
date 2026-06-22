@@ -283,6 +283,15 @@
       "title": "画布是空的",
       "hint": "拖入素材到画布,或从左侧菜单选择节点类型创建"
     },
+    "nodePlaceholder": {
+      "text": "双击书写",
+      "image": "双击上传",
+      "video": "双击上传",
+      "audio": "双击上传",
+      "3d": "双击上传 3D 模型",
+      "web": "双击嵌入网址",
+      "rightClickHint": "右键可生成等更多"
+    },
     "contextMenu": {
       "paste": "粘贴",
       "copy": "复制",
@@ -293,6 +302,9 @@
       "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
     },
     "nodeMenu": {
+      "generate": "生成",
+      "upload": "上传",
+      "tools": "工具",
       "lock": "锁定节点",
       "unlock": "解锁节点"
     },
@@ -502,10 +514,6 @@
       "loadingAudio": "加载音频中...",
       "textNode": "文本",
       "imageNode": "图片",
-      "textNodePlaceholder": "双击输入文本\n或通过智能体生成文本",
-      "imageNodePlaceholder": "双击上传图片文件\n或通过智能体生成图片",
-      "videoNodePlaceholder": "双击上传视频文件\n或通过智能体生成视频",
-      "audioNodePlaceholder": "双击上传音频文件\n或通过智能体生成音频",
       "wrapUngroup": "包裹解组",
       "group": "打组",
       "ungroup": "解组",

@@ -3,34 +3,32 @@
 
 import type * as React from 'react';
 
+import { useTranslation } from '@web/i18n/use-translation';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 
 interface NodePlaceholderProps {
   modality: Modality;
-  /** Optional override (e.g. "Generating cover…" while AI runs). */
+  /**
+   * Optional override (e.g. "Generating cover…" while AI runs). Shown as a
+   * single line, replacing the default two-line hint.
+   */
   hint?: string;
-  /** Click handler for the call-to-action (typically opens generate popover). */
+  /** Double-click handler for the call-to-action (upload a file / write). */
   onActivate?: () => void;
 }
 
-const DEFAULT_HINT: Record<Modality, string> = {
-  text: 'Double-click to write or generate text',
-  image: 'Double-click to upload or generate an image',
-  audio: 'Double-click to upload or generate audio',
-  video: 'Double-click to upload or generate a video',
-  '3d': 'Double-click to upload a 3D model (glb / gltf)',
-  web: 'Double-click to embed a web page URL',
-};
-
 /**
- * Empty-state body shown when a content node has no `content` / `url`
- * yet. Acts as the entry to the toolbar's left-zone generate/load
- * popover (double-click → `onActivate`).
+ * Empty-state body shown when a content node has no `content` / `url` yet. Two
+ * lines: the modality's primary double-click action (upload / write), then a
+ * shared, dimmer hint pointing at the right-click menu (generate & more). Both
+ * lines are i18n keys. A single click selects the node; only a **double**-click
+ * fires `onActivate` (matching the "Double-click to…" copy). An explicit `hint`
+ * (e.g. an in-progress status) overrides both lines with one line.
  * @param root0 - Node placeholder props.
- * @param root0.modality - Node modality, selecting the icon and the default hint copy.
- * @param root0.hint - Optional hint text overriding the modality default.
- * @param root0.onActivate - Called on click / double-click to open the generate/load popover.
+ * @param root0.modality - Node modality, selecting the icon and the primary-line copy.
+ * @param root0.hint - Optional single-line override (status text).
+ * @param root0.onActivate - Called on double-click to upload a file / enter edit.
  * @returns The empty-state call-to-action button.
  */
 export function NodePlaceholder({
@@ -38,18 +36,27 @@ export function NodePlaceholder({
   hint,
   onActivate,
 }: NodePlaceholderProps): React.JSX.Element {
+  const t = useTranslation();
   const Icon = MODALITY_ICONS[modality];
   return (
     <button
       type='button'
       onDoubleClick={onActivate}
-      onClick={onActivate}
       data-testid='node-placeholder'
       data-modality={modality}
       className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'
     >
       <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
-      <span className='text-xs'>{hint ?? DEFAULT_HINT[modality]}</span>
+      {hint ? (
+        <span className='text-xs'>{hint}</span>
+      ) : (
+        <span className='flex flex-col gap-0.5'>
+          <span className='text-xs'>{t(`canvas.nodePlaceholder.${modality}`)}</span>
+          <span className='text-[11px] text-muted-foreground/70'>
+            {t('canvas.nodePlaceholder.rightClickHint')}
+          </span>
+        </span>
+      )}
     </button>
   );
 }

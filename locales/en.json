@@ -283,6 +283,15 @@
       "title": "The canvas is empty",
       "hint": "Drag assets onto the canvas, or pick a node type from the left menu to create one."
     },
+    "nodePlaceholder": {
+      "text": "Double-click to write",
+      "image": "Double-click to upload",
+      "video": "Double-click to upload",
+      "audio": "Double-click to upload",
+      "3d": "Double-click to upload a 3D model",
+      "web": "Double-click to embed a URL",
+      "rightClickHint": "right-click to generate & more"
+    },
     "contextMenu": {
       "paste": "Paste",
       "copy": "Copy",
@@ -293,6 +302,9 @@
       "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
     },
     "nodeMenu": {
+      "generate": "Generate",
+      "upload": "Upload",
+      "tools": "Tools",
       "lock": "Lock node",
       "unlock": "Unlock node"
     },
@@ -502,10 +514,6 @@
       "loadingAudio": "Loading Audio...",
       "textNode": "Text",
       "imageNode": "Image",
-      "textNodePlaceholder": "Double Click to enter your text\nor generate texts via agents",
-      "imageNodePlaceholder": "Double Click to upload an image file\nor generate images via agents",
-      "videoNodePlaceholder": "Double Click to upload a video file\nor generate videos via agents",
-      "audioNodePlaceholder": "Double Click to upload an audio file\nor generate audios via agents",
       "wrapUngroup": "Wrap / Ungroup",
       "group": "Group",
       "ungroup": "Ungroup",

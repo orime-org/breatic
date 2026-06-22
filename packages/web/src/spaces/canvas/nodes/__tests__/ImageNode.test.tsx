@@ -46,7 +46,7 @@ describe('ImageNode', () => {
     expect(screen.getByTestId('node-content-error')).toHaveTextContent('404');
   });
 
-  it('clicking placeholder fires onActivate', async () => {
+  it('DOUBLE-clicking placeholder fires onActivate (opens upload); a single click does not', async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();
     render(
@@ -55,7 +55,10 @@ describe('ImageNode', () => {
         onActivate={onActivate}
       />,
     );
-    await user.click(screen.getByTestId('node-placeholder'));
+    const ph = screen.getByTestId('node-placeholder');
+    await user.click(ph);
+    expect(onActivate).not.toHaveBeenCalled();
+    await user.dblClick(ph);
     expect(onActivate).toHaveBeenCalled();
   });
 });

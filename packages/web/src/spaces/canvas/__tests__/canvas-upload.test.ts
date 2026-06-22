@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import {
   fileToNodeSpec,
+  fillNodeFromFile,
   runMediaUpload,
 } from '@web/spaces/canvas/canvas-upload';
 
@@ -104,5 +105,78 @@ describe('runMediaUpload — presign → PUT → success / failure callbacks', (
 
     expect(onSuccess).not.toHaveBeenCalled();
     expect(onFailure).toHaveBeenCalledOnce();
+  });
+});
+
+describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
+  /** Build the injected sinks + spies for a fill run. */
+  function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[3]> = {}) {
+    return {
+      presign: vi.fn().mockResolvedValue({
+        uploadUrl: 'https://put',
+        fileUrl: 'https://cdn/p.png',
+        key: 'k',
+        kind: 'image',
+      }),
+      putFile: vi.fn().mockResolvedValue(undefined),
+      extractText: vi.fn().mockResolvedValue('extracted body'),
+      setHandling: vi.fn(),
+      setContent: vi.fn(),
+      setError: vi.fn(),
+      ...over,
+    };
+  }
+
+  it('media file: handling → upload → fill content with the public URL (no new node)', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'p1',
+      deps,
+    );
+    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'https://cdn/p.png');
+    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.extractText).not.toHaveBeenCalled();
+  });
+
+  it('media upload failure: writes a fixed-English error onto the node (not a toast)', async () => {
+    const deps = makeDeps({ presign: vi.fn().mockRejectedValue(new Error('403')) });
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'bad.png', { type: 'image/png' }),
+      'p1',
+      deps,
+    );
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Upload failed: bad.png');
+  });
+
+  it('non-media file: extract text locally → fill content (no upload)', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'doc.txt', { type: 'text/plain' }),
+      'p1',
+      deps,
+    );
+    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body');
+  });
+
+  it('extraction failure: writes a fixed-English error', async () => {
+    const deps = makeDeps({
+      extractText: vi.fn().mockRejectedValue(new Error('no parser')),
+    });
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'weird.bin', { type: 'application/octet-stream' }),
+      'p1',
+      deps,
+    );
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin');
   });
 });

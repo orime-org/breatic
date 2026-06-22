@@ -21,6 +21,7 @@ import {
   setGroupBackground,
   setNodeContent,
   setNodeError,
+  setNodeHandling,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -366,6 +367,18 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const depth = undo.undoStack.length;
       setNodePosition(PID, SID, 'img1', { x: 99, y: 99 });
       expect(undo.undoStack.length).toBe(depth + 1);
+    });
+
+    it('setNodeHandling marks the node handling but does NOT push an undo entry (transient in-flight state)', () => {
+      const undo = createCanvasUndoManager(doc());
+      addNode(PID, SID, sampleFields('image', {}, { id: 'img1' }));
+      const depth = undo.undoStack.length;
+      setNodeHandling(PID, SID, 'img1');
+      const node = doc().getMap('nodesMap').get('img1') as Y.Map<unknown>;
+      expect((node.get('data') as Y.Map<unknown>).get('state')).toBe('handling');
+      // CONTENT_WRITE origin, like content / error writes — a transient upload
+      // state must not become an undo entry (#8).
+      expect(undo.undoStack.length).toBe(depth);
     });
   });
 

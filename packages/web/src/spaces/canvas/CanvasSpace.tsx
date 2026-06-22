@@ -37,6 +37,7 @@ import {
   setGroupBackground,
   setNodeContent,
   setNodeError,
+  setNodeHandling,
   setNodeLocked,
   setNodeName,
   setNodePosition,
@@ -55,9 +56,11 @@ import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import {
   fileToNodeSpec,
+  fillNodeFromFile,
   runMediaUpload,
 } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
+import type { Modality } from '@web/spaces/canvas/types/node-view';
 import {
   applyGroupGeometry,
   computeGroupRect,
@@ -95,6 +98,20 @@ import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
 import { useCurrentUserStore } from '@web/stores/current-user';
+
+/**
+ * File-picker `accept` per modality for the empty-node double-click /
+ * Upload-menu fill. Media modalities pick by MIME; a text node uploads a
+ * document (txt / md / pdf / doc / xlsx) whose content is extracted locally
+ * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
+ * no picker, so {@link CanvasSpaceInner}'s activate handler no-ops for them.
+ */
+const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
+  text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
+  image: 'image/*',
+  video: 'video/*',
+  audio: 'audio/*',
+};
 
 /** Steps repeated centre-drops apart so library creations don't stack exactly. */
 const STAGGER_STEP_PX = 24;
@@ -1115,6 +1132,55 @@ function CanvasSpaceInner({
   // Frontend-owned mutation surfaced to the node bodies through context: a
   // node knows its new name but not the project / space it lives in. The
   // ReactFlow wrapper pre-binds this to each node's id.
+  // Empty-node double-click / Upload-menu: ONE hidden file input the canvas
+  // triggers for the target node, filling THAT node with the upload (vs creating
+  // a new node like the drop path). The target id is held in a ref across the
+  // picker's async open; the change handler fills it.
+  const uploadInputRef = React.useRef<HTMLInputElement>(null);
+  const uploadTargetRef = React.useRef<string | null>(null);
+  const activateNodeUpload = React.useCallback(
+    (nodeId: string, modality: Modality): void => {
+      if (readOnly) return;
+      const accept = UPLOAD_ACCEPT[modality];
+      const input = uploadInputRef.current;
+      if (!accept || !input) return; // 3d / web have no picker yet
+      uploadTargetRef.current = nodeId;
+      input.accept = accept;
+      input.value = '';
+      input.click();
+    },
+    [readOnly],
+  );
+  // Node menu Upload: open the file picker for the right-clicked node and fill
+  // (or replace) its content — the menu form of the empty-node double-click.
+  // The node's ReactFlow `type` is its modality (text / image / video / audio /
+  // ...); `activateNodeUpload` no-ops for modalities without a picker (3d / web)
+  // and for read-only viewers.
+  const uploadNodeFromMenu = React.useCallback((): void => {
+    const node = flowNodesRef.current.find(
+      (item) => item.id === nodeMenu.nodeId,
+    );
+    if (node?.type) activateNodeUpload(node.id, node.type as Modality);
+  }, [nodeMenu.nodeId, activateNodeUpload]);
+  const onUploadInputChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>): void => {
+      const file = event.target.files?.[0];
+      const nodeId = uploadTargetRef.current;
+      uploadTargetRef.current = null;
+      if (!file || !nodeId) return;
+      void fillNodeFromFile(nodeId, file, projectId, {
+        presign: assetsApi.presign,
+        putFile: assetsApi.putFile,
+        extractText,
+        setHandling: (id) => setNodeHandling(projectId, spaceId, id),
+        setContent: (id, content) =>
+          setNodeContent(projectId, spaceId, id, content),
+        setError: (id, message) => setNodeError(projectId, spaceId, id, message),
+      });
+    },
+    [projectId, spaceId],
+  );
+
   const actions = React.useMemo<CanvasActions>(
     () => ({
       renameNode: (nodeId: string, name: string): void =>
@@ -1123,8 +1189,9 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
+      activateNodeUpload,
     }),
-    [projectId, spaceId, readOnly],
+    [projectId, spaceId, readOnly, activateNodeUpload],
   );
 
   // Group nodes carry no authoritative size: derive each group's container
@@ -1165,6 +1232,17 @@ function CanvasSpaceInner({
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
+        {/* Hidden picker the canvas triggers for an empty node's double-click /
+            Upload-menu fill (accept set per modality at trigger time). */}
+        <input
+          ref={uploadInputRef}
+          type='file'
+          className='hidden'
+          aria-hidden='true'
+          tabIndex={-1}
+          data-testid='canvas-upload-input'
+          onChange={onUploadInputChange}
+        />
         <ReactFlow
           nodes={renderNodes}
           edges={flowEdges}
@@ -1270,6 +1348,11 @@ function CanvasSpaceInner({
           target={nodeMenu.isGroup ? 'group' : 'node'}
           onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
           onToggleLock={onToggleNodeLock}
+          // Upload fills / replaces the node's content (node-only; its presence
+          // also gates the Generate / Upload / Tools block). The menu only opens
+          // for editors (onNodeContextMenu returns early when read-only), and
+          // activateNodeUpload no-ops for read-only / pickerless modalities.
+          onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op.
           onRename={
