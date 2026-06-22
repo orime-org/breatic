@@ -799,7 +799,6 @@ export const notifications = pgTable(
      * - 'access.role_upgrade_request' - viewer asks owner for editor role
      * - 'access.role_upgrade_approved' - owner approved viewer's request
      * - 'access.role_upgrade_rejected' - owner rejected viewer's request
-     * - 'studio.member_invited' - admin added the user to a studio
      * - 'studio.transfer_request' - admin asks the user to take admin (TTL)
      * - 'studio.transfer_approved' - user accepted; old admin is notified
      * - 'studio.invite_request' - admin invites the user to a studio (TTL; confirm/decline)

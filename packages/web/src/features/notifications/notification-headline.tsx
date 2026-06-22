@@ -135,13 +135,6 @@ const PROJECT_ROWS: Partial<
 const STUDIO_ROWS: Partial<
   Record<NotificationType, { key: string; nameField: string; handleField: string }>
 > = {
-  // Legacy / dead type (no producer) — kept rendering its studio name until it
-  // is fully retired; its template has no `{actor}` slot, so no actor shows.
-  'studio.member_invited': {
-    key: 'studioMemberInvited',
-    nameField: 'inviterName',
-    handleField: 'inviterHandle',
-  },
   'studio.transfer_request': {
     key: 'studioTransferRequest',
     nameField: 'fromName',

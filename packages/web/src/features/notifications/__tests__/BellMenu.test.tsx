@@ -82,7 +82,6 @@ type NotifType =
   | 'access.role_upgrade_request'
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
-  | 'studio.member_invited'
   | 'studio.transfer_request'
   | 'studio.transfer_approved'
   | 'studio.invite_request'
@@ -158,10 +157,9 @@ describe('BellMenu — 4 notification types render', () => {
         projectName: 'Q1 Sprint',
         message: 'Need editor for review',
       }),
-      fakeNotification(N2, 'studio.member_invited', {
+      fakeNotification(N2, 'studio.invite_accepted', {
         studioName: 'Acme',
-        inviterName: 'Alex',
-        role: 'guest',
+        inviteeName: 'Alex',
       }),
     ]);
     setup();
@@ -259,10 +257,9 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
   it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce([
-      fakeNotification(N2, 'studio.member_invited', {
+      fakeNotification(N2, 'studio.invite_accepted', {
         studioName: 'Demo',
-        inviterName: 'Alex',
-        role: 'guest',
+        inviteeName: 'Alex',
       }),
     ]);
     vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });
@@ -277,30 +274,6 @@ describe('BellMenu — mark-read affordance on non-decision rows', () => {
 });
 
 describe('BellMenu — studio notification types (slice 3)', () => {
-  it('renders member_invited as a read-on-click row (no confirm/cancel)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
-      fakeNotification(N1, 'studio.member_invited', {
-        studioName: 'Acme',
-        inviterName: 'Alex',
-        role: 'maintainer',
-      }),
-    ]);
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-${N1}`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId(`bell-notification-headline-${N1}`),
-    ).toHaveTextContent('You were added to Acme');
-    expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
-    // Informational — mark-read affordance, not confirm/cancel.
-    expect(screen.getByTestId(`bell-mark-read-${N1}`)).toBeInTheDocument();
-    expect(screen.queryByTestId(`bell-confirm-${N1}`)).toBeNull();
-  });
-
   it('renders transfer_request with confirm/cancel + a TTL countdown', async () => {
     const user = userEvent.setup();
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();

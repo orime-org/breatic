@@ -1344,7 +1344,6 @@
       "roleUpgradeRequest": "{actor} requested editor access on {project}",
       "roleUpgradeApproved": "{actor} approved your editor access on {project}",
       "roleUpgradeRejected": "{actor} rejected your editor access on {project}",
-      "studioMemberInvited": "You were added to {studio}",
       "studioTransferRequest": "{actor} asked you to take over {studio}",
       "studioTransferApproved": "{actor} accepted your admin transfer for {studio}",
       "studioInviteRequest": "{actor} invited you to join {studio}",

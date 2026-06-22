@@ -3,9 +3,9 @@
 
 /**
  * Notification studio types + expiry filter (slice 3) — the `notifications`
- * table gains an `expires_at` column and three studio notification types
- * (`studio.member_invited` / `studio.transfer_request` /
- * `studio.transfer_approved`), against a real Postgres. SQL-level facts:
+ * table gains an `expires_at` column and the studio notification types
+ * (`studio.transfer_request` / `studio.transfer_approved` / `studio.invite_*`),
+ * against a real Postgres. SQL-level facts:
  *
  *   - the type CHECK constraint accepts the new studio.* types;
  *   - `create` persists `expires_at`;
@@ -61,14 +61,14 @@ async function insertUser(): Promise<string> {
 }
 
 describe("notifications — studio types + expiry filter", () => {
-  it("accepts the new studio.member_invited type (CHECK constraint widened)", async () => {
+  it("accepts an informational studio type (notifications_type CHECK)", async () => {
     const user = await insertUser();
     const n = await notificationRepo.create({
       userId: user,
-      type: "studio.member_invited",
-      payload: { studioName: "Acme", inviterName: "Al", role: "guest" },
+      type: "studio.invite_accepted",
+      payload: { studioName: "Acme", inviteeName: "Al" },
     });
-    expect(n.type).toBe("studio.member_invited");
+    expect(n.type).toBe("studio.invite_accepted");
     const list = await notificationRepo.listUnreadByUser(user);
     expect(list.map((x) => x.id)).toContain(n.id);
   });
@@ -92,8 +92,8 @@ describe("notifications — studio types + expiry filter", () => {
     });
     const evergreen = await notificationRepo.create({
       userId: user,
-      type: "studio.member_invited",
-      payload: { studioName: "Acme", inviterName: "Al", role: "guest" },
+      type: "studio.invite_accepted",
+      payload: { studioName: "Acme", inviteeName: "Al" },
     });
 
     expect(pending.expiresAt).not.toBeNull(); // persisted

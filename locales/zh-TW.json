@@ -1344,7 +1344,6 @@
       "roleUpgradeRequest": "{actor} 申請 {project} 的 Editor 權限",
       "roleUpgradeApproved": "{actor} 通過了你在 {project} 的 Editor 權限",
       "roleUpgradeRejected": "{actor} 拒絕了你在 {project} 的 Editor 權限申請",
-      "studioMemberInvited": "你已被加入 {studio}",
       "studioTransferRequest": "{actor} 邀請你接管 {studio}",
       "studioTransferApproved": "{actor} 接受了你對 {studio} 的 Admin 轉讓",
       "studioInviteRequest": "{actor} 邀請你加入 {studio}",

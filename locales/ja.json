@@ -1344,7 +1344,6 @@
       "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
       "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",
       "roleUpgradeRejected": "{actor} さんが {project} の Editor 権限を拒否しました",
-      "studioMemberInvited": "{studio} に追加されました",
       "studioTransferRequest": "{actor} さんが {studio} の引き継ぎを依頼しました",
       "studioTransferApproved": "{actor} さんが {studio} の Admin 委譲を承認しました",
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",

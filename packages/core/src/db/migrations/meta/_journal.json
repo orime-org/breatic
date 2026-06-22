@@ -232,6 +232,13 @@
       "when": 1780700700000,
       "tag": "0032_drop_share_links",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780700800000,
+      "tag": "0033_drop_member_invited",
+      "breakpoints": true
     }
   ]
 }
