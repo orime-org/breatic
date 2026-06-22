@@ -137,6 +137,25 @@ describe("createInvite", () => {
     // …but is NOT a studio member yet — role resolution returns null.
     expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBeNull();
     expect(await inviteeMemberRows()).toBe(0);
+
+    // The bell payload carries the inviter's identity (name + @handle) + the
+    // studio slug, so the row renders "[Inviter] invited you to [Svc Team]"
+    // with both the inviter name and the studio name clickable.
+    const [reqNotif] = await db
+      .select({ payload: schema.notifications.payload })
+      .from(schema.notifications)
+      .where(
+        and(
+          eq(schema.notifications.userId, INVITEE),
+          eq(schema.notifications.type, "studio.invite_request"),
+        ),
+      );
+    expect(reqNotif?.payload).toMatchObject({
+      inviterName: "Inviter",
+      inviterHandle: "svc-inviter",
+      studioName: "Svc Team",
+      studioSlug: "svc-team",
+    });
   });
 
   it("rejects an unregistered email with NotFound", async () => {
@@ -182,9 +201,13 @@ describe("confirmInvite", () => {
 
     expect(await studioMembersRepo.getRole(TEAM, INVITEE)).toBe("maintainer");
     expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(0);
-    // The inviting admin gets a studio.invite_accepted notice.
+    // The inviting admin gets a studio.invite_accepted notice carrying the
+    // invitee's identity (name + @handle) + the studio slug.
     const adminNotices = await db
-      .select({ type: schema.notifications.type })
+      .select({
+        type: schema.notifications.type,
+        payload: schema.notifications.payload,
+      })
       .from(schema.notifications)
       .where(
         and(
@@ -193,6 +216,12 @@ describe("confirmInvite", () => {
         ),
       );
     expect(adminNotices).toHaveLength(1);
+    expect(adminNotices[0]?.payload).toMatchObject({
+      inviteeName: "Invitee",
+      inviteeHandle: "svc-invitee",
+      studioName: "Svc Team",
+      studioSlug: "svc-team",
+    });
   });
 
   it("under concurrency, exactly one confirm wins; the invitee gets ONE membership", async () => {

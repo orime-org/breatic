@@ -102,8 +102,12 @@ export async function createInvite(
     throw new ConflictError(t("server.studio.member_limit_reached"));
   }
 
-  const names = await studioRepo.getPersonalNamesByCreators([inviterUserId]);
-  const inviterName = names.get(inviterUserId) ?? "";
+  const profiles = await studioRepo.getPersonalProfilesByCreators([
+    inviterUserId,
+  ]);
+  const inviter = profiles.get(inviterUserId);
+  const inviterName = inviter?.name ?? "";
+  const inviterHandle = inviter?.slug ?? "";
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   let invitationId = "";
@@ -123,7 +127,9 @@ export async function createInvite(
           invitationId,
           studioId: studio.id,
           studioName: studio.name,
+          studioSlug: studio.slug,
           inviterName,
+          inviterHandle,
           role,
         },
         expiresAt,
@@ -200,21 +206,29 @@ export async function confirmInvite(
     if (!inserted) throw new ConflictError(t("server.studio.already_member"));
 
     let studioName = "";
+    let studioSlug = "";
     if (accepted.notificationId) {
       const notif = await notificationRepo.findById(accepted.notificationId, tx);
-      const payload = (notif?.payload ?? {}) as { studioName?: unknown };
+      const payload = (notif?.payload ?? {}) as {
+        studioName?: unknown;
+        studioSlug?: unknown;
+      };
       if (typeof payload.studioName === "string") studioName = payload.studioName;
+      if (typeof payload.studioSlug === "string") studioSlug = payload.studioSlug;
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
-    const names = await studioRepo.getPersonalNamesByCreators([
+    const profiles = await studioRepo.getPersonalProfilesByCreators([
       accepted.invitedUserId,
     ]);
+    const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,
       payload: {
         studioName,
-        inviteeName: names.get(accepted.invitedUserId) ?? "",
+        studioSlug,
+        inviteeName: invitee?.name ?? "",
+        inviteeHandle: invitee?.slug ?? "",
       },
       tx,
     });

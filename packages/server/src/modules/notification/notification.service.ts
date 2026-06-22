@@ -176,7 +176,11 @@ export interface StudioInviteRequestPayload {
   invitationId: string;
   studioId: string;
   studioName: string;
+  /** Inviting admin's personal-studio slug = @handle shown + `/studio/{slug}` link. */
   inviterName: string;
+  inviterHandle: string;
+  /** The invited-into studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
   role: "maintainer" | "guest";
 }
 
@@ -186,7 +190,11 @@ export interface StudioInviteRequestPayload {
  */
 export interface StudioInviteAcceptedPayload {
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
+  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviteeName: string;
+  inviteeHandle: string;
 }
 
 /**
