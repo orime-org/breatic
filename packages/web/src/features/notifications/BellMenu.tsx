@@ -25,6 +25,7 @@ import {
   type NotificationType,
   type NotificationAction,
 } from '@web/data/api/notifications';
+import { notificationHeadline } from '@web/features/notifications/notification-headline';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -346,6 +347,7 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/project-invite?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
+                  onNavigate={() => setOpen(false)}
                 />
               </li>
             ))}
@@ -365,6 +367,7 @@ interface NotificationItemProps {
   onCancel: () => void;
   onOpenInvite: () => void;
   onMarkRead: () => void;
+  onNavigate: () => void;
 }
 
 /**
@@ -382,6 +385,7 @@ interface NotificationItemProps {
  * @param root0.onCancel - Called when the recipient cancels (declines) a studio transfer / invite request.
  * @param root0.onOpenInvite - Called when the invitee opens a project invite (navigates to the landing page).
  * @param root0.onMarkRead - Called when an informational notification is marked read.
+ * @param root0.onNavigate - Called when a headline link is followed (closes the bell popover).
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -393,9 +397,10 @@ function NotificationItem({
   onCancel,
   onOpenInvite,
   onMarkRead,
+  onNavigate,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
-  const headline = headlineFor(notification, t);
+  const headline = notificationHeadline(notification, t, onNavigate);
   const subtitle = subtitleFor(notification, t);
   const isUpgradeRequest =
     notification.type === 'access.role_upgrade_request';
@@ -543,64 +548,6 @@ function iconForType(type: NotificationType): string {
       return '✓';
     default:
       return '?';
-  }
-}
-
-/**
- * Builds the localized headline for a notification from its type and payload.
- * @param n - Notification to describe.
- * @param t - Translation function used to render the localized headline.
- * @returns the localized headline, or the raw type for an unknown notification.
- */
-function headlineFor(
-  n: Notification,
-  t: ReturnType<typeof useTranslation>,
-): string {
-  switch (n.type) {
-    case 'access.role_upgrade_request':
-      return t('notifications.headline.roleUpgradeRequest', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'access.role_upgrade_approved':
-      return t('notifications.headline.roleUpgradeApproved', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'access.role_upgrade_rejected':
-      return t('notifications.headline.roleUpgradeRejected', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'studio.member_invited':
-      return t('notifications.headline.studioMemberInvited', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.transfer_request':
-      return t('notifications.headline.studioTransferRequest', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.transfer_approved':
-      return t('notifications.headline.studioTransferApproved', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.invite_request':
-      return t('notifications.headline.studioInviteRequest', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.invite_accepted':
-      return t('notifications.headline.studioInviteAccepted', {
-        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'project.invite_request':
-      return t('notifications.headline.projectInviteRequest', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'project.invite_accepted':
-      return t('notifications.headline.projectInviteAccepted', {
-        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    default:
-      return n.type;
   }
 }
 

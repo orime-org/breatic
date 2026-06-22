@@ -129,9 +129,9 @@ describe('notificationHeadline', () => {
     expect(screen.getByText(/Alex/)).toBeInTheDocument();
   });
 
-  it('falls back to the raw type for an unhandled (dead) type', () => {
+  it('falls back to the raw type for an unhandled type', () => {
     const n = makeNotification({
-      type: 'studio.member_invited' as Notification['type'],
+      type: 'unknown.future_type' as Notification['type'],
       payload: {},
     });
     render(
@@ -139,6 +139,6 @@ describe('notificationHeadline', () => {
         <span data-testid='h'>{notificationHeadline(n, t)}</span>
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('h')).toHaveTextContent('studio.member_invited');
+    expect(screen.getByTestId('h')).toHaveTextContent('unknown.future_type');
   });
 });

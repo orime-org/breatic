@@ -292,7 +292,9 @@ describe('BellMenu — studio notification types (slice 3)', () => {
     expect(
       await screen.findByTestId(`bell-notification-${N1}`),
     ).toBeInTheDocument();
-    expect(screen.getByText(/You were added to Acme/i)).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`bell-notification-headline-${N1}`),
+    ).toHaveTextContent('You were added to Acme');
     expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
     // Informational — mark-read affordance, not confirm/cancel.
     expect(screen.getByTestId(`bell-mark-read-${N1}`)).toBeInTheDocument();
@@ -306,7 +308,13 @@ describe('BellMenu — studio notification types (slice 3)', () => {
       fakeNotification(
         N1,
         'studio.transfer_request',
-        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
+        {
+          studioName: 'Acme',
+          fromUserId: 'u-admin',
+          fromName: 'Alex',
+          fromHandle: 'alex-h',
+          studioId: 's1',
+        },
         { expiresAt },
       ),
     ]);
@@ -314,8 +322,8 @@ describe('BellMenu — studio notification types (slice 3)', () => {
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/You were asked to take over Acme/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N1}`),
+    ).toHaveTextContent(/Alex.*asked you to take over Acme/);
     expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
     expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
     // The TTL countdown replaces the "x ago" label for actionable transfers.
@@ -389,14 +397,18 @@ describe('BellMenu — studio notification types (slice 3)', () => {
   it('renders transfer_approved as a read-on-click row', async () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce([
-      fakeNotification(N2, 'studio.transfer_approved', { studioName: 'Acme' }),
+      fakeNotification(N2, 'studio.transfer_approved', {
+        studioName: 'Acme',
+        accepterName: 'Dee',
+        accepterHandle: 'dee-h',
+      }),
     ]);
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/Your admin transfer for Acme was accepted/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N2}`),
+    ).toHaveTextContent(/Dee.*accepted your admin transfer for Acme/);
     expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });
 });
@@ -425,8 +437,8 @@ describe('BellMenu — studio invite-confirm handshake', () => {
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/You were invited to join Acme/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N1}`),
+    ).toHaveTextContent('Alex invited you to join Acme');
     // Subtitle reuses the granted-role label (invitedAsMaintainer).
     expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
     // Actionable like the transfer handshake: confirm / cancel + a countdown.
@@ -489,8 +501,8 @@ describe('BellMenu — studio invite-confirm handshake', () => {
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/Dee accepted your invite to Acme/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N2}`),
+    ).toHaveTextContent('Dee accepted your invite to Acme');
     expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });
 });
@@ -520,8 +532,8 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/You were invited to join Q1 Sprint/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N1}`),
+    ).toHaveTextContent('Alex invited you to join Q1 Sprint');
     // Subtitle reuses the granted-role label (invitedAsEditor).
     expect(screen.getByText(/Joined as an editor/i)).toBeInTheDocument();
     // The TTL countdown still shows for the live invite.
@@ -574,8 +586,8 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
     await user.click(screen.getByTestId('bell-trigger'));
 
     expect(
-      await screen.findByText(/Dee accepted your invite to Q1 Sprint/i),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`bell-notification-headline-${N2}`),
+    ).toHaveTextContent('Dee accepted your invite to Q1 Sprint');
     expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
   });
 });
