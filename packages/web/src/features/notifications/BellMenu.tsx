@@ -346,7 +346,6 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/project-invite?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
-                  onNavigate={() => setOpen(false)}
                 />
               </li>
             ))}
@@ -366,7 +365,6 @@ interface NotificationItemProps {
   onCancel: () => void;
   onOpenInvite: () => void;
   onMarkRead: () => void;
-  onNavigate: () => void;
 }
 
 /**
@@ -384,7 +382,6 @@ interface NotificationItemProps {
  * @param root0.onCancel - Called when the recipient cancels (declines) a studio transfer / invite request.
  * @param root0.onOpenInvite - Called when the invitee opens a project invite (navigates to the landing page).
  * @param root0.onMarkRead - Called when an informational notification is marked read.
- * @param root0.onNavigate - Called when a headline link is followed (closes the bell popover).
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -396,10 +393,9 @@ function NotificationItem({
   onCancel,
   onOpenInvite,
   onMarkRead,
-  onNavigate,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
-  const headline = notificationHeadline(notification, t, onNavigate);
+  const headline = notificationHeadline(notification, t);
   const subtitle = subtitleFor(notification, t);
   const isUpgradeRequest =
     notification.type === 'access.role_upgrade_request';
@@ -427,7 +423,7 @@ function NotificationItem({
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
           <span
-            className='truncate text-sm font-medium text-foreground'
+            className='text-sm font-medium text-foreground'
             data-testid={`bell-notification-headline-${notification.id}`}
           >
             {headline}

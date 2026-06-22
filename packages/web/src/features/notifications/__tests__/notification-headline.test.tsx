@@ -89,6 +89,13 @@ describe('notificationHeadline', () => {
     // The project entity links to the canonical `/project/{slug}-{id}` URL.
     const projLink = screen.getByRole('link', { name: 'My Project' });
     expect(projLink).toHaveAttribute('href', '/project/my-proj-proj-9');
+
+    // Both links open in a NEW tab so the reader keeps their place in the bell
+    // (the popover stays open); `noopener noreferrer` for the cross-tab handoff.
+    expect(actorLink).toHaveAttribute('target', '_blank');
+    expect(actorLink).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(projLink).toHaveAttribute('target', '_blank');
+    expect(projLink).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('renders the studio entity link for a studio invite', () => {

@@ -186,6 +186,26 @@ describe('BellMenu — 4 notification types render', () => {
       expect(screen.getByTestId('bell-unread-dot')).toBeInTheDocument();
     });
   });
+
+  it('renders the headline in full — never single-line `truncate` (it clipped the actor-first copy with an ellipsis)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+      fakeNotification(N1, 'access.role_upgrade_rejected', {
+        deciderName: 'bangbang',
+        deciderHandle: 'bangbang',
+        projectName: 'canvas',
+        projectSlug: 'canvas',
+      }),
+    ]);
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    const headline = await screen.findByTestId(
+      `bell-notification-headline-${N1}`,
+    );
+    // `truncate` = overflow-hidden + nowrap + ellipsis → clips the longer
+    // actor-first sentence to one line. The headline must wrap to show it whole.
+    expect(headline.className).not.toMatch(/\btruncate\b/);
+  });
 });
 
 describe('BellMenu — approve / reject mutations on upgrade-request rows', () => {

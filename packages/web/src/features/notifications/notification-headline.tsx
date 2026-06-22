@@ -200,27 +200,27 @@ function headlinePartsFor(n: Notification): HeadlineParts | null {
 
 /**
  * Build the actor link node — the display name + a dimmer `@handle`, linking to
- * the actor's personal studio. When the handle is missing (a user mid-onboarding
- * with no personal studio), it degrades to plain text (the name, or a generic
+ * the actor's personal studio. The link opens in a NEW tab so the reader keeps
+ * their place in the bell. When the handle is missing (a user mid-onboarding with
+ * no personal studio), it degrades to plain text (the name, or a generic
  * fallback) with no broken link.
  * @param name - The actor's display name (may be empty).
  * @param handle - The actor's personal-studio slug = `@handle` (may be empty).
  * @param t - The translation function (for the no-name fallback).
- * @param onNavigate - Called when the link is followed (closes the bell popover).
  * @returns The actor link node, or a plain-text fallback.
  */
 function actorNode(
   name: string,
   handle: string,
   t: ReturnType<typeof useTranslation>,
-  onNavigate?: () => void,
 ): React.ReactNode {
   const label = name || t('notifications.actorFallback');
   if (!handle) return label;
   return (
     <Link
       to={studioPath(handle)}
-      onClick={onNavigate}
+      target='_blank'
+      rel='noopener noreferrer'
       className='font-medium text-foreground underline-offset-2 hover:underline'
     >
       {label}
@@ -232,25 +232,25 @@ function actorNode(
 /**
  * Build the localized, link-bearing headline for a bell notification: the actor
  * (name + `@handle` → personal studio) and the entity (project / studio name → its
- * page) are clickable links dropped into the translated sentence frame.
+ * page) are clickable links dropped into the translated sentence frame. Both links
+ * open in a NEW tab so the reader keeps their place in the bell.
  * @param n - The notification to render a headline for.
  * @param t - The translation function.
- * @param onNavigate - Called when any headline link is followed (closes the popover).
  * @returns The headline as a React node, or the raw type for an unknown notification.
  */
 export function notificationHeadline(
   n: Notification,
   t: ReturnType<typeof useTranslation>,
-  onNavigate?: () => void,
 ): React.ReactNode {
   const parts = headlinePartsFor(n);
   if (!parts) return n.type;
 
-  const actor = actorNode(parts.actorName, parts.actorHandle, t, onNavigate);
+  const actor = actorNode(parts.actorName, parts.actorHandle, t);
   const entity = parts.entityHref ? (
     <Link
       to={parts.entityHref}
-      onClick={onNavigate}
+      target='_blank'
+      rel='noopener noreferrer'
       className='font-medium text-foreground underline-offset-2 hover:underline'
     >
       {parts.entityLabel}
