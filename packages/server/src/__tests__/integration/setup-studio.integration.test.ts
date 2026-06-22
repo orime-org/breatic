@@ -242,3 +242,53 @@ describe("createPersonalStudio — one personal studio per user (invariant 2)", 
     expect(await countPersonalStudios(user)).toBe(1);
   });
 });
+
+describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slug)", () => {
+  it("resolves name + slug per user; empty input → empty map; absent for no-studio users", async () => {
+    const userA = await insertUser();
+    const userB = await insertUser();
+    const userNoStudio = await insertUser();
+    const slugA = freshSlug();
+    const slugB = freshSlug();
+    await studioService.createPersonalStudio(userA, slugA);
+    await studioService.createPersonalStudio(userB, slugB);
+    // Give A a display name distinct from its slug — the bell renders the
+    // display name beside the @slug handle, so the two must come back separately.
+    await sql`
+      UPDATE studios SET name = 'Alice Display'
+      WHERE created_by_user_id = ${userA} AND type = 'personal'
+    `;
+
+    // Empty input short-circuits to an empty map (no query).
+    expect(
+      (await studioService.getPersonalStudioProfilesByUserIds([])).size,
+    ).toBe(0);
+
+    const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+      userA,
+      userB,
+      userNoStudio,
+    ]);
+    // A: display name diverged from slug — both resolved correctly.
+    expect(profiles.get(userA)).toEqual({ name: "Alice Display", slug: slugA });
+    // B: never renamed, so name still equals the slug.
+    expect(profiles.get(userB)).toEqual({ name: slugB, slug: slugB });
+    // A user mid-onboarding (no personal studio) is absent — callers fall back.
+    expect(profiles.has(userNoStudio)).toBe(false);
+  });
+
+  it("excludes a soft-deleted personal studio", async () => {
+    const user = await insertUser();
+    const slug = freshSlug();
+    await studioService.createPersonalStudio(user, slug);
+    await sql`
+      UPDATE studios SET deleted_at = now()
+      WHERE created_by_user_id = ${user} AND type = 'personal'
+    `;
+
+    const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+      user,
+    ]);
+    expect(profiles.has(user)).toBe(false);
+  });
+});
