@@ -35,6 +35,10 @@ export type { NotificationEntity };
  */
 export interface RoleUpgradeRequestPayload {
   requesterUserId: string;
+  /** Requester's personal-studio display name — shown actor-first in the bell. */
+  requesterName: string;
+  /** Requester's personal-studio slug = @handle shown + `/studio/{slug}` link. */
+  requesterHandle: string;
   projectName: string;
   requestedRole: "editor"; // currently only editor upgrade is supported
   message: string | null;
@@ -47,6 +51,10 @@ export interface RoleUpgradeRequestPayload {
  * inbox.
  */
 export interface RoleUpgradeDecisionPayload {
+  /** Deciding owner's personal-studio display name — shown actor-first in the bell. */
+  deciderName: string;
+  /** Deciding owner's personal-studio slug = @handle shown + `/studio/{slug}` link. */
+  deciderHandle: string;
   projectName: string;
   newRole?: "editor";
   reason?: string | null;

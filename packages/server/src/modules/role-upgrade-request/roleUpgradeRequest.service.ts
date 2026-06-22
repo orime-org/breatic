@@ -33,6 +33,7 @@
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
+import * as studioService from "@server/modules/studio/studio.service.js";
 import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -57,11 +58,14 @@ interface RoleUpgradeRequestInput {
 export async function request(
   input: RoleUpgradeRequestInput,
 ): Promise<NotificationEntity> {
+  const requester = await resolveActorProfile(input.requesterUserId);
   return notificationService.createRoleUpgradeRequest({
     ownerUserId: input.ownerUserId,
     projectId: input.projectId,
     payload: {
       requesterUserId: input.requesterUserId,
+      requesterName: requester.name,
+      requesterHandle: requester.handle,
       projectName: input.projectName,
       requestedRole: "editor",
       message: input.message ?? null,
@@ -111,10 +115,13 @@ export async function approve(input: DecisionInput): Promise<void> {
     if (!ok) {
       throw new NotFoundError(t("server.error.notFound"));
     }
+    const decider = await resolveActorProfile(input.ownerUserId);
     await notificationService.createRoleUpgradeApproved({
       requesterUserId,
       projectId: String(req.projectId),
       payload: {
+        deciderName: decider.name,
+        deciderHandle: decider.handle,
         projectName: input.projectName,
         newRole: "editor",
       },
@@ -145,16 +152,36 @@ export async function reject(
     if (!won) {
       throw new NotFoundError(t("server.error.notFound"));
     }
+    const decider = await resolveActorProfile(input.ownerUserId);
     await notificationService.createRoleUpgradeRejected({
       requesterUserId: String(req.payload.requesterUserId),
       projectId: String(req.projectId),
       payload: {
+        deciderName: decider.name,
+        deciderHandle: decider.handle,
         projectName: input.projectName,
         reason: input.reason ?? null,
       },
       tx,
     });
   });
+}
+
+/**
+ * Resolve a user's personal-studio display identity (name + slug = `@handle`)
+ * for the bell payload. A user mid-onboarding (no personal studio) yields empty
+ * strings; the bell renders the row without an actor link rather than crashing.
+ * @param userId - The actor (requester / deciding owner) to resolve.
+ * @returns The actor's display name + `@handle` (empty strings when unresolved).
+ */
+async function resolveActorProfile(
+  userId: string,
+): Promise<{ name: string; handle: string }> {
+  const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+    userId,
+  ]);
+  const p = profiles.get(userId);
+  return { name: p?.name ?? "", handle: p?.slug ?? "" };
 }
 
 interface LoadedRequest {

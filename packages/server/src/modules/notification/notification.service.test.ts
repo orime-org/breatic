@@ -56,6 +56,8 @@ describe("createRoleUpgradeRequest", () => {
       projectId: PID,
       payload: {
         requesterUserId: REQUESTER,
+        requesterName: "Vicky",
+        requesterHandle: "vicky",
         projectName: "Demo",
         requestedRole: "editor",
         message: "please",
@@ -90,7 +92,12 @@ describe("createRoleUpgradeApproved / Rejected", () => {
     await notificationService.createRoleUpgradeApproved({
       requesterUserId: REQUESTER,
       projectId: PID,
-      payload: { projectName: "Demo", newRole: "editor" },
+      payload: {
+        deciderName: "Olivia",
+        deciderHandle: "olivia",
+        projectName: "Demo",
+        newRole: "editor",
+      },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
     expect(args?.userId).toBe(REQUESTER);
@@ -113,7 +120,12 @@ describe("createRoleUpgradeApproved / Rejected", () => {
     await notificationService.createRoleUpgradeRejected({
       requesterUserId: REQUESTER,
       projectId: PID,
-      payload: { projectName: "Demo", reason: "Too many editors" },
+      payload: {
+        deciderName: "Olivia",
+        deciderHandle: "olivia",
+        projectName: "Demo",
+        reason: "Too many editors",
+      },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
     expect(args?.userId).toBe(REQUESTER);
