@@ -241,6 +241,7 @@ describe("createInvite", () => {
     expect(payload).toMatchObject({
       inviterName: "Owner",
       inviterHandle: "proj-owner",
+      projectSlug: "test-project",
     });
   });
 
@@ -313,6 +314,7 @@ describe("confirmInvite", () => {
     expect(ownerNotices[0]?.payload).toMatchObject({
       inviteeName: "Invitee",
       inviteeHandle: "proj-invitee",
+      projectSlug: "test-project",
     });
     // The invitee's bell notification is marked read.
     const inviteeUnread = await db

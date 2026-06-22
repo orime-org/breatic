@@ -45,6 +45,7 @@ interface RoleUpgradeRequestInput {
   requesterUserId: string;
   projectId: string;
   projectName: string;
+  projectSlug: string;
   message?: string | null;
 }
 
@@ -67,6 +68,7 @@ export async function request(
       requesterName: requester.name,
       requesterHandle: requester.handle,
       projectName: input.projectName,
+      projectSlug: input.projectSlug,
       requestedRole: "editor",
       message: input.message ?? null,
     },
@@ -77,6 +79,7 @@ interface DecisionInput {
   notificationId: string;
   ownerUserId: string;
   projectName: string;
+  projectSlug: string;
 }
 
 /**
@@ -123,6 +126,7 @@ export async function approve(input: DecisionInput): Promise<void> {
         deciderName: decider.name,
         deciderHandle: decider.handle,
         projectName: input.projectName,
+        projectSlug: input.projectSlug,
         newRole: "editor",
       },
       tx,
@@ -160,6 +164,7 @@ export async function reject(
         deciderName: decider.name,
         deciderHandle: decider.handle,
         projectName: input.projectName,
+        projectSlug: input.projectSlug,
         reason: input.reason ?? null,
       },
       tx,

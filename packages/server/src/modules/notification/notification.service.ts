@@ -40,6 +40,8 @@ export interface RoleUpgradeRequestPayload {
   /** Requester's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
   requesterHandle: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   requestedRole: "editor"; // currently only editor upgrade is supported
   message: string | null;
 }
@@ -56,6 +58,8 @@ export interface RoleUpgradeDecisionPayload {
   /** Deciding owner's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
   deciderHandle: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   newRole?: "editor";
   reason?: string | null;
 }
@@ -326,6 +330,8 @@ export interface ProjectInviteRequestPayload {
   invitationId: string;
   projectId: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   /** Inviting owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviterName: string;
   inviterHandle: string;
@@ -340,6 +346,8 @@ export interface ProjectInviteRequestPayload {
  */
 export interface ProjectInviteAcceptedPayload {
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviteeName: string;
   inviteeHandle: string;

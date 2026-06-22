@@ -186,11 +186,13 @@ describe("role-upgrade decision is once-only under concurrency", () => {
         notificationId: requestId,
         ownerUserId: ownerId,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
       roleUpgradeService.approve({
         notificationId: requestId,
         ownerUserId: ownerId,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ]);
 
@@ -216,11 +218,13 @@ describe("role-upgrade decision is once-only under concurrency", () => {
         notificationId: requestId,
         ownerUserId: ownerId,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
       roleUpgradeService.reject({
         notificationId: requestId,
         ownerUserId: ownerId,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ]);
 

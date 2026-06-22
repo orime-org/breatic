@@ -77,6 +77,7 @@ describe('notificationHeadline', () => {
         requesterName: 'Alex',
         requesterHandle: 'alex-h',
         projectName: 'My Project',
+        projectSlug: 'my-proj',
       },
     });
     render(<MemoryRouter>{notificationHeadline(n, t)}</MemoryRouter>);
@@ -85,8 +86,9 @@ describe('notificationHeadline', () => {
     expect(actorLink).toHaveAttribute('href', '/studio/alex-h');
     expect(actorLink).toHaveTextContent('@alex-h');
 
+    // The project entity links to the canonical `/project/{slug}-{id}` URL.
     const projLink = screen.getByRole('link', { name: 'My Project' });
-    expect(projLink).toHaveAttribute('href', '/project/proj-9');
+    expect(projLink).toHaveAttribute('href', '/project/my-proj-proj-9');
   });
 
   it('renders the studio entity link for a studio invite', () => {

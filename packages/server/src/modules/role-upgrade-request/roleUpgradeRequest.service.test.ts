@@ -135,6 +135,7 @@ describe("request", () => {
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
+      projectSlug: "demo-slug",
       message: "Need to edit",
     });
     expect(out.id).toBe(NID);
@@ -175,6 +176,7 @@ describe("approve", () => {
       notificationId: NID,
       ownerUserId: OWNER,
       projectName: "Demo",
+      projectSlug: "demo-slug",
     });
 
     expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(
@@ -212,6 +214,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
@@ -226,6 +229,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
@@ -240,6 +244,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
@@ -253,6 +258,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -266,6 +272,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(
@@ -282,6 +289,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     // Loser does no work: no role bump, no approved notification.
@@ -307,6 +315,7 @@ describe("reject", () => {
       notificationId: NID,
       ownerUserId: OWNER,
       projectName: "Demo",
+      projectSlug: "demo-slug",
       reason: "Too many editors already",
     });
 
@@ -340,6 +349,7 @@ describe("reject", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });

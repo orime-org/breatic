@@ -88,12 +88,16 @@ function studioPath(slug: string): string {
 }
 
 /**
- * Build the project page path.
+ * Build the project page path `/project/{slug}-{id}` (URL design §5.7) — the slug
+ * (a snapshot, can repeat) prefixes the stable id. A missing slug degrades to the
+ * bare id, which the page's id-extractor (`projectUuidFromRouteParam`) still
+ * resolves.
+ * @param slug - The project's URL slug (may be empty).
  * @param projectId - The project id (the notification's `project_id` column).
- * @returns The `/project/{projectId}` path.
+ * @returns The `/project/{slug}-{id}` path, or `/project/{id}` when slug is empty.
  */
-function projectPath(projectId: string): string {
-  return `/project/${projectId}`;
+function projectPath(slug: string, projectId: string): string {
+  return slug ? `/project/${slug}-${projectId}` : `/project/${projectId}`;
 }
 
 /** Per-type config for a notification whose entity is a project. */
@@ -168,7 +172,10 @@ const STUDIO_ROWS: Partial<
  */
 function headlinePartsFor(n: Notification): HeadlineParts | null {
   const p = n.payload;
-  const projectHref = n.projectId !== null ? projectPath(n.projectId) : null;
+  const projectHref =
+    n.projectId !== null
+      ? projectPath(str(p, 'projectSlug'), n.projectId)
+      : null;
   const studioHref = str(p, 'studioSlug')
     ? studioPath(str(p, 'studioSlug'))
     : null;

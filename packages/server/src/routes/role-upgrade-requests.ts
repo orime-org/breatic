@@ -86,6 +86,7 @@ projectRoleUpgradeRequests.post(
       requesterUserId: user.id,
       projectId,
       projectName: project.name,
+      projectSlug: project.slug,
       message: body.message ?? null,
     });
 
@@ -121,25 +122,24 @@ decisionRoute.patch(
     const notificationId = c.req.param("notificationId");
     const body = c.req.valid("json");
 
-    // Look up the project name for the decision notification's
-    // payload so the requester's BellMenu can render it without a
-    // join.
-    const projectName = await loadProjectNameForNotification(
-      notificationId,
-      user.id,
-    );
+    // Look up the project name + slug for the decision notification's
+    // payload so the requester's BellMenu can render the headline + the
+    // `/project/{slug}-{id}` link without a join.
+    const project = await loadProjectForNotification(notificationId, user.id);
 
     if (body.decision === "approved") {
       await roleUpgradeRequestService.approve({
         notificationId,
         ownerUserId: user.id,
-        projectName,
+        projectName: project.name,
+        projectSlug: project.slug,
       });
     } else {
       await roleUpgradeRequestService.reject({
         notificationId,
         ownerUserId: user.id,
-        projectName,
+        projectName: project.name,
+        projectSlug: project.slug,
         reason: body.reason ?? null,
       });
     }
@@ -148,20 +148,21 @@ decisionRoute.patch(
 );
 
 /**
- * Fetch the project name from the notification's `projectId` so the
- * decision notification's payload can carry it. The service-layer
- * gate guarantees the caller owns the source notification, so this
- * helper trusts the projectId at face value (any drift surfaces as a
- * NotFound on the projectService side).
+ * Fetch the project name + URL slug from the notification's `projectId` so the
+ * decision notification's payload can carry them (the requester's bell renders
+ * the headline + the `/project/{slug}-{id}` link without a join). The
+ * service-layer gate guarantees the caller owns the source notification, so this
+ * helper trusts the projectId at face value (any drift surfaces as a NotFound on
+ * the projectService side).
  * @param notificationId - The source role-upgrade notification whose `projectId` is resolved.
  * @param ownerUserId - The project owner making the decision, used to authorize the project lookup.
- * @returns The project's display name.
+ * @returns The project's display name + URL slug.
  * @throws {NotFoundError} when the notification is missing or has no associated project.
  */
-async function loadProjectNameForNotification(
+async function loadProjectForNotification(
   notificationId: string,
   ownerUserId: string,
-): Promise<string> {
+): Promise<{ name: string; slug: string }> {
   const row = await notificationService.getById(notificationId);
   if (!row) {
     throw new NotFoundError("notification not found");
@@ -170,7 +171,7 @@ async function loadProjectNameForNotification(
     throw new NotFoundError("notification has no project");
   }
   const project = await projectService.get(row.projectId, ownerUserId);
-  return project.name;
+  return { name: project.name, slug: project.slug };
 }
 
 export { projectRoleUpgradeRequests as projectRoleUpgradeRequestsRoute };

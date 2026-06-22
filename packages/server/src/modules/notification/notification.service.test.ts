@@ -59,6 +59,7 @@ describe("createRoleUpgradeRequest", () => {
         requesterName: "Vicky",
         requesterHandle: "vicky",
         projectName: "Demo",
+        projectSlug: "demo-slug",
         requestedRole: "editor",
         message: "please",
       },
@@ -96,6 +97,7 @@ describe("createRoleUpgradeApproved / Rejected", () => {
         deciderName: "Olivia",
         deciderHandle: "olivia",
         projectName: "Demo",
+        projectSlug: "demo-slug",
         newRole: "editor",
       },
     });
@@ -124,6 +126,7 @@ describe("createRoleUpgradeApproved / Rejected", () => {
         deciderName: "Olivia",
         deciderHandle: "olivia",
         projectName: "Demo",
+        projectSlug: "demo-slug",
         reason: "Too many editors",
       },
     });

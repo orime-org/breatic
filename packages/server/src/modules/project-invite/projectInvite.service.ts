@@ -143,6 +143,7 @@ export async function createInvite(
           invitationId,
           projectId,
           projectName: project.name,
+          projectSlug: project.slug,
           inviterName,
           inviterHandle,
           role,
@@ -238,6 +239,7 @@ export async function confirmInvite(
       projectId: accepted.projectId,
       payload: {
         projectName: project?.name ?? "",
+        projectSlug: project?.slug ?? "",
         inviteeName: invitee?.name ?? "",
         inviteeHandle: invitee?.slug ?? "",
       },
